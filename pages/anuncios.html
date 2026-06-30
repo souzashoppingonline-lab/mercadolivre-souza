@@ -137,6 +137,7 @@ WS.on('_connected', () => {
 
 const utils = { formatCurrency: v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0), formatDateTime: d => d ? new Date(d).toLocaleString('pt-BR') : '—' };
 load();
+window.addEventListener('storeChanged', load);
 </script>
 </body>
 </html>

@@ -66,6 +66,39 @@ Nenhuma página consulta a API do ML diretamente. Jamais.
 
 ---
 
+## Requisito de Multi-loja (CRÍTICO para as próximas sessões)
+
+O sistema foi projetado para suportar múltiplas lojas desde o início.
+O usuário terá inicialmente **3 lojas** do Mercado Livre para monitorar.
+
+**O que o schema já suporta (OK):**
+- Tabela `stores` com múltiplas linhas (uma por loja)
+- Todas as tabelas (orders, items, questions, messages, returns, ads_campaigns)
+  têm coluna `store_id BIGINT FK stores(id)`
+- Worker já recebe `storeId` de cada webhook e grava com a loja correta
+- `mlClient.js` busca o `access_token` correto por `storeId`
+- `invalidateKPIs(storeId)` já invalida cache por loja E global
+
+**O que AINDA precisa ser feito para multi-loja funcionar na UI:**
+1. **Seletor de loja no frontend** — todas as páginas precisam de um filtro
+   para alternar entre lojas (ou ver todas consolidadas)
+2. **API precisa aceitar `?store_id=` em todos os endpoints** — hoje as queries
+   não filtram por loja, retornam dados de todas as lojas misturadas
+3. **Dashboard consolidado vs por loja** — o usuário precisa escolher
+4. **OAuth para 3 lojas** — cada loja precisa passar pelo fluxo OAuth
+   separadamente e ter seu token na tabela `stores`
+5. **KPIs por loja** — `kpis:summary` deve virar `kpis:all` e `kpis:{storeId}`
+6. **Página Lojas** — já existe (`lojas.html`) e lista as stores cadastradas,
+   mas ainda não tem seleção ativa
+
+**Decisão de design pendente:**
+- Filtro por loja no topo de cada página (dropdown)? ou
+- Página separada por loja? ou
+- Tudo consolidado com breakdown por loja nos gráficos?
+→ Perguntar ao usuário antes de implementar.
+
+---
+
 ## O que ainda NÃO está implementado (próximas sessões)
 
 | Item | Prioridade | Detalhes |

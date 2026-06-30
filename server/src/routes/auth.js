@@ -7,7 +7,7 @@ const env = require('../config/env');
 
 const router = express.Router();
 
-const ML_AUTH_URL = 'https://auth.mercadolibre.com.br/authorization';
+const ML_AUTH_URL = 'https://auth.mercadolivre.com.br/authorization';
 const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 
 // Step 1 — redirect to Mercado Livre authorization page
@@ -21,7 +21,8 @@ router.get('/login', (req, res) => {
 });
 
 // Step 2 — ML redirects back here with ?code=...
-router.get('/callback', async (req, res) => {
+// Route matches both /auth/callback and /ml/callback (configured in ML app)
+router.get(['/callback', '/ml/callback'], async (req, res) => {
   const { code, error } = req.query;
 
   if (error || !code) {

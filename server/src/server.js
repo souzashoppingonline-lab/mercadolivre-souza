@@ -20,6 +20,8 @@ app.use('/webhooks', webhookGateway);
 
 // OAuth flow — store owners visit /auth/login once to authorize.
 app.use('/auth', authRoutes);
+// ML app has /ml/callback configured as redirect_uri
+app.use('/ml', authRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

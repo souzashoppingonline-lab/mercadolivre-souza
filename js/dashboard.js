@@ -1,53 +1,72 @@
+// Dashboard — reads from the internal REST API (/api/) and updates via WebSocket.
+// No direct calls to the Mercado Livre API are made here.
 document.addEventListener('DOMContentLoaded', () => {
-  // Date display
   const d = new Date();
   const el = document.getElementById('currentDate');
-  if (el) el.textContent = d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  if (el) {
+    el.textContent = d.toLocaleDateString('pt-BR', {
+      weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+    });
+  }
 
-  // Demo data — swap with real API calls
-  loadDashboard();
+  loadAll();
+
+  // Live updates via WebSocket
+  WS.on('kpis_updated',   loadKPIs);
+  WS.on('order_updated',  loadKPIs);
+  WS.on('stock_alert',    loadAlertas);
+  WS.on('anuncio_updated', loadKPIs);
+  WS.on('question_received', loadKPIs);
+  WS.on('_connected', () => {
+    const wsEl = document.getElementById('wsStatus');
+    if (wsEl) wsEl.innerHTML =
+      '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+  });
+
+  document.querySelectorAll('.chart-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      loadVendasChart(Number(this.dataset.period) || 7);
+    });
+  });
+
+  const refresh = document.querySelector('.btn-refresh');
+  if (refresh) refresh.addEventListener('click', loadAll);
 });
 
-async function loadDashboard() {
-  loadKPIs();
-  renderVendasChart();
-  renderPedidosChart();
-  loadTopProdutos();
-  loadAlertas();
+async function loadAll() {
+  await Promise.all([loadKPIs(), loadVendasChart(7), loadPedidosChart(), loadTopProdutos(), loadAlertas()]);
 }
 
-function loadKPIs() {
-  // Simulated KPIs; replace with ML_API calls in production
-  const kpis = [
-    { id: 'vendasHoje', value: utils.formatCurrency(3842.50) },
-    { id: 'pedidosHoje', value: '24' },
-    { id: 'perguntasPendentes', value: '7' },
-    { id: 'alertasAtivos', value: '3' },
-    { id: 'anunciosAtivos', value: '158' },
-    { id: 'reputacao', value: 'Ouro' },
-  ];
-  kpis.forEach(k => {
-    const el = document.getElementById(k.id);
-    if (el) el.textContent = k.value;
-  });
+async function loadKPIs() {
+  const data = await DB.getDashboardKPIs() || {};
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('vendasHoje',         utils.formatCurrency(data.vendas_hoje));
+  set('pedidosHoje',        data.pedidos_hoje ?? '0');
+  set('perguntasPendentes', data.perguntas_pendentes ?? '0');
+  set('alertasAtivos',      data.alertas_ativos ?? '0');
+  set('anunciosAtivos',     data.anuncios_ativos ?? '0');
 }
 
-function renderVendasChart() {
+let vendasChartInstance;
+async function loadVendasChart(period = 7) {
   const ctx = document.getElementById('vendasChart');
   if (!ctx) return;
 
-  const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-  const data = [2800, 3400, 2950, 4100, 3842, 5200, 1800];
-  const prev = [2600, 3100, 2700, 3800, 3500, 4900, 1600];
+  const data = await DB.getDashboardChart(period) || { rows: [] };
+  const rows = data.rows || [];
 
-  new Chart(ctx, {
+  if (vendasChartInstance) vendasChartInstance.destroy();
+
+  vendasChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels,
+      labels: rows.map(r => r.data),
       datasets: [
         {
-          label: 'Esta semana',
-          data,
+          label: 'Receita Bruta',
+          data: rows.map(r => r.bruto),
           borderColor: '#FFE600',
           backgroundColor: 'rgba(255,230,0,0.08)',
           fill: true,
@@ -56,58 +75,55 @@ function renderVendasChart() {
           pointRadius: 4,
         },
         {
-          label: 'Semana anterior',
-          data: prev,
-          borderColor: '#888',
+          label: 'Receita Líquida',
+          data: rows.map(r => r.liquido),
+          borderColor: '#27ae60',
           backgroundColor: 'transparent',
           tension: 0.4,
           borderDash: [4, 4],
           pointRadius: 2,
-        }
-      ]
+        },
+      ],
     },
     options: {
       responsive: true,
       plugins: {
         legend: { labels: { color: '#f0f0f0', font: { size: 12 } } },
-        tooltip: {
-          callbacks: {
-            label: ctx => utils.formatCurrency(ctx.raw)
-          }
-        }
+        tooltip: { callbacks: { label: c => utils.formatCurrency(c.raw) } },
       },
       scales: {
         x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } },
         y: {
-          ticks: { color: '#888', callback: v => 'R$' + (v/1000).toFixed(1) + 'k' },
-          grid: { color: 'rgba(255,255,255,0.05)' }
-        }
-      }
-    }
-  });
-
-  // Period buttons
-  document.querySelectorAll('.chart-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-      document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
-      this.classList.add('active');
-    });
+          ticks: { color: '#888', callback: v => 'R$' + (v / 1000).toFixed(1) + 'k' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+      },
+    },
   });
 }
 
-function renderPedidosChart() {
+let pedidosChartInstance;
+async function loadPedidosChart() {
   const ctx = document.getElementById('pedidosChart');
   if (!ctx) return;
 
-  new Chart(ctx, {
+  const data = await DB.getPedidos() || { results: [] };
+  const rows = data.results || [];
+
+  const counts = { paid: 0, shipped: 0, delivered: 0, cancelled: 0 };
+  rows.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
+
+  if (pedidosChartInstance) pedidosChartInstance.destroy();
+
+  pedidosChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
       labels: ['Pago', 'Enviado', 'Entregue', 'Cancelado'],
       datasets: [{
-        data: [12, 5, 45, 2],
+        data: [counts.paid, counts.shipped, counts.delivered, counts.cancelled],
         backgroundColor: ['#2980b9', '#e67e22', '#27ae60', '#e74c3c'],
-        borderWidth: 0
-      }]
+        borderWidth: 0,
+      }],
     },
     options: {
       responsive: true,
@@ -115,53 +131,42 @@ function renderPedidosChart() {
       plugins: {
         legend: {
           position: 'bottom',
-          labels: { color: '#f0f0f0', font: { size: 11 }, padding: 12 }
-        }
-      }
-    }
+          labels: { color: '#f0f0f0', font: { size: 11 }, padding: 12 },
+        },
+      },
+    },
   });
 }
 
-function loadTopProdutos() {
-  const produtos = [
-    { nome: 'Fone Bluetooth XW3', vendas: 38, receita: 'R$ 7.220', status: 'active' },
-    { nome: 'Carregador 65W USB-C', vendas: 29, receita: 'R$ 3.190', status: 'active' },
-    { nome: 'Suporte Notebook Premium', vendas: 21, receita: 'R$ 2.940', status: 'active' },
-    { nome: 'Mouse Sem Fio Pro', vendas: 17, receita: 'R$ 2.380', status: 'paused' },
-    { nome: 'Cabo HDMI 4K 2m', vendas: 14, receita: 'R$ 980', status: 'active' },
-  ];
-
+async function loadTopProdutos() {
+  const data = await DB.getTopProducts(5) || { products: [] };
   const tbody = document.getElementById('topProdutos');
   if (!tbody) return;
 
-  tbody.innerHTML = produtos.map(p => `
-    <tr>
-      <td>${p.nome}</td>
-      <td>${p.vendas}</td>
-      <td>${p.receita}</td>
-      <td><span class="badge ${p.status}">${p.status === 'active' ? 'Ativo' : 'Pausado'}</span></td>
-    </tr>
-  `).join('');
+  const rows = data.products || [];
+  tbody.innerHTML = rows.length
+    ? rows.map(p => `
+        <tr>
+          <td>${p.title || '—'}</td>
+          <td>${p.sold || p.sold_quantity || 0}</td>
+          <td>${utils.formatCurrency(p.revenue || (p.price * (p.sold || p.sold_quantity || 0)))}</td>
+          <td><span class="badge ${p.status}">${p.status === 'active' ? 'Ativo' : 'Pausado'}</span></td>
+        </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
 }
 
-function loadAlertas() {
-  const alertas = [
-    { tipo: 'warning', msg: 'Fone Bluetooth XW3 — estoque crítico (2 un.)', time: '10min atrás' },
-    { tipo: 'critical', msg: 'Pergunta sem resposta há mais de 24h', time: '1h atrás' },
-    { tipo: 'info', msg: 'Novo pedido cancelado pelo comprador', time: '3h atrás' },
-  ];
-
+async function loadAlertas() {
+  const rows = await DB.getAlerts() || [];
   const el = document.getElementById('alertasList');
   if (!el) return;
 
-  el.innerHTML = alertas.map(a => `
-    <div class="alert-item ${a.tipo === 'critical' ? 'critical' : a.tipo === 'info' ? 'info' : ''}">
-      <i class="fas ${a.tipo === 'critical' ? 'fa-times-circle' : a.tipo === 'info' ? 'fa-info-circle' : 'fa-exclamation-triangle'}"
-         style="color: ${a.tipo === 'critical' ? 'var(--red)' : a.tipo === 'info' ? 'var(--blue)' : 'var(--orange)'}"></i>
-      <div style="flex:1">
-        <div style="font-size:13px">${a.msg}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${a.time}</div>
-      </div>
-    </div>
-  `).join('');
+  el.innerHTML = rows.length
+    ? rows.map(a => `
+        <div class="alert-item">
+          <i class="fas fa-exclamation-triangle" style="color:var(--orange)"></i>
+          <div style="flex:1">
+            <div style="font-size:13px">${a.title} — estoque crítico (${a.available_quantity} un.)</div>
+          </div>
+        </div>`).join('')
+    : '<div class="empty-state">Nenhum alerta</div>';
 }

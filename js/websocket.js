@@ -4,7 +4,7 @@ const WS = {
   socket: null,
   listeners: {},
   reconnectDelay: 2000,
-  _url: localStorage.getItem('ml_ws_url') || 'ws://localhost:3000/ws',
+  _url: localStorage.getItem('ml_ws_url') || (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws',
 
   connect() {
     if (this.socket && this.socket.readyState < 2) return;

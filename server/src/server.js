@@ -5,6 +5,7 @@ const cors = require('cors');
 const env = require('./config/env');
 const apiRoutes = require('./routes/api');
 const webhookGateway = require('./routes/webhookGateway');
+const authRoutes = require('./routes/auth');
 const wsHub = require('./ws/hub');
 
 const app = express();
@@ -16,6 +17,9 @@ app.use('/api', apiRoutes);
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);
+
+// OAuth flow — store owners visit /auth/login once to authorize.
+app.use('/auth', authRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

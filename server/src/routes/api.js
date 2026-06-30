@@ -129,6 +129,17 @@ router.get('/alertas/cancelamentos', async (req, res) => {
   res.json({ items: rows, summary: {} });
 });
 
+// ── Lojas ──────────────────────────────────────────────────
+router.get('/lojas', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, nickname, level_id, active_listings, monthly_revenue,
+            token_expires_at, updated_at,
+            CASE WHEN token_expires_at > now() THEN true ELSE false END as token_valid
+     FROM stores ORDER BY nickname`
+  );
+  res.json({ stores: rows });
+});
+
 // ── Webhooks / Schedule ────────────────────────────────────
 router.get('/webhooks/logs', async (req, res) => {
   const { topic = '', limit = 50 } = req.query;

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anúncios — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+<div class="app-container">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2 class="brand-name">ML Dashboard</h2>
+      <button class="sidebar-toggle" id="sidebarToggle"><i class="fas fa-bars"></i></button>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section"><span class="nav-section-title">Operação</span>
+        <a href="anuncios.html" class="nav-item active"><i class="fas fa-tag"></i><span>Anúncios</span></a>
+        <a href="pedidos.html" class="nav-item"><i class="fas fa-box"></i><span>Pedidos</span></a>
+        <a href="vendas.html" class="nav-item"><i class="fas fa-chart-line"></i><span>Vendas Totais</span></a>
+        <a href="perguntas.html" class="nav-item"><i class="fas fa-question-circle"></i><span>Perguntas</span></a>
+        <a href="mensagens.html" class="nav-item"><i class="fas fa-envelope"></i><span>Mensagens</span></a>
+        <a href="metricas.html" class="nav-item"><i class="fas fa-tachometer-alt"></i><span>Métricas</span></a>
+        <a href="clientes.html" class="nav-item"><i class="fas fa-users"></i><span>Clientes</span></a>
+        <a href="lojas.html" class="nav-item"><i class="fas fa-store"></i><span>Lojas</span></a>
+      </div>
+      <div class="nav-section"><span class="nav-section-title">Análises</span>
+        <a href="horarios.html" class="nav-item"><i class="fas fa-clock"></i><span>Horários</span></a>
+        <a href="diasemana.html" class="nav-item"><i class="fas fa-calendar-week"></i><span>Dias da Semana</span></a>
+        <a href="produtos.html" class="nav-item"><i class="fas fa-cubes"></i><span>Produtos</span></a>
+        <a href="performance.html" class="nav-item"><i class="fas fa-rocket"></i><span>Performance</span></a>
+        <a href="publicidade.html" class="nav-item"><i class="fas fa-bullhorn"></i><span>Publicidade</span></a>
+        <a href="concorrentes.html" class="nav-item"><i class="fas fa-users-slash"></i><span>Concorrentes</span></a>
+      </div>
+      <div class="nav-section"><span class="nav-section-title">Comparativos</span>
+        <a href="periodo.html" class="nav-item"><i class="fas fa-calendar-alt"></i><span>Período vs Período</span></a>
+        <a href="evolucao.html" class="nav-item"><i class="fas fa-chart-area"></i><span>Evolução Diária</span></a>
+        <a href="curvaABC.html" class="nav-item"><i class="fas fa-sort-amount-down"></i><span>Curva ABC</span></a>
+      </div>
+      <div class="nav-section"><span class="nav-section-title">Alertas</span>
+        <a href="reposicao.html" class="nav-item"><i class="fas fa-boxes"></i><span>Reposição</span></a>
+        <a href="cancelamentos.html" class="nav-item"><i class="fas fa-times-circle"></i><span>Cancelamentos</span></a>
+        <a href="devolucoes.html" class="nav-item"><i class="fas fa-undo"></i><span>Devoluções</span></a>
+        <a href="anuncios-problema.html" class="nav-item"><i class="fas fa-exclamation-triangle"></i><span>Anúncios Problema</span></a>
+      </div>
+      <div class="nav-section"><span class="nav-section-title">Sistema</span>
+        <a href="monitor.html" class="nav-item"><i class="fab fa-telegram"></i><span>Monitor & Telegram</span></a>
+        <a href="schedule.html" class="nav-item"><i class="fas fa-calendar-check"></i><span>Schedule</span></a>
+        <a href="webhook.html" class="nav-item"><i class="fas fa-plug"></i><span>Webhooks</span></a>
+      </div>
+    </nav>
+  </aside>
+  <main class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle"><i class="fas fa-bars"></i></button>
+        <h1 class="page-title">Anúncios</h1>
+      </div>
+      <div class="topbar-right">
+        <span class="ws-status" id="wsStatus" style="font-size:12px;color:var(--text-muted)"><i class="fas fa-circle" style="color:var(--orange);font-size:8px"></i> conectando</span>
+        <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
+      </div>
+    </header>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Total de Anúncios</div><div class="value" id="totalAnuncios">—</div></div>
+        <div class="stat-card"><div class="label">Ativos</div><div class="value" id="anunciosAtivos" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Pausados</div><div class="value" id="anunciosPausados" style="color:var(--orange)">—</div></div>
+        <div class="stat-card"><div class="label">Encerrados</div><div class="value" id="anunciosEncerrados" style="color:var(--red)">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Lista de Anúncios</h3>
+          <div class="filters-bar" style="margin:0">
+            <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchInput" placeholder="Buscar anúncio..."></div>
+            <select class="filter-select" id="statusFilter">
+              <option value="">Todos os status</option>
+              <option value="active">Ativo</option>
+              <option value="paused">Pausado</option>
+              <option value="closed">Encerrado</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>#</th><th>Título</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th>Status</th><th>Atualizado</th></tr></thead>
+            <tbody id="anunciosTable"><tr><td colspan="7" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+let page = 1;
+const limit = 20;
+
+async function load() {
+  const status = document.getElementById('statusFilter').value;
+  const search = document.getElementById('searchInput').value;
+  const data = await DB.getAnuncios({ status, search, page, limit }) || { results: [], summary: {} };
+  const s = data.summary || {};
+  document.getElementById('totalAnuncios').textContent = s.total ?? '—';
+  document.getElementById('anunciosAtivos').textContent = s.active ?? '—';
+  document.getElementById('anunciosPausados').textContent = s.paused ?? '—';
+  document.getElementById('anunciosEncerrados').textContent = s.closed ?? '—';
+
+  const rows = (data.results || []);
+  const tbody = document.getElementById('anunciosTable');
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td style="font-size:11px;color:var(--text-muted)">${r.ml_id || r.id}</td>
+      <td>${r.title || r.titulo}</td>
+      <td>${utils.formatCurrency(r.price || r.preco)}</td>
+      <td>${r.available_quantity ?? r.estoque ?? '—'}</td>
+      <td>${r.sold_quantity ?? r.vendas ?? '—'}</td>
+      <td><span class="badge ${r.status}">${r.status === 'active' ? 'Ativo' : r.status === 'paused' ? 'Pausado' : 'Encerrado'}</span></td>
+      <td>${utils.formatDateTime(r.updated_at)}</td>
+    </tr>
+  `).join('') : '<tr><td colspan="7" class="empty-state">Nenhum anúncio encontrado</td></tr>';
+}
+
+document.getElementById('btnRefresh').addEventListener('click', load);
+document.getElementById('statusFilter').addEventListener('change', load);
+document.getElementById('searchInput').addEventListener('input', () => { page = 1; load(); });
+
+WS.on('anuncio_updated', load);
+WS.on('_connected', () => {
+  document.getElementById('wsStatus').innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
+const utils = { formatCurrency: v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0), formatDateTime: d => d ? new Date(d).toLocaleString('pt-BR') : '—' };
+load();
+</script>
+</body>
+</html>

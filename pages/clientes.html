@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clientes — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Clientes'; window.ACTIVE_NAV='clientes.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Total Clientes</div><div class="value" id="totalClientes">—</div></div>
+        <div class="stat-card"><div class="label">Novos Este Mês</div><div class="value" id="novosMes" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Recorrentes</div><div class="value" id="recorrentes" style="color:var(--blue)">—</div></div>
+        <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" id="ticketMedio">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Lista de Clientes</h3>
+          <div class="search-box" style="max-width:280px">
+            <i class="fas fa-search"></i>
+            <input type="text" id="search" placeholder="Buscar cliente...">
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Cliente</th><th>Compras</th><th>Total Gasto</th><th>Última Compra</th></tr></thead>
+            <tbody id="clientesTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+async function load() {
+  const search = document.getElementById('search').value;
+  const data = await DB.getClientes({ search }) || { clients:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('totalClientes').textContent = s.total ?? '—';
+  document.getElementById('novosMes').textContent = s.new_this_month ?? '—';
+  document.getElementById('recorrentes').textContent = s.returning ?? '—';
+  document.getElementById('ticketMedio').textContent = fmt(s.avg_ticket);
+  const rows = data.clients || [];
+  document.getElementById('clientesTable').innerHTML = rows.length
+    ? rows.map(r=>`<tr>
+        <td>${r.nickname||r.nome||'—'}</td>
+        <td>${r.total_orders||r.compras||0}</td>
+        <td>${fmt(r.total_spent||r.total)}</td>
+        <td>${fmtD(r.last_order_date||r.ultima_compra)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Nenhum cliente</td></tr>';
+}
+document.getElementById('search').addEventListener('input', load);
+WS.on('order_updated', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

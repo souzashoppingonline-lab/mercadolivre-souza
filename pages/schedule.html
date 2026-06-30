@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schedule — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Schedule (Jobs)'; window.ACTIVE_NAV='schedule.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card">
+        <div class="card-header">
+          <h3>Jobs Agendados (BullMQ)</h3>
+        </div>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+          Jobs de sincronização que rodam quando um Webhook não cobre o dado (ex: reputação, métricas agregadas).
+          Cada execução consulta apenas o recurso necessário e grava no PostgreSQL.
+        </p>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Job</th><th>Frequência</th><th>Última Execução</th><th>Duração</th><th>Status</th><th>Ação</th></tr></thead>
+            <tbody id="jobsTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
+async function load() {
+  const data = await DB.getScheduleJobs() || { jobs:[] };
+  const rows = data.jobs || [];
+  document.getElementById('jobsTable').innerHTML = rows.length
+    ? rows.map(j=>`<tr>
+        <td>${j.name}</td><td>${j.cron||j.frequency}</td>
+        <td>${fmtDt(j.last_run)}</td><td>${j.duration_ms?(j.duration_ms/1000).toFixed(1)+'s':'—'}</td>
+        <td><span class="badge ${j.status==='success'?'active':j.status==='running'?'paused':'closed'}">${j.status==='success'?'OK':j.status==='running'?'Executando':'Erro'}</span></td>
+        <td><button class="action-btn" onclick="trigger('${j.name}')">Executar agora</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="6" class="empty-state">Nenhum job configurado</td></tr>';
+}
+async function trigger(name) {
+  await DB.triggerJob(name);
+  load();
+}
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

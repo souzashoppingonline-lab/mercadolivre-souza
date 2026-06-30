@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Performance'; window.ACTIVE_NAV='performance.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Taxa de Conversão</div><div class="value" id="conversao" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Visitas Hoje</div><div class="value" id="visitas">—</div></div>
+        <div class="stat-card"><div class="label">CTR Médio</div><div class="value" id="ctr">—</div></div>
+        <div class="stat-card"><div class="label">ROI Publicidade</div><div class="value" id="roi" style="color:var(--primary)">—</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Performance por Produto</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Produto</th><th>Visitas</th><th>Vendas</th><th>Conversão</th><th>Posição</th></tr></thead>
+            <tbody id="perfTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+async function load() {
+  const data = await DB.getPerformance() || { items:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('conversao').textContent = s.conversion_rate ? s.conversion_rate+'%' : '—';
+  document.getElementById('visitas').textContent = s.total_visits ?? '—';
+  document.getElementById('ctr').textContent = s.avg_ctr ? s.avg_ctr+'%' : '—';
+  document.getElementById('roi').textContent = s.roi ? s.roi+'x' : '—';
+  const rows = data.items || [];
+  document.getElementById('perfTable').innerHTML = rows.length
+    ? rows.map(r=>`<tr>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
+        <td>${r.visits||0}</td><td>${r.sales||0}</td>
+        <td>${r.visits?(((r.sales||0)/(r.visits))*100).toFixed(1)+'%':'—'}</td>
+        <td>${r.position||'—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';
+}
+WS.on('kpis_updated', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

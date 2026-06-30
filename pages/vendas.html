@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendas Totais — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Vendas Totais'; window.ACTIVE_NAV='vendas.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Hoje</div><div class="value" id="vendasHoje" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Este Mês</div><div class="value" id="vendasMes">—</div></div>
+        <div class="stat-card"><div class="label">Mês Anterior</div><div class="value" id="vendasMesAnt">—</div></div>
+        <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" id="ticketMedio">—</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3>Evolução de Vendas</h3>
+          <div style="display:flex;gap:6px">
+            <button class="chart-btn active" data-days="7">7D</button>
+            <button class="chart-btn" data-days="30">30D</button>
+            <button class="chart-btn" data-days="90">90D</button>
+          </div>
+        </div>
+        <canvas id="vendasChart" height="80"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Detalhamento por Período</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Data</th><th>Pedidos</th><th>Receita Bruta</th><th>Taxas ML</th><th>Receita Líquida</th></tr></thead>
+            <tbody id="vendasTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+let chart;
+
+async function load(days=7) {
+  const data = await DB.getVendasDiarias(days) || { rows:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('vendasHoje').textContent = fmt(s.hoje);
+  document.getElementById('vendasMes').textContent = fmt(s.mes_atual);
+  document.getElementById('vendasMesAnt').textContent = fmt(s.mes_anterior);
+  document.getElementById('ticketMedio').textContent = fmt(s.ticket_medio);
+
+  const rows = data.rows || [];
+  document.getElementById('vendasTable').innerHTML = rows.length
+    ? rows.map(r=>`<tr>
+        <td>${r.data}</td><td>${r.pedidos}</td>
+        <td>${fmt(r.bruto)}</td><td>${fmt(r.taxas)}</td><td>${fmt(r.liquido)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';
+
+  if (chart) chart.destroy();
+  const ctx = document.getElementById('vendasChart');
+  chart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: rows.map(r=>r.data), datasets:[
+      { label:'Receita Bruta', data: rows.map(r=>r.bruto), backgroundColor:'rgba(255,230,0,0.7)', borderRadius:4 },
+      { label:'Receita Líquida', data: rows.map(r=>r.liquido), backgroundColor:'rgba(39,174,96,0.7)', borderRadius:4 }
+    ]},
+    options:{
+      responsive:true,
+      plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label: c=> fmt(c.raw) } } },
+      scales:{
+        x:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } },
+        y:{ ticks:{ color:'#888', callback: v=>'R$'+(v/1000).toFixed(1)+'k' }, grid:{ color:'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+
+document.querySelectorAll('.chart-btn').forEach(btn=>{
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.chart-btn').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+    load(Number(this.dataset.days));
+  });
+});
+WS.on('order_updated', ()=>load());
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

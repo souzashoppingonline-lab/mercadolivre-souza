@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Métricas — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Métricas'; window.ACTIVE_NAV='metricas.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Reputação</div><div class="value" id="reputacao" style="color:var(--primary)">—</div></div>
+        <div class="stat-card"><div class="label">Reclamações</div><div class="value" id="reclamacoes" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="label">Atrasos</div><div class="value" id="atrasos" style="color:var(--orange)">—</div></div>
+        <div class="stat-card"><div class="label">Cancelamentos</div><div class="value" id="cancelamentos" style="color:var(--red)">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Detalhes de Reputação</h3></div>
+        <div id="metricasDetail"><div class="empty-state">Carregando...</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+async function load() {
+  const data = await DB.getMetricas() || {};
+  document.getElementById('reputacao').textContent = data.level_id || '—';
+  const m = data.metrics || {};
+  document.getElementById('reclamacoes').textContent = (m.claims?.rate ? (m.claims.rate*100).toFixed(1)+'%' : '—');
+  document.getElementById('atrasos').textContent = (m.delayed_handling_time?.rate ? (m.delayed_handling_time.rate*100).toFixed(1)+'%' : '—');
+  document.getElementById('cancelamentos').textContent = (m.cancellations?.rate ? (m.cancellations.rate*100).toFixed(1)+'%' : '—');
+  document.getElementById('metricasDetail').innerHTML = `
+    <div class="info-row"><span class="key">Nível</span><span class="val">${data.level_id||'—'}</span></div>
+    <div class="info-row"><span class="key">Reclamações (90d)</span><span class="val">${m.claims?.period||'—'}</span></div>
+    <div class="info-row"><span class="key">Atrasos (90d)</span><span class="val">${m.delayed_handling_time?.period||'—'}</span></div>
+    <div class="info-row"><span class="key">Cancelamentos (90d)</span><span class="val">${m.cancellations?.period||'—'}</span></div>
+    <div class="info-row"><span class="key">Transações OK</span><span class="val">${data.transactions?.total||'—'}</span></div>
+  `;
+}
+WS.on('kpis_updated', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mensagens — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Mensagens'; window.ACTIVE_NAV='mensagens.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Não Lidas</div><div class="value" id="naoLidas" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="label">Respondidas Hoje</div><div class="value" id="respondidasHoje" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Total Conversas</div><div class="value" id="totalConversas">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Conversas Recentes</h3></div>
+        <div id="msgList" style="display:flex;flex-direction:column;gap:8px">
+          <div class="empty-state">Carregando...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const relTime = d => { if(!d) return '—'; const diff=Date.now()-new Date(d); const h=Math.floor(diff/3600000); return h<1?Math.floor(diff/60000)+'min atrás':h+'h atrás'; };
+async function load() {
+  const data = await DB.getMensagens() || { conversations:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('naoLidas').textContent = s.unread ?? '—';
+  document.getElementById('respondidasHoje').textContent = s.replied_today ?? '—';
+  document.getElementById('totalConversas').textContent = s.total ?? '—';
+  const list = document.getElementById('msgList');
+  const convs = data.conversations || [];
+  list.innerHTML = convs.length ? convs.map(c=>`
+    <div class="list-item" style="background:var(--bg-card2);border-radius:8px">
+      <div class="icon-box blue"><i class="fas fa-user"></i></div>
+      <div style="flex:1;min-width:0">
+        <div class="flex-between">
+          <span style="font-weight:600;font-size:13px">${c.buyer_nickname||c.comprador||'Comprador'}</span>
+          <span style="font-size:11px;color:var(--text-muted)">${relTime(c.last_message_date)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.last_message||'—'}</div>
+      </div>
+      ${c.unread ? `<span class="number-badge">${c.unread}</span>` : ''}
+    </div>
+  `).join('') : '<div class="empty-state">Nenhuma conversa</div>';
+}
+WS.on('message_received', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

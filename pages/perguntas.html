@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Perguntas — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Perguntas'; window.ACTIVE_NAV='perguntas.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Sem Resposta</div><div class="value" id="semResposta" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="label">Respondidas Hoje</div><div class="value" id="respondidasHoje" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Tempo Médio Resposta</div><div class="value" id="tempoMedio">—</div></div>
+        <div class="stat-card"><div class="label">Total Recebidas</div><div class="value" id="totalPerguntas">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Perguntas Pendentes</h3>
+          <select class="filter-select" id="statusFilter" style="margin:0">
+            <option value="UNANSWERED">Sem resposta</option>
+            <option value="ANSWERED">Respondidas</option>
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div id="perguntasList" style="display:flex;flex-direction:column;gap:12px">
+          <div class="empty-state">Carregando...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const relTime = d => { if(!d) return '—'; const diff=Date.now()-new Date(d); const h=Math.floor(diff/3600000); return h<1?Math.floor(diff/60000)+'min':h+'h'; };
+
+async function load() {
+  const status = document.getElementById('statusFilter').value;
+  const data = await DB.getPerguntas({ status }) || { questions:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('semResposta').textContent = s.unanswered ?? '—';
+  document.getElementById('respondidasHoje').textContent = s.answered_today ?? '—';
+  document.getElementById('tempoMedio').textContent = s.avg_response_time ? s.avg_response_time+'h' : '—';
+  document.getElementById('totalPerguntas').textContent = s.total ?? '—';
+
+  const list = document.getElementById('perguntasList');
+  const qs = data.questions || [];
+  list.innerHTML = qs.length ? qs.map(q=>`
+    <div class="card" style="padding:14px">
+      <div class="flex-between" style="margin-bottom:8px">
+        <span style="font-size:12px;color:var(--text-muted)">${q.item_title||''}</span>
+        <span style="font-size:11px;color:var(--text-muted)">${relTime(q.date_created)} atrás</span>
+      </div>
+      <p style="font-size:14px;margin-bottom:${q.status==='UNANSWERED'?'10px':'0'}">${q.text}</p>
+      ${q.status==='UNANSWERED' ? `
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input type="text" class="filter-input" style="flex:1" placeholder="Digite a resposta..." id="resp_${q.id}">
+          <button class="btn-primary" onclick="responder(${q.id})">Responder</button>
+        </div>` : `<div style="font-size:13px;color:var(--green);margin-top:6px"><i class="fas fa-check"></i> ${q.answer?.text||'Respondida'}</div>`}
+    </div>
+  `).join('') : '<div class="empty-state">Nenhuma pergunta encontrada</div>';
+}
+
+async function responder(id) {
+  const input = document.getElementById('resp_'+id);
+  if (!input || !input.value.trim()) return;
+  await DB.responderPergunta(id, input.value);
+  load();
+}
+
+document.getElementById('statusFilter').addEventListener('change', load);
+WS.on('question_received', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horários — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Análise por Horário'; window.ACTIVE_NAV='horarios.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Vendas por Hora do Dia</h3></div>
+        <canvas id="horariosChart" height="80"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Horários de Pico</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Hora</th><th>Pedidos</th><th>Receita</th><th>% do Total</th></tr></thead>
+            <tbody id="horariosTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+async function load() {
+  const data = await DB.getHorarios() || { hours:[] };
+  const rows = data.hours || [];
+  const labels = rows.map(r=>r.hour+'h');
+  const values = rows.map(r=>r.orders||0);
+  new Chart(document.getElementById('horariosChart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Pedidos', data:values, backgroundColor:'rgba(255,230,0,0.7)', borderRadius:4 }] },
+    options:{
+      responsive:true,
+      plugins:{ legend:{ labels:{ color:'#f0f0f0' } } },
+      scales:{ x:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } }, y:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } } }
+    }
+  });
+  const total = rows.reduce((s,r)=>s+(r.orders||0),0);
+  document.getElementById('horariosTable').innerHTML = rows.length
+    ? rows.map(r=>`<tr><td>${r.hour}:00</td><td>${r.orders}</td><td>${fmt(r.revenue)}</td><td>${total?((r.orders/total)*100).toFixed(1)+'%':'—'}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
+}
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

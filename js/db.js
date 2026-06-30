@@ -1,0 +1,105 @@
+// Data layer — reads exclusively from the internal REST API backed by PostgreSQL.
+// NO direct Mercado Livre API calls allowed here.
+// Data flow: ML Webhook → Gateway → BullMQ Worker → PostgreSQL → Redis → this layer
+//
+// Configure the backend URL in localStorage: ml_backend_url
+const DB = {
+  BASE: localStorage.getItem('ml_backend_url') || 'http://localhost:3000/api',
+
+  async _get(path, params = {}) {
+    const url = new URL(`${this.BASE}${path}`);
+    Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
+    try {
+      const res = await fetch(url.toString(), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      return await res.json();
+    } catch (e) {
+      console.error('[DB] GET error', path, e);
+      return null;
+    }
+  },
+
+  async _post(path, body) {
+    try {
+      const res = await fetch(`${this.BASE}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.error('[DB] POST error', path, e);
+      return null;
+    }
+  },
+
+  // ── Dashboard ──────────────────────────────────────────────
+  async getDashboardKPIs()    { return this._get('/dashboard/kpis'); },
+  async getDashboardChart(period = 7) { return this._get('/dashboard/chart', { period }); },
+  async getTopProducts(limit = 10)    { return this._get('/dashboard/top-products', { limit }); },
+  async getAlerts()           { return this._get('/dashboard/alerts'); },
+
+  // ── Anúncios ───────────────────────────────────────────────
+  async getAnuncios(params = {})  { return this._get('/anuncios', params); },
+  async getAnuncio(id)            { return this._get(`/anuncios/${id}`); },
+
+  // ── Pedidos ────────────────────────────────────────────────
+  async getPedidos(params = {})   { return this._get('/pedidos', params); },
+  async getPedido(id)             { return this._get(`/pedidos/${id}`); },
+
+  // ── Vendas ─────────────────────────────────────────────────
+  async getVendas(params = {})    { return this._get('/vendas', params); },
+  async getVendasDiarias(days=30) { return this._get('/vendas/diarias', { days }); },
+
+  // ── Perguntas ──────────────────────────────────────────────
+  async getPerguntas(params = {}) { return this._get('/perguntas', params); },
+  async responderPergunta(id, text) { return this._post(`/perguntas/${id}/responder`, { text }); },
+
+  // ── Mensagens ──────────────────────────────────────────────
+  async getMensagens(params = {}) { return this._get('/mensagens', params); },
+
+  // ── Métricas ───────────────────────────────────────────────
+  async getMetricas()             { return this._get('/metricas'); },
+
+  // ── Clientes ───────────────────────────────────────────────
+  async getClientes(params = {})  { return this._get('/clientes', params); },
+  async getCliente(id)            { return this._get(`/clientes/${id}`); },
+
+  // ── Lojas ──────────────────────────────────────────────────
+  async getLojas()                { return this._get('/lojas'); },
+
+  // ── Horários & Dias ────────────────────────────────────────
+  async getHorarios()             { return this._get('/analises/horarios'); },
+  async getDiasSemana()           { return this._get('/analises/dias-semana'); },
+
+  // ── Produtos ───────────────────────────────────────────────
+  async getProdutos(params = {})  { return this._get('/produtos', params); },
+  async getPerformance(params={}) { return this._get('/produtos/performance', params); },
+
+  // ── Publicidade & Concorrentes ─────────────────────────────
+  async getPublicidade()          { return this._get('/publicidade'); },
+  async getConcorrentes(itemId)   { return this._get('/concorrentes', { itemId }); },
+
+  // ── Comparativos ───────────────────────────────────────────
+  async getPeriodoVsPeriodo(p1, p2) { return this._get('/comparativos/periodos', { p1, p2 }); },
+  async getEvolucaoDiaria(days=30)  { return this._get('/comparativos/evolucao', { days }); },
+  async getCurvaABC()               { return this._get('/comparativos/curva-abc'); },
+
+  // ── Alertas ────────────────────────────────────────────────
+  async getReposicao()            { return this._get('/alertas/reposicao'); },
+  async getCancelamentos(params)  { return this._get('/alertas/cancelamentos', params); },
+  async getDevolucoes(params)     { return this._get('/alertas/devolucoes', params); },
+  async getAnunciosProblema()     { return this._get('/alertas/anuncios-problema'); },
+
+  // ── Webhooks ───────────────────────────────────────────────
+  async getWebhookLogs(params={}) { return this._get('/webhooks/logs', params); },
+  async getWebhookConfig()        { return this._get('/webhooks/config'); },
+  async saveWebhookConfig(body)   { return this._post('/webhooks/config', body); },
+
+  // ── Schedule ───────────────────────────────────────────────
+  async getScheduleJobs()         { return this._get('/schedule/jobs'); },
+  async triggerJob(name)          { return this._post(`/schedule/jobs/${name}/trigger`, {}); },
+};

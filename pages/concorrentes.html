@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concorrentes — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Concorrentes'; window.ACTIVE_NAV='concorrentes.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Análise de Concorrência</h3></div>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+          Os dados são coletados via webhook e worker a cada ciclo. Selecione um produto para ver os concorrentes.
+        </p>
+        <div class="filters-bar">
+          <div class="search-box" style="max-width:100%"><i class="fas fa-search"></i><input type="text" id="search" placeholder="Buscar produto do seu catálogo..."></div>
+        </div>
+        <div id="produtosList" style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+          <div class="empty-state">Digite para buscar um produto</div>
+        </div>
+      </div>
+      <div class="card" id="concCard" style="display:none">
+        <div class="card-header"><h3 id="concTitle">Concorrentes</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Vendedor</th><th>Preço</th><th>Vendas Est.</th><th>Posição</th><th>Frete Grátis</th></tr></thead>
+            <tbody id="concTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+let timer;
+document.getElementById('search').addEventListener('input', function() {
+  clearTimeout(timer);
+  timer = setTimeout(async ()=>{
+    if (!this.value.trim()) return;
+    const data = await DB.getProdutos({ search: this.value }) || { products:[] };
+    const list = document.getElementById('produtosList');
+    list.innerHTML = data.products.slice(0,6).map(p=>`
+      <div class="list-item" onclick="loadConcorrentes('${p.id}','${(p.title||'').replace(/'/g,"\\'")}')">
+        <div class="icon-box yellow"><i class="fas fa-cube"></i></div>
+        <div><div style="font-size:13px">${p.title||p.titulo}</div><div style="font-size:12px;color:var(--text-muted)">${fmt(p.price||p.preco)}</div></div>
+      </div>
+    `).join('') || '<div class="empty-state">Nenhum produto</div>';
+  }, 400);
+});
+
+async function loadConcorrentes(id, title) {
+  document.getElementById('concTitle').textContent = 'Concorrentes — '+title;
+  document.getElementById('concCard').style.display = '';
+  const data = await DB.getConcorrentes(id) || { competitors:[] };
+  const rows = data.competitors || [];
+  document.getElementById('concTable').innerHTML = rows.length
+    ? rows.map(r=>`<tr>
+        <td>${r.seller}</td><td>${fmt(r.price)}</td>
+        <td>${r.sales_est||'—'}</td><td>#${r.position||'—'}</td>
+        <td>${r.free_shipping?'<span class="tag green">Sim</span>':'<span class="tag red">Não</span>'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">Sem dados de concorrência</td></tr>';
+}
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+</script>
+</body>
+</html>

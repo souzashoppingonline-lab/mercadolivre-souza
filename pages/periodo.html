@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Período vs Período — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Período vs Período'; window.ACTIVE_NAV='periodo.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Selecionar Períodos</h3></div>
+        <div class="filters-bar">
+          <div><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Período 1</label>
+            <input type="date" class="filter-input" id="p1from"> <span style="color:var(--text-muted)">até</span> <input type="date" class="filter-input" id="p1to">
+          </div>
+          <div><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Período 2</label>
+            <input type="date" class="filter-input" id="p2from"> <span style="color:var(--text-muted)">até</span> <input type="date" class="filter-input" id="p2to">
+          </div>
+          <button class="btn-primary" onclick="load()">Comparar</button>
+        </div>
+      </div>
+      <div class="card-grid" id="compareCards">
+        <div class="empty-state" style="grid-column:1/-1">Selecione os períodos acima para comparar</div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>Gráfico Comparativo</h3></div>
+        <canvas id="compareChart" height="80"></canvas>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+let chart;
+async function load() {
+  const p1 = document.getElementById('p1from').value+'|'+document.getElementById('p1to').value;
+  const p2 = document.getElementById('p2from').value+'|'+document.getElementById('p2to').value;
+  if (!p1.replace('|','') || !p2.replace('|','')) return;
+  const data = await DB.getPeriodoVsPeriodo(p1, p2) || { p1:{}, p2:{}, chart:[] };
+  const a = data.p1 || {}, b = data.p2 || {};
+  const metrics = [
+    { label:'Pedidos', k:'orders' }, { label:'Receita', k:'revenue', isCurrency:true },
+    { label:'Ticket Médio', k:'avg_ticket', isCurrency:true }, { label:'Cancelamentos', k:'cancellations' }
+  ];
+  document.getElementById('compareCards').innerHTML = metrics.map(m=>{
+    const va = a[m.k]||0, vb = b[m.k]||0;
+    const diff = vb ? ((va-vb)/vb*100).toFixed(1) : 0;
+    return `<div class="stat-card">
+      <div class="label">${m.label}</div>
+      <div class="flex-between" style="margin-top:8px">
+        <div><div style="font-size:11px;color:var(--text-muted)">P1</div><div style="font-size:18px;font-weight:700">${m.isCurrency?fmt(va):va}</div></div>
+        <div style="font-size:22px;color:var(--text-muted)">vs</div>
+        <div><div style="font-size:11px;color:var(--text-muted)">P2</div><div style="font-size:18px;font-weight:700">${m.isCurrency?fmt(vb):vb}</div></div>
+      </div>
+      <div style="text-align:center;margin-top:8px;font-size:13px;color:${diff>=0?'var(--green)':'var(--red)'}">
+        ${diff>=0?'▲':'▼'} ${Math.abs(diff)}%
+      </div>
+    </div>`;
+  }).join('');
+  if (chart) chart.destroy();
+  const rows = data.chart || [];
+  chart = new Chart(document.getElementById('compareChart'), {
+    type:'line',
+    data:{ labels: rows.map(r=>r.label), datasets:[
+      { label:'Período 1', data:rows.map(r=>r.p1||0), borderColor:'#FFE600', tension:0.4 },
+      { label:'Período 2', data:rows.map(r=>r.p2||0), borderColor:'#2980b9', tension:0.4, borderDash:[4,4] }
+    ]},
+    options:{
+      responsive:true,
+      plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label:c=>fmt(c.raw) } } },
+      scales:{ x:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } }, y:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } } }
+    }
+  });
+}
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+</script>
+</body>
+</html>

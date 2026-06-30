@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cancelamentos — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Cancelamentos'; window.ACTIVE_NAV='cancelamentos.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Cancelados Hoje</div><div class="value" id="hoje" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="label">Cancelados Mês</div><div class="value" id="mes" style="color:var(--orange)">—</div></div>
+        <div class="stat-card"><div class="label">Taxa de Cancelamento</div><div class="value" id="taxa">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Pedidos Cancelados</h3>
+          <input type="date" class="filter-input" id="dateFrom">
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Pedido</th><th>Produto</th><th>Motivo</th><th>Quem Cancelou</th><th>Valor</th><th>Data</th></tr></thead>
+            <tbody id="cancTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
+async function load() {
+  const dateFrom = document.getElementById('dateFrom').value;
+  const data = await DB.getCancelamentos({ dateFrom }) || { items:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('hoje').textContent = s.today ?? '—';
+  document.getElementById('mes').textContent = s.month ?? '—';
+  document.getElementById('taxa').textContent = s.rate ? s.rate+'%' : '—';
+  const rows = data.items || [];
+  document.getElementById('cancTable').innerHTML = rows.length
+    ? rows.map(r=>`<tr>
+        <td style="font-size:11px">#${r.order_id}</td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
+        <td>${r.reason||'—'}</td>
+        <td><span class="tag ${r.cancelled_by==='buyer'?'blue':'red'}">${r.cancelled_by==='buyer'?'Comprador':'Vendedor'}</span></td>
+        <td>${fmt(r.amount)}</td>
+        <td>${fmtDt(r.date)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="6" class="empty-state">Nenhum cancelamento</td></tr>';
+}
+document.getElementById('dateFrom').addEventListener('change', load);
+WS.on('order_updated', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

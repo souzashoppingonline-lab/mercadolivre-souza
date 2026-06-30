@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lojas — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Lojas'; window.ACTIVE_NAV='lojas.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div id="lojasGrid" class="card-grid">
+        <div class="empty-state" style="grid-column:1/-1">Carregando lojas...</div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+async function load() {
+  const data = await DB.getLojas() || { stores:[] };
+  const grid = document.getElementById('lojasGrid');
+  const stores = data.stores || [];
+  grid.innerHTML = stores.length ? stores.map(s=>`
+    <div class="card">
+      <div class="flex-row" style="margin-bottom:12px">
+        <div class="icon-box yellow"><i class="fas fa-store"></i></div>
+        <div><div style="font-weight:700">${s.nickname||s.nome}</div><div style="font-size:12px;color:var(--text-muted)">ID: ${s.id}</div></div>
+      </div>
+      <div class="info-row"><span class="key">Reputação</span><span class="val">${s.level_id||'—'}</span></div>
+      <div class="info-row"><span class="key">Anúncios Ativos</span><span class="val">${s.active_listings||'—'}</span></div>
+      <div class="info-row"><span class="key">Vendas Mês</span><span class="val">${fmt(s.monthly_revenue)}</span></div>
+      <div class="info-row"><span class="key">Status</span><span class="val"><span class="badge active">Ativa</span></span></div>
+    </div>
+  `).join('') : '<div class="empty-state" style="grid-column:1/-1">Nenhuma loja cadastrada</div>';
+}
+WS.on('kpis_updated', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

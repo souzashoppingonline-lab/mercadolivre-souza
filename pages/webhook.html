@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webhooks — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Webhooks'; window.ACTIVE_NAV='webhook.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Fluxo de Arquitetura</h3></div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:12px">
+          <span class="tag blue">Mercado Livre</span><i class="fas fa-arrow-right" style="color:var(--text-muted)"></i>
+          <span class="tag yellow">Webhook Gateway</span><i class="fas fa-arrow-right" style="color:var(--text-muted)"></i>
+          <span class="tag purple">BullMQ</span><i class="fas fa-arrow-right" style="color:var(--text-muted)"></i>
+          <span class="tag green">Worker</span><i class="fas fa-arrow-right" style="color:var(--text-muted)"></i>
+          <span class="tag blue">Consulta recurso alterado</span><i class="fas fa-arrow-right" style="color:var(--text-muted)"></i>
+          <span class="tag green">PostgreSQL</span><i class="fas fa-arrow-right" style="color:var(--text-muted)"></i>
+          <span class="tag red">Redis</span><i class="fas fa-arrow-right" style="color:var(--text-muted)"></i>
+          <span class="tag yellow">Dashboard (WebSocket)</span>
+        </div>
+      </div>
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Recebidos Hoje</div><div class="value" id="recebidos">—</div></div>
+        <div class="stat-card"><div class="label">Processados</div><div class="value" id="processados" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Falhas</div><div class="value" id="falhas" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="label">Na Fila</div><div class="value" id="naFila" style="color:var(--orange)">—</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Tópicos Inscritos</h3></div>
+        <div id="topicsList" style="display:flex;flex-wrap:wrap;gap:8px">
+          <div class="empty-state">Carregando...</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Log de Webhooks Recebidos</h3>
+          <select class="filter-select" id="topicFilter"><option value="">Todos os tópicos</option></select>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Tópico</th><th>Recurso</th><th>Loja</th><th>Status</th><th>Recebido em</th></tr></thead>
+            <tbody id="logTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
+async function loadConfig() {
+  const cfg = await DB.getWebhookConfig() || {};
+  document.getElementById('recebidos').textContent = cfg.received_today ?? '—';
+  document.getElementById('processados').textContent = cfg.processed_today ?? '—';
+  document.getElementById('falhas').textContent = cfg.failed_today ?? '—';
+  document.getElementById('naFila').textContent = cfg.queue_size ?? '—';
+  const topics = cfg.topics || ['orders_v2','questions','messages','items','payments'];
+  document.getElementById('topicsList').innerHTML = topics.map(t=>`<span class="tag blue">${t}</span>`).join('');
+  const sel = document.getElementById('topicFilter');
+  sel.innerHTML = '<option value="">Todos os tópicos</option>' + topics.map(t=>`<option value="${t}">${t}</option>`).join('');
+}
+
+async function loadLogs() {
+  const topic = document.getElementById('topicFilter').value;
+  const data = await DB.getWebhookLogs({ topic, limit: 50 }) || { logs:[] };
+  const rows = data.logs || [];
+  document.getElementById('logTable').innerHTML = rows.length
+    ? rows.map(l=>`<tr>
+        <td><span class="tag blue">${l.topic}</span></td>
+        <td style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.resource}</td>
+        <td>${l.store_id||'—'}</td>
+        <td><span class="badge ${l.status==='processed'?'active':l.status==='pending'?'paused':'closed'}">${l.status==='processed'?'Processado':l.status==='pending'?'Na fila':'Erro'}</span></td>
+        <td>${fmtDt(l.received_at)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">Nenhum webhook registrado</td></tr>';
+}
+
+document.getElementById('topicFilter').addEventListener('change', loadLogs);
+WS.on('webhook_received', () => { loadConfig(); loadLogs(); });
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+loadConfig();
+loadLogs();
+</script>
+</body>
+</html>

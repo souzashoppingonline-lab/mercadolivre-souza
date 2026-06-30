@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Curva ABC — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Curva ABC'; window.ACTIVE_NAV='curvaABC.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card" style="border-left:4px solid var(--green)">
+          <div class="label">Classe A</div>
+          <div class="value" id="classA" style="color:var(--green)">—</div>
+          <div class="sub">~80% da receita</div>
+        </div>
+        <div class="stat-card" style="border-left:4px solid var(--primary)">
+          <div class="label">Classe B</div>
+          <div class="value" id="classB" style="color:var(--primary)">—</div>
+          <div class="sub">~15% da receita</div>
+        </div>
+        <div class="stat-card" style="border-left:4px solid var(--red)">
+          <div class="label">Classe C</div>
+          <div class="value" id="classC" style="color:var(--red)">—</div>
+          <div class="sub">~5% da receita</div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Curva ABC — Pareto</h3></div>
+        <canvas id="abcChart" height="80"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Produtos Classificados</h3>
+          <select class="filter-select" id="classFilter">
+            <option value="">Todas</option>
+            <option value="A">Classe A</option>
+            <option value="B">Classe B</option>
+            <option value="C">Classe C</option>
+          </select>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>#</th><th>Produto</th><th>Receita</th><th>% Acumulado</th><th>Classe</th></tr></thead>
+            <tbody id="abcTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+let chart;
+async function load() {
+  const classFilter = document.getElementById('classFilter').value;
+  const data = await DB.getCurvaABC() || { items:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('classA').textContent = s.count_a ?? '—';
+  document.getElementById('classB').textContent = s.count_b ?? '—';
+  document.getElementById('classC').textContent = s.count_c ?? '—';
+  let rows = data.items || [];
+  if (classFilter) rows = rows.filter(r=>r.class===classFilter);
+  document.getElementById('abcTable').innerHTML = rows.length
+    ? rows.map((r,i)=>`<tr>
+        <td>${i+1}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
+        <td>${fmt(r.revenue)}</td>
+        <td>${(r.cumulative||0).toFixed(1)}%</td>
+        <td><span class="tag ${r.class==='A'?'green':r.class==='B'?'yellow':'red'}">${r.class}</span></td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';
+  if (chart) chart.destroy();
+  const all = data.items || [];
+  chart = new Chart(document.getElementById('abcChart'), {
+    data:{ labels:all.map((r,i)=>i+1), datasets:[
+      { type:'bar', label:'Receita', data:all.map(r=>r.revenue), backgroundColor: all.map(r=>r.class==='A'?'rgba(39,174,96,0.7)':r.class==='B'?'rgba(255,230,0,0.7)':'rgba(231,76,60,0.7)'), yAxisID:'y', borderRadius:2 },
+      { type:'line', label:'% Acumulado', data:all.map(r=>r.cumulative), borderColor:'#2980b9', tension:0.4, yAxisID:'y1', pointRadius:0 }
+    ]},
+    options:{
+      responsive:true,
+      plugins:{ legend:{ labels:{ color:'#f0f0f0' } } },
+      scales:{
+        x:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } },
+        y:{ ticks:{ color:'#888', callback:v=>'R$'+(v/1000).toFixed(0)+'k' }, grid:{ color:'rgba(255,255,255,0.05)' } },
+        y1:{ position:'right', ticks:{ color:'#888', callback:v=>v+'%' }, grid:{ display:false }, min:0, max:100 }
+      }
+    }
+  });
+}
+document.getElementById('classFilter').addEventListener('change', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

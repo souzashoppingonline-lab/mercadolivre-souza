@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitor & Telegram — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Monitor & Telegram'; window.ACTIVE_NAV='monitor.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Status do Servidor</div><div class="value" id="serverStatus" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Webhooks Hoje</div><div class="value" id="webhooksHoje">—</div></div>
+        <div class="stat-card"><div class="label">Erros (24h)</div><div class="value" id="errosHoje" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="label">Fila BullMQ</div><div class="value" id="filaSize" style="color:var(--orange)">—</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3>Notificações Telegram</h3>
+        </div>
+        <div class="info-row"><span class="key">Bot conectado</span><span class="val" id="botStatus">—</span></div>
+        <div class="info-row"><span class="key">Chat ID</span><span class="val" id="chatId">—</span></div>
+        <div class="info-row"><span class="key">Última notificação enviada</span><span class="val" id="lastNotif">—</span></div>
+        <div class="divider"></div>
+        <div class="flex-row">
+          <input type="text" class="filter-input" id="testMsg" placeholder="Mensagem de teste..." style="flex:1">
+          <button class="btn-primary" onclick="sendTest()">Enviar Teste</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Log de Eventos (tempo real)</h3></div>
+        <div id="eventLog" style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px">
+          <div class="empty-state">Aguardando eventos...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+async function load() {
+  const data = await DB.getWebhookConfig() || {};
+  document.getElementById('serverStatus').textContent = data.server_status || 'Online';
+  document.getElementById('webhooksHoje').textContent = data.webhooks_today ?? '—';
+  document.getElementById('errosHoje').textContent = data.errors_24h ?? '—';
+  document.getElementById('filaSize').textContent = data.queue_size ?? '—';
+  document.getElementById('botStatus').innerHTML = data.telegram_connected
+    ? '<span class="tag green">Conectado</span>' : '<span class="tag red">Desconectado</span>';
+  document.getElementById('chatId').textContent = data.telegram_chat_id || '—';
+  document.getElementById('lastNotif').textContent = data.last_notification ? new Date(data.last_notification).toLocaleString('pt-BR') : '—';
+}
+
+async function sendTest() {
+  const msg = document.getElementById('testMsg').value;
+  if (!msg.trim()) return;
+  await DB.saveWebhookConfig({ action:'test_telegram', message: msg });
+  document.getElementById('testMsg').value = '';
+}
+
+function appendLog(entry) {
+  const log = document.getElementById('eventLog');
+  if (log.querySelector('.empty-state')) log.innerHTML = '';
+  const time = new Date().toLocaleTimeString('pt-BR');
+  const div = document.createElement('div');
+  div.style.color = entry.level === 'error' ? 'var(--red)' : entry.level === 'warn' ? 'var(--orange)' : 'var(--text-muted)';
+  div.textContent = `[${time}] ${entry.message || JSON.stringify(entry)}`;
+  log.prepend(div);
+  while (log.children.length > 100) log.removeChild(log.lastChild);
+}
+
+WS.on('webhook_received', appendLog);
+WS.on('*', ({topic, payload}) => { if (topic !== 'webhook_received') appendLog({ message: `${topic}: ${JSON.stringify(payload).slice(0,120)}` }); });
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

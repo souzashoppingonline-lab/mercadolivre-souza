@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publicidade — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Publicidade'; window.ACTIVE_NAV='publicidade.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card-grid">
+        <div class="stat-card"><div class="label">Gasto Hoje</div><div class="value" id="gastoHoje" style="color:var(--orange)">—</div></div>
+        <div class="stat-card"><div class="label">Receita Gerada</div><div class="value" id="receitaGerada" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">ACOS</div><div class="value" id="acos">—</div></div>
+        <div class="stat-card"><div class="label">Anúncios Patrocinados</div><div class="value" id="patrocinados">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Campanhas de Produto Anúncio</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Produto</th><th>Impressões</th><th>Cliques</th><th>CTR</th><th>Gasto</th><th>Vendas</th><th>ACOS</th></tr></thead>
+            <tbody id="pubTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+async function load() {
+  const data = await DB.getPublicidade() || { campaigns:[], summary:{} };
+  const s = data.summary || {};
+  document.getElementById('gastoHoje').textContent = fmt(s.spend_today);
+  document.getElementById('receitaGerada').textContent = fmt(s.revenue_today);
+  document.getElementById('acos').textContent = s.acos ? s.acos+'%' : '—';
+  document.getElementById('patrocinados').textContent = s.sponsored_count ?? '—';
+  const rows = data.campaigns || [];
+  document.getElementById('pubTable').innerHTML = rows.length
+    ? rows.map(r=>`<tr>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
+        <td>${r.impressions||0}</td><td>${r.clicks||0}</td>
+        <td>${r.impressions?((r.clicks/r.impressions)*100).toFixed(2)+'%':'—'}</td>
+        <td>${fmt(r.spend)}</td><td>${fmt(r.revenue)}</td>
+        <td>${r.revenue?((r.spend/r.revenue)*100).toFixed(1)+'%':'—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" class="empty-state">Sem campanhas</td></tr>';
+}
+WS.on('kpis_updated', load);
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dias da Semana — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Dias da Semana'; window.ACTIVE_NAV='diasemana.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Desempenho por Dia da Semana</h3></div>
+        <canvas id="diasChart" height="80"></canvas>
+      </div>
+      <div class="card-grid" id="diasCards">
+        <div class="empty-state" style="grid-column:1/-1">Carregando...</div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+async function load() {
+  const data = await DB.getDiasSemana() || { days:[] };
+  const rows = data.days || [];
+  new Chart(document.getElementById('diasChart'), {
+    type:'radar',
+    data:{ labels: rows.map(r=>DIAS[r.day]||r.day), datasets:[{
+      label:'Pedidos', data: rows.map(r=>r.orders||0),
+      borderColor:'#FFE600', backgroundColor:'rgba(255,230,0,0.1)', pointBackgroundColor:'#FFE600'
+    }]},
+    options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#f0f0f0' } } }, scales:{ r:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.1)' }, pointLabels:{ color:'#f0f0f0' } } } }
+  });
+  const max = Math.max(...rows.map(r=>r.orders||0));
+  document.getElementById('diasCards').innerHTML = rows.map(r=>`
+    <div class="stat-card">
+      <div class="label">${DIAS[r.day]||r.day}</div>
+      <div class="value">${r.orders||0} pedidos</div>
+      <div class="sub">${fmt(r.revenue)}</div>
+      <div class="progress-bar-wrap"><div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${max?(r.orders/max*100).toFixed(0):0}%"></div></div></div>
+    </div>
+  `).join('') || '<div class="empty-state" style="grid-column:1/-1">Sem dados</div>';
+}
+WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+load();
+</script>
+</body>
+</html>

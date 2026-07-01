@@ -123,9 +123,20 @@ router.post('/import', upload.single('file'), async (req, res) => {
   const rows  = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
   if (rows.length < 2) return res.status(400).json({ error: 'Planilha vazia ou sem dados' });
 
-  const headers = rows[0].map(String);
+  // Auto-detect header row: ML Turbo sometimes has title/date rows before the headers.
+  // Find the row with the most COL_MAP matches (max scan: first 5 rows).
+  let headerRowIdx = 0;
+  let bestScore = -1;
+  for (let r = 0; r < Math.min(5, rows.length); r++) {
+    const candidate = rows[r].map(String);
+    const score = Object.keys(detectColumns(candidate)).length;
+    if (score > bestScore) { bestScore = score; headerRowIdx = r; }
+  }
+
+  const headers = rows[headerRowIdx].map(String);
+  const dataRows = rows.slice(headerRowIdx + 1);
   const colMap  = detectColumns(headers);
-  console.log('[turbo] headers detectados:', headers.map((h, i) => `${i}:"${h}"`).join(' | '));
+  console.log(`[turbo] header row=${headerRowIdx} score=${bestScore}`, headers.map((h, i) => `${i}:"${h}"`).join(' | '));
   console.log('[turbo] mapeamento:', Object.entries(colMap).map(([k,v]) => `${k}=${headers[v]}`).join(', '));
 
   if (!colMap.sale_id) {
@@ -139,8 +150,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
   const stats = { inserted: 0, updated: 0, skipped: 0, errors: 0, error_details: [] };
   const get   = (row, field) => colMap[field] != null ? row[colMap[field]] : null;
 
-  for (let i = 1; i < rows.length; i++) {
-    const row    = rows[i];
+  for (let i = 0; i < dataRows.length; i++) {
+    const row    = dataRows[i];
     const rawId  = String(get(row, 'sale_id') || '').trim();
     const saleId = rawId.replace(/^#/, '');   // strip leading # if present
     if (!saleId || saleId === '0') { stats.skipped++; continue; }
@@ -206,7 +217,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
     ok: true,
     file: req.file.originalname,
     sheet: sheetName,
-    total_rows: rows.length - 1,
+    total_rows: dataRows.length,
     ...stats,
   });
 });

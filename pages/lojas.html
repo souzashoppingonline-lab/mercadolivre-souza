@@ -8,6 +8,134 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Lojas'; window.ACTIVE_NAV='lojas.html';</script>
+  <style>
+    .lojas-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:20px; }
+
+    .loja-card {
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:20px;
+      position:relative;
+      overflow:hidden;
+    }
+    .loja-card::before {
+      content:'';
+      position:absolute;
+      top:0; left:0; right:0;
+      height:3px;
+    }
+    .loja-card.conectada::before { background:var(--green); }
+    .loja-card.desconectada::before { background:var(--red,#e74c3c); }
+
+    .loja-header {
+      display:flex;
+      align-items:center;
+      gap:14px;
+      margin-bottom:16px;
+    }
+    .loja-avatar {
+      width:46px; height:46px;
+      border-radius:10px;
+      background:var(--surface2);
+      display:flex; align-items:center; justify-content:center;
+      font-size:16px; font-weight:800;
+      color:var(--primary);
+      flex-shrink:0;
+    }
+    .loja-nome { font-weight:700; font-size:15px; line-height:1.2; }
+    .loja-id   { font-size:11px; color:var(--text-muted); margin-top:2px; }
+
+    .status-dot {
+      display:inline-flex; align-items:center; gap:5px;
+      font-size:12px; font-weight:600;
+    }
+    .status-dot i { font-size:8px; }
+    .status-dot.conectada  { color:var(--green); }
+    .status-dot.desconectada { color:var(--red,#e74c3c); }
+
+    /* Reputação badge */
+    .rep-badge {
+      display:inline-flex; align-items:center; gap:6px;
+      border-radius:6px;
+      padding:4px 10px;
+      font-size:12px; font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:.4px;
+    }
+    .rep-badge.platinum { background:rgba(229,229,229,.12); color:#e5e5e5; border:1px solid #666; }
+    .rep-badge.gold     { background:rgba(255,215,0,.12);   color:#ffd700; border:1px solid rgba(255,215,0,.4); }
+    .rep-badge.silver   { background:rgba(192,192,192,.12); color:#c0c0c0; border:1px solid #555; }
+    .rep-badge.bronze   { background:rgba(205,127,50,.12);  color:#cd7f32; border:1px solid rgba(205,127,50,.4); }
+    .rep-badge.green    { background:rgba(39,174,96,.12);   color:#27ae60; border:1px solid rgba(39,174,96,.4); }
+    .rep-badge.unknown  { background:var(--surface2); color:var(--text-muted); border:1px solid var(--border); }
+
+    .loja-stats {
+      display:grid; grid-template-columns:1fr 1fr;
+      gap:10px; margin:14px 0;
+    }
+    .stat-box {
+      background:var(--surface2);
+      border-radius:8px;
+      padding:10px 12px;
+    }
+    .stat-box .stat-label { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+    .stat-box .stat-val   { font-size:18px; font-weight:700; color:var(--text); margin-top:3px; }
+    .stat-box .stat-val.currency { font-size:15px; }
+
+    .loja-info-rows { border-top:1px solid var(--border); padding-top:12px; margin-top:4px; }
+    .loja-info-row  {
+      display:flex; justify-content:space-between; align-items:center;
+      font-size:12px; padding:4px 0;
+      color:var(--text-muted);
+    }
+    .loja-info-row .val { color:var(--text); font-weight:500; }
+    .loja-info-row .val.warn { color:#f39c12; }
+
+    .imposto-row {
+      display:flex; align-items:center; gap:8px;
+      margin-top:14px; padding-top:12px;
+      border-top:1px solid var(--border);
+    }
+    .imposto-row label { font-size:12px; color:var(--text-muted); flex:1; }
+    .imposto-input {
+      width:60px;
+      background:var(--surface2);
+      border:1px solid var(--border);
+      border-radius:6px;
+      color:var(--text);
+      font-size:13px;
+      padding:4px 8px;
+      text-align:center;
+      outline:none;
+    }
+    .imposto-input:focus { border-color:var(--primary); }
+    .btn-salvar-imposto {
+      background:var(--primary);
+      color:#000;
+      border:none;
+      border-radius:6px;
+      padding:5px 12px;
+      font-size:12px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .btn-salvar-imposto:hover { opacity:.85; }
+
+    .btn-add-loja {
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      background:transparent;
+      border:2px dashed var(--border);
+      border-radius:12px;
+      padding:30px;
+      color:var(--text-muted);
+      font-size:14px;
+      cursor:pointer;
+      transition:border-color .2s, color .2s;
+      min-height:200px;
+    }
+    .btn-add-loja:hover { border-color:var(--primary); color:var(--primary); }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,7 +143,7 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div id="lojasGrid" class="card-grid">
+      <div id="lojasGrid" class="lojas-grid">
         <div class="empty-state" style="grid-column:1/-1">Carregando lojas...</div>
       </div>
     </div>
@@ -26,24 +154,150 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtBRL = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtDate = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+
+// Mapa level_id ML → label + classe de cor
+const LEVELS = {
+  '5_green':        { label:'MercadoLíder',          cls:'green',    icon:'fa-trophy' },
+  '4_light_green':  { label:'MercadoLíder',          cls:'green',    icon:'fa-trophy' },
+  'platinum':       { label:'Platina',               cls:'platinum', icon:'fa-gem' },
+  '1_platinum':     { label:'Platina',               cls:'platinum', icon:'fa-gem' },
+  'gold':           { label:'Gold',                  cls:'gold',     icon:'fa-star' },
+  '2_gold':         { label:'Gold',                  cls:'gold',     icon:'fa-star' },
+  'silver':         { label:'Silver',                cls:'silver',   icon:'fa-medal' },
+  '3_silver':       { label:'Silver',                cls:'silver',   icon:'fa-medal' },
+  'bronze':         { label:'Bronze',                cls:'bronze',   icon:'fa-award' },
+  '4_bronze':       { label:'Bronze',                cls:'bronze',   icon:'fa-award' },
+};
+
+// Power seller status → overrides level badge
+const POWER_SELLER = {
+  'platinum': { label:'Platinum',          cls:'platinum', icon:'fa-gem' },
+  'gold':     { label:'Gold',              cls:'gold',     icon:'fa-star' },
+  'silver':   { label:'Silver',            cls:'silver',   icon:'fa-medal' },
+};
+
+function repBadge(s) {
+  const rep = s.reputation_data || {};
+  const ps  = rep.power_seller_status;
+  const lvl = rep.level_id || s.level_id;
+
+  if (ps && POWER_SELLER[ps]) {
+    const { label, cls, icon } = POWER_SELLER[ps];
+    return `<span class="rep-badge ${cls}"><i class="fas ${icon}"></i> ${label}</span>`;
+  }
+  if (lvl && LEVELS[lvl]) {
+    const { label, cls, icon } = LEVELS[lvl];
+    return `<span class="rep-badge ${cls}"><i class="fas ${icon}"></i> ${label}</span>`;
+  }
+  if (lvl) {
+    return `<span class="rep-badge unknown"><i class="fas fa-circle"></i> ${lvl}</span>`;
+  }
+  return `<span class="rep-badge unknown"><i class="fas fa-minus"></i> —</span>`;
+}
+
+function tokenStatus(expires) {
+  if (!expires) return { label:'—', cls:'' };
+  const diff = new Date(expires) - Date.now();
+  if (diff < 0)            return { label:'Expirado', cls:'warn' };
+  if (diff < 86400000)     return { label: fmtDate(expires), cls:'warn' };
+  return { label: fmtDate(expires), cls:'' };
+}
+
+function initials(name) {
+  if (!name) return '?';
+  return name.split(/[\s_]+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+}
+
+function saveImposto(storeId, inputId) {
+  const val = parseFloat(document.getElementById(inputId).value) || 0;
+  localStorage.setItem(`imposto_${storeId}`, val);
+  const btn = document.querySelector(`[data-save="${storeId}"]`);
+  if (btn) { btn.textContent='Salvo ✓'; setTimeout(()=>btn.textContent='Salvar',1500); }
+}
+
+function getImposto(storeId) {
+  return localStorage.getItem(`imposto_${storeId}`) ?? '';
+}
+
 async function load() {
   const data = await DB.getLojas() || { stores:[] };
   const grid = document.getElementById('lojasGrid');
   const stores = data.stores || [];
-  grid.innerHTML = stores.length ? stores.map(s=>`
-    <div class="card">
-      <div class="flex-row" style="margin-bottom:12px">
-        <div class="icon-box yellow"><i class="fas fa-store"></i></div>
-        <div><div style="font-weight:700">${s.nickname||s.nome}</div><div style="font-size:12px;color:var(--text-muted)">ID: ${s.id}</div></div>
+
+  if (!stores.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Nenhuma loja cadastrada</div>';
+    return;
+  }
+
+  const cards = stores.map(s => {
+    const tkStatus = tokenStatus(s.token_expires_at);
+    const upd = s.updated_at ? fmtDate(s.updated_at) : '—';
+    const inputId = `imp_${s.id}`;
+    const connected = s.token_expires_at ? new Date(s.token_expires_at) > Date.now() : false;
+    const connCls  = connected ? 'conectada' : 'desconectada';
+    const connIcon = connected ? 'green' : 'red';
+
+    return `
+    <div class="loja-card ${connCls}">
+      <div class="loja-header">
+        <div class="loja-avatar">${initials(s.nickname)}</div>
+        <div style="flex:1">
+          <div class="loja-nome">${s.nickname || 'Loja ' + s.id}</div>
+          <div class="loja-id">ID: ${s.id}</div>
+        </div>
+        <span class="status-dot ${connCls}">
+          <i class="fas fa-circle" style="color:var(--${connIcon})"></i>
+          ${connected ? 'Conectada' : 'Desconectada'}
+        </span>
       </div>
-      <div class="info-row"><span class="key">Reputação</span><span class="val">${s.level_id||'—'}</span></div>
-      <div class="info-row"><span class="key">Anúncios Ativos</span><span class="val">${s.active_listings||'—'}</span></div>
-      <div class="info-row"><span class="key">Vendas Mês</span><span class="val">${fmt(s.monthly_revenue)}</span></div>
-      <div class="info-row"><span class="key">Status</span><span class="val"><span class="badge active">Ativa</span></span></div>
-    </div>
-  `).join('') : '<div class="empty-state" style="grid-column:1/-1">Nenhuma loja cadastrada</div>';
+
+      <div style="margin-bottom:14px">${repBadge(s)}</div>
+
+      <div class="loja-stats">
+        <div class="stat-box">
+          <div class="stat-label">Anúncios Ativos</div>
+          <div class="stat-val">${s.active_listings ?? '—'}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Vendas Mês</div>
+          <div class="stat-val currency">${fmtBRL(s.monthly_revenue)}</div>
+        </div>
+      </div>
+
+      <div class="loja-info-rows">
+        <div class="loja-info-row">
+          <span>Token expira</span>
+          <span class="val ${tkStatus.cls}">${tkStatus.label}</span>
+        </div>
+        <div class="loja-info-row">
+          <span>Atualizado</span>
+          <span class="val">${upd}</span>
+        </div>
+      </div>
+
+      <div class="imposto-row">
+        <label>Imposto %</label>
+        <input id="${inputId}" class="imposto-input" type="number" min="0" max="100" step="0.01"
+               value="${getImposto(s.id)}" placeholder="0">
+        <button class="btn-salvar-imposto" data-save="${s.id}"
+                onclick="saveImposto(${s.id},'${inputId}')">Salvar</button>
+      </div>
+    </div>`;
+  });
+
+  // Botão adicionar loja
+  cards.push(`
+    <button class="btn-add-loja" onclick="alert('Adicione a nova loja na tabela stores do banco de dados e configure o OAuth.')">
+      <i class="fas fa-plus-circle" style="font-size:20px"></i>
+      Adicionar loja
+    </button>`);
+
+  grid.innerHTML = cards.join('');
 }
+
+WS.on('store_updated', load);
 WS.on('kpis_updated', load);
 WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 load();

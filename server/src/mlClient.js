@@ -26,4 +26,6 @@ module.exports = {
   getQuestion: (id, storeId) => get(`/questions/${id}`, storeId),
   getMessagesPack: (packId, storeId) => get(`/messages/packs/${packId}/sellers/me`, storeId),
   getSellerReputation: (storeId) => get(`/users/${storeId}/seller_reputation`, storeId),
+  // Returns full seller profile: nickname, seller_reputation, status, active_listings count
+  getSellerInfo: (storeId) => get(`/users/${storeId}`, storeId),
 };

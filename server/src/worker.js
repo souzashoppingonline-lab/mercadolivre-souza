@@ -27,6 +27,65 @@ async function invalidateKPIs(storeId) {
   if (storeId) await redis.del(`kpis:${storeId}`);
 }
 
+// Sync store stats once per hour to avoid hammering ML API on every webhook
+async function syncStoreStats(storeId) {
+  const cacheKey = `store_synced:${storeId}`;
+  if (await redis.get(cacheKey)) return;
+
+  try {
+    const [info, rep] = await Promise.all([
+      ml.getSellerInfo(storeId),
+      ml.getSellerReputation(storeId),
+    ]);
+
+    // Count active listings from DB (ML /users/:id doesn't always return live count)
+    const { rows: listingRows } = await pool.query(
+      `SELECT COUNT(*) AS n FROM items WHERE store_id=$1 AND status='active'`,
+      [BigInt(storeId)]
+    );
+    // Monthly revenue from orders this calendar month
+    const { rows: revenueRows } = await pool.query(
+      `SELECT COALESCE(SUM(total_amount),0) AS total
+       FROM orders
+       WHERE store_id=$1 AND status NOT IN ('cancelled')
+         AND date_created >= date_trunc('month', NOW())`,
+      [BigInt(storeId)]
+    );
+
+    const sellerRep = info.seller_reputation || {};
+    const reputationData = {
+      level_id:           sellerRep.level_id   || rep.level_id   || null,
+      power_seller_status:sellerRep.power_seller_status || rep.power_seller_status || null,
+      metrics:            sellerRep.metrics     || rep.metrics    || {},
+      transactions:       sellerRep.transactions|| rep.transactions|| {},
+    };
+
+    await pool.query(
+      `UPDATE stores
+       SET nickname         = COALESCE($2, nickname),
+           level_id         = $3,
+           reputation_data  = $4,
+           active_listings  = $5,
+           monthly_revenue  = $6,
+           updated_at       = now()
+       WHERE id = $1`,
+      [
+        BigInt(storeId),
+        info.nickname || null,
+        reputationData.level_id,
+        JSON.stringify(reputationData),
+        parseInt(listingRows[0].n, 10),
+        parseFloat(revenueRows[0].total),
+      ]
+    );
+
+    await redis.set(cacheKey, '1', 'EX', 3600); // re-sync no máximo 1x/hora
+    await publish('store_updated', { storeId });
+  } catch (err) {
+    console.error(`[worker] syncStoreStats ${storeId}:`, err.message);
+  }
+}
+
 async function handleOrder({ resource, storeId }) {
   const orderId = resource.split('/').pop();
   const order = await ml.getOrder(orderId, storeId);
@@ -55,6 +114,7 @@ async function handleOrder({ resource, storeId }) {
   await invalidateKPIs(storeId);
   await publish('order_updated', { id: order.id, status: order.status, total_amount: order.total_amount });
   await publish('kpis_updated', {});
+  await syncStoreStats(storeId);
 }
 
 async function handleQuestion({ resource, storeId }) {

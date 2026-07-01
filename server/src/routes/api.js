@@ -395,9 +395,15 @@ router.get('/clientes', async (req, res) => {
 router.get('/lojas', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, nickname, level_id, active_listings, monthly_revenue, updated_at FROM stores ORDER BY id`
+      `SELECT id, nickname, level_id, reputation_data,
+              active_listings, monthly_revenue,
+              token_expires_at, updated_at
+       FROM stores ORDER BY id`
     );
-    res.json({ stores: rows });
+    res.json({ stores: rows.map(s => ({
+      ...s,
+      reputation_data: s.reputation_data || {},
+    })) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

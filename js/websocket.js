@@ -4,7 +4,11 @@ const WS = {
   socket: null,
   listeners: {},
   reconnectDelay: 2000,
-  _url: localStorage.getItem('ml_ws_url') || 'ws://localhost:3000/ws',
+  _url: (() => {
+    if (localStorage.getItem('ml_ws_url')) return localStorage.getItem('ml_ws_url');
+    const api = localStorage.getItem('ml_backend_url') || 'http://localhost:3000/api';
+    return api.replace(/^http/, 'ws').replace(/\/api$/, '/ws');
+  })(),
 
   connect() {
     if (this.socket && this.socket.readyState < 2) return;

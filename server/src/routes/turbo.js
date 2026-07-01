@@ -314,7 +314,7 @@ router.get('/charts', async (req, res) => {
   const { date_from='', date_to='', account='', order_status='' } = req.query;
   const f = buildFilters({ date_from, date_to, account, order_status });
 
-  const [daily, byState, byAccount, topRevenue, topMargin, lowMargin, byShipping, byHour, topQty, byStatus] = await Promise.all([
+  const [daily, byState, byAccount, topRevenue, topMargin, lowMargin, byShipping, byWeek, topQty, byStatus] = await Promise.all([
     pool.query(
       `SELECT sale_date::date as date,
               SUM(revenue) revenue, SUM(margin) lucro, COUNT(*) vendas,
@@ -365,7 +365,9 @@ router.get('/charts', async (req, res) => {
       f.params
     ),
     pool.query(
-      `SELECT EXTRACT(hour FROM sale_date::timestamp) AS hour, COUNT(*) vendas, SUM(revenue) revenue
+      `SELECT DATE_TRUNC('week', sale_date::timestamp) AS week_start,
+              SUM(revenue) revenue, SUM(margin) lucro, COUNT(*) vendas,
+              CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END margem_pct
        FROM ml_turbo_sales WHERE ${f.where} AND sale_date IS NOT NULL
        GROUP BY 1 ORDER BY 1`,
       f.params
@@ -393,7 +395,7 @@ router.get('/charts', async (req, res) => {
     top_margin:  topMargin.rows,
     low_margin:  lowMargin.rows,
     by_shipping: byShipping.rows,
-    by_hour:     byHour.rows,
+    by_week:     byWeek.rows,
     top_qty:     topQty.rows,
     by_status:   byStatus.rows,
   });

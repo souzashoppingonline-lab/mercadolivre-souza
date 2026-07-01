@@ -269,11 +269,11 @@
         </div>
       </div>
 
-      <!-- PEDIDOS POR HORA + MODALIDADE -->
+      <!-- FATURAMENTO POR SEMANA + MODALIDADE -->
       <div class="orders-block">
         <div class="modal-block">
-          <h4><i class="fas fa-clock"></i> Pedidos por Hora</h4>
-          <canvas id="cHour" height="120"></canvas>
+          <h4><i class="fas fa-calendar-week"></i> Faturamento por Semana</h4>
+          <canvas id="cWeek" height="120"></canvas>
         </div>
         <div class="modal-block">
           <h4><i class="fas fa-truck"></i> Modalidade de Entrega</h4>
@@ -601,15 +601,15 @@ async function loadCharts() {
     data:sh.map(r=>Number(r.vendas)),backgroundColor:COLORS
   }]},options:{responsive:true,plugins:{legend:{labels:{color:'#f0f0f0',boxWidth:12}}}}});
 
-  // Pedidos por hora
-  const hours=Array.from({length:24},(_,i)=>i);
-  const byHour=d.by_hour||[];
-  const hrMap=Object.fromEntries(byHour.map(r=>[Number(r.hour),Number(r.vendas)]));
-  mkChart('cHour',{type:'bar',data:{labels:hours.map(h=>h+'h'),datasets:[{
-    label:'Pedidos',data:hours.map(h=>hrMap[h]||0),backgroundColor:Y,borderRadius:3
-  }]},options:{responsive:true,plugins:{legend:{display:false}},
-    scales:{x:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},
-            y:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+  // Faturamento por semana
+  const byWeek=d.by_week||[];
+  mkChart('cWeek',{type:'bar',data:{
+    labels:byWeek.map(r=>{const dt=new Date(r.week_start);return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}`;}),
+    datasets:[
+      {label:'Receita',data:byWeek.map(r=>Number(r.revenue)),backgroundColor:Y,borderRadius:3},
+      {label:'Lucro',  data:byWeek.map(r=>Number(r.lucro)),  backgroundColor:G,borderRadius:3},
+    ]
+  },options:{...baseOpt('R$'),plugins:{legend:{labels:{color:'#f0f0f0'}},tooltip:{callbacks:{label:c=>fmt(c.raw)}}}}});
 
   // Modalidade de entrega
   buildModeList(sh);

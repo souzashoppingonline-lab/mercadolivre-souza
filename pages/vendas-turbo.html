@@ -73,6 +73,9 @@
     .rank-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
     .rank-header h4{margin:0;font-size:13px;font-weight:700}
     .rank-header span{font-size:11px;color:var(--text-muted)}
+    .rank-dl-btns{display:flex;gap:5px}
+    .rank-dl-btn{background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--text-muted);border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;transition:.15s;white-space:nowrap}
+    .rank-dl-btn:hover{background:rgba(255,255,255,.12);color:var(--text-primary)}
     .rank-table{width:100%;border-collapse:collapse;font-size:12px}
     .rank-table td{padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
     .rank-table tr:last-child td{border-bottom:none}
@@ -293,7 +296,10 @@
         <div class="rank-card">
           <div class="rank-header">
             <h4><i class="fas fa-trophy" style="color:var(--primary);margin-right:6px"></i>Top 20 — Maior Faturamento</h4>
-            <span>por receita</span>
+            <div class="rank-dl-btns">
+              <button class="rank-dl-btn" onclick="dlRankCSV('revenue')"><i class="fas fa-file-csv"></i> CSV</button>
+              <button class="rank-dl-btn" onclick="dlRankPDF('revenue','Top 20 — Maior Faturamento')"><i class="fas fa-file-pdf"></i> PDF</button>
+            </div>
           </div>
           <div style="overflow-y:auto;max-height:480px">
             <table class="rank-table"><tbody id="rankRevenue"></tbody></table>
@@ -304,7 +310,10 @@
         <div class="rank-card">
           <div class="rank-header">
             <h4><i class="fas fa-star" style="color:var(--green);margin-right:6px"></i>Top 20 — Maior Lucro</h4>
-            <span>por margem R$</span>
+            <div class="rank-dl-btns">
+              <button class="rank-dl-btn" onclick="dlRankCSV('margin')"><i class="fas fa-file-csv"></i> CSV</button>
+              <button class="rank-dl-btn" onclick="dlRankPDF('margin','Top 20 — Maior Lucro')"><i class="fas fa-file-pdf"></i> PDF</button>
+            </div>
           </div>
           <div style="overflow-y:auto;max-height:480px">
             <table class="rank-table"><tbody id="rankMargin"></tbody></table>
@@ -315,7 +324,10 @@
         <div class="rank-card">
           <div class="rank-header">
             <h4><i class="fas fa-fire" style="color:var(--orange);margin-right:6px"></i>Mais Vendidos — Quantidade</h4>
-            <span>unidades vendidas</span>
+            <div class="rank-dl-btns">
+              <button class="rank-dl-btn" onclick="dlRankCSV('qty')"><i class="fas fa-file-csv"></i> CSV</button>
+              <button class="rank-dl-btn" onclick="dlRankPDF('qty','Mais Vendidos — Quantidade')"><i class="fas fa-file-pdf"></i> PDF</button>
+            </div>
           </div>
           <div style="overflow-y:auto;max-height:480px">
             <table class="rank-table"><tbody id="rankQty"></tbody></table>
@@ -326,7 +338,10 @@
         <div class="rank-card">
           <div class="rank-header">
             <h4><i class="fas fa-exclamation-triangle" style="color:var(--red);margin-right:6px"></i>Pior Margem % — Revisar</h4>
-            <span>produtos a otimizar</span>
+            <div class="rank-dl-btns">
+              <button class="rank-dl-btn" onclick="dlRankCSV('lowmargin')"><i class="fas fa-file-csv"></i> CSV</button>
+              <button class="rank-dl-btn" onclick="dlRankPDF('lowmargin','Pior Margem % — Revisar')"><i class="fas fa-file-pdf"></i> PDF</button>
+            </div>
           </div>
           <div style="overflow-y:auto;max-height:480px">
             <table class="rank-table"><tbody id="rankLowMargin"></tbody></table>
@@ -707,6 +722,84 @@ async function loadSales() {
 }
 
 function changePage(d) { currentPage=Math.max(1,currentPage+d); loadSales(); }
+
+// ── Download Rankings ──────────────────────────────────────
+const RANK_DEFS = {
+  revenue:   { key:'top_revenue',  cols:['#','Produto','Código','Receita','Qtd'], row: (r,i) => [i+1, r.title||'—', r.item_code||'—', Number(r.revenue).toFixed(2), r.qty] },
+  margin:    { key:'top_margin',   cols:['#','Produto','Código','Lucro (R$)','Margem%','Receita'], row: (r,i) => [i+1, r.title||'—', r.item_code||'—', Number(r.lucro).toFixed(2), Number(r.margem_pct).toFixed(1)+'%', Number(r.revenue).toFixed(2)] },
+  qty:       { key:'top_qty',      cols:['#','Produto','Código','Qtd','Receita','Lucro (R$)','Margem%'], row: (r,i) => [i+1, r.title||'—', r.item_code||'—', r.qty, Number(r.revenue).toFixed(2), Number(r.lucro).toFixed(2), Number(r.margem_pct).toFixed(1)+'%'] },
+  lowmargin: { key:'low_margin',   cols:['#','Produto','Código','Margem%','Receita','Qtd','Lucro (R$)'], row: (r,i) => [i+1, r.title||'—', r.item_code||'—', Number(r.margem_pct).toFixed(1)+'%', Number(r.revenue).toFixed(2), r.qty, Number(r.lucro||0).toFixed(2)] },
+};
+
+function dlRankCSV(rankId) {
+  const def = RANK_DEFS[rankId];
+  const rows = lastCharts[def.key] || [];
+  if (!rows.length) return alert('Sem dados para exportar.');
+  const escape = v => `"${String(v).replace(/"/g,'""')}"`;
+  const lines  = [def.cols.map(escape).join(','), ...rows.map((r,i) => def.row(r,i).map(escape).join(','))];
+  const blob = new Blob(['﻿'+lines.join('\r\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download = `${rankId}_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+function dlRankPDF(rankId, title) {
+  const def  = RANK_DEFS[rankId];
+  const rows = lastCharts[def.key] || [];
+  if (!rows.length) return alert('Sem dados para exportar.');
+
+  const colW = Math.floor(190 / def.cols.length);
+  const rowH = 8, headH = 10, topH = 20, padX = 10, padY = 15;
+  const pageH = topH + padY + headH + rows.length * rowH + padY + 10;
+
+  // Build minimal PDF manually (no external lib)
+  const lines = [];
+  // header row bg
+  const headerBg = `q 0.18 0.18 0.18 rg ${padX} ${pageH-topH-padY-headH} 190 ${headH} re f Q`;
+  // title
+  const titleLine = `BT /F1 11 Tf ${padX} ${pageH-topH} Td (${title.replace(/[()\\]/g,'')}) Tj ET`;
+  const dateLine  = `BT /F2 8 Tf ${padX} ${pageH-topH-10} Td (Gerado em: ${new Date().toLocaleDateString('pt-BR')}) Tj ET`;
+
+  // Use jsPDF via CDN — inject dynamically
+  if (!window.jspdf) {
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload=()=>{ window.jspdf=window.jspdf||jspdf; _genPDF(rankId, title, def, rows); };
+    document.head.appendChild(s); return;
+  }
+  _genPDF(rankId, title, def, rows);
+}
+
+function _genPDF(rankId, title, def, rows) {
+  const { jsPDF } = window.jspdf || window;
+  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 10, startY = 20;
+  const colW = (pageW - marginX*2) / def.cols.length;
+
+  // Title
+  doc.setFontSize(14); doc.setFont(undefined,'bold');
+  doc.text(title, marginX, 13);
+  doc.setFontSize(8); doc.setFont(undefined,'normal');
+  doc.text('Gerado em: ' + new Date().toLocaleString('pt-BR'), marginX, 18);
+
+  // Header
+  doc.setFillColor(40,40,40); doc.rect(marginX, startY-4, pageW-marginX*2, 8, 'F');
+  doc.setTextColor(220,220,0); doc.setFontSize(8); doc.setFont(undefined,'bold');
+  def.cols.forEach((c,i) => doc.text(String(c), marginX + i*colW + 1, startY+1, {maxWidth: colW-2}));
+
+  // Rows
+  doc.setTextColor(220,220,220); doc.setFont(undefined,'normal'); doc.setFontSize(7.5);
+  let y = startY + 10;
+  rows.forEach((r, idx) => {
+    if (y > pageH - 15) { doc.addPage(); y = 20; }
+    if (idx % 2 === 0) { doc.setFillColor(28,28,28); doc.rect(marginX, y-4, pageW-marginX*2, 7, 'F'); }
+    def.row(r, idx).forEach((v, i) => doc.text(String(v), marginX + i*colW + 1, y, {maxWidth: colW-2}));
+    y += 7;
+  });
+
+  doc.save(`${rankId}_${new Date().toISOString().slice(0,10)}.pdf`);
+}
 
 // ── Init ───────────────────────────────────────────────────
 async function init() {

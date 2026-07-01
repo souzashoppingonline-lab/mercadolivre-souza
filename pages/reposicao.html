@@ -228,7 +228,7 @@ function renderGrid(rows) {
             <span class="dias-badge ${n}">${dr.txt}</span>
           </div>
           <div class="product-meta">
-            ${r.loja ? `<span class="loja-badge" title="${r.loja}">${r.loja}</span>` : ''}
+            ${lojaName(r)!=='—' ? `<span class="loja-badge" title="${lojaName(r)}">${lojaName(r)}</span>` : ''}
             <span class="price-text">${fmt(r.price)}</span>
           </div>
         </div>
@@ -255,7 +255,7 @@ function renderTable(rows) {
     return `<tr>
       <td class="thumb-cell">${thumbHtml}</td>
       <td style="max-width:260px">${titleHtml}</td>
-      <td><span style="font-size:.75rem;color:var(--text-muted)">${r.loja||'—'}</span></td>
+      <td><span style="font-size:.75rem;color:var(--text-muted)">${lojaName(r)}</span></td>
       <td style="font-weight:700;font-size:1.1rem" class="${n==='zero'?'text-red':''}">${r.stock}</td>
       <td>${(r.daily_sales||0).toFixed(1)}</td>
       <td><span class="dias-badge ${n}">${dr.txt}</span></td>
@@ -265,19 +265,31 @@ function renderTable(rows) {
   }).join('');
 }
 
-function updateKpis(summary) {
-  document.getElementById('kZero').textContent    = summary.zero    ?? '—';
-  document.getElementById('kCritico').textContent = summary.critical ?? '—';
-  document.getElementById('kBaixo').textContent   = summary.low     ?? '—';
-  document.getElementById('kAtencao').textContent = summary.medium  ?? '—';
+function lojaName(r) {
+  if (r.loja && r.loja !== 'null') return r.loja;
+  if (r.store_id) return 'Loja ' + r.store_id;
+  return '—';
+}
+
+function updateKpis(items) {
+  document.getElementById('kZero').textContent    = items.filter(r=>r.stock==0).length;
+  document.getElementById('kCritico').textContent = items.filter(r=>r.stock>0&&r.stock<=3).length;
+  document.getElementById('kBaixo').textContent   = items.filter(r=>r.stock>3&&r.stock<=10).length;
+  document.getElementById('kAtencao').textContent = items.filter(r=>r.stock>10).length;
 }
 
 function populateLojaFilter(items) {
   const sel = document.getElementById('lojaFilter');
   const current = sel.value;
-  const lojas = [...new Map(items.map(r => [String(r.store_id), r.loja || ('Loja ' + r.store_id)])).entries()];
-  sel.innerHTML = '<option value="">Todas as lojas (' + lojas.length + ')</option>' +
-    lojas.map(([id, nome]) => `<option value="${id}" ${id===current?'selected':''}>${nome}</option>`).join('');
+  const seen = new Map();
+  items.forEach(r => {
+    const id = r.store_id ? String(r.store_id) : '__none__';
+    if (!seen.has(id)) seen.set(id, lojaName(r));
+  });
+  sel.innerHTML = '<option value="">Todas as lojas (' + seen.size + ')</option>' +
+    [...seen.entries()].map(([id, nome]) =>
+      `<option value="${id==='__none__'?'':id}" ${id===current?'selected':''}>${nome}</option>`
+    ).join('');
 }
 
 async function load() {
@@ -287,9 +299,10 @@ async function load() {
   if (currentView==='grid') grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>';
   else tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-spinner fa-spin"></i> Carregando...</td></tr>';
 
-  const data = await DB.getReposicao({ threshold }) || { items:[], summary:{} };
-  allItems = data.items || [];
-  updateKpis(data.summary || {});
+  const raw = await DB.getReposicao({ threshold });
+  // suporta resposta como array direto ou {items, summary}
+  allItems = Array.isArray(raw) ? raw : (raw?.items || []);
+  updateKpis(allItems);
   populateLojaFilter(allItems);
   render();
 }

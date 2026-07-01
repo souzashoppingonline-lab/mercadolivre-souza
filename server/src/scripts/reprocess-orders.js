@@ -64,7 +64,7 @@ async function run() {
       );
       ok++;
       process.stdout.write(`\r[reprocess] ${ok}/${rows.length} ok  ${fail} erros`);
-      await new Promise(r => setTimeout(r, 2000)); // 2s between calls to avoid rate limit
+      await new Promise(r => setTimeout(r, 60000)); // 60s between calls to avoid rate limit
     } catch (err) {
       fail++;
       console.error(`\n[reprocess] erro no pedido ${row.ml_id}:`, err.message);

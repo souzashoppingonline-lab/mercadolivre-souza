@@ -40,6 +40,23 @@
     .badge-frete.Flex   { background: rgba(155,89,182,0.15); color: #a569bd; }
     .badge-frete.ME2    { background: rgba(230,126,34,0.15); color: var(--orange); }
     .badge-frete.Coleta { background: rgba(41,128,185,0.15); color: #5dade2; }
+    /* Hero Vendas Hoje */
+    .hoje-hero{background:linear-gradient(135deg,rgba(255,230,0,.07),rgba(39,174,96,.05));border:1px solid rgba(255,230,0,.3);border-radius:14px;padding:18px 22px;margin-bottom:18px}
+    .hoje-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+    .hoje-header h2{margin:0;font-size:17px;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:10px}
+    .hoje-badge-live{background:rgba(39,174,96,.15);color:var(--green);border:1px solid rgba(39,174,96,.3);border-radius:20px;font-size:10px;font-weight:700;padding:3px 10px;display:flex;align-items:center;gap:4px}
+    .hoje-badge-live i{font-size:7px}
+    .hoje-date{font-size:12px;color:var(--text-muted)}
+    .hoje-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+    .hoje-kpi{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative}
+    .hoje-kpi.hl{border-color:rgba(255,230,0,.4);background:rgba(255,230,0,.04)}
+    .hoje-kpi.gl{border-color:rgba(39,174,96,.3);background:rgba(39,174,96,.03)}
+    .hoje-kpi .lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+    .hoje-kpi .val{font-size:26px;font-weight:800;line-height:1.1}
+    .hoje-kpi .sub{font-size:11px;color:var(--text-muted);margin-top:4px}
+    .hoje-mc-badge{position:absolute;top:12px;right:12px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px}
+    .skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:4px;height:28px;width:80%}
+    @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
   </style>
 </head>
 <body>
@@ -48,6 +65,39 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
+
+      <!-- HERO VENDAS HOJE -->
+      <div class="hoje-hero">
+        <div class="hoje-header">
+          <h2><i class="fas fa-calendar-day"></i> Vendas Hoje
+            <span class="hoje-date" id="hHojeDate"></span>
+          </h2>
+          <span class="hoje-badge-live"><i class="fas fa-circle"></i> ao vivo</span>
+        </div>
+        <div class="hoje-kpis">
+          <div class="hoje-kpi hl">
+            <div class="lbl"><i class="fas fa-dollar-sign"></i> Receita do Dia</div>
+            <div class="val" id="hReceita" style="color:var(--primary)"><div class="skeleton"></div></div>
+            <div class="sub" id="hReceitaSub"></div>
+          </div>
+          <div class="hoje-kpi gl">
+            <div class="lbl"><i class="fas fa-equals"></i> Lucro Bruto</div>
+            <div class="val" id="hLucro" style="color:var(--green)"><div class="skeleton"></div></div>
+            <div class="sub" id="hMcPct"></div>
+            <span class="hoje-mc-badge" id="hMcBadge" style="display:none"></span>
+          </div>
+          <div class="hoje-kpi">
+            <div class="lbl"><i class="fas fa-shopping-bag"></i> Pedidos</div>
+            <div class="val" id="hPedidos"><div class="skeleton"></div></div>
+            <div class="sub">aprovados hoje</div>
+          </div>
+          <div class="hoje-kpi">
+            <div class="lbl"><i class="fas fa-cubes"></i> Itens Vendidos</div>
+            <div class="val" id="hItens"><div class="skeleton"></div></div>
+            <div class="sub">unidades no dia</div>
+          </div>
+        </div>
+      </div>
 
       <div class="filters-row">
         <select id="filterStore"><option value="">Todas as lojas</option></select>
@@ -254,16 +304,46 @@ async function load() {
   }).join('') : '<tr><td colspan="15" class="empty-state">Nenhuma venda encontrada</td></tr>';
 }
 
+// ── Vendas Hoje ────────────────────────────────────────────
+const BASE_URL = (localStorage.getItem('ml_backend_url') || '/api');
+
+async function loadHoje() {
+  try {
+    const d = await fetch(`${BASE_URL}/vendas/hoje`).then(r => r.json());
+    if (d.error) return;
+
+    const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+    const hoje = new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'});
+    const el = id => document.getElementById(id);
+
+    el('hHojeDate').textContent = '— ' + hoje;
+    el('hReceita').textContent  = fmt(d.receita);
+    el('hReceitaSub').textContent = `${d.itens} ${d.itens===1?'item':'itens'} · ticket ${fmt(d.pedidos>0?d.receita/d.pedidos:0)}`;
+    el('hLucro').textContent    = fmt(d.lucro);
+    el('hMcPct').textContent    = `Margem: ${Number(d.mc_pct).toFixed(1)}%`;
+    el('hPedidos').textContent  = d.pedidos;
+    el('hItens').textContent    = d.itens;
+
+    // MC badge colorido
+    const badge = el('hMcBadge');
+    const mc = Number(d.mc_pct);
+    badge.style.display = 'block';
+    badge.textContent   = mc.toFixed(1) + '%';
+    badge.style.background = mc >= 20 ? 'rgba(39,174,96,.2)' : mc >= 10 ? 'rgba(230,126,34,.2)' : 'rgba(231,76,60,.2)';
+    badge.style.color      = mc >= 20 ? 'var(--green)' : mc >= 10 ? 'var(--orange)' : 'var(--red)';
+  } catch(e) { /* silencioso — hero não bloqueia a página */ }
+}
+
 document.getElementById('btnLoad').addEventListener('click', load);
 document.getElementById('filterSearch').addEventListener('keydown', e => { if(e.key==='Enter') load(); });
 window.addEventListener('storeChanged', e => { document.getElementById('filterStore').value=e.detail.storeId; load(); });
-WS.on('order_updated', load);
+WS.on('order_updated', () => { loadHoje(); load(); });
 WS.on('_connected', () => {
   const el=document.getElementById('wsStatus');
   if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 
-initStores().then(load);
+initStores().then(() => { loadHoje(); load(); });
 
 // ── Modal ──────────────────────────────────────────────────
 async function openModal(orderId) {

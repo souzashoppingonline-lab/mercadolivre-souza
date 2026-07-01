@@ -157,6 +157,37 @@ router.get('/vendas/detalhado', async (req, res) => {
   }
 });
 
+// ── Vendas Hoje ────────────────────────────────────────────
+router.get('/vendas/hoje', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT o.total_amount, o.ml_fee, o.shipping_cost, COALESCE(o.shipping_seller_cost,0) AS shipping_seller_cost,
+              o.quantity, COALESCE(i.cost,0) AS custo, COALESCE(s.imposto_pct,0) AS imposto_pct
+       FROM orders o
+       JOIN stores s ON s.id = o.store_id
+       LEFT JOIN items i ON i.ml_id = o.item_id
+       WHERE o.date_created::date = CURRENT_DATE AND o.status != 'cancelled'`
+    );
+    const pedidos   = rows.length;
+    const itens     = rows.reduce((a,r) => a + (Number(r.quantity)||1), 0);
+    const receita   = rows.reduce((a,r) => a + Number(r.total_amount), 0);
+    const lucro     = rows.reduce((a,r) => {
+      const fat   = Number(r.total_amount);
+      const custo = Number(r.custo) * (Number(r.quantity)||1);
+      const imp   = fat * (Number(r.imposto_pct)/100);
+      const tar   = Number(r.ml_fee)||0;
+      const fc    = Number(r.shipping_cost)||0;
+      const fv    = Number(r.shipping_seller_cost)||0;
+      return a + (fat - custo - imp - tar - fc - fv);
+    }, 0);
+    const mc_pct = receita > 0 ? (lucro / receita) * 100 : 0;
+    res.json({ pedidos, itens, receita, lucro, mc_pct: Number(mc_pct.toFixed(2)) });
+  } catch (e) {
+    console.error('[api] /vendas/hoje error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Configuração de loja (imposto, etc.) ───────────────────
 router.patch('/lojas/:id', async (req, res) => {
   const { imposto_pct } = req.body;

@@ -69,6 +69,7 @@ const DB = {
   async getVendas(params = {})         { return this._get('/vendas', params); },
   async getVendasDiarias(days=30)      { return this._get('/vendas/diarias', { days }); },
   async getVendasDetalhado(params={})  { return this._get('/vendas/detalhado', params); },
+  async getVendasHoje()                { return this._get('/vendas/hoje'); },
   async updateLojaConfig(id, body)     { return this._patch(`/lojas/${id}`, body); },
   async updateItemCusto(id, cost)      { return this._patch(`/items/${id}/custo`, { cost }); },
   async getPedidoDetalhes(id)          { return this._get(`/pedidos/${id}/detalhes`); },

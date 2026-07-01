@@ -5,7 +5,7 @@ require('dotenv').config();
 const pool = require('../db/pool');
 const ml   = require('../mlClient');
 
-const DAYS = 30;
+const DAYS = 1;
 
 async function run() {
   const { rows } = await pool.query(

@@ -26,7 +26,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Job</th><th>Frequência</th><th>Última Execução</th><th>Duração</th><th>Status</th><th>Ação</th></tr></thead>
-            <tbody id="jobsTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="jobsTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -49,7 +49,7 @@ async function load() {
         <td><span class="badge ${j.status==='success'?'active':j.status==='running'?'paused':'closed'}">${j.status==='success'?'OK':j.status==='running'?'Executando':'Erro'}</span></td>
         <td><button class="action-btn" onclick="trigger('${j.name}')">Executar agora</button></td>
       </tr>`).join('')
-    : '<tr><td colspan="6" class="empty-state">Nenhum job configurado</td></tr>';
+    : '<tr><td colspan="7" class="empty-state">Nenhum job configurado</td></tr>';
 }
 async function trigger(name) {
   await DB.triggerJob(name);

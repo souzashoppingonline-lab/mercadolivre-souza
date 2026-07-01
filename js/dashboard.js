@@ -1,3 +1,5 @@
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+
 document.addEventListener('DOMContentLoaded', () => {
   const el = document.getElementById('currentDate');
   if (el) el.textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
@@ -18,7 +20,7 @@ async function loadDashboard() {
 async function loadKPIs() {
   const data = await DB.getDashboardKPIs();
   if (!data) return;
-  setText('vendasHoje', utils.formatCurrency(data.vendas_hoje ?? 0));
+  setText('vendasHoje', R(data.vendas_hoje ?? 0));
   setText('pedidosHoje', data.pedidos_hoje ?? 0);
   setText('perguntasPendentes', data.perguntas_pendentes ?? 0);
   setText('anunciosAtivos', data.anuncios_ativos ?? 0);
@@ -78,7 +80,7 @@ async function renderVendasChart() {
       responsive: true,
       plugins: {
         legend: { labels: { color: '#f0f0f0', font: { size: 12 } } },
-        tooltip: { callbacks: { label: c => utils.formatCurrency(c.raw) } }
+        tooltip: { callbacks: { label: c => R(c.raw) } }
       },
       scales: {
         x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } },
@@ -150,7 +152,7 @@ async function loadTopProdutos() {
       <tr>
         <td>${p.title}</td>
         <td>${p.sold ?? 0}</td>
-        <td>${utils.formatCurrency((p.price ?? 0) * (p.sold ?? 0))}</td>
+        <td>${R((p.price ?? 0) * (p.sold ?? 0))}</td>
         <td><span class="badge ${p.status}">${p.status === 'active' ? 'Ativo' : 'Pausado'}</span></td>
       </tr>`).join('')
     : '<tr><td colspan="4" class="empty-state">Nenhum produto encontrado</td></tr>';

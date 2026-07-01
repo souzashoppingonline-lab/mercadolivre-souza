@@ -30,7 +30,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Produto</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th>Receita</th><th>Status</th></tr></thead>
-            <tbody id="produtosTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="produtosTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -57,7 +57,7 @@ async function load() {
         <td>${fmt(r.revenue||r.receita)}</td>
         <td><span class="badge ${r.status}">${r.status==='active'?'Ativo':r.status==='paused'?'Pausado':'Encerrado'}</span></td>
       </tr>`).join('')
-    : '<tr><td colspan="6" class="empty-state">Nenhum produto</td></tr>';
+    : '<tr><td colspan="7" class="empty-state">Nenhum produto</td></tr>';
 }
 document.getElementById('search').addEventListener('input', load);
 document.getElementById('sortBy').addEventListener('change', load);

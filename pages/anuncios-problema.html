@@ -35,7 +35,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Anúncio</th><th>Problema</th><th>Gravidade</th><th>Sugestão</th></tr></thead>
-            <tbody id="probTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="probTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -65,7 +65,7 @@ async function load() {
         <td><span class="tag ${r.severity==='high'?'red':'yellow'}">${r.severity==='high'?'Alta':'Média'}</span></td>
         <td style="font-size:12px;color:var(--text-muted)">${r.suggestion||'—'}</td>
       </tr>`).join('')
-    : '<tr><td colspan="4" class="empty-state">Nenhum problema encontrado</td></tr>';
+    : '<tr><td colspan="5" class="empty-state">Nenhum problema encontrado</td></tr>';
 }
 document.getElementById('tipoFilter').addEventListener('change', load);
 WS.on('anuncio_updated', load);

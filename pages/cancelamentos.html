@@ -28,7 +28,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Pedido</th><th>Produto</th><th>Motivo</th><th>Quem Cancelou</th><th>Valor</th><th>Data</th></tr></thead>
-            <tbody id="cancTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="cancTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -59,7 +59,7 @@ async function load() {
         <td>${fmt(r.amount)}</td>
         <td>${fmtDt(r.date)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="6" class="empty-state">Nenhum cancelamento</td></tr>';
+    : '<tr><td colspan="7" class="empty-state">Nenhum cancelamento</td></tr>';
 }
 document.getElementById('dateFrom').addEventListener('change', load);
 WS.on('order_updated', load);

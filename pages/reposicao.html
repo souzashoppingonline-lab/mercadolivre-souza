@@ -33,7 +33,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Produto</th><th>Estoque</th><th>Vendas/Dia</th><th>Dias Restantes</th><th>Nível</th></tr></thead>
-            <tbody id="reposTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="reposTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -68,7 +68,7 @@ async function load() {
           <td><span class="tag ${nivel==='zero'?'red':nivel==='critical'?'red':'yellow'}">${nivel==='zero'?'Zerado':nivel==='critical'?'Crítico':'Baixo'}</span></td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="5" class="empty-state">Nenhum alerta de reposição</td></tr>';
+    : '<tr><td colspan="6" class="empty-state">Nenhum alerta de reposição</td></tr>';
 }
 document.getElementById('nivelFilter').addEventListener('change', load);
 WS.on('stock_alert', load);

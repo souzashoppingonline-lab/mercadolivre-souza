@@ -32,7 +32,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Cliente</th><th>Compras</th><th>Total Gasto</th><th>Última Compra</th></tr></thead>
-            <tbody id="clientesTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="clientesTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -62,7 +62,7 @@ async function load() {
         <td>${fmt(r.total_spent||r.total)}</td>
         <td>${fmtD(r.last_order_date||r.ultima_compra)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="4" class="empty-state">Nenhum cliente</td></tr>';
+    : '<tr><td colspan="5" class="empty-state">Nenhum cliente</td></tr>';
 }
 document.getElementById('search').addEventListener('input', load);
 WS.on('order_updated', load);

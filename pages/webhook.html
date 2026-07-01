@@ -48,7 +48,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Tópico</th><th>Recurso</th><th>Loja</th><th>Status</th><th>Recebido em</th></tr></thead>
-            <tbody id="logTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="logTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -85,7 +85,7 @@ async function loadLogs() {
         <td><span class="badge ${l.status==='processed'?'active':l.status==='pending'?'paused':'closed'}">${l.status==='processed'?'Processado':l.status==='pending'?'Na fila':'Erro'}</span></td>
         <td>${fmtDt(l.received_at)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="5" class="empty-state">Nenhum webhook registrado</td></tr>';
+    : '<tr><td colspan="6" class="empty-state">Nenhum webhook registrado</td></tr>';
 }
 
 document.getElementById('topicFilter').addEventListener('change', loadLogs);

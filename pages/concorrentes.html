@@ -72,7 +72,7 @@ async function loadConcorrentes(id, title) {
         <td>${r.sales_est||'—'}</td><td>#${r.position||'—'}</td>
         <td>${r.free_shipping?'<span class="tag green">Sim</span>':'<span class="tag red">Não</span>'}</td>
       </tr>`).join('')
-    : '<tr><td colspan="5" class="empty-state">Sem dados de concorrência</td></tr>';
+    : '<tr><td colspan="6" class="empty-state">Sem dados de concorrência</td></tr>';
 }
 WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 </script>

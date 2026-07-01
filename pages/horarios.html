@@ -24,7 +24,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Hora</th><th>Pedidos</th><th>Receita</th><th>% do Total</th></tr></thead>
-            <tbody id="horariosTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="horariosTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -55,7 +55,7 @@ async function load() {
   const total = rows.reduce((s,r)=>s+(r.orders||0),0);
   document.getElementById('horariosTable').innerHTML = rows.length
     ? rows.map(r=>`<tr><td>${r.hour}:00</td><td>${r.orders}</td><td>${fmt(r.revenue)}</td><td>${total?((r.orders/total)*100).toFixed(1)+'%':'—'}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
+    : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';
 }
 WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 load();

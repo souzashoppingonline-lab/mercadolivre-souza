@@ -99,7 +99,7 @@ function buildSection(storeId, storeName) {
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>#</th><th>Título</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th>Status</th><th>Atualizado</th></tr></thead>
-            <tbody id="tbody-${id}"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="tbody-${id}"><tr><td colspan="8" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -130,7 +130,7 @@ async function loadSection(storeId) {
       <td><span class="badge ${r.status}">${r.status === 'active' ? 'Ativo' : r.status === 'paused' ? 'Pausado' : 'Encerrado'}</span></td>
       <td>${fmtDt(r.updated_at)}</td>
     </tr>`).join('')
-    : '<tr><td colspan="7" class="empty-state">Nenhum anúncio encontrado</td></tr>';
+    : '<tr><td colspan="8" class="empty-state">Nenhum anúncio encontrado</td></tr>';
 }
 
 function switchTab(storeId) {

@@ -39,7 +39,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Pedido</th><th>Comprador</th><th>Produto</th><th>Valor</th><th>Status</th><th>Data</th></tr></thead>
-            <tbody id="pedidosTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="pedidosTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -75,7 +75,7 @@ async function load() {
         <td><span class="badge ${r.status === 'delivered' ? 'active' : r.status === 'cancelled' ? 'closed' : 'paused'}">${statusLabel[r.status]||r.status}</span></td>
         <td>${fmtDt(r.date_created || r.data)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="6" class="empty-state">Nenhum pedido</td></tr>';
+    : '<tr><td colspan="7" class="empty-state">Nenhum pedido</td></tr>';
 }
 document.getElementById('statusFilter').addEventListener('change', load);
 document.getElementById('dateFrom').addEventListener('change', load);

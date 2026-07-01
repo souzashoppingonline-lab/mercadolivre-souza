@@ -26,7 +26,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Produto</th><th>Impressões</th><th>Cliques</th><th>CTR</th><th>Gasto</th><th>Vendas</th><th>ACOS</th></tr></thead>
-            <tbody id="pubTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="pubTable"><tr><td colspan="8" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -55,7 +55,7 @@ async function load() {
         <td>${fmt(r.spend)}</td><td>${fmt(r.revenue)}</td>
         <td>${r.revenue?((r.spend/r.revenue)*100).toFixed(1)+'%':'—'}</td>
       </tr>`).join('')
-    : '<tr><td colspan="7" class="empty-state">Sem campanhas</td></tr>';
+    : '<tr><td colspan="8" class="empty-state">Sem campanhas</td></tr>';
 }
 WS.on('kpis_updated', load);
 WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });

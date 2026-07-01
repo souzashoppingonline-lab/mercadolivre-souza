@@ -31,7 +31,7 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Data</th><th>Pedidos</th><th>Receita</th><th>Var. Dia Anterior</th></tr></thead>
-            <tbody id="evolTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="evolTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -68,7 +68,7 @@ async function load(days=30) {
         return `<tr><td>${r.date}</td><td>${r.orders||0}</td><td>${fmt(r.revenue)}</td>
           <td style="color:${diff==null?'inherit':diff>=0?'var(--green)':'var(--red)'}">${diff==null?'—':(diff>=0?'▲':'▼')+Math.abs(diff)+'%'}</td></tr>`;
       }).join('')
-    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
+    : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';
 }
 document.querySelectorAll('.chart-btn').forEach(btn=>{
   btn.addEventListener('click', function(){

@@ -69,6 +69,19 @@ function buildTopbar(title) {
         <h1 class="page-title">${title}</h1>
       </div>
       <div class="topbar-right">
+        <div class="store-switcher" id="storeSwitcher">
+          <button class="store-switcher-btn" id="storeSwitcherBtn" title="Trocar loja">
+            <span class="store-avatar" id="storeAvatar">?</span>
+            <span class="store-name" id="storeNameDisplay">Todas as lojas</span>
+            <i class="fas fa-chevron-down" style="font-size:10px;opacity:.6"></i>
+          </button>
+          <div class="store-dropdown" id="storeDropdown" style="display:none">
+            <div class="store-dropdown-item" data-id="" data-name="Todas as lojas">
+              <span class="store-avatar-sm all"><i class="fas fa-store"></i></span>
+              <span>Todas as lojas</span>
+            </div>
+          </div>
+        </div>
         <span id="wsStatus" style="font-size:12px;color:var(--text-muted)">
           <i class="fas fa-circle" style="color:var(--orange);font-size:8px"></i> conectando
         </span>
@@ -77,9 +90,63 @@ function buildTopbar(title) {
     </header>`;
 }
 
+function storeInitials(name) {
+  return (name || '?').replace(/[_-]/g, ' ').split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+}
+
+async function initStoreSwitcher() {
+  const data = await DB.getLojas();
+  const stores = data?.stores || [];
+  if (!stores.length) return;
+
+  const dropdown = document.getElementById('storeDropdown');
+  const avatar   = document.getElementById('storeAvatar');
+  const nameEl   = document.getElementById('storeNameDisplay');
+  if (!dropdown) return;
+
+  const activeId = localStorage.getItem('ml_active_store') || '';
+
+  const extra = stores.map(s => `
+    <div class="store-dropdown-item" data-id="${s.id}" data-name="${s.nickname}">
+      <span class="store-avatar-sm ${s.token_valid ? 'connected' : 'disconnected'}">${storeInitials(s.nickname)}</span>
+      <span style="flex:1">${s.nickname}</span>
+      <i class="fas fa-circle" style="font-size:8px;color:${s.token_valid ? 'var(--green)' : 'var(--red)'}" title="${s.token_valid ? 'Conectada' : 'Token expirado'}"></i>
+    </div>`).join('');
+  dropdown.innerHTML = dropdown.innerHTML + extra;
+
+  const active = stores.find(s => String(s.id) === activeId);
+  if (active) {
+    avatar.textContent = storeInitials(active.nickname);
+    nameEl.textContent = active.nickname;
+    avatar.className = 'store-avatar ' + (active.token_valid ? 'connected' : 'disconnected');
+  }
+
+  document.getElementById('storeSwitcherBtn')?.addEventListener('click', e => {
+    e.stopPropagation();
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+  });
+
+  document.addEventListener('click', () => { dropdown.style.display = 'none'; });
+
+  dropdown.querySelectorAll('.store-dropdown-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id   = item.dataset.id;
+      const name = item.dataset.name;
+      localStorage.setItem('ml_active_store', id);
+      nameEl.textContent = name;
+      avatar.textContent = id ? storeInitials(name) : '';
+      if (!id) { avatar.innerHTML = '<i class="fas fa-store" style="font-size:10px"></i>'; avatar.className = 'store-avatar all'; }
+      else { avatar.className = 'store-avatar'; }
+      dropdown.style.display = 'none';
+      window.dispatchEvent(new CustomEvent('storeChanged', { detail: { storeId: id, storeName: name } }));
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const sidebarEl = document.getElementById('app-sidebar');
   const topbarEl  = document.getElementById('app-topbar');
   if (sidebarEl) sidebarEl.outerHTML = buildSidebar(window.ACTIVE_NAV || '');
   if (topbarEl)  topbarEl.outerHTML  = buildTopbar(window.PAGE_TITLE || 'Dashboard');
+  initStoreSwitcher();
 });

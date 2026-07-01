@@ -23,7 +23,18 @@ async function run() {
   let ok = 0, fail = 0;
   for (const row of rows) {
     try {
-      const order = await ml.getOrder(row.ml_id, row.store_id);
+      let order;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          order = await ml.getOrder(row.ml_id, row.store_id);
+          break;
+        } catch (e) {
+          if (attempt < 3 && e.message.includes('429')) {
+            console.log(`\n[reprocess] 429 — aguardando 10s (tentativa ${attempt}/3)`);
+            await new Promise(r => setTimeout(r, 10000));
+          } else throw e;
+        }
+      }
       const item0 = order.order_items?.[0] || {};
       const shippingType = (order.shipping?.logistic_type || '')
         .replace('FULFILLMENT', 'Full')
@@ -53,7 +64,7 @@ async function run() {
       );
       ok++;
       process.stdout.write(`\r[reprocess] ${ok}/${rows.length} ok  ${fail} erros`);
-      await new Promise(r => setTimeout(r, 200)); // avoid rate limit
+      await new Promise(r => setTimeout(r, 2000)); // 2s between calls to avoid rate limit
     } catch (err) {
       fail++;
       console.error(`\n[reprocess] erro no pedido ${row.ml_id}:`, err.message);

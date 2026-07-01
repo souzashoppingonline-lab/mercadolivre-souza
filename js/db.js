@@ -4,7 +4,7 @@
 //
 // Configure the backend URL in localStorage: ml_backend_url
 const DB = {
-  BASE: localStorage.getItem('ml_backend_url') || 'http://localhost:3000/api',
+  BASE: localStorage.getItem('ml_backend_url') || '/api',
 
   async _get(path, params = {}) {
     const url = new URL(`${this.BASE}${path}`);

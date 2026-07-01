@@ -23,8 +23,14 @@ CREATE TABLE IF NOT EXISTS items (
   sold_quantity INT,
   status TEXT,
   category_id TEXT,
+  thumbnail TEXT,
+  permalink TEXT,
+  cost NUMERIC DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE items ADD COLUMN IF NOT EXISTS thumbnail TEXT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS permalink TEXT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS orders (
   ml_id BIGINT PRIMARY KEY,

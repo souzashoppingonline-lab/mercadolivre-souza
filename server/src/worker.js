@@ -174,15 +174,19 @@ async function handleItem({ resource, storeId }) {
   if (recent.rows.length) return;
   const item = await ml.getItem(itemId, storeId);
 
+  const thumb = item.thumbnail || (item.pictures?.[0]?.url) || null;
   await pool.query(
-    `INSERT INTO items (ml_id, store_id, title, price, available_quantity, sold_quantity, status, category_id, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+    `INSERT INTO items (ml_id, store_id, title, price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        title = EXCLUDED.title, price = EXCLUDED.price,
        available_quantity = EXCLUDED.available_quantity,
        sold_quantity = EXCLUDED.sold_quantity,
-       status = EXCLUDED.status, updated_at = now()`,
-    [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id]
+       status = EXCLUDED.status,
+       thumbnail = COALESCE(EXCLUDED.thumbnail, items.thumbnail),
+       permalink = COALESCE(EXCLUDED.permalink, items.permalink),
+       updated_at = now()`,
+    [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null]
   );
 
   if (item.available_quantity <= 5) {

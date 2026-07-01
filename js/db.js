@@ -119,7 +119,7 @@ const DB = {
   async getCurvaABC()               { return this._get('/comparativos/curva-abc'); },
 
   // ── Alertas ────────────────────────────────────────────────
-  async getReposicao()            { return this._get('/alertas/reposicao'); },
+  async getReposicao(p={})        { return this._get(`/alertas/reposicao?threshold=${p.threshold||15}&store_id=${p.store_id||''}`); },
   async getCancelamentos(params)  { return this._get('/alertas/cancelamentos', params); },
   async getDevolucoes(params)     { return this._get('/alertas/devolucoes', params); },
   async getAnunciosProblema()     { return this._get('/alertas/anuncios-problema'); },

@@ -2,12 +2,72 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reposição — ML Dashboard</title>
+  <title>Reposição de Estoque — ML Dashboard</title>
   <link rel="stylesheet" href="../css/style.css">
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script>window.PAGE_TITLE='Alertas de Reposição'; window.ACTIVE_NAV='reposicao.html';</script>
+  <script>window.PAGE_TITLE='Reposição de Estoque'; window.ACTIVE_NAV='reposicao.html';</script>
+  <style>
+    .reposicao-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px; }
+    .kpi-card { background:var(--card-bg); border-radius:12px; padding:18px 20px; display:flex; flex-direction:column; gap:6px; border-left:4px solid transparent; }
+    .kpi-card.zerado { border-color:#ef4444; }
+    .kpi-card.critico { border-color:#f97316; }
+    .kpi-card.baixo   { border-color:#eab308; }
+    .kpi-card.atencao { border-color:#3b82f6; }
+    .kpi-card .kpi-val { font-size:2.2rem; font-weight:700; line-height:1; }
+    .kpi-card.zerado .kpi-val  { color:#ef4444; }
+    .kpi-card.critico .kpi-val { color:#f97316; }
+    .kpi-card.baixo .kpi-val   { color:#eab308; }
+    .kpi-card.atencao .kpi-val { color:#3b82f6; }
+    .kpi-card .kpi-label { font-size:.8rem; color:var(--text-muted); }
+    .kpi-card .kpi-desc  { font-size:.72rem; color:var(--text-muted); }
+
+    .filters-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+    .filters-row select, .filters-row input { background:var(--card-bg); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:7px 12px; font-size:.85rem; }
+    .view-toggle { display:flex; gap:6px; margin-left:auto; }
+    .view-btn { background:var(--card-bg); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:7px 14px; cursor:pointer; font-size:.85rem; }
+    .view-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+
+    /* GRID VIEW */
+    .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px; }
+    .product-card { background:var(--card-bg); border-radius:12px; overflow:hidden; border:1px solid var(--border); transition:transform .15s,box-shadow .15s; }
+    .product-card:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.3); }
+    .product-card a { text-decoration:none; color:inherit; }
+    .product-thumb { width:100%; aspect-ratio:1; object-fit:contain; background:#1a1a2e; padding:8px; }
+    .product-thumb-placeholder { width:100%; aspect-ratio:1; background:#1a1a2e; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:2rem; }
+    .product-info { padding:12px; }
+    .product-title { font-size:.82rem; color:var(--text); margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.35; min-height:2.7em; }
+    .stock-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+    .stock-num { font-size:2rem; font-weight:700; line-height:1; }
+    .stock-num.zero    { color:#ef4444; }
+    .stock-num.critico { color:#f97316; }
+    .stock-num.baixo   { color:#eab308; }
+    .stock-num.atencao { color:#3b82f6; }
+    .dias-badge { font-size:.72rem; padding:3px 8px; border-radius:20px; font-weight:600; }
+    .dias-badge.zero    { background:rgba(239,68,68,.15); color:#ef4444; }
+    .dias-badge.critico { background:rgba(249,115,22,.15); color:#f97316; }
+    .dias-badge.baixo   { background:rgba(234,179,8,.15); color:#eab308; }
+    .dias-badge.atencao { background:rgba(59,130,246,.15); color:#60a5fa; }
+    .product-meta { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    .loja-badge { font-size:.68rem; padding:2px 7px; border-radius:4px; background:rgba(255,255,255,.08); color:var(--text-muted); white-space:nowrap; max-width:100px; overflow:hidden; text-overflow:ellipsis; }
+    .price-text { font-size:.75rem; color:var(--text-muted); margin-left:auto; }
+
+    /* TABLE VIEW */
+    #tableView { display:none; }
+    .data-table .thumb-cell img { width:44px; height:44px; object-fit:contain; border-radius:6px; background:#1a1a2e; padding:2px; }
+    .data-table .thumb-cell .no-img { width:44px; height:44px; background:#1a1a2e; border-radius:6px; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:.9rem; }
+    .tag.zero    { background:rgba(239,68,68,.2);   color:#f87171; }
+    .tag.critico { background:rgba(249,115,22,.2);  color:#fb923c; }
+    .tag.baixo   { background:rgba(234,179,8,.2);   color:#facc15; }
+    .tag.atencao { background:rgba(59,130,246,.2);  color:#60a5fa; }
+
+    .reposicao-empty { text-align:center; padding:60px 20px; color:var(--text-muted); }
+    .reposicao-empty i { font-size:3rem; margin-bottom:12px; display:block; }
+
+    @media(max-width:768px) { .reposicao-kpis { grid-template-columns:repeat(2,1fr); } }
+    @media(max-width:480px) { .reposicao-kpis { grid-template-columns:1fr 1fr; } .filters-row { flex-direction:column; align-items:stretch; } .view-toggle { margin-left:0; } }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,28 +75,82 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Estoque Crítico</div><div class="value" id="critico" style="color:var(--red)">—</div></div>
-        <div class="stat-card"><div class="label">Estoque Baixo</div><div class="value" id="baixo" style="color:var(--orange)">—</div></div>
-        <div class="stat-card"><div class="label">Zerados</div><div class="value" id="zerado" style="color:var(--red)">—</div></div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <h3>Produtos para Repor</h3>
-          <select class="filter-select" id="nivelFilter">
-            <option value="">Todos</option>
-            <option value="zero">Zerado</option>
-            <option value="critical">Crítico (≤3)</option>
-            <option value="low">Baixo (≤10)</option>
-          </select>
+
+      <!-- KPIs -->
+      <div class="reposicao-kpis">
+        <div class="kpi-card zerado">
+          <div class="kpi-val" id="kZero">—</div>
+          <div class="kpi-label">Zerados</div>
+          <div class="kpi-desc">estoque = 0</div>
         </div>
+        <div class="kpi-card critico">
+          <div class="kpi-val" id="kCritico">—</div>
+          <div class="kpi-label">Crítico</div>
+          <div class="kpi-desc">1–3 unidades</div>
+        </div>
+        <div class="kpi-card baixo">
+          <div class="kpi-val" id="kBaixo">—</div>
+          <div class="kpi-label">Baixo</div>
+          <div class="kpi-desc">4–10 unidades</div>
+        </div>
+        <div class="kpi-card atencao">
+          <div class="kpi-val" id="kAtencao">—</div>
+          <div class="kpi-label">Atenção</div>
+          <div class="kpi-desc">11–threshold</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters-row">
+        <select id="nivelFilter">
+          <option value="">Todos os níveis</option>
+          <option value="zero">Zerado (0)</option>
+          <option value="critico">Crítico (1–3)</option>
+          <option value="baixo">Baixo (4–10)</option>
+          <option value="atencao">Atenção (11+)</option>
+        </select>
+        <select id="lojaFilter">
+          <option value="">Todas as lojas</option>
+        </select>
+        <select id="thresholdFilter">
+          <option value="10">Threshold: 10</option>
+          <option value="15" selected>Threshold: 15</option>
+          <option value="20">Threshold: 20</option>
+          <option value="30">Threshold: 30</option>
+          <option value="50">Threshold: 50</option>
+        </select>
+        <div class="view-toggle">
+          <button class="view-btn active" id="btnGrid" onclick="setView('grid')"><i class="fas fa-th-large"></i></button>
+          <button class="view-btn" id="btnTable" onclick="setView('table')"><i class="fas fa-list"></i></button>
+        </div>
+      </div>
+
+      <!-- Grid View -->
+      <div id="gridView">
+        <div class="product-grid" id="productGrid"></div>
+      </div>
+
+      <!-- Table View -->
+      <div id="tableView" class="card">
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Produto</th><th>Estoque</th><th>Vendas/Dia</th><th>Dias Restantes</th><th>Nível</th></tr></thead>
-            <tbody id="reposTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+            <thead>
+              <tr>
+                <th style="width:52px"></th>
+                <th>Produto</th>
+                <th>Loja</th>
+                <th>Estoque</th>
+                <th>Vendas/Dia</th>
+                <th>Dias Rest.</th>
+                <th>Preço</th>
+                <th>Nível</th>
+              </tr>
+            </thead>
+            <tbody id="reposTable"></tbody>
           </table>
         </div>
       </div>
+
     </div>
   </main>
 </div>
@@ -45,34 +159,153 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-async function load() {
-  const nivel = document.getElementById('nivelFilter').value;
-  const data = await DB.getReposicao() || { items:[], summary:{} };
-  const s = data.summary || {};
-  document.getElementById('critico').textContent = s.critical ?? '—';
-  document.getElementById('baixo').textContent = s.low ?? '—';
-  document.getElementById('zerado').textContent = s.zero ?? '—';
-  let rows = data.items || [];
-  if (nivel==='zero') rows=rows.filter(r=>r.stock===0);
-  else if (nivel==='critical') rows=rows.filter(r=>r.stock>0&&r.stock<=3);
-  else if (nivel==='low') rows=rows.filter(r=>r.stock>3&&r.stock<=10);
-  document.getElementById('reposTable').innerHTML = rows.length
-    ? rows.map(r=>{
-        const dias = r.daily_sales>0 ? Math.floor(r.stock/r.daily_sales) : '∞';
-        const nivel = r.stock===0?'zero':r.stock<=3?'critical':'low';
-        return `<tr>
-          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
-          <td style="font-weight:700;color:${r.stock===0?'var(--red)':r.stock<=3?'var(--orange)':'var(--primary)'}">${r.stock}</td>
-          <td>${(r.daily_sales||0).toFixed(1)}</td>
-          <td>${dias}</td>
-          <td><span class="tag ${nivel==='zero'?'red':nivel==='critical'?'red':'yellow'}">${nivel==='zero'?'Zerado':nivel==='critical'?'Crítico':'Baixo'}</span></td>
-        </tr>`;
-      }).join('')
-    : '<tr><td colspan="6" class="empty-state">Nenhum alerta de reposição</td></tr>';
+let allItems = [];
+let currentView = 'grid';
+
+function nivel(s) {
+  if (s === 0) return 'zero';
+  if (s <= 3)  return 'critico';
+  if (s <= 10) return 'baixo';
+  return 'atencao';
 }
-document.getElementById('nivelFilter').addEventListener('change', load);
+function nivelLabel(n) {
+  return { zero:'Zerado', critico:'Crítico', baixo:'Baixo', atencao:'Atenção' }[n];
+}
+function diasRestantes(stock, dailySales) {
+  if (stock === 0) return { val: 0, txt: '0 dias' };
+  if (!dailySales || dailySales <= 0) return { val: 999, txt: '∞ dias' };
+  const d = Math.floor(stock / dailySales);
+  return { val: d, txt: d + (d === 1 ? ' dia' : ' dias') };
+}
+function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+function setView(v) {
+  currentView = v;
+  document.getElementById('gridView').style.display  = v==='grid'  ? '' : 'none';
+  document.getElementById('tableView').style.display = v==='table' ? '' : 'none';
+  document.getElementById('btnGrid').classList.toggle('active', v==='grid');
+  document.getElementById('btnTable').classList.toggle('active', v==='table');
+  render();
+}
+
+function getFiltered() {
+  const nf = document.getElementById('nivelFilter').value;
+  const lf = document.getElementById('lojaFilter').value;
+  return allItems.filter(r => {
+    const n = nivel(r.stock);
+    if (nf && n !== nf) return false;
+    if (lf && String(r.store_id) !== lf) return false;
+    return true;
+  });
+}
+
+function render() {
+  const rows = getFiltered();
+  if (currentView === 'grid') renderGrid(rows);
+  else renderTable(rows);
+}
+
+function renderGrid(rows) {
+  const grid = document.getElementById('productGrid');
+  if (!rows.length) {
+    grid.innerHTML = '<div class="reposicao-empty" style="grid-column:1/-1"><i class="fas fa-box-open"></i>Nenhum produto para repor com os filtros selecionados</div>';
+    return;
+  }
+  grid.innerHTML = rows.map(r => {
+    const n = nivel(r.stock);
+    const dr = diasRestantes(r.stock, r.daily_sales);
+    const thumb = r.thumbnail
+      ? `<img class="product-thumb" src="${r.thumbnail}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\\'product-thumb-placeholder\\'><i class=\\'fas fa-image\\'></i></div>'">`
+      : `<div class="product-thumb-placeholder"><i class="fas fa-image"></i></div>`;
+    const link = r.permalink ? `href="${r.permalink}" target="_blank" rel="noopener"` : '';
+    return `<div class="product-card">
+      <a ${link}>
+        ${thumb}
+        <div class="product-info">
+          <div class="product-title" title="${(r.title||'').replace(/"/g,'&quot;')}">${r.title||'Sem título'}</div>
+          <div class="stock-row">
+            <span class="stock-num ${n}">${r.stock}</span>
+            <span class="dias-badge ${n}">${dr.txt}</span>
+          </div>
+          <div class="product-meta">
+            ${r.loja ? `<span class="loja-badge" title="${r.loja}">${r.loja}</span>` : ''}
+            <span class="price-text">${fmt(r.price)}</span>
+          </div>
+        </div>
+      </a>
+    </div>`;
+  }).join('');
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('reposTable');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum produto para repor</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const n = nivel(r.stock);
+    const dr = diasRestantes(r.stock, r.daily_sales);
+    const thumbHtml = r.thumbnail
+      ? `<img src="${r.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none'">`
+      : `<div class="no-img"><i class="fas fa-image"></i></div>`;
+    const titleHtml = r.permalink
+      ? `<a href="${r.permalink}" target="_blank" rel="noopener" style="color:var(--text)">${r.title||'—'}</a>`
+      : (r.title||'—');
+    return `<tr>
+      <td class="thumb-cell">${thumbHtml}</td>
+      <td style="max-width:260px">${titleHtml}</td>
+      <td><span style="font-size:.75rem;color:var(--text-muted)">${r.loja||'—'}</span></td>
+      <td style="font-weight:700;font-size:1.1rem" class="${n==='zero'?'text-red':''}">${r.stock}</td>
+      <td>${(r.daily_sales||0).toFixed(1)}</td>
+      <td><span class="dias-badge ${n}">${dr.txt}</span></td>
+      <td style="white-space:nowrap">${fmt(r.price)}</td>
+      <td><span class="tag ${n}">${nivelLabel(n)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function updateKpis(summary) {
+  document.getElementById('kZero').textContent    = summary.zero    ?? '—';
+  document.getElementById('kCritico').textContent = summary.critical ?? '—';
+  document.getElementById('kBaixo').textContent   = summary.low     ?? '—';
+  document.getElementById('kAtencao').textContent = summary.medium  ?? '—';
+}
+
+function populateLojaFilter(items) {
+  const sel = document.getElementById('lojaFilter');
+  const current = sel.value;
+  const lojas = [...new Map(items.filter(r=>r.loja).map(r=>[r.store_id, r.loja])).entries()];
+  sel.innerHTML = '<option value="">Todas as lojas</option>' +
+    lojas.map(([id, nome]) => `<option value="${id}" ${String(id)===current?'selected':''}>${nome}</option>`).join('');
+}
+
+async function load() {
+  const threshold = document.getElementById('thresholdFilter').value;
+  const store_id  = document.getElementById('lojaFilter').value;
+  const grid = document.getElementById('productGrid');
+  const tbody = document.getElementById('reposTable');
+  if (currentView==='grid') grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>';
+  else tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-spinner fa-spin"></i> Carregando...</td></tr>';
+
+  const data = await DB.getReposicao({ threshold, store_id }) || { items:[], summary:{} };
+  allItems = data.items || [];
+  updateKpis(data.summary || {});
+  populateLojaFilter(allItems);
+  render();
+}
+
+document.getElementById('nivelFilter').addEventListener('change', render);
+document.getElementById('lojaFilter').addEventListener('change', load);
+document.getElementById('thresholdFilter').addEventListener('change', load);
+
 WS.on('stock_alert', load);
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+WS.on('anuncio_updated', load);
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
 load();
 </script>
 </body>

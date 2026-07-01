@@ -429,4 +429,18 @@ function scheduleDailySync() {
 }
 
 scheduleDailySync();
+
+// Listener para comandos manuais via Redis pub/sub (ex: trigger do painel)
+const cmdSub = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
+cmdSub.subscribe('worker:cmd');
+cmdSub.on('message', (channel, msg) => {
+  try {
+    const { cmd } = JSON.parse(msg);
+    if (cmd === 'dailySync') {
+      console.log('[worker] dailySync disparado manualmente');
+      dailySync().catch(e => console.error('[worker] dailySync manual erro:', e.message));
+    }
+  } catch {}
+});
+
 console.log('[worker] listening for ml-webhooks jobs...');

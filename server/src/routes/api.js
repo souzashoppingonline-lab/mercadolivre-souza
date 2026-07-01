@@ -360,6 +360,13 @@ router.get('/schedule/jobs', async (req, res) => {
   res.json({ jobs: rows });
 });
 
+router.post('/schedule/jobs/:name/trigger', async (req, res) => {
+  const { name } = req.params;
+  if (name !== 'dailySync') return res.status(400).json({ error: 'job desconhecido' });
+  await redis.publish('worker:cmd', JSON.stringify({ cmd: 'dailySync' }));
+  res.json({ ok: true, message: 'comando enviado ao worker' });
+});
+
 // ── Promoções ──────────────────────────────────────────────
 router.get('/promocoes', async (req, res) => {
   const { store_id = '', days = 1 } = req.query;

@@ -164,6 +164,48 @@ router.patch('/items/:id/custo', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── SKU Costs (custo por SKU, compartilhado entre lojas) ───
+router.get('/custos/:sku', async (req, res) => {
+  const { rows } = await pool.query(`SELECT cost FROM sku_costs WHERE sku=$1`, [req.params.sku]);
+  res.json({ cost: rows[0]?.cost ?? 0 });
+});
+
+router.patch('/custos/:sku', async (req, res) => {
+  const { cost } = req.body;
+  if (cost == null) return res.status(400).json({ error: 'cost required' });
+  await pool.query(
+    `INSERT INTO sku_costs (sku, cost, updated_at) VALUES ($1,$2,now())
+     ON CONFLICT (sku) DO UPDATE SET cost=$2, updated_at=now()`,
+    [req.params.sku, Number(cost)]
+  );
+  // also update items table for existing listings
+  await pool.query(`UPDATE items SET cost=$2 WHERE ml_id=$1`, [req.params.sku, Number(cost)]);
+  res.json({ ok: true });
+});
+
+// ── Detalhes completos de um pedido ───────────────────────
+router.get('/pedidos/:id/detalhes', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT o.*, s.nickname as store_name, s.imposto_pct,
+            COALESCE(sc.cost, i.cost, 0) as custo_unitario,
+            raw_data
+     FROM orders o
+     JOIN stores s ON s.id = o.store_id
+     LEFT JOIN items i ON i.ml_id = o.item_id
+     LEFT JOIN sku_costs sc ON sc.sku = o.item_id
+     WHERE o.ml_id = $1`,
+    [req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  const row = rows[0];
+  const fat = Number(row.total_amount) || 0;
+  const custo = Number(row.custo_unitario) * (Number(row.quantity) || 1);
+  const imposto = fat * (Number(row.imposto_pct) / 100);
+  const tarifa = Number(row.ml_fee) || 0;
+  const margem = fat - custo - imposto - tarifa - Number(row.shipping_cost || 0);
+  res.json({ ...row, custo, imposto, tarifa, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
+});
+
 // ── Perguntas / Mensagens ──────────────────────────────────
 router.get('/perguntas', async (req, res) => {
   const { status = 'UNANSWERED' } = req.query;

@@ -71,6 +71,9 @@ const DB = {
   async getVendasDetalhado(params={})  { return this._get('/vendas/detalhado', params); },
   async updateLojaConfig(id, body)     { return this._patch(`/lojas/${id}`, body); },
   async updateItemCusto(id, cost)      { return this._patch(`/items/${id}/custo`, { cost }); },
+  async getPedidoDetalhes(id)          { return this._get(`/pedidos/${id}/detalhes`); },
+  async getSkuCost(sku)                { return this._get(`/custos/${sku}`); },
+  async saveSkuCost(sku, cost)         { return this._patch(`/custos/${sku}`, { cost }); },
 
   // ── Perguntas ──────────────────────────────────────────────
   async getPerguntas(params = {}) { return this._get('/perguntas', params); },

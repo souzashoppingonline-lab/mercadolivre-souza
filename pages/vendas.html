@@ -227,7 +227,7 @@ async function load() {
     const neg = Number(r.mc_pct) < 0;
     const hasCusto = Number(r.custo) > 0;
     return `<tr>
-      <td class="tbl-anuncio" title="${r.title||''}">${r.title||'—'}</td>
+      <td class="tbl-anuncio" title="${r.title||''}" style="cursor:pointer;color:var(--primary)" onclick="openModal('${r.ml_id}')">${r.title||'—'}</td>
       <td style="font-size:11px;white-space:nowrap">${r.conta||'—'}</td>
       <td style="font-size:10px;color:var(--text-muted)">${r.item_id||'—'}</td>
       <td style="white-space:nowrap;font-size:11px">${fmtDt(r.date_created)}</td>
@@ -256,6 +256,123 @@ WS.on('_connected', () => {
 });
 
 initStores().then(load);
+
+// ── Modal ──────────────────────────────────────────────────
+async function openModal(orderId) {
+  document.getElementById('modalOverlay').style.display = 'flex';
+  document.getElementById('modalBody').innerHTML = '<div class="spinner" style="margin:40px auto"></div>';
+
+  const d = await DB.getPedidoDetalhes(orderId);
+  if (!d) { document.getElementById('modalBody').innerHTML = '<p style="color:var(--red)">Erro ao carregar detalhes.</p>'; return; }
+
+  const raw = d.raw_data || {};
+  const pmt = raw.payments?.[0] || {};
+  const ship = raw.shipping || {};
+  const buyer = raw.buyer || {};
+  const item0 = raw.order_items?.[0] || {};
+
+  const row = (label, val, cls='') => val != null && val !== '' && val !== '—'
+    ? `<div class="mrow"><span class="mk">${label}</span><span class="mv ${cls}">${val}</span></div>` : '';
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="msec"><div class="msec-title"><i class="fas fa-box"></i> Pedido</div>
+      ${row('Nº Pedido', d.ml_id)}
+      ${row('Loja', d.store_name)}
+      ${row('Status', d.status)}
+      ${row('Data', fmtDt(d.date_created))}
+      ${row('Fechado em', fmtDt(d.date_closed))}
+    </div>
+    <div class="msec"><div class="msec-title"><i class="fas fa-user"></i> Comprador</div>
+      ${row('Nome', buyer.nickname || d.buyer_nickname)}
+      ${row('ID ML', buyer.id)}
+      ${row('Email', buyer.email)}
+      ${row('Telefone', buyer.phone?.number ? `(${buyer.phone.area_code}) ${buyer.phone.number}` : null)}
+      ${row('Cidade', buyer.shipping_address?.city?.name)}
+      ${row('Estado', buyer.shipping_address?.state?.name)}
+    </div>
+    <div class="msec"><div class="msec-title"><i class="fas fa-tag"></i> Produto</div>
+      ${row('Título', d.title)}
+      ${row('SKU / MLB', d.item_id)}
+      ${row('Quantidade', d.quantity)}
+      ${row('Valor Unitário', R(d.unit_price))}
+      ${row('Faturamento ML', R(d.total_amount), 'pos')}
+      ${row('Variação', item0.item?.variation_id)}
+    </div>
+    <div class="msec"><div class="msec-title"><i class="fas fa-truck"></i> Envio</div>
+      ${row('Tipo', d.shipping_type)}
+      ${row('ID Envio', ship.id)}
+      ${row('Rastreio', ship.tracking_number)}
+      ${row('Transportadora', ship.shipping_option?.name)}
+      ${row('Frete Comprador', R(d.shipping_cost), Number(d.shipping_cost)>0?'neg':'')}
+      ${row('Endereço', ship.receiver_address ? `${ship.receiver_address.street_name||''} ${ship.receiver_address.street_number||''}, ${ship.receiver_address.city?.name||''}` : null)}
+    </div>
+    <div class="msec"><div class="msec-title"><i class="fas fa-credit-card"></i> Pagamento</div>
+      ${row('Método', pmt.payment_type)}
+      ${row('Parcelas', pmt.installments)}
+      ${row('Valor Pago', R(pmt.total_paid_amount), 'pos')}
+      ${row('Cupom', pmt.coupon?.amount ? `R$ ${pmt.coupon.amount}` : null)}
+      ${row('Status', pmt.status)}
+    </div>
+    <div class="msec"><div class="msec-title"><i class="fas fa-calculator"></i> Financeiro</div>
+      ${row('Faturamento', R(d.total_amount), 'pos')}
+      ${row('Tarifa ML', R(d.tarifa), 'neg')}
+      ${row('Imposto ('+N(d.imposto_pct)+'%)', R(d.imposto), 'neg')}
+      ${row('Frete Comprador', R(d.shipping_cost), 'neg')}
+      <div class="mrow"><span class="mk">Custo Produto</span>
+        <span class="mv" style="display:flex;gap:6px;align-items:center">
+          <input type="number" id="custoInput" min="0" step="0.01"
+            value="${Number(d.custo_unitario||0).toFixed(2)}"
+            style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:13px;text-align:right">
+          <button onclick="saveCusto('${d.item_id}')" style="background:var(--primary);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#000">Salvar</button>
+        </span>
+      </div>
+      <div id="margemCalc" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+        ${row('Margem', R(d.margem), Number(d.margem)<0?'neg':'pos')}
+        ${row('MC %', N(d.mc_pct)+'%', Number(d.mc_pct)<0?'neg':'pos')}
+      </div>
+    </div>
+  `;
+  document.getElementById('modalTitle').textContent = d.title || 'Detalhes do Pedido';
+}
+
+async function saveCusto(sku) {
+  if (!sku) return;
+  const input = document.getElementById('custoInput');
+  const cost = parseFloat(input.value) || 0;
+  const res = await DB.saveSkuCost(sku, cost);
+  if (res?.ok) {
+    input.style.borderColor = 'var(--green)';
+    setTimeout(() => { input.style.borderColor=''; }, 2000);
+    load(); // refresh table
+  }
+}
+
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target.id === 'modalOverlay') closeModal();
+});
+function closeModal() { document.getElementById('modalOverlay').style.display='none'; }
 </script>
+
+<!-- Modal -->
+<div id="modalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#23272f;border:1px solid #444;border-radius:14px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #333;position:sticky;top:0;background:#23272f;z-index:1">
+      <h3 id="modalTitle" style="margin:0;font-size:14px;font-weight:700"></h3>
+      <button onclick="closeModal()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div id="modalBody" style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px"></div>
+  </div>
+</div>
+
+<style>
+.msec { background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px; }
+.msec-title { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;gap:6px; }
+.mrow { display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04); }
+.mk { color:var(--text-muted); }
+.mv { font-weight:600; }
+.mv.pos { color:var(--green); }
+.mv.neg { color:var(--red); }
+@media(max-width:600px){ #modalBody { grid-template-columns:1fr; } }
+</style>
 </body>
 </html>

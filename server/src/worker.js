@@ -30,8 +30,8 @@ async function handleOrder({ resource, storeId }) {
   const shippingType = (order.shipping?.logistic_type || '').replace('FULFILLMENT', 'Full').replace('ME2', 'ME2').replace('FLEX', 'Flex').replace('PICKUP', 'Coleta') || '';
 
   await pool.query(
-    `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+    `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, raw_data, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        buyer_nickname = EXCLUDED.buyer_nickname,
        item_id = EXCLUDED.item_id,
@@ -44,6 +44,7 @@ async function handleOrder({ resource, storeId }) {
        shipping_cost = EXCLUDED.shipping_cost,
        status = EXCLUDED.status,
        date_closed = EXCLUDED.date_closed,
+       raw_data = EXCLUDED.raw_data,
        updated_at = now()`,
     [
       order.id, storeId, order.buyer?.nickname,
@@ -57,6 +58,7 @@ async function handleOrder({ resource, storeId }) {
       order.shipping?.cost || 0,
       order.status,
       order.date_created, order.date_closed,
+      JSON.stringify(order),
     ]
   );
 

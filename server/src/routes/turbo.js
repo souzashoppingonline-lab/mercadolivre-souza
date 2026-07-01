@@ -140,9 +140,12 @@ router.post('/import', upload.single('file'), async (req, res) => {
   console.log('[turbo] mapeamento:', Object.entries(colMap).map(([k,v]) => `${k}=${headers[v]}`).join(', '));
 
   if (!colMap.sale_id) {
+    const normed = headers.map(h => norm(h));
     return res.status(400).json({
       error: 'Coluna "ID da Venda" não encontrada. Verifique se é uma planilha do Mercado Turbo.',
       headers_detected: headers,
+      headers_normed: normed,
+      header_row_used: headerRowIdx,
       tip: 'Colunas esperadas: "ID da Venda", "Número do Pedido" ou similar',
     });
   }

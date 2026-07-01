@@ -183,7 +183,7 @@ async function doUpload(file) {
 
     if (!res.ok) {
       const hdrs = data.headers_detected?.length
-        ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Colunas detectadas (${data.headers_detected.length})</summary><pre style="font-size:11px;overflow:auto;max-height:160px;white-space:pre-wrap">${data.headers_detected.join('\n')}</pre></details>`
+        ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Colunas detectadas (linha ${data.header_row_used ?? 0})</summary><pre style="font-size:11px;overflow:auto;max-height:200px;white-space:pre-wrap">${data.headers_detected.map((h,i)=>`${i}: "${h}" → "${(data.headers_normed||[])[i]||'?'}"`).join('\n')}</pre></details>`
         : '';
       log.innerHTML = `<div class="import-log err"><i class="fas fa-times-circle"></i> <b>Erro:</b> ${data.error || 'Falha no import'}${hdrs}</div>`;
       return;

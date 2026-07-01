@@ -11,7 +11,7 @@ async function run() {
   const { rows } = await pool.query(
     `SELECT ml_id, store_id FROM orders
      WHERE ml_fee = 0
-       AND date_created >= CURRENT_DATE - $1
+       AND date_created >= CURRENT_DATE - $1::int
        AND status != 'cancelled'
      ORDER BY date_created DESC`,
     [DAYS]

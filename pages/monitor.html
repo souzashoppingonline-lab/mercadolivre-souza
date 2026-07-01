@@ -14,19 +14,38 @@
     .mon-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
     .mon-value { font-size:24px; font-weight:700; }
     .mon-sub   { font-size:11px; color:var(--text-muted); margin-top:4px; }
-    .tg-form   { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:16px 0; }
-    @media(max-width:600px){ .tg-form { grid-template-columns:1fr; } }
+    /* Telegram form */
+    .tg-form   { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:16px 0 8px; }
+    @media(max-width:600px){ .tg-form,.notif-grid,.silence-row { grid-template-columns:1fr!important; } }
     .tg-field  { display:flex; flex-direction:column; gap:6px; }
     .tg-field label { font-size:12px; color:var(--text-muted); }
-    .tg-field input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 12px; color:var(--text-primary); font-size:13px; }
-    .tg-field input:focus { outline:none; border-color:var(--primary); }
-    .tg-actions { display:flex; gap:10px; align-items:center; padding-top:4px; flex-wrap:wrap; }
+    .tg-field input, .tg-field select { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 12px; color:var(--text-primary); font-size:13px; }
+    .tg-field input:focus, .tg-field select:focus { outline:none; border-color:var(--primary); }
+    .tg-actions { display:flex; gap:10px; align-items:center; padding-top:8px; flex-wrap:wrap; }
     .btn-save { background:var(--primary); border:none; border-radius:8px; padding:8px 18px; font-weight:700; cursor:pointer; color:#000; font-size:13px; }
     .btn-test { background:transparent; border:1px solid var(--border); border-radius:8px; padding:8px 18px; font-weight:600; cursor:pointer; color:var(--text-primary); font-size:13px; }
     .btn-test:hover { border-color:var(--primary); color:var(--primary); }
     .tg-msg    { font-size:12px; padding:6px 10px; border-radius:6px; display:none; }
     .tg-msg.ok  { background:rgba(39,174,96,.15); color:var(--green); display:block; }
     .tg-msg.err { background:rgba(231,76,60,.12); color:var(--red); display:block; }
+    /* Toggle switches */
+    .notif-section { border-top:1px solid var(--border); padding-top:14px; margin-top:8px; }
+    .notif-section-title { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; }
+    .notif-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+    .notif-item { display:flex; justify-content:space-between; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 14px; }
+    .notif-info { display:flex; flex-direction:column; gap:2px; }
+    .notif-name { font-size:13px; font-weight:600; }
+    .notif-desc { font-size:11px; color:var(--text-muted); }
+    /* Toggle */
+    .toggle-wrap { position:relative; width:42px; height:24px; flex-shrink:0; }
+    .toggle-wrap input { opacity:0; width:0; height:0; position:absolute; }
+    .toggle-slider { position:absolute; inset:0; background:#3a3f4b; border-radius:24px; cursor:pointer; transition:.25s; }
+    .toggle-slider:before { content:''; position:absolute; width:18px; height:18px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.25s; }
+    .toggle-wrap input:checked + .toggle-slider { background:var(--primary); }
+    .toggle-wrap input:checked + .toggle-slider:before { transform:translateX(18px); background:#000; }
+    /* Interval + silence */
+    .silence-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:14px; }
+    /* Services / metrics */
     .svc-table td, .svc-table th { padding:8px 12px; font-size:12px; }
     .svc-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
     .svc-dot.ok  { background:var(--green); }
@@ -65,6 +84,8 @@
           <h3><i class="fab fa-telegram" style="color:#2aabee"></i> Configuração Telegram</h3>
           <span id="tgStatusBadge"></span>
         </div>
+
+        <!-- Credenciais -->
         <div class="tg-form">
           <div class="tg-field">
             <label>Bot Token</label>
@@ -76,10 +97,86 @@
           </div>
         </div>
         <div class="tg-actions">
-          <button class="btn-save" onclick="saveTelegram()"><i class="fas fa-save"></i> Salvar</button>
+          <button class="btn-save" onclick="saveTelegram()"><i class="fas fa-save"></i> Salvar Credenciais</button>
           <button class="btn-test" onclick="testTelegram()"><i class="fab fa-telegram"></i> Enviar Teste</button>
-          <input type="text" id="testMsg" placeholder="Mensagem de teste..." style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text-primary);font-size:13px;flex:1;min-width:180px">
+          <input type="text" id="testMsg" placeholder="Mensagem de teste..." style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text-primary);font-size:13px;flex:1;min-width:160px">
           <span id="tgFeedback" class="tg-msg"></span>
+        </div>
+
+        <!-- Notificações -->
+        <div class="notif-section">
+          <div class="notif-section-title"><i class="fas fa-bell"></i> O que deseja monitorar</div>
+          <div class="notif-grid">
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-chart-line" style="color:var(--green);margin-right:6px"></i>Vendas em tempo real</span>
+                <span class="notif-desc">Notifica a cada nova venda aprovada</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_vendas"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-server" style="color:#2980b9;margin-right:6px"></i>Serviços do sistema</span>
+                <span class="notif-desc">Alerta se ml-dashboard ou worker cair</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_servicos"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-microchip" style="color:var(--orange);margin-right:6px"></i>Recursos do sistema</span>
+                <span class="notif-desc">CPU, memória ou disco acima do limite</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_recursos"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-boxes" style="color:var(--red);margin-right:6px"></i>Alertas de reposição</span>
+                <span class="notif-desc">Estoque crítico (≤ 5 unidades)</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_reposicao"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-question-circle" style="color:var(--primary);margin-right:6px"></i>Perguntas sem resposta</span>
+                <span class="notif-desc">Nova pergunta recebida no ML</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_perguntas"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-envelope" style="color:#9b59b6;margin-right:6px"></i>Mensagens de compradores</span>
+                <span class="notif-desc">Nova mensagem recebida no ML</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_mensagens"><span class="toggle-slider"></span></label>
+            </div>
+          </div>
+
+          <!-- Intervalo + Horário de silêncio -->
+          <div class="silence-row">
+            <div class="tg-field">
+              <label><i class="fas fa-clock"></i> Intervalo mínimo entre msgs</label>
+              <select id="tgInterval">
+                <option value="0">Imediato (tempo real)</option>
+                <option value="5">A cada 5 minutos</option>
+                <option value="10">A cada 10 minutos</option>
+                <option value="15">A cada 15 minutos</option>
+                <option value="30">A cada 30 minutos</option>
+                <option value="60">A cada 1 hora</option>
+              </select>
+            </div>
+            <div class="tg-field">
+              <label><i class="fas fa-moon"></i> Silêncio — início</label>
+              <input type="time" id="silenceStart" value="22:00">
+            </div>
+            <div class="tg-field">
+              <label><i class="fas fa-sun"></i> Silêncio — fim</label>
+              <input type="time" id="silenceEnd" value="07:00">
+            </div>
+          </div>
+          <div style="padding-top:12px">
+            <button class="btn-save" onclick="saveNotifConfig()"><i class="fas fa-save"></i> Salvar Configurações de Notificação</button>
+            <span id="notifFeedback" class="tg-msg" style="display:inline-block;margin-left:10px"></span>
+          </div>
         </div>
       </div>
 
@@ -147,8 +244,37 @@ async function load() {
 
 async function loadTelegramConfig() {
   const d = await DB.getTelegramConfig() || {};
-  if (d.chat_id) document.getElementById('tgChatId').value = d.chat_id;
-  if (d.bot_token) document.getElementById('tgToken').placeholder = d.bot_token; // masked
+  if (d.chat_id)   document.getElementById('tgChatId').value = d.chat_id;
+  if (d.bot_token) document.getElementById('tgToken').placeholder = d.bot_token;
+
+  // Load notification prefs
+  const keys = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens'];
+  keys.forEach(k => {
+    const el = document.getElementById(k);
+    if (el && d[k] !== undefined) el.checked = d[k] === true || d[k] === 'true';
+  });
+  if (d.tg_interval != null) document.getElementById('tgInterval').value = d.tg_interval;
+  if (d.silence_start) document.getElementById('silenceStart').value = d.silence_start;
+  if (d.silence_end)   document.getElementById('silenceEnd').value   = d.silence_end;
+}
+
+async function saveNotifConfig() {
+  const body = {
+    tg_vendas:     document.getElementById('tg_vendas').checked,
+    tg_servicos:   document.getElementById('tg_servicos').checked,
+    tg_recursos:   document.getElementById('tg_recursos').checked,
+    tg_reposicao:  document.getElementById('tg_reposicao').checked,
+    tg_perguntas:  document.getElementById('tg_perguntas').checked,
+    tg_mensagens:  document.getElementById('tg_mensagens').checked,
+    tg_interval:   document.getElementById('tgInterval').value,
+    silence_start: document.getElementById('silenceStart').value,
+    silence_end:   document.getElementById('silenceEnd').value,
+  };
+  const res = await DB.saveTelegramConfig(body);
+  const fb = document.getElementById('notifFeedback');
+  fb.textContent = res?.ok ? 'Salvo!' : 'Erro ao salvar';
+  fb.className = 'tg-msg ' + (res?.ok ? 'ok' : 'err');
+  setTimeout(() => { fb.className = 'tg-msg'; }, 3000);
 }
 
 async function saveTelegram() {

@@ -302,29 +302,34 @@ router.get('/webhooks/config', async (req, res) => {
   });
 });
 
+const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_interval','silence_start','silence_end'];
+const ALL_TG_KEYS   = ['telegram_bot_token','telegram_chat_id', ...TG_NOTIF_KEYS];
+
 router.get('/config/telegram', async (req, res) => {
-  const { rows } = await pool.query(`SELECT key, value FROM app_config WHERE key IN ('telegram_bot_token','telegram_chat_id')`);
+  const { rows } = await pool.query(`SELECT key, value FROM app_config WHERE key = ANY($1)`, [ALL_TG_KEYS]);
   const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
-  res.json({
-    bot_token: map.telegram_bot_token ? '****' + map.telegram_bot_token.slice(-4) : '',
-    chat_id: map.telegram_chat_id || '',
-    connected: !!(map.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN),
-  });
+  const result = {
+    bot_token:     map.telegram_bot_token ? '****' + map.telegram_bot_token.slice(-4) : '',
+    chat_id:       map.telegram_chat_id || '',
+    connected:     !!(map.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN),
+  };
+  TG_NOTIF_KEYS.forEach(k => { result[k] = map[k] ?? (k.startsWith('tg_') && k !== 'tg_interval' ? 'false' : map[k] || ''); });
+  result.tg_interval    = map.tg_interval    || '0';
+  result.silence_start  = map.silence_start  || '22:00';
+  result.silence_end    = map.silence_end    || '07:00';
+  res.json(result);
 });
 
 router.patch('/config/telegram', async (req, res) => {
-  const { bot_token, chat_id } = req.body;
-  if (bot_token && bot_token !== '****') {
-    await pool.query(
-      `INSERT INTO app_config (key, value, updated_at) VALUES ('telegram_bot_token',$1,now())
-       ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`, [bot_token]
-    );
-  }
-  if (chat_id != null) {
-    await pool.query(
-      `INSERT INTO app_config (key, value, updated_at) VALUES ('telegram_chat_id',$1,now())
-       ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`, [String(chat_id)]
-    );
+  const { bot_token, chat_id, ...rest } = req.body;
+  const upsert = async (key, val) => pool.query(
+    `INSERT INTO app_config (key, value, updated_at) VALUES ($1,$2,now())
+     ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=now()`, [key, String(val)]
+  );
+  if (bot_token && !bot_token.startsWith('****')) await upsert('telegram_bot_token', bot_token);
+  if (chat_id != null) await upsert('telegram_chat_id', chat_id);
+  for (const k of TG_NOTIF_KEYS) {
+    if (rest[k] !== undefined) await upsert(k, rest[k]);
   }
   res.json({ ok: true });
 });

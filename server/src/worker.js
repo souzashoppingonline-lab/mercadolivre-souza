@@ -14,6 +14,46 @@ const { publish } = require('./ws/hub');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
 
+// ── Telegram notification helper ─────────────────────────
+let _tgLastSent = {};
+async function tgNotify(topic, text) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT key, value FROM app_config WHERE key = ANY($1)`,
+      [['telegram_bot_token','telegram_chat_id', topic, 'tg_interval','silence_start','silence_end']]
+    );
+    const cfg = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const token  = cfg.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = cfg.telegram_chat_id   || process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) return;
+    if (cfg[topic] === 'false' || cfg[topic] === false) return;
+
+    // Silence window check
+    const now = new Date();
+    const hhmm = now.toTimeString().slice(0,5);
+    const ss = cfg.silence_start || '22:00';
+    const se = cfg.silence_end   || '07:00';
+    const inSilence = ss > se ? (hhmm >= ss || hhmm < se) : (hhmm >= ss && hhmm < se);
+    if (inSilence) return;
+
+    // Interval throttle
+    const interval = Number(cfg.tg_interval || 0) * 60 * 1000;
+    if (interval > 0) {
+      const last = _tgLastSent[topic] || 0;
+      if (Date.now() - last < interval) return;
+    }
+    _tgLastSent[topic] = Date.now();
+
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+    });
+  } catch (e) {
+    console.error('[worker] tgNotify error:', e.message);
+  }
+}
+
 const handlers = {
   orders_v2: handleOrder,
   payments: handleOrder,
@@ -65,6 +105,11 @@ async function handleOrder({ resource, storeId }) {
   await redis.del(`kpis:${storeId}`);
   await redis.del('kpis:summary');
   await publish('order_updated', { id: order.id, status: order.status });
+
+  if (order.status === 'paid') {
+    const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
+    await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n👤 ${order.buyer?.nickname||'—'}`);
+  }
 }
 
 async function handleQuestion({ resource, storeId }) {
@@ -82,6 +127,9 @@ async function handleQuestion({ resource, storeId }) {
   );
 
   await publish('question_received', { id: q.id, status: q.status });
+  if (q.status === 'UNANSWERED') {
+    await tgNotify('tg_perguntas', `❓ <b>Nova pergunta sem resposta</b>\n🏷️ Item: ${q.item_id||'—'}\n💬 ${(q.text||'').slice(0,200)}`);
+  }
 }
 
 async function handleMessage({ resource, storeId }) {
@@ -96,6 +144,7 @@ async function handleMessage({ resource, storeId }) {
   );
 
   await publish('message_received', { pack_id: packId });
+  await tgNotify('tg_mensagens', `💬 <b>Nova mensagem de comprador</b>\n👤 ${pack.buyer?.nickname||'—'}\n📝 ${(last?.text||'').slice(0,200)}`);
 }
 
 async function handleItem({ resource, storeId }) {
@@ -113,8 +162,9 @@ async function handleItem({ resource, storeId }) {
     [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id]
   );
 
-  if (item.available_quantity <= 3) {
+  if (item.available_quantity <= 5) {
     await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity });
+    await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
   }
   await publish('anuncio_updated', { id: item.id, status: item.status });
 }

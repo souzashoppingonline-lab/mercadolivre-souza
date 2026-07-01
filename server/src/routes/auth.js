@@ -108,6 +108,16 @@ async function refreshToken(storeId) {
     }),
   });
 
+  if (res.status === 400 || res.status === 401) {
+    // Token permanently invalid — mark store as needing reauthorization and stop retrying
+    await pool.query(
+      `UPDATE stores SET access_token=NULL, token_expires_at='1970-01-01', updated_at=now() WHERE id=$1`,
+      [storeId]
+    );
+    const err = new Error(`TOKEN_INVALID: store ${storeId} needs reauthorization — visit /auth/login`);
+    err.permanent = true;
+    throw err;
+  }
   if (!res.ok) throw new Error(`Refresh failed: HTTP ${res.status}`);
   const tokens = await res.json();
 

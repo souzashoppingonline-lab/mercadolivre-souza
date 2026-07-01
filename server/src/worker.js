@@ -309,7 +309,12 @@ const worker = new Worker(
       await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [logId]);
     } catch (err) {
       await pool.query(`UPDATE webhook_logs SET status='failed', error=$2, processed_at=now() WHERE id=$1`, [logId, err.message]);
-      // On 429 tell BullMQ to retry with exponential backoff
+
+      if (err.permanent || err.message?.includes('TOKEN_INVALID')) {
+        // Token permanently invalid — discard job, no retry, alert via Telegram
+        tgNotify('tg_token', `⚠️ Loja ${storeId} com token inválido. Reconecte em /auth/login`);
+        return; // do NOT throw — prevents BullMQ from retrying
+      }
       if (err.message?.includes('429')) {
         err.message = `RATE_LIMITED: ${err.message}`;
       }

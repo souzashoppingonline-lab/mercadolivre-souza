@@ -98,6 +98,15 @@
 <script src="../js/sidebar.js"></script>
 <script>
 const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+
+function copyMlb(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const icon = btn.querySelector('i');
+    icon.className = 'fas fa-check';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { icon.className = 'fas fa-copy'; btn.style.color = 'var(--text-muted)'; }, 1500);
+  });
+}
 const fmtHora = d => d ? new Date(d).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
 const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
 
@@ -166,7 +175,10 @@ function renderTable() {
         ${badgeHtml}
       </td>
       <td style="font-size:11px;white-space:nowrap">${r.conta||'—'}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${r.item_id||'—'}</td>
+      <td style="font-size:11px;color:var(--text-muted);white-space:nowrap">
+        ${r.item_id||'—'}
+        ${r.item_id ? `<button onclick="copyMlb('${r.item_id}',this)" title="Copiar MLB" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0 3px;font-size:11px;vertical-align:middle" onmouseenter="this.style.color='var(--primary)'" onmouseleave="this.style.color='var(--text-muted)'"><i class="fas fa-copy"></i></button>` : ''}
+      </td>
       <td class="tbl-price">${r.original_price > 0 ? R(r.original_price) : '—'}</td>
       <td class="tbl-price">${r.promo_price > 0 ? R(r.promo_price) : '—'}</td>
       <td class="tbl-price discount">${r.discount_pct > 0 ? r.discount_pct.toFixed(0)+'%' : '—'}</td>

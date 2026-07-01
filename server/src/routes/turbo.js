@@ -29,40 +29,45 @@ function norm(s) {
     .trim();
 }
 
-// Mapeamento: campo interno → aliases normalizados
+// Mapeamento: campo interno → aliases normalizados (ordem importa: mais específico primeiro)
 const COL_MAP = {
-  sale_id:         ['id da venda', 'id venda'],
-  cart_id:         ['id do carrinho', 'id carrinho'],
-  buyer:           ['nome do comprador', 'comprador', 'buyer'],
-  state:           ['estado frete', 'estado', 'uf'],
-  item_code:       ['codigo', 'cod anuncio', 'item id', 'mlb'],
-  title:           ['anuncio', 'titulo', 'title', 'nome do produto'],
-  account:         ['conta', 'loja', 'seller'],
-  shipping_mode:   ['modalidade', 'modalidade de frete'],
-  ads:             ['ads', 'publicidade'],
-  sku:             ['sku', 'codigo interno'],
-  sale_date:       ['data', 'data da venda', 'data pedido'],
-  shipping_type:   ['frete', 'tipo frete', 'tipo de frete'],
-  unit_price:      ['valor unit', 'preco unitario', 'valor unitario'],
-  quantity:        ['qtd', 'quantidade', 'qty'],
-  revenue:         ['faturamento ml', 'faturamento', 'receita', 'gmv'],
-  cost:            ['custo', 'cogs', 'cmv'],
-  tax:             ['imposto', 'impostos'],
-  ml_fee:          ['tarifa de venda', 'tarifa ml', 'taxa ml', 'tarifa'],
-  buyer_shipping:  ['frete comprador'],
-  seller_shipping: ['frete vendedor'],
-  margin:          ['margem contrib', 'margem de contribuicao', 'margem contribuicao'],
-  margin_pct:      ['mc em', 'margem', 'mc %', '% margem'],
-  order_status:    ['status pedido', 'status do pedido', 'situacao'],
-  payment_status:  ['pagamentos', 'pagamento', 'status pagamento'],
-  shipping_id:     ['id frete', 'id do frete', 'shipping id'],
+  sale_id:         ['id da venda', 'id venda', 'numero do pedido', 'numero pedido', 'pedido', 'order id', 'n pedido'],
+  cart_id:         ['id do carrinho', 'id carrinho', 'carrinho'],
+  buyer:           ['nome do comprador', 'comprador', 'buyer', 'nome comprador'],
+  state:           ['estado frete', 'estado do comprador', 'estado', 'uf', 'estado destinatario'],
+  item_code:       ['codigo do anuncio', 'cod anuncio', 'codigo anuncio', 'codigo', 'item id', 'mlb', 'id anuncio'],
+  title:           ['titulo do anuncio', 'nome do anuncio', 'anuncio', 'titulo', 'title', 'nome do produto', 'produto', 'descricao'],
+  account:         ['conta do vendedor', 'conta', 'loja', 'seller', 'vendedor'],
+  shipping_mode:   ['modalidade de entrega', 'modalidade de frete', 'modalidade', 'tipo de envio'],
+  ads:             ['publicidade', 'ads', 'custo publicidade', 'anuncios'],
+  sku:             ['sku', 'codigo interno', 'cod interno'],
+  sale_date:       ['data da venda', 'data da compra', 'data pedido', 'data', 'data do pedido'],
+  shipping_type:   ['tipo de frete', 'tipo frete', 'frete tipo', 'entrega'],
+  unit_price:      ['valor unitario', 'preco unitario', 'valor unit', 'preco unit', 'preco', 'valor'],
+  quantity:        ['quantidade', 'qtd', 'qty', 'unidades'],
+  revenue:         ['faturamento ml', 'faturamento bruto', 'faturamento', 'receita', 'gmv', 'total'],
+  cost:            ['custo do produto', 'custo', 'cogs', 'cmv', 'custo unitario'],
+  tax:             ['imposto', 'impostos', 'taxa imposto'],
+  ml_fee:          ['tarifa de venda', 'tarifa ml', 'taxa ml', 'taxa de venda', 'tarifa', 'comissao ml'],
+  buyer_shipping:  ['frete pago pelo comprador', 'frete comprador', 'valor frete comprador'],
+  seller_shipping: ['frete pago pelo vendedor', 'frete vendedor', 'valor frete vendedor', 'custo frete'],
+  margin:          ['margem de contribuicao', 'margem contrib', 'margem contribuicao', 'mc r'],
+  margin_pct:      ['margem de contribuicao em', 'mc em', 'margem em', 'mc %', '% margem', 'margem pct', 'margem  em'],
+  order_status:    ['status do pedido', 'status pedido', 'situacao do pedido', 'situacao', 'status'],
+  payment_status:  ['status do pagamento', 'status pagamento', 'pagamentos', 'pagamento'],
+  shipping_id:     ['id do frete', 'id frete', 'shipping id', 'codigo frete'],
 };
 
 function detectColumns(headers) {
   const normed = headers.map(h => norm(h));
   const map = {};
   for (const [field, aliases] of Object.entries(COL_MAP)) {
-    const idx = normed.findIndex(h => aliases.some(a => h.includes(a)));
+    // 1) exact match
+    let idx = normed.findIndex(h => aliases.some(a => h === a));
+    // 2) starts-with match
+    if (idx === -1) idx = normed.findIndex(h => aliases.some(a => h.startsWith(a)));
+    // 3) includes match
+    if (idx === -1) idx = normed.findIndex(h => aliases.some(a => h.includes(a)));
     if (idx !== -1) map[field] = idx;
   }
   return map;
@@ -120,12 +125,14 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
   const headers = rows[0].map(String);
   const colMap  = detectColumns(headers);
+  console.log('[turbo] headers detectados:', headers.map((h, i) => `${i}:"${h}"`).join(' | '));
+  console.log('[turbo] mapeamento:', Object.entries(colMap).map(([k,v]) => `${k}=${headers[v]}`).join(', '));
 
   if (!colMap.sale_id) {
     return res.status(400).json({
       error: 'Coluna "ID da Venda" não encontrada. Verifique se é uma planilha do Mercado Turbo.',
       headers_detected: headers,
-      tip: 'Use a aba Financeiro > Exportar no Mercado Turbo',
+      tip: 'Colunas esperadas: "ID da Venda", "Número do Pedido" ou similar',
     });
   }
 

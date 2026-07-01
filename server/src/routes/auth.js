@@ -10,6 +10,32 @@ const router = express.Router();
 const ML_AUTH_URL = 'https://auth.mercadolivre.com.br/authorization';
 const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 
+const DIAG_STYLE = `body{font-family:sans-serif;background:#1a1d23;color:#f0f0f0;max-width:680px;margin:40px auto;padding:24px}
+  h2{color:#FFE600;margin-bottom:4px}table{width:100%;border-collapse:collapse;margin:16px 0}
+  td{padding:10px 12px;border:1px solid #2a2d35;vertical-align:top}td:first-child{width:140px;color:#888;font-size:13px}
+  code{background:#2a2d35;padding:2px 6px;border-radius:4px;font-size:13px;word-break:break-all}
+  .ok{color:#4CAF50}.err{color:#f44336}.warn{color:#FF9800}
+  a{color:#FFE600;text-decoration:none}p{line-height:1.6;color:#aaa}`;
+
+// Diagnóstico OAuth — mostra client_id e redirect_uri sem expor o secret
+router.get('/config', (req, res) => {
+  const cid = env.ml.clientId;
+  const ruri = env.ml.redirectUri;
+  const csec = env.ml.clientSecret;
+  res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Config OAuth</title>
+    <style>${DIAG_STYLE}</style></head><body>
+    <h2>Configuração OAuth — Mercado Livre</h2>
+    <p>Compare estes valores com o cadastrado em <a href="https://developers.mercadolivre.com.br" target="_blank">developers.mercadolivre.com.br</a> → Aplicações → sua app.</p>
+    <table>
+      <tr><td>client_id</td><td>${cid ? `<code>${cid}</code>` : '<span class="err">❌ NÃO CONFIGURADO (ML_CLIENT_ID)</span>'}</td></tr>
+      <tr><td>client_secret</td><td>${csec ? '<span class="ok">✓ configurado (oculto)</span>' : '<span class="err">❌ NÃO CONFIGURADO (ML_CLIENT_SECRET)</span>'}</td></tr>
+      <tr><td>redirect_uri</td><td>${ruri ? `<code>${ruri}</code>` : '<span class="err">❌ NÃO CONFIGURADO (ML_REDIRECT_URI)</span>'}</td></tr>
+    </table>
+    <p><strong>O redirect_uri acima deve estar cadastrado EXATAMENTE</strong> em "URLs de redirecionamento" no painel do app ML. Qualquer diferença (http vs https, barra no final, porta) causa o erro "não foi possível conectar".</p>
+    <p><a href="/auth/login">→ Tentar autorizar uma conta</a></p>
+    </body></html>`);
+});
+
 // Step 1 — redirect to Mercado Livre authorization page
 router.get('/login', (req, res) => {
   const params = new URLSearchParams({
@@ -26,7 +52,21 @@ router.get(['/callback', '/ml/callback'], async (req, res) => {
   const { code, error } = req.query;
 
   if (error || !code) {
-    return res.status(400).send(`Autorização negada: ${error || 'sem código'}`);
+    return res.status(400).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Erro OAuth</title>
+      <style>${DIAG_STYLE}</style></head><body>
+      <h2>❌ Autorização negada pelo Mercado Livre</h2>
+      <p>Erro retornado: <code>${error || 'sem código de autorização'}</code></p>
+      <h3 style="color:#FFE600;margin-top:24px">O que verificar:</h3>
+      <table>
+        <tr><td>redirect_uri configurado</td><td><code>${env.ml.redirectUri || 'NÃO CONFIGURADO'}</code></td></tr>
+        <tr><td>client_id configurado</td><td><code>${env.ml.clientId || 'NÃO CONFIGURADO'}</code></td></tr>
+      </table>
+      <p>O <strong>redirect_uri</strong> acima deve estar cadastrado exatamente igual em
+        <a href="https://developers.mercadolivre.com.br" target="_blank">developers.mercadolivre.com.br</a>
+        → Aplicações → sua app → URLs de redirecionamento.</p>
+      <p>Se o app está em modo <strong>Teste</strong>, apenas usuários na lista de testers podem autorizar.</p>
+      <p><a href="/auth/config">→ Ver diagnóstico completo</a> &nbsp;|&nbsp; <a href="/auth/login">→ Tentar novamente</a></p>
+      </body></html>`);
   }
 
   try {

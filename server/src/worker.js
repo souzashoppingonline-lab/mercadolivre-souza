@@ -220,12 +220,15 @@ async function handleOffer({ resource, storeId }) {
 
   try {
     const offer = await ml.getOffer(offerId, storeId);
-    currentStatus  = offer.status || currentStatus;
-    originalPrice  = Number(offer.original_price || offer.base_price  || 0);
-    promoPrice     = Number(offer.offer_price    || offer.new_price   || 0);
-    discountPct    = originalPrice > 0 ? ((originalPrice - promoPrice) / originalPrice) * 100 : 0;
+    currentStatus  = offer.status?.id || offer.status || currentStatus;
     rawData        = offer;
     if (!itemTitle) itemTitle = offer.title || null;
+
+    // Offers endpoint has no price fields — get current price from items table
+    if (itemId) {
+      const itemRow = await pool.query(`SELECT price FROM items WHERE ml_id=$1 LIMIT 1`, [itemId]);
+      promoPrice = Number(itemRow.rows[0]?.price || 0);
+    }
   } catch (e) {
     // 429 or other error — save the event without price details, don't throw
     console.warn(`[worker] getOffer fallback (${e.message}) — saving without prices`);

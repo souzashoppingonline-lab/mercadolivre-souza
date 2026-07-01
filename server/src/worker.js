@@ -72,6 +72,13 @@ const handlers = {
 
 async function handleOrder({ resource, storeId }) {
   const orderId = resource.split('/').pop();
+
+  // Skip duplicate — if this order was already fetched in the last 10 minutes, don't call ML API again
+  const recent = await pool.query(
+    `SELECT id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [orderId]
+  );
+  if (recent.rows.length) return;
+
   const order = await ml.getOrder(orderId, storeId);
 
   const item0 = order.order_items?.[0] || {};
@@ -122,6 +129,10 @@ async function handleOrder({ resource, storeId }) {
 
 async function handleQuestion({ resource, storeId }) {
   const questionId = resource.split('/').pop();
+  const recent = await pool.query(
+    `SELECT id FROM questions WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [questionId]
+  );
+  if (recent.rows.length) return;
   const q = await ml.getQuestion(questionId, storeId);
 
   await pool.query(
@@ -157,6 +168,10 @@ async function handleMessage({ resource, storeId }) {
 
 async function handleItem({ resource, storeId }) {
   const itemId = resource.split('/').pop();
+  const recent = await pool.query(
+    `SELECT ml_id FROM items WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [itemId]
+  );
+  if (recent.rows.length) return;
   const item = await ml.getItem(itemId, storeId);
 
   await pool.query(

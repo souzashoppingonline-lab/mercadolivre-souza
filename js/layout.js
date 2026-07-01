@@ -33,6 +33,9 @@ const NAV_ITEMS = [
     { href: 'devolucoes.html', icon: 'fa-undo', label: 'Devoluções' },
     { href: 'anuncios-problema.html', icon: 'fa-exclamation-triangle', label: 'Anúncios Problema' },
   ]},
+  { section: 'Financeiro', items: [
+    { href: 'vendas-turbo.html', icon: 'fa-file-excel', label: 'Vendas ML Turbo' },
+  ]},
   { section: 'Sistema', items: [
     { href: 'monitor.html', icon: 'fa-telegram fab', label: 'Monitor & Telegram', brand: true },
     { href: 'schedule.html', icon: 'fa-calendar-check', label: 'Schedule' },

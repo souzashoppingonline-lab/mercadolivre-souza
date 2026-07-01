@@ -102,6 +102,12 @@ const DB = {
   async getPerformance(params={}) { return this._get('/produtos/performance', params); },
   async getVisitasAnuncio(id, days=30) { return this._get(`/anuncios/${id}/visitas`, { days }); },
 
+  // ── Vendas ML Turbo (fonte financeira oficial) ─────────────
+  async getTurboKpis(params={})      { return this._get('/turbo/kpis', params); },
+  async getTurboSales(params={})     { return this._get('/turbo/sales', params); },
+  async getTurboCharts(params={})    { return this._get('/turbo/charts', params); },
+  async getTurboFiltersMeta()        { return this._get('/turbo/filters-meta'); },
+
   // ── Publicidade & Concorrentes ─────────────────────────────
   async getPublicidade()          { return this._get('/publicidade'); },
   async getConcorrentes(itemId)   { return this._get('/concorrentes', { itemId }); },

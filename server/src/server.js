@@ -4,6 +4,7 @@ const http = require('http');
 const cors = require('cors');
 const env = require('./config/env');
 const apiRoutes = require('./routes/api');
+const turboRoutes = require('./routes/turbo');
 const webhookGateway = require('./routes/webhookGateway');
 const authRoutes = require('./routes/auth');
 const wsHub = require('./ws/hub');
@@ -14,6 +15,7 @@ app.use(express.json());
 
 // Frontend reads exclusively from here.
 app.use('/api', apiRoutes);
+app.use('/api/turbo', turboRoutes);
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

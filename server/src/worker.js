@@ -316,8 +316,13 @@ const worker = new Worker(
         return; // do NOT throw — prevents BullMQ from retrying
       }
       if (err.message?.includes('OAUTH_RATE_LIMITED')) {
-        // OAuth token endpoint rate-limited — cooldown already set in mlClient; discard job without retrying
-        tgNotify('tg_429', `🔐 <b>OAuth rate limit loja ${storeId}</b>\nPróxima tentativa automática em 35 min.\nSe persistir após 1h: reconecte a loja em /lojas`).catch(() => {});
+        // Notify only once per store per hour — avoid Telegram flood from queued jobs
+        const now = Date.now();
+        const lastNotified = oauthNotified.get(storeId) || 0;
+        if (now - lastNotified > 60 * 60 * 1000) {
+          oauthNotified.set(storeId, now);
+          tgNotify('tg_429', `🔐 <b>OAuth rate limit loja ${storeId}</b>\nPróxima tentativa automática em 35 min.\nSe persistir após 1h: reconecte a loja em /lojas`).catch(() => {});
+        }
         return; // do NOT throw — BullMQ won't retry; cooldown in mlClient prevents flood
       }
       if (err.message?.includes('429')) {
@@ -343,6 +348,7 @@ worker.on('failed', (job, err) => {
   }
 });
 let recentFailures = 0;
+const oauthNotified = new Map(); // storeId → last Telegram notification timestamp
 
 // ── Daily reconciliation at 03:00 ────────────────────────────
 // Fetches orders from the last 25h per store and upserts any that were missed

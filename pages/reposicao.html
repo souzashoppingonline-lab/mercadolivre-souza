@@ -138,6 +138,7 @@
               <tr>
                 <th style="width:52px"></th>
                 <th>Produto</th>
+                <th>MLB</th>
                 <th>Loja</th>
                 <th>Estoque</th>
                 <th>Vendas/Dia</th>
@@ -223,12 +224,13 @@ function renderGrid(rows) {
         ${thumb}
         <div class="product-info">
           <div class="product-title" title="${(r.title||'').replace(/"/g,'&quot;')}">${r.title||'Sem título'}</div>
+          <div style="font-size:.68rem;color:var(--text-muted);margin-bottom:6px;font-family:monospace">${r.ml_id||''}</div>
           <div class="stock-row">
             <span class="stock-num ${n}">${r.stock}</span>
             <span class="dias-badge ${n}">${dr.txt}</span>
           </div>
           <div class="product-meta">
-            ${lojaName(r)!=='—' ? `<span class="loja-badge" title="${lojaName(r)}">${lojaName(r)}</span>` : ''}
+            <span class="loja-badge" title="${lojaName(r)}">${lojaName(r)}</span>
             <span class="price-text">${fmt(r.price)}</span>
           </div>
         </div>
@@ -240,7 +242,7 @@ function renderGrid(rows) {
 function renderTable(rows) {
   const tbody = document.getElementById('reposTable');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhum produto para repor</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum produto para repor</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map(r => {
@@ -254,7 +256,8 @@ function renderTable(rows) {
       : (r.title||'—');
     return `<tr>
       <td class="thumb-cell">${thumbHtml}</td>
-      <td style="max-width:260px">${titleHtml}</td>
+      <td style="max-width:240px">${titleHtml}</td>
+      <td><code style="font-size:.72rem;color:var(--text-muted);white-space:nowrap">${r.ml_id||'—'}</code></td>
       <td><span style="font-size:.75rem;color:var(--text-muted)">${lojaName(r)}</span></td>
       <td style="font-weight:700;font-size:1.1rem" class="${n==='zero'?'text-red':''}">${r.stock}</td>
       <td>${(r.daily_sales||0).toFixed(1)}</td>

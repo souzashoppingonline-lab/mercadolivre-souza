@@ -283,7 +283,7 @@ router.get('/alertas/reposicao', async (req, res) => {
   const { threshold = 15, store_id = '' } = req.query;
   const { rows } = await pool.query(
     `SELECT i.ml_id, i.store_id,
-            COALESCE(s.nickname, 'Loja ' || i.store_id) as loja,
+            COALESCE(s.nickname, 'Loja ' || i.store_id::text, 'Sem loja') as loja,
             i.title, i.price,
             i.available_quantity as stock, i.sold_quantity,
             COALESCE(i.sold_quantity::float / 30, 0) as daily_sales,

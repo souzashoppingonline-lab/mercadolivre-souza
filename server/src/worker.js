@@ -315,8 +315,13 @@ const worker = new Worker(
         tgNotify('tg_token', `⚠️ Loja ${storeId} com token inválido. Reconecte em /auth/login`);
         return; // do NOT throw — prevents BullMQ from retrying
       }
+      if (err.message?.includes('OAUTH_RATE_LIMITED')) {
+        // OAuth token endpoint rate-limited — cooldown already set in mlClient; discard job without retrying
+        tgNotify('tg_429', `🔐 <b>OAuth rate limit loja ${storeId}</b>\nPróxima tentativa automática em 35 min.\nSe persistir após 1h: reconecte a loja em /lojas`).catch(() => {});
+        return; // do NOT throw — BullMQ won't retry; cooldown in mlClient prevents flood
+      }
       if (err.message?.includes('429')) {
-        tgNotify('tg_429', `⏱️ <b>Rate limit ML (429)</b>\nAPI do Mercado Livre está limitando requisições.\nJob: ${job.name}#${job.id}`).catch(() => {});
+        tgNotify('tg_429', `⏱️ <b>Rate limit ML API (429)</b>\nAPI do Mercado Livre está limitando requisições.\nJob: ${job.name}#${job.id}`).catch(() => {});
         err.message = `RATE_LIMITED: ${err.message}`;
       }
       throw err;

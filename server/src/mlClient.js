@@ -8,8 +8,17 @@ const BASE = 'https://api.mercadolibre.com';
 
 // Per-store mutex: prevents concurrent token refreshes that trigger ML 429
 const refreshLocks = new Map();
+// Per-store OAuth cooldown: after a 429 on token refresh, block further attempts for 35 min
+const oauthCooldown = new Map(); // storeId → unix ms when cooldown expires
 
 async function getAccessToken(storeId) {
+  // Check OAuth cooldown — don't touch ML OAuth endpoint during cooldown
+  const coolUntil = oauthCooldown.get(storeId) || 0;
+  if (Date.now() < coolUntil) {
+    const mins = Math.ceil((coolUntil - Date.now()) / 60000);
+    throw new Error(`OAUTH_RATE_LIMITED: store ${storeId} em cooldown por mais ${mins} min`);
+  }
+
   const { rows } = await pool.query(
     'SELECT access_token, token_expires_at FROM stores WHERE id = $1', [storeId]
   );
@@ -26,7 +35,16 @@ async function getAccessToken(storeId) {
   }
 
   const { refreshToken } = require('./routes/auth');
-  const promise = refreshToken(storeId).finally(() => refreshLocks.delete(storeId));
+  const promise = refreshToken(storeId)
+    .catch(err => {
+      if (err.oauthRateLimit) {
+        // Block further refresh attempts for 35 min
+        oauthCooldown.set(storeId, Date.now() + 35 * 60 * 1000);
+        console.warn(`[mlClient] OAuth 429 store=${storeId} — cooldown 35 min`);
+      }
+      throw err;
+    })
+    .finally(() => refreshLocks.delete(storeId));
   refreshLocks.set(storeId, promise);
   return promise;
 }

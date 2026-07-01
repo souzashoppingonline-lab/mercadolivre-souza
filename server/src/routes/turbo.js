@@ -335,24 +335,24 @@ router.get('/charts', async (req, res) => {
       f.params
     ),
     pool.query(
-      `SELECT item_code, title, SUM(revenue) revenue, SUM(quantity) qty
+      `SELECT item_code, title, account, SUM(revenue) revenue, SUM(quantity) qty
        FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL
-       GROUP BY item_code, title ORDER BY revenue DESC LIMIT 20`,
+       GROUP BY item_code, title, account ORDER BY revenue DESC LIMIT 20`,
       f.params
     ),
     pool.query(
-      `SELECT item_code, title, SUM(margin) lucro, SUM(quantity) qty, SUM(revenue) revenue,
+      `SELECT item_code, title, account, SUM(margin) lucro, SUM(quantity) qty, SUM(revenue) revenue,
               CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END AS margem_pct
        FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL
-       GROUP BY item_code, title ORDER BY lucro DESC LIMIT 20`,
+       GROUP BY item_code, title, account ORDER BY lucro DESC LIMIT 20`,
       f.params
     ),
     pool.query(
-      `SELECT item_code, title,
+      `SELECT item_code, title, account,
               CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END AS margem_pct,
               SUM(revenue) revenue, SUM(quantity) qty, SUM(margin) lucro
        FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL AND revenue > 50
-       GROUP BY item_code, title HAVING SUM(quantity) >= 3
+       GROUP BY item_code, title, account HAVING SUM(quantity) >= 3
        ORDER BY margem_pct ASC LIMIT 20`,
       f.params
     ),
@@ -369,10 +369,10 @@ router.get('/charts', async (req, res) => {
       f.params
     ),
     pool.query(
-      `SELECT item_code, title, SUM(quantity) qty, SUM(revenue) revenue, SUM(margin) lucro,
+      `SELECT item_code, title, account, SUM(quantity) qty, SUM(revenue) revenue, SUM(margin) lucro,
               CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END AS margem_pct
        FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL
-       GROUP BY item_code, title ORDER BY qty DESC LIMIT 20`,
+       GROUP BY item_code, title, account ORDER BY qty DESC LIMIT 20`,
       f.params
     ),
     pool.query(

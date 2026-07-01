@@ -82,6 +82,7 @@
     .rank-table tr:hover td{background:rgba(255,255,255,.03)}
     .rank-num{color:var(--text-muted);font-size:10px;font-weight:700;width:22px;text-align:center}
     .rank-name{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .rank-store{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(255,230,0,.12);color:rgba(255,230,0,.7);border:1px solid rgba(255,230,0,.2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
     .rank-val{text-align:right;white-space:nowrap;font-weight:600}
     .rank-sub{text-align:right;font-size:10px;color:var(--text-muted)}
     /* Gráficos */
@@ -675,9 +676,10 @@ function buildRanking(tbodyId, rows, mapper, color) {
     const m=mapper(r);
     const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`<span class="rank-num">${i+1}</span>`;
     const pctBadge = m.pct!=null ? `<span style="font-size:10px;color:${m.pct>=20?'var(--green)':m.pct>=10?'var(--orange)':'var(--red)'}">${pct(m.pct)}</span>` : '';
+    const storeBadge = r.account ? `<br><span class="rank-store" title="${r.account}">${r.account}</span>` : '';
     return `<tr>
       <td style="width:28px;text-align:center">${medal}</td>
-      <td class="rank-name" title="${m.name||''}">${m.name||'—'}</td>
+      <td class="rank-name" title="${m.name||''}">${m.name||'—'}${storeBadge}</td>
       <td class="rank-val" style="color:${color}">${m.main}<br><span class="rank-sub">${m.sub}</span>${pctBadge}</td>
     </tr>`;
   }).join('');

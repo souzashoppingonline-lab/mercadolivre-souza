@@ -8,6 +8,52 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Dias da Semana'; window.ACTIVE_NAV='diasemana.html';</script>
+  <style>
+    .ds-hero{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:20px}
+    .ds-day{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 10px;text-align:center;cursor:default;transition:.2s;position:relative;overflow:hidden}
+    .ds-day:hover{border-color:rgba(255,230,0,.4);transform:translateY(-2px)}
+    .ds-day.best{border-color:var(--primary);background:rgba(255,230,0,.06)}
+    .ds-day.best::after{content:'MELHOR';position:absolute;top:6px;right:6px;font-size:8px;font-weight:800;color:var(--primary);background:rgba(255,230,0,.15);padding:1px 5px;border-radius:3px}
+    .ds-day.worst{border-color:rgba(244,67,54,.4)}
+    .ds-day-name{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+    .ds-day-orders{font-size:28px;font-weight:800;color:var(--primary);line-height:1}
+    .ds-day-label{font-size:10px;color:var(--text-muted);margin-bottom:8px}
+    .ds-day-rev{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px}
+    .ds-day-bar{height:4px;border-radius:2px;background:var(--border);margin-top:4px}
+    .ds-day-bar-fill{height:100%;border-radius:2px;background:var(--primary);transition:.6s}
+    .ds-day.best .ds-day-bar-fill{background:var(--primary)}
+    .ds-day.worst .ds-day-bar-fill{background:#f44336}
+
+    .ds-insights{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
+    .ds-insight{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:14px}
+    .ds-insight-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+    .ds-insight-val{font-size:20px;font-weight:800;color:var(--text)}
+    .ds-insight-lbl{font-size:11px;color:var(--text-muted);margin-top:2px}
+
+    .ds-chart-wrap{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px}
+    .ds-chart-title{font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+
+    .ds-filter-row{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+    .ds-filter-row select,.ds-filter-row input{background:var(--card-bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px}
+    .ds-filter-row button{background:var(--primary);color:#1a1d23;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
+
+    .ds-table-wrap{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .ds-table{width:100%;border-collapse:collapse}
+    .ds-table th{padding:10px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)}
+    .ds-table td{padding:12px 16px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04)}
+    .ds-table tr:last-child td{border-bottom:none}
+    .ds-table tr:hover td{background:rgba(255,255,255,.03)}
+    .ds-medal{font-size:16px}
+    .ds-pct-bar{display:flex;align-items:center;gap:8px}
+    .ds-pct-track{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+    .ds-pct-fill{height:100%;border-radius:3px;background:var(--primary)}
+    .tag-best{background:rgba(255,230,0,.15);color:var(--primary);font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px}
+    .tag-worst{background:rgba(244,67,54,.15);color:#f44336;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px}
+    .skeleton{animation:pulse 1.4s infinite;background:var(--border);border-radius:6px}
+    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.9}}
+    @media(max-width:900px){.ds-hero{grid-template-columns:repeat(4,1fr)}.ds-insights{grid-template-columns:1fr 1fr}}
+    @media(max-width:600px){.ds-hero{grid-template-columns:repeat(2,1fr)}.ds-insights{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,13 +61,49 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header"><h3>Desempenho por Dia da Semana</h3></div>
-        <canvas id="diasChart" height="80"></canvas>
+
+      <!-- Filtros -->
+      <div class="ds-filter-row">
+        <label style="font-size:13px;color:var(--text-muted)">Período:</label>
+        <select id="fDays">
+          <option value="30">Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90" selected>Últimos 90 dias</option>
+          <option value="180">Últimos 6 meses</option>
+          <option value="365">Último ano</option>
+        </select>
+        <button onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        <span id="wsStatus" style="margin-left:auto;font-size:11px;color:var(--text-muted)"></span>
       </div>
-      <div class="card-grid" id="diasCards">
-        <div class="empty-state" style="grid-column:1/-1">Carregando...</div>
+
+      <!-- Cards por dia -->
+      <div class="ds-hero" id="dsHero">
+        ${Array(7).fill('<div class="ds-day"><div class="skeleton" style="height:14px;margin-bottom:10px"></div><div class="skeleton" style="height:32px;width:50%;margin:0 auto 8px"></div><div class="skeleton" style="height:10px;width:70%;margin:0 auto"></div></div>').join('')}
       </div>
+
+      <!-- Insights -->
+      <div class="ds-insights" id="dsInsights">
+        <div class="ds-insight"><div class="ds-insight-icon skeleton" style="background:var(--border)"></div><div><div class="skeleton" style="height:20px;width:80px;margin-bottom:6px"></div><div class="skeleton" style="height:12px;width:120px"></div></div></div>
+        <div class="ds-insight"><div class="ds-insight-icon skeleton" style="background:var(--border)"></div><div><div class="skeleton" style="height:20px;width:80px;margin-bottom:6px"></div><div class="skeleton" style="height:12px;width:120px"></div></div></div>
+        <div class="ds-insight"><div class="ds-insight-icon skeleton" style="background:var(--border)"></div><div><div class="skeleton" style="height:20px;width:80px;margin-bottom:6px"></div><div class="skeleton" style="height:12px;width:120px"></div></div></div>
+      </div>
+
+      <!-- Gráfico barras -->
+      <div class="ds-chart-wrap">
+        <div class="ds-chart-title"><i class="fas fa-chart-bar" style="color:var(--primary)"></i> Pedidos & Receita por Dia</div>
+        <canvas id="diasChart" height="70"></canvas>
+      </div>
+
+      <!-- Tabela detalhada -->
+      <div class="ds-table-wrap">
+        <table class="ds-table">
+          <thead><tr>
+            <th>#</th><th>Dia</th><th>Pedidos</th><th>Receita</th><th>Ticket Médio</th><th>% do Total</th>
+          </tr></thead>
+          <tbody id="diasTbody"><tr><td colspan="6" class="empty-state" style="padding:32px;text-align:center">Carregando...</td></tr></tbody>
+        </table>
+      </div>
+
     </div>
   </main>
 </div>
@@ -31,30 +113,117 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
-const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-async function load() {
-  const data = await DB.getDiasSemana() || { days:[] };
-  const rows = data.days || [];
-  new Chart(document.getElementById('diasChart'), {
-    type:'radar',
-    data:{ labels: rows.map(r=>DIAS[r.day]||r.day), datasets:[{
-      label:'Pedidos', data: rows.map(r=>r.orders||0),
-      borderColor:'#FFE600', backgroundColor:'rgba(255,230,0,0.1)', pointBackgroundColor:'#FFE600'
-    }]},
-    options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#f0f0f0' } } }, scales:{ r:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.1)' }, pointLabels:{ color:'#f0f0f0' } } } }
-  });
-  const max = Math.max(...rows.map(r=>r.orders||0));
-  document.getElementById('diasCards').innerHTML = rows.map(r=>`
-    <div class="stat-card">
-      <div class="label">${DIAS[r.day]||r.day}</div>
-      <div class="value">${r.orders||0} pedidos</div>
-      <div class="sub">${fmt(r.revenue)}</div>
-      <div class="progress-bar-wrap"><div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${max?(r.orders/max*100).toFixed(0):0}%"></div></div></div>
-    </div>
-  `).join('') || '<div class="empty-state" style="grid-column:1/-1">Sem dados</div>';
+const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+const DIAS_FULL = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const DIAS_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const DIAS_EMOJI = ['☀️','📅','📅','📅','📅','🎉','🏖️'];
+const COLORS = ['#FF6384','#FFE600','#36A2EB','#4CAF50','#FF9800','#9C27B0','#00BCD4'];
+let chartInst = null;
+
+// Garante 7 dias (preenche dias sem venda com zero)
+function normalize(rows) {
+  const map = {};
+  rows.forEach(r => { map[r.day] = r; });
+  return Array.from({length:7}, (_,i) => map[i] || { day:i, dia:DIAS_SHORT[i], orders:0, revenue:0 });
 }
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+
+async function load() {
+  const days = document.getElementById('fDays').value;
+  const data = await DB.getDiasSemana(days) || { days:[] };
+  const rows = normalize(data.days || []);
+
+  const totalOrders  = rows.reduce((a,r) => a + r.orders,  0);
+  const totalRevenue = rows.reduce((a,r) => a + r.revenue, 0);
+  const maxOrders    = Math.max(...rows.map(r => r.orders), 1);
+  const bestIdx      = rows.indexOf(rows.reduce((a,b) => b.orders > a.orders ? b : a));
+  const worstIdx     = rows.indexOf(rows.filter(r=>r.orders>0).reduce((a,b) => b.orders < a.orders ? b : a, rows.find(r=>r.orders>0)||rows[0]));
+
+  // Cards por dia
+  document.getElementById('dsHero').innerHTML = rows.map((r,i) => {
+    const pct = maxOrders ? (r.orders / maxOrders * 100).toFixed(0) : 0;
+    const cls = i === bestIdx ? 'best' : (i === worstIdx && r.orders > 0 ? 'worst' : '');
+    return `<div class="ds-day ${cls}">
+      <div class="ds-day-name">${DIAS_SHORT[r.day]}</div>
+      <div class="ds-day-orders">${fmtN(r.orders)}</div>
+      <div class="ds-day-label">pedidos</div>
+      <div class="ds-day-rev">${fmt(r.revenue)}</div>
+      <div class="ds-day-bar"><div class="ds-day-bar-fill" style="width:${pct}%;background:${COLORS[i]}"></div></div>
+    </div>`;
+  }).join('');
+
+  // Insights
+  const avgPerDay = totalOrders / 7;
+  const topDay = rows[bestIdx];
+  const ticket = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  document.getElementById('dsInsights').innerHTML = `
+    <div class="ds-insight">
+      <div class="ds-insight-icon" style="background:rgba(255,230,0,.1)"><i class="fas fa-trophy" style="color:var(--primary)"></i></div>
+      <div><div class="ds-insight-val">${DIAS_FULL[topDay.day]}</div><div class="ds-insight-lbl">Melhor dia — ${fmtN(topDay.orders)} pedidos · ${fmt(topDay.revenue)}</div></div>
+    </div>
+    <div class="ds-insight">
+      <div class="ds-insight-icon" style="background:rgba(76,175,80,.1)"><i class="fas fa-shopping-cart" style="color:var(--green)"></i></div>
+      <div><div class="ds-insight-val">${fmtN(Math.round(avgPerDay))}</div><div class="ds-insight-lbl">Média de pedidos por dia da semana</div></div>
+    </div>
+    <div class="ds-insight">
+      <div class="ds-insight-icon" style="background:rgba(54,162,235,.1)"><i class="fas fa-receipt" style="color:#36A2EB"></i></div>
+      <div><div class="ds-insight-val">${fmt(ticket)}</div><div class="ds-insight-lbl">Ticket médio geral no período</div></div>
+    </div>`;
+
+  // Gráfico
+  if (chartInst) chartInst.destroy();
+  chartInst = new Chart(document.getElementById('diasChart'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => DIAS_FULL[r.day]),
+      datasets: [
+        { label: 'Pedidos', data: rows.map(r => r.orders), backgroundColor: rows.map((_,i) => COLORS[i]), borderRadius: 6, yAxisID: 'y' },
+        { label: 'Receita (R$)', data: rows.map(r => r.revenue), type: 'line', borderColor: '#fff', backgroundColor: 'rgba(255,255,255,.05)', borderWidth: 2, pointBackgroundColor: '#fff', pointRadius: 4, tension: 0.4, yAxisID: 'y2' },
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index' },
+      plugins: {
+        legend: { labels: { color: '#f0f0f0', boxWidth: 12 } },
+        tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y2' ? fmt(c.raw) : fmtN(c.raw) + ' pedidos' } }
+      },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,.04)' }, title: { display: true, text: 'Pedidos', color: '#888', font: { size: 11 } } },
+        y2: { position: 'right', ticks: { color: '#888', callback: v => 'R$' + (v/1000).toFixed(0) + 'k' }, grid: { display: false }, title: { display: true, text: 'Receita', color: '#888', font: { size: 11 } } },
+      }
+    }
+  });
+
+  // Tabela
+  const sorted = [...rows].sort((a,b) => b.orders - a.orders);
+  document.getElementById('diasTbody').innerHTML = sorted.map((r, i) => {
+    const pct = totalOrders > 0 ? (r.orders / totalOrders * 100).toFixed(1) : 0;
+    const ticket = r.orders > 0 ? r.revenue / r.orders : 0;
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span style="color:var(--text-muted);font-size:12px">${i+1}</span>`;
+    const tag = r.day === bestIdx ? '<span class="tag-best">TOP</span>' : (r.day === worstIdx && r.orders > 0 ? '<span class="tag-worst">BAIXO</span>' : '');
+    return `<tr>
+      <td class="ds-medal">${medal}</td>
+      <td><strong>${DIAS_FULL[r.day]}</strong> ${tag}</td>
+      <td><strong>${fmtN(r.orders)}</strong></td>
+      <td>${fmt(r.revenue)}</td>
+      <td style="color:var(--text-muted)">${fmt(ticket)}</td>
+      <td>
+        <div class="ds-pct-bar">
+          <div class="ds-pct-track"><div class="ds-pct-fill" style="width:${pct}%;background:${COLORS[r.day]}"></div></div>
+          <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">${pct}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty-state" style="padding:32px;text-align:center">Sem dados no período</td></tr>';
+}
+
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+WS.on('order_updated', load);
 load();
 </script>
 </body>

@@ -96,7 +96,7 @@ const DB = {
 
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios()             { return this._get('/analises/horarios'); },
-  async getDiasSemana()           { return this._get('/analises/dias-semana'); },
+  async getDiasSemana(days=90)    { return this._get(`/analises/dias-semana?days=${days}`); },
 
   // ── Produtos ───────────────────────────────────────────────
   async getProdutos(params = {})  { return this._get('/produtos', params); },

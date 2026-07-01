@@ -74,6 +74,7 @@ const DB = {
   async getPedidoDetalhes(id)          { return this._get(`/pedidos/${id}/detalhes`); },
   async getSkuCost(sku)                { return this._get(`/custos/${sku}`); },
   async saveSkuCost(sku, cost)         { return this._patch(`/custos/${sku}`, { cost }); },
+  async saveFreteVendedor(orderId, cost) { return this._patch(`/pedidos/${orderId}/frete-vendedor`, { cost }); },
 
   // ── Perguntas ──────────────────────────────────────────────
   async getPerguntas(params = {}) { return this._get('/perguntas', params); },

@@ -102,6 +102,7 @@ router.get('/vendas/detalhado', async (req, res) => {
        o.ml_fee as tarifa,
        o.shipping_type as frete_tipo,
        o.shipping_cost as frete_comprador,
+       COALESCE(o.shipping_seller_cost, 0) as frete_vendedor,
        o.status, o.date_created,
        COALESCE(i.cost, 0) as custo,
        COALESCE(s.imposto_pct, 0) as imposto_pct
@@ -121,10 +122,11 @@ router.get('/vendas/detalhado', async (req, res) => {
     const custo = Number(r.custo) * (Number(r.quantity) || 1);
     const imposto = fat * (Number(r.imposto_pct) / 100);
     const tarifa = Number(r.tarifa) || 0;
-    const freteVend = 0; // not available from ML API yet
-    const margem = fat - custo - imposto - tarifa - freteVend;
+    const freteVend = Number(r.frete_vendedor) || 0;
+    const freteComp = Number(r.frete_comprador) || 0;
+    const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
     const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
-    return { ...r, custo, imposto, margem, mc_pct: Number(mc_pct.toFixed(2)) };
+    return { ...r, custo, imposto, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
   });
 
   // Summary
@@ -137,6 +139,7 @@ router.get('/vendas/detalhado', async (req, res) => {
     imposto_total: approved.reduce((a, r) => a + r.imposto, 0),
     tarifa_total: approved.reduce((a, r) => a + Number(r.tarifa), 0),
     frete_comprador_total: approved.reduce((a, r) => a + Number(r.frete_comprador), 0),
+    frete_vendedor_total: approved.reduce((a, r) => a + (r.freteVend || 0), 0),
     margem_total: approved.reduce((a, r) => a + r.margem, 0),
     qtd_aprovadas: approved.reduce((a, r) => a + (Number(r.quantity) || 1), 0),
     qtd_canceladas: cancelled.reduce((a, r) => a + (Number(r.quantity) || 1), 0),
@@ -168,6 +171,13 @@ router.patch('/items/:id/custo', async (req, res) => {
 router.get('/custos/:sku', async (req, res) => {
   const { rows } = await pool.query(`SELECT cost FROM sku_costs WHERE sku=$1`, [req.params.sku]);
   res.json({ cost: rows[0]?.cost ?? 0 });
+});
+
+router.patch('/pedidos/:id/frete-vendedor', async (req, res) => {
+  const { cost } = req.body;
+  if (cost == null) return res.status(400).json({ error: 'cost required' });
+  await pool.query(`UPDATE orders SET shipping_seller_cost=$2 WHERE ml_id=$1`, [req.params.id, Number(cost)]);
+  res.json({ ok: true });
 });
 
 router.patch('/custos/:sku', async (req, res) => {
@@ -202,8 +212,10 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
   const custo = Number(row.custo_unitario) * (Number(row.quantity) || 1);
   const imposto = fat * (Number(row.imposto_pct) / 100);
   const tarifa = Number(row.ml_fee) || 0;
-  const margem = fat - custo - imposto - tarifa - Number(row.shipping_cost || 0);
-  res.json({ ...row, custo, imposto, tarifa, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
+  const freteComp = Number(row.shipping_cost) || 0;
+  const freteVend = Number(row.shipping_seller_cost) || 0;
+  const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
+  res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
 });
 
 // ── Perguntas / Mensagens ──────────────────────────────────

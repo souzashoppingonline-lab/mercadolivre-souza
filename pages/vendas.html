@@ -206,9 +206,9 @@ async function load() {
   set('s-custo', R(s.custo_total));
   set('s-imp',   R(s.imposto_total));
   set('s-tar',   R(s.tarifa_total));
-  set('s-frete', R(s.frete_comprador_total));
+  set('s-frete', R((s.frete_comprador_total||0)+(s.frete_vendedor_total||0)));
   set('s-fc',    R(s.frete_comprador_total));
-  set('s-fv',    'R$ 0,00');
+  set('s-fv',    R(s.frete_vendedor_total));
   set('s-mc',    R(s.margem_total));
   set('s-qtdap', s.qtd_aprovadas ?? 0);
   set('s-qtdap2',`${s.pedidos_aprovados ?? 0} pedidos`);
@@ -239,7 +239,7 @@ async function load() {
       <td class="tbl-neg">${R(r.imposto)}</td>
       <td class="${Number(r.tarifa)>0?'tbl-neg':'tbl-neg0'}">${R(r.tarifa)}</td>
       <td class="${Number(r.frete_comprador)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_comprador)}</td>
-      <td class="tbl-neg0">R$ 0,00</td>
+      <td class="${Number(r.frete_vendedor)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_vendedor)}</td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${R(r.margem)}</td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${N(r.mc_pct)}%</td>
     </tr>`;
@@ -304,6 +304,14 @@ async function openModal(orderId) {
       ${row('Rastreio', ship.tracking_number)}
       ${row('Transportadora', ship.shipping_option?.name)}
       ${row('Frete Comprador', R(d.shipping_cost), Number(d.shipping_cost)>0?'neg':'')}
+      <div class="mrow"><span class="mk">Frete Vendedor</span>
+        <span class="mv" style="display:flex;gap:6px;align-items:center">
+          <input type="number" id="freteVendInput" min="0" step="0.01"
+            value="${Number(d.freteVend||d.shipping_seller_cost||0).toFixed(2)}"
+            style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:13px;text-align:right">
+          <button onclick="saveFreteVend('${d.ml_id}')" style="background:var(--primary);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#000">Salvar</button>
+        </span>
+      </div>
       ${row('Endereço', ship.receiver_address ? `${ship.receiver_address.street_name||''} ${ship.receiver_address.street_number||''}, ${ship.receiver_address.city?.name||''}` : null)}
     </div>
     <div class="msec"><div class="msec-title"><i class="fas fa-credit-card"></i> Pagamento</div>
@@ -318,6 +326,7 @@ async function openModal(orderId) {
       ${row('Tarifa ML', R(d.tarifa), 'neg')}
       ${row('Imposto ('+N(d.imposto_pct)+'%)', R(d.imposto), 'neg')}
       ${row('Frete Comprador', R(d.shipping_cost), 'neg')}
+      ${Number(d.freteVend||d.shipping_seller_cost||0)>0 ? row('Frete Vendedor', R(d.freteVend||d.shipping_seller_cost||0), 'neg') : ''}
       <div class="mrow"><span class="mk">Custo Produto</span>
         <span class="mv" style="display:flex;gap:6px;align-items:center">
           <input type="number" id="custoInput" min="0" step="0.01"
@@ -333,6 +342,17 @@ async function openModal(orderId) {
     </div>
   `;
   document.getElementById('modalTitle').textContent = d.title || 'Detalhes do Pedido';
+}
+
+async function saveFreteVend(orderId) {
+  const input = document.getElementById('freteVendInput');
+  const cost = parseFloat(input.value) || 0;
+  const res = await DB.saveFreteVendedor(orderId, cost);
+  if (res?.ok) {
+    input.style.borderColor = 'var(--green)';
+    setTimeout(() => { input.style.borderColor=''; }, 2000);
+    load();
+  }
 }
 
 async function saveCusto(sku) {

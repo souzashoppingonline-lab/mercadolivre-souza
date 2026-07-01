@@ -45,7 +45,8 @@ router.get(['/callback', '/ml/callback'], async (req, res) => {
 
     if (!tokenRes.ok) {
       const err = await tokenRes.text();
-      throw new Error(`Token exchange failed: ${err}`);
+      console.error('[auth] token exchange failed', tokenRes.status, err);
+      throw new Error(`Token exchange failed: HTTP ${tokenRes.status} — ${err}`);
     }
 
     const tokens = await tokenRes.json();

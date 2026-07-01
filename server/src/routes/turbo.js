@@ -37,7 +37,7 @@ const COL_MAP = {
   state:           ['estado frete', 'estado do comprador', 'estado', 'uf', 'estado destinatario'],
   item_code:       ['codigo do anuncio', 'cod anuncio', 'codigo anuncio', 'codigo', 'item id', 'mlb', 'id anuncio'],
   title:           ['titulo do anuncio', 'nome do anuncio', 'anuncio', 'titulo', 'title', 'nome do produto', 'produto', 'descricao'],
-  account:         ['conta do vendedor', 'conta', 'loja', 'seller', 'vendedor'],
+  account:         ['conta do vendedor', 'conta', 'loja', 'seller', 'vendedor', 'anunciante', 'usuario', 'usuario vendedor', 'id do vendedor', 'id vendedor', 'nickname', 'apelido'],
   shipping_mode:   ['modalidade de entrega', 'modalidade de frete', 'modalidade', 'tipo de envio'],
   ads:             ['publicidade', 'ads', 'custo publicidade', 'anuncios'],
   sku:             ['sku', 'codigo interno', 'cod interno'],
@@ -222,6 +222,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
     sheet: sheetName,
     total_rows: dataRows.length,
     ...stats,
+    columns_detected: Object.fromEntries(Object.entries(colMap).map(([k,v]) => [k, headers[v]])),
+    account_detected: colMap.account != null ? headers[colMap.account] : null,
   });
 });
 

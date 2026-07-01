@@ -415,7 +415,10 @@ async function doUpload(file) {
       const hdrs=data.headers_detected?.length?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Colunas detectadas (linha ${data.header_row_used??0})</summary><pre style="font-size:11px;overflow:auto;max-height:160px;white-space:pre-wrap">${data.headers_detected.map((h,i)=>`${i}: "${h}" → "${(data.headers_normed||[])[i]||'?'}"`).join('\n')}</pre></details>`:'';
       log.innerHTML=`<div class="import-log err"><i class="fas fa-times-circle"></i> <b>Erro:</b> ${data.error||'Falha no import'}${hdrs}</div>`; return;
     }
-    log.innerHTML=`<div class="import-log"><span class="ok"><i class="fas fa-check-circle"></i> <b>${data.file}</b> — ${data.total_rows} linhas: ${data.inserted} inseridas, ${data.updated} atualizadas, ${data.skipped} ignoradas${data.errors?`, <span class="err">${data.errors} erros</span>`:''}</span></div>`;
+    const accountInfo = data.account_detected
+      ? `<span style="color:var(--green);font-size:11px"> · Loja: coluna "<b>${data.account_detected}</b>" detectada ✓</span>`
+      : `<span style="color:var(--orange);font-size:11px"> · ⚠️ Coluna "Conta/Loja" não detectada — badge de loja não aparecerá nos rankings</span>`;
+    log.innerHTML=`<div class="import-log"><span class="ok"><i class="fas fa-check-circle"></i> <b>${data.file}</b> — ${data.total_rows} linhas: ${data.inserted} inseridas, ${data.updated} atualizadas, ${data.skipped} ignoradas${data.errors?`, <span class="err">${data.errors} erros</span>`:''}</span>${accountInfo}</div>`;
     await loadMeta(); await applyFilters();
   } catch(e) { prog.style.display='none'; log.innerHTML=`<div class="import-log err"><i class="fas fa-times-circle"></i> ${e.message}</div>`; }
 }

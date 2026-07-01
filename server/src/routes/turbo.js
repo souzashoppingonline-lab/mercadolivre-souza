@@ -244,7 +244,13 @@ router.get('/kpis', async (req, res) => {
        CASE WHEN SUM(revenue)>0
             THEN ROUND(SUM(margin)/SUM(revenue)*100,2)
             ELSE 0 END                                AS margem_pct,
-       CASE WHEN COUNT(*)>0 THEN ROUND(SUM(revenue)/COUNT(*),2) ELSE 0 END AS ticket_medio
+       CASE WHEN COUNT(*)>0 THEN ROUND(SUM(revenue)/COUNT(*),2) ELSE 0 END AS ticket_medio,
+       -- cancelamentos
+       SUM(CASE WHEN order_status ILIKE '%cancel%' THEN 1 ELSE 0 END)       AS cancel_count,
+       SUM(CASE WHEN order_status ILIKE '%cancel%' THEN revenue ELSE 0 END)  AS cancel_revenue,
+       -- devoluções
+       SUM(CASE WHEN order_status ILIKE '%devol%' OR order_status ILIKE '%return%' OR order_status ILIKE '%restitu%' THEN 1 ELSE 0 END)       AS return_count,
+       SUM(CASE WHEN order_status ILIKE '%devol%' OR order_status ILIKE '%return%' OR order_status ILIKE '%restitu%' THEN revenue ELSE 0 END)  AS return_revenue
      FROM ml_turbo_sales WHERE ${f.where}`,
     f.params
   );
@@ -290,7 +296,7 @@ router.get('/charts', async (req, res) => {
   const { date_from='', date_to='', account='', order_status='' } = req.query;
   const f = buildFilters({ date_from, date_to, account, order_status });
 
-  const [daily, byState, byAccount, topRevenue, topMargin, lowMargin, byShipping, byHour, topQty] = await Promise.all([
+  const [daily, byState, byAccount, topRevenue, topMargin, lowMargin, byShipping, byHour, topQty, byStatus] = await Promise.all([
     pool.query(
       `SELECT sale_date::date as date,
               SUM(revenue) revenue, SUM(margin) lucro, COUNT(*) vendas,
@@ -353,6 +359,12 @@ router.get('/charts', async (req, res) => {
        GROUP BY item_code, title ORDER BY qty DESC LIMIT 20`,
       f.params
     ),
+    pool.query(
+      `SELECT order_status, COUNT(*) vendas, COALESCE(SUM(revenue),0) revenue, COALESCE(SUM(margin),0) lucro
+       FROM ml_turbo_sales WHERE ${f.where} AND order_status IS NOT NULL
+       GROUP BY order_status ORDER BY vendas DESC`,
+      f.params
+    ),
   ]);
 
   res.json({
@@ -365,6 +377,7 @@ router.get('/charts', async (req, res) => {
     by_shipping: byShipping.rows,
     by_hour:     byHour.rows,
     top_qty:     topQty.rows,
+    by_status:   byStatus.rows,
   });
 });
 

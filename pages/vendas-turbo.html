@@ -43,6 +43,20 @@
     .kpi-sm{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
     .kpi-sm .lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
     .kpi-sm .val{font-size:17px;font-weight:700}
+    /* Cancelamentos & Devoluções */
+    .canc-block{background:var(--card-bg);border:1px solid rgba(231,76,60,.3);border-radius:12px;padding:16px;margin-bottom:16px}
+    .canc-block h4{margin:0 0 12px;font-size:13px;color:var(--red);text-transform:uppercase;letter-spacing:.5px}
+    .canc-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+    .canc-kpi{background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.2);border-radius:10px;padding:12px 14px}
+    .canc-kpi.warn{background:rgba(231,140,0,.06);border-color:rgba(231,140,0,.25)}
+    .canc-kpi .lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+    .canc-kpi .val{font-size:20px;font-weight:700}
+    .canc-kpi .sub{font-size:11px;color:var(--text-muted)}
+    .status-table{width:100%;border-collapse:collapse;font-size:12px}
+    .status-table th{text-align:left;padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:11px;font-weight:600}
+    .status-table td{padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
+    .status-table tr:last-child td{border-bottom:none}
+    .status-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
     /* Pedidos block */
     .orders-block{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
     @media(max-width:700px){.orders-block{grid-template-columns:1fr}}
@@ -206,6 +220,48 @@
         <div class="kpi-sm" style="border-color:rgba(255,230,0,.3)">
           <div class="lbl">Pedidos Hoje</div>
           <div class="val" id="kPedidosHoje">—</div>
+        </div>
+      </div>
+
+      <!-- CANCELAMENTOS & DEVOLUÇÕES -->
+      <div class="canc-block" id="cancBlock" style="display:none">
+        <h4><i class="fas fa-ban"></i> Cancelamentos &amp; Devoluções</h4>
+        <div class="canc-kpis">
+          <div class="canc-kpi">
+            <div class="lbl"><i class="fas fa-times-circle"></i> Cancelamentos</div>
+            <div class="val" id="cCancelCount" style="color:var(--red)">—</div>
+            <div class="sub" id="cCancelPct"></div>
+          </div>
+          <div class="canc-kpi">
+            <div class="lbl">Receita Cancelada</div>
+            <div class="val" id="cCancelRev" style="color:var(--red)">—</div>
+            <div class="sub" id="cCancelRevPct"></div>
+          </div>
+          <div class="canc-kpi warn">
+            <div class="lbl"><i class="fas fa-undo"></i> Devoluções</div>
+            <div class="val" id="cReturnCount" style="color:var(--orange)">—</div>
+            <div class="sub" id="cReturnPct"></div>
+          </div>
+          <div class="canc-kpi warn">
+            <div class="lbl">Valor Devolvido</div>
+            <div class="val" id="cReturnRev" style="color:var(--orange)">—</div>
+            <div class="sub" id="cReturnRevPct"></div>
+          </div>
+        </div>
+        <!-- Breakdown por status -->
+        <div style="overflow-x:auto">
+          <table class="status-table">
+            <thead><tr>
+              <th>Status do Pedido</th>
+              <th style="text-align:right">Qtd</th>
+              <th style="text-align:right">% do Total</th>
+              <th style="text-align:right">Receita</th>
+              <th style="text-align:right">Lucro</th>
+            </tr></thead>
+            <tbody id="statusTableBody">
+              <tr><td colspan="5" style="color:var(--text-muted);padding:14px 12px;text-align:center">Carregando…</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -396,6 +452,25 @@ async function loadKpis() {
   document.getElementById('kHoje').textContent      = fmt(d.receita_hoje||0);
   document.getElementById('kPedidosHoje').textContent = fmtN(d.pedidos_hoje||0);
 
+  // Cancelamentos & Devoluções KPIs
+  const cancelCount  = Number(d.cancel_count||0);
+  const cancelRev    = Number(d.cancel_revenue||0);
+  const returnCount  = Number(d.return_count||0);
+  const returnRev    = Number(d.return_revenue||0);
+  const totalPed     = Number(d.total_vendas)||1;
+  const block = document.getElementById('cancBlock');
+  if (cancelCount > 0 || returnCount > 0) {
+    block.style.display = 'block';
+    document.getElementById('cCancelCount').textContent = fmtN(cancelCount);
+    document.getElementById('cCancelPct').textContent   = ((cancelCount/totalPed)*100).toFixed(1)+'% dos pedidos';
+    document.getElementById('cCancelRev').textContent   = fmt(cancelRev);
+    document.getElementById('cCancelRevPct').textContent= receita>0?((cancelRev/receita)*100).toFixed(1)+'% da receita':'';
+    document.getElementById('cReturnCount').textContent = fmtN(returnCount);
+    document.getElementById('cReturnPct').textContent   = ((returnCount/totalPed)*100).toFixed(1)+'% dos pedidos';
+    document.getElementById('cReturnRev').textContent   = fmt(returnRev);
+    document.getElementById('cReturnRevPct').textContent= receita>0?((returnRev/receita)*100).toFixed(1)+'% da receita':'';
+  }
+
   buildCFO(d);
 }
 
@@ -431,6 +506,15 @@ function buildCFO(d) {
 
   if (Number(d.roi) > 30) items.push({ icon:'fa-chart-line', color:'var(--green)', text:`ROI da operação em <b>${d.roi}%</b> — excelente retorno sobre os custos.` });
   else if (Number(d.roi) < 10 && Number(d.roi) > 0) items.push({ icon:'fa-chart-line', color:'var(--orange)', text:`ROI da operação em <b>${d.roi}%</b> — abaixo do ideal. Reduza desperdícios.` });
+
+  const cancelCount = Number(d.cancel_count||0);
+  const returnCount = Number(d.return_count||0);
+  const cancelPct   = pedidos > 0 ? (cancelCount / pedidos * 100) : 0;
+  const returnPct   = pedidos > 0 ? (returnCount / pedidos * 100) : 0;
+  if (cancelCount > 0) items.push({ icon:'fa-times-circle', color: cancelPct>5 ? 'var(--red)' : 'var(--orange)',
+    text:`<b>${fmtN(cancelCount)}</b> cancelamentos (${cancelPct.toFixed(1)}% dos pedidos) · Receita perdida: <b>${fmt(d.cancel_revenue||0)}</b>` });
+  if (returnCount > 0) items.push({ icon:'fa-undo', color:'var(--orange)',
+    text:`<b>${fmtN(returnCount)}</b> devoluções (${returnPct.toFixed(1)}% dos pedidos) · Valor devolvido: <b>${fmt(d.return_revenue||0)}</b>` });
 
   lines.innerHTML = items.map(i =>
     `<div class="cfo-line"><i class="fas ${i.icon}" style="color:${i.color}"></i><span>${i.text}</span></div>`
@@ -504,6 +588,39 @@ async function loadCharts() {
   buildRanking('rankMargin',  d.top_margin||[],  r=>({ name:r.title||r.item_code, main:fmt(r.lucro),   sub:pct(r.margem_pct), pct:Number(r.margem_pct) }), 'var(--green)');
   buildRanking('rankQty',     d.top_qty||[],     r=>({ name:r.title||r.item_code, main:fmtN(r.qty)+' un', sub:fmt(r.revenue), pct:null }), 'var(--orange)');
   buildRankingLowMargin('rankLowMargin', d.low_margin||[]);
+
+  // Status breakdown table
+  buildStatusTable(d.by_status||[]);
+}
+
+function buildStatusTable(rows) {
+  const tbody = document.getElementById('statusTableBody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);padding:14px 12px;text-align:center">Sem dados de status</td></tr>'; return; }
+  const total = rows.reduce((a,r) => a + Number(r.vendas), 0) || 1;
+  const statusColor = s => {
+    if (!s) return 'var(--text-muted)';
+    const l = s.toLowerCase();
+    if (l.includes('entregue') || l.includes('pago') || l.includes('conclu')) return 'var(--green)';
+    if (l.includes('cancel')) return 'var(--red)';
+    if (l.includes('devol') || l.includes('return') || l.includes('restitu')) return 'var(--orange)';
+    return 'var(--text-muted)';
+  };
+  tbody.innerHTML = rows.map(r => {
+    const pctVal = (Number(r.vendas)/total*100).toFixed(1);
+    const color  = statusColor(r.order_status);
+    return `<tr>
+      <td><span class="status-badge" style="background:${color}1a;color:${color};border:1px solid ${color}33">${r.order_status||'—'}</span></td>
+      <td style="text-align:right;font-weight:600">${fmtN(r.vendas)}</td>
+      <td style="text-align:right">
+        <span style="color:${color}">${pctVal}%</span>
+        <div style="margin-top:3px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden">
+          <div style="width:${pctVal}%;height:100%;background:${color};border-radius:2px"></div>
+        </div>
+      </td>
+      <td style="text-align:right">${fmt(r.revenue)}</td>
+      <td style="text-align:right;color:${Number(r.lucro)>=0?'var(--green)':'var(--red)'}">${fmt(r.lucro)}</td>
+    </tr>`;
+  }).join('');
 }
 
 function buildModeList(sh) {

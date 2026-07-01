@@ -9,26 +9,72 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Vendas ML Turbo'; window.ACTIVE_NAV='vendas-turbo.html';</script>
   <style>
-    .upload-zone{border:2px dashed var(--border);border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:.2s;background:var(--card-bg)}
+    /* Upload */
+    .upload-zone{border:2px dashed var(--border);border-radius:12px;padding:24px 32px;text-align:center;cursor:pointer;transition:.2s;background:var(--card-bg)}
     .upload-zone:hover,.upload-zone.drag{border-color:var(--primary);background:rgba(255,230,0,.04)}
-    .upload-zone i{font-size:36px;color:var(--primary);margin-bottom:12px;display:block}
-    .import-log{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin-top:12px;font-size:13px}
-    .import-log .ok{color:var(--green)} .import-log .warn{color:var(--orange)} .import-log .err{color:var(--red)}
-    .stat-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px}
-    .kpi-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
-    .kpi-card .lbl{font-size:11px;color:var(--text-muted);margin-bottom:4px}
-    .kpi-card .val{font-size:20px;font-weight:700}
-    .filters-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;align-items:flex-end}
-    .filters-grid select,.filters-grid input{background:var(--input-bg,#1e1e1e);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:13px}
-    .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
-    .charts-grid .chart-card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:16px}
-    .charts-grid .chart-card h4{margin:0 0 12px;font-size:13px;color:var(--text-muted)}
-    .charts-grid .full{grid-column:1/-1}
-    @media(max-width:768px){.charts-grid{grid-template-columns:1fr}}
-    .tag-turbo{background:rgba(255,230,0,.15);color:var(--primary);border:1px solid rgba(255,230,0,.3);border-radius:4px;font-size:10px;padding:2px 6px;font-weight:600;vertical-align:middle;margin-left:6px}
-    .progress-wrap{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px;display:none}
+    .upload-zone i{font-size:32px;color:var(--primary);margin-bottom:8px;display:block}
+    .import-log{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-top:10px;font-size:13px}
+    .import-log .ok{color:var(--green)} .import-log .err{color:var(--red)}
+    .progress-wrap{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px;display:none;margin-top:10px}
     .progress-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden}
     .progress-bar-fill{height:100%;background:var(--primary);border-radius:3px;transition:width .3s}
+    /* Filtros */
+    .filters-grid{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+    .filters-grid select,.filters-grid input{background:var(--surface,#1e1e1e);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;padding:6px 10px;font-size:13px}
+    /* AI CFO */
+    .cfo-box{background:linear-gradient(135deg,rgba(255,230,0,.06),rgba(39,174,96,.06));border:1px solid rgba(255,230,0,.25);border-radius:14px;padding:18px 22px;margin-bottom:16px}
+    .cfo-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .cfo-header h3{margin:0;font-size:15px;color:var(--primary)}
+    .cfo-badge{background:rgba(255,230,0,.15);color:var(--primary);border:1px solid rgba(255,230,0,.3);border-radius:20px;font-size:10px;padding:2px 8px;font-weight:700}
+    .cfo-lines{display:flex;flex-direction:column;gap:6px}
+    .cfo-line{font-size:13px;color:var(--text-primary);display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+    .cfo-line i{margin-top:2px;flex-shrink:0;width:14px}
+    /* KPIs principais */
+    .kpi-primary{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;margin-bottom:14px}
+    .kpi-big{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+    .kpi-big.highlight{border-color:rgba(255,230,0,.4);background:rgba(255,230,0,.04)}
+    .kpi-big.green-hl{border-color:rgba(39,174,96,.35);background:rgba(39,174,96,.04)}
+    .kpi-big.red-hl{border-color:rgba(231,76,60,.25)}
+    .kpi-big .lbl{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+    .kpi-big .val{font-size:22px;font-weight:700;margin-bottom:2px}
+    .kpi-big .sub{font-size:11px;color:var(--text-muted)}
+    /* KPIs secundários */
+    .kpi-secondary{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-bottom:16px}
+    .kpi-sm{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+    .kpi-sm .lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+    .kpi-sm .val{font-size:17px;font-weight:700}
+    /* Pedidos block */
+    .orders-block{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+    @media(max-width:700px){.orders-block{grid-template-columns:1fr}}
+    .modal-block{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .modal-block h4{margin:0 0 12px;font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+    .mode-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px}
+    .mode-row:last-child{border-bottom:none}
+    .mode-bar-wrap{flex:1;margin:0 12px;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden}
+    .mode-bar-fill{height:100%;border-radius:3px}
+    /* Rankings */
+    .rankings-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+    @media(max-width:800px){.rankings-grid{grid-template-columns:1fr}}
+    .rank-card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .rank-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
+    .rank-header h4{margin:0;font-size:13px;font-weight:700}
+    .rank-header span{font-size:11px;color:var(--text-muted)}
+    .rank-table{width:100%;border-collapse:collapse;font-size:12px}
+    .rank-table td{padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.03)}
+    .rank-table tr:last-child td{border-bottom:none}
+    .rank-table tr:hover td{background:rgba(255,255,255,.03)}
+    .rank-num{color:var(--text-muted);font-size:10px;font-weight:700;width:22px;text-align:center}
+    .rank-name{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .rank-val{text-align:right;white-space:nowrap;font-weight:600}
+    .rank-sub{text-align:right;font-size:10px;color:var(--text-muted)}
+    /* Gráficos */
+    .charts-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+    @media(max-width:768px){.charts-2{grid-template-columns:1fr}}
+    .chart-card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .chart-card h4{margin:0 0 12px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+    .chart-full{grid-column:1/-1}
+    /* Tabela */
+    .tag-turbo{background:rgba(255,230,0,.15);color:var(--primary);border:1px solid rgba(255,230,0,.3);border-radius:4px;font-size:10px;padding:2px 6px;font-weight:600;margin-left:6px}
   </style>
 </head>
 <body>
@@ -38,16 +84,26 @@
     <div id="app-topbar"></div>
     <div class="content-area">
 
+      <!-- CFO INSIGHTS -->
+      <div class="cfo-box" id="cfoBox" style="display:none">
+        <div class="cfo-header">
+          <i class="fas fa-brain" style="color:var(--primary);font-size:18px"></i>
+          <h3>Resumo CFO <span id="cfoDate" style="font-size:12px;color:var(--text-muted);font-weight:400"></span></h3>
+          <span class="cfo-badge">IA</span>
+        </div>
+        <div class="cfo-lines" id="cfoLines"></div>
+      </div>
+
       <!-- UPLOAD -->
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" style="margin-bottom:14px">
         <div class="card-header">
           <h3>Importar Planilha <span class="tag-turbo">Mercado Turbo</span></h3>
-          <small style="color:var(--text-muted)">Formatos aceitos: .xlsx · .xls · .csv &nbsp;|&nbsp; Máx. 50 MB &nbsp;|&nbsp; UPSERT automático</small>
+          <small style="color:var(--text-muted)">.xlsx · .xls · .csv &nbsp;|&nbsp; Máx. 50 MB &nbsp;|&nbsp; UPSERT automático</small>
         </div>
         <div class="upload-zone" id="uploadZone">
           <i class="fas fa-file-excel"></i>
-          <div style="font-size:15px;font-weight:600;margin-bottom:6px">Arraste a planilha ou clique para selecionar</div>
-          <div style="font-size:12px;color:var(--text-muted)">Exportada em Financeiro → Exportar no Mercado Turbo</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">Arraste a planilha ou clique para selecionar</div>
+          <div style="font-size:11px;color:var(--text-muted)">Exportada em Financeiro → Exportar no Mercado Turbo</div>
           <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
         </div>
         <div class="progress-wrap" id="progressWrap">
@@ -58,74 +114,190 @@
       </div>
 
       <!-- FILTROS -->
-      <div class="card" style="margin-bottom:16px">
+      <div class="card" style="margin-bottom:14px">
         <div class="card-header"><h3>Filtros</h3>
           <button class="btn-primary" onclick="applyFilters()" style="padding:6px 16px;font-size:13px"><i class="fas fa-filter"></i> Aplicar</button>
         </div>
         <div class="filters-grid">
           <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">De</label><input type="date" id="fDateFrom"></div>
           <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Até</label><input type="date" id="fDateTo"></div>
-          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Conta</label>
-            <select id="fAccount"><option value="">Todas</option></select></div>
-          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Estado</label>
-            <select id="fState"><option value="">Todos</option></select></div>
-          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Modalidade Frete</label>
-            <select id="fMode"><option value="">Todas</option></select></div>
-          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Status</label>
-            <select id="fStatus"><option value="">Todos</option></select></div>
-          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">SKU / Código</label>
-            <input type="text" id="fSku" placeholder="ex: 3K640..." style="width:160px"></div>
+          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Conta</label><select id="fAccount"><option value="">Todas</option></select></div>
+          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Estado</label><select id="fState"><option value="">Todos</option></select></div>
+          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Modalidade</label><select id="fMode"><option value="">Todas</option></select></div>
+          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Status</label><select id="fStatus"><option value="">Todos</option></select></div>
+          <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">SKU / Código</label><input type="text" id="fSku" placeholder="ex: MLB..." style="width:150px"></div>
         </div>
       </div>
 
-      <!-- KPI CARDS -->
-      <div class="stat-row" id="kpiCards">
-        <div class="kpi-card"><div class="lbl">Receita</div><div class="val" id="kReceita">—</div></div>
-        <div class="kpi-card"><div class="lbl">Lucro (MC)</div><div class="val" id="kLucro" style="color:var(--green)">—</div></div>
-        <div class="kpi-card"><div class="lbl">Margem %</div><div class="val" id="kMargem" style="color:var(--primary)">—</div></div>
-        <div class="kpi-card"><div class="lbl">CMV</div><div class="val" id="kCmv" style="color:var(--red)">—</div></div>
-        <div class="kpi-card"><div class="lbl">Impostos</div><div class="val" id="kImp" style="color:var(--red)">—</div></div>
-        <div class="kpi-card"><div class="lbl">Tarifas ML</div><div class="val" id="kTarifa" style="color:var(--red)">—</div></div>
-        <div class="kpi-card"><div class="lbl">Frete Comprador</div><div class="val" id="kFreteCmp">—</div></div>
-        <div class="kpi-card"><div class="lbl">Frete Vendedor</div><div class="val" id="kFreteVnd" style="color:var(--red)">—</div></div>
-        <div class="kpi-card"><div class="lbl">ADS</div><div class="val" id="kAds" style="color:var(--orange)">—</div></div>
-        <div class="kpi-card"><div class="lbl">Qtd. Vendida</div><div class="val" id="kQty">—</div></div>
-        <div class="kpi-card"><div class="lbl">Pedidos</div><div class="val" id="kPedidos">—</div></div>
+      <!-- KPIs PRIMÁRIOS -->
+      <div class="kpi-primary">
+        <div class="kpi-big highlight">
+          <div class="lbl"><i class="fas fa-dollar-sign"></i> Receita Bruta</div>
+          <div class="val" id="kReceita" style="color:var(--primary)">—</div>
+          <div class="sub" id="kReceitaSub"></div>
+        </div>
+        <div class="kpi-big green-hl">
+          <div class="lbl"><i class="fas fa-equals"></i> Lucro Bruto (MC)</div>
+          <div class="val" id="kLucro" style="color:var(--green)">—</div>
+          <div class="sub" id="kMargemPct"></div>
+        </div>
+        <div class="kpi-big green-hl">
+          <div class="lbl"><i class="fas fa-percentage"></i> Margem de Contribuição</div>
+          <div class="val" id="kMargem" style="color:var(--green)">—</div>
+          <div class="sub">sobre receita bruta</div>
+        </div>
+        <div class="kpi-big">
+          <div class="lbl"><i class="fas fa-box"></i> Pedidos</div>
+          <div class="val" id="kPedidos">—</div>
+          <div class="sub" id="kPedidosSub"></div>
+        </div>
+        <div class="kpi-big">
+          <div class="lbl"><i class="fas fa-cubes"></i> Itens Vendidos</div>
+          <div class="val" id="kQty">—</div>
+          <div class="sub">unidades no período</div>
+        </div>
+        <div class="kpi-big">
+          <div class="lbl"><i class="fas fa-ticket-alt"></i> Ticket Médio</div>
+          <div class="val" id="kTicket" style="color:var(--primary)">—</div>
+          <div class="sub">por pedido</div>
+        </div>
+        <div class="kpi-big red-hl">
+          <div class="lbl"><i class="fas fa-boxes"></i> CMV</div>
+          <div class="val" id="kCmv" style="color:var(--red)">—</div>
+          <div class="sub" id="kCmvPct"></div>
+        </div>
+        <div class="kpi-big">
+          <div class="lbl"><i class="fas fa-chart-line"></i> ROI da Operação</div>
+          <div class="val" id="kRoi" style="color:var(--orange)">—</div>
+          <div class="sub">retorno sobre custos</div>
+        </div>
+      </div>
+
+      <!-- KPIs SECUNDÁRIOS -->
+      <div class="kpi-secondary">
+        <div class="kpi-sm">
+          <div class="lbl">Tarifas ML</div>
+          <div class="val" id="kTarifa" style="color:var(--red)">—</div>
+        </div>
+        <div class="kpi-sm">
+          <div class="lbl">Frete Vendedor</div>
+          <div class="val" id="kFreteVnd" style="color:var(--red)">—</div>
+        </div>
+        <div class="kpi-sm">
+          <div class="lbl">Frete Comprador</div>
+          <div class="val" id="kFreteCmp">—</div>
+        </div>
+        <div class="kpi-sm">
+          <div class="lbl">Impostos</div>
+          <div class="val" id="kImp" style="color:var(--red)">—</div>
+        </div>
+        <div class="kpi-sm">
+          <div class="lbl">Investimento ADS</div>
+          <div class="val" id="kAds" style="color:var(--orange)">—</div>
+        </div>
+        <div class="kpi-sm">
+          <div class="lbl">Lucro Líquido</div>
+          <div class="val" id="kLucroLiq" style="color:var(--green)">—</div>
+        </div>
+        <div class="kpi-sm" style="border-color:rgba(255,230,0,.3)">
+          <div class="lbl">Resultado do Dia</div>
+          <div class="val" id="kHoje" style="color:var(--primary)">—</div>
+        </div>
+        <div class="kpi-sm" style="border-color:rgba(255,230,0,.3)">
+          <div class="lbl">Pedidos Hoje</div>
+          <div class="val" id="kPedidosHoje">—</div>
+        </div>
+      </div>
+
+      <!-- PEDIDOS POR HORA + MODALIDADE -->
+      <div class="orders-block">
+        <div class="modal-block">
+          <h4><i class="fas fa-clock"></i> Pedidos por Hora</h4>
+          <canvas id="cHour" height="120"></canvas>
+        </div>
+        <div class="modal-block">
+          <h4><i class="fas fa-truck"></i> Modalidade de Entrega</h4>
+          <div id="modeList">—</div>
+        </div>
       </div>
 
       <!-- GRÁFICOS -->
-      <div class="charts-grid">
-        <div class="chart-card full"><h4>Receita e Lucro Diários</h4><canvas id="cDaily" height="60"></canvas></div>
+      <div class="charts-2" style="margin-bottom:14px">
+        <div class="chart-card chart-full"><h4>Receita e Lucro Diários</h4><canvas id="cDaily" height="55"></canvas></div>
         <div class="chart-card"><h4>Margem % por Dia</h4><canvas id="cMargem" height="120"></canvas></div>
         <div class="chart-card"><h4>Vendas por Conta</h4><canvas id="cAccount" height="120"></canvas></div>
         <div class="chart-card"><h4>Vendas por Estado (Top 10)</h4><canvas id="cState" height="120"></canvas></div>
-        <div class="chart-card"><h4>Distribuição de Frete</h4><canvas id="cShipping" height="120"></canvas></div>
-        <div class="chart-card"><h4>Top 10 Produtos por Receita</h4><canvas id="cTopRevenue" height="120"></canvas></div>
-        <div class="chart-card"><h4>Top 10 Produtos por Lucro</h4><canvas id="cTopMargin" height="120"></canvas></div>
-        <div class="chart-card"><h4>Produtos com Menor Margem %</h4><canvas id="cLowMargin" height="120"></canvas></div>
+        <div class="chart-card"><h4>Distribuição de Modalidade</h4><canvas id="cShipping" height="120"></canvas></div>
       </div>
 
-      <!-- TABELA -->
+      <!-- RANKINGS -->
+      <div class="rankings-grid">
+
+        <!-- Top 20 Receita -->
+        <div class="rank-card">
+          <div class="rank-header">
+            <h4><i class="fas fa-trophy" style="color:var(--primary);margin-right:6px"></i>Top 20 — Maior Faturamento</h4>
+            <span>por receita</span>
+          </div>
+          <div style="overflow-y:auto;max-height:480px">
+            <table class="rank-table"><tbody id="rankRevenue"></tbody></table>
+          </div>
+        </div>
+
+        <!-- Top 20 Lucro -->
+        <div class="rank-card">
+          <div class="rank-header">
+            <h4><i class="fas fa-star" style="color:var(--green);margin-right:6px"></i>Top 20 — Maior Lucro</h4>
+            <span>por margem R$</span>
+          </div>
+          <div style="overflow-y:auto;max-height:480px">
+            <table class="rank-table"><tbody id="rankMargin"></tbody></table>
+          </div>
+        </div>
+
+        <!-- Mais Vendidos (Qty) -->
+        <div class="rank-card">
+          <div class="rank-header">
+            <h4><i class="fas fa-fire" style="color:var(--orange);margin-right:6px"></i>Mais Vendidos — Quantidade</h4>
+            <span>unidades vendidas</span>
+          </div>
+          <div style="overflow-y:auto;max-height:480px">
+            <table class="rank-table"><tbody id="rankQty"></tbody></table>
+          </div>
+        </div>
+
+        <!-- Pior Margem -->
+        <div class="rank-card">
+          <div class="rank-header">
+            <h4><i class="fas fa-exclamation-triangle" style="color:var(--red);margin-right:6px"></i>Pior Margem % — Revisar</h4>
+            <span>produtos a otimizar</span>
+          </div>
+          <div style="overflow-y:auto;max-height:480px">
+            <table class="rank-table"><tbody id="rankLowMargin"></tbody></table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- TABELA DETALHADA -->
       <div class="card">
         <div class="card-header">
           <h3>Detalhes das Vendas <span id="totalBadge" style="font-size:12px;color:var(--text-muted)"></span></h3>
           <div style="display:flex;gap:8px;align-items:center">
-            <span style="font-size:12px;color:var(--text-muted)">Página</span>
+            <span style="font-size:12px;color:var(--text-muted)">Pág.</span>
             <button class="btn-secondary" id="btnPrev" onclick="changePage(-1)">‹</button>
-            <span id="pageLabel" style="font-size:13px">1</span>
+            <span id="pageLabel" style="font-size:13px;min-width:20px;text-align:center">1</span>
             <button class="btn-secondary" id="btnNext" onclick="changePage(1)">›</button>
           </div>
         </div>
         <div class="table-responsive" style="overflow-x:auto">
-          <table class="data-table" style="min-width:1400px">
-            <thead>
-              <tr>
-                <th>ID Venda</th><th>Data</th><th>Conta</th><th>Comprador</th><th>Estado</th>
-                <th>Anúncio</th><th>SKU</th><th>Modalidade</th><th>Qtd</th>
-                <th>Faturamento</th><th>Custo</th><th>Imposto</th><th>Tarifa ML</th>
-                <th>Fr.Comprador</th><th>Fr.Vendedor</th><th>ADS</th><th>Margem MC</th><th>Margem%</th><th>Status</th>
-              </tr>
-            </thead>
+          <table class="data-table" style="min-width:1400px;font-size:12px">
+            <thead><tr>
+              <th>ID</th><th>Data</th><th>Conta</th><th>Comprador</th><th>UF</th>
+              <th>Anúncio</th><th>SKU</th><th>Modal.</th><th>Qtd</th>
+              <th>Faturamento</th><th>Custo</th><th>Imposto</th><th>Tarifa ML</th>
+              <th>Fr.Comp.</th><th>Fr.Vend.</th><th>ADS</th><th>Margem MC</th><th>Margem%</th><th>Status</th>
+            </tr></thead>
             <tbody id="salesTable"><tr><td colspan="19" class="empty-state">Importe uma planilha para ver os dados</td></tr></tbody>
           </table>
         </div>
@@ -140,244 +312,268 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const BASE = (localStorage.getItem('ml_backend_url') || '/api').replace(/\/api$/, '');
-const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
-const fmtN = v => new Intl.NumberFormat('pt-BR').format(Number(v)||0);
-const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+const BASE  = (localStorage.getItem('ml_backend_url') || '/api').replace(/\/api$/, '');
+const fmt   = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const fmtN  = v => new Intl.NumberFormat('pt-BR').format(Number(v)||0);
+const fmtD  = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+const pct   = v => (Number(v)||0).toFixed(1)+'%';
 
-let currentPage = 1, totalRows = 0, charts = {};
-const LIMIT = 100;
+let currentPage=1, totalRows=0, charts={};
+const LIMIT=100;
 
 // ── Upload ──────────────────────────────────────────────────
 const uploadZone = document.getElementById('uploadZone');
 const fileInput  = document.getElementById('fileInput');
-
 uploadZone.addEventListener('click', () => fileInput.click());
 uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
-uploadZone.addEventListener('drop', e => {
-  e.preventDefault(); uploadZone.classList.remove('drag');
-  if (e.dataTransfer.files[0]) doUpload(e.dataTransfer.files[0]);
-});
+uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('drag'); if (e.dataTransfer.files[0]) doUpload(e.dataTransfer.files[0]); });
 fileInput.addEventListener('change', () => fileInput.files[0] && doUpload(fileInput.files[0]));
 
 async function doUpload(file) {
-  const log   = document.getElementById('importLog');
-  const prog  = document.getElementById('progressWrap');
-  const fill  = document.getElementById('progressFill');
-  const label = document.getElementById('progressLabel');
-  log.innerHTML = '';
-  prog.style.display = 'block';
-  label.textContent = `Enviando ${file.name}…`;
-  fill.style.width = '30%';
-
-  const fd = new FormData();
-  fd.append('file', file);
-
+  const log=document.getElementById('importLog'), prog=document.getElementById('progressWrap');
+  const fill=document.getElementById('progressFill'), label=document.getElementById('progressLabel');
+  log.innerHTML=''; prog.style.display='block'; label.textContent=`Enviando ${file.name}…`; fill.style.width='30%';
+  const fd=new FormData(); fd.append('file',file);
   try {
-    fill.style.width = '60%';
-    const res  = await fetch(`${BASE}/api/turbo/import`, { method: 'POST', body: fd });
-    fill.style.width = '100%';
-    const data = await res.json();
-    prog.style.display = 'none';
-
+    fill.style.width='60%';
+    const res=await fetch(`${BASE}/api/turbo/import`,{method:'POST',body:fd});
+    fill.style.width='100%'; const data=await res.json(); prog.style.display='none';
     if (!res.ok) {
-      const hdrs = data.headers_detected?.length
-        ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Colunas detectadas (linha ${data.header_row_used ?? 0})</summary><pre style="font-size:11px;overflow:auto;max-height:200px;white-space:pre-wrap">${data.headers_detected.map((h,i)=>`${i}: "${h}" → "${(data.headers_normed||[])[i]||'?'}"`).join('\n')}</pre></details>`
-        : '';
-      log.innerHTML = `<div class="import-log err"><i class="fas fa-times-circle"></i> <b>Erro:</b> ${data.error || 'Falha no import'}${hdrs}</div>`;
-      return;
+      const hdrs=data.headers_detected?.length?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Colunas detectadas (linha ${data.header_row_used??0})</summary><pre style="font-size:11px;overflow:auto;max-height:160px;white-space:pre-wrap">${data.headers_detected.map((h,i)=>`${i}: "${h}" → "${(data.headers_normed||[])[i]||'?'}"`).join('\n')}</pre></details>`:'';
+      log.innerHTML=`<div class="import-log err"><i class="fas fa-times-circle"></i> <b>Erro:</b> ${data.error||'Falha no import'}${hdrs}</div>`; return;
     }
-
-    log.innerHTML = `
-      <div class="import-log">
-        <b>${data.file}</b> · ${data.total_rows} linhas processadas<br>
-        <span class="ok"><i class="fas fa-plus-circle"></i> ${data.inserted} inseridas</span> &nbsp;
-        <span class="warn"><i class="fas fa-sync"></i> ${data.updated} atualizadas</span> &nbsp;
-        <span style="color:var(--text-muted)"><i class="fas fa-minus-circle"></i> ${data.skipped} ignoradas</span> &nbsp;
-        ${data.errors ? `<span class="err"><i class="fas fa-exclamation-circle"></i> ${data.errors} erros</span>` : ''}
-        ${data.error_details?.length ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px">Ver erros (${data.error_details.length})</summary><pre style="font-size:11px;overflow:auto;max-height:200px">${JSON.stringify(data.error_details,null,2)}</pre></details>` : ''}
-      </div>`;
-
-    await loadMeta();
-    await applyFilters();
-  } catch (e) {
-    prog.style.display = 'none';
-    log.innerHTML = `<div class="import-log err"><i class="fas fa-times-circle"></i> ${e.message}</div>`;
-  }
+    log.innerHTML=`<div class="import-log"><span class="ok"><i class="fas fa-check-circle"></i> <b>${data.file}</b> — ${data.total_rows} linhas: ${data.inserted} inseridas, ${data.updated} atualizadas, ${data.skipped} ignoradas${data.errors?`, <span class="err">${data.errors} erros</span>`:''}</span></div>`;
+    await loadMeta(); await applyFilters();
+  } catch(e) { prog.style.display='none'; log.innerHTML=`<div class="import-log err"><i class="fas fa-times-circle"></i> ${e.message}</div>`; }
 }
 
 // ── Filtros meta ────────────────────────────────────────────
 async function loadMeta() {
-  const data = await fetch(`${BASE}/api/turbo/filters-meta`).then(r=>r.json()).catch(()=>({}));
-  const sel = (id, arr) => {
-    const el = document.getElementById(id);
-    const cur = el.value;
-    el.innerHTML = `<option value="">Todos</option>` + arr.map(v=>`<option value="${v}">${v}</option>`).join('');
-    if (cur) el.value = cur;
-  };
-  sel('fAccount', data.accounts || []);
-  sel('fState',   data.states   || []);
-  sel('fMode',    data.shipping_modes || []);
-  sel('fStatus',  data.order_statuses || []);
+  const data=await fetch(`${BASE}/api/turbo/filters-meta`).then(r=>r.json()).catch(()=>({}));
+  const sel=(id,arr)=>{const el=document.getElementById(id);const cur=el.value;el.innerHTML=`<option value="">Todos</option>`+arr.map(v=>`<option value="${v}">${v}</option>`).join('');if(cur)el.value=cur;};
+  sel('fAccount',data.accounts||[]); sel('fState',data.states||[]); sel('fMode',data.shipping_modes||[]); sel('fStatus',data.order_statuses||[]);
 }
 
-// ── Filtros ────────────────────────────────────────────────
 function getFilters() {
-  return {
-    date_from:    document.getElementById('fDateFrom').value,
-    date_to:      document.getElementById('fDateTo').value,
-    account:      document.getElementById('fAccount').value,
-    state:        document.getElementById('fState').value,
-    shipping_mode: document.getElementById('fMode').value,
-    order_status: document.getElementById('fStatus').value,
-    sku:          document.getElementById('fSku').value,
-  };
+  return { date_from:document.getElementById('fDateFrom').value, date_to:document.getElementById('fDateTo').value,
+           account:document.getElementById('fAccount').value, state:document.getElementById('fState').value,
+           shipping_mode:document.getElementById('fMode').value, order_status:document.getElementById('fStatus').value,
+           sku:document.getElementById('fSku').value };
 }
+function toQS(obj) { return Object.entries(obj).filter(([,v])=>v).map(([k,v])=>`${k}=${encodeURIComponent(v)}`).join('&'); }
 
-function toQS(obj) {
-  return Object.entries(obj).filter(([,v])=>v).map(([k,v])=>`${k}=${encodeURIComponent(v)}`).join('&');
-}
-
-async function applyFilters() {
-  currentPage = 1;
-  await Promise.all([loadKpis(), loadCharts(), loadSales()]);
-}
+async function applyFilters() { currentPage=1; await Promise.all([loadKpis(),loadCharts(),loadSales()]); }
 
 // ── KPIs ────────────────────────────────────────────────────
+let lastKpi = {};
 async function loadKpis() {
-  const qs   = toQS(getFilters());
-  const data = await fetch(`${BASE}/api/turbo/kpis?${qs}`).then(r=>r.json()).catch(()=>({}));
-  document.getElementById('kReceita').textContent  = fmt(data.receita);
-  document.getElementById('kLucro').textContent    = fmt(data.lucro);
-  document.getElementById('kMargem').textContent   = (Number(data.margem_pct)||0).toFixed(1) + '%';
-  document.getElementById('kCmv').textContent      = fmt(data.cmv);
-  document.getElementById('kImp').textContent      = fmt(data.impostos);
-  document.getElementById('kTarifa').textContent   = fmt(data.tarifas);
-  document.getElementById('kFreteCmp').textContent = fmt(data.frete_comprador);
-  document.getElementById('kFreteVnd').textContent = fmt(data.frete_vendedor);
-  document.getElementById('kAds').textContent      = fmt(data.total_ads);
-  document.getElementById('kQty').textContent      = fmtN(data.total_qty);
-  document.getElementById('kPedidos').textContent  = fmtN(data.total_vendas);
+  const qs=toQS(getFilters());
+  const d=await fetch(`${BASE}/api/turbo/kpis?${qs}`).then(r=>r.json()).catch(()=>({}));
+  lastKpi = d;
+  const receita=Number(d.receita)||0, lucro=Number(d.lucro)||0, pedidos=Number(d.total_vendas)||0;
+  const cmvPct = receita>0 ? (Number(d.cmv)/receita*100).toFixed(1) : 0;
+  const fretePct = receita>0 ? ((Number(d.frete_vendedor))/receita*100).toFixed(1) : 0;
+
+  document.getElementById('kReceita').textContent   = fmt(receita);
+  document.getElementById('kReceitaSub').textContent= `${fmtN(d.total_qty||0)} itens`;
+  document.getElementById('kLucro').textContent     = fmt(lucro);
+  document.getElementById('kMargemPct').textContent = pct(d.margem_pct)+' de margem';
+  document.getElementById('kMargem').textContent    = pct(d.margem_pct);
+  document.getElementById('kPedidos').textContent   = fmtN(pedidos);
+  document.getElementById('kPedidosSub').textContent= `ticket médio ${fmt(d.ticket_medio||0)}`;
+  document.getElementById('kQty').textContent       = fmtN(d.total_qty||0);
+  document.getElementById('kTicket').textContent    = fmt(d.ticket_medio||0);
+  document.getElementById('kCmv').textContent       = fmt(d.cmv);
+  document.getElementById('kCmvPct').textContent    = cmvPct+'% da receita';
+  document.getElementById('kRoi').textContent       = (d.roi||0)+'%';
+  document.getElementById('kTarifa').textContent    = fmt(d.tarifas);
+  document.getElementById('kFreteVnd').textContent  = fmt(d.frete_vendedor);
+  document.getElementById('kFreteCmp').textContent  = fmt(d.frete_comprador);
+  document.getElementById('kImp').textContent       = fmt(d.impostos);
+  document.getElementById('kAds').textContent       = fmt(d.total_ads);
+  document.getElementById('kLucroLiq').textContent  = fmt(lucro);
+  document.getElementById('kHoje').textContent      = fmt(d.receita_hoje||0);
+  document.getElementById('kPedidosHoje').textContent = fmtN(d.pedidos_hoje||0);
+
+  buildCFO(d);
+}
+
+// ── AI CFO Insights (regras automáticas) ────────────────────
+function buildCFO(d) {
+  const receita=Number(d.receita)||0;
+  if (!receita) return;
+  const box=document.getElementById('cfoBox'), lines=document.getElementById('cfoLines');
+  box.style.display='block';
+
+  const hoje=new Date().toLocaleDateString('pt-BR');
+  document.getElementById('cfoDate').textContent='— '+hoje;
+
+  const margem=Number(d.margem_pct)||0;
+  const fretePct=receita>0?(Number(d.frete_vendedor)/receita*100):0;
+  const cmvPct=receita>0?(Number(d.cmv)/receita*100):0;
+  const adsPct=receita>0?(Number(d.total_ads)/receita*100):0;
+  const tarifaPct=receita>0?(Number(d.tarifas)/receita*100):0;
+  const pedidos=Number(d.total_vendas)||0;
+
+  const items=[];
+  items.push({ icon:'fa-dollar-sign', color:'var(--primary)', text:`Receita: <b>${fmt(receita)}</b> | Lucro: <b>${fmt(d.lucro)}</b> | Margem: <b>${margem.toFixed(1)}%</b>` });
+  if (d.receita_hoje>0) items.push({ icon:'fa-sun', color:'var(--primary)', text:`Hoje: <b>${fmt(d.receita_hoje)}</b> em receita · <b>${fmtN(d.pedidos_hoje)}</b> pedidos` });
+
+  if (fretePct > 12) items.push({ icon:'fa-truck', color:'var(--red)', text:`Frete do vendedor consumiu <b>${fretePct.toFixed(1)}%</b> da receita — acima da média de 10%.` });
+  else if (fretePct > 0) items.push({ icon:'fa-truck', color:'var(--green)', text:`Frete do vendedor em <b>${fretePct.toFixed(1)}%</b> da receita — dentro do ideal.` });
+
+  if (adsPct > 5) items.push({ icon:'fa-bullhorn', color:'var(--orange)', text:`ADS representou <b>${adsPct.toFixed(1)}%</b> da receita — avalie o retorno das campanhas.` });
+  if (tarifaPct > 20) items.push({ icon:'fa-percentage', color:'var(--orange)', text:`Tarifas ML em <b>${tarifaPct.toFixed(1)}%</b> da receita — considere negociar plano ou ajustar preços.` });
+  if (cmvPct > 60) items.push({ icon:'fa-boxes', color:'var(--red)', text:`CMV em <b>${cmvPct.toFixed(1)}%</b> da receita — margem bruta baixa, revise custos de produto.` });
+  if (margem < 10) items.push({ icon:'fa-exclamation-circle', color:'var(--red)', text:`Margem de contribuição abaixo de 10% — operação em risco. Revise os SKUs com prejuízo.` });
+  else if (margem >= 20) items.push({ icon:'fa-star', color:'var(--green)', text:`Margem acima de 20% — operação saudável.` });
+
+  if (Number(d.roi) > 30) items.push({ icon:'fa-chart-line', color:'var(--green)', text:`ROI da operação em <b>${d.roi}%</b> — excelente retorno sobre os custos.` });
+  else if (Number(d.roi) < 10 && Number(d.roi) > 0) items.push({ icon:'fa-chart-line', color:'var(--orange)', text:`ROI da operação em <b>${d.roi}%</b> — abaixo do ideal. Reduza desperdícios.` });
+
+  lines.innerHTML = items.map(i =>
+    `<div class="cfo-line"><i class="fas ${i.icon}" style="color:${i.color}"></i><span>${i.text}</span></div>`
+  ).join('');
 }
 
 // ── Gráficos ────────────────────────────────────────────────
-const YELLOW = 'rgba(255,230,0,.8)', GREEN = 'rgba(39,174,96,.8)', RED = 'rgba(231,76,60,.8)', BLUE = 'rgba(41,128,185,.8)';
-const CHART_OPT = (yLabel) => ({
+const Y='rgba(255,230,0,.8)', G='rgba(39,174,96,.8)', R='rgba(231,76,60,.8)', B='rgba(41,128,185,.8)';
+const COLORS=['#FFE600','#2980b9','#27ae60','#e74c3c','#9b59b6','#f39c12','#1abc9c','#e67e22'];
+
+const baseOpt = (yFmt='R$') => ({
   responsive:true,
-  plugins:{ legend:{ labels:{ color:'#f0f0f0' } } },
+  plugins:{ legend:{ labels:{ color:'#f0f0f0',boxWidth:12 } } },
   scales:{
-    x:{ ticks:{ color:'#888', maxRotation:45 }, grid:{ color:'rgba(255,255,255,.05)' } },
-    y:{ ticks:{ color:'#888', callback: v => yLabel==='R$' ? 'R$'+(v/1000).toFixed(0)+'k' : v+'%' }, grid:{ color:'rgba(255,255,255,.05)' } }
+    x:{ ticks:{ color:'#888', maxRotation:40, font:{size:10} }, grid:{ color:'rgba(255,255,255,.04)' } },
+    y:{ ticks:{ color:'#888', font:{size:10}, callback: v => yFmt==='R$' ? 'R$'+(v/1000).toFixed(0)+'k' : v+yFmt }, grid:{ color:'rgba(255,255,255,.04)' } }
   }
 });
 
-function mkChart(id, cfg) {
-  if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(document.getElementById(id), cfg);
+function mkChart(id,cfg) { if(charts[id]) charts[id].destroy(); charts[id]=new Chart(document.getElementById(id),cfg); }
+
+let lastCharts = {};
+async function loadCharts() {
+  const f=getFilters();
+  const qs=toQS({date_from:f.date_from,date_to:f.date_to,account:f.account,order_status:f.order_status});
+  const d=await fetch(`${BASE}/api/turbo/charts?${qs}`).then(r=>r.json()).catch(()=>({}));
+  lastCharts = d;
+
+  const daily=d.daily||[];
+  mkChart('cDaily',{type:'bar',data:{labels:daily.map(r=>r.date),datasets:[
+    {label:'Receita',data:daily.map(r=>Number(r.revenue)),backgroundColor:Y,borderRadius:3},
+    {label:'Lucro',  data:daily.map(r=>Number(r.lucro)),  backgroundColor:G,borderRadius:3},
+  ]},options:{...baseOpt('R$'),plugins:{legend:{labels:{color:'#f0f0f0'}},tooltip:{callbacks:{label:c=>fmt(c.raw)}}}}});
+
+  mkChart('cMargem',{type:'line',data:{labels:daily.map(r=>r.date),datasets:[{
+    label:'Margem %',data:daily.map(r=>Number(r.margem_pct).toFixed(1)),
+    borderColor:Y,backgroundColor:'rgba(255,230,0,.07)',fill:true,tension:0.4,pointRadius:2
+  }]},options:{...baseOpt('%'),plugins:{legend:{labels:{color:'#f0f0f0'}}}}});
+
+  const acc=d.by_account||[];
+  mkChart('cAccount',{type:'bar',data:{labels:acc.map(r=>r.account),datasets:[
+    {label:'Receita',data:acc.map(r=>Number(r.revenue)),backgroundColor:Y},
+    {label:'Lucro',  data:acc.map(r=>Number(r.lucro)),  backgroundColor:G},
+  ]},options:{...baseOpt('R$'),plugins:{legend:{labels:{color:'#f0f0f0'}},tooltip:{callbacks:{label:c=>fmt(c.raw)}}}}});
+
+  const st=(d.by_state||[]).slice(0,10);
+  mkChart('cState',{type:'bar',indexAxis:'y',data:{labels:st.map(r=>r.state),datasets:[
+    {label:'Receita',data:st.map(r=>Number(r.revenue)),backgroundColor:B,borderRadius:3}
+  ]},options:{...baseOpt('R$'),plugins:{legend:{labels:{color:'#f0f0f0'}},tooltip:{callbacks:{label:c=>fmt(c.raw)}}}}});
+
+  const sh=d.by_shipping||[];
+  mkChart('cShipping',{type:'doughnut',data:{labels:sh.map(r=>r.shipping_type),datasets:[{
+    data:sh.map(r=>Number(r.vendas)),backgroundColor:COLORS
+  }]},options:{responsive:true,plugins:{legend:{labels:{color:'#f0f0f0',boxWidth:12}}}}});
+
+  // Pedidos por hora
+  const hours=Array.from({length:24},(_,i)=>i);
+  const byHour=d.by_hour||[];
+  const hrMap=Object.fromEntries(byHour.map(r=>[Number(r.hour),Number(r.vendas)]));
+  mkChart('cHour',{type:'bar',data:{labels:hours.map(h=>h+'h'),datasets:[{
+    label:'Pedidos',data:hours.map(h=>hrMap[h]||0),backgroundColor:Y,borderRadius:3
+  }]},options:{responsive:true,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},
+            y:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}}}}});
+
+  // Modalidade de entrega
+  buildModeList(sh);
+
+  // Rankings
+  buildRanking('rankRevenue', d.top_revenue||[], r=>({ name:r.title||r.item_code, main:fmt(r.revenue), sub:`${fmtN(r.qty)} un`, pct:null }), 'var(--primary)');
+  buildRanking('rankMargin',  d.top_margin||[],  r=>({ name:r.title||r.item_code, main:fmt(r.lucro),   sub:pct(r.margem_pct), pct:Number(r.margem_pct) }), 'var(--green)');
+  buildRanking('rankQty',     d.top_qty||[],     r=>({ name:r.title||r.item_code, main:fmtN(r.qty)+' un', sub:fmt(r.revenue), pct:null }), 'var(--orange)');
+  buildRankingLowMargin('rankLowMargin', d.low_margin||[]);
 }
 
-async function loadCharts() {
-  const f    = getFilters();
-  const qs   = toQS({ date_from: f.date_from, date_to: f.date_to, account: f.account, order_status: f.order_status });
-  const data = await fetch(`${BASE}/api/turbo/charts?${qs}`).then(r=>r.json()).catch(()=>({}));
+function buildModeList(sh) {
+  const total=sh.reduce((a,r)=>a+Number(r.vendas),0)||1;
+  const colors={'full':'var(--green)','flex':'#9b59b6','me2':'var(--orange)','coleta':'#2980b9'};
+  document.getElementById('modeList').innerHTML = sh.length
+    ? sh.map(r=>{
+        const p=Number(r.vendas)/total*100;
+        const key=(r.shipping_type||'').toLowerCase();
+        const c=colors[key]||'var(--text-muted)';
+        return `<div class="mode-row">
+          <span style="min-width:70px;font-weight:600">${r.shipping_type||'—'}</span>
+          <div class="mode-bar-wrap"><div class="mode-bar-fill" style="width:${p.toFixed(0)}%;background:${c}"></div></div>
+          <span style="color:${c};font-weight:600;min-width:32px;text-align:right">${fmtN(r.vendas)}</span>
+          <span style="color:var(--text-muted);font-size:11px;min-width:38px;text-align:right">${p.toFixed(0)}%</span>
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--text-muted);font-size:13px">Sem dados</div>';
+}
 
-  const daily = data.daily || [];
-  mkChart('cDaily', {
-    type:'bar',
-    data:{ labels: daily.map(r=>r.date), datasets:[
-      { label:'Receita', data:daily.map(r=>Number(r.revenue)), backgroundColor: YELLOW, borderRadius:3, yAxisID:'y' },
-      { label:'Lucro',   data:daily.map(r=>Number(r.lucro)),   backgroundColor: GREEN,  borderRadius:3, yAxisID:'y' },
-    ]},
-    options:{ ...CHART_OPT('R$'), plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label:c=>fmt(c.raw) } } } }
-  });
+function buildRanking(tbodyId, rows, mapper, color) {
+  const el=document.getElementById(tbodyId);
+  if (!rows.length) { el.innerHTML='<tr><td colspan="3" class="empty-state" style="font-size:12px">Sem dados</td></tr>'; return; }
+  el.innerHTML = rows.map((r,i)=>{
+    const m=mapper(r);
+    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':`<span class="rank-num">${i+1}</span>`;
+    const pctBadge = m.pct!=null ? `<span style="font-size:10px;color:${m.pct>=20?'var(--green)':m.pct>=10?'var(--orange)':'var(--red)'}">${pct(m.pct)}</span>` : '';
+    return `<tr>
+      <td style="width:28px;text-align:center">${medal}</td>
+      <td class="rank-name" title="${m.name||''}">${m.name||'—'}</td>
+      <td class="rank-val" style="color:${color}">${m.main}<br><span class="rank-sub">${m.sub}</span>${pctBadge}</td>
+    </tr>`;
+  }).join('');
+}
 
-  mkChart('cMargem', {
-    type:'line',
-    data:{ labels: daily.map(r=>r.date), datasets:[{
-      label:'Margem %', data:daily.map(r=>Number(r.margem_pct).toFixed(1)),
-      borderColor:YELLOW, backgroundColor:'rgba(255,230,0,.07)', fill:true, tension:0.4, pointRadius:2
-    }]},
-    options:{ ...CHART_OPT('%'), plugins:{ legend:{ labels:{ color:'#f0f0f0' } } } }
-  });
-
-  const acc = data.by_account || [];
-  mkChart('cAccount', {
-    type:'bar',
-    data:{ labels:acc.map(r=>r.account), datasets:[
-      { label:'Receita', data:acc.map(r=>Number(r.revenue)), backgroundColor:YELLOW },
-      { label:'Lucro',   data:acc.map(r=>Number(r.lucro)),   backgroundColor:GREEN },
-    ]},
-    options:{ ...CHART_OPT('R$'), plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label:c=>fmt(c.raw) } } } }
-  });
-
-  const st = (data.by_state || []).slice(0,10);
-  mkChart('cState', {
-    type:'bar', indexAxis:'y',
-    data:{ labels:st.map(r=>r.state), datasets:[{ label:'Receita', data:st.map(r=>Number(r.revenue)), backgroundColor:BLUE }]},
-    options:{ ...CHART_OPT('R$'), plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label:c=>fmt(c.raw) } } } }
-  });
-
-  const sh = data.by_shipping || [];
-  mkChart('cShipping', {
-    type:'doughnut',
-    data:{ labels:sh.map(r=>r.shipping_type), datasets:[{ data:sh.map(r=>Number(r.vendas)), backgroundColor:['#FFE600','#2980b9','#27ae60','#e74c3c','#9b59b6'] }]},
-    options:{ responsive:true, plugins:{ legend:{ labels:{ color:'#f0f0f0' } } } }
-  });
-
-  const tr = data.top_revenue || [];
-  mkChart('cTopRevenue', {
-    type:'bar', indexAxis:'y',
-    data:{ labels:tr.map(r=>(r.title||r.item_code||'').slice(0,35)), datasets:[{ label:'Receita', data:tr.map(r=>Number(r.revenue)), backgroundColor:YELLOW, borderRadius:3 }]},
-    options:{ ...CHART_OPT('R$'), plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label:c=>fmt(c.raw) } } } }
-  });
-
-  const tm = data.top_margin || [];
-  mkChart('cTopMargin', {
-    type:'bar', indexAxis:'y',
-    data:{ labels:tm.map(r=>(r.title||r.item_code||'').slice(0,35)), datasets:[{ label:'Lucro', data:tm.map(r=>Number(r.lucro)), backgroundColor:GREEN, borderRadius:3 }]},
-    options:{ ...CHART_OPT('R$'), plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label:c=>fmt(c.raw) } } } }
-  });
-
-  const lm = data.low_margin || [];
-  mkChart('cLowMargin', {
-    type:'bar', indexAxis:'y',
-    data:{ labels:lm.map(r=>(r.title||r.item_code||'').slice(0,35)), datasets:[{ label:'Margem %', data:lm.map(r=>Number(r.margem_pct).toFixed(1)), backgroundColor:RED, borderRadius:3 }]},
-    options:{ ...CHART_OPT('%'), plugins:{ legend:{ labels:{ color:'#f0f0f0' } } } }
-  });
+function buildRankingLowMargin(tbodyId, rows) {
+  const el=document.getElementById(tbodyId);
+  if (!rows.length) { el.innerHTML='<tr><td colspan="3" class="empty-state" style="font-size:12px">Sem dados</td></tr>'; return; }
+  el.innerHTML = rows.map((r,i)=>{
+    const mpct=Number(r.margem_pct);
+    const color=mpct<0?'var(--red)':mpct<10?'var(--orange)':'var(--text-muted)';
+    return `<tr>
+      <td style="width:28px;text-align:center"><span class="rank-num">${i+1}</span></td>
+      <td class="rank-name" title="${r.title||''}">${r.title||r.item_code||'—'}</td>
+      <td class="rank-val" style="color:${color}">${pct(mpct)}<br><span class="rank-sub">${fmt(r.revenue)} · ${fmtN(r.qty)} un</span></td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Tabela ─────────────────────────────────────────────────
 async function loadSales() {
-  const f  = getFilters();
-  const qs = toQS({ ...f, page: currentPage, limit: LIMIT });
-  const data = await fetch(`${BASE}/api/turbo/sales?${qs}`).then(r=>r.json()).catch(()=>({ sales:[], total:0 }));
-  const rows = data.sales || [];
-  totalRows  = data.total || 0;
-
-  document.getElementById('totalBadge').textContent = `(${fmtN(totalRows)} registros)`;
-  document.getElementById('pageLabel').textContent  = currentPage;
-  document.getElementById('btnPrev').disabled = currentPage <= 1;
-  document.getElementById('btnNext').disabled = currentPage * LIMIT >= totalRows;
-
-  const statusColor = s => {
-    if (!s) return '';
-    const l = s.toLowerCase();
-    if (l.includes('pago') || l.includes('entregue')) return 'color:var(--green)';
-    if (l.includes('cancel')) return 'color:var(--red)';
-    return 'color:var(--orange)';
-  };
-
-  document.getElementById('salesTable').innerHTML = rows.length
-    ? rows.map(r => `<tr>
-        <td style="font-size:11px;font-family:monospace">${r.sale_id}</td>
+  const f=getFilters();
+  const qs=toQS({...f,page:currentPage,limit:LIMIT});
+  const data=await fetch(`${BASE}/api/turbo/sales?${qs}`).then(r=>r.json()).catch(()=>({sales:[],total:0}));
+  const rows=data.sales||[]; totalRows=data.total||0;
+  document.getElementById('totalBadge').textContent=`(${fmtN(totalRows)} registros)`;
+  document.getElementById('pageLabel').textContent=currentPage;
+  document.getElementById('btnPrev').disabled=currentPage<=1;
+  document.getElementById('btnNext').disabled=currentPage*LIMIT>=totalRows;
+  const sc=s=>{if(!s)return'';const l=s.toLowerCase();if(l.includes('pago')||l.includes('entregue'))return'color:var(--green)';if(l.includes('cancel'))return'color:var(--red)';return 'color:var(--orange)';};
+  document.getElementById('salesTable').innerHTML=rows.length
+    ?rows.map(r=>`<tr>
+        <td style="font-size:10px;font-family:monospace">${r.sale_id}</td>
         <td style="white-space:nowrap">${fmtD(r.sale_date)}</td>
-        <td style="font-size:12px">${r.account||'—'}</td>
-        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.buyer||'—'}</td>
+        <td style="font-size:11px">${r.account||'—'}</td>
+        <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.buyer||'—'}</td>
         <td>${r.state||'—'}</td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title||''}">${r.title||'—'}</td>
-        <td style="font-size:11px">${r.sku||'—'}</td>
-        <td style="font-size:12px">${r.shipping_mode||'—'}</td>
+        <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title||''}">${r.title||'—'}</td>
+        <td style="font-size:10px">${r.sku||'—'}</td>
+        <td style="font-size:11px">${r.shipping_mode||'—'}</td>
         <td style="text-align:right">${r.quantity||1}</td>
         <td style="text-align:right;color:var(--primary)">${fmt(r.revenue)}</td>
         <td style="text-align:right;color:var(--red)">${fmt(r.cost)}</td>
@@ -386,31 +582,24 @@ async function loadSales() {
         <td style="text-align:right">${fmt(r.buyer_shipping)}</td>
         <td style="text-align:right;color:var(--red)">${fmt(r.seller_shipping)}</td>
         <td style="text-align:right;color:var(--orange)">${r.ads>0?fmt(r.ads):'—'}</td>
-        <td style="text-align:right;color:var(--green);font-weight:600">${fmt(r.margin)}</td>
+        <td style="text-align:right;font-weight:600;color:${Number(r.margin)>=0?'var(--green)':'var(--red)'}">${fmt(r.margin)}</td>
         <td style="text-align:right;color:${Number(r.margin_pct)>=20?'var(--green)':Number(r.margin_pct)>=10?'var(--orange)':'var(--red)'}">${Number(r.margin_pct).toFixed(1)}%</td>
-        <td style="font-size:12px;${statusColor(r.order_status)}">${r.order_status||'—'}</td>
+        <td style="font-size:11px;${sc(r.order_status)}">${r.order_status||'—'}</td>
       </tr>`).join('')
-    : '<tr><td colspan="19" class="empty-state">Nenhum dado encontrado com os filtros selecionados</td></tr>';
+    :'<tr><td colspan="19" class="empty-state">Nenhum dado encontrado</td></tr>';
 }
 
-function changePage(d) {
-  currentPage = Math.max(1, currentPage + d);
-  loadSales();
-}
+function changePage(d) { currentPage=Math.max(1,currentPage+d); loadSales(); }
 
 // ── Init ───────────────────────────────────────────────────
 async function init() {
-  // Default: mês atual
-  const now = new Date();
-  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
-  document.getElementById('fDateFrom').value = `${y}-${m}-01`;
-  document.getElementById('fDateTo').value   = now.toISOString().slice(0,10);
-
-  await loadMeta();
-  await applyFilters();
+  const now=new Date(), y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('fDateFrom').value=`${y}-${m}-01`;
+  document.getElementById('fDateTo').value=now.toISOString().slice(0,10);
+  await loadMeta(); await applyFilters();
 }
 
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+WS.on('_connected',()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 init();
 </script>
 </body>

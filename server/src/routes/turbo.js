@@ -243,11 +243,26 @@ router.get('/kpis', async (req, res) => {
        COALESCE(SUM(margin),0)                        AS lucro,
        CASE WHEN SUM(revenue)>0
             THEN ROUND(SUM(margin)/SUM(revenue)*100,2)
-            ELSE 0 END                                AS margem_pct
+            ELSE 0 END                                AS margem_pct,
+       CASE WHEN COUNT(*)>0 THEN ROUND(SUM(revenue)/COUNT(*),2) ELSE 0 END AS ticket_medio
      FROM ml_turbo_sales WHERE ${f.where}`,
     f.params
   );
-  res.json(rows[0] || {});
+  // resultado do dia (today)
+  const hoje = new Date().toISOString().slice(0,10);
+  const { rows: todayRows } = await pool.query(
+    `SELECT COALESCE(SUM(revenue),0) AS receita_hoje, COALESCE(SUM(margin),0) AS lucro_hoje,
+            COUNT(*) AS pedidos_hoje
+     FROM ml_turbo_sales WHERE sale_date = $1::date`, [hoje]
+  );
+  const kpi = rows[0] || {};
+  kpi.receita_hoje  = todayRows[0]?.receita_hoje  || 0;
+  kpi.lucro_hoje    = todayRows[0]?.lucro_hoje    || 0;
+  kpi.pedidos_hoje  = todayRows[0]?.pedidos_hoje  || 0;
+  // ROI = lucro / (cmv + ads + impostos + tarifas + fretes)
+  const custos = Number(kpi.cmv||0)+Number(kpi.total_ads||0)+Number(kpi.impostos||0)+Number(kpi.tarifas||0)+Number(kpi.frete_vendedor||0);
+  kpi.roi = custos > 0 ? ((Number(kpi.lucro||0) / custos) * 100).toFixed(1) : 0;
+  res.json(kpi);
 });
 
 // ── GET /turbo/sales ───────────────────────────────────────
@@ -275,7 +290,7 @@ router.get('/charts', async (req, res) => {
   const { date_from='', date_to='', account='', order_status='' } = req.query;
   const f = buildFilters({ date_from, date_to, account, order_status });
 
-  const [daily, byState, byAccount, topRevenue, topMargin, lowMargin, byShipping] = await Promise.all([
+  const [daily, byState, byAccount, topRevenue, topMargin, lowMargin, byShipping, byHour, topQty] = await Promise.all([
     pool.query(
       `SELECT sale_date::date as date,
               SUM(revenue) revenue, SUM(margin) lucro, COUNT(*) vendas,
@@ -300,28 +315,42 @@ router.get('/charts', async (req, res) => {
     pool.query(
       `SELECT item_code, title, SUM(revenue) revenue, SUM(quantity) qty
        FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL
-       GROUP BY item_code, title ORDER BY revenue DESC LIMIT 10`,
+       GROUP BY item_code, title ORDER BY revenue DESC LIMIT 20`,
       f.params
     ),
     pool.query(
-      `SELECT item_code, title, SUM(margin) lucro, SUM(quantity) qty
+      `SELECT item_code, title, SUM(margin) lucro, SUM(quantity) qty, SUM(revenue) revenue,
+              CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END AS margem_pct
        FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL
-       GROUP BY item_code, title ORDER BY lucro DESC LIMIT 10`,
+       GROUP BY item_code, title ORDER BY lucro DESC LIMIT 20`,
       f.params
     ),
     pool.query(
       `SELECT item_code, title,
               CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END AS margem_pct,
-              SUM(revenue) revenue, SUM(quantity) qty
+              SUM(revenue) revenue, SUM(quantity) qty, SUM(margin) lucro
        FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL AND revenue > 50
        GROUP BY item_code, title HAVING SUM(quantity) >= 3
-       ORDER BY margem_pct ASC LIMIT 10`,
+       ORDER BY margem_pct ASC LIMIT 20`,
       f.params
     ),
     pool.query(
       `SELECT shipping_type, COUNT(*) vendas, SUM(revenue) revenue
        FROM ml_turbo_sales WHERE ${f.where} AND shipping_type IS NOT NULL
        GROUP BY shipping_type ORDER BY vendas DESC`,
+      f.params
+    ),
+    pool.query(
+      `SELECT EXTRACT(hour FROM sale_date::timestamp) AS hour, COUNT(*) vendas, SUM(revenue) revenue
+       FROM ml_turbo_sales WHERE ${f.where} AND sale_date IS NOT NULL
+       GROUP BY 1 ORDER BY 1`,
+      f.params
+    ),
+    pool.query(
+      `SELECT item_code, title, SUM(quantity) qty, SUM(revenue) revenue, SUM(margin) lucro,
+              CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END AS margem_pct
+       FROM ml_turbo_sales WHERE ${f.where} AND item_code IS NOT NULL
+       GROUP BY item_code, title ORDER BY qty DESC LIMIT 20`,
       f.params
     ),
   ]);
@@ -334,6 +363,8 @@ router.get('/charts', async (req, res) => {
     top_margin:  topMargin.rows,
     low_margin:  lowMargin.rows,
     by_shipping: byShipping.rows,
+    by_hour:     byHour.rows,
+    top_qty:     topQty.rows,
   });
 });
 

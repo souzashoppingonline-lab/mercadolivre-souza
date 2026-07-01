@@ -54,13 +54,20 @@ async function tgNotify(topic, text) {
   }
 }
 
+const noop = () => {};  // topics we receive but don't need to process
+
 const handlers = {
-  orders_v2:     handleOrder,
-  payments:      handleOrder,
-  questions:     handleQuestion,
-  messages:      handleMessage,
-  items:         handleItem,
-  public_offers: handleOffer,
+  orders_v2:         handleOrder,
+  payments:          handleOrder,
+  questions:         handleQuestion,
+  messages:          handleMessage,
+  items:             handleItem,
+  public_offers:     handleOffer,
+  shipments:         noop,
+  items_prices:      noop,
+  post_purchase:     noop,
+  invoices:          noop,
+  public_candidates: noop,
 };
 
 async function handleOrder({ resource, storeId }) {
@@ -172,15 +179,15 @@ async function handleItem({ resource, storeId }) {
 
 async function handleOffer({ resource, storeId }) {
   const offerId = resource.split('/').pop();
-  const offer = await ml.getOffer(offerId, storeId);
 
-  // Extract item_id from offer object or from the offer_id string (OFFER-MLB123-...)
-  const itemId = offer.item_id || (offerId.match(/OFFER-(MLB\d+)/)?.[1]) || null;
+  // Extract item_id directly from offer_id — avoids ML API call (no 429 risk)
+  // Format: OFFER-MLB5436690816-13215330532
+  const itemId = offerId.match(/OFFER-(MLB\d+)/)?.[1] || null;
 
-  // Get item title from local DB — no extra ML API call
-  let itemTitle = offer.title || null;
-  if (!itemTitle && itemId) {
-    const { rows } = await pool.query(`SELECT title FROM items WHERE ml_id = $1 LIMIT 1`, [itemId]);
+  // Get item title from local DB — zero API calls
+  let itemTitle = null;
+  if (itemId) {
+    const { rows } = await pool.query(`SELECT title, price FROM items WHERE ml_id = $1 LIMIT 1`, [itemId]);
     itemTitle = rows[0]?.title || null;
   }
 
@@ -190,33 +197,29 @@ async function handleOffer({ resource, storeId }) {
     [offerId, storeId]
   );
   const previousStatus = prev.rows[0]?.status || null;
-  const currentStatus  = offer.status || 'unknown';
 
-  const originalPrice = Number(offer.original_price || offer.base_price || 0);
-  const promoPrice    = Number(offer.offer_price    || offer.new_price  || 0);
-  const discountPct   = originalPrice > 0 ? ((originalPrice - promoPrice) / originalPrice) * 100 : 0;
+  // We don't know the new status without calling the API, so mark as 'changed'
+  // On first event: 'active' (it was just notified = it's in a promotion)
+  // If we've seen it before as 'active' and it fires again, could mean it left
+  // We use 'changed' and let the page show the event — user sees the item changed
+  const currentStatus = previousStatus === null ? 'active' : 'changed';
 
   await pool.query(
     `INSERT INTO promotions (store_id, offer_id, item_id, item_title, status, previous_status, original_price, promo_price, discount_pct, changed_at, raw_data)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),$10)`,
-    [storeId, offerId, itemId, itemTitle, currentStatus, previousStatus,
-     originalPrice, promoPrice, Number(discountPct.toFixed(2)), JSON.stringify(offer)]
+     VALUES ($1,$2,$3,$4,$5,$6,0,0,0,now(),$7)`,
+    [storeId, offerId, itemId, itemTitle, currentStatus, previousStatus, JSON.stringify({ offer_id: offerId, resource })]
   );
 
   await publish('promo_changed', {
     store_id: storeId, offer_id: offerId, item_id: itemId, item_title: itemTitle,
     status: currentStatus, previous_status: previousStatus,
-    promo_price: promoPrice, original_price: originalPrice, discount_pct: Number(discountPct.toFixed(2)),
+    promo_price: 0, original_price: 0, discount_pct: 0,
   });
 
-  // Telegram alert when item LEAVES a promotion (was active, now isn't)
-  if (previousStatus === 'active' && currentStatus !== 'active') {
-    const R = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-    await tgNotify('tg_promocoes', `🔴 <b>Saiu da promoção!</b>\n📦 ${itemTitle || itemId || offerId}\n💰 Preço voltou para ${R(originalPrice)}\n⚠️ Verifique e reative a promoção`);
-  } else if (previousStatus !== 'active' && currentStatus === 'active') {
-    const R = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-    await tgNotify('tg_promocoes', `🟢 <b>Entrou em promoção!</b>\n📦 ${itemTitle || itemId || offerId}\n💰 ${R(promoPrice)} (${discountPct.toFixed(0)}% off)`);
-  }
+  // Telegram: notify on every promotion change event
+  await tgNotify('tg_promocoes',
+    `🏷️ <b>Alteração de promoção detectada!</b>\n📦 ${itemTitle || itemId || offerId}\n🔄 Verifique o status da promoção no ML`
+  );
 }
 
 const worker = new Worker(

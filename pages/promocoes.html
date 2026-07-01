@@ -146,17 +146,24 @@ function renderTable() {
   }
 
   tbody.innerHTML = rows.map(r => {
-    const saiu = r.previous_status === 'active' && r.status !== 'active';
-    const entrou = r.status === 'active' && r.previous_status !== 'active';
-    const statusCls = { active:'active', inactive:'inactive', paused:'paused', finished:'finished' }[r.status] || 'inactive';
-    const statusLabel = { active:'Ativa', inactive:'Inativa', paused:'Pausada', finished:'Encerrada' }[r.status] || r.status;
-    const prevLabel = { active:'Ativa', inactive:'Inativa', paused:'Pausada', finished:'Encerrada' }[r.previous_status] || (r.previous_status || '—');
+    const isFirst  = !r.previous_status;
+    const isChange = r.status === 'changed';
+    const saiu     = r.previous_status === 'active' && r.status !== 'active' && !isChange;
+    const entrou   = r.status === 'active' && !r.previous_status;
+
+    let badgeHtml = '';
+    if (isFirst || entrou) badgeHtml = '<span class="badge-promo active" style="margin-left:6px">ENTROU</span>';
+    else if (saiu)         badgeHtml = '<span class="badge-saiu">SAIU</span>';
+    else if (isChange)     badgeHtml = '<span class="badge-promo paused" style="margin-left:6px">ALTEROU</span>';
+
+    const statusLabel = isFirst ? 'Entrou' : isChange ? 'Alteração' : saiu ? 'Saiu' : r.status;
+    const statusCls   = isFirst || entrou ? 'active' : isChange ? 'paused' : saiu ? 'inactive' : 'inactive';
+    const prevLabel   = r.previous_status ? ({ active:'Ativa', changed:'Alterada' }[r.previous_status] || r.previous_status) : '—';
 
     return `<tr>
       <td class="title-col" title="${r.item_title||r.offer_id}">
         ${r.item_title || r.offer_id || '—'}
-        ${saiu ? '<span class="badge-saiu">SAIU</span>' : ''}
-        ${entrou ? '<span class="badge-promo active" style="margin-left:6px">ENTROU</span>' : ''}
+        ${badgeHtml}
       </td>
       <td style="font-size:11px;white-space:nowrap">${r.conta||'—'}</td>
       <td style="font-size:11px;color:var(--text-muted)">${r.item_id||'—'}</td>

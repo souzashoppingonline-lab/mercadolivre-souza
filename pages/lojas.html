@@ -85,11 +85,11 @@ async function load() {
         <div class="loja-meta">
           <div class="loja-nickname">${s.nickname}</div>
           <div class="loja-id">ID: ${s.id}</div>
+          <span class="status-badge ${s.token_valid ? 'ok' : 'err'}" style="margin-top:4px">
+            <i class="fas fa-circle" style="font-size:7px"></i>
+            ${s.token_valid ? 'Conectada' : 'Expirado'}
+          </span>
         </div>
-        <span class="status-badge ${s.token_valid ? 'ok' : 'err'}">
-          <i class="fas fa-circle" style="font-size:7px"></i>
-          ${s.token_valid ? 'Conectada' : 'Expirado'}
-        </span>
       </div>
       <div class="loja-rows">
         <div class="loja-row"><span class="k">Reputação</span><span class="v">${s.level_id||'—'}</span></div>

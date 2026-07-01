@@ -8,6 +8,39 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Vendas Totais'; window.ACTIVE_NAV='vendas.html';</script>
+  <style>
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    .sum-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+    .sum-card.purple { border-left: 3px solid #9b59b6; }
+    .sum-card.red    { border-left: 3px solid var(--red); }
+    .sum-card.yellow { border-left: 3px solid var(--primary); }
+    .sum-card.blue   { border-left: 3px solid #2980b9; }
+    .sum-card.green  { border-left: 3px solid var(--green); }
+    .sum-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .sum-value { font-size: 21px; font-weight: 700; margin-bottom: 6px; }
+    .sum-sub { font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 3px; }
+    .sum-sub span { display: flex; justify-content: space-between; gap: 8px; }
+    .mc-pct { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: rgba(39,174,96,0.15); color: var(--green); }
+    .mc-pct.neg { background: rgba(231,76,60,0.12); color: var(--red); }
+    .secondary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .sec-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+    .sec-card .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .sec-card .value { font-size: 18px; font-weight: 700; }
+    .sec-card .sub   { font-size: 11px; color: var(--text-muted); }
+    .filters-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .filters-row select, .filters-row input[type=text] { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
+    .tbl-num  { text-align: right; white-space: nowrap; }
+    .tbl-neg  { text-align: right; white-space: nowrap; color: var(--red); }
+    .tbl-pos  { text-align: right; white-space: nowrap; color: var(--green); font-weight: 600; }
+    .tbl-neg0 { text-align: right; white-space: nowrap; color: var(--text-muted); }
+    .tbl-anuncio { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    th { white-space: nowrap; font-size: 11px; }
+    .badge-frete { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(100,100,100,0.2); color: var(--text-muted); }
+    .badge-frete.Full   { background: rgba(39,174,96,0.15); color: var(--green); }
+    .badge-frete.Flex   { background: rgba(155,89,182,0.15); color: #a569bd; }
+    .badge-frete.ME2    { background: rgba(230,126,34,0.15); color: var(--orange); }
+    .badge-frete.Coleta { background: rgba(41,128,185,0.15); color: #5dade2; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,89 +48,214 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Hoje</div><div class="value" id="vendasHoje" style="color:var(--green)">—</div></div>
-        <div class="stat-card"><div class="label">Este Mês</div><div class="value" id="vendasMes">—</div></div>
-        <div class="stat-card"><div class="label">Mês Anterior</div><div class="value" id="vendasMesAnt">—</div></div>
-        <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" id="ticketMedio">—</div></div>
+
+      <div class="filters-row">
+        <select id="filterStore"><option value="">Todas as lojas</option></select>
+        <select id="filterStatus">
+          <option value="">Todos os status</option>
+          <option value="paid" selected>Pago</option>
+          <option value="shipped">Enviado</option>
+          <option value="delivered">Entregue</option>
+          <option value="cancelled">Cancelado</option>
+        </select>
+        <select id="filterDays">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <div class="search-box"><i class="fas fa-search"></i><input type="text" id="filterSearch" placeholder="Buscar produto..."></div>
+        <button class="btn-primary" id="btnLoad"><i class="fas fa-search"></i> Buscar</button>
       </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header">
-          <h3>Evolução de Vendas</h3>
-          <div style="display:flex;gap:6px">
-            <button class="chart-btn active" data-days="7">7D</button>
-            <button class="chart-btn" data-days="30">30D</button>
-            <button class="chart-btn" data-days="90">90D</button>
+
+      <div class="summary-grid">
+        <div class="sum-card purple">
+          <div class="sum-label"><i class="fas fa-dollar-sign"></i> Vendas Aprovadas</div>
+          <div class="sum-value" id="s-fat">R$ 0,00</div>
+          <div class="sum-sub">
+            <span><span>Faturamento ML</span><span id="s-fat2">R$ 0,00</span></span>
+            <span><span>Vendas Canceladas</span><span id="s-canc" style="color:var(--red)">R$ 0,00</span></span>
           </div>
         </div>
-        <canvas id="vendasChart" height="80"></canvas>
+        <div class="sum-card red">
+          <div class="sum-label"><i class="fas fa-minus-circle"></i> Custo &amp; Imposto</div>
+          <div class="sum-value" id="s-ci">R$ 0,00</div>
+          <div class="sum-sub">
+            <span><span>Custo</span><span id="s-custo">R$ 0,00</span></span>
+            <span><span>Imposto</span><span id="s-imp">R$ 0,00</span></span>
+          </div>
+        </div>
+        <div class="sum-card yellow">
+          <div class="sum-label"><i class="fas fa-percentage"></i> Tarifa de Venda</div>
+          <div class="sum-value" id="s-tar">R$ 0,00</div>
+          <div class="sum-sub"><span><span>Taxa cobrada pelo ML</span><span></span></span></div>
+        </div>
+        <div class="sum-card blue">
+          <div class="sum-label"><i class="fas fa-truck"></i> Frete Total</div>
+          <div class="sum-value" id="s-frete">R$ 0,00</div>
+          <div class="sum-sub">
+            <span><span>Frete Comprador</span><span id="s-fc">R$ 0,00</span></span>
+            <span><span>Frete Vendedor</span><span id="s-fv">R$ 0,00</span></span>
+          </div>
+        </div>
+        <div class="sum-card green">
+          <div class="sum-label"><i class="fas fa-equals"></i> Margem de Contribuição</div>
+          <div class="sum-value" id="s-mc">R$ 0,00</div>
+          <div class="sum-sub">
+            <span><span>MC %</span><span><span class="mc-pct" id="s-mcpct">0,00%</span></span></span>
+          </div>
+        </div>
       </div>
+
+      <div class="secondary-grid">
+        <div class="sec-card">
+          <div class="label">Qtd Vendas Aprovadas</div>
+          <div class="value" id="s-qtdap">0</div>
+          <div class="sub" id="s-qtdap2">0 pedidos</div>
+        </div>
+        <div class="sec-card">
+          <div class="label">Qtd Total Vendas</div>
+          <div class="value" id="s-qtdtot">0</div>
+          <div class="sub" id="s-qtdcanc">0 canceladas</div>
+        </div>
+        <div class="sec-card">
+          <div class="label">Ticket Médio / Venda</div>
+          <div class="value" id="s-ticket">R$ 0,00</div>
+          <div class="sub">por pedido aprovado</div>
+        </div>
+        <div class="sec-card">
+          <div class="label">MC Médio por Venda</div>
+          <div class="value" id="s-mcmed">R$ 0,00</div>
+          <div class="sub" id="s-mcmedpct">0,00%</div>
+        </div>
+      </div>
+
       <div class="card">
-        <div class="card-header"><h3>Detalhamento por Período</h3></div>
+        <div class="card-header">
+          <h3>Detalhamento por Venda</h3>
+          <span id="s-count" style="font-size:12px;color:var(--text-muted)"></span>
+        </div>
         <div class="table-responsive">
-          <table class="data-table">
-            <thead><tr><th>Data</th><th>Pedidos</th><th>Receita Bruta</th><th>Taxas ML</th><th>Receita Líquida</th></tr></thead>
-            <tbody id="vendasTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+          <table class="data-table" style="font-size:12px">
+            <thead>
+              <tr>
+                <th>Anúncio</th>
+                <th>Conta</th>
+                <th>SKU</th>
+                <th>Data</th>
+                <th>Frete</th>
+                <th class="tbl-num">Valor Unit.</th>
+                <th class="tbl-num">Qtd.</th>
+                <th class="tbl-num">Faturamento ML</th>
+                <th class="tbl-neg">Custo (-)</th>
+                <th class="tbl-neg">Imposto (-)</th>
+                <th class="tbl-neg">Tarifa (-)</th>
+                <th class="tbl-neg">Frete Comp. (-)</th>
+                <th class="tbl-neg">Frete Vend. (-)</th>
+                <th class="tbl-pos">Margem (=)</th>
+                <th class="tbl-pos">MC %</th>
+              </tr>
+            </thead>
+            <tbody id="vendasTbody">
+              <tr><td colspan="15" class="empty-state">Use os filtros acima e clique em Buscar</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
     </div>
   </main>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
-let chart;
+const R   = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const N   = (v,d=2) => Number(v||0).toFixed(d);
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const set   = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
 
-async function load(days=7) {
-  const data = await DB.getVendasDiarias(days) || { rows:[], summary:{} };
-  const s = data.summary || {};
-  document.getElementById('vendasHoje').textContent = fmt(s.hoje);
-  document.getElementById('vendasMes').textContent = fmt(s.mes_atual);
-  document.getElementById('vendasMesAnt').textContent = fmt(s.mes_anterior);
-  document.getElementById('ticketMedio').textContent = fmt(s.ticket_medio);
-
-  const rows = data.rows || [];
-  document.getElementById('vendasTable').innerHTML = rows.length
-    ? rows.map(r=>`<tr>
-        <td>${r.data}</td><td>${r.pedidos}</td>
-        <td>${fmt(r.bruto)}</td><td>${fmt(r.taxas)}</td><td>${fmt(r.liquido)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';
-
-  if (chart) chart.destroy();
-  const ctx = document.getElementById('vendasChart');
-  chart = new Chart(ctx, {
-    type:'bar',
-    data:{ labels: rows.map(r=>r.data), datasets:[
-      { label:'Receita Bruta', data: rows.map(r=>r.bruto), backgroundColor:'rgba(255,230,0,0.7)', borderRadius:4 },
-      { label:'Receita Líquida', data: rows.map(r=>r.liquido), backgroundColor:'rgba(39,174,96,0.7)', borderRadius:4 }
-    ]},
-    options:{
-      responsive:true,
-      plugins:{ legend:{ labels:{ color:'#f0f0f0' } }, tooltip:{ callbacks:{ label: c=> fmt(c.raw) } } },
-      scales:{
-        x:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } },
-        y:{ ticks:{ color:'#888', callback: v=>'R$'+(v/1000).toFixed(1)+'k' }, grid:{ color:'rgba(255,255,255,0.05)' } }
-      }
-    }
+async function initStores() {
+  const data = await DB.getLojas() || { stores:[] };
+  const sel = document.getElementById('filterStore');
+  (data.stores||[]).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.nickname;
+    sel.appendChild(o);
   });
+  const active = localStorage.getItem('ml_active_store') || '';
+  if (active) sel.value = active;
 }
 
-document.querySelectorAll('.chart-btn').forEach(btn=>{
-  btn.addEventListener('click', function(){
-    document.querySelectorAll('.chart-btn').forEach(b=>b.classList.remove('active'));
-    this.classList.add('active');
-    load(Number(this.dataset.days));
-  });
+async function load() {
+  const tbody = document.getElementById('vendasTbody');
+  tbody.innerHTML = '<tr><td colspan="15" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
+
+  const data = await DB.getVendasDetalhado({
+    store_id: document.getElementById('filterStore').value,
+    status:   document.getElementById('filterStatus').value,
+    days:     document.getElementById('filterDays').value,
+    search:   document.getElementById('filterSearch').value,
+  }) || { rows:[], summary:{} };
+
+  const s = data.summary || {};
+  set('s-fat',   R(s.vendas_aprovadas));
+  set('s-fat2',  R(s.vendas_aprovadas));
+  set('s-canc',  R(s.vendas_canceladas));
+  set('s-ci',    R((s.custo_total||0)+(s.imposto_total||0)));
+  set('s-custo', R(s.custo_total));
+  set('s-imp',   R(s.imposto_total));
+  set('s-tar',   R(s.tarifa_total));
+  set('s-frete', R(s.frete_comprador_total));
+  set('s-fc',    R(s.frete_comprador_total));
+  set('s-fv',    'R$ 0,00');
+  set('s-mc',    R(s.margem_total));
+  set('s-qtdap', s.qtd_aprovadas ?? 0);
+  set('s-qtdap2',`${s.pedidos_aprovados ?? 0} pedidos`);
+  set('s-qtdtot',(s.qtd_aprovadas||0)+(s.qtd_canceladas||0));
+  set('s-qtdcanc',`${s.qtd_canceladas??0} canceladas`);
+  set('s-ticket', R(s.ticket_medio));
+  set('s-mcmed',  R(s.pedidos_aprovados > 0 ? (s.margem_total/s.pedidos_aprovados) : 0));
+  set('s-mcmedpct', N(s.mc_pct)+'%');
+  set('s-count',  `${(data.rows||[]).length} registros`);
+
+  const mcEl = document.getElementById('s-mcpct');
+  if (mcEl) { mcEl.textContent = N(s.mc_pct)+'%'; mcEl.className = 'mc-pct'+(s.mc_pct<0?' neg':''); }
+
+  const rows = data.rows || [];
+  tbody.innerHTML = rows.length ? rows.map(r => {
+    const neg = Number(r.mc_pct) < 0;
+    const hasCusto = Number(r.custo) > 0;
+    return `<tr>
+      <td class="tbl-anuncio" title="${r.title||''}">${r.title||'—'}</td>
+      <td style="font-size:11px;white-space:nowrap">${r.conta||'—'}</td>
+      <td style="font-size:10px;color:var(--text-muted)">${r.item_id||'—'}</td>
+      <td style="white-space:nowrap;font-size:11px">${fmtDt(r.date_created)}</td>
+      <td><span class="badge-frete ${r.frete_tipo||''}">${r.frete_tipo||'—'}</span></td>
+      <td class="tbl-num">${R(r.unit_price)}</td>
+      <td class="tbl-num">${r.quantity??1}</td>
+      <td class="tbl-num">${R(r.faturamento)}</td>
+      <td class="${hasCusto?'tbl-neg':'tbl-neg0'}">${R(r.custo)}</td>
+      <td class="tbl-neg">${R(r.imposto)}</td>
+      <td class="${Number(r.tarifa)>0?'tbl-neg':'tbl-neg0'}">${R(r.tarifa)}</td>
+      <td class="${Number(r.frete_comprador)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_comprador)}</td>
+      <td class="tbl-neg0">R$ 0,00</td>
+      <td class="${neg?'tbl-neg':'tbl-pos'}">${R(r.margem)}</td>
+      <td class="${neg?'tbl-neg':'tbl-pos'}">${N(r.mc_pct)}%</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="15" class="empty-state">Nenhuma venda encontrada</td></tr>';
+}
+
+document.getElementById('btnLoad').addEventListener('click', load);
+document.getElementById('filterSearch').addEventListener('keydown', e => { if(e.key==='Enter') load(); });
+window.addEventListener('storeChanged', e => { document.getElementById('filterStore').value=e.detail.storeId; load(); });
+WS.on('order_updated', load);
+WS.on('_connected', () => {
+  const el=document.getElementById('wsStatus');
+  if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
-WS.on('order_updated', ()=>load());
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
-load();
+
+initStores().then(load);
 </script>
 </body>
 </html>

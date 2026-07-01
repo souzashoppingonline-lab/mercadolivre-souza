@@ -26,25 +26,42 @@ async function handleOrder({ resource, storeId }) {
   const orderId = resource.split('/').pop();
   const order = await ml.getOrder(orderId, storeId);
 
+  const item0 = order.order_items?.[0] || {};
+  const shippingType = (order.shipping?.logistic_type || '').replace('FULFILLMENT', 'Full').replace('ME2', 'ME2').replace('FLEX', 'Flex').replace('PICKUP', 'Coleta') || '';
+
   await pool.query(
-    `INSERT INTO orders (ml_id, store_id, buyer_nickname, title, total_amount, status, date_created, date_closed, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+    `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        buyer_nickname = EXCLUDED.buyer_nickname,
+       item_id = EXCLUDED.item_id,
        title = EXCLUDED.title,
        total_amount = EXCLUDED.total_amount,
+       quantity = EXCLUDED.quantity,
+       unit_price = EXCLUDED.unit_price,
+       ml_fee = EXCLUDED.ml_fee,
+       shipping_type = EXCLUDED.shipping_type,
+       shipping_cost = EXCLUDED.shipping_cost,
        status = EXCLUDED.status,
        date_closed = EXCLUDED.date_closed,
        updated_at = now()`,
     [
       order.id, storeId, order.buyer?.nickname,
-      order.order_items?.[0]?.item?.title || null,
-      order.total_amount, order.status,
+      item0.item?.id || null,
+      item0.item?.title || null,
+      order.total_amount,
+      item0.quantity || 1,
+      item0.unit_price || order.total_amount || 0,
+      item0.sale_fee || 0,
+      shippingType,
+      order.shipping?.cost || 0,
+      order.status,
       order.date_created, order.date_closed,
     ]
   );
 
   await redis.del(`kpis:${storeId}`);
+  await redis.del('kpis:summary');
   await publish('order_updated', { id: order.id, status: order.status });
 }
 

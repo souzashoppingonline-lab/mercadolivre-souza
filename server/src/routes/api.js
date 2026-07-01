@@ -92,6 +92,78 @@ router.get('/vendas/diarias', async (req, res) => {
   res.json({ rows: rows.map(r => ({ ...r, liquido: Number(r.bruto) * 0.88, taxas: Number(r.bruto) * 0.12 })), summary: {} });
 });
 
+router.get('/vendas/detalhado', async (req, res) => {
+  const { store_id = '', status = 'paid', days = 30, search = '' } = req.query;
+  const { rows } = await pool.query(
+    `SELECT
+       o.ml_id, o.store_id, s.nickname as conta, o.item_id,
+       o.title, o.quantity, o.unit_price,
+       o.total_amount as faturamento,
+       o.ml_fee as tarifa,
+       o.shipping_type as frete_tipo,
+       o.shipping_cost as frete_comprador,
+       o.status, o.date_created,
+       COALESCE(i.cost, 0) as custo,
+       COALESCE(s.imposto_pct, 0) as imposto_pct
+     FROM orders o
+     JOIN stores s ON s.id = o.store_id
+     LEFT JOIN items i ON i.ml_id = o.item_id
+     WHERE ($1 = '' OR o.store_id = $1::bigint)
+       AND ($2 = '' OR o.status = $2)
+       AND o.date_created >= CURRENT_DATE - $3::int
+       AND ($4 = '' OR o.title ILIKE '%'||$4||'%')
+     ORDER BY o.date_created DESC LIMIT 500`,
+    [store_id, status, Number(days), search]
+  );
+
+  const result = rows.map(r => {
+    const fat = Number(r.faturamento) || 0;
+    const custo = Number(r.custo) * (Number(r.quantity) || 1);
+    const imposto = fat * (Number(r.imposto_pct) / 100);
+    const tarifa = Number(r.tarifa) || 0;
+    const freteVend = 0; // not available from ML API yet
+    const margem = fat - custo - imposto - tarifa - freteVend;
+    const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
+    return { ...r, custo, imposto, margem, mc_pct: Number(mc_pct.toFixed(2)) };
+  });
+
+  // Summary
+  const approved = result.filter(r => r.status !== 'cancelled');
+  const cancelled = result.filter(r => r.status === 'cancelled');
+  const summary = {
+    vendas_aprovadas: approved.reduce((a, r) => a + Number(r.faturamento), 0),
+    vendas_canceladas: cancelled.reduce((a, r) => a + Number(r.faturamento), 0),
+    custo_total: approved.reduce((a, r) => a + r.custo, 0),
+    imposto_total: approved.reduce((a, r) => a + r.imposto, 0),
+    tarifa_total: approved.reduce((a, r) => a + Number(r.tarifa), 0),
+    frete_comprador_total: approved.reduce((a, r) => a + Number(r.frete_comprador), 0),
+    margem_total: approved.reduce((a, r) => a + r.margem, 0),
+    qtd_aprovadas: approved.reduce((a, r) => a + (Number(r.quantity) || 1), 0),
+    qtd_canceladas: cancelled.reduce((a, r) => a + (Number(r.quantity) || 1), 0),
+    pedidos_aprovados: approved.length,
+    pedidos_cancelados: cancelled.length,
+    ticket_medio: approved.length ? approved.reduce((a, r) => a + Number(r.faturamento), 0) / approved.length : 0,
+  };
+  summary.mc_pct = summary.vendas_aprovadas > 0 ? (summary.margem_total / summary.vendas_aprovadas) * 100 : 0;
+
+  res.json({ rows: result, summary });
+});
+
+// ── Configuração de loja (imposto, etc.) ───────────────────
+router.patch('/lojas/:id', async (req, res) => {
+  const { imposto_pct } = req.body;
+  if (imposto_pct == null) return res.status(400).json({ error: 'imposto_pct required' });
+  await pool.query(`UPDATE stores SET imposto_pct=$2 WHERE id=$1`, [req.params.id, Number(imposto_pct)]);
+  res.json({ ok: true });
+});
+
+router.patch('/items/:id/custo', async (req, res) => {
+  const { cost } = req.body;
+  if (cost == null) return res.status(400).json({ error: 'cost required' });
+  await pool.query(`UPDATE items SET cost=$2 WHERE ml_id=$1`, [req.params.id, Number(cost)]);
+  res.json({ ok: true });
+});
+
 // ── Perguntas / Mensagens ──────────────────────────────────
 router.get('/perguntas', async (req, res) => {
   const { status = 'UNANSWERED' } = req.query;

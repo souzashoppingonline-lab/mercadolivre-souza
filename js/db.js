@@ -21,6 +21,21 @@ const DB = {
     }
   },
 
+  async _patch(path, body) {
+    try {
+      const res = await fetch(new URL(`${this.BASE}${path}`, location.origin).toString(), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.error('[DB] PATCH error', path, e);
+      return null;
+    }
+  },
+
   async _post(path, body) {
     try {
       const res = await fetch(`${this.BASE}${path}`, {
@@ -51,8 +66,11 @@ const DB = {
   async getPedido(id)             { return this._get(`/pedidos/${id}`); },
 
   // ── Vendas ─────────────────────────────────────────────────
-  async getVendas(params = {})    { return this._get('/vendas', params); },
-  async getVendasDiarias(days=30) { return this._get('/vendas/diarias', { days }); },
+  async getVendas(params = {})         { return this._get('/vendas', params); },
+  async getVendasDiarias(days=30)      { return this._get('/vendas/diarias', { days }); },
+  async getVendasDetalhado(params={})  { return this._get('/vendas/detalhado', params); },
+  async updateLojaConfig(id, body)     { return this._patch(`/lojas/${id}`, body); },
+  async updateItemCusto(id, cost)      { return this._patch(`/items/${id}/custo`, { cost }); },
 
   // ── Perguntas ──────────────────────────────────────────────
   async getPerguntas(params = {}) { return this._get('/perguntas', params); },

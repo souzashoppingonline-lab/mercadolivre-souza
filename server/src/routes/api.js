@@ -290,16 +290,113 @@ router.get('/webhooks/config', async (req, res) => {
      FROM webhook_logs WHERE received_at::date = CURRENT_DATE`
   );
   const c = counts.rows[0];
+  const cfg = await pool.query(`SELECT key, value FROM app_config WHERE key IN ('telegram_bot_token','telegram_chat_id') LIMIT 2`).catch(() => ({ rows: [] }));
+  const cfgMap = Object.fromEntries(cfg.rows.map(r => [r.key, r.value]));
+  const token = cfgMap.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN || '';
   res.json({
     received_today: Number(c.total), processed_today: Number(c.processed),
     failed_today: Number(c.failed), queue_size: Number(c.pending),
-    telegram_connected: !!process.env.TELEGRAM_BOT_TOKEN,
+    telegram_connected: !!token,
+    telegram_chat_id: cfgMap.telegram_chat_id || process.env.TELEGRAM_CHAT_ID || '',
+    telegram_bot_token_set: !!token,
   });
+});
+
+router.get('/config/telegram', async (req, res) => {
+  const { rows } = await pool.query(`SELECT key, value FROM app_config WHERE key IN ('telegram_bot_token','telegram_chat_id')`);
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  res.json({
+    bot_token: map.telegram_bot_token ? '****' + map.telegram_bot_token.slice(-4) : '',
+    chat_id: map.telegram_chat_id || '',
+    connected: !!(map.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN),
+  });
+});
+
+router.patch('/config/telegram', async (req, res) => {
+  const { bot_token, chat_id } = req.body;
+  if (bot_token && bot_token !== '****') {
+    await pool.query(
+      `INSERT INTO app_config (key, value, updated_at) VALUES ('telegram_bot_token',$1,now())
+       ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`, [bot_token]
+    );
+  }
+  if (chat_id != null) {
+    await pool.query(
+      `INSERT INTO app_config (key, value, updated_at) VALUES ('telegram_chat_id',$1,now())
+       ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`, [String(chat_id)]
+    );
+  }
+  res.json({ ok: true });
+});
+
+router.post('/config/telegram/test', async (req, res) => {
+  const { message } = req.body;
+  const { rows } = await pool.query(`SELECT key, value FROM app_config WHERE key IN ('telegram_bot_token','telegram_chat_id')`);
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  const token = map.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = map.telegram_chat_id || process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return res.status(400).json({ error: 'Token ou Chat ID não configurado' });
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message || 'Teste ML Dashboard ✅' })
+    });
+    const data = await r.json();
+    if (!data.ok) return res.status(400).json({ error: data.description });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.get('/schedule/jobs', async (req, res) => {
   const { rows } = await pool.query(`SELECT name, cron, last_run, duration_ms, status FROM schedule_jobs`);
   res.json({ jobs: rows });
+});
+
+// ── Monitor: system metrics & security ───────────────────
+router.get('/monitor/metrics', async (req, res) => {
+  const { execSync } = require('child_process');
+  try {
+    const cpu = parseFloat(execSync("top -bn1 | grep 'Cpu(s)' | awk '{print $2}'").toString().trim()) || 0;
+    const memLine = execSync("free | grep Mem").toString().trim().split(/\s+/);
+    const memTotal = Number(memLine[1]);
+    const memUsed  = Number(memLine[2]);
+    const mem = memTotal > 0 ? (memUsed / memTotal) * 100 : 0;
+    const diskLine = execSync("df / | tail -1").toString().trim().split(/\s+/);
+    const disk = parseFloat(diskLine[4]) || 0;
+    res.json({ cpu: Number(cpu.toFixed(1)), mem: Number(mem.toFixed(1)), disk });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/monitor/security', async (req, res) => {
+  const { execSync } = require('child_process');
+  try {
+    let banned = 0, attempts = 0;
+    try {
+      const f2b = execSync("fail2ban-client status sshd 2>/dev/null || echo ''").toString();
+      const m1 = f2b.match(/Currently banned:\s*(\d+)/);
+      const m2 = f2b.match(/Total banned:\s*(\d+)/);
+      if (m1) banned = Number(m1[1]);
+      if (m2) attempts = Number(m2[1]);
+    } catch (_) {}
+
+    let ssh_logins = [];
+    try {
+      const lastLog = execSync("last -n 20 -F 2>/dev/null | head -20").toString();
+      ssh_logins = lastLog.split('\n').filter(l => l && !l.startsWith('wtmp')).slice(0, 10).map(l => {
+        const parts = l.trim().split(/\s+/);
+        return { user: parts[0] || '?', ip: parts[2] || '?', date: parts.slice(3, 7).join(' '), success: !l.includes('gone') };
+      });
+    } catch (_) {}
+
+    res.json({ fail2ban: { banned, attempts }, ssh_logins });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

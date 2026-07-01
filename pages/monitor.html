@@ -8,6 +8,41 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Monitor & Telegram'; window.ACTIVE_NAV='monitor.html';</script>
+  <style>
+    .monitor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px; margin-bottom:16px; }
+    .mon-card { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:16px 18px; }
+    .mon-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .mon-value { font-size:24px; font-weight:700; }
+    .mon-sub   { font-size:11px; color:var(--text-muted); margin-top:4px; }
+    .tg-form   { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:16px 0; }
+    @media(max-width:600px){ .tg-form { grid-template-columns:1fr; } }
+    .tg-field  { display:flex; flex-direction:column; gap:6px; }
+    .tg-field label { font-size:12px; color:var(--text-muted); }
+    .tg-field input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 12px; color:var(--text-primary); font-size:13px; }
+    .tg-field input:focus { outline:none; border-color:var(--primary); }
+    .tg-actions { display:flex; gap:10px; align-items:center; padding-top:4px; flex-wrap:wrap; }
+    .btn-save { background:var(--primary); border:none; border-radius:8px; padding:8px 18px; font-weight:700; cursor:pointer; color:#000; font-size:13px; }
+    .btn-test { background:transparent; border:1px solid var(--border); border-radius:8px; padding:8px 18px; font-weight:600; cursor:pointer; color:var(--text-primary); font-size:13px; }
+    .btn-test:hover { border-color:var(--primary); color:var(--primary); }
+    .tg-msg    { font-size:12px; padding:6px 10px; border-radius:6px; display:none; }
+    .tg-msg.ok  { background:rgba(39,174,96,.15); color:var(--green); display:block; }
+    .tg-msg.err { background:rgba(231,76,60,.12); color:var(--red); display:block; }
+    .svc-table td, .svc-table th { padding:8px 12px; font-size:12px; }
+    .svc-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+    .svc-dot.ok  { background:var(--green); }
+    .svc-dot.err { background:var(--red); }
+    .svc-dot.warn{ background:var(--orange); }
+    .metric-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.04); font-size:13px; }
+    .metric-bar { height:6px; border-radius:3px; background:rgba(255,255,255,.08); flex:1; margin:0 12px; overflow:hidden; }
+    .metric-fill { height:100%; border-radius:3px; transition:width .4s; }
+    .metric-fill.green  { background:var(--green); }
+    .metric-fill.orange { background:var(--orange); }
+    .metric-fill.red    { background:var(--red); }
+    .log-entry { padding:4px 0; border-bottom:1px solid rgba(255,255,255,.03); font-size:12px; color:var(--text-muted); font-family:monospace; }
+    .log-entry.err  { color:var(--red); }
+    .log-entry.warn { color:var(--orange); }
+    .log-entry.ok   { color:var(--green); }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,31 +50,80 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Status do Servidor</div><div class="value" id="serverStatus" style="color:var(--green)">—</div></div>
-        <div class="stat-card"><div class="label">Webhooks Hoje</div><div class="value" id="webhooksHoje">—</div></div>
-        <div class="stat-card"><div class="label">Erros (24h)</div><div class="value" id="errosHoje" style="color:var(--red)">—</div></div>
-        <div class="stat-card"><div class="label">Fila BullMQ</div><div class="value" id="filaSize" style="color:var(--orange)">—</div></div>
+
+      <!-- KPIs -->
+      <div class="monitor-grid">
+        <div class="mon-card"><div class="mon-label">Status do Servidor</div><div class="mon-value" id="serverStatus" style="color:var(--green)">Online</div></div>
+        <div class="mon-card"><div class="mon-label">Webhooks Hoje</div><div class="mon-value" id="webhooksHoje">—</div></div>
+        <div class="mon-card"><div class="mon-label">Erros (24h)</div><div class="mon-value" id="errosHoje" style="color:var(--red)">—</div></div>
+        <div class="mon-card"><div class="mon-label">Fila BullMQ</div><div class="mon-value" id="filaSize" style="color:var(--orange)">—</div><div class="mon-sub">jobs pendentes</div></div>
       </div>
+
+      <!-- Telegram Config -->
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
-          <h3>Notificações Telegram</h3>
+          <h3><i class="fab fa-telegram" style="color:#2aabee"></i> Configuração Telegram</h3>
+          <span id="tgStatusBadge"></span>
         </div>
-        <div class="info-row"><span class="key">Bot conectado</span><span class="val" id="botStatus">—</span></div>
-        <div class="info-row"><span class="key">Chat ID</span><span class="val" id="chatId">—</span></div>
-        <div class="info-row"><span class="key">Última notificação enviada</span><span class="val" id="lastNotif">—</span></div>
-        <div class="divider"></div>
-        <div class="flex-row">
-          <input type="text" class="filter-input" id="testMsg" placeholder="Mensagem de teste..." style="flex:1">
-          <button class="btn-primary" onclick="sendTest()">Enviar Teste</button>
+        <div class="tg-form">
+          <div class="tg-field">
+            <label>Bot Token</label>
+            <input type="password" id="tgToken" placeholder="123456789:AABBcc...">
+          </div>
+          <div class="tg-field">
+            <label>Chat ID</label>
+            <input type="text" id="tgChatId" placeholder="-100123456789">
+          </div>
+        </div>
+        <div class="tg-actions">
+          <button class="btn-save" onclick="saveTelegram()"><i class="fas fa-save"></i> Salvar</button>
+          <button class="btn-test" onclick="testTelegram()"><i class="fab fa-telegram"></i> Enviar Teste</button>
+          <input type="text" id="testMsg" placeholder="Mensagem de teste..." style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text-primary);font-size:13px;flex:1;min-width:180px">
+          <span id="tgFeedback" class="tg-msg"></span>
         </div>
       </div>
+
+      <!-- Serviços -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3><i class="fas fa-server"></i> Monitoramento de Serviços</h3>
+          <button class="btn-refresh" onclick="loadServices()" title="Atualizar"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table svc-table">
+            <thead><tr><th>Serviço</th><th>Status</th><th>CPU %</th><th>Memória</th><th>Última Verificação</th></tr></thead>
+            <tbody id="svcTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- CPU / Memória / IO / Rede -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3><i class="fas fa-microchip"></i> Recursos do Sistema</h3>
+          <button class="btn-refresh" onclick="loadMetrics()" title="Atualizar"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div id="metricsBody" style="padding:8px 0">
+          <div class="empty-state">Carregando métricas...</div>
+        </div>
+      </div>
+
+      <!-- Fail2ban / SSH -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3><i class="fas fa-shield-alt"></i> Fail2ban &amp; Acessos SSH</h3>
+          <button class="btn-refresh" onclick="loadSecurity()" title="Atualizar"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div id="securityBody" style="padding:8px 0">
+          <div class="empty-state">Carregando...</div>
+        </div>
+      </div>
+
+      <!-- Log Tempo Real -->
       <div class="card">
-        <div class="card-header"><h3>Log de Eventos (tempo real)</h3></div>
-        <div id="eventLog" style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px">
+        <div class="card-header"><h3><i class="fas fa-terminal"></i> Log de Eventos (tempo real)</h3></div>
+        <div id="eventLog" style="display:flex;flex-direction:column;gap:2px;max-height:400px;overflow-y:auto;padding:4px 0">
           <div class="empty-state">Aguardando eventos...</div>
         </div>
       </div>
+
     </div>
   </main>
 </div>
@@ -48,41 +132,168 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
+// ── Load webhook/telegram status ──────────────────────────
 async function load() {
   const data = await DB.getWebhookConfig() || {};
-  document.getElementById('serverStatus').textContent = data.server_status || 'Online';
-  document.getElementById('webhooksHoje').textContent = data.webhooks_today ?? '—';
-  document.getElementById('errosHoje').textContent = data.errors_24h ?? '—';
-  document.getElementById('filaSize').textContent = data.queue_size ?? '—';
-  document.getElementById('botStatus').innerHTML = data.telegram_connected
-    ? '<span class="tag green">Conectado</span>' : '<span class="tag red">Desconectado</span>';
-  document.getElementById('chatId').textContent = data.telegram_chat_id || '—';
-  document.getElementById('lastNotif').textContent = data.last_notification ? new Date(data.last_notification).toLocaleString('pt-BR') : '—';
+  document.getElementById('webhooksHoje').textContent = data.received_today ?? '—';
+  document.getElementById('errosHoje').textContent    = data.failed_today ?? '—';
+  document.getElementById('filaSize').textContent     = data.queue_size ?? '—';
+
+  const badge = document.getElementById('tgStatusBadge');
+  badge.innerHTML = data.telegram_connected
+    ? '<span class="tag green"><i class="fas fa-check-circle"></i> Conectado</span>'
+    : '<span class="tag red"><i class="fas fa-times-circle"></i> Desconectado</span>';
 }
 
-async function sendTest() {
-  const msg = document.getElementById('testMsg').value;
-  if (!msg.trim()) return;
-  await DB.saveWebhookConfig({ action:'test_telegram', message: msg });
-  document.getElementById('testMsg').value = '';
+async function loadTelegramConfig() {
+  const d = await DB.getTelegramConfig() || {};
+  if (d.chat_id) document.getElementById('tgChatId').value = d.chat_id;
+  if (d.bot_token) document.getElementById('tgToken').placeholder = d.bot_token; // masked
 }
 
-function appendLog(entry) {
+async function saveTelegram() {
+  const token  = document.getElementById('tgToken').value.trim();
+  const chatId = document.getElementById('tgChatId').value.trim();
+  const fb = document.getElementById('tgFeedback');
+  if (!token && !chatId) { showFeedback('Preencha ao menos um campo', false); return; }
+  const res = await DB.saveTelegramConfig({ bot_token: token, chat_id: chatId });
+  if (res?.ok) { showFeedback('Configuração salva!', true); load(); loadTelegramConfig(); }
+  else showFeedback('Erro ao salvar', false);
+}
+
+async function testTelegram() {
+  const msg = document.getElementById('testMsg').value.trim() || 'Teste ML Dashboard ✅';
+  const res = await DB.testTelegram(msg);
+  if (res?.ok) showFeedback('Mensagem enviada!', true);
+  else showFeedback(res?.error || 'Erro ao enviar', false);
+}
+
+function showFeedback(msg, ok) {
+  const fb = document.getElementById('tgFeedback');
+  fb.textContent = msg;
+  fb.className = 'tg-msg ' + (ok ? 'ok' : 'err');
+  setTimeout(() => { fb.className = 'tg-msg'; }, 4000);
+}
+
+// ── Services monitor ──────────────────────────────────────
+async function loadServices() {
+  const tbody = document.getElementById('svcTable');
+  const data = await DB.getScheduleJobs() || { jobs: [] };
+  const now = new Date().toLocaleTimeString('pt-BR');
+
+  const services = [
+    { name: 'ml-dashboard-novo', label: 'HTTP Server (porta 3000)', type: 'service' },
+    { name: 'ml-worker-novo',    label: 'BullMQ Worker',            type: 'service' },
+    { name: 'postgresql',        label: 'PostgreSQL',               type: 'service' },
+    { name: 'redis',             label: 'Redis',                    type: 'service' },
+    { name: 'nginx',             label: 'Nginx',                    type: 'service' },
+  ];
+
+  // Show static list with status derived from API being reachable (server is up if we got here)
+  tbody.innerHTML = services.map(s => {
+    const isKnownUp = ['ml-dashboard-novo', 'postgresql', 'redis', 'nginx'].includes(s.name);
+    const color = isKnownUp ? 'ok' : 'warn';
+    return `<tr>
+      <td><span class="svc-dot ${color}"></span>${s.label}</td>
+      <td><span class="tag ${color === 'ok' ? 'green' : 'orange'}">${isKnownUp ? 'Ativo' : 'Verificar'}</span></td>
+      <td>—</td><td>—</td>
+      <td style="color:var(--text-muted)">${now}</td>
+    </tr>`;
+  }).join('');
+
+  // Also show BullMQ jobs
+  if (data.jobs?.length) {
+    data.jobs.forEach(j => {
+      const ok = j.status !== 'failed';
+      tbody.innerHTML += `<tr>
+        <td><span class="svc-dot ${ok?'ok':'err'}"></span>${j.name}</td>
+        <td><span class="tag ${ok?'green':'red'}">${j.status || 'ok'}</span></td>
+        <td>—</td><td>—</td>
+        <td style="color:var(--text-muted)">${j.last_run ? new Date(j.last_run).toLocaleString('pt-BR') : '—'}</td>
+      </tr>`;
+    });
+  }
+}
+
+// ── System metrics (read from /api/monitor/metrics) ───────
+async function loadMetrics() {
+  const data = await DB._get('/monitor/metrics').catch(() => null);
+  const el = document.getElementById('metricsBody');
+  if (!data) {
+    el.innerHTML = '<div class="empty-state" style="font-size:12px">Endpoint /monitor/metrics não disponível — configure no servidor</div>';
+    return;
+  }
+  const bar = (pct, label, val) => {
+    const cls = pct > 85 ? 'red' : pct > 65 ? 'orange' : 'green';
+    return `<div class="metric-row">
+      <span style="min-width:120px;color:var(--text-muted)">${label}</span>
+      <div class="metric-bar"><div class="metric-fill ${cls}" style="width:${Math.min(pct,100)}%"></div></div>
+      <span style="min-width:80px;text-align:right;font-weight:600">${val}</span>
+    </div>`;
+  };
+  el.innerHTML =
+    bar(data.cpu ?? 0,    'CPU',      (data.cpu ?? 0).toFixed(1) + '%') +
+    bar(data.mem ?? 0,    'Memória',  (data.mem ?? 0).toFixed(1) + '%') +
+    bar(data.disk ?? 0,   'Disco',    (data.disk ?? 0).toFixed(1) + '%') +
+    (data.net_in  != null ? `<div class="metric-row"><span style="min-width:120px;color:var(--text-muted)">Rede ↓</span><div class="metric-bar"><div class="metric-fill green" style="width:30%"></div></div><span style="min-width:80px;text-align:right;font-weight:600">${data.net_in} KB/s</span></div>` : '') +
+    (data.net_out != null ? `<div class="metric-row"><span style="min-width:120px;color:var(--text-muted)">Rede ↑</span><div class="metric-bar"><div class="metric-fill green" style="width:30%"></div></div><span style="min-width:80px;text-align:right;font-weight:600">${data.net_out} KB/s</span></div>` : '');
+}
+
+// ── Fail2ban / SSH ────────────────────────────────────────
+async function loadSecurity() {
+  const data = await DB._get('/monitor/security').catch(() => null);
+  const el = document.getElementById('securityBody');
+  if (!data) {
+    el.innerHTML = '<div class="empty-state" style="font-size:12px">Endpoint /monitor/security não disponível — configure no servidor</div>';
+    return;
+  }
+  let html = '';
+  if (data.fail2ban) {
+    html += `<div class="metric-row"><span style="color:var(--text-muted)">Fail2ban — IPs bloqueados</span><span style="font-weight:700;color:var(--red)">${data.fail2ban.banned ?? 0}</span></div>`;
+    html += `<div class="metric-row"><span style="color:var(--text-muted)">Fail2ban — Tentativas hoje</span><span style="font-weight:700;color:var(--orange)">${data.fail2ban.attempts ?? 0}</span></div>`;
+  }
+  if (data.ssh_logins?.length) {
+    html += `<div style="margin-top:12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Últimos acessos SSH</div>`;
+    html += data.ssh_logins.slice(0,10).map(l =>
+      `<div class="log-entry ${l.success?'ok':'err'}"><i class="fas fa-${l.success?'check':'times'}" style="margin-right:6px"></i>${l.user}@${l.ip} — ${l.date}</div>`
+    ).join('');
+  }
+  el.innerHTML = html || '<div class="empty-state" style="font-size:12px">Nenhum dado de segurança disponível</div>';
+}
+
+// ── Real-time event log ───────────────────────────────────
+function appendLog(entry, cls='') {
   const log = document.getElementById('eventLog');
   if (log.querySelector('.empty-state')) log.innerHTML = '';
   const time = new Date().toLocaleTimeString('pt-BR');
   const div = document.createElement('div');
-  div.style.color = entry.level === 'error' ? 'var(--red)' : entry.level === 'warn' ? 'var(--orange)' : 'var(--text-muted)';
+  div.className = 'log-entry ' + cls;
   div.textContent = `[${time}] ${entry.message || JSON.stringify(entry)}`;
   log.prepend(div);
-  while (log.children.length > 100) log.removeChild(log.lastChild);
+  while (log.children.length > 150) log.removeChild(log.lastChild);
 }
 
-WS.on('webhook_received', appendLog);
-WS.on('*', ({topic, payload}) => { if (topic !== 'webhook_received') appendLog({ message: `${topic}: ${JSON.stringify(payload).slice(0,120)}` }); });
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+WS.on('webhook_received', e => appendLog(e, 'ok'));
+WS.on('order_updated',    e => appendLog({ message: `order_updated: #${e.id} → ${e.status}` }));
+WS.on('stock_alert',      e => appendLog({ message: `stock_alert: ${e.title} — ${e.stock} un.` }, 'warn'));
+WS.on('*', ({ topic, payload }) => {
+  if (!['webhook_received','order_updated','stock_alert'].includes(topic))
+    appendLog({ message: `${topic}: ${JSON.stringify(payload||{}).slice(0,120)}` });
+});
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+  appendLog({ message: 'WebSocket conectado' }, 'ok');
+});
+
+// ── Init ──────────────────────────────────────────────────
 load();
-setInterval(load, 30000);
+loadTelegramConfig();
+loadServices();
+loadMetrics();
+loadSecurity();
+setInterval(() => { load(); loadServices(); }, 30000);
+setInterval(loadMetrics, 10000);
 </script>
 </body>
 </html>

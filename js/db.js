@@ -121,6 +121,11 @@ const DB = {
   async getWebhookConfig()        { return this._get('/webhooks/config'); },
   async saveWebhookConfig(body)   { return this._post('/webhooks/config', body); },
 
+  // ── Config Telegram ────────────────────────────────────────
+  async getTelegramConfig()           { return this._get('/config/telegram'); },
+  async saveTelegramConfig(body)      { return this._patch('/config/telegram', body); },
+  async testTelegram(message)         { return this._post('/config/telegram/test', { message }); },
+
   // ── Schedule ───────────────────────────────────────────────
   async getScheduleJobs()         { return this._get('/schedule/jobs'); },
   async triggerJob(name)          { return this._post(`/schedule/jobs/${name}/trigger`, {}); },

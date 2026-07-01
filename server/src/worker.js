@@ -238,10 +238,18 @@ const worker = new Worker(
       await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [logId]);
     } catch (err) {
       await pool.query(`UPDATE webhook_logs SET status='failed', error=$2, processed_at=now() WHERE id=$1`, [logId, err.message]);
+      // On 429 tell BullMQ to retry with exponential backoff
+      if (err.message?.includes('429')) {
+        err.message = `RATE_LIMITED: ${err.message}`;
+      }
       throw err;
     }
   },
-  { connection, concurrency: 5 }
+  {
+    connection,
+    concurrency: 1,  // one at a time — avoids burst 429s
+    limiter: { max: 1, duration: 1500 },  // max 1 job per 1.5s
+  }
 );
 
 worker.on('completed', (job) => console.log(`[worker] done ${job.name}#${job.id}`));

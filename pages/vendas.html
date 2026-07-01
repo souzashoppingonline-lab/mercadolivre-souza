@@ -196,7 +196,15 @@ async function load() {
     status:   document.getElementById('filterStatus').value,
     days:     document.getElementById('filterDays').value,
     search:   document.getElementById('filterSearch').value,
-  }) || { rows:[], summary:{} };
+  });
+  if (!data) {
+    tbody.innerHTML = '<tr><td colspan="15" class="empty-state" style="color:var(--red)">Erro ao carregar — verifique se o servidor está online</td></tr>';
+    return;
+  }
+  if (data.error) {
+    tbody.innerHTML = `<tr><td colspan="15" class="empty-state" style="color:var(--red);font-size:11px">Erro: ${data.error}</td></tr>`;
+    return;
+  }
 
   const s = data.summary || {};
   set('s-fat',   R(s.vendas_aprovadas));

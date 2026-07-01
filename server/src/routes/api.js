@@ -93,6 +93,7 @@ router.get('/vendas/diarias', async (req, res) => {
 });
 
 router.get('/vendas/detalhado', async (req, res) => {
+  try {
   const { store_id = '', status = 'paid', days = 30, search = '' } = req.query;
   const { rows } = await pool.query(
     `SELECT
@@ -150,6 +151,10 @@ router.get('/vendas/detalhado', async (req, res) => {
   summary.mc_pct = summary.vendas_aprovadas > 0 ? (summary.margem_total / summary.vendas_aprovadas) * 100 : 0;
 
   res.json({ rows: result, summary });
+  } catch (e) {
+    console.error('[api] /vendas/detalhado error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Configuração de loja (imposto, etc.) ───────────────────

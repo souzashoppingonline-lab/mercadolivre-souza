@@ -30,13 +30,21 @@ CREATE TABLE IF NOT EXISTS orders (
   ml_id BIGINT PRIMARY KEY,
   store_id BIGINT REFERENCES stores(id),
   buyer_nickname TEXT,
+  item_id TEXT,
   title TEXT,
+  quantity INT DEFAULT 1,
+  unit_price NUMERIC DEFAULT 0,
   total_amount NUMERIC,
+  ml_fee NUMERIC DEFAULT 0,
+  shipping_type TEXT DEFAULT '',
+  shipping_cost NUMERIC DEFAULT 0,
+  shipping_seller_cost NUMERIC DEFAULT 0,
   status TEXT,
   cancelled_by TEXT,
   cancel_reason TEXT,
   date_created TIMESTAMPTZ,
   date_closed TIMESTAMPTZ,
+  raw_data JSONB,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 

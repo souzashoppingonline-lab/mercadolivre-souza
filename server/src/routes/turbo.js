@@ -139,7 +139,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
   console.log(`[turbo] header row=${headerRowIdx} score=${bestScore}`, headers.map((h, i) => `${i}:"${h}"`).join(' | '));
   console.log('[turbo] mapeamento:', Object.entries(colMap).map(([k,v]) => `${k}=${headers[v]}`).join(', '));
 
-  if (!colMap.sale_id) {
+  if (colMap.sale_id == null) {
     const normed = headers.map(h => norm(h));
     return res.status(400).json({
       error: 'Coluna "ID da Venda" não encontrada. Verifique se é uma planilha do Mercado Turbo.',

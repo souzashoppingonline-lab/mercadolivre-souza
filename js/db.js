@@ -7,7 +7,7 @@ const DB = {
   BASE: localStorage.getItem('ml_backend_url') || '/api',
 
   async _get(path, params = {}) {
-    const url = new URL(`${this.BASE}${path}`);
+    const url = new URL(`${this.BASE}${path}`, location.origin);
     Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
     try {
       const res = await fetch(url.toString(), {

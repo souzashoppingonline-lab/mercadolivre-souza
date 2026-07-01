@@ -75,7 +75,7 @@ async function handleOrder({ resource, storeId }) {
 
   // Skip duplicate — if this order was already fetched in the last 10 minutes, don't call ML API again
   const recent = await pool.query(
-    `SELECT id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [orderId]
+    `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [orderId]
   );
   if (recent.rows.length) return;
 
@@ -130,7 +130,7 @@ async function handleOrder({ resource, storeId }) {
 async function handleQuestion({ resource, storeId }) {
   const questionId = resource.split('/').pop();
   const recent = await pool.query(
-    `SELECT id FROM questions WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [questionId]
+    `SELECT ml_id FROM questions WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [questionId]
   );
   if (recent.rows.length) return;
   const q = await ml.getQuestion(questionId, storeId);
@@ -347,7 +347,7 @@ async function dailySync() {
     }
 
     try {
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 8000));
 
       // Reputação do vendedor (1 chamada/loja/dia)
       try {
@@ -404,7 +404,7 @@ async function dailySync() {
 
       for (const order of orders) {
         const exists = await pool.query(
-          `SELECT id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '25 hours'`, [order.id]
+          `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '25 hours'`, [order.id]
         );
         if (exists.rows.length) continue;
         await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });

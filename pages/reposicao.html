@@ -181,8 +181,8 @@ function fmt(v) { return 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFra
 
 function setView(v) {
   currentView = v;
-  document.getElementById('gridView').style.display  = v==='grid'  ? '' : 'none';
-  document.getElementById('tableView').style.display = v==='table' ? '' : 'none';
+  document.getElementById('gridView').style.display  = v==='grid'  ? 'block' : 'none';
+  document.getElementById('tableView').style.display = v==='table' ? 'block' : 'none';
   document.getElementById('btnGrid').classList.toggle('active', v==='grid');
   document.getElementById('btnTable').classList.toggle('active', v==='table');
   render();

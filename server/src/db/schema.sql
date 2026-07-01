@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS stores (
   token_expires_at TIMESTAMPTZ,
   active_listings INT DEFAULT 0,
   monthly_revenue NUMERIC DEFAULT 0,
+  imposto_pct NUMERIC DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 

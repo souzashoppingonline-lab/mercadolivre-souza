@@ -264,7 +264,7 @@ router.get('/alertas/cancelamentos', async (req, res) => {
 router.get('/lojas', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT id, nickname, level_id, active_listings, monthly_revenue,
-            token_expires_at, updated_at,
+            imposto_pct, token_expires_at, updated_at,
             CASE WHEN token_expires_at > now() THEN true ELSE false END as token_valid
      FROM stores ORDER BY nickname`
   );

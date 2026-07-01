@@ -311,6 +311,7 @@ router.get('/sales', async (req, res) => {
 
 // ── GET /turbo/charts ──────────────────────────────────────
 router.get('/charts', async (req, res) => {
+  try {
   const { date_from='', date_to='', account='', order_status='' } = req.query;
   const f = buildFilters({ date_from, date_to, account, order_status });
 
@@ -365,11 +366,11 @@ router.get('/charts', async (req, res) => {
       f.params
     ),
     pool.query(
-      `SELECT DATE_TRUNC('week', sale_date::timestamp) AS week_start,
+      `SELECT TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD') AS week_start,
               SUM(revenue) revenue, SUM(margin) lucro, COUNT(*) vendas,
               CASE WHEN SUM(revenue)>0 THEN ROUND(SUM(margin)/SUM(revenue)*100,2) ELSE 0 END margem_pct
        FROM ml_turbo_sales WHERE ${f.where} AND sale_date IS NOT NULL
-       GROUP BY 1 ORDER BY 1`,
+       GROUP BY DATE_TRUNC('week', sale_date) ORDER BY 1`,
       f.params
     ),
     pool.query(
@@ -399,6 +400,10 @@ router.get('/charts', async (req, res) => {
     top_qty:     topQty.rows,
     by_status:   byStatus.rows,
   });
+  } catch(e) {
+    console.error('[turbo/charts]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── GET /turbo/filters-meta ────────────────────────────────

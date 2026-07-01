@@ -604,7 +604,7 @@ async function loadCharts() {
   // Faturamento por semana
   const byWeek=d.by_week||[];
   mkChart('cWeek',{type:'bar',data:{
-    labels:byWeek.map(r=>{const dt=new Date(r.week_start);return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}`;}),
+    labels:byWeek.map(r=>{ const p=r.week_start.slice(0,10).split('-'); return `${p[2]}/${p[1]}`; }),
     datasets:[
       {label:'Receita',data:byWeek.map(r=>Number(r.revenue)),backgroundColor:Y,borderRadius:3},
       {label:'Lucro',  data:byWeek.map(r=>Number(r.lucro)),  backgroundColor:G,borderRadius:3},

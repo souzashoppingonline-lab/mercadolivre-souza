@@ -39,4 +39,5 @@ module.exports = {
   getQuestion:         (id, storeId)     => get(`/questions/${id}`, storeId),
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}/sellers/me`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
+  getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}`, storeId),
 };

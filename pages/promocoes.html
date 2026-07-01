@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promoções — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Promoções'; window.ACTIVE_NAV='promocoes.html';</script>
+  <style>
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+    .tab-btn { background:var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:7px 16px; cursor:pointer; font-size:13px; color:var(--text-muted); transition:.2s; }
+    .tab-btn.active { background:var(--primary); color:#000; border-color:var(--primary); font-weight:700; }
+    .tab-btn:hover:not(.active) { border-color:var(--primary); color:var(--primary); }
+    .promo-summary { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; margin-bottom:16px; }
+    .ps-card { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:14px 18px; }
+    .ps-card.green { border-left:3px solid var(--green); }
+    .ps-card.red   { border-left:3px solid var(--red); }
+    .ps-card.gray  { border-left:3px solid var(--text-muted); }
+    .ps-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+    .ps-value { font-size:26px; font-weight:700; }
+    /* Status badges */
+    .badge-promo { font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; white-space:nowrap; }
+    .badge-promo.active   { background:rgba(39,174,96,.15); color:var(--green); }
+    .badge-promo.inactive { background:rgba(231,76,60,.12); color:var(--red); }
+    .badge-promo.paused   { background:rgba(230,126,34,.15); color:var(--orange); }
+    .badge-promo.finished { background:rgba(100,100,100,.15); color:var(--text-muted); }
+    /* SAIU badge piscando */
+    .badge-saiu { font-size:10px; font-weight:800; padding:2px 6px; border-radius:4px;
+      background:var(--red); color:#fff; animation:blink 1.2s ease-in-out infinite; margin-left:6px; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    /* New row highlight */
+    .row-new { animation:highlight 5s ease-out forwards; }
+    @keyframes highlight { 0%{background:rgba(255,230,0,.18)} 100%{background:transparent} }
+    .tbl-price { text-align:right; white-space:nowrap; }
+    .discount   { color:var(--green); font-weight:700; }
+    .time-col   { font-size:11px; color:var(--text-muted); white-space:nowrap; }
+    .title-col  { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <!-- Tabs por loja -->
+      <div class="tabs" id="storeTabs">
+        <button class="tab-btn active" onclick="switchTab('')" data-id="">Todas as lojas</button>
+      </div>
+
+      <!-- Summary cards -->
+      <div class="promo-summary">
+        <div class="ps-card green"><div class="ps-label"><i class="fas fa-tag"></i> Entrou em promoção hoje</div><div class="ps-value" id="s-entrou">0</div></div>
+        <div class="ps-card red">  <div class="ps-label"><i class="fas fa-times-circle"></i> Saiu de promoção hoje</div><div class="ps-value" id="s-saiu">0</div></div>
+        <div class="ps-card gray"> <div class="ps-label"><i class="fas fa-list"></i> Total de alterações hoje</div><div class="ps-value" id="s-total">0</div></div>
+      </div>
+
+      <!-- Table -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Alterações de Promoção — Hoje</h3>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span id="wsStatus" style="font-size:11px;color:var(--text-muted)"><i class="fas fa-circle" style="font-size:8px"></i> conectando...</span>
+            <span id="lastUpdate" style="font-size:11px;color:var(--text-muted)"></span>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" style="font-size:13px">
+            <thead>
+              <tr>
+                <th>Anúncio</th>
+                <th>Conta</th>
+                <th>SKU / MLB</th>
+                <th class="tbl-price">Preço Original</th>
+                <th class="tbl-price">Preço Promo</th>
+                <th class="tbl-price">Desconto</th>
+                <th>Status</th>
+                <th>Anterior</th>
+                <th class="time-col">Hora</th>
+              </tr>
+            </thead>
+            <tbody id="promoTbody">
+              <tr><td colspan="9" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const fmtHora = d => d ? new Date(d).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—';
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+let activeStore = '';
+let allRows = [];
+
+// ── Load lojas for tabs ────────────────────────────────────
+async function initTabs() {
+  const data = await DB.getLojas() || { stores:[] };
+  const tabs = document.getElementById('storeTabs');
+  (data.stores||[]).forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn';
+    btn.dataset.id = s.id;
+    btn.textContent = s.nickname.replace(/_/g,' ').trim();
+    btn.onclick = () => switchTab(String(s.id));
+    tabs.appendChild(btn);
+  });
+}
+
+function switchTab(storeId) {
+  activeStore = storeId;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.id === storeId));
+  renderTable();
+}
+
+// ── Load data ─────────────────────────────────────────────
+async function load() {
+  const data = await DB.getPromocoes({ store_id: '', days: 1 }) || { rows:[], summary:{} };
+  allRows = data.rows || [];
+  const s = data.summary || {};
+  set('s-entrou', s.entrou_hoje ?? 0);
+  set('s-saiu',   s.saiu_hoje   ?? 0);
+  set('s-total',  s.total_hoje  ?? 0);
+  set('lastUpdate', 'Atualizado ' + new Date().toLocaleTimeString('pt-BR'));
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('promoTbody');
+  const rows = activeStore ? allRows.filter(r => String(r.store_id) === activeStore) : allRows;
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhuma alteração de promoção hoje</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const saiu = r.previous_status === 'active' && r.status !== 'active';
+    const entrou = r.status === 'active' && r.previous_status !== 'active';
+    const statusCls = { active:'active', inactive:'inactive', paused:'paused', finished:'finished' }[r.status] || 'inactive';
+    const statusLabel = { active:'Ativa', inactive:'Inativa', paused:'Pausada', finished:'Encerrada' }[r.status] || r.status;
+    const prevLabel = { active:'Ativa', inactive:'Inativa', paused:'Pausada', finished:'Encerrada' }[r.previous_status] || (r.previous_status || '—');
+
+    return `<tr>
+      <td class="title-col" title="${r.item_title||r.offer_id}">
+        ${r.item_title || r.offer_id || '—'}
+        ${saiu ? '<span class="badge-saiu">SAIU</span>' : ''}
+        ${entrou ? '<span class="badge-promo active" style="margin-left:6px">ENTROU</span>' : ''}
+      </td>
+      <td style="font-size:11px;white-space:nowrap">${r.conta||'—'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${r.item_id||'—'}</td>
+      <td class="tbl-price">${r.original_price > 0 ? R(r.original_price) : '—'}</td>
+      <td class="tbl-price">${r.promo_price > 0 ? R(r.promo_price) : '—'}</td>
+      <td class="tbl-price discount">${r.discount_pct > 0 ? r.discount_pct.toFixed(0)+'%' : '—'}</td>
+      <td><span class="badge-promo ${statusCls}">${statusLabel}</span></td>
+      <td style="font-size:11px;color:var(--text-muted)">${prevLabel}</td>
+      <td class="time-col">${fmtHora(r.changed_at)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Real-time WS update ────────────────────────────────────
+WS.on('promo_changed', (payload) => {
+  // Prepend new row to allRows and re-render, highlighting it
+  allRows.unshift({
+    store_id:        payload.store_id,
+    conta:           payload.conta || '—',
+    offer_id:        payload.offer_id,
+    item_id:         payload.item_id,
+    item_title:      payload.item_title,
+    status:          payload.status,
+    previous_status: payload.previous_status,
+    original_price:  payload.original_price,
+    promo_price:     payload.promo_price,
+    discount_pct:    payload.discount_pct,
+    changed_at:      new Date().toISOString(),
+  });
+
+  // Update summary counters
+  const today = allRows.filter(r => new Date(r.changed_at).toDateString() === new Date().toDateString());
+  set('s-entrou', today.filter(r => r.status === 'active').length);
+  set('s-saiu',   today.filter(r => r.status !== 'active' && r.previous_status === 'active').length);
+  set('s-total',  today.length);
+
+  renderTable();
+
+  // Highlight first row
+  const tbody = document.getElementById('promoTbody');
+  if (tbody.firstElementChild) tbody.firstElementChild.classList.add('row-new');
+
+  // Flash the tab if not on the right store
+  if (activeStore && String(payload.store_id) !== activeStore) {
+    const btn = document.querySelector(`.tab-btn[data-id="${payload.store_id}"]`);
+    if (btn) { btn.style.borderColor='var(--red)'; setTimeout(()=>btn.style.borderColor='',4000); }
+  }
+
+  set('lastUpdate', 'Atualizado ' + new Date().toLocaleTimeString('pt-BR'));
+});
+
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
+window.addEventListener('storeChanged', e => switchTab(String(e.detail.storeId)));
+
+// ── Init ──────────────────────────────────────────────────
+initTabs().then(load);
+setInterval(load, 60000);
+</script>
+</body>
+</html>

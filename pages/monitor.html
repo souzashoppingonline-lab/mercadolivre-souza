@@ -149,6 +149,13 @@
               </div>
               <label class="toggle-wrap"><input type="checkbox" id="tg_mensagens"><span class="toggle-slider"></span></label>
             </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-tags" style="color:var(--primary);margin-right:6px"></i>Promoções</span>
+                <span class="notif-desc">Alerta quando anúncio sair de promoção</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_promocoes"><span class="toggle-slider"></span></label>
+            </div>
           </div>
 
           <!-- Intervalo + Horário de silêncio -->
@@ -248,7 +255,7 @@ async function loadTelegramConfig() {
   if (d.bot_token) document.getElementById('tgToken').placeholder = d.bot_token;
 
   // Load notification prefs
-  const keys = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens'];
+  const keys = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes'];
   keys.forEach(k => {
     const el = document.getElementById(k);
     if (el && d[k] !== undefined) el.checked = d[k] === true || d[k] === 'true';
@@ -266,6 +273,7 @@ async function saveNotifConfig() {
     tg_reposicao:  document.getElementById('tg_reposicao').checked,
     tg_perguntas:  document.getElementById('tg_perguntas').checked,
     tg_mensagens:  document.getElementById('tg_mensagens').checked,
+    tg_promocoes:  document.getElementById('tg_promocoes').checked,
     tg_interval:   document.getElementById('tgInterval').value,
     silence_start: document.getElementById('silenceStart').value,
     silence_end:   document.getElementById('silenceEnd').value,

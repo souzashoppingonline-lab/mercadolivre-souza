@@ -55,11 +55,12 @@ async function tgNotify(topic, text) {
 }
 
 const handlers = {
-  orders_v2: handleOrder,
-  payments: handleOrder,
-  questions: handleQuestion,
-  messages: handleMessage,
-  items: handleItem,
+  orders_v2:     handleOrder,
+  payments:      handleOrder,
+  questions:     handleQuestion,
+  messages:      handleMessage,
+  items:         handleItem,
+  public_offers: handleOffer,
 };
 
 async function handleOrder({ resource, storeId }) {
@@ -167,6 +168,55 @@ async function handleItem({ resource, storeId }) {
     await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
   }
   await publish('anuncio_updated', { id: item.id, status: item.status });
+}
+
+async function handleOffer({ resource, storeId }) {
+  const offerId = resource.split('/').pop();
+  const offer = await ml.getOffer(offerId, storeId);
+
+  // Extract item_id from offer object or from the offer_id string (OFFER-MLB123-...)
+  const itemId = offer.item_id || (offerId.match(/OFFER-(MLB\d+)/)?.[1]) || null;
+
+  // Get item title from local DB — no extra ML API call
+  let itemTitle = offer.title || null;
+  if (!itemTitle && itemId) {
+    const { rows } = await pool.query(`SELECT title FROM items WHERE ml_id = $1 LIMIT 1`, [itemId]);
+    itemTitle = rows[0]?.title || null;
+  }
+
+  // Get previous status from last promotion record for this offer
+  const prev = await pool.query(
+    `SELECT status FROM promotions WHERE offer_id=$1 AND store_id=$2 ORDER BY changed_at DESC LIMIT 1`,
+    [offerId, storeId]
+  );
+  const previousStatus = prev.rows[0]?.status || null;
+  const currentStatus  = offer.status || 'unknown';
+
+  const originalPrice = Number(offer.original_price || offer.base_price || 0);
+  const promoPrice    = Number(offer.offer_price    || offer.new_price  || 0);
+  const discountPct   = originalPrice > 0 ? ((originalPrice - promoPrice) / originalPrice) * 100 : 0;
+
+  await pool.query(
+    `INSERT INTO promotions (store_id, offer_id, item_id, item_title, status, previous_status, original_price, promo_price, discount_pct, changed_at, raw_data)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),$10)`,
+    [storeId, offerId, itemId, itemTitle, currentStatus, previousStatus,
+     originalPrice, promoPrice, Number(discountPct.toFixed(2)), JSON.stringify(offer)]
+  );
+
+  await publish('promo_changed', {
+    store_id: storeId, offer_id: offerId, item_id: itemId, item_title: itemTitle,
+    status: currentStatus, previous_status: previousStatus,
+    promo_price: promoPrice, original_price: originalPrice, discount_pct: Number(discountPct.toFixed(2)),
+  });
+
+  // Telegram alert when item LEAVES a promotion (was active, now isn't)
+  if (previousStatus === 'active' && currentStatus !== 'active') {
+    const R = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    await tgNotify('tg_promocoes', `🔴 <b>Saiu da promoção!</b>\n📦 ${itemTitle || itemId || offerId}\n💰 Preço voltou para ${R(originalPrice)}\n⚠️ Verifique e reative a promoção`);
+  } else if (previousStatus !== 'active' && currentStatus === 'active') {
+    const R = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    await tgNotify('tg_promocoes', `🟢 <b>Entrou em promoção!</b>\n📦 ${itemTitle || itemId || offerId}\n💰 ${R(promoPrice)} (${discountPct.toFixed(0)}% off)`);
+  }
 }
 
 const worker = new Worker(

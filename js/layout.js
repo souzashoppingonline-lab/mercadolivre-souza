@@ -7,6 +7,7 @@ const NAV_ITEMS = [
     { href: 'anuncios.html', icon: 'fa-tag', label: 'Anúncios' },
     { href: 'pedidos.html', icon: 'fa-box', label: 'Pedidos' },
     { href: 'vendas.html', icon: 'fa-chart-line', label: 'Vendas Totais' },
+    { href: 'promocoes.html', icon: 'fa-tags', label: 'Promoções' },
     { href: 'perguntas.html', icon: 'fa-question-circle', label: 'Perguntas' },
     { href: 'mensagens.html', icon: 'fa-envelope', label: 'Mensagens' },
     { href: 'metricas.html', icon: 'fa-tachometer-alt', label: 'Métricas' },

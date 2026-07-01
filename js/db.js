@@ -121,6 +121,9 @@ const DB = {
   async getWebhookConfig()        { return this._get('/webhooks/config'); },
   async saveWebhookConfig(body)   { return this._post('/webhooks/config', body); },
 
+  // ── Promoções ──────────────────────────────────────────────
+  async getPromocoes(params={})          { return this._get('/promocoes', params); },
+
   // ── Config Telegram ────────────────────────────────────────
   async getTelegramConfig()           { return this._get('/config/telegram'); },
   async saveTelegramConfig(body)      { return this._patch('/config/telegram', body); },

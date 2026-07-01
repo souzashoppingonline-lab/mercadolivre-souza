@@ -302,7 +302,7 @@ router.get('/webhooks/config', async (req, res) => {
   });
 });
 
-const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_interval','silence_start','silence_end'];
+const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_interval','silence_start','silence_end'];
 const ALL_TG_KEYS   = ['telegram_bot_token','telegram_chat_id', ...TG_NOTIF_KEYS];
 
 router.get('/config/telegram', async (req, res) => {
@@ -358,6 +358,29 @@ router.post('/config/telegram/test', async (req, res) => {
 router.get('/schedule/jobs', async (req, res) => {
   const { rows } = await pool.query(`SELECT name, cron, last_run, duration_ms, status FROM schedule_jobs`);
   res.json({ jobs: rows });
+});
+
+// ── Promoções ──────────────────────────────────────────────
+router.get('/promocoes', async (req, res) => {
+  const { store_id = '', days = 1 } = req.query;
+  const { rows } = await pool.query(
+    `SELECT p.id, p.store_id, s.nickname as conta, p.offer_id, p.item_id, p.item_title,
+            p.status, p.previous_status, p.original_price, p.promo_price, p.discount_pct, p.changed_at
+     FROM promotions p
+     JOIN stores s ON s.id = p.store_id
+     WHERE ($1 = '' OR p.store_id = $1::bigint)
+       AND p.changed_at >= CURRENT_DATE - ($2::int - 1)
+     ORDER BY p.changed_at DESC LIMIT 500`,
+    [store_id, Number(days)]
+  );
+
+  const today = rows.filter(r => new Date(r.changed_at).toDateString() === new Date().toDateString());
+  const summary = {
+    entrou_hoje:  today.filter(r => r.status === 'active').length,
+    saiu_hoje:    today.filter(r => r.status !== 'active' && r.previous_status === 'active').length,
+    total_hoje:   today.length,
+  };
+  res.json({ rows, summary });
 });
 
 // ── Monitor: system metrics & security ───────────────────

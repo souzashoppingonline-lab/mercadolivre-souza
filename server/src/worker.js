@@ -316,6 +316,7 @@ const worker = new Worker(
         return; // do NOT throw — prevents BullMQ from retrying
       }
       if (err.message?.includes('429')) {
+        tgNotify('tg_429', `⏱️ <b>Rate limit ML (429)</b>\nAPI do Mercado Livre está limitando requisições.\nJob: ${job.name}#${job.id}`).catch(() => {});
         err.message = `RATE_LIMITED: ${err.message}`;
       }
       throw err;
@@ -328,8 +329,15 @@ const worker = new Worker(
   }
 );
 
-worker.on('completed', (job) => console.log(`[worker] done ${job.name}#${job.id}`));
-worker.on('failed', (job, err) => console.error(`[worker] failed ${job?.name}#${job?.id}`, err.message));
+worker.on('completed', (job) => { console.log(`[worker] done ${job.name}#${job.id}`); recentFailures = 0; });
+worker.on('failed', (job, err) => {
+  console.error(`[worker] failed ${job?.name}#${job?.id}`, err.message);
+  recentFailures++;
+  if (recentFailures === 5) {
+    tgNotify('tg_fila', `🚨 <b>Fila BullMQ com erros consecutivos!</b>\n${recentFailures} jobs falharam seguidos.\nVerifique os logs: <code>journalctl -u ml-worker-novo -n 50</code>`).catch(() => {});
+  }
+});
+let recentFailures = 0;
 
 // ── Daily reconciliation at 03:00 ────────────────────────────
 // Fetches orders from the last 25h per store and upserts any that were missed

@@ -108,6 +108,11 @@ async function refreshToken(storeId) {
     }),
   });
 
+  if (res.status === 429) {
+    // Rate limited on token refresh — wait and retry once
+    await new Promise(r => setTimeout(r, 10000));
+    return refreshToken(storeId);
+  }
   if (res.status === 400 || res.status === 401) {
     // Token permanently invalid — mark store as needing reauthorization and stop retrying
     await pool.query(

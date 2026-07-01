@@ -302,7 +302,7 @@ router.get('/webhooks/config', async (req, res) => {
   });
 });
 
-const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_token','tg_interval','silence_start','silence_end'];
+const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_token','tg_fila','tg_429','tg_infra','tg_interval','silence_start','silence_end'];
 const ALL_TG_KEYS   = ['telegram_bot_token','telegram_chat_id', ...TG_NOTIF_KEYS];
 
 router.get('/config/telegram', async (req, res) => {

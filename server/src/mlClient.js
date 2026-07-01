@@ -6,6 +6,9 @@ const pool = require('./db/pool');
 
 const BASE = 'https://api.mercadolibre.com';
 
+// Per-store mutex: prevents concurrent token refreshes that trigger ML 429
+const refreshLocks = new Map();
+
 async function getAccessToken(storeId) {
   const { rows } = await pool.query(
     'SELECT access_token, token_expires_at FROM stores WHERE id = $1', [storeId]
@@ -15,13 +18,17 @@ async function getAccessToken(storeId) {
   const { access_token, token_expires_at } = rows[0];
   const expiresIn = token_expires_at ? (new Date(token_expires_at) - Date.now()) : 0;
 
-  // Refresh proactively if token expires in less than 5 minutes
-  if (expiresIn < 5 * 60 * 1000) {
-    const { refreshToken } = require('./routes/auth');
-    return refreshToken(storeId);
+  if (expiresIn >= 5 * 60 * 1000) return access_token;
+
+  // Deduplicate concurrent refreshes: if one is already in-flight, wait for it
+  if (refreshLocks.has(storeId)) {
+    return refreshLocks.get(storeId);
   }
 
-  return access_token;
+  const { refreshToken } = require('./routes/auth');
+  const promise = refreshToken(storeId).finally(() => refreshLocks.delete(storeId));
+  refreshLocks.set(storeId, promise);
+  return promise;
 }
 
 async function get(path, storeId, retries = 3) {

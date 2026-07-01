@@ -280,30 +280,40 @@ router.get('/mensagens', async (req, res) => {
 
 // ── Alertas ────────────────────────────────────────────────
 router.get('/alertas/reposicao', async (req, res) => {
-  const { threshold = 15, store_id = '' } = req.query;
-  const { rows } = await pool.query(
-    `SELECT i.ml_id, i.store_id,
-            COALESCE(s.nickname, 'Loja ' || i.store_id::text, 'Sem loja') as loja,
-            i.title, i.price,
-            i.available_quantity as stock, i.sold_quantity,
-            COALESCE(i.sold_quantity::float / 30, 0) as daily_sales,
-            i.thumbnail, i.permalink, i.updated_at
-     FROM items i
-     LEFT JOIN stores s ON s.id = i.store_id
-     WHERE i.status = 'active'
-       AND i.available_quantity <= $1
-       AND ($2 = '' OR i.store_id = $2::bigint)
-     ORDER BY i.available_quantity ASC, i.sold_quantity DESC`,
-    [Number(threshold), store_id]
-  );
-  const summary = {
-    zero:     rows.filter(r => r.stock === 0).length,
-    critical: rows.filter(r => r.stock > 0 && r.stock <= 3).length,
-    low:      rows.filter(r => r.stock > 3 && r.stock <= 10).length,
-    medium:   rows.filter(r => r.stock > 10).length,
-    total:    rows.length,
-  };
-  res.json({ items: rows, summary });
+  try {
+    const threshold = Number(req.query.threshold) || 15;
+    const store_id  = req.query.store_id || '';
+    const params = [threshold];
+    const storeFilter = store_id
+      ? `AND i.store_id = ${BigInt(store_id)}`
+      : '';
+    const { rows } = await pool.query(
+      `SELECT i.ml_id, i.store_id,
+              COALESCE(s.nickname, 'Loja ' || i.store_id::text, 'Sem loja') as loja,
+              i.title, i.price,
+              i.available_quantity as stock, i.sold_quantity,
+              COALESCE(i.sold_quantity::float / 30, 0) as daily_sales,
+              i.thumbnail, i.permalink, i.updated_at
+       FROM items i
+       LEFT JOIN stores s ON s.id = i.store_id
+       WHERE i.status = 'active'
+         AND i.available_quantity <= $1
+         ${storeFilter}
+       ORDER BY i.available_quantity ASC, i.sold_quantity DESC`,
+      params
+    );
+    const summary = {
+      zero:     rows.filter(r => r.stock === 0).length,
+      critical: rows.filter(r => r.stock > 0 && r.stock <= 3).length,
+      low:      rows.filter(r => r.stock > 3 && r.stock <= 10).length,
+      medium:   rows.filter(r => r.stock > 10).length,
+      total:    rows.length,
+    };
+    res.json({ items: rows, summary });
+  } catch(e) {
+    console.error('[reposicao]', e.message);
+    res.status(500).json({ error: e.message, items: [], summary: {} });
+  }
 });
 
 router.get('/alertas/cancelamentos', async (req, res) => {

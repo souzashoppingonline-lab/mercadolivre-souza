@@ -194,7 +194,7 @@ function getFiltered() {
   return allItems.filter(r => {
     const n = nivel(r.stock);
     if (nf && n !== nf) return false;
-    if (lf && String(r.store_id) !== lf) return false;
+    if (lf && String(r.store_id) !== String(lf)) return false;
     return true;
   });
 }
@@ -275,20 +275,19 @@ function updateKpis(summary) {
 function populateLojaFilter(items) {
   const sel = document.getElementById('lojaFilter');
   const current = sel.value;
-  const lojas = [...new Map(items.filter(r=>r.loja).map(r=>[r.store_id, r.loja])).entries()];
-  sel.innerHTML = '<option value="">Todas as lojas</option>' +
-    lojas.map(([id, nome]) => `<option value="${id}" ${String(id)===current?'selected':''}>${nome}</option>`).join('');
+  const lojas = [...new Map(items.map(r => [String(r.store_id), r.loja || ('Loja ' + r.store_id)])).entries()];
+  sel.innerHTML = '<option value="">Todas as lojas (' + lojas.length + ')</option>' +
+    lojas.map(([id, nome]) => `<option value="${id}" ${id===current?'selected':''}>${nome}</option>`).join('');
 }
 
 async function load() {
   const threshold = document.getElementById('thresholdFilter').value;
-  const store_id  = document.getElementById('lojaFilter').value;
   const grid = document.getElementById('productGrid');
   const tbody = document.getElementById('reposTable');
   if (currentView==='grid') grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>';
   else tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-spinner fa-spin"></i> Carregando...</td></tr>';
 
-  const data = await DB.getReposicao({ threshold, store_id }) || { items:[], summary:{} };
+  const data = await DB.getReposicao({ threshold }) || { items:[], summary:{} };
   allItems = data.items || [];
   updateKpis(data.summary || {});
   populateLojaFilter(allItems);
@@ -296,7 +295,7 @@ async function load() {
 }
 
 document.getElementById('nivelFilter').addEventListener('change', render);
-document.getElementById('lojaFilter').addEventListener('change', load);
+document.getElementById('lojaFilter').addEventListener('change', render);
 document.getElementById('thresholdFilter').addEventListener('change', load);
 
 WS.on('stock_alert', load);

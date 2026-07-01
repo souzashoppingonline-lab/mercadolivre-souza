@@ -100,6 +100,7 @@ const DB = {
   // ── Produtos ───────────────────────────────────────────────
   async getProdutos(params = {})  { return this._get('/produtos', params); },
   async getPerformance(params={}) { return this._get('/produtos/performance', params); },
+  async getVisitasAnuncio(id, days=30) { return this._get(`/anuncios/${id}/visitas`, { days }); },
 
   // ── Publicidade & Concorrentes ─────────────────────────────
   async getPublicidade()          { return this._get('/publicidade'); },

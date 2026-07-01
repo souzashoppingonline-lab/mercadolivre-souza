@@ -120,5 +120,17 @@ CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(date_created);
 CREATE INDEX IF NOT EXISTS idx_items_store_status ON items(store_id, status);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_topic ON webhook_logs(topic);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_status ON webhook_logs(status);
+CREATE TABLE IF NOT EXISTS item_visits (
+  id SERIAL PRIMARY KEY,
+  store_id BIGINT,
+  item_id TEXT NOT NULL,
+  visits INT DEFAULT 0,
+  date DATE NOT NULL,
+  collected_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (item_id, date)
+);
+
 CREATE INDEX IF NOT EXISTS store_metrics_store ON store_metrics(store_id, collected_at DESC);
 CREATE INDEX IF NOT EXISTS price_history_item ON price_history(item_id, changed_at DESC);
+CREATE INDEX IF NOT EXISTS item_visits_item ON item_visits(item_id, date DESC);
+CREATE INDEX IF NOT EXISTS item_visits_store ON item_visits(store_id, date DESC);

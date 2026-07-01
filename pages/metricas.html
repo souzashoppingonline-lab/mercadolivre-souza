@@ -15,15 +15,15 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Reputação</div><div class="value" id="reputacao" style="color:var(--primary)">—</div></div>
-        <div class="stat-card"><div class="label">Reclamações</div><div class="value" id="reclamacoes" style="color:var(--red)">—</div></div>
-        <div class="stat-card"><div class="label">Atrasos</div><div class="value" id="atrasos" style="color:var(--orange)">—</div></div>
-        <div class="stat-card"><div class="label">Cancelamentos</div><div class="value" id="cancelamentos" style="color:var(--red)">—</div></div>
-      </div>
+      <div id="metricasCards" class="card-grid"></div>
       <div class="card">
-        <div class="card-header"><h3>Detalhes de Reputação</h3></div>
-        <div id="metricasDetail"><div class="empty-state">Carregando...</div></div>
+        <div class="card-header"><h3>Detalhes de Reputação por Loja</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Loja</th><th>Nível</th><th>Power Seller</th><th>Transações OK</th><th>% Positivo</th><th>% Negativo</th><th>Coleta</th></tr></thead>
+            <tbody id="metricasDetail"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </main>
@@ -33,20 +33,30 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
+const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+const levelColor = l => ({ gold_special:'#FFD700', gold:'#FFC107', silver:'#9E9E9E', bronze:'#CD7F32' })[l] || 'var(--text-muted)';
 async function load() {
-  const data = await DB.getMetricas() || {};
-  document.getElementById('reputacao').textContent = data.level_id || '—';
-  const m = data.metrics || {};
-  document.getElementById('reclamacoes').textContent = (m.claims?.rate ? (m.claims.rate*100).toFixed(1)+'%' : '—');
-  document.getElementById('atrasos').textContent = (m.delayed_handling_time?.rate ? (m.delayed_handling_time.rate*100).toFixed(1)+'%' : '—');
-  document.getElementById('cancelamentos').textContent = (m.cancellations?.rate ? (m.cancellations.rate*100).toFixed(1)+'%' : '—');
-  document.getElementById('metricasDetail').innerHTML = `
-    <div class="info-row"><span class="key">Nível</span><span class="val">${data.level_id||'—'}</span></div>
-    <div class="info-row"><span class="key">Reclamações (90d)</span><span class="val">${m.claims?.period||'—'}</span></div>
-    <div class="info-row"><span class="key">Atrasos (90d)</span><span class="val">${m.delayed_handling_time?.period||'—'}</span></div>
-    <div class="info-row"><span class="key">Cancelamentos (90d)</span><span class="val">${m.cancellations?.period||'—'}</span></div>
-    <div class="info-row"><span class="key">Transações OK</span><span class="val">${data.transactions?.total||'—'}</span></div>
-  `;
+  const data = await DB.getMetricas() || { metricas: [] };
+  const rows = data.metricas || [];
+  document.getElementById('metricasCards').innerHTML = rows.length
+    ? rows.map(r => `
+      <div class="stat-card">
+        <div class="label">${r.nickname || r.store_id}</div>
+        <div class="value" style="color:${levelColor(r.level_id)}">${r.level_id || '—'}</div>
+        <div class="sub" style="color:var(--text-muted)">${r.power_seller_status || ''}</div>
+      </div>`).join('')
+    : '<div class="stat-card"><div class="label">Reputação</div><div class="value" style="color:var(--text-muted)">Aguardando sync diário</div></div>';
+  document.getElementById('metricasDetail').innerHTML = rows.length
+    ? rows.map(r => `<tr>
+        <td>${r.nickname || r.store_id}</td>
+        <td style="color:${levelColor(r.level_id)}">${r.level_id || '—'}</td>
+        <td>${r.power_seller_status || '—'}</td>
+        <td>${r.transactions_completed || '—'}</td>
+        <td style="color:var(--green)">${r.positive_ratings_pct ? r.positive_ratings_pct+'%' : '—'}</td>
+        <td style="color:var(--red)">${r.negative_ratings_pct ? r.negative_ratings_pct+'%' : '—'}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${fmtD(r.collected_at)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" class="empty-state">Nenhuma métrica coletada — sync diário às 03:00</td></tr>';
 }
 WS.on('kpis_updated', load);
 WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });

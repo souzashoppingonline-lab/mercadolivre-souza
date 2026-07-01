@@ -370,6 +370,33 @@ async function dailySync() {
 
       await new Promise(r => setTimeout(r, 2000));
 
+      // Visitas por anúncio (lotes de 50, 1 chamada por lote)
+      try {
+        const { rows: activeItems } = await pool.query(
+          `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' LIMIT 200`, [store.id]
+        );
+        const ids = activeItems.map(r => r.ml_id);
+        const yesterday = new Date(Date.now() - 24*60*60*1000).toISOString().slice(0,10);
+        for (let i = 0; i < ids.length; i += 50) {
+          const batch = ids.slice(i, i + 50);
+          const vData = await ml.getItemVisits(batch, yesterday, store.id);
+          const visits = vData?.data || [];
+          for (const v of visits) {
+            const total = (v.visits || []).reduce((s, d) => s + (d.total || 0), 0);
+            await pool.query(
+              `INSERT INTO item_visits (store_id, item_id, visits, date)
+               VALUES ($1,$2,$3,$4) ON CONFLICT (item_id, date) DO UPDATE SET visits=$3, collected_at=now()`,
+              [store.id, v.id, total, yesterday]
+            );
+          }
+          if (i + 50 < ids.length) await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (e) {
+        console.warn(`[sync] visitas store=${store.id}:`, e.message);
+      }
+
+      await new Promise(r => setTimeout(r, 2000));
+
       // Reconciliação de pedidos das últimas 25h
       const data = await ml.searchOrders(store.id, dateFrom);
       const orders = data.results || [];

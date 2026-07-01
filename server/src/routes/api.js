@@ -472,7 +472,7 @@ router.get('/analises/horarios', async (req, res) => {
      GROUP BY 1 ORDER BY 1`,
     [Number(days), store_id]
   );
-  res.json({ rows });
+  res.json({ hours: rows.map(r => ({ hour: r.hora, orders: Number(r.pedidos), revenue: Number(r.receita) })) });
 });
 
 router.get('/analises/dias-semana', async (req, res) => {
@@ -489,36 +489,39 @@ router.get('/analises/dias-semana', async (req, res) => {
      GROUP BY 1 ORDER BY 1`,
     [Number(days), store_id]
   );
-  res.json({ rows: rows.map(r => ({ ...r, dia: diasNome[r.dow] })) });
+  res.json({ days: rows.map(r => ({ day: r.dow, dia: diasNome[r.dow], orders: Number(r.pedidos), revenue: Number(r.receita) })) });
 });
 
 // ── Comparativos ───────────────────────────────────────────
 router.get('/comparativos/periodos', async (req, res) => {
-  const { p1 = 30, p2 = 30 } = req.query;
+  const { p1 = '30', p2 = '30' } = req.query;
+  const [from1, to1] = p1.includes('|') ? p1.split('|') : [null, null];
+  const [from2, to2] = p2.includes('|') ? p2.split('|') : [null, null];
+  const buildClause = (from, to, days) => from && to
+    ? [`date_created >= '${from}'::date AND date_created <= '${to}'::date + INTERVAL '1 day'`, []]
+    : [`date_created >= CURRENT_DATE - $1::int AND date_created < CURRENT_DATE`, [Number(days)]];
+  const [clause1, args1] = buildClause(from1, to1, p1);
+  const [clause2, args2] = buildClause(from2, to2, p2);
   const [r1, r2] = await Promise.all([
-    pool.query(
-      `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita
-       FROM orders WHERE status!='cancelled'
-         AND date_created >= CURRENT_DATE - $1::int AND date_created < CURRENT_DATE`,
-      [Number(p1)]
-    ),
-    pool.query(
-      `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita
-       FROM orders WHERE status!='cancelled'
-         AND date_created >= CURRENT_DATE - ($1::int + $2::int) AND date_created < CURRENT_DATE - $1::int`,
-      [Number(p1), Number(p2)]
-    ),
+    pool.query(`SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita,
+                       CASE WHEN COUNT(*)>0 THEN SUM(total_amount)/COUNT(*) ELSE 0 END avg_ticket,
+                       SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) cancelamentos
+                FROM orders WHERE ${clause1}`, args1),
+    pool.query(`SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita,
+                       CASE WHEN COUNT(*)>0 THEN SUM(total_amount)/COUNT(*) ELSE 0 END avg_ticket,
+                       SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) cancelamentos
+                FROM orders WHERE ${clause2}`, args2),
   ]);
-  res.json({ periodo1: r1.rows[0], periodo2: r2.rows[0] });
+  const map = r => ({ orders: Number(r.pedidos), revenue: Number(r.receita), avg_ticket: Number(r.avg_ticket), cancellations: Number(r.cancelamentos) });
+  res.json({ p1: map(r1.rows[0]), p2: map(r2.rows[0]), chart: [] });
 });
 
 router.get('/comparativos/evolucao', async (req, res) => {
   const { days = 30, store_id = '' } = req.query;
   const { rows } = await pool.query(
-    `SELECT date_created::date as data,
-            SUM(total_amount) OVER (ORDER BY date_created::date) as acumulado,
-            SUM(total_amount) as diario,
-            COUNT(*) pedidos
+    `SELECT date_created::date as date,
+            SUM(total_amount) as revenue,
+            COUNT(*) as orders
      FROM orders
      WHERE status!='cancelled'
        AND date_created >= CURRENT_DATE - $1::int
@@ -526,7 +529,7 @@ router.get('/comparativos/evolucao', async (req, res) => {
      GROUP BY date_created::date ORDER BY 1`,
     [Number(days), store_id]
   );
-  res.json({ rows });
+  res.json({ rows: rows.map(r => ({ date: r.date, revenue: Number(r.revenue), orders: Number(r.orders) })) });
 });
 
 router.get('/comparativos/curva-abc', async (req, res) => {
@@ -544,33 +547,43 @@ router.get('/comparativos/curva-abc', async (req, res) => {
   );
   const total = rows.reduce((a, r) => a + Number(r.receita), 0);
   let acum = 0;
-  const result = rows.map(r => {
+  const items = rows.map(r => {
     acum += Number(r.receita);
-    const pct = total > 0 ? (acum / total) * 100 : 0;
-    return { ...r, curva: pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C' };
+    const cumulative = total > 0 ? (acum / total) * 100 : 0;
+    return { item_id: r.item_id, title: r.title, revenue: Number(r.receita), orders: Number(r.pedidos), cumulative, class: cumulative <= 80 ? 'A' : cumulative <= 95 ? 'B' : 'C' };
   });
-  res.json({ rows: result, total });
+  const summary = { count_a: items.filter(r=>r.class==='A').length, count_b: items.filter(r=>r.class==='B').length, count_c: items.filter(r=>r.class==='C').length };
+  res.json({ items, summary, total });
 });
 
 // ── Clientes ───────────────────────────────────────────────
 router.get('/clientes', async (req, res) => {
-  const { store_id = '', days = 90 } = req.query;
+  const { store_id = '', search = '', days = 365 } = req.query;
   const { rows } = await pool.query(
-    `SELECT buyer_nickname,
-            COUNT(*) pedidos,
-            SUM(total_amount) total_gasto,
-            AVG(total_amount) ticket_medio,
-            MAX(date_created) ultima_compra,
-            MIN(date_created) primeira_compra
+    `SELECT buyer_nickname as nickname,
+            COUNT(*) total_orders,
+            SUM(total_amount) total_spent,
+            AVG(total_amount) avg_ticket,
+            MAX(date_created) last_order_date,
+            MIN(date_created) first_order_date
      FROM orders
      WHERE status != 'cancelled'
        AND ($1 = '' OR store_id = $1::bigint)
        AND date_created >= CURRENT_DATE - $2::int
+       AND ($3 = '' OR LOWER(buyer_nickname) LIKE LOWER('%'||$3||'%'))
      GROUP BY buyer_nickname
-     ORDER BY total_gasto DESC LIMIT 200`,
-    [store_id, Number(days)]
+     ORDER BY total_spent DESC LIMIT 200`,
+    [store_id, Number(days), search]
   );
-  res.json({ clientes: rows });
+  const mesInicio = new Date(); mesInicio.setDate(1); mesInicio.setHours(0,0,0,0);
+  const clients = rows.map(r => ({ ...r, total_orders: Number(r.total_orders), total_spent: Number(r.total_spent), avg_ticket: Number(r.avg_ticket) }));
+  const summary = {
+    total: clients.length,
+    new_this_month: clients.filter(r => new Date(r.first_order_date) >= mesInicio).length,
+    returning: clients.filter(r => Number(r.total_orders) > 1).length,
+    avg_ticket: clients.length ? clients.reduce((s,r)=>s+r.avg_ticket,0)/clients.length : 0,
+  };
+  res.json({ clients, summary });
 });
 
 router.get('/clientes/:nickname', async (req, res) => {
@@ -594,20 +607,57 @@ router.get('/alertas/devolucoes', async (req, res) => {
      ORDER BY r.date DESC LIMIT 100`,
     [store_id]
   );
-  res.json({ items: rows, summary: { total: rows.length } });
+  const summary = {
+    in_analysis: rows.filter(r => r.status === 'analysis' || r.status === 'opened').length,
+    approved:    rows.filter(r => r.status === 'approved' || r.status === 'resolved').length,
+    rejected:    rows.filter(r => r.status === 'rejected' || r.status === 'closed').length,
+    total_value: rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+    total:       rows.length,
+  };
+  res.json({ items: rows, summary });
 });
 
 router.get('/alertas/anuncios-problema', async (req, res) => {
   const { store_id = '' } = req.query;
   const { rows } = await pool.query(
-    `SELECT ml_id, store_id, title, price, available_quantity, sold_quantity, status, updated_at
-     FROM items
-     WHERE (status != 'active' OR available_quantity = 0)
-       AND ($1 = '' OR store_id = $1::bigint)
-     ORDER BY updated_at DESC LIMIT 100`,
+    `SELECT i.ml_id, i.store_id, i.title, i.price, i.available_quantity,
+            i.sold_quantity, i.status, i.updated_at,
+            COALESCE(o.pedidos_30d, 0) as pedidos_30d
+     FROM items i
+     LEFT JOIN (
+       SELECT item_id, COUNT(*) pedidos_30d FROM orders
+       WHERE status != 'cancelled' AND date_created >= CURRENT_DATE - 30
+       GROUP BY item_id
+     ) o ON o.item_id = i.ml_id
+     WHERE ($1 = '' OR i.store_id = $1::bigint)
+       AND i.status IN ('active','paused','closed','under_review')
+     ORDER BY i.updated_at DESC LIMIT 200`,
     [store_id]
   );
-  res.json({ items: rows, summary: { total: rows.length } });
+  const items = rows.map(r => {
+    let problem_type = null, severity = 'medium', suggestion = null;
+    if (r.status !== 'active') {
+      problem_type = 'low_reputation';
+      severity = r.status === 'closed' ? 'high' : 'medium';
+      suggestion = r.status === 'paused' ? 'Reativar anúncio' : 'Verificar restrições do anúncio';
+    } else if (r.available_quantity === 0) {
+      problem_type = 'no_sales';
+      severity = 'high';
+      suggestion = 'Repor estoque urgente';
+    } else if (r.pedidos_30d === 0 && r.available_quantity > 0) {
+      problem_type = 'no_sales';
+      severity = 'medium';
+      suggestion = 'Revisar preço e fotos';
+    }
+    return { ...r, problem_type, severity, suggestion };
+  }).filter(r => r.problem_type);
+  const summary = {
+    no_sales:       items.filter(r => r.problem_type === 'no_sales').length,
+    low_reputation: items.filter(r => r.problem_type === 'low_reputation').length,
+    missing_info:   0,
+    price:          0,
+  };
+  res.json({ items, summary });
 });
 
 // ── Métricas do vendedor (reputação) ──────────────────────
@@ -630,7 +680,8 @@ router.get('/produtos/performance', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.sold_quantity, i.status,
             COALESCE(o.pedidos_periodo, 0) as pedidos_periodo,
-            COALESCE(o.receita_periodo, 0) as receita_periodo
+            COALESCE(o.receita_periodo, 0) as receita_periodo,
+            COALESCE(v.visitas_periodo, 0) as visitas_periodo
      FROM items i
      LEFT JOIN (
        SELECT item_id, COUNT(*) pedidos_periodo, SUM(total_amount) receita_periodo
@@ -639,11 +690,29 @@ router.get('/produtos/performance', async (req, res) => {
          AND ($2 = '' OR store_id = $2::bigint)
        GROUP BY item_id
      ) o ON o.item_id = i.ml_id
+     LEFT JOIN (
+       SELECT item_id, SUM(visits) visitas_periodo
+       FROM item_visits
+       WHERE date >= CURRENT_DATE - $1::int
+         AND ($2 = '' OR store_id = $2::bigint)
+       GROUP BY item_id
+     ) v ON v.item_id = i.ml_id
      WHERE ($2 = '' OR i.store_id = $2::bigint)
      ORDER BY receita_periodo DESC NULLS LAST LIMIT 200`,
     [Number(days), store_id]
   );
   res.json({ products: rows });
+});
+
+router.get('/anuncios/:id/visitas', async (req, res) => {
+  const { days = 30 } = req.query;
+  const { rows } = await pool.query(
+    `SELECT date, visits FROM item_visits
+     WHERE item_id = $1 AND date >= CURRENT_DATE - $2::int
+     ORDER BY date ASC`,
+    [req.params.id, Number(days)]
+  );
+  res.json({ visitas: rows });
 });
 
 module.exports = router;

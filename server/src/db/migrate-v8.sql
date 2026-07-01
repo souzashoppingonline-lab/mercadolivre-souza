@@ -22,3 +22,16 @@ CREATE TABLE IF NOT EXISTS price_history (
   changed_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS price_history_item ON price_history(item_id, changed_at DESC);
+
+-- Visitas por anúncio (coletadas no sync diário via GET /items/visits?ids=...)
+CREATE TABLE IF NOT EXISTS item_visits (
+  id SERIAL PRIMARY KEY,
+  store_id BIGINT,
+  item_id TEXT NOT NULL,
+  visits INT DEFAULT 0,
+  date DATE NOT NULL,
+  collected_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (item_id, date)
+);
+CREATE INDEX IF NOT EXISTS item_visits_item ON item_visits(item_id, date DESC);
+CREATE INDEX IF NOT EXISTS item_visits_store ON item_visits(store_id, date DESC);

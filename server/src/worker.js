@@ -290,4 +290,52 @@ const worker = new Worker(
 worker.on('completed', (job) => console.log(`[worker] done ${job.name}#${job.id}`));
 worker.on('failed', (job, err) => console.error(`[worker] failed ${job?.name}#${job?.id}`, err.message));
 
+// ── Daily reconciliation at 03:00 ────────────────────────────
+// Fetches orders from the last 25h per store and upserts any that were missed
+// by the webhook pipeline. 1 API call per store = safe against 429.
+async function dailySync() {
+  console.log('[sync] iniciando reconciliação diária...');
+  const { rows: stores } = await pool.query(
+    `SELECT id FROM stores WHERE token_expires_at > now()`
+  );
+
+  const dateFrom = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+
+  for (const store of stores) {
+    try {
+      await new Promise(r => setTimeout(r, 3000)); // 3s entre lojas
+      const data = await ml.searchOrders(store.id, dateFrom);
+      const orders = data.results || [];
+      console.log(`[sync] store=${store.id} → ${orders.length} pedidos encontrados`);
+
+      for (const order of orders) {
+        const exists = await pool.query(
+          `SELECT id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '25 hours'`,
+          [order.id]
+        );
+        if (exists.rows.length) continue;
+
+        // Reuse handleOrder logic by simulating the resource path
+        await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
+        await new Promise(r => setTimeout(r, 1500)); // respeita rate limit
+      }
+    } catch (e) {
+      console.error(`[sync] store=${store.id} erro:`, e.message);
+    }
+  }
+  console.log('[sync] reconciliação concluída');
+  scheduleDailySync();
+}
+
+function scheduleDailySync() {
+  const now = new Date();
+  const next3am = new Date(now);
+  next3am.setHours(3, 0, 0, 0);
+  if (next3am <= now) next3am.setDate(next3am.getDate() + 1);
+  const ms = next3am - now;
+  console.log(`[sync] próxima reconciliação: ${next3am.toLocaleString('pt-BR')} (em ${Math.round(ms/60000)}min)`);
+  setTimeout(dailySync, ms);
+}
+
+scheduleDailySync();
 console.log('[worker] listening for ml-webhooks jobs...');

@@ -40,4 +40,5 @@ module.exports = {
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}/sellers/me`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
+  searchOrders:        (storeId, dateFrom) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50`, storeId),
 };

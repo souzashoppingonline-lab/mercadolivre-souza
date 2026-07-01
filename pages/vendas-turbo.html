@@ -507,7 +507,19 @@ function buildCFO(d) {
   const pedidos=Number(d.total_vendas)||0;
 
   const items=[];
-  items.push({ icon:'fa-dollar-sign', color:'var(--primary)', text:`Receita: <b>${fmt(receita)}</b> | Lucro: <b>${fmt(d.lucro)}</b> | Margem: <b>${margem.toFixed(1)}%</b>` });
+  const aprovRec  = Number(d.approved_revenue||0);
+  const aprovCnt  = Number(d.approved_count||0);
+  const aprovLuc  = Number(d.approved_lucro||0);
+  const aprovMPct = aprovRec > 0 ? (aprovLuc / aprovRec * 100) : 0;
+
+  // Linha 1: faturamento de vendas aprovadas (destaque)
+  items.push({ icon:'fa-check-circle', color:'var(--green)',
+    text:`Vendas Aprovadas: <b style="color:var(--primary);font-size:15px">${fmt(aprovRec)}</b> · ${fmtN(aprovCnt)} pedidos · Lucro: <b>${fmt(aprovLuc)}</b> · Margem: <b>${aprovMPct.toFixed(1)}%</b>` });
+
+  if (receita > aprovRec) {
+    items.push({ icon:'fa-info-circle', color:'var(--text-muted)',
+      text:`Receita bruta total (incl. canceladas/devoluções): <b>${fmt(receita)}</b>` });
+  }
   if (d.receita_hoje>0) items.push({ icon:'fa-sun', color:'var(--primary)', text:`Hoje: <b>${fmt(d.receita_hoje)}</b> em receita · <b>${fmtN(d.pedidos_hoje)}</b> pedidos` });
 
   if (fretePct > 12) items.push({ icon:'fa-truck', color:'var(--red)', text:`Frete do vendedor consumiu <b>${fretePct.toFixed(1)}%</b> da receita — acima da média de 10%.` });

@@ -245,6 +245,22 @@ router.get('/kpis', async (req, res) => {
             THEN ROUND(SUM(margin)/SUM(revenue)*100,2)
             ELSE 0 END                                AS margem_pct,
        CASE WHEN COUNT(*)>0 THEN ROUND(SUM(revenue)/COUNT(*),2) ELSE 0 END AS ticket_medio,
+       -- vendas aprovadas (excluindo canceladas e devoluções)
+       SUM(CASE WHEN order_status NOT ILIKE '%cancel%'
+                 AND order_status NOT ILIKE '%devol%'
+                 AND order_status NOT ILIKE '%return%'
+                 AND order_status NOT ILIKE '%restitu%'
+                 THEN 1 ELSE 0 END)                                          AS approved_count,
+       SUM(CASE WHEN order_status NOT ILIKE '%cancel%'
+                 AND order_status NOT ILIKE '%devol%'
+                 AND order_status NOT ILIKE '%return%'
+                 AND order_status NOT ILIKE '%restitu%'
+                 THEN revenue ELSE 0 END)                                    AS approved_revenue,
+       SUM(CASE WHEN order_status NOT ILIKE '%cancel%'
+                 AND order_status NOT ILIKE '%devol%'
+                 AND order_status NOT ILIKE '%return%'
+                 AND order_status NOT ILIKE '%restitu%'
+                 THEN margin ELSE 0 END)                                     AS approved_lucro,
        -- cancelamentos
        SUM(CASE WHEN order_status ILIKE '%cancel%' THEN 1 ELSE 0 END)       AS cancel_count,
        SUM(CASE WHEN order_status ILIKE '%cancel%' THEN revenue ELSE 0 END)  AS cancel_revenue,

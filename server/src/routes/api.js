@@ -302,7 +302,7 @@ router.get('/webhooks/config', async (req, res) => {
   });
 });
 
-const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_interval','silence_start','silence_end'];
+const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_token','tg_interval','silence_start','silence_end'];
 const ALL_TG_KEYS   = ['telegram_bot_token','telegram_chat_id', ...TG_NOTIF_KEYS];
 
 router.get('/config/telegram', async (req, res) => {
@@ -425,6 +425,225 @@ router.get('/monitor/security', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Dashboard chart & top products ────────────────────────
+router.get('/dashboard/chart', async (req, res) => {
+  const period = Number(req.query.period) || 7;
+  const { rows } = await pool.query(
+    `SELECT date_created::date as data,
+            COUNT(*) pedidos,
+            COALESCE(SUM(total_amount),0) receita
+     FROM orders
+     WHERE date_created >= CURRENT_DATE - $1::int AND status != 'cancelled'
+     GROUP BY 1 ORDER BY 1`,
+    [period]
+  );
+  res.json({ rows });
+});
+
+router.get('/dashboard/top-products', async (req, res) => {
+  const limit = Number(req.query.limit) || 10;
+  const { rows } = await pool.query(
+    `SELECT item_id, title,
+            COUNT(*) pedidos,
+            SUM(quantity) unidades,
+            SUM(total_amount) receita
+     FROM orders
+     WHERE status != 'cancelled' AND item_id IS NOT NULL
+     GROUP BY item_id, title
+     ORDER BY receita DESC LIMIT $1`,
+    [limit]
+  );
+  res.json({ products: rows });
+});
+
+// ── Análises temporais ─────────────────────────────────────
+router.get('/analises/horarios', async (req, res) => {
+  const { store_id = '', days = 90 } = req.query;
+  const { rows } = await pool.query(
+    `SELECT EXTRACT(hour FROM date_created AT TIME ZONE 'America/Sao_Paulo')::int as hora,
+            COUNT(*) pedidos,
+            COALESCE(SUM(total_amount),0) receita
+     FROM orders
+     WHERE status != 'cancelled'
+       AND date_created >= CURRENT_DATE - $1::int
+       AND ($2 = '' OR store_id = $2::bigint)
+     GROUP BY 1 ORDER BY 1`,
+    [Number(days), store_id]
+  );
+  res.json({ rows });
+});
+
+router.get('/analises/dias-semana', async (req, res) => {
+  const { store_id = '', days = 90 } = req.query;
+  const diasNome = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const { rows } = await pool.query(
+    `SELECT EXTRACT(dow FROM date_created AT TIME ZONE 'America/Sao_Paulo')::int as dow,
+            COUNT(*) pedidos,
+            COALESCE(SUM(total_amount),0) receita
+     FROM orders
+     WHERE status != 'cancelled'
+       AND date_created >= CURRENT_DATE - $1::int
+       AND ($2 = '' OR store_id = $2::bigint)
+     GROUP BY 1 ORDER BY 1`,
+    [Number(days), store_id]
+  );
+  res.json({ rows: rows.map(r => ({ ...r, dia: diasNome[r.dow] })) });
+});
+
+// ── Comparativos ───────────────────────────────────────────
+router.get('/comparativos/periodos', async (req, res) => {
+  const { p1 = 30, p2 = 30 } = req.query;
+  const [r1, r2] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita
+       FROM orders WHERE status!='cancelled'
+         AND date_created >= CURRENT_DATE - $1::int AND date_created < CURRENT_DATE`,
+      [Number(p1)]
+    ),
+    pool.query(
+      `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita
+       FROM orders WHERE status!='cancelled'
+         AND date_created >= CURRENT_DATE - ($1::int + $2::int) AND date_created < CURRENT_DATE - $1::int`,
+      [Number(p1), Number(p2)]
+    ),
+  ]);
+  res.json({ periodo1: r1.rows[0], periodo2: r2.rows[0] });
+});
+
+router.get('/comparativos/evolucao', async (req, res) => {
+  const { days = 30, store_id = '' } = req.query;
+  const { rows } = await pool.query(
+    `SELECT date_created::date as data,
+            SUM(total_amount) OVER (ORDER BY date_created::date) as acumulado,
+            SUM(total_amount) as diario,
+            COUNT(*) pedidos
+     FROM orders
+     WHERE status!='cancelled'
+       AND date_created >= CURRENT_DATE - $1::int
+       AND ($2 = '' OR store_id = $2::bigint)
+     GROUP BY date_created::date ORDER BY 1`,
+    [Number(days), store_id]
+  );
+  res.json({ rows });
+});
+
+router.get('/comparativos/curva-abc', async (req, res) => {
+  const { store_id = '', days = 90 } = req.query;
+  const { rows } = await pool.query(
+    `SELECT item_id, title,
+            SUM(total_amount) receita,
+            COUNT(*) pedidos
+     FROM orders
+     WHERE status!='cancelled' AND item_id IS NOT NULL
+       AND date_created >= CURRENT_DATE - $1::int
+       AND ($2 = '' OR store_id = $2::bigint)
+     GROUP BY item_id, title ORDER BY receita DESC`,
+    [Number(days), store_id]
+  );
+  const total = rows.reduce((a, r) => a + Number(r.receita), 0);
+  let acum = 0;
+  const result = rows.map(r => {
+    acum += Number(r.receita);
+    const pct = total > 0 ? (acum / total) * 100 : 0;
+    return { ...r, curva: pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C' };
+  });
+  res.json({ rows: result, total });
+});
+
+// ── Clientes ───────────────────────────────────────────────
+router.get('/clientes', async (req, res) => {
+  const { store_id = '', days = 90 } = req.query;
+  const { rows } = await pool.query(
+    `SELECT buyer_nickname,
+            COUNT(*) pedidos,
+            SUM(total_amount) total_gasto,
+            AVG(total_amount) ticket_medio,
+            MAX(date_created) ultima_compra,
+            MIN(date_created) primeira_compra
+     FROM orders
+     WHERE status != 'cancelled'
+       AND ($1 = '' OR store_id = $1::bigint)
+       AND date_created >= CURRENT_DATE - $2::int
+     GROUP BY buyer_nickname
+     ORDER BY total_gasto DESC LIMIT 200`,
+    [store_id, Number(days)]
+  );
+  res.json({ clientes: rows });
+});
+
+router.get('/clientes/:nickname', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT ml_id, item_id, title, total_amount, status, date_created, store_id
+     FROM orders WHERE buyer_nickname = $1 ORDER BY date_created DESC LIMIT 100`,
+    [req.params.nickname]
+  );
+  res.json({ pedidos: rows });
+});
+
+// ── Alertas faltando ───────────────────────────────────────
+router.get('/alertas/devolucoes', async (req, res) => {
+  const { store_id = '' } = req.query;
+  const { rows } = await pool.query(
+    `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
+            r.title, r.reason, r.amount, r.status, r.date
+     FROM returns r
+     JOIN stores s ON s.id = r.store_id
+     WHERE ($1 = '' OR r.store_id = $1::bigint)
+     ORDER BY r.date DESC LIMIT 100`,
+    [store_id]
+  );
+  res.json({ items: rows, summary: { total: rows.length } });
+});
+
+router.get('/alertas/anuncios-problema', async (req, res) => {
+  const { store_id = '' } = req.query;
+  const { rows } = await pool.query(
+    `SELECT ml_id, store_id, title, price, available_quantity, sold_quantity, status, updated_at
+     FROM items
+     WHERE (status != 'active' OR available_quantity = 0)
+       AND ($1 = '' OR store_id = $1::bigint)
+     ORDER BY updated_at DESC LIMIT 100`,
+    [store_id]
+  );
+  res.json({ items: rows, summary: { total: rows.length } });
+});
+
+// ── Métricas do vendedor (reputação) ──────────────────────
+router.get('/metricas', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ON (store_id)
+            sm.store_id, s.nickname, sm.level_id, sm.power_seller_status,
+            sm.transactions_completed, sm.positive_ratings_pct,
+            sm.negative_ratings_pct, sm.neutral_ratings_pct, sm.collected_at
+     FROM store_metrics sm
+     JOIN stores s ON s.id = sm.store_id
+     ORDER BY store_id, collected_at DESC`
+  );
+  res.json({ metricas: rows });
+});
+
+// ── Produtos performance ───────────────────────────────────
+router.get('/produtos/performance', async (req, res) => {
+  const { store_id = '', days = 30 } = req.query;
+  const { rows } = await pool.query(
+    `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.sold_quantity, i.status,
+            COALESCE(o.pedidos_periodo, 0) as pedidos_periodo,
+            COALESCE(o.receita_periodo, 0) as receita_periodo
+     FROM items i
+     LEFT JOIN (
+       SELECT item_id, COUNT(*) pedidos_periodo, SUM(total_amount) receita_periodo
+       FROM orders
+       WHERE status != 'cancelled' AND date_created >= CURRENT_DATE - $1::int
+         AND ($2 = '' OR store_id = $2::bigint)
+       GROUP BY item_id
+     ) o ON o.item_id = i.ml_id
+     WHERE ($2 = '' OR i.store_id = $2::bigint)
+     ORDER BY receita_periodo DESC NULLS LAST LIMIT 200`,
+    [Number(days), store_id]
+  );
+  res.json({ products: rows });
 });
 
 module.exports = router;

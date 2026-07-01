@@ -63,9 +63,9 @@ const handlers = {
   messages:          handleMessage,
   items:             handleItem,
   public_offers:     handleOffer,
+  post_purchase:     handlePostPurchase,
+  items_prices:      handleItemPrice,
   shipments:         noop,
-  items_prices:      noop,
-  post_purchase:     noop,
   invoices:          noop,
   public_candidates: noop,
 };
@@ -192,6 +192,42 @@ async function handleItem({ resource, storeId }) {
   await publish('anuncio_updated', { id: item.id, status: item.status });
 }
 
+async function handlePostPurchase({ resource, storeId }) {
+  const claimId = resource.split('/').pop();
+  try {
+    const claim = await ml.get(`/post-purchase/claims/${claimId}`, storeId);
+    const orderId = claim.order_id || null;
+    await pool.query(
+      `INSERT INTO returns (store_id, order_id, title, reason, amount, status, date, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+       ON CONFLICT DO NOTHING`,
+      [storeId, orderId, claim.resolution?.reason || claim.reason_id || null,
+       claim.reason_id || null, claim.total || 0, claim.status, claim.date_created]
+    );
+    await publish('devolucao_recebida', { store_id: storeId, claim_id: claimId, status: claim.status });
+    if (claim.status === 'opened') {
+      await tgNotify('tg_devolucoes', `🔄 <b>Nova devolução solicitada</b>\n📦 Pedido: ${orderId||'—'}\n💬 Motivo: ${claim.reason_id||'—'}\n💰 Valor: R$ ${Number(claim.total||0).toFixed(2)}`);
+    }
+  } catch (e) {
+    console.warn(`[worker] handlePostPurchase fallback (${e.message})`);
+  }
+}
+
+async function handleItemPrice({ resource, storeId }) {
+  const itemId = resource.split('/').filter(Boolean)[1]; // /items/{id}/prices
+  if (!itemId) return;
+  const { rows } = await pool.query(`SELECT price FROM items WHERE ml_id=$1 LIMIT 1`, [itemId]);
+  const oldPrice = Number(rows[0]?.price || 0);
+  if (!rows.length) return; // item não está no nosso banco ainda
+  // Pega novo preço do webhook resource — sem chamar ML API
+  // O novo preço chegará via webhook 'items' na próxima atualização; apenas registramos a mudança
+  await pool.query(
+    `INSERT INTO price_history (store_id, item_id, old_price, new_price, changed_at)
+     VALUES ($1,$2,$3,$3,now())`,
+    [storeId, itemId, oldPrice]
+  );
+}
+
 async function handleOffer({ resource, storeId }) {
   const offerId = resource.split('/').pop();
 
@@ -295,29 +331,57 @@ worker.on('failed', (job, err) => console.error(`[worker] failed ${job?.name}#${
 // by the webhook pipeline. 1 API call per store = safe against 429.
 async function dailySync() {
   console.log('[sync] iniciando reconciliação diária...');
-  const { rows: stores } = await pool.query(
-    `SELECT id FROM stores WHERE token_expires_at > now()`
-  );
-
+  const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
   const dateFrom = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
 
   for (const store of stores) {
+    // Alerta de token expirando em < 24h
+    const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
+    if (expiresIn < 0) {
+      await tgNotify('tg_token', `🔴 <b>Token expirado!</b>\n🏪 Loja: ${store.nickname}\nReconecte em /pages/lojas.html`);
+      continue; // sem token válido, pula o sync desta loja
+    }
+    if (expiresIn < 24 * 60 * 60 * 1000) {
+      const horas = Math.floor(expiresIn / 3600000);
+      await tgNotify('tg_token', `⚠️ <b>Token expira em ${horas}h!</b>\n🏪 Loja: ${store.nickname}\nReconecte em breve`);
+    }
+
     try {
-      await new Promise(r => setTimeout(r, 3000)); // 3s entre lojas
+      await new Promise(r => setTimeout(r, 3000));
+
+      // Reputação do vendedor (1 chamada/loja/dia)
+      try {
+        const rep = await ml.getSellerReputation(store.id);
+        if (rep) {
+          await pool.query(
+            `INSERT INTO store_metrics (store_id, level_id, power_seller_status, transactions_completed,
+               positive_ratings_pct, negative_ratings_pct, neutral_ratings_pct, collected_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
+            [store.id, rep.level_id, rep.power_seller_status,
+             rep.transactions?.total || 0,
+             rep.transactions?.ratings?.positive?.rate * 100 || 0,
+             rep.transactions?.ratings?.negative?.rate * 100 || 0,
+             rep.transactions?.ratings?.neutral?.rate * 100 || 0]
+          );
+        }
+      } catch (e) {
+        console.warn(`[sync] reputação store=${store.id}:`, e.message);
+      }
+
+      await new Promise(r => setTimeout(r, 2000));
+
+      // Reconciliação de pedidos das últimas 25h
       const data = await ml.searchOrders(store.id, dateFrom);
       const orders = data.results || [];
-      console.log(`[sync] store=${store.id} → ${orders.length} pedidos encontrados`);
+      console.log(`[sync] store=${store.id} → ${orders.length} pedidos`);
 
       for (const order of orders) {
         const exists = await pool.query(
-          `SELECT id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '25 hours'`,
-          [order.id]
+          `SELECT id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '25 hours'`, [order.id]
         );
         if (exists.rows.length) continue;
-
-        // Reuse handleOrder logic by simulating the resource path
         await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
-        await new Promise(r => setTimeout(r, 1500)); // respeita rate limit
+        await new Promise(r => setTimeout(r, 1500));
       }
     } catch (e) {
       console.error(`[sync] store=${store.id} erro:`, e.message);

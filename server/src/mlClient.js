@@ -24,16 +24,22 @@ async function getAccessToken(storeId) {
   return access_token;
 }
 
-async function get(path, storeId) {
+async function get(path, storeId, retries = 3) {
   const token = await getAccessToken(storeId);
   const res = await fetch(`${BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if ((res.status === 429 || res.status >= 500) && retries > 0) {
+    const delay = (4 - retries) * 5000; // 5s, 10s, 15s
+    await new Promise(r => setTimeout(r, delay));
+    return get(path, storeId, retries - 1);
+  }
   if (!res.ok) throw new Error(`ML API ${path} -> HTTP ${res.status}`);
   return res.json();
 }
 
 module.exports = {
+  get,
   getItem:             (id, storeId)     => get(`/items/${id}`, storeId),
   getOrder:            (id, storeId)     => get(`/orders/${id}`, storeId),
   getQuestion:         (id, storeId)     => get(`/questions/${id}`, storeId),

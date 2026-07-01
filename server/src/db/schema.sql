@@ -94,8 +94,31 @@ CREATE TABLE IF NOT EXISTS schedule_jobs (
   status TEXT DEFAULT 'idle' -- idle | running | success | error
 );
 
+CREATE TABLE IF NOT EXISTS store_metrics (
+  id SERIAL PRIMARY KEY,
+  store_id BIGINT NOT NULL,
+  level_id TEXT,
+  power_seller_status TEXT,
+  transactions_completed INT DEFAULT 0,
+  positive_ratings_pct NUMERIC DEFAULT 0,
+  negative_ratings_pct NUMERIC DEFAULT 0,
+  neutral_ratings_pct NUMERIC DEFAULT 0,
+  collected_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS price_history (
+  id SERIAL PRIMARY KEY,
+  store_id BIGINT,
+  item_id TEXT NOT NULL,
+  old_price NUMERIC,
+  new_price NUMERIC,
+  changed_at TIMESTAMPTZ DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_orders_store_status ON orders(store_id, status);
 CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(date_created);
 CREATE INDEX IF NOT EXISTS idx_items_store_status ON items(store_id, status);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_topic ON webhook_logs(topic);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_status ON webhook_logs(status);
+CREATE INDEX IF NOT EXISTS store_metrics_store ON store_metrics(store_id, collected_at DESC);
+CREATE INDEX IF NOT EXISTS price_history_item ON price_history(item_id, changed_at DESC);

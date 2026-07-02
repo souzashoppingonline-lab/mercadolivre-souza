@@ -412,12 +412,28 @@ async function handleOffer({ resource, storeId }) {
 let recentFailures = 0;
 const oauthNotified = new Map(); // storeId → last Telegram notification timestamp
 
+const expiredStores = new Set();
+
 async function processJob(job) {
   const { topic, resource, storeId, logId } = job.data;
   const handler = handlers[topic];
 
   if (!handler) {
     console.warn(`[worker] no handler for topic=${topic}`);
+    return;
+  }
+
+  // Drop job imediatamente se token da loja está expirado
+  if (expiredStores.has(storeId)) {
+    console.warn(`[worker] drop ${topic} store=${storeId} — token expirado`);
+    return;
+  }
+  const { rows: tokenCheck } = await pool.query(
+    `SELECT token_expires_at FROM stores WHERE id=$1`, [storeId]
+  );
+  if (tokenCheck.length && tokenCheck[0].token_expires_at < new Date('2000-01-01')) {
+    expiredStores.add(storeId);
+    console.warn(`[worker] drop ${topic} store=${storeId} — token expirado (marcado)`);
     return;
   }
 
@@ -513,6 +529,7 @@ async function dailySync() {
     if (expiresIn < 6 * 60 * 60 * 1000) {
       try {
         await refreshToken(store.id);
+        expiredStores.delete(store.id);
         console.log(`[sync] token renovado proativamente: ${store.nickname}`);
         if (expiresIn < 0) {
           await tgNotify('tg_token', `✅ <b>Token renovado automaticamente!</b>\n🏪 Loja: ${store.nickname}`);

@@ -14,6 +14,18 @@ const { publish } = require('./ws/hub');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
 
+// Rate limiter: max 10 req/s por store para respeitar limite ML (50 req/s global)
+const lastCallTime = {};
+async function rateLimitedCall(storeId, fn) {
+  const key = String(storeId);
+  const now = Date.now();
+  const last = lastCallTime[key] || 0;
+  const wait = Math.max(0, 120 - (now - last)); // mínimo 120ms entre calls (≈8 req/s)
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  lastCallTime[key] = Date.now();
+  return fn();
+}
+
 const handlers = {
   orders_v2: handleOrder,
   payments:  handleOrder,
@@ -88,7 +100,7 @@ async function syncStoreStats(storeId) {
 
 async function handleOrder({ resource, storeId }) {
   const orderId = resource.split('/').pop();
-  const order = await ml.getOrder(orderId, storeId);
+  const order = await rateLimitedCall(storeId, () => ml.getOrder(orderId, storeId));
 
   await pool.query(
     `INSERT INTO orders
@@ -119,7 +131,7 @@ async function handleOrder({ resource, storeId }) {
 
 async function handleQuestion({ resource, storeId }) {
   const questionId = resource.split('/').pop();
-  const q = await ml.getQuestion(questionId, storeId);
+  const q = await rateLimitedCall(storeId, () => ml.getQuestion(questionId, storeId));
 
   let itemTitle = null;
   if (q.item_id) {
@@ -154,7 +166,7 @@ async function handleQuestion({ resource, storeId }) {
 
 async function handleMessage({ resource, storeId }) {
   const packId = resource.split('/').filter(Boolean).pop();
-  const pack = await ml.getMessagesPack(packId, storeId);
+  const pack = await rateLimitedCall(storeId, () => ml.getMessagesPack(packId, storeId));
   const last = pack.messages?.[pack.messages.length - 1];
 
   await pool.query(
@@ -176,7 +188,7 @@ async function handleMessage({ resource, storeId }) {
 
 async function handleItem({ resource, storeId }) {
   const itemId = resource.split('/').pop();
-  const item = await ml.getItem(itemId, storeId);
+  const item = await rateLimitedCall(storeId, () => ml.getItem(itemId, storeId));
 
   await pool.query(
     `INSERT INTO items
@@ -233,7 +245,7 @@ const worker = new Worker(
       throw err;
     }
   },
-  { connection, concurrency: 5 }
+  { connection, concurrency: 2 }
 );
 
 worker.on('completed', (job) =>

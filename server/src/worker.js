@@ -247,9 +247,10 @@ async function handleItem({ resource, storeId }) {
   const item = await ml.getItem(itemId, storeId);
   const thumb = item.thumbnail || (item.pictures?.[0]?.url) || null;
 
+  const parentId = item.parent_item_id || null;
   await pool.query(
-    `INSERT INTO items (ml_id, store_id, title, price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+    `INSERT INTO items (ml_id, store_id, title, price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, parent_item_id, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        title = EXCLUDED.title, price = EXCLUDED.price,
        available_quantity = EXCLUDED.available_quantity,
@@ -257,8 +258,9 @@ async function handleItem({ resource, storeId }) {
        status = EXCLUDED.status,
        thumbnail = COALESCE(EXCLUDED.thumbnail, items.thumbnail),
        permalink = COALESCE(EXCLUDED.permalink, items.permalink),
+       parent_item_id = COALESCE(EXCLUDED.parent_item_id, items.parent_item_id),
        updated_at = now()`,
-    [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null]
+    [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId]
   );
 
   const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);

@@ -384,7 +384,7 @@ router.get('/analises/estoque-parado', async (req, res) => {
               MAX(o.date_created) as ultima_venda
        FROM items i
        LEFT JOIN stores s ON s.id = i.store_id
-       LEFT JOIN orders o ON o.item_id = i.ml_id
+       LEFT JOIN orders o ON (o.item_id = i.ml_id OR o.item_id = i.parent_item_id)
          AND o.status != 'cancelled'
          AND o.date_created >= CURRENT_DATE - ${daysN}
        WHERE i.status = 'active'

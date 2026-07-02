@@ -160,7 +160,9 @@ async function handleOrder({ resource, storeId }) {
 
   if (order.status === 'paid') {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
-    await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n👤 ${order.buyer?.nickname||'—'}`);
+    const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
+    const loja = storeRows[0]?.nickname || `Loja ${storeId}`;
+    await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n👤 ${order.buyer?.nickname||'—'}`);
   }
 }
 

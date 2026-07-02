@@ -147,7 +147,7 @@ async function load() {
           <div id="cred-msg-${s.id}" style="display:none;font-size:12px;text-align:center;padding:4px;border-radius:6px"></div>
         </div>
       </details>
-      ${!s.token_valid ? `<a href="/auth/login" class="btn-reconectar"><i class="fas fa-plug"></i> Reconectar loja</a>` : ''}
+      ${!s.token_valid ? `<a href="/auth/login?store_id=${s.id}" class="btn-reconectar"><i class="fas fa-plug"></i> Reconectar loja</a>` : ''}
     </div>
   `).join('') : '<div class="empty-state" style="grid-column:1/-1">Nenhuma loja cadastrada. <a href="/auth/login" style="color:var(--primary)">Conectar primeira loja →</a></div>';
 }

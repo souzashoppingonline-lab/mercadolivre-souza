@@ -37,11 +37,19 @@ router.get('/config', (req, res) => {
 });
 
 // Step 1 — redirect to Mercado Livre authorization page
-router.get('/login', (req, res) => {
+// Optional ?store_id=X uses that store's own ml_client_id if configured
+router.get('/login', async (req, res) => {
+  let clientId = env.ml.clientId;
+  const storeId = req.query.store_id;
+  if (storeId) {
+    const { rows } = await pool.query('SELECT ml_client_id FROM stores WHERE id=$1', [storeId]);
+    if (rows[0]?.ml_client_id) clientId = rows[0].ml_client_id;
+  }
   const params = new URLSearchParams({
     response_type: 'code',
-    client_id: env.ml.clientId,
+    client_id: clientId,
     redirect_uri: env.ml.redirectUri,
+    state: storeId || '',
   });
   res.redirect(`${ML_AUTH_URL}?${params}`);
 });
@@ -70,14 +78,24 @@ router.get(['/callback', '/ml/callback'], async (req, res) => {
   }
 
   try {
+    // Use per-store credentials if state=storeId was passed and store has its own app
+    const storeId = req.query.state;
+    let clientId = env.ml.clientId;
+    let clientSecret = env.ml.clientSecret;
+    if (storeId) {
+      const { rows } = await pool.query('SELECT ml_client_id, ml_client_secret FROM stores WHERE id=$1', [storeId]);
+      if (rows[0]?.ml_client_id)     clientId     = rows[0].ml_client_id;
+      if (rows[0]?.ml_client_secret) clientSecret = rows[0].ml_client_secret;
+    }
+
     // Exchange code for tokens
     const tokenRes = await fetch(ML_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
-        client_id: env.ml.clientId,
-        client_secret: env.ml.clientSecret,
+        client_id: clientId,
+        client_secret: clientSecret,
         code,
         redirect_uri: env.ml.redirectUri,
       }),

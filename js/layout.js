@@ -19,6 +19,7 @@ const NAV_ITEMS = [
     { href: 'diasemana.html', icon: 'fa-calendar-week', label: 'Dias da Semana' },
     { href: 'produtos.html', icon: 'fa-cubes', label: 'Produtos' },
     { href: 'performance.html', icon: 'fa-rocket', label: 'Performance' },
+    { href: 'estoque-parado.html', icon: 'fa-box-open', label: 'Estoque Parado' },
     { href: 'publicidade.html', icon: 'fa-bullhorn', label: 'Publicidade' },
     { href: 'concorrentes.html', icon: 'fa-users-slash', label: 'Concorrentes' },
   ]},

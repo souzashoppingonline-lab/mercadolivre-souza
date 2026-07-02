@@ -101,6 +101,7 @@ const DB = {
   async getDiasSemana(days=90)    { return this._get(`/analises/dias-semana?days=${days}`); },
 
   // ── Produtos ───────────────────────────────────────────────
+  async getEstoqueParado(params = {})        { return this._get('/analises/estoque-parado', params); },
   async getProdutos(params = {})             { return this._get('/produtos', params); },
   async getPerformance(params={})            { return this._get('/produtos/performance', params); },
   async getProdutosPerformance(params={})    { return this._get('/produtos/performance', params); },

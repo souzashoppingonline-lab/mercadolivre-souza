@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estoque Parado — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Estoque Parado'; window.ACTIVE_NAV='estoque-parado.html';</script>
+  <style>
+    .ep-row { display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--border); }
+    .ep-row:last-child { border-bottom:none; }
+    .ep-thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:var(--surface); flex-shrink:0; }
+    .ep-thumb-ph { width:48px; height:48px; border-radius:8px; background:var(--surface); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:1.1rem; }
+    .ep-info { flex:1; min-width:0; }
+    .ep-title { font-size:.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ep-sub { font-size:.72rem; color:var(--text-muted); margin-top:2px; }
+    .ep-cols { display:flex; gap:20px; flex-shrink:0; }
+    .ep-col { text-align:center; min-width:70px; }
+    .ep-col .lbl { font-size:.62rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+    .ep-col .val { font-size:.88rem; font-weight:700; margin-top:2px; }
+    .dias-badge { padding:3px 8px; border-radius:12px; font-size:.72rem; font-weight:700; background:rgba(255,59,48,.15); color:#ff3b30; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select class="filter-select" id="daysFilter">
+          <option value="3">Sem venda nos últimos 3 dias</option>
+          <option value="7">Sem venda nos últimos 7 dias</option>
+          <option value="10">Sem venda nos últimos 10 dias</option>
+          <option value="15">Sem venda nos últimos 15 dias</option>
+          <option value="21">Sem venda nos últimos 21 dias</option>
+          <option value="30" selected>Sem venda nos últimos 30 dias</option>
+        </select>
+        <select class="filter-select" id="storeFilter">
+          <option value="">Todas as lojas</option>
+        </select>
+        <div class="search-box" style="flex:1;max-width:320px">
+          <i class="fas fa-search"></i>
+          <input type="text" id="searchInput" placeholder="Buscar produto...">
+        </div>
+      </div>
+
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card">
+          <div class="label">Anúncios parados</div>
+          <div class="value" id="kpi-total" style="color:var(--red)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Estoque total parado</div>
+          <div class="value" id="kpi-estoque" style="color:var(--orange)">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Valor em estoque</div>
+          <div class="value" id="kpi-valor">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Preço médio</div>
+          <div class="value" id="kpi-preco-medio" style="color:var(--text-muted)">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Anúncios sem venda no período</h3>
+          <span id="subtitulo" style="font-size:.8rem;color:var(--text-muted)"></span>
+        </div>
+        <div id="epList" style="padding:4px 8px">
+          <div class="empty-state">Carregando...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+
+async function load() {
+  const days     = document.getElementById('daysFilter').value;
+  const store_id = document.getElementById('storeFilter').value;
+  const search   = document.getElementById('searchInput').value.toLowerCase();
+
+  document.getElementById('epList').innerHTML = '<div class="empty-state">Carregando...</div>';
+
+  const data = await DB.getEstoqueParado({ days, store_id }) || { items: [] };
+  let rows = data.items || [];
+
+  if (search) rows = rows.filter(r => r.title?.toLowerCase().includes(search));
+
+  const totalEstoque = rows.reduce((a, r) => a + Number(r.estoque || 0), 0);
+  const totalValor   = rows.reduce((a, r) => a + Number(r.estoque || 0) * Number(r.price || 0), 0);
+  const precoMedio   = rows.length ? rows.reduce((a, r) => a + Number(r.price || 0), 0) / rows.length : 0;
+
+  document.getElementById('kpi-total').textContent       = fmtN(rows.length);
+  document.getElementById('kpi-estoque').textContent     = fmtN(totalEstoque);
+  document.getElementById('kpi-valor').textContent       = fmt(totalValor);
+  document.getElementById('kpi-preco-medio').textContent = fmt(precoMedio);
+  document.getElementById('subtitulo').textContent       = `${rows.length} anúncio(s) ativos sem nenhuma venda nos últimos ${days} dias`;
+
+  const list = document.getElementById('epList');
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle" style="color:var(--green);margin-right:8px"></i>Nenhum anúncio parado neste período!</div>';
+    return;
+  }
+
+  list.innerHTML = rows.map(r => {
+    const thumb = r.thumbnail
+      ? `<img class="ep-thumb" src="${r.thumbnail}" onerror="this.outerHTML='<div class=\\'ep-thumb-ph\\'><i class=\\'fas fa-tag\\'></i></div>'">`
+      : `<div class="ep-thumb-ph"><i class="fas fa-tag"></i></div>`;
+    const link = r.permalink
+      ? `<a href="${r.permalink}" target="_blank" style="color:var(--primary);font-size:.7rem;margin-left:6px"><i class="fas fa-external-link-alt"></i></a>`
+      : '';
+    return `
+      <div class="ep-row">
+        ${thumb}
+        <div class="ep-info">
+          <div class="ep-title" title="${r.title}">${r.title}${link}</div>
+          <div class="ep-sub"><i class="fas fa-store" style="margin-right:4px"></i>${r.loja}</div>
+        </div>
+        <div class="ep-cols">
+          <div class="ep-col">
+            <div class="lbl">Preço</div>
+            <div class="val">${fmt(r.price)}</div>
+          </div>
+          <div class="ep-col">
+            <div class="lbl">Estoque</div>
+            <div class="val" style="color:var(--orange)">${fmtN(r.estoque)}</div>
+          </div>
+          <div class="ep-col">
+            <div class="lbl">Capital</div>
+            <div class="val" style="color:var(--red)">${fmt(Number(r.estoque) * Number(r.price))}</div>
+          </div>
+          <div class="ep-col">
+            <div class="lbl">Última venda</div>
+            <div class="val" style="font-size:.75rem">${r.ultima_venda ? new Date(r.ultima_venda).toLocaleDateString('pt-BR') : '<span class="dias-badge">Nunca</span>'}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function initStores() {
+  const data = await DB.getLojas() || { stores: [] };
+  const sel  = document.getElementById('storeFilter');
+  (data.stores || []).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.nickname;
+    sel.appendChild(o);
+  });
+}
+
+document.getElementById('daysFilter').addEventListener('change', load);
+document.getElementById('storeFilter').addEventListener('change', load);
+let t; document.getElementById('searchInput').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 300); });
+
+WS.on('anuncio_updated', load);
+WS.on('_connected', () => { const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+
+initStores().then(load);
+</script>
+</body>
+</html>

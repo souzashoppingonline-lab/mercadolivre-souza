@@ -368,6 +368,44 @@ router.get('/mensagens', async (req, res) => {
   res.json({ conversations: rows, summary: {} });
 });
 
+// ── Estoque Parado ─────────────────────────────────────────
+router.get('/analises/estoque-parado', async (req, res) => {
+  try {
+    const { store_id = '', days = '30' } = req.query;
+    const storeFilter = store_id ? `AND i.store_id = ${BigInt(store_id)}` : '';
+    const daysN = Number(days) || 30;
+
+    const { rows } = await pool.query(
+      `SELECT i.ml_id, i.store_id,
+              COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
+              i.title, i.price, i.available_quantity as estoque,
+              i.status, i.thumbnail, i.permalink,
+              COALESCE(SUM(o.quantity), 0) as vendas_periodo,
+              MAX(o.date_created) as ultima_venda
+       FROM items i
+       LEFT JOIN stores s ON s.id = i.store_id
+       LEFT JOIN orders o ON o.item_id = i.ml_id
+         AND o.status != 'cancelled'
+         AND o.date_created >= CURRENT_DATE - ${daysN}
+       WHERE i.status = 'active'
+         AND i.available_quantity > 0
+         ${storeFilter}
+       GROUP BY i.ml_id, i.store_id, s.nickname, i.title, i.price, i.available_quantity, i.status, i.thumbnail, i.permalink
+       HAVING COALESCE(SUM(o.quantity), 0) = 0
+       ORDER BY i.available_quantity DESC, i.price DESC
+       LIMIT 500`
+    );
+
+    res.json({
+      items: rows,
+      total: rows.length,
+      days: daysN,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Alertas ────────────────────────────────────────────────
 router.get('/alertas/reposicao', async (req, res) => {
   try {

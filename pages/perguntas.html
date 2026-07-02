@@ -8,6 +8,21 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Perguntas'; window.ACTIVE_NAV='perguntas.html';</script>
+  <style>
+    .q-card { background:var(--card-bg); border-radius:12px; padding:16px; border:1px solid var(--border); }
+    .q-card.unanswered { border-left:3px solid var(--red); }
+    .q-card.answered   { border-left:3px solid var(--green); opacity:.85; }
+    .q-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+    .q-loja { font-size:.72rem; padding:2px 8px; border-radius:4px; background:rgba(255,255,255,.08); color:var(--text-muted); }
+    .q-item { font-size:.75rem; color:var(--text-muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .q-time { font-size:.72rem; color:var(--text-muted); white-space:nowrap; }
+    .q-text { font-size:.95rem; margin-bottom:10px; line-height:1.5; }
+    .q-answer { font-size:.85rem; color:var(--green); margin-top:6px; }
+    .q-answer-form { display:flex; gap:8px; margin-top:10px; }
+    .q-answer-form input { flex:1; }
+    .q-err { font-size:.8rem; color:var(--red); margin-top:4px; }
+    .q-sending { opacity:.6; pointer-events:none; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,25 +30,28 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
+
       <div class="card-grid">
         <div class="stat-card"><div class="label">Sem Resposta</div><div class="value" id="semResposta" style="color:var(--red)">—</div></div>
         <div class="stat-card"><div class="label">Respondidas Hoje</div><div class="value" id="respondidasHoje" style="color:var(--green)">—</div></div>
         <div class="stat-card"><div class="label">Tempo Médio Resposta</div><div class="value" id="tempoMedio">—</div></div>
         <div class="stat-card"><div class="label">Total Recebidas</div><div class="value" id="totalPerguntas">—</div></div>
       </div>
+
       <div class="card">
         <div class="card-header">
-          <h3>Perguntas Pendentes</h3>
+          <h3>Perguntas</h3>
           <select class="filter-select" id="statusFilter" style="margin:0">
             <option value="UNANSWERED">Sem resposta</option>
             <option value="ANSWERED">Respondidas</option>
             <option value="">Todas</option>
           </select>
         </div>
-        <div id="perguntasList" style="display:flex;flex-direction:column;gap:12px">
+        <div id="perguntasList" style="display:flex;flex-direction:column;gap:10px;padding-top:4px">
           <div class="empty-state">Carregando...</div>
         </div>
       </div>
+
     </div>
   </main>
 </div>
@@ -42,45 +60,86 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const relTime = d => { if(!d) return '—'; const diff=Date.now()-new Date(d); const h=Math.floor(diff/3600000); return h<1?Math.floor(diff/60000)+'min':h+'h'; };
+const relTime = d => {
+  if (!d) return '—';
+  const diff = Date.now() - new Date(d);
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return m + 'min atrás';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h atrás';
+  return Math.floor(h / 24) + 'd atrás';
+};
 
 async function load() {
   const status = document.getElementById('statusFilter').value;
-  const data = await DB.getPerguntas({ status }) || { questions:[], summary:{} };
+  const data = await DB.getPerguntas({ status }) || { questions: [], summary: {} };
   const s = data.summary || {};
-  document.getElementById('semResposta').textContent = s.unanswered ?? '—';
+
+  document.getElementById('semResposta').textContent     = s.unanswered ?? '—';
   document.getElementById('respondidasHoje').textContent = s.answered_today ?? '—';
-  document.getElementById('tempoMedio').textContent = s.avg_response_time ? s.avg_response_time+'h' : '—';
-  document.getElementById('totalPerguntas').textContent = s.total ?? '—';
+  document.getElementById('totalPerguntas').textContent  = s.total ?? '—';
+  document.getElementById('tempoMedio').textContent      = s.avg_response_time != null ? s.avg_response_time + 'h' : '—';
 
   const list = document.getElementById('perguntasList');
   const qs = data.questions || [];
-  list.innerHTML = qs.length ? qs.map(q=>`
-    <div class="card" style="padding:14px">
-      <div class="flex-between" style="margin-bottom:8px">
-        <span style="font-size:12px;color:var(--text-muted)">${q.item_title||''}</span>
-        <span style="font-size:11px;color:var(--text-muted)">${relTime(q.date_created)} atrás</span>
+  if (!qs.length) { list.innerHTML = '<div class="empty-state">Nenhuma pergunta encontrada</div>'; return; }
+
+  list.innerHTML = qs.map(q => `
+    <div class="q-card ${q.status === 'UNANSWERED' ? 'unanswered' : 'answered'}" id="qcard_${q.id}">
+      <div class="q-meta">
+        ${q.loja ? `<span class="q-loja">${q.loja}</span>` : ''}
+        <span class="q-item" title="${q.item_title||q.item_id||''}">${q.item_title || q.item_id || '—'}</span>
+        <span class="q-time">${relTime(q.date_created)}</span>
       </div>
-      <p style="font-size:14px;margin-bottom:${q.status==='UNANSWERED'?'10px':'0'}">${q.text}</p>
-      ${q.status==='UNANSWERED' ? `
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <input type="text" class="filter-input" style="flex:1" placeholder="Digite a resposta..." id="resp_${q.id}">
-          <button class="btn-primary" onclick="responder(${q.id})">Responder</button>
-        </div>` : `<div style="font-size:13px;color:var(--green);margin-top:6px"><i class="fas fa-check"></i> ${q.answer?.text||'Respondida'}</div>`}
+      <div class="q-text">${q.text || '—'}</div>
+      ${q.status === 'UNANSWERED' ? `
+        <div class="q-answer-form" id="form_${q.id}">
+          <input type="text" class="filter-input" placeholder="Digite a resposta..." id="resp_${q.id}"
+            onkeydown="if(event.key==='Enter') responder(${q.id})">
+          <button class="btn-primary" onclick="responder(${q.id})"><i class="fas fa-paper-plane"></i> Enviar</button>
+        </div>
+        <div class="q-err" id="err_${q.id}" style="display:none"></div>
+      ` : `
+        <div class="q-answer"><i class="fas fa-check"></i> ${q.answer_text || 'Respondida'}</div>
+      `}
     </div>
-  `).join('') : '<div class="empty-state">Nenhuma pergunta encontrada</div>';
+  `).join('');
 }
 
 async function responder(id) {
-  const input = document.getElementById('resp_'+id);
+  const input = document.getElementById('resp_' + id);
+  const errEl = document.getElementById('err_' + id);
+  const form  = document.getElementById('form_' + id);
   if (!input || !input.value.trim()) return;
-  await DB.responderPergunta(id, input.value);
-  load();
+
+  form.classList.add('q-sending');
+  errEl.style.display = 'none';
+
+  const result = await DB.responderPergunta(id, input.value.trim());
+
+  if (result && result.ok) {
+    // Success: update card inline
+    const card = document.getElementById('qcard_' + id);
+    card.classList.replace('unanswered', 'answered');
+    form.outerHTML = `<div class="q-answer"><i class="fas fa-check"></i> ${input.value.trim()}</div>`;
+    // Update KPI
+    const sr = document.getElementById('semResposta');
+    const rh = document.getElementById('respondidasHoje');
+    if (sr.textContent !== '—') sr.textContent = Math.max(0, Number(sr.textContent) - 1);
+    if (rh.textContent !== '—') rh.textContent = Number(rh.textContent) + 1;
+  } else {
+    form.classList.remove('q-sending');
+    errEl.style.display = 'block';
+    errEl.textContent = '❌ ' + (result?.error || 'Erro ao enviar para o Mercado Livre. Tente novamente.');
+  }
 }
 
 document.getElementById('statusFilter').addEventListener('change', load);
 WS.on('question_received', load);
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
 load();
 </script>
 </body>

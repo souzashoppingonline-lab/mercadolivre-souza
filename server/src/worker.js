@@ -170,7 +170,13 @@ async function handleQuestion({ resource, storeId }) {
 
   await publish('question_received', { id: q.id, status: q.status });
   if (q.status === 'UNANSWERED') {
-    await tgNotify('tg_perguntas', `❓ <b>Nova pergunta sem resposta</b>\n🏷️ Item: ${q.item_id||'—'}\n💬 ${(q.text||'').slice(0,200)}`);
+    const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
+    const loja = storeRows[0]?.nickname || `Loja ${storeId}`;
+    const dashUrl = (process.env.DASH_URL || 'https://multimixvendas.duckdns.org') + '/pages/perguntas.html';
+    await tgNotify('tg_perguntas',
+      `❓ <b>Nova pergunta sem resposta</b>\n🏪 Loja: <b>${loja}</b>\n🏷️ Item: ${q.item_id||'—'}\n💬 ${(q.text||'').slice(0,300)}\n\n` +
+      `<a href="${dashUrl}">Responder no dashboard →</a>`
+    );
   }
 }
 

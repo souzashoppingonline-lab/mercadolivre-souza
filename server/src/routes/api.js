@@ -272,19 +272,64 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
 
 // ── Perguntas / Mensagens ──────────────────────────────────
 router.get('/perguntas', async (req, res) => {
-  const { status = 'UNANSWERED' } = req.query;
-  const { rows } = await pool.query(
-    `SELECT ml_id as id, item_title, text, status, date_created FROM questions
-     WHERE ($1 = '' OR status = $1) ORDER BY date_created DESC LIMIT 100`,
-    [status]
-  );
-  res.json({ questions: rows, summary: {} });
+  const { status = 'UNANSWERED', store_id = '' } = req.query;
+  const [{ rows }, kpi] = await Promise.all([
+    pool.query(
+      `SELECT q.ml_id as id, q.store_id, COALESCE(s.nickname,'Loja '||q.store_id::text) as loja,
+              q.item_id, q.item_title, q.text, q.answer_text, q.status, q.date_created
+       FROM questions q
+       LEFT JOIN stores s ON s.id = q.store_id
+       WHERE ($1 = '' OR q.status = $1)
+         AND ($2 = '' OR q.store_id = $2::bigint)
+       ORDER BY q.date_created DESC LIMIT 200`,
+      [status, store_id]
+    ),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status='UNANSWERED') as unanswered,
+         COUNT(*) FILTER (WHERE status='ANSWERED' AND updated_at::date = CURRENT_DATE) as answered_today,
+         COUNT(*) as total,
+         ROUND(AVG(EXTRACT(EPOCH FROM (updated_at - date_created))/3600) FILTER (WHERE status='ANSWERED'), 1) as avg_hours
+       FROM questions`
+    )
+  ]);
+  const k = kpi.rows[0];
+  res.json({
+    questions: rows,
+    summary: {
+      unanswered:     Number(k.unanswered),
+      answered_today: Number(k.answered_today),
+      total:          Number(k.total),
+      avg_response_time: k.avg_hours ? Number(k.avg_hours) : null,
+    }
+  });
 });
 
 router.post('/perguntas/:id/responder', express.json(), async (req, res) => {
-  // Marks intent in DB; an outbound worker job should actually call ML to answer.
-  await pool.query(`UPDATE questions SET answer_text=$2, status='ANSWERED', updated_at=now() WHERE ml_id=$1`, [req.params.id, req.body.text]);
-  res.json({ ok: true });
+  try {
+    const { text } = req.body;
+    const questionId = req.params.id;
+    if (!text?.trim()) return res.status(400).json({ error: 'text required' });
+
+    // Find which store owns this question to use the correct token
+    const { rows } = await pool.query(`SELECT store_id FROM questions WHERE ml_id=$1 LIMIT 1`, [questionId]);
+    if (!rows.length) return res.status(404).json({ error: 'question not found' });
+    const storeId = rows[0].store_id;
+
+    // Call ML API to post the answer
+    const ml = require('../mlClient');
+    await ml.answerQuestion(questionId, text, storeId);
+
+    // Update local DB
+    await pool.query(
+      `UPDATE questions SET answer_text=$2, status='ANSWERED', updated_at=now() WHERE ml_id=$1`,
+      [questionId, text]
+    );
+    res.json({ ok: true });
+  } catch(e) {
+    console.error('[api] responder pergunta', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.get('/mensagens', async (req, res) => {

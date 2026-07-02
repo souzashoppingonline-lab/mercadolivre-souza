@@ -63,11 +63,24 @@ async function get(path, storeId, retries = 3) {
   return res.json();
 }
 
+async function post(path, storeId, body) {
+  const token = await getAccessToken(storeId);
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`ML API POST ${path} -> HTTP ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 module.exports = {
   get,
+  post,
   getItem:             (id, storeId)     => get(`/items/${id}`, storeId),
   getOrder:            (id, storeId)     => get(`/orders/${id}`, storeId),
   getQuestion:         (id, storeId)     => get(`/questions/${id}`, storeId),
+  answerQuestion:      (questionId, text, storeId) => post('/answers', storeId, { question_id: questionId, text }),
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}/sellers/me`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),

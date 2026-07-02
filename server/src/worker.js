@@ -604,7 +604,7 @@ async function syncParentItems() {
     for (const row of items) {
       total++;
       try {
-        await new Promise(r => setTimeout(r, 4000));
+        await new Promise(r => setTimeout(r, 8000));
         const item = await ml.getItem(row.ml_id, store.id);
         const parentId = item.parent_item_id || null;
         await pool.query(
@@ -614,7 +614,7 @@ async function syncParentItems() {
         if (parentId) updated++;
       } catch (e) {
         console.warn(`[syncParentItems] item=${row.ml_id}:`, e.message);
-        if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 30000));
+        if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 60000));
       }
     }
 

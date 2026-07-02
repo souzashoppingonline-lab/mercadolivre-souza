@@ -14,6 +14,13 @@ const { publish } = require('./ws/hub');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[worker] unhandledRejection — process will exit:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[worker] uncaughtException — process will exit:', err);
+});
+
 // ── Telegram notification helper ─────────────────────────
 let _tgLastSent = {};
 async function tgNotify(topic, text) {

@@ -591,29 +591,38 @@ async function dailySync() {
 
 async function syncParentItems() {
   console.log('[syncParentItems] preenchendo parent_item_id dos itens cadastrados...');
-  const { rows: items } = await pool.query(
-    `SELECT ml_id, store_id FROM items WHERE parent_item_id IS NULL ORDER BY updated_at DESC`
-  );
-  console.log(`[syncParentItems] ${items.length} itens para processar`);
-  let updated = 0;
+  const { rows: stores } = await pool.query(`SELECT id FROM stores`);
+  let updated = 0; let total = 0;
 
-  for (const row of items) {
-    try {
-      await new Promise(r => setTimeout(r, 2500));
-      const item = await ml.getItem(row.ml_id, row.store_id);
-      const parentId = item.parent_item_id || null;
-      await pool.query(
-        `UPDATE items SET parent_item_id = $1, updated_at = now() WHERE ml_id = $2`,
-        [parentId, row.ml_id]
-      );
-      if (parentId) updated++;
-    } catch (e) {
-      console.warn(`[syncParentItems] item=${row.ml_id}:`, e.message);
+  for (const store of stores) {
+    const { rows: items } = await pool.query(
+      `SELECT ml_id FROM items WHERE parent_item_id IS NULL AND store_id = $1 ORDER BY updated_at DESC`,
+      [store.id]
+    );
+    console.log(`[syncParentItems] store=${store.id} → ${items.length} itens`);
+
+    for (const row of items) {
+      total++;
+      try {
+        await new Promise(r => setTimeout(r, 4000));
+        const item = await ml.getItem(row.ml_id, store.id);
+        const parentId = item.parent_item_id || null;
+        await pool.query(
+          `UPDATE items SET parent_item_id = $1, updated_at = now() WHERE ml_id = $2`,
+          [parentId, row.ml_id]
+        );
+        if (parentId) updated++;
+      } catch (e) {
+        console.warn(`[syncParentItems] item=${row.ml_id}:`, e.message);
+        if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 30000));
+      }
     }
+
+    if (stores.indexOf(store) < stores.length - 1) await new Promise(r => setTimeout(r, 10000));
   }
 
-  console.log(`[syncParentItems] concluído — ${updated} itens com parent_item_id preenchido`);
-  await tgNotify('tg_infra', `✅ Sync parent_item_id concluído\n📦 ${updated}/${items.length} itens atualizados`).catch(()=>{});
+  console.log(`[syncParentItems] concluído — ${updated}/${total} itens com parent_item_id`);
+  await tgNotify('tg_infra', `✅ Sync parent_item_id concluído\n📦 ${updated}/${total} itens atualizados`).catch(()=>{});
 }
 
 async function syncReturns() {

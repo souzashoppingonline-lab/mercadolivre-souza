@@ -13,6 +13,7 @@ const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
+connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
 
 process.on('unhandledRejection', (reason) => {
   console.error('[worker] unhandledRejection — process will exit:', reason);
@@ -427,6 +428,7 @@ const worker = new Worker(
   }
 );
 
+worker.on('error', (err) => console.error('[worker] worker error event:', err.message));
 worker.on('completed', (job) => { console.log(`[worker] done ${job.name}#${job.id}`); recentFailures = 0; });
 worker.on('failed', (job, err) => {
   console.error(`[worker] failed ${job?.name}#${job?.id}`, err.message);

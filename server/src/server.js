@@ -36,3 +36,6 @@ server.listen(env.port, () => {
   console.log(`[server] Webhook URL: http://localhost:${env.port}/webhooks/ml`);
   console.log(`[server] WebSocket:   ws://localhost:${env.port}/ws`);
 });
+
+server.keepAliveTimeout = 3600000;
+server.headersTimeout   = 3601000;

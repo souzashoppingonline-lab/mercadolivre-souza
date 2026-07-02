@@ -405,9 +405,9 @@ const worker = new Worker(
         return; // do NOT throw — BullMQ won't retry; cooldown in mlClient prevents flood
       }
       if (err.message?.includes('429')) {
-        if (['items', 'questions', 'messages'].includes(job.name) && job.attemptsMade < 4) {
+        if (job.attemptsMade < 4) {
           console.warn(`[worker] RATE_LIMITED ${job.name}#${job.id} — attempt ${job.attemptsMade + 1}/5, will retry`);
-          throw err; // BullMQ retries with exponential backoff (10s, 20s, 40s, 80s)
+          throw err;
         }
         console.warn(`[worker] RATE_LIMITED drop ${job.name}#${job.id} — not retrying`);
         return;

@@ -209,17 +209,51 @@ async function handleItem({ resource, storeId }) {
   );
   if (recent.rows.length) return;
 
-  await pool.query(
-    `UPDATE items SET updated_at = now() WHERE ml_id = $1`,
-    [itemId]
-  );
+  const { rows: old } = await pool.query(`SELECT price, available_quantity, status, title FROM items WHERE ml_id=$1`, [itemId]);
+  const prev = old[0];
+
+  const item = await ml.getItem(itemId, storeId);
+  const thumb = item.thumbnail || (item.pictures?.[0]?.url) || null;
 
   await pool.query(
-    `INSERT INTO item_changes (item_id, store_id, changes, changed_at) VALUES ($1,$2,$3,now())`,
-    [itemId, storeId, JSON.stringify([{ field: 'alterado', old: null, new: null }])]
+    `INSERT INTO items (ml_id, store_id, title, price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+     ON CONFLICT (ml_id) DO UPDATE SET
+       title = EXCLUDED.title, price = EXCLUDED.price,
+       available_quantity = EXCLUDED.available_quantity,
+       sold_quantity = EXCLUDED.sold_quantity,
+       status = EXCLUDED.status,
+       thumbnail = COALESCE(EXCLUDED.thumbnail, items.thumbnail),
+       permalink = COALESCE(EXCLUDED.permalink, items.permalink),
+       updated_at = now()`,
+    [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null]
   );
 
-  await publish('anuncio_updated', { id: itemId });
+  const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
+  const lojaNome = storeRows[0]?.nickname || `Loja ${storeId}`;
+
+  if (item.available_quantity <= 5) {
+    await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity, loja: lojaNome });
+    await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n🏪 Loja: <b>${lojaNome}</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
+  }
+
+  const changes = [];
+  if (prev) {
+    if (String(prev.title) !== String(item.title))                           changes.push({ field: 'title',  old: prev.title,              new: item.title });
+    if (Number(prev.price) !== Number(item.price))                           changes.push({ field: 'price',  old: prev.price,              new: item.price });
+    if (Number(prev.available_quantity) !== Number(item.available_quantity)) changes.push({ field: 'stock',  old: prev.available_quantity, new: item.available_quantity });
+    if (prev.status !== item.status)                                         changes.push({ field: 'status', old: prev.status,             new: item.status });
+  } else {
+    changes.push({ field: 'criado', old: null, new: item.status });
+  }
+  if (changes.length) {
+    await pool.query(
+      `INSERT INTO item_changes (item_id, store_id, changes, changed_at) VALUES ($1,$2,$3,now())`,
+      [item.id, storeId, JSON.stringify(changes)]
+    );
+  }
+
+  await publish('anuncio_updated', { id: item.id, status: item.status });
 }
 
 async function handlePostPurchase({ resource, storeId }) {

@@ -87,8 +87,8 @@ router.get('/pedidos', async (req, res) => {
     pool.query(
       `SELECT
          COUNT(*) FILTER (WHERE date_created::date = CURRENT_DATE) as total_hoje,
-         COUNT(*) FILTER (WHERE status = 'ready_to_ship') as aguardando_envio,
-         COUNT(*) FILTER (WHERE status = 'shipped') as em_transito,
+         COUNT(*) FILTER (WHERE status = 'paid') as aguardando_envio,
+         COUNT(*) FILTER (WHERE status IN ('shipped','ready_to_ship')) as em_transito,
          COUNT(*) FILTER (WHERE status = 'delivered' AND date_created::date = CURRENT_DATE) as entregues_hoje
        FROM orders`
     )

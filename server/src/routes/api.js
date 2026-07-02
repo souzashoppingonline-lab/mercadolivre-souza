@@ -43,21 +43,23 @@ router.get('/dashboard/alerts', async (req, res) => {
 
 // ── Anúncios / Produtos ────────────────────────────────────
 router.get('/anuncios', async (req, res) => {
-  const { status = '', search = '', store_id = '' } = req.query;
+  const { status = '', search = '', store_id = '', days = '' } = req.query;
+  const dateFilter = days ? `AND updated_at >= now() - interval '${Number(days)} days'` : '';
   const { rows } = await pool.query(
     `SELECT ml_id, store_id, title, price, available_quantity, sold_quantity, status, updated_at
      FROM items
      WHERE ($1 = '' OR status = $1)
        AND ($2 = '' OR title ILIKE '%'||$2||'%')
        AND ($3 = '' OR store_id = $3::bigint)
-     ORDER BY updated_at DESC LIMIT 100`,
+       ${dateFilter}
+     ORDER BY updated_at DESC LIMIT 500`,
     [status, search, store_id]
   );
   const summary = await pool.query(
     `SELECT COUNT(*) total, COUNT(*) FILTER (WHERE status='active') active,
             COUNT(*) FILTER (WHERE status='paused') paused,
             COUNT(*) FILTER (WHERE status='closed') closed
-     FROM items WHERE ($1 = '' OR store_id = $1::bigint)`,
+     FROM items WHERE ($1 = '' OR store_id = $1::bigint) ${dateFilter}`,
     [store_id]
   );
   res.json({ results: rows, summary: summary.rows[0] });

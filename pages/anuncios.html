@@ -89,10 +89,21 @@ function buildSection(storeId, storeName) {
           <div class="filters-bar" style="margin:0">
             <div class="search-box"><i class="fas fa-search"></i><input type="text" id="search-${id}" placeholder="Buscar..."></div>
             <select class="filter-select" id="status-${id}">
-              <option value="">Todos</option>
+              <option value="">Todos os status</option>
               <option value="active">Ativo</option>
               <option value="paused">Pausado</option>
               <option value="closed">Encerrado</option>
+            </select>
+            <select class="filter-select" id="days-${id}">
+              <option value="">Todo o período</option>
+              <option value="1">Ontem + hoje</option>
+              <option value="3">Últimos 3 dias</option>
+              <option value="5">Últimos 5 dias</option>
+              <option value="7">Últimos 7 dias</option>
+              <option value="10">Últimos 10 dias</option>
+              <option value="15">Últimos 15 dias</option>
+              <option value="21">Últimos 21 dias</option>
+              <option value="30">Últimos 30 dias</option>
             </select>
           </div>
         </div>
@@ -110,7 +121,8 @@ async function loadSection(storeId) {
   const id = storeId || 'all';
   const status = document.getElementById(`status-${id}`)?.value || '';
   const search = document.getElementById(`search-${id}`)?.value || '';
-  const data = await DB.getAnuncios({ status, search, store_id: storeId }) || { results: [], summary: {} };
+  const days   = document.getElementById(`days-${id}`)?.value || '';
+  const data = await DB.getAnuncios({ status, search, store_id: storeId, days }) || { results: [], summary: {} };
   const s = data.summary || {};
   const set = (elId, val) => { const el = document.getElementById(elId); if (el) el.textContent = val ?? '—'; };
   set(`total-${id}`, s.total);
@@ -164,11 +176,12 @@ async function init() {
 
     document.getElementById(`search-${s.id}`)?.addEventListener('input', () => loadSection(s.id));
     document.getElementById(`status-${s.id}`)?.addEventListener('change', () => loadSection(s.id));
+    document.getElementById(`days-${s.id}`)?.addEventListener('change', () => loadSection(s.id));
   });
 
-  // Bind "all" section filters
   document.getElementById('search-all')?.addEventListener('input', () => loadSection(''));
   document.getElementById('status-all')?.addEventListener('change', () => loadSection(''));
+  document.getElementById('days-all')?.addEventListener('change', () => loadSection(''));
 
   // First tab click on "Todas"
   document.querySelector('.store-tab[data-store=""]')?.addEventListener('click', () => switchTab(''));

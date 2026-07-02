@@ -216,6 +216,11 @@ function initAlerts() {
     }
   }
 
+  WS.on('_disconnected', () => {
+    const el = document.getElementById('wsStatus');
+    if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--orange);font-size:8px"></i> reconectando...';
+  });
+
   // Escuta pergunta nova
   WS.on('question_received', payload => {
     if (payload?.status !== 'UNANSWERED') return;

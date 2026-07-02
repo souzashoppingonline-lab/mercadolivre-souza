@@ -12,6 +12,7 @@ const WS = {
 
     this.socket.onopen = () => {
       console.log('[WS] connected');
+      this.reconnectDelay = 2000;
       this._dispatch('_connected', {});
     };
 
@@ -24,6 +25,7 @@ const WS = {
 
     this.socket.onclose = () => {
       console.warn('[WS] disconnected — reconnecting in', this.reconnectDelay, 'ms');
+      this._dispatch('_disconnected', {});
       setTimeout(() => this.connect(), this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
     };

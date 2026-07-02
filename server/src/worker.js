@@ -281,20 +281,35 @@ async function handleOffer({ resource, storeId }) {
   let originalPrice = 0, promoPrice = 0, discountPct = 0;
   let rawData = { offer_id: offerId, resource };
 
+  // Get current and historical prices from local DB — zero extra API calls
+  if (itemId) {
+    const itemRow = await pool.query(
+      `SELECT price FROM items WHERE ml_id=$1 LIMIT 1`, [itemId]
+    );
+    promoPrice = Number(itemRow.rows[0]?.price || 0);
+
+    // Use price_history to get the pre-promo (original) price
+    const histRow = await pool.query(
+      `SELECT old_price FROM price_history WHERE item_id=$1 ORDER BY changed_at DESC LIMIT 1`, [itemId]
+    );
+    originalPrice = Number(histRow.rows[0]?.old_price || promoPrice);
+  }
+
+  if (originalPrice > 0 && promoPrice > 0 && originalPrice > promoPrice) {
+    discountPct = ((originalPrice - promoPrice) / originalPrice) * 100;
+  }
+
   try {
     const offer = await ml.getOffer(offerId, storeId);
-    currentStatus  = offer.status?.id || offer.status || currentStatus;
-    rawData        = offer;
+    currentStatus = offer.status?.id || offer.status || currentStatus;
+    rawData       = offer;
     if (!itemTitle) itemTitle = offer.title || null;
-
-    // Offers endpoint has no price fields — get current price from items table
-    if (itemId) {
-      const itemRow = await pool.query(`SELECT price FROM items WHERE ml_id=$1 LIMIT 1`, [itemId]);
-      promoPrice = Number(itemRow.rows[0]?.price || 0);
-    }
+    // If ML returns discount info, prefer it
+    if (offer.offers?.[0]?.original_value) originalPrice = Number(offer.offers[0].original_value);
+    if (offer.offers?.[0]?.new_value)      promoPrice    = Number(offer.offers[0].new_value);
+    if (originalPrice > 0 && promoPrice > 0) discountPct = ((originalPrice - promoPrice) / originalPrice) * 100;
   } catch (e) {
-    // 429 or other error — save the event without price details, don't throw
-    console.warn(`[worker] getOffer fallback (${e.message}) — saving without prices`);
+    console.warn(`[worker] getOffer fallback (${e.message}) — using local prices`);
   }
 
   await pool.query(

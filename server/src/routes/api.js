@@ -449,25 +449,35 @@ router.post('/schedule/jobs/:name/trigger', async (req, res) => {
 
 // ── Promoções ──────────────────────────────────────────────
 router.get('/promocoes', async (req, res) => {
-  const { store_id = '', days = 1 } = req.query;
-  const { rows } = await pool.query(
-    `SELECT p.id, p.store_id, s.nickname as conta, p.offer_id, p.item_id, p.item_title,
-            p.status, p.previous_status, p.original_price, p.promo_price, p.discount_pct, p.changed_at
-     FROM promotions p
-     JOIN stores s ON s.id = p.store_id
-     WHERE ($1 = '' OR p.store_id = $1::bigint)
-       AND p.changed_at >= CURRENT_DATE - ($2::int - 1)
-     ORDER BY p.changed_at DESC LIMIT 500`,
-    [store_id, Number(days)]
-  );
-
-  const today = rows.filter(r => new Date(r.changed_at).toDateString() === new Date().toDateString());
-  const summary = {
-    entrou_hoje:  today.filter(r => r.status === 'active').length,
-    saiu_hoje:    today.filter(r => r.status !== 'active' && r.previous_status === 'active').length,
-    total_hoje:   today.length,
-  };
-  res.json({ rows, summary });
+  try {
+    const { store_id = '', days = 1 } = req.query;
+    const { rows } = await pool.query(
+      `SELECT p.id, p.store_id,
+              COALESCE(s.nickname, 'Loja '||p.store_id::text) as conta,
+              p.offer_id, p.item_id, p.item_title,
+              p.status, p.previous_status,
+              COALESCE(NULLIF(p.original_price,0), i.price, 0) as original_price,
+              COALESCE(NULLIF(p.promo_price,0), i.price, 0) as promo_price,
+              p.discount_pct, p.changed_at, p.raw_data
+       FROM promotions p
+       LEFT JOIN stores s ON s.id = p.store_id
+       LEFT JOIN items i ON i.ml_id = p.item_id
+       WHERE ($1 = '' OR p.store_id = $1::bigint)
+         AND p.changed_at >= CURRENT_DATE - ($2::int - 1)
+       ORDER BY p.changed_at DESC LIMIT 500`,
+      [store_id, Number(days)]
+    );
+    const today = rows.filter(r => new Date(r.changed_at).toDateString() === new Date().toDateString());
+    const summary = {
+      entrou_hoje: today.filter(r => r.status === 'active' && !r.previous_status).length,
+      saiu_hoje:   today.filter(r => r.status !== 'active' && r.previous_status === 'active').length,
+      total_hoje:  today.length,
+    };
+    res.json({ rows, summary });
+  } catch(e) {
+    console.error('[api] /promocoes', e.message);
+    res.status(500).json({ error: e.message, rows: [], summary: {} });
+  }
 });
 
 // ── Monitor: system metrics & security ───────────────────

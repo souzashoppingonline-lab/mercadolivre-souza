@@ -26,9 +26,17 @@ router.post('/ml', async (req, res) => {
     );
     const logId = rows[0].id;
 
+    // Stable jobId = topic:resource:storeId — prevents BullMQ from enqueueing a
+    // duplicate job while a previous one for the same resource is still
+    // waiting/delayed/active (e.g. retrying after 429).  Once a job
+    // completes or is discarded BullMQ removes it so future webhooks for
+    // the same resource are processed normally.
+    const jobId = `${topic}:${resource}:${storeId}`;
+
     await webhookQueue.add(topic, { topic, resource, storeId, logId }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
+      jobId,
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 10000 },
       removeOnComplete: 500,
       removeOnFail: 1000,
     });

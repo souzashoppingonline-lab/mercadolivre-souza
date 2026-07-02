@@ -50,16 +50,24 @@ async function getAccessToken(storeId) {
   return promise;
 }
 
-async function get(path, storeId, retries = 3) {
+async function get(path, storeId, retries = 1) {
   const token = await getAccessToken(storeId);
   const res = await fetch(`${BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if ((res.status === 429 || res.status >= 500) && retries > 0) {
-    const delay = (4 - retries) * 5000; // 5s, 10s, 15s
-    await new Promise(r => setTimeout(r, delay));
+
+  // 429 — throw immediately so BullMQ's exponential backoff handles the delay.
+  // Internal retry would silently block the queue slot for 30 s+ and still fail.
+  if (res.status === 429) {
+    throw new Error(`ML API ${path} -> HTTP 429 (rate limited)`);
+  }
+
+  // 5xx transient error — one quick retry after 2 s, then propagate.
+  if (res.status >= 500 && retries > 0) {
+    await new Promise(r => setTimeout(r, 2000));
     return get(path, storeId, retries - 1);
   }
+
   if (!res.ok) throw new Error(`ML API ${path} -> HTTP ${res.status}`);
   return res.json();
 }

@@ -418,7 +418,10 @@ const worker = new Worker(
   {
     connection,
     concurrency: 1,
-    limiter: { max: 1, duration: 3000 },  // max 1 job per 3s = 20 calls/min
+    // Each of the 3 stores has its own ML app credentials → separate API rate-
+    // limit quotas.  1 job per 1.5 s = ~40 req/min total, spread across 3 apps
+    // = ~13 req/min per app, comfortably below ML's 20 req/min limit per app.
+    limiter: { max: 1, duration: 1500 },
   }
 );
 

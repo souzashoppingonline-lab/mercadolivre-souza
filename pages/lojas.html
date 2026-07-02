@@ -111,19 +111,32 @@ async function load() {
           Salvar
         </button>
       </div>
-      <details style="margin-top:4px">
+      <details style="margin-top:4px" id="det-${s.id}">
         <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
           <i class="fas fa-key" style="font-size:10px"></i>
           App próprio (Client ID / Secret)
-          ${s.has_own_credentials ? '<span style="color:var(--green);font-size:10px">✓ configurado</span>' : '<span style="color:var(--text-muted);font-size:10px">usando padrão</span>'}
+          <span id="cred-badge-${s.id}" style="color:${s.has_own_credentials ? 'var(--green)' : 'var(--text-muted)'};font-size:10px">
+            ${s.has_own_credentials ? '✓ configurado' : 'usando padrão'}
+          </span>
         </summary>
         <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+          ${s.has_own_credentials ? `
+          <div id="cred-saved-${s.id}" style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:6px;padding:8px 10px;font-size:11px;font-family:monospace;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between">
+              <span style="color:var(--text-muted)">Client ID</span>
+              <span style="color:var(--text-primary)">${s.ml_client_id}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span style="color:var(--text-muted)">Client Secret</span>
+              <span style="color:var(--text-muted);letter-spacing:2px">••••••••••••</span>
+            </div>
+          </div>` : ''}
           <input type="text" placeholder="Client ID"
             id="cid-${s.id}"
-            value="${s.ml_client_id || ''}"
+            value=""
             style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text-primary);font-size:12px;font-family:monospace"
           >
-          <input type="password" placeholder="Client Secret"
+          <input type="password" placeholder="Client Secret (novo)"
             id="csec-${s.id}"
             style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text-primary);font-size:12px;font-family:monospace"
           >
@@ -131,6 +144,7 @@ async function load() {
             style="background:rgba(99,102,241,.15);border:1px solid #818cf8;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;color:#818cf8">
             <i class="fas fa-save"></i> Salvar credenciais
           </button>
+          <div id="cred-msg-${s.id}" style="display:none;font-size:12px;text-align:center;padding:4px;border-radius:6px"></div>
         </div>
       </details>
       ${!s.token_valid ? `<a href="/auth/login" class="btn-reconectar"><i class="fas fa-plug"></i> Reconectar loja</a>` : ''}
@@ -141,16 +155,57 @@ async function load() {
 async function saveCredentials(storeId) {
   const cid  = document.getElementById(`cid-${storeId}`);
   const csec = document.getElementById(`csec-${storeId}`);
+  const msg  = document.getElementById(`cred-msg-${storeId}`);
   if (!cid || !csec) return;
   if (!cid.value.trim() || !csec.value.trim()) {
-    alert('Preencha Client ID e Client Secret');
+    if (msg) { msg.textContent = '⚠️ Preencha Client ID e Client Secret'; msg.style.display='block'; msg.style.background='rgba(239,68,68,.12)'; msg.style.color='var(--red)'; }
     return;
   }
-  const res = await DB.updateLojaCredentials(storeId, cid.value.trim(), csec.value.trim());
+  const savedClientId = cid.value.trim();
+  const res = await DB.updateLojaCredentials(storeId, savedClientId, csec.value.trim());
   if (res?.ok) {
     csec.value = '';
-    cid.style.borderColor = 'var(--green)';
-    setTimeout(() => { cid.style.borderColor = ''; load(); }, 1500);
+    cid.value  = '';
+    if (msg) {
+      msg.innerHTML = `<i class="fas fa-check-circle"></i> Salvo! Client ID: <b style="font-family:monospace">${savedClientId}</b> · Secret: <span style="letter-spacing:2px">••••••••••••</span>`;
+      msg.style.display = 'block';
+      msg.style.background = 'rgba(16,185,129,.12)';
+      msg.style.color = 'var(--green)';
+    }
+    const badge = document.getElementById(`cred-badge-${storeId}`);
+    if (badge) { badge.textContent = '✓ configurado'; badge.style.color = 'var(--green)'; }
+    const savedDiv = document.getElementById(`cred-saved-${storeId}`);
+    if (savedDiv) {
+      savedDiv.innerHTML = `
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-muted)">Client ID</span>
+          <span style="color:var(--text-primary)">${savedClientId}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-muted)">Client Secret</span>
+          <span style="color:var(--text-muted);letter-spacing:2px">••••••••••••</span>
+        </div>`;
+      savedDiv.style.display = 'flex';
+    } else {
+      const det = document.getElementById(`det-${storeId}`);
+      if (det) {
+        const newDiv = document.createElement('div');
+        newDiv.id = `cred-saved-${storeId}`;
+        newDiv.style.cssText = 'background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:6px;padding:8px 10px;font-size:11px;font-family:monospace;display:flex;flex-direction:column;gap:4px';
+        newDiv.innerHTML = `
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:var(--text-muted)">Client ID</span>
+            <span style="color:var(--text-primary)">${savedClientId}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:var(--text-muted)">Client Secret</span>
+            <span style="color:var(--text-muted);letter-spacing:2px">••••••••••••</span>
+          </div>`;
+        det.querySelector('div').insertBefore(newDiv, cid);
+      }
+    }
+  } else {
+    if (msg) { msg.textContent = '❌ Erro ao salvar. Verifique o console.'; msg.style.display='block'; msg.style.background='rgba(239,68,68,.12)'; msg.style.color='var(--red)'; }
   }
 }
 

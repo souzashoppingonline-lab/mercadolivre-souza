@@ -85,26 +85,32 @@ router.get('/produtos', async (req, res) => {
 
 // ── Pedidos / Vendas ───────────────────────────────────────
 router.get('/pedidos', async (req, res) => {
-  const { status = '', dateFrom = '', dateTo = '' } = req.query;
-  const conditions = ['($1 = \'\' OR o.status = $1)'];
-  const params = [status];
-  if (dateFrom) { params.push(dateFrom); conditions.push(`o.date_created >= $${params.length}::date`); }
-  if (dateTo)   { params.push(dateTo);   conditions.push(`o.date_created < ($${params.length}::date + interval '1 day')`); }
-  const where = conditions.join(' AND ');
+  const { status = '', period = '7' } = req.query;
+  let dateFilter;
+  if (period === 'hoje')  dateFilter = `AND o.date_created::date = CURRENT_DATE`;
+  else if (period === 'ontem') dateFilter = `AND o.date_created::date = CURRENT_DATE - 1`;
+  else dateFilter = `AND o.date_created >= CURRENT_DATE - ${Number(period)}`;
+
+  const statusFilter = status ? `AND o.status = '${status.replace(/'/g,"''")}'` : '';
+
   const [{ rows }, kpi] = await Promise.all([
     pool.query(
       `SELECT o.ml_id as id, o.buyer_nickname, o.title, o.total_amount, o.status, o.date_created,
               COALESCE(s.nickname, 'Loja '||o.store_id::text) as loja
-       FROM orders o LEFT JOIN stores s ON s.id = o.store_id WHERE ${where} ORDER BY o.date_created DESC LIMIT 200`,
-      params
+       FROM orders o LEFT JOIN stores s ON s.id = o.store_id
+       WHERE 1=1 ${dateFilter} ${statusFilter}
+       ORDER BY o.date_created DESC LIMIT 500`
     ),
     pool.query(
       `SELECT
-         COUNT(*) FILTER (WHERE date_created::date = CURRENT_DATE) as total_hoje,
-         COUNT(*) FILTER (WHERE status = 'paid') as aguardando_envio,
-         COUNT(*) FILTER (WHERE status IN ('shipped','ready_to_ship')) as em_transito,
-         COUNT(*) FILTER (WHERE status = 'delivered' AND date_created::date = CURRENT_DATE) as entregues_hoje
-       FROM orders`
+         COUNT(*) as total,
+         SUM(total_amount) FILTER (WHERE status != 'cancelled') as receita,
+         COUNT(*) FILTER (WHERE status = 'paid') as paid,
+         COUNT(*) FILTER (WHERE status = 'ready_to_ship') as ready_to_ship,
+         COUNT(*) FILTER (WHERE status = 'shipped') as shipped,
+         COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
+         COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
+       FROM orders o WHERE 1=1 ${dateFilter}`
     )
   ]);
   res.json({ results: rows, summary: kpi.rows[0] });

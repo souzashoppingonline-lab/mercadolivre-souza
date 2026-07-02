@@ -15,26 +15,60 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Total Hoje</div><div class="value" id="totalHoje">—</div></div>
-        <div class="stat-card"><div class="label">Aguardando Envio</div><div class="value" id="aguardandoEnvio" style="color:var(--orange)">—</div></div>
-        <div class="stat-card"><div class="label">Em Trânsito</div><div class="value" id="emTransito" style="color:var(--blue)">—</div></div>
-        <div class="stat-card"><div class="label">Entregues Hoje</div><div class="value" id="entreguesHoje" style="color:var(--green)">—</div></div>
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select class="filter-select" id="periodFilter">
+          <option value="hoje">Hoje</option>
+          <option value="ontem">Ontem</option>
+          <option value="3">Últimos 3 dias</option>
+          <option value="5">Últimos 5 dias</option>
+          <option value="7" selected>Últimos 7 dias</option>
+          <option value="10">Últimos 10 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="21">Últimos 21 dias</option>
+          <option value="30">Últimos 30 dias</option>
+        </select>
+        <select class="filter-select" id="statusFilter">
+          <option value="">Todos os status</option>
+          <option value="paid">Pago</option>
+          <option value="ready_to_ship">Pronto p/ Envio</option>
+          <option value="shipped">Enviado</option>
+          <option value="delivered">Entregue</option>
+          <option value="cancelled">Cancelado</option>
+        </select>
       </div>
+
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card" style="cursor:pointer" id="card-total" onclick="filterByStatus('')">
+          <div class="label">Total Pedidos</div>
+          <div class="value" id="kpi-total">—</div>
+          <div style="font-size:.75rem;color:var(--text-muted);margin-top:4px" id="kpi-receita">—</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" id="card-paid" onclick="filterByStatus('paid')">
+          <div class="label"><i class="fas fa-check-circle" style="color:var(--yellow)"></i> Pago</div>
+          <div class="value" id="kpi-paid" style="color:var(--yellow)">—</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" id="card-ready_to_ship" onclick="filterByStatus('ready_to_ship')">
+          <div class="label"><i class="fas fa-box" style="color:var(--primary)"></i> Pronto p/ Envio</div>
+          <div class="value" id="kpi-ready_to_ship" style="color:var(--primary)">—</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" id="card-shipped" onclick="filterByStatus('shipped')">
+          <div class="label"><i class="fas fa-truck" style="color:var(--blue)"></i> Enviado</div>
+          <div class="value" id="kpi-shipped" style="color:var(--blue)">—</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" id="card-delivered" onclick="filterByStatus('delivered')">
+          <div class="label"><i class="fas fa-home" style="color:var(--green)"></i> Entregue</div>
+          <div class="value" id="kpi-delivered" style="color:var(--green)">—</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" id="card-cancelled" onclick="filterByStatus('cancelled')">
+          <div class="label"><i class="fas fa-times-circle" style="color:var(--red)"></i> Cancelado</div>
+          <div class="value" id="kpi-cancelled" style="color:var(--red)">—</div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <h3>Pedidos</h3>
-          <div class="filters-bar" style="margin:0;gap:8px">
-            <select class="filter-select" id="statusFilter">
-              <option value="">Todos</option>
-              <option value="paid">Pago</option>
-              <option value="shipped">Enviado</option>
-              <option value="delivered">Entregue</option>
-              <option value="cancelled">Cancelado</option>
-            </select>
-            <input type="date" class="filter-input" id="dateFrom">
-            <input type="date" class="filter-input" id="dateTo">
-          </div>
         </div>
         <div class="table-responsive">
           <table class="data-table">
@@ -53,18 +87,32 @@
 <script>
 const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
-const statusLabel = { paid:'Pago', shipped:'Enviado', delivered:'Entregue', cancelled:'Cancelado', ready_to_ship:'Pronto p/ envio' };
+const statusLabel = { paid:'Pago', shipped:'Enviado', delivered:'Entregue', cancelled:'Cancelado', ready_to_ship:'Pronto p/ Envio' };
+
+function filterByStatus(st) {
+  document.getElementById('statusFilter').value = st;
+  document.querySelectorAll('[id^="card-"]').forEach(c => c.style.outline = '');
+  if (st) {
+    const card = document.getElementById('card-' + st);
+    if (card) card.style.outline = '2px solid var(--primary)';
+  }
+  load();
+}
 
 async function load() {
+  const period = document.getElementById('periodFilter').value;
   const status = document.getElementById('statusFilter').value;
-  const dateFrom = document.getElementById('dateFrom').value;
-  const dateTo = document.getElementById('dateTo').value;
-  const data = await DB.getPedidos({ status, dateFrom, dateTo }) || { results:[], summary:{} };
+  const data = await DB.getPedidos({ period, status }) || { results:[], summary:{} };
   const s = data.summary || {};
-  document.getElementById('totalHoje').textContent = s.total_hoje ?? '—';
-  document.getElementById('aguardandoEnvio').textContent = s.aguardando_envio ?? '—';
-  document.getElementById('emTransito').textContent = s.em_transito ?? '—';
-  document.getElementById('entreguesHoje').textContent = s.entregues_hoje ?? '—';
+
+  document.getElementById('kpi-total').textContent    = s.total ?? '—';
+  document.getElementById('kpi-receita').textContent  = s.receita ? fmt(s.receita) : '';
+  document.getElementById('kpi-paid').textContent         = s.paid ?? '—';
+  document.getElementById('kpi-ready_to_ship').textContent = s.ready_to_ship ?? '—';
+  document.getElementById('kpi-shipped').textContent      = s.shipped ?? '—';
+  document.getElementById('kpi-delivered').textContent    = s.delivered ?? '—';
+  document.getElementById('kpi-cancelled').textContent    = s.cancelled ?? '—';
+
   const rows = data.results || [];
   document.getElementById('pedidosTable').innerHTML = rows.length
     ? rows.map(r=>`<tr>
@@ -78,10 +126,9 @@ async function load() {
       </tr>`).join('')
     : '<tr><td colspan="7" class="empty-state">Nenhum pedido</td></tr>';
 }
+
+document.getElementById('periodFilter').addEventListener('change', load);
 document.getElementById('statusFilter').addEventListener('change', load);
-document.getElementById('dateFrom').addEventListener('change', load);
-document.getElementById('dateTo').addEventListener('change', load);
-document.getElementById('btnRefresh') && document.getElementById('btnRefresh').addEventListener('click', load);
 WS.on('order_updated', load);
 WS.on('_connected', () => { const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 load();

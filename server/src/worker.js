@@ -12,7 +12,7 @@ const redis = require('./db/redis');
 const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
 
-const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
+const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
 
 process.on('unhandledRejection', (reason) => {
@@ -545,7 +545,7 @@ function scheduleDailySync() {
 scheduleDailySync();
 
 // Listener para comandos manuais via Redis pub/sub (ex: trigger do painel)
-const cmdSub = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
+const cmdSub = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000 });
 cmdSub.subscribe('worker:cmd');
 cmdSub.on('message', (channel, msg) => {
   try {

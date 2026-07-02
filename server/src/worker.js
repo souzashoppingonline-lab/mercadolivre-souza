@@ -11,6 +11,7 @@ const pool = require('./db/pool');
 const redis = require('./db/redis');
 const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
+const { refreshToken } = require('./routes/auth');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -506,15 +507,27 @@ async function dailySync() {
   const dateFrom = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
 
   for (const store of stores) {
-    // Alerta de token expirando em < 24h
     const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
-    if (expiresIn < 0) {
-      await tgNotify('tg_token', `🔴 <b>Token expirado!</b>\n🏪 Loja: ${store.nickname}\nReconecte em /pages/lojas.html`);
-      continue; // sem token válido, pula o sync desta loja
+
+    // Token expirado — tenta refresh proativo antes de desistir
+    if (expiresIn < 6 * 60 * 60 * 1000) {
+      try {
+        await refreshToken(store.id);
+        console.log(`[sync] token renovado proativamente: ${store.nickname}`);
+        if (expiresIn < 0) {
+          await tgNotify('tg_token', `✅ <b>Token renovado automaticamente!</b>\n🏪 Loja: ${store.nickname}`);
+        }
+      } catch (e) {
+        console.warn(`[sync] refresh proativo falhou ${store.nickname}:`, e.message);
+        await tgNotify('tg_token', `🔴 <b>Token expirado — refresh falhou!</b>\n🏪 Loja: ${store.nickname}\nAcesse: /auth/login?store_id=${store.id}\n❌ ${e.message}`);
+        continue;
+      }
     }
-    if (expiresIn < 24 * 60 * 60 * 1000) {
+
+    // Alerta 48h antes
+    if (expiresIn > 0 && expiresIn < 48 * 60 * 60 * 1000) {
       const horas = Math.floor(expiresIn / 3600000);
-      await tgNotify('tg_token', `⚠️ <b>Token expira em ${horas}h!</b>\n🏪 Loja: ${store.nickname}\nReconecte em breve`);
+      await tgNotify('tg_token', `⚠️ <b>Token expira em ${horas}h</b>\n🏪 Loja: ${store.nickname}\nO sistema tentará renovar automaticamente às 03:00`);
     }
 
     try {

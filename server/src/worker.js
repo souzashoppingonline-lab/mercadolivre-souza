@@ -604,7 +604,7 @@ async function syncParentItems() {
     for (const row of items) {
       total++;
       try {
-        await new Promise(r => setTimeout(r, 8000));
+        await new Promise(r => setTimeout(r, 18000));
         const item = await ml.getItem(row.ml_id, store.id);
         const parentId = item.parent_item_id || null;
         await pool.query(

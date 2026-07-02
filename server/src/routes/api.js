@@ -212,6 +212,16 @@ router.patch('/lojas/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+router.patch('/lojas/:id/credentials', async (req, res) => {
+  const { ml_client_id, ml_client_secret } = req.body;
+  if (!ml_client_id || !ml_client_secret) return res.status(400).json({ error: 'ml_client_id and ml_client_secret required' });
+  await pool.query(
+    `UPDATE stores SET ml_client_id=$2, ml_client_secret=$3 WHERE id=$1`,
+    [req.params.id, ml_client_id.trim(), ml_client_secret.trim()]
+  );
+  res.json({ ok: true });
+});
+
 router.patch('/items/:id/custo', async (req, res) => {
   const { cost } = req.body;
   if (cost == null) return res.status(400).json({ error: 'cost required' });
@@ -390,6 +400,8 @@ router.get('/lojas', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT id, nickname, level_id, active_listings, monthly_revenue,
             imposto_pct, token_expires_at, updated_at,
+            ml_client_id,
+            CASE WHEN ml_client_id IS NOT NULL THEN true ELSE false END as has_own_credentials,
             CASE WHEN token_expires_at > now() THEN true ELSE false END as token_valid
      FROM stores ORDER BY nickname`
   );

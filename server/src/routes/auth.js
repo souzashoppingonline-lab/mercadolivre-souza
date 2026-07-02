@@ -133,17 +133,20 @@ router.get(['/callback', '/ml/callback'], async (req, res) => {
 // Refresh a store token (called by worker before each ML API call)
 async function refreshToken(storeId) {
   const { rows } = await pool.query(
-    'SELECT refresh_token FROM stores WHERE id = $1', [storeId]
+    'SELECT refresh_token, ml_client_id, ml_client_secret FROM stores WHERE id = $1', [storeId]
   );
   if (!rows.length) throw new Error(`store ${storeId} not found`);
+
+  const clientId     = rows[0].ml_client_id     || env.ml.clientId;
+  const clientSecret = rows[0].ml_client_secret || env.ml.clientSecret;
 
   const res = await fetch(ML_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      client_id: env.ml.clientId,
-      client_secret: env.ml.clientSecret,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: rows[0].refresh_token,
     }),
   });

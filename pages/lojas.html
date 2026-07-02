@@ -111,9 +111,47 @@ async function load() {
           Salvar
         </button>
       </div>
+      <details style="margin-top:4px">
+        <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">
+          <i class="fas fa-key" style="font-size:10px"></i>
+          App próprio (Client ID / Secret)
+          ${s.has_own_credentials ? '<span style="color:var(--green);font-size:10px">✓ configurado</span>' : '<span style="color:var(--text-muted);font-size:10px">usando padrão</span>'}
+        </summary>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+          <input type="text" placeholder="Client ID"
+            id="cid-${s.id}"
+            value="${s.ml_client_id || ''}"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text-primary);font-size:12px;font-family:monospace"
+          >
+          <input type="password" placeholder="Client Secret"
+            id="csec-${s.id}"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text-primary);font-size:12px;font-family:monospace"
+          >
+          <button onclick="saveCredentials('${s.id}')"
+            style="background:rgba(99,102,241,.15);border:1px solid #818cf8;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;color:#818cf8">
+            <i class="fas fa-save"></i> Salvar credenciais
+          </button>
+        </div>
+      </details>
       ${!s.token_valid ? `<a href="/auth/login" class="btn-reconectar"><i class="fas fa-plug"></i> Reconectar loja</a>` : ''}
     </div>
   `).join('') : '<div class="empty-state" style="grid-column:1/-1">Nenhuma loja cadastrada. <a href="/auth/login" style="color:var(--primary)">Conectar primeira loja →</a></div>';
+}
+
+async function saveCredentials(storeId) {
+  const cid  = document.getElementById(`cid-${storeId}`);
+  const csec = document.getElementById(`csec-${storeId}`);
+  if (!cid || !csec) return;
+  if (!cid.value.trim() || !csec.value.trim()) {
+    alert('Preencha Client ID e Client Secret');
+    return;
+  }
+  const res = await DB.updateLojaCredentials(storeId, cid.value.trim(), csec.value.trim());
+  if (res?.ok) {
+    csec.value = '';
+    cid.style.borderColor = 'var(--green)';
+    setTimeout(() => { cid.style.borderColor = ''; load(); }, 1500);
+  }
 }
 
 async function saveImposto(storeId) {

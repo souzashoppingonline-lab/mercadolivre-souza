@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS stores (
   active_listings INT DEFAULT 0,
   monthly_revenue NUMERIC DEFAULT 0,
   imposto_pct NUMERIC DEFAULT 0,
+  ml_client_id TEXT,
+  ml_client_secret TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 

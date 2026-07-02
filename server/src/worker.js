@@ -276,11 +276,13 @@ async function handlePostPurchase({ resource, storeId }) {
   try {
     const claim = await ml.get(`/post-purchase/claims/${claimId}`, storeId);
     const orderId = claim.order_id || null;
+    const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
+    const itemTitle = claim.resolution?.description || null;
     await pool.query(
-      `INSERT INTO returns (store_id, order_id, title, reason, amount, status, date, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+      `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
        ON CONFLICT DO NOTHING`,
-      [storeId, orderId, claim.resolution?.reason || claim.reason_id || null,
+      [storeId, orderId, buyerNickname, itemTitle || claim.reason_id,
        claim.reason_id || null, claim.total || 0, claim.status, claim.date_created]
     );
     await publish('devolucao_recebida', { store_id: storeId, claim_id: claimId, status: claim.status });

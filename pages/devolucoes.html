@@ -8,6 +8,14 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Devoluções'; window.ACTIVE_NAV='devolucoes.html';</script>
+  <style>
+    .note-cell { display:flex; align-items:center; gap:6px; min-width:180px; }
+    .note-input { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); padding:4px 8px; font-size:.8rem; }
+    .note-input:focus { outline:none; border-color:var(--primary); }
+    .btn-save-note { background:var(--primary); color:#000; border:none; border-radius:6px; padding:4px 10px; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .btn-save-note:hover { opacity:.85; }
+    .saved-note { font-size:.78rem; color:var(--text-muted); font-style:italic; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,18 +23,28 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Em Análise</div><div class="value" id="analise" style="color:var(--orange)">—</div></div>
-        <div class="stat-card"><div class="label">Aprovadas</div><div class="value" id="aprovadas" style="color:var(--green)">—</div></div>
-        <div class="stat-card"><div class="label">Rejeitadas</div><div class="value" id="rejeitadas" style="color:var(--red)">—</div></div>
-        <div class="stat-card"><div class="label">Valor Total</div><div class="value" id="valorTotal">—</div></div>
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <div class="search-box" style="flex:1;max-width:400px">
+          <i class="fas fa-search"></i>
+          <input type="text" id="searchInput" placeholder="Buscar por ID do pedido, comprador ou produto...">
+        </div>
       </div>
+
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Total</div><div class="value" id="kpi-total">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-clock" style="color:var(--orange)"></i> Em Análise</div><div class="value" id="kpi-analise" style="color:var(--orange)">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-check" style="color:var(--green)"></i> Aprovadas</div><div class="value" id="kpi-aprovadas" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-times" style="color:var(--red)"></i> Rejeitadas</div><div class="value" id="kpi-rejeitadas" style="color:var(--red)">—</div></div>
+        <div class="stat-card"><div class="label">Valor Total</div><div class="value" id="kpi-valor">—</div></div>
+      </div>
+
       <div class="card">
         <div class="card-header"><h3>Solicitações de Devolução</h3></div>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Pedido</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th></tr></thead>
-            <tbody id="devTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+            <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Observação</th></tr></thead>
+            <tbody id="devTable"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -38,28 +56,78 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
-const statusMap = { analysis:{l:'Em Análise',c:'paused'}, approved:{l:'Aprovada',c:'active'}, rejected:{l:'Rejeitada',c:'closed'} };
+const statusMap = {
+  opened:   { l:'Em Análise', c:'paused' },
+  analysis: { l:'Em Análise', c:'paused' },
+  approved: { l:'Aprovada',   c:'active' },
+  resolved: { l:'Resolvida',  c:'active' },
+  rejected: { l:'Rejeitada',  c:'closed' },
+  closed:   { l:'Encerrada',  c:'closed' },
+};
+
+async function saveNote(id, btn) {
+  const input = document.getElementById(`note-${id}`);
+  const note  = input.value.trim();
+  btn.disabled = true;
+  btn.textContent = '...';
+  const r = await DB.saveDevolucaoNote(id, note);
+  if (r) {
+    btn.textContent = '✓';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.textContent = 'Salvar'; btn.style.background = ''; btn.disabled = false; }, 1500);
+  } else {
+    btn.textContent = 'Erro';
+    btn.style.background = 'var(--red)';
+    setTimeout(() => { btn.textContent = 'Salvar'; btn.style.background = ''; btn.disabled = false; }, 2000);
+  }
+}
+
 async function load() {
-  const data = await DB.getDevolucoes() || { items:[], summary:{} };
+  const q = document.getElementById('searchInput').value.trim();
+  const data = await DB.getDevolucoes({ q }) || { items:[], summary:{} };
   const s = data.summary || {};
-  document.getElementById('analise').textContent = s.in_analysis ?? '—';
-  document.getElementById('aprovadas').textContent = s.approved ?? '—';
-  document.getElementById('rejeitadas').textContent = s.rejected ?? '—';
-  document.getElementById('valorTotal').textContent = fmt(s.total_value);
+
+  document.getElementById('kpi-total').textContent     = s.total ?? '—';
+  document.getElementById('kpi-analise').textContent   = s.in_analysis ?? '—';
+  document.getElementById('kpi-aprovadas').textContent = s.approved ?? '—';
+  document.getElementById('kpi-rejeitadas').textContent= s.rejected ?? '—';
+  document.getElementById('kpi-valor').textContent     = fmt(s.total_value);
+
   const rows = data.items || [];
   document.getElementById('devTable').innerHTML = rows.length
-    ? rows.map(r=>{ const st=statusMap[r.status]||{l:r.status,c:''}; return `<tr>
-        <td style="font-size:11px">#${r.order_id}</td>
-        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
-        <td>${r.reason||'—'}</td><td>${fmt(r.amount)}</td>
-        <td><span class="badge ${st.c}">${st.l}</span></td><td>${fmtD(r.date)}</td>
-      </tr>`; }).join('')
-    : '<tr><td colspan="7" class="empty-state">Nenhuma devolução</td></tr>';
+    ? rows.map(r => {
+        const st = statusMap[r.status] || { l: r.status, c: '' };
+        return `<tr>
+          <td style="font-size:11px;white-space:nowrap">#${r.order_id||'—'}</td>
+          <td style="font-size:.75rem;color:var(--text-muted)">${r.conta||'—'}</td>
+          <td style="white-space:nowrap">${r.buyer_nickname||'—'}</td>
+          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title||''}">${r.title||'—'}</td>
+          <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reason||'—'}</td>
+          <td style="white-space:nowrap">${fmt(r.amount)}</td>
+          <td><span class="badge ${st.c}">${st.l}</span></td>
+          <td style="white-space:nowrap">${fmtD(r.date)}</td>
+          <td>
+            <div class="note-cell">
+              <input class="note-input" id="note-${r.id}" value="${(r.note||'').replace(/"/g,'&quot;')}" placeholder="Adicionar observação...">
+              <button class="btn-save-note" onclick="saveNote(${r.id}, this)">Salvar</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="9" class="empty-state">Nenhuma devolução encontrada</td></tr>';
 }
+
+let searchTimer;
+document.getElementById('searchInput').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(load, 300);
+});
+
+WS.on('devolucao_recebida', load);
 WS.on('order_updated', load);
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+WS.on('_connected', () => { const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 load();
 </script>
 </body>

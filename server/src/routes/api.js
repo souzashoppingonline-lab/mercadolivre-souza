@@ -778,15 +778,18 @@ router.get('/clientes/:nickname', async (req, res) => {
 
 // ── Alertas faltando ───────────────────────────────────────
 router.get('/alertas/devolucoes', async (req, res) => {
-  const { store_id = '' } = req.query;
+  const { store_id = '', q = '' } = req.query;
+  const searchFilter = q ? `AND (r.order_id::text ILIKE $2 OR r.buyer_nickname ILIKE $2 OR r.title ILIKE $2)` : '';
+  const params = [store_id];
+  if (q) params.push(`%${q}%`);
   const { rows } = await pool.query(
     `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
-            r.title, r.reason, r.amount, r.status, r.date
+            r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note
      FROM returns r
-     JOIN stores s ON s.id = r.store_id
-     WHERE ($1 = '' OR r.store_id = $1::bigint)
-     ORDER BY r.date DESC LIMIT 100`,
-    [store_id]
+     LEFT JOIN stores s ON s.id = r.store_id
+     WHERE ($1 = '' OR r.store_id = $1::bigint) ${searchFilter}
+     ORDER BY r.date DESC LIMIT 200`,
+    params
   );
   const summary = {
     in_analysis: rows.filter(r => r.status === 'analysis' || r.status === 'opened').length,
@@ -796,6 +799,16 @@ router.get('/alertas/devolucoes', async (req, res) => {
     total:       rows.length,
   };
   res.json({ items: rows, summary });
+});
+
+router.patch('/alertas/devolucoes/:id/note', async (req, res) => {
+  const { note } = req.body;
+  const { rows } = await pool.query(
+    `UPDATE returns SET note = $1, updated_at = now() WHERE id = $2 RETURNING id, note`,
+    [note, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  res.json(rows[0]);
 });
 
 router.get('/alteracoes', async (req, res) => {

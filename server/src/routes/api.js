@@ -72,13 +72,28 @@ router.get('/produtos', async (req, res) => {
 
 // ── Pedidos / Vendas ───────────────────────────────────────
 router.get('/pedidos', async (req, res) => {
-  const { status = '' } = req.query;
-  const { rows } = await pool.query(
-    `SELECT ml_id as id, buyer_nickname, title, total_amount, status, date_created
-     FROM orders WHERE ($1 = '' OR status = $1) ORDER BY date_created DESC LIMIT 100`,
-    [status]
-  );
-  res.json({ results: rows, summary: {} });
+  const { status = '', dateFrom = '', dateTo = '' } = req.query;
+  const conditions = ['($1 = \'\' OR o.status = $1)'];
+  const params = [status];
+  if (dateFrom) { params.push(dateFrom); conditions.push(`o.date_created >= $${params.length}::date`); }
+  if (dateTo)   { params.push(dateTo);   conditions.push(`o.date_created < ($${params.length}::date + interval '1 day')`); }
+  const where = conditions.join(' AND ');
+  const [{ rows }, kpi] = await Promise.all([
+    pool.query(
+      `SELECT o.ml_id as id, o.buyer_nickname, o.title, o.total_amount, o.status, o.date_created
+       FROM orders o WHERE ${where} ORDER BY o.date_created DESC LIMIT 200`,
+      params
+    ),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE date_created::date = CURRENT_DATE) as total_hoje,
+         COUNT(*) FILTER (WHERE status = 'ready_to_ship') as aguardando_envio,
+         COUNT(*) FILTER (WHERE status = 'shipped') as em_transito,
+         COUNT(*) FILTER (WHERE status = 'delivered' AND date_created::date = CURRENT_DATE) as entregues_hoje
+       FROM orders`
+    )
+  ]);
+  res.json({ results: rows, summary: kpi.rows[0] });
 });
 
 router.get('/vendas/diarias', async (req, res) => {

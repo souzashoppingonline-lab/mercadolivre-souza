@@ -29,6 +29,7 @@
           <i class="fas fa-search"></i>
           <input type="text" id="searchInput" placeholder="Buscar por ID do pedido, comprador ou produto...">
         </div>
+        <button class="btn-save-note" style="padding:8px 18px;font-size:.85rem" onclick="load()">Buscar</button>
       </div>
 
       <div class="card-grid" style="margin-bottom:16px">
@@ -119,11 +120,7 @@ async function load() {
     : '<tr><td colspan="9" class="empty-state">Nenhuma devolução encontrada</td></tr>';
 }
 
-let searchTimer;
-document.getElementById('searchInput').addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(load, 300);
-});
+document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 
 WS.on('devolucao_recebida', load);
 WS.on('order_updated', load);

@@ -68,26 +68,14 @@ async function tgNotify(topic, text) {
 const noop = () => {};  // topics we receive but don't need to process
 
 async function handleShipment({ resource, storeId }) {
+  // Sem chamada ML API — apenas registra que houve movimentação de envio
+  // O status real do pedido será atualizado no sync diário das 03:00
   const shipmentId = resource.split('/').pop();
-  const s = await ml.get(`/shipments/${shipmentId}`, storeId);
-  if (!s || !s.order_id) return;
-
-  // Map ML shipment status to order status
-  const statusMap = {
-    pending:        'paid',
-    ready_to_ship:  'ready_to_ship',
-    shipped:        'shipped',
-    delivered:      'delivered',
-    not_delivered:  'shipped',
-    cancelled:      'cancelled',
-  };
-  const newStatus = statusMap[s.status] || s.status;
-
   await pool.query(
-    `UPDATE orders SET status = $1, updated_at = now() WHERE ml_id = $2`,
-    [newStatus, s.order_id]
+    `UPDATE orders SET updated_at = now() WHERE store_id = $1 AND raw_data->>'shipment_id' = $2`,
+    [storeId, String(shipmentId)]
   );
-  await publish('order_updated', { id: s.order_id, status: newStatus });
+  await publish('order_updated', { shipment_id: shipmentId });
 }
 
 const handlers = {

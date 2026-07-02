@@ -586,6 +586,14 @@ async function dailySync() {
     }
   }
   console.log('[sync] reconciliação concluída');
+
+  // Preenche parent_item_id de itens que ainda não têm
+  const { rows: missing } = await pool.query(`SELECT COUNT(*) as c FROM items WHERE parent_item_id IS NULL`);
+  if (Number(missing[0].c) > 0) {
+    console.log(`[sync] iniciando syncParentItems (${missing[0].c} itens sem parent_item_id)...`);
+    await syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message));
+  }
+
   scheduleDailySync();
 }
 

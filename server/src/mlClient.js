@@ -12,13 +12,6 @@ const refreshLocks = new Map();
 const oauthCooldown = new Map(); // storeId → unix ms when cooldown expires
 
 async function getAccessToken(storeId) {
-  // Check OAuth cooldown — don't touch ML OAuth endpoint during cooldown
-  const coolUntil = oauthCooldown.get(storeId) || 0;
-  if (Date.now() < coolUntil) {
-    const mins = Math.ceil((coolUntil - Date.now()) / 60000);
-    throw new Error(`OAUTH_RATE_LIMITED: store ${storeId} em cooldown por mais ${mins} min`);
-  }
-
   const { rows } = await pool.query(
     'SELECT access_token, token_expires_at FROM stores WHERE id = $1', [storeId]
   );
@@ -28,6 +21,14 @@ async function getAccessToken(storeId) {
   const expiresIn = token_expires_at ? (new Date(token_expires_at) - Date.now()) : 0;
 
   if (expiresIn >= 5 * 60 * 1000) return access_token;
+
+  // Token expirado ou quase: cooldown só bloqueia se ainda há tempo de sobra
+  // Se o token já expirou, ignora o cooldown e tenta renovar de qualquer forma
+  const coolUntil = oauthCooldown.get(storeId) || 0;
+  if (Date.now() < coolUntil && expiresIn > 0) {
+    const mins = Math.ceil((coolUntil - Date.now()) / 60000);
+    throw new Error(`OAUTH_RATE_LIMITED: store ${storeId} em cooldown por mais ${mins} min`);
+  }
 
   // Deduplicate concurrent refreshes: if one is already in-flight, wait for it
   if (refreshLocks.has(storeId)) {

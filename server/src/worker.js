@@ -215,6 +215,10 @@ async function handleItem({ resource, storeId }) {
   const item = await ml.getItem(itemId, storeId);
 
   const thumb = item.thumbnail || (item.pictures?.[0]?.url) || null;
+
+  const { rows: old } = await pool.query(`SELECT price, available_quantity, status, title FROM items WHERE ml_id=$1`, [item.id]);
+  const prev = old[0];
+
   await pool.query(
     `INSERT INTO items (ml_id, store_id, title, price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
@@ -231,14 +235,6 @@ async function handleItem({ resource, storeId }) {
 
   const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
   const lojaNome = storeRows[0]?.nickname || `Loja ${storeId}`;
-
-  if (item.available_quantity <= 5) {
-    await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity, loja: lojaNome });
-    await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n🏪 Loja: <b>${lojaNome}</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
-  }
-
-  const { rows: old } = await pool.query(`SELECT price, available_quantity, status, title FROM items WHERE ml_id=$1`, [item.id]);
-  const prev = old[0];
   const changes = [];
   if (prev) {
     if (String(prev.title) !== String(item.title))                           changes.push({ field: 'title',    old: prev.title,              new: item.title });
@@ -252,7 +248,7 @@ async function handleItem({ resource, storeId }) {
     await pool.query(
       `INSERT INTO item_changes (item_id, store_id, changes, changed_at) VALUES ($1,$2,$3,now())`,
       [item.id, storeId, JSON.stringify(changes)]
-    ).catch(() => {});
+    );
   }
 
   await publish('anuncio_updated', { id: item.id, status: item.status });

@@ -15,19 +15,44 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select class="filter-select" id="periodFilter">
+          <option value="hoje">Hoje</option>
+          <option value="ontem">Ontem</option>
+          <option value="3">Últimos 3 dias</option>
+          <option value="7" selected>Últimos 7 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="21">Últimos 21 dias</option>
+          <option value="30">Últimos 30 dias</option>
+        </select>
+        <select class="filter-select" id="lojaFilter">
+          <option value="">Todas as lojas</option>
+        </select>
+      </div>
+
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Total Pedidos</div><div class="value" id="kpiPedidos">—</div></div>
+        <div class="stat-card"><div class="label">Receita Total</div><div class="value" id="kpiReceita" style="color:var(--yellow)">—</div></div>
+        <div class="stat-card"><div class="label">Hora de Pico</div><div class="value" id="kpiPico" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Pedidos no Pico</div><div class="value" id="kpiPicoPedidos">—</div></div>
+      </div>
+
       <div class="card" style="margin-bottom:16px">
         <div class="card-header"><h3>Vendas por Hora do Dia</h3></div>
         <canvas id="horariosChart" height="80"></canvas>
       </div>
+
       <div class="card">
         <div class="card-header"><h3>Horários de Pico</h3></div>
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Hora</th><th>Pedidos</th><th>Receita</th><th>% do Total</th></tr></thead>
-            <tbody id="horariosTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="horariosTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
+
     </div>
   </main>
 </div>
@@ -38,27 +63,82 @@
 <script src="../js/sidebar.js"></script>
 <script>
 const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+let chartInstance = null;
+
+async function loadLojas() {
+  const data = await DB.getLojas();
+  const stores = data?.stores || [];
+  const sel = document.getElementById('lojaFilter');
+  stores.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id;
+    o.textContent = s.nickname;
+    sel.appendChild(o);
+  });
+}
+
 async function load() {
-  const data = await DB.getHorarios() || { hours:[] };
-  const rows = data.hours || [];
-  const labels = rows.map(r=>r.hour+'h');
-  const values = rows.map(r=>r.orders||0);
-  new Chart(document.getElementById('horariosChart'), {
-    type:'bar',
-    data:{ labels, datasets:[{ label:'Pedidos', data:values, backgroundColor:'rgba(255,230,0,0.7)', borderRadius:4 }] },
-    options:{
-      responsive:true,
-      plugins:{ legend:{ labels:{ color:'#f0f0f0' } } },
-      scales:{ x:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } }, y:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } } }
+  const period   = document.getElementById('periodFilter').value;
+  const store_id = document.getElementById('lojaFilter').value;
+
+  document.getElementById('horariosTable').innerHTML = '<tr><td colspan="4" class="empty-state">Carregando...</td></tr>';
+
+  const data = await DB.getHorarios(period, store_id) || { hours: [] };
+  if (data.error) {
+    document.getElementById('horariosTable').innerHTML = `<tr><td colspan="4" style="color:var(--red)">${data.error}</td></tr>`;
+    return;
+  }
+
+  const rows = (data.hours || []).slice().sort((a, b) => a.hour - b.hour);
+  const totalPedidos = rows.reduce((s, r) => s + r.orders, 0);
+  const totalReceita = rows.reduce((s, r) => s + r.revenue, 0);
+  const pico = rows.reduce((best, r) => r.orders > (best?.orders || 0) ? r : best, null);
+
+  document.getElementById('kpiPedidos').textContent     = totalPedidos || '—';
+  document.getElementById('kpiReceita').textContent     = totalPedidos ? fmt(totalReceita) : '—';
+  document.getElementById('kpiPico').textContent        = pico ? pico.hour + ':00' : '—';
+  document.getElementById('kpiPicoPedidos').textContent = pico ? pico.orders : '—';
+
+  const labels = rows.map(r => r.hour + 'h');
+  const values = rows.map(r => r.orders);
+  const colors = rows.map(r => r === pico ? 'rgba(245,158,11,0.9)' : 'rgba(255,230,0,0.55)');
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('horariosChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Pedidos', data: values, backgroundColor: colors, borderRadius: 4 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#f0f0f0' } } },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
     }
   });
-  const total = rows.reduce((s,r)=>s+(r.orders||0),0);
-  document.getElementById('horariosTable').innerHTML = rows.length
-    ? rows.map(r=>`<tr><td>${r.hour}:00</td><td>${r.orders}</td><td>${fmt(r.revenue)}</td><td>${total?((r.orders/total)*100).toFixed(1)+'%':'—'}</td></tr>`).join('')
-    : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';
+
+  const sorted = rows.slice().sort((a, b) => b.orders - a.orders);
+  document.getElementById('horariosTable').innerHTML = sorted.length
+    ? sorted.map(r => {
+        const isPico = r === pico;
+        const pct = totalPedidos ? ((r.orders / totalPedidos) * 100).toFixed(1) + '%' : '—';
+        const style = isPico ? ' style="background:rgba(245,158,11,0.12);font-weight:600"' : '';
+        return `<tr${style}><td>${r.hour}:00${isPico ? ' <span style="color:var(--yellow);font-size:.7rem">PICO</span>' : ''}</td><td>${r.orders}</td><td>${fmt(r.revenue)}</td><td>${pct}</td></tr>`;
+      }).join('')
+    : '<tr><td colspan="4" class="empty-state">Sem dados para o período</td></tr>';
 }
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
-load();
+
+document.getElementById('periodFilter').addEventListener('change', load);
+document.getElementById('lojaFilter').addEventListener('change', load);
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
+loadLojas().then(load);
 </script>
 </body>
 </html>

@@ -602,19 +602,25 @@ router.get('/dashboard/top-products', async (req, res) => {
 
 // ── Análises temporais ─────────────────────────────────────
 router.get('/analises/horarios', async (req, res) => {
-  const { store_id = '', days = 90 } = req.query;
-  const { rows } = await pool.query(
-    `SELECT EXTRACT(hour FROM date_created AT TIME ZONE 'America/Sao_Paulo')::int as hora,
-            COUNT(*) pedidos,
-            COALESCE(SUM(total_amount),0) receita
-     FROM orders
-     WHERE status != 'cancelled'
-       AND date_created >= CURRENT_DATE - $1::int
-       AND ($2 = '' OR store_id = $2::bigint)
-     GROUP BY 1 ORDER BY 1`,
-    [Number(days), store_id]
-  );
-  res.json({ hours: rows.map(r => ({ hour: r.hora, orders: Number(r.pedidos), revenue: Number(r.receita) })) });
+  try {
+    const { store_id = '', period = '7' } = req.query;
+    const storeFilter = store_id ? `AND store_id = ${BigInt(store_id)}` : '';
+    let dateFilter;
+    if (period === 'hoje')        dateFilter = `AND date_created::date = CURRENT_DATE`;
+    else if (period === 'ontem')  dateFilter = `AND date_created::date = CURRENT_DATE - 1`;
+    else                          dateFilter = `AND date_created >= CURRENT_DATE - ${Number(period)}`;
+    const { rows } = await pool.query(
+      `SELECT EXTRACT(hour FROM date_created AT TIME ZONE 'America/Sao_Paulo')::int as hora,
+              COUNT(*) pedidos,
+              COALESCE(SUM(total_amount),0) receita
+       FROM orders
+       WHERE status != 'cancelled'
+         ${dateFilter}
+         ${storeFilter}
+       GROUP BY 1 ORDER BY 1`
+    );
+    res.json({ hours: rows.map(r => ({ hour: r.hora, orders: Number(r.pedidos), revenue: Number(r.receita) })) });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/analises/dias-semana', async (req, res) => {

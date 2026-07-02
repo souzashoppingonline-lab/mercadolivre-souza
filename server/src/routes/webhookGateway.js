@@ -3,7 +3,7 @@
 // Returns 200 immediately (ML requires a fast ack) and does the real work async.
 const express = require('express');
 const pool = require('../db/pool');
-const webhookQueue = require('../queues/webhookQueue');
+const { getQueue } = require('../queues/webhookQueue');
 const { publish } = require('../ws/hub');
 
 const router = express.Router();
@@ -33,7 +33,7 @@ router.post('/ml', async (req, res) => {
     // the same resource are processed normally.
     const jobId = `${topic}:${resource}:${storeId}`;
 
-    await webhookQueue.add(topic, { topic, resource, storeId, logId }, {
+    await getQueue(storeId).add(topic, { topic, resource, storeId, logId }, {
       jobId,
       attempts: 5,
       backoff: { type: 'exponential', delay: 10000 },

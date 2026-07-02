@@ -372,70 +372,94 @@ async function handleOffer({ resource, storeId }) {
   }
 }
 
-const worker = new Worker(
-  'ml-webhooks',
-  async (job) => {
-    const { topic, resource, storeId, logId } = job.data;
-    const handler = handlers[topic];
-
-    if (!handler) {
-      console.warn(`[worker] no handler for topic=${topic}`);
-      return;
-    }
-
-    try {
-      await handler({ resource, storeId });
-      await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [logId]);
-    } catch (err) {
-      await pool.query(`UPDATE webhook_logs SET status='failed', error=$2, processed_at=now() WHERE id=$1`, [logId, err.message]);
-
-      if (err.permanent || err.message?.includes('TOKEN_INVALID')) {
-        // Token permanently invalid — discard job, no retry, alert via Telegram
-        tgNotify('tg_token', `⚠️ Loja ${storeId} com token inválido. Reconecte em /auth/login`);
-        return; // do NOT throw — prevents BullMQ from retrying
-      }
-      if (err.message?.includes('OAUTH_RATE_LIMITED')) {
-        // Notify only once per store per hour — avoid Telegram flood from queued jobs
-        const now = Date.now();
-        const lastNotified = oauthNotified.get(storeId) || 0;
-        if (now - lastNotified > 60 * 60 * 1000) {
-          oauthNotified.set(storeId, now);
-          tgNotify('tg_429', `🔐 <b>OAuth rate limit loja ${storeId}</b>\nPróxima tentativa automática em 35 min.\nSe persistir após 1h: reconecte a loja em /lojas`).catch(() => {});
-        }
-        return; // do NOT throw — BullMQ won't retry; cooldown in mlClient prevents flood
-      }
-      if (err.message?.includes('429')) {
-        if (job.attemptsMade < 4) {
-          console.warn(`[worker] RATE_LIMITED ${job.name}#${job.id} — attempt ${job.attemptsMade + 1}/5, will retry`);
-          throw err;
-        }
-        console.warn(`[worker] RATE_LIMITED drop ${job.name}#${job.id} — not retrying`);
-        return;
-      }
-      throw err;
-    }
-  },
-  {
-    connection,
-    concurrency: 1,
-    // Each of the 3 stores has its own ML app credentials → separate API rate-
-    // limit quotas.  1 job per 1.5 s = ~40 req/min total, spread across 3 apps
-    // = ~13 req/min per app, comfortably below ML's 20 req/min limit per app.
-    limiter: { max: 1, duration: 1500 },
-  }
-);
-
-worker.on('error', (err) => console.error('[worker] worker error event:', err.message));
-worker.on('completed', (job) => { console.log(`[worker] done ${job.name}#${job.id}`); recentFailures = 0; });
-worker.on('failed', (job, err) => {
-  console.error(`[worker] failed ${job?.name}#${job?.id}`, err.message);
-  recentFailures++;
-  if (recentFailures === 5) {
-    tgNotify('tg_fila', `🚨 <b>Fila BullMQ com erros consecutivos!</b>\n${recentFailures} jobs falharam seguidos.\nVerifique os logs: <code>journalctl -u ml-worker-novo -n 50</code>`).catch(() => {});
-  }
-});
 let recentFailures = 0;
 const oauthNotified = new Map(); // storeId → last Telegram notification timestamp
+
+async function processJob(job) {
+  const { topic, resource, storeId, logId } = job.data;
+  const handler = handlers[topic];
+
+  if (!handler) {
+    console.warn(`[worker] no handler for topic=${topic}`);
+    return;
+  }
+
+  try {
+    await handler({ resource, storeId });
+    await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [logId]);
+  } catch (err) {
+    await pool.query(`UPDATE webhook_logs SET status='failed', error=$2, processed_at=now() WHERE id=$1`, [logId, err.message]);
+
+    if (err.permanent || err.message?.includes('TOKEN_INVALID')) {
+      // Token permanently invalid — discard job, no retry, alert via Telegram
+      tgNotify('tg_token', `⚠️ Loja ${storeId} com token inválido. Reconecte em /auth/login`);
+      return; // do NOT throw — prevents BullMQ from retrying
+    }
+    if (err.message?.includes('OAUTH_RATE_LIMITED')) {
+      // Notify only once per store per hour — avoid Telegram flood from queued jobs
+      const now = Date.now();
+      const lastNotified = oauthNotified.get(storeId) || 0;
+      if (now - lastNotified > 60 * 60 * 1000) {
+        oauthNotified.set(storeId, now);
+        tgNotify('tg_429', `🔐 <b>OAuth rate limit loja ${storeId}</b>\nPróxima tentativa automática em 35 min.\nSe persistir após 1h: reconecte a loja em /lojas`).catch(() => {});
+      }
+      return; // do NOT throw — BullMQ won't retry; cooldown in mlClient prevents flood
+    }
+    if (err.message?.includes('429')) {
+      if (job.attemptsMade < 4) {
+        console.warn(`[worker] RATE_LIMITED ${job.name}#${job.id} — attempt ${job.attemptsMade + 1}/5, will retry`);
+        throw err;
+      }
+      console.warn(`[worker] RATE_LIMITED drop ${job.name}#${job.id} — not retrying`);
+      return;
+    }
+    throw err;
+  }
+}
+
+function attachWorkerEvents(w, label) {
+  w.on('error', (err) => console.error(`[worker:${label}] error:`, err.message));
+  w.on('completed', (job) => { console.log(`[worker:${label}] done ${job.name}#${job.id}`); recentFailures = 0; });
+  w.on('failed', (job, err) => {
+    console.error(`[worker:${label}] failed ${job?.name}#${job?.id}`, err.message);
+    recentFailures++;
+    if (recentFailures === 5) {
+      tgNotify('tg_fila', `🚨 <b>Fila BullMQ com erros consecutivos!</b>\n${recentFailures} jobs falharam seguidos.\nVerifique os logs: <code>journalctl -u ml-worker-novo -n 50</code>`).catch(() => {});
+    }
+  });
+}
+
+async function startWorkers() {
+  const { rows } = await pool.query('SELECT id FROM stores');
+
+  // Always include a worker for the 'default' queue (storeId unknown)
+  const storeIds = ['default', ...rows.map(r => String(r.id))];
+
+  for (const storeId of storeIds) {
+    const w = new Worker(`ml-webhooks-${storeId}`, processJob, {
+      connection: new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false }),
+      concurrency: 1,
+      // 20 req/min per store token = 1 req per 3s to stay safely below the limit
+      limiter: { max: 1, duration: 3000 },
+    });
+    attachWorkerEvents(w, storeId);
+    console.log(`[worker] started queue ml-webhooks-${storeId}`);
+  }
+
+  // Legacy worker — processes jobs still sitting in the old global queue
+  const legacyWorker = new Worker('ml-webhooks', processJob, {
+    connection: new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false }),
+    concurrency: 1,
+    limiter: { max: 1, duration: 3000 },
+  });
+  attachWorkerEvents(legacyWorker, 'legacy');
+  console.log('[worker] started legacy queue ml-webhooks');
+}
+
+startWorkers().catch(err => {
+  console.error('[worker] failed to start workers:', err);
+  process.exit(1);
+});
 
 // ── Daily reconciliation at 03:00 ────────────────────────────
 // Fetches orders from the last 25h per store and upserts any that were missed

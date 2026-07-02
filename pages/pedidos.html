@@ -38,7 +38,7 @@
         </div>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Pedido</th><th>Comprador</th><th>Produto</th><th>Valor</th><th>Status</th><th>Data</th></tr></thead>
+            <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Valor</th><th>Status</th><th>Data</th></tr></thead>
             <tbody id="pedidosTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
@@ -68,12 +68,13 @@ async function load() {
   const rows = data.results || [];
   document.getElementById('pedidosTable').innerHTML = rows.length
     ? rows.map(r=>`<tr>
-        <td style="font-size:11px">#${r.id}</td>
-        <td>${r.buyer_nickname || r.comprador || '—'}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title || r.produto || '—'}</td>
-        <td>${fmt(r.total_amount || r.valor)}</td>
-        <td><span class="badge ${r.status === 'delivered' ? 'active' : r.status === 'cancelled' ? 'closed' : 'paused'}">${statusLabel[r.status]||r.status}</span></td>
-        <td>${fmtDt(r.date_created || r.data)}</td>
+        <td style="font-size:11px;white-space:nowrap">#${r.id}</td>
+        <td><span style="font-size:.75rem;color:var(--text-muted)">${r.loja||'—'}</span></td>
+        <td>${r.buyer_nickname || '—'}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title || '—'}</td>
+        <td style="white-space:nowrap">${fmt(r.total_amount)}</td>
+        <td><span class="badge ${r.status==='delivered'?'active':r.status==='cancelled'?'closed':'paused'}">${statusLabel[r.status]||r.status}</span></td>
+        <td style="white-space:nowrap">${fmtDt(r.date_created)}</td>
       </tr>`).join('')
     : '<tr><td colspan="7" class="empty-state">Nenhum pedido</td></tr>';
 }

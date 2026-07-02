@@ -80,8 +80,9 @@ router.get('/pedidos', async (req, res) => {
   const where = conditions.join(' AND ');
   const [{ rows }, kpi] = await Promise.all([
     pool.query(
-      `SELECT o.ml_id as id, o.buyer_nickname, o.title, o.total_amount, o.status, o.date_created
-       FROM orders o WHERE ${where} ORDER BY o.date_created DESC LIMIT 200`,
+      `SELECT o.ml_id as id, o.buyer_nickname, o.title, o.total_amount, o.status, o.date_created,
+              COALESCE(s.nickname, 'Loja '||o.store_id::text) as loja
+       FROM orders o LEFT JOIN stores s ON s.id = o.store_id WHERE ${where} ORDER BY o.date_created DESC LIMIT 200`,
       params
     ),
     pool.query(

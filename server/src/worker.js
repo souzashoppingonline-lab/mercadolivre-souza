@@ -97,7 +97,7 @@ async function handleOrder({ resource, storeId }) {
 
   // Skip duplicate — if this order was already fetched in the last 10 minutes, don't call ML API again
   const recent = await pool.query(
-    `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [orderId]
+    `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '30 minutes'`, [orderId]
   );
   if (recent.rows.length) return;
 
@@ -152,7 +152,7 @@ async function handleOrder({ resource, storeId }) {
 async function handleQuestion({ resource, storeId }) {
   const questionId = resource.split('/').pop();
   const recent = await pool.query(
-    `SELECT ml_id FROM questions WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [questionId]
+    `SELECT ml_id FROM questions WHERE ml_id=$1 AND updated_at > now() - interval '30 minutes'`, [questionId]
   );
   if (recent.rows.length) return;
   const q = await ml.getQuestion(questionId, storeId);
@@ -205,7 +205,7 @@ async function handleMessage({ resource, storeId }) {
 async function handleItem({ resource, storeId }) {
   const itemId = resource.split('/').pop();
   const recent = await pool.query(
-    `SELECT ml_id FROM items WHERE ml_id=$1 AND updated_at > now() - interval '10 minutes'`, [itemId]
+    `SELECT ml_id FROM items WHERE ml_id=$1 AND updated_at > now() - interval '30 minutes'`, [itemId]
   );
   if (recent.rows.length) return;
 
@@ -417,8 +417,8 @@ const worker = new Worker(
   },
   {
     connection,
-    concurrency: 1,  // one at a time — avoids burst 429s
-    limiter: { max: 1, duration: 1500 },  // max 1 job per 1.5s
+    concurrency: 1,
+    limiter: { max: 1, duration: 3000 },  // max 1 job per 3s = 20 calls/min
   }
 );
 

@@ -330,8 +330,8 @@ const worker = new Worker(
         return; // do NOT throw — BullMQ won't retry; cooldown in mlClient prevents flood
       }
       if (err.message?.includes('429')) {
-        tgNotify('tg_429', `⏱️ <b>Rate limit ML API (429)</b>\nAPI do Mercado Livre está limitando requisições.\nJob: ${job.name}#${job.id}`).catch(() => {});
-        err.message = `RATE_LIMITED: ${err.message}`;
+        console.warn(`[worker] RATE_LIMITED drop ${job.name}#${job.id} — not retrying`);
+        return; // do NOT throw — BullMQ won't retry; ML will send webhook again later
       }
       throw err;
     }

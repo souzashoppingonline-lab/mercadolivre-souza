@@ -51,6 +51,7 @@
           <option value="stock">Alteração de estoque</option>
           <option value="status">Alteração de status</option>
           <option value="title">Alteração de título</option>
+          <option value="alterado">Alterado (sem detalhe)</option>
         </select>
       </div>
 
@@ -87,14 +88,15 @@ const relTime = d => {
   return Math.floor(h / 24) + 'd atrás';
 };
 
-const fieldLabels = { title: 'Título', price: 'Preço', stock: 'Estoque', status: 'Status', criado: 'Novo anúncio' };
-const fieldBadge  = { title: 'badge-title', price: 'badge-price', stock: 'badge-stock', status: 'badge-status', criado: 'badge-criado' };
+const fieldLabels = { title: 'Título', price: 'Preço', stock: 'Estoque', status: 'Status', criado: 'Novo anúncio', alterado: 'Alterado' };
+const fieldBadge  = { title: 'badge-title', price: 'badge-price', stock: 'badge-stock', status: 'badge-status', criado: 'badge-criado', alterado: 'badge-status' };
 
 function renderChange(c) {
   const badge = `<span class="${fieldBadge[c.field]||'badge-title'}">${fieldLabels[c.field]||c.field}</span>`;
-  if (c.field === 'criado') return `<div class="alt-change">${badge} <span style="color:var(--green)">Anúncio criado</span></div>`;
-  if (c.field === 'price')  return `<div class="alt-change">${badge} ${fmt(c.old)} → <b>${fmt(c.new)}</b></div>`;
-  if (c.field === 'stock')  return `<div class="alt-change">${badge} ${c.old} → <b>${c.new}</b> unidades</div>`;
+  if (c.field === 'criado')   return `<div class="alt-change">${badge} <span style="color:var(--green)">Anúncio criado</span></div>`;
+  if (c.field === 'alterado') return `<div class="alt-change">${badge} <span style="color:#818cf8">Anúncio modificado no ML</span></div>`;
+  if (c.field === 'price')    return `<div class="alt-change">${badge} ${fmt(c.old)} → <b>${fmt(c.new)}</b></div>`;
+  if (c.field === 'stock')    return `<div class="alt-change">${badge} ${c.old} → <b>${c.new}</b> unidades</div>`;
   return `<div class="alt-change">${badge} <span style="opacity:.7">${c.old||'—'}</span> → <b>${c.new}</b></div>`;
 }
 

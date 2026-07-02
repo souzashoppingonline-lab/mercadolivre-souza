@@ -767,6 +767,28 @@ router.get('/alertas/devolucoes', async (req, res) => {
   res.json({ items: rows, summary });
 });
 
+router.get('/alteracoes', async (req, res) => {
+  try {
+    const { store_id = '', days = 7, limit = 200 } = req.query;
+    const storeFilter = store_id ? `AND ic.store_id = ${BigInt(store_id)}` : '';
+    const { rows } = await pool.query(
+      `SELECT ic.id, ic.item_id, ic.store_id, ic.changes, ic.changed_at,
+              COALESCE(i.title, ic.item_id) as title,
+              i.thumbnail, i.permalink,
+              COALESCE(s.nickname, 'Loja '||ic.store_id::text) as loja
+       FROM item_changes ic
+       LEFT JOIN items i ON i.ml_id = ic.item_id
+       LEFT JOIN stores s ON s.id = ic.store_id
+       WHERE ic.changed_at >= now() - ($1::int * interval '1 day')
+         ${storeFilter}
+       ORDER BY ic.changed_at DESC
+       LIMIT $2`,
+      [Number(days), Number(limit)]
+    );
+    res.json({ changes: rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/alertas/anuncios-problema', async (req, res) => {
   const { store_id = '' } = req.query;
   const { rows } = await pool.query(

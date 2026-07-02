@@ -1,6 +1,16 @@
 -- PostgreSQL schema — single source of truth for the dashboard.
 -- Populated exclusively by BullMQ workers reacting to ML webhooks.
 
+CREATE TABLE IF NOT EXISTS item_changes (
+  id SERIAL PRIMARY KEY,
+  item_id TEXT NOT NULL,
+  store_id BIGINT,
+  changes JSONB NOT NULL,
+  changed_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS item_changes_item ON item_changes(item_id, changed_at DESC);
+CREATE INDEX IF NOT EXISTS item_changes_store ON item_changes(store_id, changed_at DESC);
+
 CREATE TABLE IF NOT EXISTS stores (
   id BIGINT PRIMARY KEY,
   nickname TEXT,

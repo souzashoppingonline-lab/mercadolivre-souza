@@ -32,6 +32,7 @@ const NAV_ITEMS = [
     { href: 'cancelamentos.html', icon: 'fa-times-circle', label: 'Cancelamentos' },
     { href: 'devolucoes.html', icon: 'fa-undo', label: 'Devoluções' },
     { href: 'anuncios-problema.html', icon: 'fa-exclamation-triangle', label: 'Anúncios Problema' },
+    { href: 'alteracoes.html', icon: 'fa-history', label: 'Alterações' },
   ]},
   { section: 'Financeiro', items: [
     { href: 'vendas-turbo.html', icon: 'fa-file-excel', label: 'Vendas ML Turbo' },

@@ -93,6 +93,7 @@ const DB = {
 
   // ── Lojas ──────────────────────────────────────────────────
   async getLojas()                { return this._get('/lojas'); },
+  async getAlteracoes(days=7, store_id='') { return this._get(`/alteracoes?days=${days}&store_id=${encodeURIComponent(store_id)}`); },
 
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },

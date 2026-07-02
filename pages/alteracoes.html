@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alterações — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Alterações de Anúncios'; window.ACTIVE_NAV='alteracoes.html';</script>
+  <style>
+    .alt-card { background:var(--card-bg); border-radius:10px; padding:14px 16px; border:1px solid var(--border); display:flex; gap:14px; align-items:flex-start; }
+    .alt-thumb { width:54px; height:54px; border-radius:8px; object-fit:cover; background:var(--border); flex-shrink:0; }
+    .alt-thumb-placeholder { width:54px; height:54px; border-radius:8px; background:var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:1.2rem; }
+    .alt-body { flex:1; min-width:0; }
+    .alt-title { font-size:.9rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:6px; }
+    .alt-meta { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+    .alt-loja { font-size:.72rem; padding:2px 8px; border-radius:4px; background:rgba(255,255,255,.08); color:var(--text-muted); }
+    .alt-time { font-size:.72rem; color:var(--text-muted); }
+    .alt-changes { display:flex; flex-direction:column; gap:4px; }
+    .alt-change { font-size:.8rem; display:flex; gap:6px; align-items:center; }
+    .badge-criado  { background:rgba(16,185,129,.15); color:var(--green); padding:2px 8px; border-radius:4px; font-size:.72rem; font-weight:600; }
+    .badge-price   { background:rgba(245,158,11,.12); color:var(--yellow); padding:2px 8px; border-radius:4px; font-size:.72rem; }
+    .badge-stock   { background:rgba(239,68,68,.12); color:var(--red); padding:2px 8px; border-radius:4px; font-size:.72rem; }
+    .badge-status  { background:rgba(99,102,241,.12); color:#818cf8; padding:2px 8px; border-radius:4px; font-size:.72rem; }
+    .badge-title   { background:rgba(255,255,255,.06); color:var(--text-muted); padding:2px 8px; border-radius:4px; font-size:.72rem; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select class="filter-select" id="daysFilter">
+          <option value="1">Hoje</option>
+          <option value="2">Ontem + hoje</option>
+          <option value="7" selected>Últimos 7 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30">Últimos 30 dias</option>
+        </select>
+        <select class="filter-select" id="lojaFilter">
+          <option value="">Todas as lojas</option>
+        </select>
+        <select class="filter-select" id="tipoFilter">
+          <option value="">Todos os tipos</option>
+          <option value="criado">Novos anúncios</option>
+          <option value="price">Alteração de preço</option>
+          <option value="stock">Alteração de estoque</option>
+          <option value="status">Alteração de status</option>
+          <option value="title">Alteração de título</option>
+        </select>
+      </div>
+
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Total Alterações</div><div class="value" id="kpiTotal">—</div></div>
+        <div class="stat-card"><div class="label">Novos Anúncios</div><div class="value" id="kpiNovos" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Preço Alterado</div><div class="value" id="kpiPreco" style="color:var(--yellow)">—</div></div>
+        <div class="stat-card"><div class="label">Estoque Alterado</div><div class="value" id="kpiEstoque" style="color:var(--red)">—</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Histórico de Alterações</h3></div>
+        <div id="altList" style="display:flex;flex-direction:column;gap:10px;padding-top:4px">
+          <div class="empty-state">Carregando...</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const relTime = d => {
+  if (!d) return '—';
+  const diff = Date.now() - new Date(d);
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return m + 'min atrás';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h atrás';
+  return Math.floor(h / 24) + 'd atrás';
+};
+
+const fieldLabels = { title: 'Título', price: 'Preço', stock: 'Estoque', status: 'Status', criado: 'Novo anúncio' };
+const fieldBadge  = { title: 'badge-title', price: 'badge-price', stock: 'badge-stock', status: 'badge-status', criado: 'badge-criado' };
+
+function renderChange(c) {
+  const badge = `<span class="${fieldBadge[c.field]||'badge-title'}">${fieldLabels[c.field]||c.field}</span>`;
+  if (c.field === 'criado') return `<div class="alt-change">${badge} <span style="color:var(--green)">Anúncio criado</span></div>`;
+  if (c.field === 'price')  return `<div class="alt-change">${badge} ${fmt(c.old)} → <b>${fmt(c.new)}</b></div>`;
+  if (c.field === 'stock')  return `<div class="alt-change">${badge} ${c.old} → <b>${c.new}</b> unidades</div>`;
+  return `<div class="alt-change">${badge} <span style="opacity:.7">${c.old||'—'}</span> → <b>${c.new}</b></div>`;
+}
+
+async function loadLojas() {
+  const data = await DB.getLojas();
+  const sel = document.getElementById('lojaFilter');
+  (data?.stores || []).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.nickname; sel.appendChild(o);
+  });
+}
+
+async function load() {
+  const days     = document.getElementById('daysFilter').value;
+  const store_id = document.getElementById('lojaFilter').value;
+  const tipo     = document.getElementById('tipoFilter').value;
+
+  document.getElementById('altList').innerHTML = '<div class="empty-state">Carregando...</div>';
+
+  const data = await DB.getAlteracoes(days, store_id) || { changes: [] };
+  if (data.error) {
+    document.getElementById('altList').innerHTML = `<div class="empty-state" style="color:var(--red)">${data.error}</div>`;
+    return;
+  }
+
+  let rows = data.changes || [];
+  if (tipo) rows = rows.filter(r => (r.changes||[]).some(c => c.field === tipo));
+
+  const allChanges = rows.flatMap(r => r.changes || []);
+  document.getElementById('kpiTotal').textContent   = rows.length || '—';
+  document.getElementById('kpiNovos').textContent   = allChanges.filter(c => c.field === 'criado').length || '—';
+  document.getElementById('kpiPreco').textContent   = allChanges.filter(c => c.field === 'price').length || '—';
+  document.getElementById('kpiEstoque').textContent = allChanges.filter(c => c.field === 'stock').length || '—';
+
+  const list = document.getElementById('altList');
+  if (!rows.length) { list.innerHTML = '<div class="empty-state">Nenhuma alteração encontrada</div>'; return; }
+
+  list.innerHTML = rows.map(r => {
+    const changes = (r.changes || []);
+    const thumb = r.thumbnail
+      ? `<img class="alt-thumb" src="${r.thumbnail}" onerror="this.outerHTML='<div class=\\'alt-thumb-placeholder\\'><i class=\\'fas fa-tag\\'></i></div>'">`
+      : `<div class="alt-thumb-placeholder"><i class="fas fa-tag"></i></div>`;
+    const link = r.permalink ? `<a href="${r.permalink}" target="_blank" style="color:var(--yellow);font-size:.75rem;margin-left:6px"><i class="fas fa-external-link-alt"></i></a>` : '';
+    return `
+      <div class="alt-card">
+        ${thumb}
+        <div class="alt-body">
+          <div class="alt-title">${r.title}${link}</div>
+          <div class="alt-meta">
+            <span class="alt-loja">${r.loja}</span>
+            <span class="alt-time"><i class="fas fa-clock" style="font-size:.65rem"></i> ${relTime(r.changed_at)}</span>
+          </div>
+          <div class="alt-changes">${changes.map(renderChange).join('')}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('daysFilter').addEventListener('change', load);
+document.getElementById('lojaFilter').addEventListener('change', load);
+document.getElementById('tipoFilter').addEventListener('change', load);
+WS.on('anuncio_updated', load);
+WS.on('_connected', () => { const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+
+loadLojas().then(load);
+</script>
+</body>
+</html>

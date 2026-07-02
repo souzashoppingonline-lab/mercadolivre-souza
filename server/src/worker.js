@@ -229,10 +229,32 @@ async function handleItem({ resource, storeId }) {
     [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null]
   );
 
+  const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
+  const lojaNome = storeRows[0]?.nickname || `Loja ${storeId}`;
+
   if (item.available_quantity <= 5) {
-    await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity });
-    await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
+    await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity, loja: lojaNome });
+    await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n🏪 Loja: <b>${lojaNome}</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
   }
+
+  const { rows: old } = await pool.query(`SELECT price, available_quantity, status, title FROM items WHERE ml_id=$1`, [item.id]);
+  const prev = old[0];
+  const changes = [];
+  if (prev) {
+    if (String(prev.title) !== String(item.title))                           changes.push({ field: 'title',    old: prev.title,              new: item.title });
+    if (Number(prev.price) !== Number(item.price))                           changes.push({ field: 'price',    old: prev.price,              new: item.price });
+    if (Number(prev.available_quantity) !== Number(item.available_quantity)) changes.push({ field: 'stock',    old: prev.available_quantity, new: item.available_quantity });
+    if (prev.status !== item.status)                                         changes.push({ field: 'status',   old: prev.status,             new: item.status });
+  } else {
+    changes.push({ field: 'criado', old: null, new: item.status });
+  }
+  if (changes.length) {
+    await pool.query(
+      `INSERT INTO item_changes (item_id, store_id, changes, changed_at) VALUES ($1,$2,$3,now())`,
+      [item.id, storeId, JSON.stringify(changes)]
+    ).catch(() => {});
+  }
+
   await publish('anuncio_updated', { id: item.id, status: item.status });
 }
 

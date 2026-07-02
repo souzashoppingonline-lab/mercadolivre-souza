@@ -876,6 +876,7 @@ router.get('/produtos/performance', async (req, res) => {
   const { store_id = '', days = 30 } = req.query;
   const { rows } = await pool.query(
     `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.sold_quantity, i.status,
+            i.thumbnail, i.permalink,
             COALESCE(o.pedidos_periodo, 0) as pedidos_periodo,
             COALESCE(o.receita_periodo, 0) as receita_periodo,
             COALESCE(v.visitas_periodo, 0) as visitas_periodo

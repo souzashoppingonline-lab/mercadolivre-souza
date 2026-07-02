@@ -101,8 +101,9 @@ const DB = {
   async getDiasSemana(days=90)    { return this._get(`/analises/dias-semana?days=${days}`); },
 
   // ── Produtos ───────────────────────────────────────────────
-  async getProdutos(params = {})  { return this._get('/produtos', params); },
-  async getPerformance(params={}) { return this._get('/produtos/performance', params); },
+  async getProdutos(params = {})             { return this._get('/produtos', params); },
+  async getPerformance(params={})            { return this._get('/produtos/performance', params); },
+  async getProdutosPerformance(params={})    { return this._get('/produtos/performance', params); },
   async getVisitasAnuncio(id, days=30) { return this._get(`/anuncios/${id}/visitas`, { days }); },
 
   // ── Vendas ML Turbo (fonte financeira oficial) ─────────────

@@ -8,6 +8,29 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Performance'; window.ACTIVE_NAV='performance.html';</script>
+  <style>
+    .store-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+    .store-tab { display:flex; align-items:center; gap:8px; padding:8px 16px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; border:1px solid var(--border); background:var(--card-bg); color:var(--text-muted); transition:all .2s; }
+    .store-tab:hover { border-color:var(--primary); color:var(--text-primary); }
+    .store-tab.active { background:var(--primary); color:#000; border-color:var(--primary); }
+    .store-tab .tab-av { width:22px; height:22px; border-radius:50%; background:rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; }
+    .store-section { display:none; }
+    .store-section.active { display:block; }
+    .perf-row { display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--border); }
+    .perf-row:last-child { border-bottom:none; }
+    .perf-thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:var(--border); flex-shrink:0; }
+    .perf-thumb-ph { width:48px; height:48px; border-radius:8px; background:var(--surface); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:1.1rem; }
+    .perf-title { flex:1; min-width:0; font-size:.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .perf-cols { display:flex; gap:24px; flex-shrink:0; }
+    .perf-col { text-align:center; min-width:64px; }
+    .perf-col .lbl { font-size:.65rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+    .perf-col .val { font-size:.9rem; font-weight:700; margin-top:2px; }
+    .rank-badge { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:800; flex-shrink:0; }
+    .rank-1 { background:rgba(255,215,0,.2); color:#ffd700; }
+    .rank-2 { background:rgba(192,192,192,.2); color:#c0c0c0; }
+    .rank-3 { background:rgba(205,127,50,.2); color:#cd7f32; }
+    .rank-n { background:var(--surface); color:var(--text-muted); }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,21 +38,27 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Taxa de Conversão</div><div class="value" id="conversao" style="color:var(--green)">—</div></div>
-        <div class="stat-card"><div class="label">Visitas Hoje</div><div class="value" id="visitas">—</div></div>
-        <div class="stat-card"><div class="label">CTR Médio</div><div class="value" id="ctr">—</div></div>
-        <div class="stat-card"><div class="label">ROI Publicidade</div><div class="value" id="roi" style="color:var(--primary)">—</div></div>
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select class="filter-select" id="daysFilter">
+          <option value="1">Hoje</option>
+          <option value="3">Últimos 3 dias</option>
+          <option value="7" selected>Últimos 7 dias</option>
+          <option value="10">Últimos 10 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="21">Últimos 21 dias</option>
+          <option value="30">Últimos 30 dias</option>
+        </select>
       </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header"><h3>Performance por Produto</h3></div>
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead><tr><th>Produto</th><th>Visitas</th><th>Vendas</th><th>Conversão</th><th>Posição</th></tr></thead>
-            <tbody id="perfTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
-          </table>
+
+      <div class="store-tabs" id="storeTabs">
+        <div class="store-tab active" data-store="">
+          <i class="fas fa-store" style="font-size:12px"></i> Todas as lojas
         </div>
       </div>
+
+      <div id="storeContent"></div>
+
     </div>
   </main>
 </div>
@@ -38,26 +67,148 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-async function load() {
-  const data = await DB.getPerformance() || { items:[], summary:{} };
-  const s = data.summary || {};
-  document.getElementById('conversao').textContent = s.conversion_rate ? s.conversion_rate+'%' : '—';
-  document.getElementById('visitas').textContent = s.total_visits ?? '—';
-  document.getElementById('ctr').textContent = s.avg_ctr ? s.avg_ctr+'%' : '—';
-  document.getElementById('roi').textContent = s.roi ? s.roi+'x' : '—';
-  const rows = data.items || [];
-  document.getElementById('perfTable').innerHTML = rows.length
-    ? rows.map(r=>`<tr>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
-        <td>${r.visits||0}</td><td>${r.sales||0}</td>
-        <td>${r.visits?(((r.sales||0)/(r.visits))*100).toFixed(1)+'%':'—'}</td>
-        <td>${r.position||'—'}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="6" class="empty-state">Sem dados</td></tr>';
+const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+
+function initials(name) {
+  return (name||'?').replace(/[_-]/g,' ').split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
 }
-WS.on('kpis_updated', load);
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
-load();
+
+function buildSection(storeId) {
+  const id = storeId || 'all';
+  return `
+    <div class="store-section ${id==='all'?'active':''}" id="sec-${id}">
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Produtos com venda</div><div class="value" id="kpi-vendidos-${id}" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Total Vendas (período)</div><div class="value" id="kpi-pedidos-${id}">—</div></div>
+        <div class="stat-card"><div class="label">Receita (período)</div><div class="value" id="kpi-receita-${id}" style="color:var(--primary)">—</div></div>
+        <div class="stat-card"><div class="label">Taxa de Conversão</div><div class="value" id="kpi-conv-${id}" style="color:var(--yellow)">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3>Performance por Produto${storeId ? '' : ' — Todas as Lojas'}</h3>
+          <div class="search-box"><i class="fas fa-search"></i><input type="text" id="search-${id}" placeholder="Buscar..."></div>
+        </div>
+        <div id="perfList-${id}" style="padding:4px 0">
+          <div class="empty-state">Carregando...</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadSection(storeId) {
+  const id    = storeId || 'all';
+  const days  = document.getElementById('daysFilter').value;
+  const search = (document.getElementById(`search-${id}`)?.value || '').toLowerCase();
+  const data  = await DB.getProdutosPerformance({ store_id: storeId, days }) || { products: [] };
+  let rows = data.products || [];
+
+  if (search) rows = rows.filter(r => r.title?.toLowerCase().includes(search));
+
+  const totalPedidos = rows.reduce((a, r) => a + Number(r.pedidos_periodo||0), 0);
+  const totalReceita = rows.reduce((a, r) => a + Number(r.receita_periodo||0), 0);
+  const totalVisitas = rows.reduce((a, r) => a + Number(r.visitas_periodo||0), 0);
+  const comVenda     = rows.filter(r => Number(r.pedidos_periodo||0) > 0).length;
+  const conv         = totalVisitas > 0 ? ((totalPedidos / totalVisitas) * 100).toFixed(1) : null;
+
+  const set = (el, v) => { const e = document.getElementById(el); if (e) e.textContent = v; };
+  set(`kpi-vendidos-${id}`, comVenda || '—');
+  set(`kpi-pedidos-${id}`,  fmtN(totalPedidos) || '—');
+  set(`kpi-receita-${id}`,  totalReceita ? fmt(totalReceita) : '—');
+  set(`kpi-conv-${id}`,     conv ? conv + '%' : '—');
+
+  const list = document.getElementById(`perfList-${id}`);
+  if (!list) return;
+  if (!rows.length) { list.innerHTML = '<div class="empty-state">Nenhum produto encontrado</div>'; return; }
+
+  list.innerHTML = rows.map((r, i) => {
+    const rank   = i + 1;
+    const rkCls  = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-n';
+    const visitas = Number(r.visitas_periodo || 0);
+    const vendas  = Number(r.pedidos_periodo || 0);
+    const convRow = visitas > 0 ? ((vendas / visitas) * 100).toFixed(1) + '%' : '—';
+    const thumb   = r.thumbnail
+      ? `<img class="perf-thumb" src="${r.thumbnail}" onerror="this.outerHTML='<div class=\\'perf-thumb-ph\\'><i class=\\'fas fa-tag\\'></i></div>'">`
+      : `<div class="perf-thumb-ph"><i class="fas fa-tag"></i></div>`;
+    return `
+      <div class="perf-row">
+        <div class="rank-badge ${rkCls}">${rank}</div>
+        ${thumb}
+        <div class="perf-title" title="${r.title}">${r.title}</div>
+        <div class="perf-cols">
+          <div class="perf-col">
+            <div class="lbl">Visitas</div>
+            <div class="val">${fmtN(visitas)}</div>
+          </div>
+          <div class="perf-col">
+            <div class="lbl">Vendas</div>
+            <div class="val" style="color:var(--green)">${fmtN(vendas)}</div>
+          </div>
+          <div class="perf-col">
+            <div class="lbl">Conversão</div>
+            <div class="val" style="color:var(--yellow)">${convRow}</div>
+          </div>
+          <div class="perf-col">
+            <div class="lbl">Receita</div>
+            <div class="val" style="color:var(--primary)">${fmt(r.receita_periodo)}</div>
+          </div>
+          <div class="perf-col">
+            <div class="lbl">Posição</div>
+            <div class="val">#${rank}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function switchTab(storeId) {
+  document.querySelectorAll('.store-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.store-section').forEach(s => s.classList.remove('active'));
+  const id = storeId || 'all';
+  document.querySelector(`.store-tab[data-store="${storeId}"]`)?.classList.add('active');
+  document.getElementById(`sec-${id}`)?.classList.add('active');
+  loadSection(storeId);
+}
+
+async function init() {
+  const data   = await DB.getLojas() || { stores: [] };
+  const stores = data.stores || [];
+  const tabs   = document.getElementById('storeTabs');
+  const cont   = document.getElementById('storeContent');
+
+  cont.innerHTML = buildSection('');
+  document.getElementById(`search-all`)?.addEventListener('input', () => loadSection(''));
+
+  stores.forEach(s => {
+    const tab = document.createElement('div');
+    tab.className = 'store-tab';
+    tab.dataset.store = s.id;
+    tab.innerHTML = `<span class="tab-av">${initials(s.nickname)}</span>${s.nickname}`;
+    tab.addEventListener('click', () => switchTab(s.id));
+    tabs.appendChild(tab);
+    cont.insertAdjacentHTML('beforeend', buildSection(s.id));
+    document.getElementById(`search-${s.id}`)?.addEventListener('input', () => loadSection(s.id));
+  });
+
+  document.querySelector('.store-tab[data-store=""]')?.addEventListener('click', () => switchTab(''));
+  document.getElementById('daysFilter').addEventListener('change', () => {
+    const active = document.querySelector('.store-tab.active');
+    loadSection(active?.dataset.store || '');
+  });
+
+  loadSection('');
+}
+
+WS.on('anuncio_updated', () => {
+  const active = document.querySelector('.store-tab.active');
+  loadSection(active?.dataset.store || '');
+});
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
+init();
 </script>
 </body>
 </html>

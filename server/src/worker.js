@@ -163,6 +163,7 @@ async function handleOrder({ resource, storeId }) {
     const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
     const loja = storeRows[0]?.nickname || `Loja ${storeId}`;
     const logistic = order.shipping?.logistic_type || '';
+    console.log(`[worker] order=${order.id} logistic_type="${logistic}" shipping_mode="${order.shipping?.shipping_option?.shipping_method_type||''}"`);
     const envioLabel = logistic.includes('fulfillment') || logistic.includes('FULFILLMENT') ? '📦 FULL'
       : logistic.includes('flex') || logistic.includes('FLEX') ? '🏃 Flex'
       : logistic.includes('me2') || logistic.includes('ME2') ? '📮 ME2'

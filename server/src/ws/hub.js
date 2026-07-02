@@ -14,6 +14,12 @@ function attach(server) {
   wss.on('connection', (socket) => {
     clients.add(socket);
     socket.on('close', () => clients.delete(socket));
+    socket.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'ping') socket.send(JSON.stringify({ topic: 'pong', payload: {} }));
+      } catch {}
+    });
   });
 
   subscriber.subscribe(CHANNEL);

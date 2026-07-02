@@ -13,18 +13,22 @@ const WS = {
     this.socket.onopen = () => {
       console.log('[WS] connected');
       this.reconnectDelay = 2000;
+      this._lastPong = Date.now();
+      this._startHeartbeat();
       this._dispatch('_connected', {});
     };
 
     this.socket.onmessage = ({ data }) => {
       try {
         const msg = JSON.parse(data);
+        if (msg.topic === 'pong') { this._lastPong = Date.now(); return; }
         this._dispatch(msg.topic, msg.payload);
       } catch {}
     };
 
     this.socket.onclose = () => {
       console.warn('[WS] disconnected — reconnecting in', this.reconnectDelay, 'ms');
+      this._stopHeartbeat();
       this._dispatch('_disconnected', {});
       setTimeout(() => this.connect(), this.reconnectDelay);
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
@@ -45,6 +49,23 @@ const WS = {
   _dispatch(topic, payload) {
     (this.listeners[topic] || []).forEach(fn => fn(payload));
     (this.listeners['*'] || []).forEach(fn => fn({ topic, payload }));
+  },
+
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this._heartbeatTimer = setInterval(() => {
+      if (this.socket && this.socket.readyState === 1) {
+        this.socket.send(JSON.stringify({ type: 'ping' }));
+        if (Date.now() - this._lastPong > 60000) {
+          console.warn('[WS] heartbeat timeout — forcing reconnect');
+          this.socket.close();
+        }
+      }
+    }, 25000);
+  },
+
+  _stopHeartbeat() {
+    clearInterval(this._heartbeatTimer);
   }
 };
 

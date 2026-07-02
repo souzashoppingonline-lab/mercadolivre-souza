@@ -481,8 +481,10 @@ router.post('/config/telegram/test', async (req, res) => {
 });
 
 router.get('/schedule/jobs', async (req, res) => {
-  const { rows } = await pool.query(`SELECT name, cron, last_run, duration_ms, status FROM schedule_jobs`);
-  res.json({ jobs: rows });
+  try {
+    const { rows } = await pool.query(`SELECT name, cron, last_run, duration_ms, status FROM schedule_jobs`);
+    res.json({ jobs: rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {

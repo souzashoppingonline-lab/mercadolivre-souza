@@ -590,39 +590,56 @@ async function dailySync() {
 }
 
 async function syncParentItems() {
-  console.log('[syncParentItems] preenchendo parent_item_id dos itens cadastrados...');
+  console.log('[syncParentItems] preenchendo parent_item_id via multiget...');
   const { rows: stores } = await pool.query(`SELECT id FROM stores`);
   let updated = 0; let total = 0;
 
   for (const store of stores) {
     const { rows: items } = await pool.query(
-      `SELECT ml_id FROM items WHERE parent_item_id IS NULL AND store_id = $1 ORDER BY updated_at DESC`,
+      `SELECT ml_id FROM items WHERE parent_item_id IS NULL AND store_id = $1`,
       [store.id]
     );
     console.log(`[syncParentItems] store=${store.id} → ${items.length} itens`);
+    const ids = items.map(r => r.ml_id);
 
-    for (const row of items) {
-      total++;
+    for (let i = 0; i < ids.length; i += 20) {
+      const batch = ids.slice(i, i + 20);
+      total += batch.length;
       try {
-        await new Promise(r => setTimeout(r, 18000));
-        const item = await ml.getItem(row.ml_id, store.id);
-        const parentId = item.parent_item_id || null;
-        await pool.query(
-          `UPDATE items SET parent_item_id = $1, updated_at = now() WHERE ml_id = $2`,
-          [parentId, row.ml_id]
-        );
-        if (parentId) updated++;
+        await new Promise(r => setTimeout(r, 12000));
+        const token = await getTokenForStore(store.id);
+        const qs = batch.map(id => `ids=${id}`).join('&');
+        const res = await fetch(`https://api.mercadolibre.com/items?${qs}&attributes=id,parent_item_id`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : [data];
+        for (const entry of results) {
+          const body = entry.body || entry;
+          if (!body?.id) continue;
+          await pool.query(
+            `UPDATE items SET parent_item_id = $1 WHERE ml_id = $2`,
+            [body.parent_item_id || null, body.id]
+          );
+          if (body.parent_item_id) updated++;
+        }
+        console.log(`[syncParentItems] store=${store.id} lote ${i/20+1} ok`);
       } catch (e) {
-        console.warn(`[syncParentItems] item=${row.ml_id}:`, e.message);
+        console.warn(`[syncParentItems] lote store=${store.id} i=${i}:`, e.message);
         if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 60000));
       }
     }
-
-    if (stores.indexOf(store) < stores.length - 1) await new Promise(r => setTimeout(r, 10000));
+    await new Promise(r => setTimeout(r, 15000));
   }
 
-  console.log(`[syncParentItems] concluído — ${updated}/${total} itens com parent_item_id`);
+  console.log(`[syncParentItems] concluído — ${updated}/${total} com parent_item_id`);
   await tgNotify('tg_infra', `✅ Sync parent_item_id concluído\n📦 ${updated}/${total} itens atualizados`).catch(()=>{});
+}
+
+async function getTokenForStore(storeId) {
+  const { rows } = await pool.query(`SELECT access_token FROM stores WHERE id=$1`, [storeId]);
+  return rows[0]?.access_token;
 }
 
 async function syncReturns() {

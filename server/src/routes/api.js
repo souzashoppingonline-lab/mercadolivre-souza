@@ -66,8 +66,19 @@ router.get('/anuncios', async (req, res) => {
 });
 
 router.get('/produtos', async (req, res) => {
+  const { search = '', sortBy = 'vendas', days = '', store_id = '' } = req.query;
+  const dateFilter  = days     ? `AND i.updated_at >= now() - interval '${Number(days)} days'` : '';
+  const storeFilter = store_id ? `AND i.store_id = ${BigInt(store_id)}` : '';
+  const orderBy = sortBy === 'receita' ? 'sold_quantity * price DESC' : sortBy === 'estoque' ? 'available_quantity ASC' : 'sold_quantity DESC';
   const { rows } = await pool.query(
-    `SELECT ml_id as id, title, price, available_quantity as stock, sold_quantity as sold, status FROM items ORDER BY sold_quantity DESC LIMIT 100`
+    `SELECT i.ml_id as id, i.title, i.price,
+            i.available_quantity as stock, i.sold_quantity as sold,
+            i.sold_quantity * i.price as revenue, i.status
+     FROM items i
+     WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%')
+       ${storeFilter} ${dateFilter}
+     ORDER BY ${orderBy} LIMIT 500`,
+    [search]
   );
   res.json({ products: rows });
 });

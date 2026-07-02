@@ -20,6 +20,17 @@
           <h3>Catálogo de Produtos</h3>
           <div class="filters-bar" style="margin:0">
             <div class="search-box"><i class="fas fa-search"></i><input type="text" id="search" placeholder="Buscar produto..."></div>
+            <select class="filter-select" id="daysFilter">
+              <option value="">Todo o período</option>
+              <option value="1">Ontem + hoje</option>
+              <option value="3">Últimos 3 dias</option>
+              <option value="5">Últimos 5 dias</option>
+              <option value="7">Últimos 7 dias</option>
+              <option value="10">Últimos 10 dias</option>
+              <option value="15">Últimos 15 dias</option>
+              <option value="21">Últimos 21 dias</option>
+              <option value="30">Últimos 30 dias</option>
+            </select>
             <select class="filter-select" id="sortBy">
               <option value="vendas">Mais Vendidos</option>
               <option value="receita">Maior Receita</option>
@@ -46,7 +57,8 @@ const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}
 async function load() {
   const search = document.getElementById('search').value;
   const sortBy = document.getElementById('sortBy').value;
-  const data = await DB.getProdutos({ search, sortBy }) || { products:[] };
+  const days   = document.getElementById('daysFilter').value;
+  const data = await DB.getProdutos({ search, sortBy, days }) || { products:[] };
   const rows = data.products || [];
   document.getElementById('produtosTable').innerHTML = rows.length
     ? rows.map(r=>`<tr>
@@ -61,6 +73,7 @@ async function load() {
 }
 document.getElementById('search').addEventListener('input', load);
 document.getElementById('sortBy').addEventListener('change', load);
+document.getElementById('daysFilter').addEventListener('change', load);
 WS.on('anuncio_updated', load);
 WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 load();

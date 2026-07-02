@@ -440,7 +440,7 @@ async function startWorkers() {
       connection: new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false }),
       concurrency: 1,
       // 20 req/min per store token = 1 req per 3s to stay safely below the limit
-      limiter: { max: 1, duration: 3000 },
+      limiter: { max: 1, duration: 5000 },
     });
     attachWorkerEvents(w, storeId);
     console.log(`[worker] started queue ml-webhooks-${storeId}`);

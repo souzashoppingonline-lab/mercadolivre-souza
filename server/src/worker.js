@@ -162,13 +162,21 @@ async function handleOrder({ resource, storeId }) {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
     const loja = storeRows[0]?.nickname || `Loja ${storeId}`;
-    const logistic = order.shipping?.logistic_type || '';
-    console.log(`[worker] order=${order.id} logistic_type="${logistic}" shipping_mode="${order.shipping?.shipping_option?.shipping_method_type||''}"`);
-    const envioLabel = logistic.includes('fulfillment') || logistic.includes('FULFILLMENT') ? '📦 FULL'
-      : logistic.includes('flex') || logistic.includes('FLEX') ? '🏃 Flex'
-      : logistic.includes('me2') || logistic.includes('ME2') ? '📮 ME2'
-      : logistic.includes('me1') || logistic.includes('ME1') ? '📮 ME1'
-      : shippingType || '—';
+    let envioLabel = shippingType || '—';
+    try {
+      const shipmentId = order.shipping?.id;
+      if (shipmentId) {
+        const shipment = await ml.getShipment(shipmentId, storeId);
+        const lt = (shipment?.logistic_type || '').toLowerCase();
+        envioLabel = lt.includes('fulfillment') ? '📦 FULL'
+          : lt.includes('flex')   ? '🏃 Flex'
+          : lt.includes('me2')    ? '📮 ME2'
+          : lt.includes('me1')    ? '📮 ME1'
+          : lt || shippingType || '—';
+      }
+    } catch (e) {
+      console.warn(`[worker] getShipment erro:`, e.message);
+    }
     await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}`);
   }
 }

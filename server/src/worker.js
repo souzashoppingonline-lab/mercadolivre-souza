@@ -44,13 +44,16 @@ async function tgNotify(topic, text) {
     }
     _tgLastSent[topic] = Date.now();
 
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
     });
+    const j = await r.json();
+    return j?.result?.message_id || null;
   } catch (e) {
     console.error('[worker] tgNotify error:', e.message);
+    return null;
   }
 }
 
@@ -168,15 +171,23 @@ async function handleQuestion({ resource, storeId }) {
     [q.id, storeId, q.item_id, q.text, q.answer?.text || null, q.status, q.date_created]
   );
 
-  await publish('question_received', { id: q.id, status: q.status });
+  await publish('question_received', { id: q.id, status: q.status, text: q.text });
   if (q.status === 'UNANSWERED') {
     const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
     const loja = storeRows[0]?.nickname || `Loja ${storeId}`;
     const dashUrl = (process.env.DASH_URL || 'https://multimixvendas.duckdns.org') + '/pages/perguntas.html';
-    await tgNotify('tg_perguntas',
+    const msgId = await tgNotify('tg_perguntas',
       `❓ <b>Nova pergunta sem resposta</b>\n🏪 Loja: <b>${loja}</b>\n🏷️ Item: ${q.item_id||'—'}\n💬 ${(q.text||'').slice(0,300)}\n\n` +
-      `<a href="${dashUrl}">Responder no dashboard →</a>`
+      `💡 <i>Responda esta mensagem no Telegram para responder ao comprador</i>\n` +
+      `📋 ID: <code>${q.id}</code>\n<a href="${dashUrl}">Abrir dashboard →</a>`
     );
+    // Save tg_message_id so the webhook can match replies
+    if (msgId) {
+      await pool.query(
+        `UPDATE questions SET tg_message_id=$2 WHERE ml_id=$1`,
+        [q.id, msgId]
+      ).catch(() => {}); // column may not exist yet — ignore
+    }
   }
 }
 

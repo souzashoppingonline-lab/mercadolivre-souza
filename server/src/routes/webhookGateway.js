@@ -39,4 +39,61 @@ router.post('/ml', async (req, res) => {
   }
 });
 
+// ── Telegram webhook — recebe replies do bot ───────────────
+router.post('/telegram', express.json(), async (req, res) => {
+  res.sendStatus(200); // ack rápido
+
+  try {
+    const msg = req.body?.message;
+    if (!msg) return;
+
+    const replyTo = msg.reply_to_message?.message_id;
+    const text = msg.text?.trim();
+    if (!replyTo || !text) return;
+
+    // Encontra a pergunta pelo tg_message_id armazenado
+    const { rows } = await pool.query(
+      `SELECT ml_id, store_id FROM questions WHERE tg_message_id=$1 AND status='UNANSWERED' LIMIT 1`,
+      [replyTo]
+    );
+    if (!rows.length) return;
+
+    const { ml_id: questionId, store_id: storeId } = rows[0];
+    const ml = require('../mlClient');
+
+    // Chama ML API para responder
+    await ml.answerQuestion(questionId, text, storeId);
+
+    // Atualiza DB
+    await pool.query(
+      `UPDATE questions SET answer_text=$2, status='ANSWERED', updated_at=now() WHERE ml_id=$1`,
+      [questionId, text]
+    );
+
+    // Confirma no Telegram
+    const { rows: cfg } = await pool.query(
+      `SELECT key, value FROM app_config WHERE key IN ('telegram_bot_token','telegram_chat_id')`
+    );
+    const c = Object.fromEntries(cfg.map(r => [r.key, r.value]));
+    const token  = c.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = c.telegram_chat_id   || process.env.TELEGRAM_CHAT_ID;
+    if (token && chatId) {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          reply_to_message_id: msg.message_id,
+          text: `✅ Resposta enviada ao comprador!\n💬 "${text}"`,
+          parse_mode: 'HTML'
+        })
+      });
+    }
+
+    publish('question_received', { id: questionId, status: 'ANSWERED' });
+  } catch(e) {
+    console.error('[tg-webhook]', e.message);
+  }
+});
+
 module.exports = router;

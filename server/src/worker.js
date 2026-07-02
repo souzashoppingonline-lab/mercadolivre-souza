@@ -14,15 +14,14 @@ const { publish } = require('./ws/hub');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null });
 
-// Rate limiter: max 10 req/s por store para respeitar limite ML (50 req/s global)
-const lastCallTime = {};
+// Rate limiter GLOBAL — todas as lojas compartilham o mesmo app/client_id no ML.
+// O limite é por aplicativo, não por loja. Mínimo 300ms entre qualquer chamada ML.
+let lastGlobalCall = 0;
 async function rateLimitedCall(storeId, fn) {
-  const key = String(storeId);
   const now = Date.now();
-  const last = lastCallTime[key] || 0;
-  const wait = Math.max(0, 120 - (now - last)); // mínimo 120ms entre calls (≈8 req/s)
+  const wait = Math.max(0, 300 - (now - lastGlobalCall));
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  lastCallTime[key] = Date.now();
+  lastGlobalCall = Date.now();
   return fn();
 }
 

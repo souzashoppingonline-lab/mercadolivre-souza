@@ -92,6 +92,8 @@ module.exports = {
   answerQuestion:      (questionId, text, storeId) => post('/answers', storeId, { question_id: questionId, text }),
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}/sellers/me`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
+  searchClaims:        (storeId, offset=0) => get(`/post-purchase/claims/search?seller_id=${storeId}&limit=50&offset=${offset}`, storeId),
+  getClaim:            (claimId, storeId) => get(`/post-purchase/claims/${claimId}`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
   searchOrders:        (storeId, dateFrom) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50`, storeId),
   getItemVisits:       (ids, dateFrom, storeId) => get(`/items/visits?ids=${ids.join(',')}&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(new Date().toISOString().slice(0,10))}`, storeId),

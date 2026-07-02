@@ -520,8 +520,8 @@ router.get('/schedule/jobs', async (req, res) => {
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   const { name } = req.params;
-  if (name !== 'dailySync') return res.status(400).json({ error: 'job desconhecido' });
-  await redis.publish('worker:cmd', JSON.stringify({ cmd: 'dailySync' }));
+  if (!['dailySync','syncReturns'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
+  await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });
 

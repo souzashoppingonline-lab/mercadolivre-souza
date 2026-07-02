@@ -570,6 +570,56 @@ async function dailySync() {
   scheduleDailySync();
 }
 
+async function syncReturns() {
+  console.log('[syncReturns] iniciando busca retroativa de devoluções...');
+  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores`);
+  let total = 0;
+
+  for (const store of stores) {
+    let offset = 0;
+    let hasMore = true;
+    while (hasMore) {
+      try {
+        await new Promise(r => setTimeout(r, 3000));
+        const data = await ml.searchClaims(store.id, offset);
+        const claims = data?.data || [];
+        if (!claims.length) { hasMore = false; break; }
+
+        for (const c of claims) {
+          try {
+            await new Promise(r => setTimeout(r, 2000));
+            const claim = await ml.getClaim(c.id, store.id);
+            const orderId = claim.order_id || null;
+            const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
+            await pool.query(
+              `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+               ON CONFLICT DO NOTHING`,
+              [store.id, orderId, buyerNickname,
+               claim.resolution?.description || claim.reason_id || null,
+               claim.reason_id || null, claim.total || 0,
+               claim.status, claim.date_created]
+            );
+            total++;
+          } catch (e) {
+            console.warn(`[syncReturns] claim=${c.id}:`, e.message);
+          }
+        }
+
+        offset += 50;
+        hasMore = claims.length === 50;
+      } catch (e) {
+        console.warn(`[syncReturns] store=${store.id} offset=${offset}:`, e.message);
+        hasMore = false;
+      }
+    }
+    console.log(`[syncReturns] store=${store.id} concluído`);
+  }
+
+  console.log(`[syncReturns] concluído — ${total} devoluções importadas`);
+  await tgNotify('tg_devolucoes', `✅ Sync retroativo de devoluções concluído\n📦 ${total} registros importados`).catch(()=>{});
+}
+
 function scheduleDailySync() {
   const now = new Date();
   const next3am = new Date(now);
@@ -591,6 +641,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'dailySync') {
       console.log('[worker] dailySync disparado manualmente');
       dailySync().catch(e => console.error('[worker] dailySync manual erro:', e.message));
+    }
+    if (cmd === 'syncReturns') {
+      console.log('[worker] syncReturns disparado manualmente');
+      syncReturns().catch(e => console.error('[worker] syncReturns erro:', e.message));
     }
   } catch {}
 });

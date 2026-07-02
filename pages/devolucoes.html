@@ -30,6 +30,9 @@
           <input type="text" id="searchInput" placeholder="Buscar por ID do pedido, comprador ou produto...">
         </div>
         <button class="btn-save-note" style="padding:8px 18px;font-size:.85rem" onclick="load()">Buscar</button>
+        <button class="btn-save-note" id="btnSync" style="padding:8px 18px;font-size:.85rem;background:var(--surface);color:var(--text-primary);border:1px solid var(--border)" onclick="syncRetroativo()">
+          <i class="fas fa-sync-alt"></i> Importar histórico ML
+        </button>
       </div>
 
       <div class="card-grid" style="margin-bottom:16px">
@@ -121,6 +124,21 @@ async function load() {
 }
 
 document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+
+async function syncRetroativo() {
+  const btn = document.getElementById('btnSync');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importando...';
+  const r = await DB._post('/schedule/jobs/syncReturns/trigger', {});
+  if (r) {
+    btn.innerHTML = '<i class="fas fa-check"></i> Iniciado — aguarde...';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { load(); btn.innerHTML = '<i class="fas fa-sync-alt"></i> Importar histórico ML'; btn.style.color=''; btn.disabled=false; }, 15000);
+  } else {
+    btn.innerHTML = 'Erro';
+    setTimeout(() => { btn.innerHTML = '<i class="fas fa-sync-alt"></i> Importar histórico ML'; btn.disabled=false; }, 3000);
+  }
+}
 
 WS.on('devolucao_recebida', load);
 WS.on('order_updated', load);

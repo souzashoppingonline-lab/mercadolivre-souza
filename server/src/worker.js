@@ -80,7 +80,7 @@ async function handleShipment({ resource, storeId }) {
 
 const handlers = {
   orders_v2:         handleOrder,
-  payments:          handleOrder,
+  payments:          noop,
   questions:         handleQuestion,
   messages:          handleMessage,
   items:             handleItem,

@@ -153,4 +153,91 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sidebarEl) sidebarEl.outerHTML = buildSidebar(window.ACTIVE_NAV || '');
   if (topbarEl)  topbarEl.outerHTML  = buildTopbar(window.PAGE_TITLE || 'Dashboard');
   initStoreSwitcher();
+  initAlerts();
 });
+
+// ── Alertas globais: som + notificação do browser ──────────
+function initAlerts() {
+  // Solicitar permissão de notificação ao abrir o dashboard
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+
+  // Som gerado via Web Audio API — sem arquivo externo
+  function playBeep(freq = 880, duration = 0.18, volume = 0.4) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(volume, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + duration);
+    } catch(e) {}
+  }
+
+  function showToast(title, body, icon) {
+    // Toast visual na tela
+    const t = document.createElement('div');
+    t.style.cssText = `
+      position:fixed;top:20px;right:20px;z-index:99999;
+      background:#1a1a2e;border:1px solid #f59e0b;border-radius:12px;
+      padding:14px 18px;max-width:320px;box-shadow:0 8px 30px rgba(0,0,0,.5);
+      display:flex;gap:12px;align-items:flex-start;cursor:pointer;
+      animation:slideIn .3s ease;
+    `;
+    t.innerHTML = `
+      <span style="font-size:1.4rem">${icon}</span>
+      <div>
+        <div style="font-weight:700;font-size:.9rem;color:#f59e0b;margin-bottom:3px">${title}</div>
+        <div style="font-size:.8rem;color:#ccc;line-height:1.4">${body}</div>
+      </div>
+      <span onclick="this.parentNode.remove()" style="color:#666;font-size:1rem;margin-left:auto;cursor:pointer">✕</span>
+    `;
+    if (!document.querySelector('#toast-style')) {
+      const s = document.createElement('style');
+      s.id = 'toast-style';
+      s.textContent = '@keyframes slideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(t);
+    t.addEventListener('click', () => { t.remove(); window.location.href = '../pages/perguntas.html'; });
+    setTimeout(() => t.style.animation = 'slideIn .3s ease reverse', 4700);
+    setTimeout(() => t.remove(), 5000);
+
+    // Notificação nativa do browser (funciona mesmo com aba em background)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const n = new Notification(title, { body, icon: '/favicon.ico', tag: 'ml-question' });
+      n.onclick = () => { window.focus(); n.close(); };
+    }
+  }
+
+  // Escuta pergunta nova
+  WS.on('question_received', payload => {
+    if (payload?.status !== 'UNANSWERED') return;
+    playBeep(880, 0.15);
+    setTimeout(() => playBeep(1100, 0.15), 180);
+    showToast('❓ Nova Pergunta!', payload.text?.slice(0, 120) || 'Clique para responder', '❓');
+
+    // Badge vermelho no link de Perguntas na sidebar
+    const link = document.querySelector('a[href*="perguntas.html"]');
+    if (link && !link.querySelector('.q-badge')) {
+      const b = document.createElement('span');
+      b.className = 'q-badge';
+      b.style.cssText = 'background:var(--red);color:#fff;border-radius:10px;font-size:.65rem;padding:1px 6px;margin-left:6px;';
+      b.textContent = '!';
+      link.appendChild(b);
+    }
+  });
+
+  // Escuta nova mensagem de comprador
+  WS.on('message_received', payload => {
+    playBeep(660, 0.15);
+    setTimeout(() => playBeep(880, 0.15), 180);
+    showToast('💬 Nova Mensagem!', payload.buyer_nickname || 'Comprador enviou mensagem', '💬');
+  });
+}

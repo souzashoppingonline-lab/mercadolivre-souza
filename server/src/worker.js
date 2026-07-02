@@ -68,14 +68,29 @@ async function tgNotify(topic, text) {
 const noop = () => {};  // topics we receive but don't need to process
 
 async function handleShipment({ resource, storeId }) {
-  // Sem chamada ML API — apenas registra que houve movimentação de envio
-  // O status real do pedido será atualizado no sync diário das 03:00
   const shipmentId = resource.split('/').pop();
-  await pool.query(
-    `UPDATE orders SET updated_at = now() WHERE store_id = $1 AND raw_data->>'shipment_id' = $2`,
+
+  // Busca o pedido vinculado a este shipment no banco local
+  const { rows } = await pool.query(
+    `SELECT ml_id FROM orders
+     WHERE store_id = $1 AND raw_data->>'shipment_id' = $2
+       AND updated_at < now() - interval '30 minutes'
+     LIMIT 1`,
     [storeId, String(shipmentId)]
   );
-  await publish('order_updated', { shipment_id: shipmentId });
+  if (!rows.length) {
+    // Pedido não existe ou foi atualizado nos últimos 30 min — apenas toca updated_at
+    await pool.query(
+      `UPDATE orders SET updated_at = now() WHERE store_id = $1 AND raw_data->>'shipment_id' = $2`,
+      [storeId, String(shipmentId)]
+    );
+    await publish('order_updated', { shipment_id: shipmentId });
+    return;
+  }
+
+  // Pedido existe e não foi atualizado recentemente — busca status atual
+  const orderId = rows[0].ml_id;
+  await handleOrder({ resource: `/orders/${orderId}`, storeId });
 }
 
 const handlers = {

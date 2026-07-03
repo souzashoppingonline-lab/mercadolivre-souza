@@ -943,33 +943,53 @@ router.get('/metricas', async (req, res) => {
 
 // ── Produtos performance ───────────────────────────────────
 router.get('/produtos/performance', async (req, res) => {
-  const { store_id = '', days = 30 } = req.query;
-  const { rows } = await pool.query(
-    `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.sold_quantity, i.status,
-            i.thumbnail, i.permalink,
-            COALESCE(o.pedidos_periodo, 0) as pedidos_periodo,
-            COALESCE(o.receita_periodo, 0) as receita_periodo,
-            COALESCE(v.visitas_periodo, 0) as visitas_periodo
-     FROM items i
-     LEFT JOIN (
-       SELECT item_id, COUNT(*) pedidos_periodo, SUM(total_amount) receita_periodo
-       FROM orders
-       WHERE status != 'cancelled' AND date_created >= CURRENT_DATE - $1::int
-         AND ($2 = '' OR store_id = $2::bigint)
-       GROUP BY item_id
-     ) o ON o.item_id = i.ml_id
-     LEFT JOIN (
-       SELECT item_id, SUM(visits) visitas_periodo
-       FROM item_visits
-       WHERE date >= CURRENT_DATE - $1::int
-         AND ($2 = '' OR store_id = $2::bigint)
-       GROUP BY item_id
-     ) v ON v.item_id = i.ml_id
-     WHERE ($2 = '' OR i.store_id = $2::bigint)
-     ORDER BY receita_periodo DESC NULLS LAST LIMIT 200`,
-    [Number(days), store_id]
-  );
-  res.json({ products: rows });
+  try {
+    const { store_id = '', days = 30, sort = 'receita' } = req.query;
+    const orderBy = {
+      receita:    'receita_periodo DESC NULLS LAST',
+      vendas:     'pedidos_periodo DESC NULLS LAST',
+      visitas:    'visitas_periodo DESC NULLS LAST',
+      conversao:  'conversao_pct DESC NULLS LAST',
+    }[sort] || 'receita_periodo DESC NULLS LAST';
+
+    const { rows } = await pool.query(
+      `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.sold_quantity, i.status,
+              i.thumbnail, i.permalink,
+              COALESCE(o.pedidos_periodo, 0)  AS pedidos_periodo,
+              COALESCE(o.receita_periodo, 0)  AS receita_periodo,
+              COALESCE(v.visitas_periodo, 0)  AS visitas_periodo,
+              CASE WHEN COALESCE(v.visitas_periodo, 0) > 0
+                   THEN ROUND(COALESCE(o.pedidos_periodo,0)::numeric / v.visitas_periodo * 100, 2)
+                   ELSE 0 END AS conversao_pct
+       FROM items i
+       LEFT JOIN (
+         SELECT COALESCE(it.parent_item_id, o.item_id) AS root_id,
+                COUNT(*)            AS pedidos_periodo,
+                SUM(o.total_amount) AS receita_periodo
+         FROM orders o
+         LEFT JOIN items it ON it.ml_id = o.item_id
+         WHERE o.status != 'cancelled'
+           AND o.date_created >= CURRENT_DATE - $1::int
+           AND ($2 = '' OR o.store_id = $2::bigint)
+         GROUP BY 1
+       ) o ON o.root_id = i.ml_id
+       LEFT JOIN (
+         SELECT COALESCE(it.parent_item_id, iv.item_id) AS root_id,
+                SUM(iv.visits) AS visitas_periodo
+         FROM item_visits iv
+         LEFT JOIN items it ON it.ml_id = iv.item_id
+         WHERE iv.date >= CURRENT_DATE - $1::int
+           AND ($2 = '' OR iv.store_id = $2::bigint)
+         GROUP BY 1
+       ) v ON v.root_id = i.ml_id
+       WHERE ($2 = '' OR i.store_id = $2::bigint)
+         AND i.parent_item_id IS NULL
+       ORDER BY ${orderBy}
+       LIMIT 200`,
+      [Number(days), store_id]
+    );
+    res.json({ products: rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/anuncios/:id/visitas', async (req, res) => {

@@ -30,6 +30,9 @@
     .rank-2 { background:rgba(192,192,192,.2); color:#c0c0c0; }
     .rank-3 { background:rgba(205,127,50,.2); color:#cd7f32; }
     .rank-n { background:var(--surface); color:var(--text-muted); }
+    .sort-btn { padding:7px 14px; border-radius:8px; border:1px solid var(--border); background:var(--card-bg); color:var(--text-muted); font-size:.8rem; font-weight:600; cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:6px; }
+    .sort-btn:hover { border-color:var(--primary); color:var(--text); }
+    .sort-btn.active { background:var(--primary); color:#000; border-color:var(--primary); }
   </style>
 </head>
 <body>
@@ -39,7 +42,7 @@
     <div id="app-topbar"></div>
     <div class="content-area">
 
-      <div class="filters-row" style="margin-bottom:16px">
+      <div class="filters-row" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
         <select class="filter-select" id="daysFilter">
           <option value="1">Hoje</option>
           <option value="3">Últimos 3 dias</option>
@@ -49,6 +52,12 @@
           <option value="21">Últimos 21 dias</option>
           <option value="30">Últimos 30 dias</option>
         </select>
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="sortBtns">
+          <button class="sort-btn active" data-sort="receita"   onclick="setSort('receita')">  <i class="fas fa-dollar-sign"></i> Mais Receita</button>
+          <button class="sort-btn"        data-sort="vendas"    onclick="setSort('vendas')">   <i class="fas fa-shopping-cart"></i> Mais Vendas</button>
+          <button class="sort-btn"        data-sort="visitas"   onclick="setSort('visitas')">  <i class="fas fa-eye"></i> Mais Visitas</button>
+          <button class="sort-btn"        data-sort="conversao" onclick="setSort('conversao')"><i class="fas fa-percent"></i> Maior Conversão</button>
+        </div>
       </div>
 
       <div class="store-tabs" id="storeTabs">
@@ -69,6 +78,14 @@
 <script>
 const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+let currentSort = 'receita';
+
+function setSort(sort) {
+  currentSort = sort;
+  document.querySelectorAll('.sort-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === sort));
+  const active = document.querySelector('.store-tab.active');
+  loadSection(active?.dataset.store || '');
+}
 
 function initials(name) {
   return (name||'?').replace(/[_-]/g,' ').split(' ').filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join('');
@@ -100,7 +117,7 @@ async function loadSection(storeId) {
   const id    = storeId || 'all';
   const days  = document.getElementById('daysFilter').value;
   const search = (document.getElementById(`search-${id}`)?.value || '').toLowerCase();
-  const data  = await DB.getProdutosPerformance({ store_id: storeId, days }) || { products: [] };
+  const data  = await DB.getProdutosPerformance({ store_id: storeId, days, sort: currentSort }) || { products: [] };
   let rows = data.products || [];
 
   if (search) rows = rows.filter(r => r.title?.toLowerCase().includes(search));
@@ -126,7 +143,8 @@ async function loadSection(storeId) {
     const rkCls  = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-n';
     const visitas = Number(r.visitas_periodo || 0);
     const vendas  = Number(r.pedidos_periodo || 0);
-    const convRow = visitas > 0 ? ((vendas / visitas) * 100).toFixed(1) + '%' : '—';
+    const convRow = Number(r.conversao_pct) > 0 ? Number(r.conversao_pct).toFixed(1) + '%'
+                  : visitas > 0 ? ((vendas / visitas) * 100).toFixed(1) + '%' : '—';
     const thumb   = r.thumbnail
       ? `<img class="perf-thumb" src="${r.thumbnail}" onerror="this.outerHTML='<div class=\\'perf-thumb-ph\\'><i class=\\'fas fa-tag\\'></i></div>'">`
       : `<div class="perf-thumb-ph"><i class="fas fa-tag"></i></div>`;

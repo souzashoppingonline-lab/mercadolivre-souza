@@ -380,36 +380,25 @@ router.get('/mensagens', async (req, res) => {
 // ── Estoque Parado ─────────────────────────────────────────
 router.get('/analises/estoque-parado', async (req, res) => {
   try {
-    const { store_id = '', days = '30' } = req.query;
+    const { store_id = '', days = '30', modo = 'parado' } = req.query;
     const storeFilter = store_id ? `AND i.store_id = ${BigInt(store_id)}` : '';
     const daysN = Number(days) || 30;
 
-    // IDs que venderam no período (item_id direto OU via raw_data)
-    const { rows: soldRows } = await pool.query(
-      `SELECT DISTINCT
-         COALESCE(item_id,
-           raw_data->'order_items'->0->'item'->>'id'
-         ) as iid,
-         store_id
-       FROM orders
-       WHERE status != 'cancelled'
-         AND date_created >= CURRENT_DATE - ${daysN}
-         AND store_id IS NOT NULL`
-    );
-    const soldSet = new Set(soldRows.map(r => `${r.store_id}:${r.iid}`).filter(k => !k.endsWith(':null')));
-
-    // Última venda de cada item (histórico completo)
-    const { rows: lastSaleRows } = await pool.query(
+    // Vendas por item no período + última venda histórica
+    const { rows: salesRows } = await pool.query(
       `SELECT
          COALESCE(item_id, raw_data->'order_items'->0->'item'->>'id') as iid,
          store_id,
-         MAX(date_created) as ultima
+         SUM(CASE WHEN date_created >= CURRENT_DATE - ${daysN} THEN quantity ELSE 0 END) as qtd_periodo,
+         MAX(date_created) as ultimo_dia_venda
        FROM orders
        WHERE status != 'cancelled'
-       GROUP BY 1,2`
+       GROUP BY 1, 2`
     );
-    const lastSaleMap = {};
-    lastSaleRows.forEach(r => { if (r.iid) lastSaleMap[`${r.store_id}:${r.iid}`] = r.ultima; });
+    const salesMap = {};
+    salesRows.forEach(r => {
+      if (r.iid) salesMap[`${r.store_id}:${r.iid}`] = { qtd: Number(r.qtd_periodo), ultima: r.ultimo_dia_venda };
+    });
 
     const { rows: itemRows } = await pool.query(
       `SELECT i.ml_id, i.store_id,
@@ -421,21 +410,23 @@ router.get('/analises/estoque-parado', async (req, res) => {
        WHERE i.status = 'active'
          AND i.available_quantity > 0
          ${storeFilter}
-       ORDER BY (i.price * i.available_quantity) DESC
        LIMIT 2000`
     );
 
-    // Filtra: item não vendeu no período (nem pelo ml_id nem pelo parent_item_id)
-    const rows = itemRows
-      .filter(i => {
-        const k1 = `${i.store_id}:${i.ml_id}`;
-        return !soldSet.has(k1);
-      })
-      .map(i => {
-        const k = `${i.store_id}:${i.ml_id}`;
-        return { ...i, ultimo_dia_venda: lastSaleMap[k] || null };
-      })
-      .slice(0, 500);
+    // Anexa vendas do período
+    let rows = itemRows.map(i => {
+      const sale = salesMap[`${i.store_id}:${i.ml_id}`] || { qtd: 0, ultima: null };
+      return { ...i, vendas_periodo: sale.qtd, ultimo_dia_venda: sale.ultima };
+    });
+
+    if (modo === 'parado') {
+      // Só quem não vendeu nada no período
+      rows = rows.filter(i => i.vendas_periodo === 0);
+    }
+
+    // Ordena: menos vendido primeiro, desempate por maior capital
+    rows.sort((a, b) => a.vendas_periodo - b.vendas_periodo || (b.price * b.estoque) - (a.price * a.estoque));
+    rows = rows.slice(0, 500);
 
     res.json({ items: rows, total: rows.length, days: daysN });
   } catch (e) {

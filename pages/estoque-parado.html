@@ -36,18 +36,22 @@
 
       <div class="filters-row" style="margin-bottom:16px">
         <select class="filter-select" id="daysFilter">
-          <option value="3">Sem venda nos últimos 3 dias</option>
-          <option value="5">Sem venda nos últimos 5 dias</option>
-          <option value="7">Sem venda nos últimos 7 dias</option>
-          <option value="10">Sem venda nos últimos 10 dias</option>
-          <option value="15">Sem venda nos últimos 15 dias</option>
-          <option value="21">Sem venda nos últimos 21 dias</option>
-          <option value="30" selected>Sem venda nos últimos 30 dias</option>
+          <option value="3">Últimos 3 dias</option>
+          <option value="5">Últimos 5 dias</option>
+          <option value="7">Últimos 7 dias</option>
+          <option value="10">Últimos 10 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="21">Últimos 21 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+        </select>
+        <select class="filter-select" id="modoFilter">
+          <option value="parado">Só sem venda (zero)</option>
+          <option value="todos">Todos — ordenar por menor venda</option>
         </select>
         <select class="filter-select" id="storeFilter">
           <option value="">Todas as lojas</option>
         </select>
-        <div class="search-box" style="flex:1;max-width:320px">
+        <div class="search-box" style="flex:1;max-width:280px">
           <i class="fas fa-search"></i>
           <input type="text" id="searchInput" placeholder="Buscar produto...">
         </div>
@@ -108,7 +112,8 @@ async function load() {
 
   document.getElementById('epList').innerHTML = '<div class="empty-state">Carregando...</div>';
 
-  const data = await DB.getEstoqueParado({ days, store_id }) || { items: [] };
+  const modo = document.getElementById('modoFilter').value;
+  const data = await DB.getEstoqueParado({ days, store_id, modo }) || { items: [] };
   if (data.error) {
     document.getElementById('epList').innerHTML = `<div class="empty-state" style="color:var(--red)">Erro: ${data.error}</div>`;
     return;
@@ -124,7 +129,10 @@ async function load() {
   document.getElementById('kpi-estoque').textContent = fmtN(totalEstoque);
   document.getElementById('kpi-valor').textContent   = fmt(totalValor);
   document.getElementById('kpi-nunca').textContent   = fmtN(nuncaVendeu);
-  document.getElementById('subtitulo').textContent   = `${rows.length} anúncio(s) ativos sem venda nos últimos ${days} dias`;
+  const modo = document.getElementById('modoFilter').value;
+  document.getElementById('subtitulo').textContent = modo === 'todos'
+    ? `${rows.length} anúncio(s) ordenados por menor venda nos últimos ${days} dias`
+    : `${rows.length} anúncio(s) ativos sem venda nos últimos ${days} dias`;
 
   const list = document.getElementById('epList');
   if (!rows.length) {
@@ -165,7 +173,7 @@ async function load() {
           </div>
           <div class="ep-col">
             <div class="lbl">Qtd Vendida</div>
-            <div class="val" style="color:var(--text-muted)">${fmtN(r.vendas_periodo)}</div>
+            <div class="val" style="color:${r.vendas_periodo > 0 ? 'var(--green)' : 'var(--text-muted)'}">${fmtN(r.vendas_periodo)}</div>
           </div>
         </div>
       </div>`;
@@ -183,6 +191,7 @@ async function initStores() {
 }
 
 document.getElementById('daysFilter').addEventListener('change', load);
+document.getElementById('modoFilter').addEventListener('change', load);
 document.getElementById('storeFilter').addEventListener('change', load);
 let t; document.getElementById('searchInput').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 300); });
 

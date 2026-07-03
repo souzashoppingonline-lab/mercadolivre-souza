@@ -788,8 +788,8 @@ async function tokenRefreshLoop() {
     for (const store of stores) {
       const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
 
-      // Só renova se faltar menos de 2h ou já expirado — evita renovar token saudável
-      if (expiresIn < 2 * 60 * 60 * 1000) {
+      // Renova se faltar menos de 3h ou já expirado — 3h dá margem para o loop de 30min
+      if (expiresIn < 3 * 60 * 60 * 1000) {
         try {
           await refreshToken(store.id);
           expiredStores.delete(store.id);

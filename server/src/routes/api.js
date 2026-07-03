@@ -388,25 +388,28 @@ router.get('/analises/estoque-parado', async (req, res) => {
       `SELECT i.ml_id, i.store_id,
               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
               i.title, i.price, i.available_quantity as estoque,
-              i.sold_quantity,
-              i.status, i.thumbnail, i.permalink,
-              COALESCE(SUM(CASE WHEN o.date_created >= CURRENT_DATE - ${daysN} THEN o.quantity ELSE 0 END), 0) as vendas_periodo,
-              MAX(o.date_created) as ultimo_dia_venda
+              i.sold_quantity, i.thumbnail, i.permalink,
+              0 AS vendas_periodo,
+              (
+                SELECT MAX(o.date_created)
+                FROM orders o
+                WHERE o.store_id = i.store_id
+                  AND o.status != 'cancelled'
+                  AND (o.item_id = i.ml_id OR o.title = i.title)
+              ) AS ultimo_dia_venda
        FROM items i
        LEFT JOIN stores s ON s.id = i.store_id
-       LEFT JOIN orders o ON o.store_id = i.store_id
-         AND o.status != 'cancelled'
-         AND (
-           o.item_id = i.ml_id
-           OR (i.parent_item_id IS NOT NULL AND o.item_id = i.parent_item_id)
-           OR o.title = i.title
-         )
        WHERE i.status = 'active'
          AND i.available_quantity > 0
          ${storeFilter}
-       GROUP BY i.ml_id, i.store_id, s.nickname, i.title, i.price, i.available_quantity, i.status, i.thumbnail, i.permalink
-       HAVING COALESCE(SUM(CASE WHEN o.date_created >= CURRENT_DATE - ${daysN} THEN o.quantity ELSE 0 END), 0) = 0
-       ORDER BY vendas_periodo ASC, (i.price * i.available_quantity) DESC
+         AND NOT EXISTS (
+           SELECT 1 FROM orders o
+           WHERE o.store_id = i.store_id
+             AND o.status != 'cancelled'
+             AND o.date_created >= CURRENT_DATE - ${daysN}
+             AND (o.item_id = i.ml_id OR o.title = i.title)
+         )
+       ORDER BY (i.price * i.available_quantity) DESC
        LIMIT 500`
     );
 

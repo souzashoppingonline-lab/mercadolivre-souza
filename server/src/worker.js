@@ -608,11 +608,11 @@ async function dailySync() {
   }
   console.log('[sync] reconciliação concluída');
 
-  // Preenche parent_item_id de itens que ainda não têm
+  // Preenche parent_item_id de itens que ainda não têm (roda em background após 5min para não competir com webhooks)
   const { rows: missing } = await pool.query(`SELECT COUNT(*) as c FROM items WHERE parent_item_id IS NULL`);
   if (Number(missing[0].c) > 0) {
-    console.log(`[sync] iniciando syncParentItems (${missing[0].c} itens sem parent_item_id)...`);
-    await syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message));
+    console.log(`[sync] agendando syncParentItems em 5min (${missing[0].c} itens sem parent_item_id)...`);
+    setTimeout(() => syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message)), 5 * 60 * 1000);
   }
 
   isSyncing = false;
@@ -657,10 +657,12 @@ async function syncParentItems() {
         console.log(`[syncParentItems] store=${store.id} lote ${i/20+1} ok`);
       } catch (e) {
         console.warn(`[syncParentItems] lote store=${store.id} i=${i}:`, e.message);
-        if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 60000));
+        if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 120000));
       }
+      // delay entre batches para não competir com webhooks
+      await new Promise(r => setTimeout(r, 20000));
     }
-    await new Promise(r => setTimeout(r, 15000));
+    await new Promise(r => setTimeout(r, 30000));
   }
 
   console.log(`[syncParentItems] concluído — ${updated}/${total} com parent_item_id`);

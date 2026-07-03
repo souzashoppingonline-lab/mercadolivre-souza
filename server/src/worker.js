@@ -749,6 +749,12 @@ async function tokenRefreshLoop() {
 scheduleDailySync();
 tokenRefreshLoop(); // inicia imediatamente e repete a cada 5h
 
+// Ao iniciar o worker, roda dailySync após 2 min para garantir visitas atualizadas
+setTimeout(() => {
+  console.log('[worker] sync inicial automático ao iniciar');
+  dailySync().catch(e => console.error('[worker] sync inicial erro:', e.message));
+}, 2 * 60 * 1000);
+
 // Listener para comandos manuais via Redis pub/sub (ex: trigger do painel)
 const cmdSub = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000 });
 cmdSub.subscribe('worker:cmd');

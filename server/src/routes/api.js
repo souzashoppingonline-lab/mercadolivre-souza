@@ -285,11 +285,10 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
               o.status, o.date_created, o.date_closed,
               o.raw_data,
               s.nickname as store_name, s.imposto_pct,
-              COALESCE(sc.cost, i.cost, 0) as custo_unitario
+              COALESCE(i.cost, 0) as custo_unitario
        FROM orders o
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN items i ON i.ml_id = o.item_id
-       LEFT JOIN sku_costs sc ON sc.sku = o.item_id
        WHERE o.ml_id = $1`,
       [req.params.id]
     );

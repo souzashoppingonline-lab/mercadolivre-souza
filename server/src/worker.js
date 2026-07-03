@@ -549,33 +549,6 @@ async function dailySync() {
 
       await new Promise(r => setTimeout(r, 2000));
 
-      // Visitas por anúncio (lotes de 50, 1 chamada por lote)
-      try {
-        const { rows: activeItems } = await pool.query(
-          `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' LIMIT 200`, [store.id]
-        );
-        const ids = activeItems.map(r => r.ml_id);
-        const yesterday = new Date(Date.now() - 24*60*60*1000).toISOString().slice(0,10);
-        for (let i = 0; i < ids.length; i += 50) {
-          const batch = ids.slice(i, i + 50);
-          const vData = await ml.getItemVisits(batch, yesterday, store.id);
-          const visits = vData?.data || [];
-          for (const v of visits) {
-            const total = (v.visits || []).reduce((s, d) => s + (d.total || 0), 0);
-            await pool.query(
-              `INSERT INTO item_visits (store_id, item_id, visits, date)
-               VALUES ($1,$2,$3,$4) ON CONFLICT (item_id, date) DO UPDATE SET visits=$3, collected_at=now()`,
-              [store.id, v.id, total, yesterday]
-            );
-          }
-          if (i + 50 < ids.length) await new Promise(r => setTimeout(r, 2000));
-        }
-      } catch (e) {
-        console.warn(`[sync] visitas store=${store.id}:`, e.message);
-      }
-
-      await new Promise(r => setTimeout(r, 2000));
-
       // Reconciliação de pedidos das últimas 25h
       const data = await ml.searchOrders(store.id, dateFrom);
       const orders = data.results || [];
@@ -709,6 +682,68 @@ async function syncReturns() {
   await tgNotify('tg_devolucoes', `✅ Sync retroativo de devoluções concluído\n📦 ${total} registros importados`).catch(()=>{});
 }
 
+// ── Sync Visitas — 02:00 diário, 30s entre lotes, cada loja com seu app ──────
+let isSyncingVisitas = false;
+
+async function syncVisitas() {
+  if (isSyncingVisitas) { console.warn('[visitas] já em execução — ignorando'); return; }
+  isSyncingVisitas = true;
+  console.log('[visitas] iniciando coleta de visitas...');
+
+  try {
+    const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores`);
+    const today     = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    for (const store of stores) {
+      try {
+        const { rows: activeItems } = await pool.query(
+          `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' LIMIT 300`, [store.id]
+        );
+        const ids = activeItems.map(r => r.ml_id);
+        console.log(`[visitas] store=${store.nickname} → ${ids.length} anúncios`);
+
+        for (let i = 0; i < ids.length; i += 50) {
+          const batch = ids.slice(i, i + 50);
+          try {
+            const vData = await ml.getItemVisits(batch, yesterday, store.id);
+            const visits = vData?.data || [];
+            for (const v of visits) {
+              const total = (v.visits || []).reduce((s, d) => s + (d.total || 0), 0);
+              await pool.query(
+                `INSERT INTO item_visits (store_id, item_id, visits, date)
+                 VALUES ($1,$2,$3,$4) ON CONFLICT (item_id, date) DO UPDATE SET visits=$3, collected_at=now()`,
+                [store.id, v.id, total, yesterday]
+              );
+            }
+            console.log(`[visitas] store=${store.nickname} lote ${i}–${i+batch.length}: ${visits.length} items`);
+          } catch (e) {
+            console.warn(`[visitas] store=${store.nickname} lote ${i}: ${e.message}`);
+          }
+          if (i + 50 < ids.length) await new Promise(r => setTimeout(r, 30000)); // 30s entre lotes
+        }
+        await new Promise(r => setTimeout(r, 30000)); // 30s entre lojas
+      } catch (e) {
+        console.warn(`[visitas] store=${store.nickname} erro:`, e.message);
+      }
+    }
+    console.log('[visitas] coleta concluída');
+  } finally {
+    isSyncingVisitas = false;
+    scheduleVisitasSync();
+  }
+}
+
+function scheduleVisitasSync() {
+  const now   = new Date();
+  const next2am = new Date(now);
+  next2am.setHours(2, 0, 0, 0);
+  if (next2am <= now) next2am.setDate(next2am.getDate() + 1);
+  const ms = next2am - now;
+  console.log(`[visitas] próxima coleta: ${next2am.toLocaleString('pt-BR')} (em ${Math.round(ms/60000)}min)`);
+  setTimeout(syncVisitas, ms);
+}
+
 function scheduleDailySync() {
   const now = new Date();
   const next3am = new Date(now);
@@ -750,6 +785,7 @@ async function tokenRefreshLoop() {
 }
 
 scheduleDailySync();
+scheduleVisitasSync();
 tokenRefreshLoop(); // inicia imediatamente e repete a cada 5h
 
 // Ao iniciar o worker, roda dailySync após 2 min SOMENTE fora do horário de pico (22h–08h)
@@ -780,6 +816,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'syncParentItems') {
       console.log('[worker] syncParentItems disparado manualmente');
       syncParentItems().catch(e => console.error('[worker] syncParentItems erro:', e.message));
+    }
+    if (cmd === 'syncVisitas') {
+      console.log('[worker] syncVisitas disparado manualmente');
+      syncVisitas().catch(e => console.error('[worker] syncVisitas erro:', e.message));
     }
   } catch {}
 });

@@ -971,16 +971,21 @@ router.get('/alertas/anuncios-problema', async (req, res) => {
 
 // ── Métricas do vendedor (reputação) ──────────────────────
 router.get('/metricas', async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT DISTINCT ON (store_id)
-            sm.store_id, s.nickname, sm.level_id, sm.power_seller_status,
-            sm.transactions_completed, sm.positive_ratings_pct,
-            sm.negative_ratings_pct, sm.neutral_ratings_pct, sm.collected_at
-     FROM store_metrics sm
-     JOIN stores s ON s.id = sm.store_id
-     ORDER BY store_id, collected_at DESC`
-  );
-  res.json({ metricas: rows });
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (store_id)
+              sm.store_id, s.nickname, sm.level_id, sm.power_seller_status,
+              sm.transactions_completed, sm.positive_ratings_pct,
+              sm.negative_ratings_pct, sm.neutral_ratings_pct, sm.collected_at
+       FROM store_metrics sm
+       JOIN stores s ON s.id = sm.store_id
+       ORDER BY store_id, collected_at DESC`
+    );
+    res.json({ metricas: rows });
+  } catch(e) {
+    console.error('[/metricas]', e.message);
+    res.status(500).json({ error: e.message, metricas: [] });
+  }
 });
 
 // ── Produtos performance ───────────────────────────────────

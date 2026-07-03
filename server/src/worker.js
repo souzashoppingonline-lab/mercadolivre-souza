@@ -221,29 +221,31 @@ async function handleQuestion({ resource, storeId }) {
 }
 
 async function handleMessage({ resource, storeId }) {
-  const packId = resource.split('/').filter(Boolean).pop();
-  const pack = await ml.getMessagesPack(packId, storeId);
-  const last = pack.messages?.[pack.messages.length - 1];
+  // resource = /messages/packs/{messageId} — o ID é da mensagem, não do pack
+  const msgId = resource.split('/').filter(Boolean).pop();
+  const msg = await ml.getMessage(msgId, storeId);
 
-  // /messages/packs/{id} retorna participants[] — buyer é quem não é o seller
-  const buyer = pack.participants?.find(p => p.role === 'buyer') || pack.buyer || null;
-  const buyerNickname = buyer?.user_id
-    ? (buyer.nickname || String(buyer.user_id))
-    : (pack.buyer?.nickname || null);
+  // msg.pack_id é o ID numérico do pack/conversa; fallback para o próprio msgId
+  const packId = msg.pack_id ? String(msg.pack_id) : msgId;
+  const buyerNickname = msg.from?.user_id
+    ? (msg.from.nickname || String(msg.from.user_id))
+    : null;
+  const text = msg.text || null;
+  const msgDate = msg.message_date?.received || msg.message_date?.created || null;
 
   await pool.query(
     `INSERT INTO messages (store_id, pack_id, buyer_nickname, last_message, unread, last_message_date, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6, now())
+     VALUES ($1,$2,$3,$4,1,$5, now())
      ON CONFLICT (pack_id) DO UPDATE SET
        last_message = EXCLUDED.last_message,
-       unread = EXCLUDED.unread,
+       unread = messages.unread + 1,
        last_message_date = EXCLUDED.last_message_date,
        updated_at = now()`,
-    [storeId, packId, buyerNickname, last?.text || null, pack.unread_count || 0, last?.message_date?.received]
+    [storeId, packId, buyerNickname, text, msgDate]
   );
 
   await publish('message_received', { pack_id: packId });
-  await tgNotify('tg_mensagens', `💬 <b>Nova mensagem de comprador</b>\n👤 ${buyerNickname||'—'}\n📝 ${(last?.text||'').slice(0,200)}`);
+  await tgNotify('tg_mensagens', `💬 <b>Nova mensagem de comprador</b>\n👤 ${buyerNickname||'—'}\n📝 ${(text||'').slice(0,200)}`);
 }
 
 async function handleItem({ resource, storeId }) {

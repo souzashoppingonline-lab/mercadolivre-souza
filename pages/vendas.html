@@ -373,8 +373,15 @@ async function openModal(orderId) {
   document.getElementById('modalOverlay').style.display = 'flex';
   document.getElementById('modalBody').innerHTML = '<div class="spinner" style="margin:40px auto"></div>';
 
-  const d = await DB.getPedidoDetalhes(orderId);
-  if (!d) { document.getElementById('modalBody').innerHTML = '<p style="color:var(--red)">Erro ao carregar detalhes.</p>'; return; }
+  let d;
+  try {
+    const res = await fetch(`${DB.BASE}/pedidos/${orderId}/detalhes`);
+    d = await res.json();
+    if (!res.ok || d.error) throw new Error(d.error || `HTTP ${res.status}`);
+  } catch(e) {
+    document.getElementById('modalBody').innerHTML = `<p style="color:var(--red);grid-column:1/-1">Erro: ${e.message}</p>`;
+    return;
+  }
 
   const raw = d.raw_data || {};
   const pmt = raw.payments?.[0] || {};

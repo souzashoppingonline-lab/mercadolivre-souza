@@ -277,27 +277,36 @@ router.patch('/custos/:sku', async (req, res) => {
 
 // ── Detalhes completos de um pedido ───────────────────────
 router.get('/pedidos/:id/detalhes', async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT o.*, s.nickname as store_name, s.imposto_pct,
-            COALESCE(sc.cost, i.cost, 0) as custo_unitario,
-            raw_data
-     FROM orders o
-     JOIN stores s ON s.id = o.store_id
-     LEFT JOIN items i ON i.ml_id = o.item_id
-     LEFT JOIN sku_costs sc ON sc.sku = o.item_id
-     WHERE o.ml_id = $1`,
-    [req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
-  const row = rows[0];
-  const fat = Number(row.total_amount) || 0;
-  const custo = Number(row.custo_unitario) * (Number(row.quantity) || 1);
-  const imposto = fat * (Number(row.imposto_pct) / 100);
-  const tarifa = Number(row.ml_fee) || 0;
-  const freteComp = Number(row.shipping_cost) || 0;
-  const freteVend = Number(row.shipping_seller_cost) || 0;
-  const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
-  res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
+  try {
+    const { rows } = await pool.query(
+      `SELECT o.ml_id, o.store_id, o.buyer_nickname, o.item_id, o.title,
+              o.total_amount, o.quantity, o.unit_price, o.ml_fee,
+              o.shipping_type, o.shipping_cost, o.shipping_seller_cost,
+              o.status, o.date_created, o.date_closed,
+              o.raw_data,
+              s.nickname as store_name, s.imposto_pct,
+              COALESCE(sc.cost, i.cost, 0) as custo_unitario
+       FROM orders o
+       JOIN stores s ON s.id = o.store_id
+       LEFT JOIN items i ON i.ml_id = o.item_id
+       LEFT JOIN sku_costs sc ON sc.sku = o.item_id
+       WHERE o.ml_id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: `Pedido ${req.params.id} não encontrado` });
+    const row = rows[0];
+    const fat = Number(row.total_amount) || 0;
+    const custo = Number(row.custo_unitario) * (Number(row.quantity) || 1);
+    const imposto = fat * (Number(row.imposto_pct) / 100);
+    const tarifa = Number(row.ml_fee) || 0;
+    const freteComp = Number(row.shipping_cost) || 0;
+    const freteVend = Number(row.shipping_seller_cost) || 0;
+    const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
+    res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
+  } catch(e) {
+    console.error('[/pedidos/:id/detalhes]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Perguntas / Mensagens ──────────────────────────────────

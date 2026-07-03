@@ -388,6 +388,7 @@ router.get('/analises/estoque-parado', async (req, res) => {
       `SELECT i.ml_id, i.store_id,
               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
               i.title, i.price, i.available_quantity as estoque,
+              i.sold_quantity,
               i.status, i.thumbnail, i.permalink,
               COALESCE(SUM(CASE WHEN o.date_created >= CURRENT_DATE - ${daysN} THEN o.quantity ELSE 0 END), 0) as vendas_periodo,
               MAX(o.date_created) as ultimo_dia_venda
@@ -397,8 +398,8 @@ router.get('/analises/estoque-parado', async (req, res) => {
          AND o.status != 'cancelled'
          AND (
            o.item_id = i.ml_id
-           OR o.item_id = i.parent_item_id
-           OR (o.item_id IS NULL AND o.title = i.title)
+           OR (i.parent_item_id IS NOT NULL AND o.item_id = i.parent_item_id)
+           OR o.title = i.title
          )
        WHERE i.status = 'active'
          AND i.available_quantity > 0

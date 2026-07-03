@@ -92,8 +92,10 @@
 const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
 
-function ultimaVendaBadge(ultimoDia, days) {
-  if (!ultimoDia) return '<span class="badge-nunca">⛔ Nunca vendeu</span>';
+function ultimaVendaBadge(ultimoDia, soldQty) {
+  // sold_quantity vem direto do ML — mais confiável que o join local
+  if (Number(soldQty) === 0) return '<span class="badge-nunca">⛔ Nunca vendeu</span>';
+  if (!ultimoDia) return '<span class="badge-parado">⚠️ Parado (sem data)</span>';
   const diffDias = Math.floor((Date.now() - new Date(ultimoDia)) / 86400000);
   if (diffDias > 15) return `<span class="badge-parado">⚠️ Parado ${diffDias}d</span>`;
   return `<span class="badge-recente">✅ ${diffDias}d atrás</span>`;
@@ -116,7 +118,7 @@ async function load() {
 
   const totalEstoque = rows.reduce((a, r) => a + Number(r.estoque || 0), 0);
   const totalValor   = rows.reduce((a, r) => a + Number(r.estoque || 0) * Number(r.price || 0), 0);
-  const nuncaVendeu  = rows.filter(r => !r.ultimo_dia_venda).length;
+  const nuncaVendeu  = rows.filter(r => Number(r.sold_quantity) === 0).length;
 
   document.getElementById('kpi-total').textContent   = fmtN(rows.length);
   document.getElementById('kpi-estoque').textContent = fmtN(totalEstoque);
@@ -145,7 +147,7 @@ async function load() {
           <div class="ep-title" title="${r.title}">${r.title}${link}</div>
           <div class="ep-sub">
             <span><i class="fas fa-store" style="margin-right:3px"></i>${r.loja}</span>
-            ${ultimaVendaBadge(r.ultimo_dia_venda, days)}
+            ${ultimaVendaBadge(r.ultimo_dia_venda, r.sold_quantity)}
           </div>
         </div>
         <div class="ep-cols">

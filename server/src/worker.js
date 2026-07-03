@@ -758,7 +758,9 @@ async function tokenRefreshLoop() {
     const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
     for (const store of stores) {
       const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
-      if (expiresIn < 6 * 60 * 60 * 1000) {
+
+      // Só renova se faltar menos de 2h ou já expirado — evita renovar token saudável
+      if (expiresIn < 2 * 60 * 60 * 1000) {
         try {
           await refreshToken(store.id);
           expiredStores.delete(store.id);
@@ -770,15 +772,18 @@ async function tokenRefreshLoop() {
           console.warn(`[token-loop] refresh falhou ${store.nickname}:`, e.message);
           await tgNotify('tg_token', `🔴 <b>Token expirado — refresh falhou!</b>\n🏪 Loja: ${store.nickname}\nAcesse: /auth/login?store_id=${store.id}\n❌ ${e.message}`);
         }
+        await new Promise(r => setTimeout(r, 15000)); // 15s entre lojas para não bater rate limit OAuth
       } else if (expiresIn < 48 * 60 * 60 * 1000) {
         const horas = Math.floor(expiresIn / 3600000);
-        await tgNotify('tg_token', `⚠️ <b>Token expira em ${horas}h</b>\n🏪 Loja: ${store.nickname}\nO sistema tentará renovar automaticamente.`);
+        if (horas % 6 === 0) { // alerta só 1x a cada 6h para não encher o Telegram
+          await tgNotify('tg_token', `⚠️ <b>Token expira em ${horas}h</b>\n🏪 Loja: ${store.nickname}`);
+        }
       }
     }
   } catch (e) {
     console.error('[token-loop] erro:', e.message);
   }
-  setTimeout(tokenRefreshLoop, 5 * 60 * 60 * 1000); // próxima checagem em 5h
+  setTimeout(tokenRefreshLoop, 60 * 60 * 1000); // verifica a cada 1h (antes era 5h)
 }
 
 scheduleDailySync();

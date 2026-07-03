@@ -181,7 +181,7 @@ function renderTable() {
       </td>
       <td class="tbl-price">${r.original_price > 0 ? R(r.original_price) : '—'}</td>
       <td class="tbl-price">${r.promo_price > 0 ? R(r.promo_price) : '—'}</td>
-      <td class="tbl-price discount">${r.discount_pct > 0 ? r.discount_pct.toFixed(0)+'%' : '—'}</td>
+      <td class="tbl-price discount">${Number(r.discount_pct) > 0 ? Number(r.discount_pct).toFixed(0)+'%' : '—'}</td>
       <td><span class="badge-promo ${statusCls}">${statusLabel}</span></td>
       <td style="font-size:11px;color:var(--text-muted)">${prevLabel}</td>
       <td class="time-col">${fmtHora(r.changed_at)}</td>

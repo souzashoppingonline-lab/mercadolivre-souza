@@ -372,7 +372,9 @@ router.post('/perguntas/:id/responder', express.json(), async (req, res) => {
 
 router.get('/mensagens', async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT pack_id, buyer_nickname, last_message, unread, last_message_date FROM messages ORDER BY last_message_date DESC LIMIT 50`
+    `SELECT m.pack_id, m.buyer_nickname, m.last_message, m.unread, m.last_message_date, s.nickname as loja
+     FROM messages m LEFT JOIN stores s ON s.id = m.store_id
+     ORDER BY m.last_message_date DESC LIMIT 50`
   );
   res.json({ conversations: rows, summary: {} });
 });

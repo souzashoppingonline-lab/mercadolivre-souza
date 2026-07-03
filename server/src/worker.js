@@ -189,29 +189,22 @@ async function handleItem({ resource, storeId }) {
   const itemId = resource.split('/').pop();
   const item = await rateLimitedCall(storeId, () => ml.getItem(itemId, storeId));
 
-  let visits = 0;
-  try {
-    const v = await rateLimitedCall(storeId, () => ml.getItemVisits(item.id, storeId));
-    visits = v?.total_visits || 0;
-  } catch (_) {}
-
   await pool.query(
     `INSERT INTO items
        (ml_id, store_id, title, price, available_quantity, sold_quantity,
-        status, category_id, visits, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+        status, category_id, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        title              = EXCLUDED.title,
        price              = EXCLUDED.price,
        available_quantity = EXCLUDED.available_quantity,
        sold_quantity      = EXCLUDED.sold_quantity,
        status             = EXCLUDED.status,
-       visits             = EXCLUDED.visits,
        updated_at         = now()`,
     [
       item.id, storeId, item.title, item.price,
       item.available_quantity, item.sold_quantity,
-      item.status, item.category_id, visits,
+      item.status, item.category_id,
     ]
   );
 
@@ -224,35 +217,6 @@ async function handleItem({ resource, storeId }) {
   }
   await publish('anuncio_updated', { id: item.id, status: item.status });
   await publish('kpis_updated', {});
-}
-
-// Sync visits for all active items of a store — called by scheduler
-async function syncItemVisits(storeId) {
-  const cacheKey = `visits_synced:${storeId}`;
-  if (await redis.get(cacheKey)) return;
-
-  try {
-    const { rows } = await pool.query(
-      `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' LIMIT 200`,
-      [BigInt(storeId)]
-    );
-    for (const row of rows) {
-      try {
-        const v = await rateLimitedCall(storeId, () => ml.getItemVisits(row.ml_id, storeId));
-        const visits = v?.total_visits || 0;
-        await pool.query(
-          `UPDATE items SET visits=$2, updated_at=now() WHERE ml_id=$1`,
-          [row.ml_id, visits]
-        );
-      } catch (err) {
-        console.warn(`[worker] getItemVisits ${row.ml_id}:`, err.message);
-      }
-    }
-    await redis.set(cacheKey, '1', 'EX', 3600);
-    console.log(`[worker] syncItemVisits ${storeId}: ${rows.length} items`);
-  } catch (err) {
-    console.error(`[worker] syncItemVisits ${storeId}:`, err.message);
-  }
 }
 
 const worker = new Worker(
@@ -291,21 +255,3 @@ worker.on('failed', (job, err) =>
 );
 
 console.log('[worker] listening for ml-webhooks jobs...');
-
-// Sync item visits for all stores every 2 hours
-async function runVisitsSync() {
-  try {
-    const { rows } = await pool.query(`SELECT id FROM stores WHERE access_token IS NOT NULL`);
-    for (const row of rows) {
-      await syncItemVisits(String(row.id));
-    }
-  } catch (err) {
-    console.error('[worker] runVisitsSync:', err.message);
-  }
-}
-
-// Run once on startup after 10s delay, then every 2 hours
-setTimeout(() => {
-  runVisitsSync();
-  setInterval(runVisitsSync, 2 * 60 * 60 * 1000);
-}, 10000);

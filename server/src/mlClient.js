@@ -28,6 +28,4 @@ module.exports = {
   getSellerReputation: (storeId) => get(`/users/${storeId}/seller_reputation`, storeId),
   // Returns full seller profile: nickname, seller_reputation, status, active_listings count
   getSellerInfo: (storeId) => get(`/users/${storeId}`, storeId),
-  // Returns { total_visits: N } for a single item
-  getItemVisits: (itemId, storeId) => get(`/items/${itemId}/visits`, storeId),
 };

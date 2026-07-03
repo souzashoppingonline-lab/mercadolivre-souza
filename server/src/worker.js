@@ -227,17 +227,20 @@ async function handleMessage({ resource, storeId }) {
 
   // msg.pack_id é o ID numérico do pack/conversa; fallback para o próprio msgId
   const packId = msg.pack_id ? String(msg.pack_id) : msgId;
-  const buyerNickname = msg.from?.user_id
-    ? (msg.from.nickname || String(msg.from.user_id))
-    : null;
+  // Tenta extrair nickname do comprador de diferentes campos da resposta ML
+  const buyerNickname = msg.from?.nickname
+    || msg.order?.buyer?.nickname
+    || (msg.from?.user_id ? String(msg.from.user_id) : null);
   const text = msg.text || null;
   const msgDate = msg.message_date?.received || msg.message_date?.created || null;
+  console.log(`[msg-debug] msgId=${msgId} packId=${packId} from=${JSON.stringify(msg.from)} buyer=${buyerNickname}`);
 
   await pool.query(
     `INSERT INTO messages (store_id, pack_id, buyer_nickname, last_message, unread, last_message_date, updated_at)
      VALUES ($1,$2,$3,$4,1,$5, now())
      ON CONFLICT (pack_id) DO UPDATE SET
        last_message = EXCLUDED.last_message,
+       buyer_nickname = COALESCE(EXCLUDED.buyer_nickname, messages.buyer_nickname),
        unread = messages.unread + 1,
        last_message_date = EXCLUDED.last_message_date,
        updated_at = now()`,

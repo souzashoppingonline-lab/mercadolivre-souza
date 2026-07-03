@@ -703,24 +703,21 @@ async function syncVisitas() {
         const ids = activeItems.map(r => r.ml_id);
         console.log(`[visitas] store=${store.nickname} → ${ids.length} anúncios`);
 
-        for (let i = 0; i < ids.length; i += 10) {
-          const batch = ids.slice(i, i + 10);
+        for (let i = 0; i < ids.length; i++) {
+          const itemId = ids[i];
           try {
-            const vData = await ml.getItemVisits(batch, yesterday, store.id);
-            const visits = vData?.data || [];
-            for (const v of visits) {
-              const total = (v.visits || []).reduce((s, d) => s + (d.total || 0), 0);
-              await pool.query(
-                `INSERT INTO item_visits (store_id, item_id, visits, date)
-                 VALUES ($1,$2,$3,$4) ON CONFLICT (item_id, date) DO UPDATE SET visits=$3, collected_at=now()`,
-                [store.id, v.id, total, yesterday]
-              );
-            }
-            console.log(`[visitas] store=${store.nickname} lote ${i}–${i+batch.length}: ${visits.length} items`);
+            const vData = await ml.getItemVisits(itemId, yesterday, store.id);
+            const total = (vData?.results || []).reduce((s, d) => s + (d.total || 0), 0);
+            await pool.query(
+              `INSERT INTO item_visits (store_id, item_id, visits, date)
+               VALUES ($1,$2,$3,$4) ON CONFLICT (item_id, date) DO UPDATE SET visits=$3, collected_at=now()`,
+              [store.id, itemId, total, yesterday]
+            );
+            if ((i + 1) % 10 === 0) console.log(`[visitas] store=${store.nickname} ${i+1}/${ids.length} itens`);
           } catch (e) {
-            console.warn(`[visitas] store=${store.nickname} lote ${i}: ${e.message}`);
+            console.warn(`[visitas] store=${store.nickname} item=${itemId}: ${e.message}`);
           }
-          if (i + 10 < ids.length) await new Promise(r => setTimeout(r, 3000)); // 3s entre lotes
+          await new Promise(r => setTimeout(r, 1500)); // 1.5s por item = 40 req/min
         }
         await new Promise(r => setTimeout(r, 5000)); // 5s entre lojas
       } catch (e) {

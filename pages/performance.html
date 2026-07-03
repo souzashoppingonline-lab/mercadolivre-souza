@@ -42,17 +42,6 @@
     <div id="app-topbar"></div>
     <div class="content-area">
 
-      <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <button id="visitasBtn" onclick="forceSyncVisitas()" style="
-          background:var(--surface);border:1px solid var(--border);color:var(--text);
-          padding:8px 16px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;
-          display:flex;align-items:center;gap:7px;
-        ">
-          <i class="fas fa-eye" id="visitasIcon"></i> Atualizar Visitas
-        </button>
-        <span id="visitasStatus" style="font-size:.78rem;color:var(--text-muted)">Coleta automática às 02:00. Use para forçar agora.</span>
-      </div>
-
       <div class="filters-row" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
         <select class="filter-select" id="daysFilter">
           <option value="1">Hoje</option>
@@ -69,6 +58,10 @@
           <button class="sort-btn"        data-sort="visitas"   onclick="setSort('visitas')">  <i class="fas fa-eye"></i> Mais Visitas</button>
           <button class="sort-btn"        data-sort="conversao" onclick="setSort('conversao')"><i class="fas fa-percent"></i> Maior Conversão</button>
         </div>
+        <button id="visitasBtn" onclick="forceSyncVisitas()" class="sort-btn" style="margin-left:auto;border-color:var(--primary);color:var(--primary)">
+          <i class="fas fa-eye" id="visitasIcon"></i> Atualizar Visitas
+        </button>
+        <span id="visitasStatus" style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">auto 02:00</span>
       </div>
 
       <div class="store-tabs" id="storeTabs">

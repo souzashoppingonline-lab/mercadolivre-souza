@@ -720,9 +720,9 @@ async function syncVisitas() {
           } catch (e) {
             console.warn(`[visitas] store=${store.nickname} lote ${i}: ${e.message}`);
           }
-          if (i + 50 < ids.length) await new Promise(r => setTimeout(r, 30000)); // 30s entre lotes
+          if (i + 50 < ids.length) await new Promise(r => setTimeout(r, 3000)); // 3s entre lotes (20 req/min por app)
         }
-        await new Promise(r => setTimeout(r, 30000)); // 30s entre lojas
+        await new Promise(r => setTimeout(r, 5000)); // 5s entre lojas
       } catch (e) {
         console.warn(`[visitas] store=${store.nickname} erro:`, e.message);
       }

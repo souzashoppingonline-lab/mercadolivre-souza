@@ -523,30 +523,6 @@ async function dailySync() {
   const dateFrom = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
 
   for (const store of stores) {
-    const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
-
-    // Token expirado — tenta refresh proativo antes de desistir
-    if (expiresIn < 6 * 60 * 60 * 1000) {
-      try {
-        await refreshToken(store.id);
-        expiredStores.delete(store.id);
-        console.log(`[sync] token renovado proativamente: ${store.nickname}`);
-        if (expiresIn < 0) {
-          await tgNotify('tg_token', `✅ <b>Token renovado automaticamente!</b>\n🏪 Loja: ${store.nickname}`);
-        }
-      } catch (e) {
-        console.warn(`[sync] refresh proativo falhou ${store.nickname}:`, e.message);
-        await tgNotify('tg_token', `🔴 <b>Token expirado — refresh falhou!</b>\n🏪 Loja: ${store.nickname}\nAcesse: /auth/login?store_id=${store.id}\n❌ ${e.message}`);
-        continue;
-      }
-    }
-
-    // Alerta 48h antes
-    if (expiresIn > 0 && expiresIn < 48 * 60 * 60 * 1000) {
-      const horas = Math.floor(expiresIn / 3600000);
-      await tgNotify('tg_token', `⚠️ <b>Token expira em ${horas}h</b>\n🏪 Loja: ${store.nickname}\nO sistema tentará renovar automaticamente às 03:00`);
-    }
-
     try {
       await new Promise(r => setTimeout(r, 8000));
 
@@ -740,7 +716,38 @@ function scheduleDailySync() {
   setTimeout(dailySync, ms);
 }
 
+// Verifica e renova tokens a cada 5 horas (independente do dailySync das 03:00)
+async function tokenRefreshLoop() {
+  console.log('[token-loop] verificando tokens...');
+  try {
+    const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
+    for (const store of stores) {
+      const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
+      if (expiresIn < 6 * 60 * 60 * 1000) {
+        try {
+          await refreshToken(store.id);
+          expiredStores.delete(store.id);
+          console.log(`[token-loop] token renovado: ${store.nickname}`);
+          if (expiresIn < 0) {
+            await tgNotify('tg_token', `✅ <b>Token renovado automaticamente!</b>\n🏪 Loja: ${store.nickname}`);
+          }
+        } catch (e) {
+          console.warn(`[token-loop] refresh falhou ${store.nickname}:`, e.message);
+          await tgNotify('tg_token', `🔴 <b>Token expirado — refresh falhou!</b>\n🏪 Loja: ${store.nickname}\nAcesse: /auth/login?store_id=${store.id}\n❌ ${e.message}`);
+        }
+      } else if (expiresIn < 48 * 60 * 60 * 1000) {
+        const horas = Math.floor(expiresIn / 3600000);
+        await tgNotify('tg_token', `⚠️ <b>Token expira em ${horas}h</b>\n🏪 Loja: ${store.nickname}\nO sistema tentará renovar automaticamente.`);
+      }
+    }
+  } catch (e) {
+    console.error('[token-loop] erro:', e.message);
+  }
+  setTimeout(tokenRefreshLoop, 5 * 60 * 60 * 1000); // próxima checagem em 5h
+}
+
 scheduleDailySync();
+tokenRefreshLoop(); // inicia imediatamente e repete a cada 5h
 
 // Listener para comandos manuais via Redis pub/sub (ex: trigger do painel)
 const cmdSub = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000 });

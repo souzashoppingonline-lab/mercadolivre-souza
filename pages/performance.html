@@ -58,10 +58,10 @@
           <button class="sort-btn"        data-sort="visitas"   onclick="setSort('visitas')">  <i class="fas fa-eye"></i> Mais Visitas</button>
           <button class="sort-btn"        data-sort="conversao" onclick="setSort('conversao')"><i class="fas fa-percent"></i> Maior Conversão</button>
         </div>
-        <button id="visitasBtn" onclick="showVisitasConfirm()" class="sort-btn" style="margin-left:auto;border-color:var(--primary);color:var(--primary)">
-          <i class="fas fa-eye" id="visitasIcon"></i> Atualizar Visitas
+        <button id="visitasBtn" onclick="showVisitasConfirm()" class="sort-btn" style="margin-left:auto;border-color:var(--primary);color:var(--primary)" title="⚠️ Use fora do horário de pico (22h–08h) para evitar 429">
+          <i class="fas fa-eye" id="visitasIcon"></i> Atualizar Visitas ⚠️
         </button>
-        <span id="visitasStatus" style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">auto 02:00</span>
+        <span id="visitasStatus" style="font-size:.75rem;color:#ff9f0a;white-space:nowrap;font-weight:600">Use após 22h</span>
       </div>
 
       <div class="store-tabs" id="storeTabs">
@@ -82,21 +82,18 @@
   align-items:center;justify-content:center;
 ">
   <div style="
-    background:var(--card-bg);border:1px solid var(--border);border-radius:14px;
-    padding:28px 32px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.5);
+    background:#1c1c1e;border:1px solid #3a3a3c;border-radius:14px;
+    padding:24px 28px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.8);
   ">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-      <i class="fas fa-exclamation-triangle" style="color:#ff9f0a;font-size:1.6rem"></i>
-      <h3 style="margin:0;font-size:1.05rem">Atenção antes de atualizar visitas</h3>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <i class="fas fa-exclamation-triangle" style="color:#ff9f0a;font-size:1.4rem"></i>
+      <h3 style="margin:0;font-size:1rem;color:#fff">Atenção — Rate Limit</h3>
     </div>
-    <div style="font-size:.85rem;color:var(--text-muted);line-height:1.7;margin-bottom:20px">
-      Este processo faz <b>1 requisição a cada 3 segundos</b> para a API do Mercado Livre,
-      usando o limite de <b>60 req/min por loja</b>.<br><br>
-      <span style="color:#ff9f0a;font-weight:600">⚠️ Usar durante horário de pico (08h–22h)</span>
-      pode causar erros <b>429 (Rate Limit)</b> e atrasar o processamento
-      de pedidos e webhooks em tempo real.<br><br>
-      <span style="color:var(--green)">✓ Horário ideal: após 22h ou antes das 08h.</span><br>
-      <span style="color:var(--text-muted)">O sistema já faz isso automaticamente às 02:00.</span>
+    <div style="font-size:.84rem;color:#ebebf5cc;line-height:1.65;margin-bottom:18px">
+      ⚠️ Usar durante <b style="color:#ff9f0a">horário de pico (08h–22h)</b> pode causar
+      <b>erro 429</b> e atrasar pedidos em tempo real.<br><br>
+      ✓ <b style="color:#30d158">Ideal: após 22h ou antes das 08h.</b><br>
+      O sistema já roda automaticamente às 02:00.
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button onclick="document.getElementById('visitasModal').style.display='none'"

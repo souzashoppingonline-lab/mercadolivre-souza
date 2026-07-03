@@ -12,8 +12,8 @@ function getQueue(storeId) {
     _queues.set(key, new Queue(`ml-webhooks-${key}`, {
       connection,
       defaultJobOptions: {
-        attempts: 5,
-        backoff: { type: 'exponential', delay: 10000 },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
         removeOnComplete: 100,
         removeOnFail: 200,
       },

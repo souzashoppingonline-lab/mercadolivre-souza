@@ -286,6 +286,30 @@ async function handleItem({ resource, storeId }) {
       `INSERT INTO item_changes (item_id, store_id, changes, changed_at) VALUES ($1,$2,$3,now())`,
       [item.id, storeId, JSON.stringify(changes)]
     );
+
+    // Telegram: notificar alterações relevantes (ignora só stock quando já notificou estoque crítico)
+    const fmtR$ = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    const now   = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const fieldEmoji = { title: '✏️ Título', price: '💲 Preço', stock: '📦 Estoque', status: '🔄 Status', criado: '🆕 Novo anúncio' };
+
+    const lines = changes.map(c => {
+      const label = fieldEmoji[c.field] || c.field;
+      if (c.field === 'criado')  return `${label}: anúncio publicado (status: ${c.new})`;
+      if (c.field === 'price')   return `${label}: ${fmtR$(c.old)} → <b>${fmtR$(c.new)}</b>`;
+      if (c.field === 'stock')   return `${label}: ${c.old} → <b>${c.new}</b> un.`;
+      if (c.field === 'status')  return `${label}: ${c.old} → <b>${c.new}</b>`;
+      if (c.field === 'title')   return `${label}:\n  <i>${(c.old||'').slice(0,80)}</i>\n  → <b>${(c.new||'').slice(0,80)}</b>`;
+      return `${label}: ${c.old} → ${c.new}`;
+    });
+
+    const msg =
+      `🏷️ <b>Alteração de Anúncio</b>\n` +
+      `🏪 Loja: <b>${lojaNome}</b>\n` +
+      `📋 ${(item.title||'').slice(0, 100)}\n` +
+      `🕐 ${now}\n\n` +
+      lines.join('\n');
+
+    await tgNotify('tg_anuncios', msg);
   }
 
   await publish('anuncio_updated', { id: item.id, status: item.status });

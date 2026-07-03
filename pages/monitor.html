@@ -163,6 +163,13 @@
               </div>
               <label class="toggle-wrap"><input type="checkbox" id="tg_devolucoes"><span class="toggle-slider"></span></label>
             </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-tag" style="color:var(--yellow);margin-right:6px"></i>Alterações de anúncios</span>
+                <span class="notif-desc">Preço, estoque, status ou título alterado no ML</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_anuncios"><span class="toggle-slider"></span></label>
+            </div>
           </div>
 
           <div class="notif-section-title" style="margin-top:14px"><i class="fas fa-exclamation-triangle" style="color:var(--red)"></i> Alertas Críticos — Sistema</div>
@@ -294,7 +301,7 @@ async function loadTelegramConfig() {
   if (d.bot_token) document.getElementById('tgToken').placeholder = d.bot_token;
 
   // Load notification prefs
-  const keys = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_token','tg_fila','tg_429','tg_infra'];
+  const keys = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra'];
   keys.forEach(k => {
     const el = document.getElementById(k);
     if (el && d[k] !== undefined) el.checked = d[k] === true || d[k] === 'true';
@@ -314,6 +321,7 @@ async function saveNotifConfig() {
     tg_mensagens:  document.getElementById('tg_mensagens').checked,
     tg_promocoes:  document.getElementById('tg_promocoes').checked,
     tg_devolucoes: document.getElementById('tg_devolucoes').checked,
+    tg_anuncios:   document.getElementById('tg_anuncios').checked,
     tg_token:      document.getElementById('tg_token').checked,
     tg_fila:       document.getElementById('tg_fila').checked,
     tg_429:        document.getElementById('tg_429').checked,

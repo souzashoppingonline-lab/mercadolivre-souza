@@ -75,38 +75,37 @@
         </div>
       </div>
 
-      <!-- Logs em tempo real -->
+      <!-- Worker Logs — journalctl em tempo real via SSE -->
       <div class="card">
-        <div class="card-header" style="justify-content:space-between">
-          <h3><i class="fas fa-terminal" style="margin-right:8px;color:var(--primary)"></i>Logs BullMQ — Tempo Real</h3>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span id="logCount" style="font-size:.75rem;color:var(--text-muted)"></span>
-            <label style="font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+        <div class="card-header" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <h3><i class="fas fa-terminal" style="margin-right:8px;color:var(--primary)"></i>Worker Logs — Tempo Real</h3>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span id="sseStatus" style="font-size:.75rem;display:flex;align-items:center;gap:5px;color:var(--text-muted)">
+              <i class="fas fa-circle" style="font-size:7px"></i> desconectado
+            </span>
+            <label style="font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" id="autoScrollChk" checked> Auto-scroll
             </label>
-            <button onclick="clearLogs()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.75rem">
+            <label style="font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" id="wrapChk"> Quebrar linha
+            </label>
+            <input type="text" id="logSearch" placeholder="Filtrar..." style="
+              background:var(--surface);border:1px solid var(--border);color:var(--text);
+              padding:4px 10px;border-radius:6px;font-size:.78rem;width:140px
+            " oninput="filterLines()">
+            <button onclick="clearConsole()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.75rem">
               <i class="fas fa-trash"></i> Limpar
             </button>
-            <select id="filterStatus" onchange="renderLogs()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:.78rem">
-              <option value="">Todos</option>
-              <option value="processed">Processados</option>
-              <option value="failed">Falhas</option>
-              <option value="pending">Pendentes</option>
-            </select>
+            <span id="lineCount" style="font-size:.72rem;color:var(--text-muted)"></span>
           </div>
         </div>
-        <div id="logConsole" style="
-          background:#0d1117;
-          border-radius:8px;
-          padding:12px;
-          height:420px;
-          overflow-y:auto;
-          font-family:'Courier New',monospace;
-          font-size:.78rem;
-          line-height:1.6;
-          border:1px solid var(--border);
+        <div id="workerConsole" style="
+          background:#0d1117;border-radius:8px;padding:10px 14px;
+          height:500px;overflow-y:auto;
+          font-family:'Courier New',monospace;font-size:.76rem;line-height:1.55;
+          border:1px solid var(--border);white-space:nowrap;
         ">
-          <div style="color:#666">Aguardando logs...</div>
+          <span style="color:#555">Conectando ao worker...</span>
         </div>
       </div>
     </div>
@@ -159,83 +158,86 @@ async function runSync() {
   btn.disabled = false;
   load();
 }
-// ── Logs ───────────────────────────────────────────────────────
-let allLogs = [];
+// ── Worker Logs via SSE ────────────────────────────────────────
+const MAX_LINES = 500;
+let allLines = [];
+let sseSource = null;
 
-const topicIcon = {
-  orders:        '🛒', questions: '❓', messages: '💬',
-  items:         '📦', items_prices: '💲', post_purchase: '↩️',
-  dailySync:     '🔄', syncReturns: '🔄', syncParentItems: '🔄',
-  webhook_received: '📡', default: '⚙️'
-};
-
-function logColor(status) {
-  if (status === 'processed') return '#3fb950';
-  if (status === 'failed')    return '#f85149';
-  if (status === 'pending')   return '#d29922';
-  return '#8b949e';
+function lineColor(text) {
+  if (/erro|error|fail|exception/i.test(text))  return '#f85149';
+  if (/warn|429|rate.limit/i.test(text))         return '#d29922';
+  if (/✅|renovad|success|ok\b|processad/i.test(text)) return '#3fb950';
+  if (/\[sync\]|\[worker\]|\[token/i.test(text)) return '#58a6ff';
+  return '#c9d1d9';
 }
 
-function renderLogs() {
-  const filter = document.getElementById('filterStatus').value;
-  const console_ = document.getElementById('logConsole');
-  const rows = filter ? allLogs.filter(l => l.status === filter) : allLogs;
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
-  document.getElementById('logCount').textContent = `${rows.length} entradas`;
+function renderConsole() {
+  const search = (document.getElementById('logSearch')?.value || '').toLowerCase();
+  const wrap   = document.getElementById('wrapChk')?.checked;
+  const con    = document.getElementById('workerConsole');
+  const lines  = search ? allLines.filter(l => l.toLowerCase().includes(search)) : allLines;
 
-  if (!rows.length) {
-    console_.innerHTML = '<span style="color:#666">Nenhum log encontrado.</span>';
-    return;
-  }
+  document.getElementById('lineCount').textContent = `${lines.length} linhas`;
+  con.style.whiteSpace = wrap ? 'pre-wrap' : 'nowrap';
 
-  console_.innerHTML = rows.map(l => {
-    const ts   = new Date(l.received_at).toLocaleTimeString('pt-BR');
-    const date = new Date(l.received_at).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'});
-    const dur  = l.processed_at ? ((new Date(l.processed_at) - new Date(l.received_at)) / 1000).toFixed(2) + 's' : '';
-    const icon = topicIcon[l.topic] || topicIcon.default;
-    const col  = logColor(l.status);
-    const err  = l.error ? `<span style="color:#f85149;margin-left:8px">✖ ${l.error.substring(0,80)}</span>` : '';
-    const res  = l.resource ? `<span style="color:#8b949e"> ${l.resource.substring(0,50)}</span>` : '';
-    return `<div style="border-bottom:1px solid #21262d;padding:3px 0">
-      <span style="color:#484f58">${date} ${ts}</span>
-      <span style="color:#58a6ff;margin:0 6px">${icon} ${l.topic}</span>
-      ${res}
-      <span style="color:${col};margin-left:6px;font-weight:700">[${l.status}]</span>
-      ${dur ? `<span style="color:#484f58;margin-left:6px">${dur}</span>` : ''}
-      ${l.store_id ? `<span style="color:#6e7681;margin-left:6px">loja:${l.store_id}</span>` : ''}
-      ${err}
-    </div>`;
-  }).join('');
+  con.innerHTML = lines.map(l =>
+    `<div style="color:${lineColor(l)};padding:1px 0">${escHtml(l)}</div>`
+  ).join('');
 
-  if (document.getElementById('autoScrollChk').checked) {
-    console_.scrollTop = console_.scrollHeight;
+  if (document.getElementById('autoScrollChk')?.checked) {
+    con.scrollTop = con.scrollHeight;
   }
 }
 
-async function loadLogs() {
-  const data = await DB.getScheduleLogs(200) || { logs: [] };
-  allLogs = data.logs || [];
-  renderLogs();
+function pushLine(line) {
+  allLines.push(line);
+  if (allLines.length > MAX_LINES) allLines.shift();
+  renderConsole();
 }
 
-function clearLogs() {
-  allLogs = [];
-  document.getElementById('logConsole').innerHTML = '<span style="color:#666">Log limpo — aguardando novos eventos...</span>';
-  document.getElementById('logCount').textContent = '';
+function clearConsole() {
+  allLines = [];
+  document.getElementById('workerConsole').innerHTML = '<span style="color:#555">Log limpo — aguardando novas linhas...</span>';
+  document.getElementById('lineCount').textContent = '';
 }
 
-// Atualiza logs quando chega webhook novo
-WS.on('webhook_received', () => loadLogs());
+function filterLines() { renderConsole(); }
+
+function connectSSE() {
+  if (sseSource) sseSource.close();
+  const base = DB.BASE.replace('/api', '');
+  sseSource = new EventSource(`${base}/api/schedule/worker-logs`);
+
+  const statusEl = document.getElementById('sseStatus');
+
+  sseSource.onopen = () => {
+    statusEl.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:7px"></i> conectado';
+  };
+
+  sseSource.onmessage = (e) => {
+    try { pushLine(JSON.parse(e.data)); } catch { pushLine(e.data); }
+  };
+
+  sseSource.onerror = () => {
+    statusEl.innerHTML = '<i class="fas fa-circle" style="color:var(--red);font-size:7px"></i> reconectando...';
+    // O EventSource reconecta automaticamente
+  };
+}
+
+document.getElementById('wrapChk')?.addEventListener('change', renderConsole);
+
 WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
-  loadLogs();
 });
 
 load();
-loadLogs();
 setInterval(load, 15000);
-setInterval(loadLogs, 5000); // refresh logs a cada 5s
+connectSSE();
 </script>
 </body>
 </html>

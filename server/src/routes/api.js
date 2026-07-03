@@ -2,6 +2,7 @@
 // Every handler reads from PostgreSQL (optionally cached in Redis).
 // None of these handlers call the Mercado Livre API.
 const express = require('express');
+const { spawn } = require('child_process');
 const pool = require('../db/pool');
 const redis = require('../db/redis');
 
@@ -561,6 +562,39 @@ router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   if (!['dailySync','syncReturns','syncParentItems'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
   await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
+});
+
+// Stream journalctl em tempo real via SSE
+router.get('/schedule/worker-logs', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // desativa buffer do nginx
+  res.flushHeaders();
+
+  // Envia últimas 80 linhas + segue em tempo real
+  const proc = spawn('journalctl', ['-u', 'ml-worker-novo', '-f', '-n', '80', '--no-pager', '--output=cat']);
+
+  const send = (line) => {
+    const clean = line.replace(/\x1B\[[0-9;]*m/g, '').trim(); // remove cores ANSI
+    if (clean) res.write(`data: ${JSON.stringify(clean)}\n\n`);
+  };
+
+  let buf = '';
+  proc.stdout.on('data', chunk => {
+    buf += chunk.toString();
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    lines.forEach(send);
+  });
+  proc.stderr.on('data', chunk => send(chunk.toString()));
+
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 20000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    proc.kill();
+  });
 });
 
 router.get('/schedule/logs', async (req, res) => {

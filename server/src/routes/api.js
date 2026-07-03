@@ -563,6 +563,19 @@ router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });
 
+router.get('/schedule/logs', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const { rows } = await pool.query(
+      `SELECT id, topic, resource, store_id, status, error, received_at, processed_at
+       FROM webhook_logs
+       ORDER BY received_at DESC
+       LIMIT $1`, [limit]
+    );
+    res.json({ logs: rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Promoções ──────────────────────────────────────────────
 router.get('/promocoes', async (req, res) => {
   try {

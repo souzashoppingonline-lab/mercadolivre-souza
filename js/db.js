@@ -145,4 +145,5 @@ const DB = {
   // ── Schedule ───────────────────────────────────────────────
   async getScheduleJobs()         { return this._get('/schedule/jobs'); },
   async triggerJob(name)          { return this._post(`/schedule/jobs/${name}/trigger`, {}); },
+  async getScheduleLogs(limit=100){ return this._get('/schedule/logs', { limit }); },
 };

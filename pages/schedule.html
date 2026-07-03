@@ -59,7 +59,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" style="margin-bottom:16px">
         <div class="card-header">
           <h3>Jobs Agendados (BullMQ)</h3>
         </div>
@@ -72,6 +72,41 @@
             <thead><tr><th>Job</th><th>Frequência</th><th>Última Execução</th><th>Duração</th><th>Status</th><th>Ação</th></tr></thead>
             <tbody id="jobsTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Logs em tempo real -->
+      <div class="card">
+        <div class="card-header" style="justify-content:space-between">
+          <h3><i class="fas fa-terminal" style="margin-right:8px;color:var(--primary)"></i>Logs BullMQ — Tempo Real</h3>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="logCount" style="font-size:.75rem;color:var(--text-muted)"></span>
+            <label style="font-size:.78rem;color:var(--text-muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="autoScrollChk" checked> Auto-scroll
+            </label>
+            <button onclick="clearLogs()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.75rem">
+              <i class="fas fa-trash"></i> Limpar
+            </button>
+            <select id="filterStatus" onchange="renderLogs()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:.78rem">
+              <option value="">Todos</option>
+              <option value="processed">Processados</option>
+              <option value="failed">Falhas</option>
+              <option value="pending">Pendentes</option>
+            </select>
+          </div>
+        </div>
+        <div id="logConsole" style="
+          background:#0d1117;
+          border-radius:8px;
+          padding:12px;
+          height:420px;
+          overflow-y:auto;
+          font-family:'Courier New',monospace;
+          font-size:.78rem;
+          line-height:1.6;
+          border:1px solid var(--border);
+        ">
+          <div style="color:#666">Aguardando logs...</div>
         </div>
       </div>
     </div>
@@ -124,9 +159,83 @@ async function runSync() {
   btn.disabled = false;
   load();
 }
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+// ── Logs ───────────────────────────────────────────────────────
+let allLogs = [];
+
+const topicIcon = {
+  orders:        '🛒', questions: '❓', messages: '💬',
+  items:         '📦', items_prices: '💲', post_purchase: '↩️',
+  dailySync:     '🔄', syncReturns: '🔄', syncParentItems: '🔄',
+  webhook_received: '📡', default: '⚙️'
+};
+
+function logColor(status) {
+  if (status === 'processed') return '#3fb950';
+  if (status === 'failed')    return '#f85149';
+  if (status === 'pending')   return '#d29922';
+  return '#8b949e';
+}
+
+function renderLogs() {
+  const filter = document.getElementById('filterStatus').value;
+  const console_ = document.getElementById('logConsole');
+  const rows = filter ? allLogs.filter(l => l.status === filter) : allLogs;
+
+  document.getElementById('logCount').textContent = `${rows.length} entradas`;
+
+  if (!rows.length) {
+    console_.innerHTML = '<span style="color:#666">Nenhum log encontrado.</span>';
+    return;
+  }
+
+  console_.innerHTML = rows.map(l => {
+    const ts   = new Date(l.received_at).toLocaleTimeString('pt-BR');
+    const date = new Date(l.received_at).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'});
+    const dur  = l.processed_at ? ((new Date(l.processed_at) - new Date(l.received_at)) / 1000).toFixed(2) + 's' : '';
+    const icon = topicIcon[l.topic] || topicIcon.default;
+    const col  = logColor(l.status);
+    const err  = l.error ? `<span style="color:#f85149;margin-left:8px">✖ ${l.error.substring(0,80)}</span>` : '';
+    const res  = l.resource ? `<span style="color:#8b949e"> ${l.resource.substring(0,50)}</span>` : '';
+    return `<div style="border-bottom:1px solid #21262d;padding:3px 0">
+      <span style="color:#484f58">${date} ${ts}</span>
+      <span style="color:#58a6ff;margin:0 6px">${icon} ${l.topic}</span>
+      ${res}
+      <span style="color:${col};margin-left:6px;font-weight:700">[${l.status}]</span>
+      ${dur ? `<span style="color:#484f58;margin-left:6px">${dur}</span>` : ''}
+      ${l.store_id ? `<span style="color:#6e7681;margin-left:6px">loja:${l.store_id}</span>` : ''}
+      ${err}
+    </div>`;
+  }).join('');
+
+  if (document.getElementById('autoScrollChk').checked) {
+    console_.scrollTop = console_.scrollHeight;
+  }
+}
+
+async function loadLogs() {
+  const data = await DB.getScheduleLogs(200) || { logs: [] };
+  allLogs = data.logs || [];
+  renderLogs();
+}
+
+function clearLogs() {
+  allLogs = [];
+  document.getElementById('logConsole').innerHTML = '<span style="color:#666">Log limpo — aguardando novos eventos...</span>';
+  document.getElementById('logCount').textContent = '';
+}
+
+// Atualiza logs quando chega webhook novo
+WS.on('webhook_received', () => loadLogs());
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+  loadLogs();
+});
+
 load();
+loadLogs();
 setInterval(load, 15000);
+setInterval(loadLogs, 5000); // refresh logs a cada 5s
 </script>
 </body>
 </html>

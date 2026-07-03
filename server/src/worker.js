@@ -715,9 +715,14 @@ async function syncVisitas() {
             );
             if ((i + 1) % 10 === 0) console.log(`[visitas] store=${store.nickname} ${i+1}/${ids.length} itens`);
           } catch (e) {
-            console.warn(`[visitas] store=${store.nickname} item=${itemId}: ${e.message}`);
+            if (e.message?.includes('429') || e.message?.includes('rate limit')) {
+              console.warn(`[visitas] 429 detectado — pausando 60s para liberar rate limit`);
+              await new Promise(r => setTimeout(r, 60000));
+            } else {
+              console.warn(`[visitas] store=${store.nickname} item=${itemId}: ${e.message}`);
+            }
           }
-          await new Promise(r => setTimeout(r, 1500)); // 1.5s por item = 40 req/min
+          await new Promise(r => setTimeout(r, 4000)); // 4s por item = 15 req/min, deixa folga para webhooks
         }
         await new Promise(r => setTimeout(r, 5000)); // 5s entre lojas
       } catch (e) {

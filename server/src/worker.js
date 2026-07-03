@@ -515,9 +515,11 @@ startWorkers().catch(err => {
 });
 
 // ── Daily reconciliation at 03:00 ────────────────────────────
-// Fetches orders from the last 25h per store and upserts any that were missed
-// by the webhook pipeline. 1 API call per store = safe against 429.
+let isSyncing = false;
+
 async function dailySync() {
+  if (isSyncing) { console.warn('[sync] já em execução — ignorando chamada duplicada'); return; }
+  isSyncing = true;
   console.log('[sync] iniciando reconciliação diária...');
   const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
   const dateFrom = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
@@ -600,6 +602,7 @@ async function dailySync() {
     await syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message));
   }
 
+  isSyncing = false;
   scheduleDailySync();
 }
 
@@ -749,10 +752,15 @@ async function tokenRefreshLoop() {
 scheduleDailySync();
 tokenRefreshLoop(); // inicia imediatamente e repete a cada 5h
 
-// Ao iniciar o worker, roda dailySync após 2 min para garantir visitas atualizadas
+// Ao iniciar o worker, roda dailySync após 2 min SOMENTE fora do horário de pico (22h–08h)
 setTimeout(() => {
-  console.log('[worker] sync inicial automático ao iniciar');
-  dailySync().catch(e => console.error('[worker] sync inicial erro:', e.message));
+  const h = new Date().getHours();
+  if (h >= 22 || h < 8) {
+    console.log('[worker] sync inicial automático (fora do pico)');
+    dailySync().catch(e => console.error('[worker] sync inicial erro:', e.message));
+  } else {
+    console.log(`[worker] sync inicial ignorado — horário de pico (${h}h). Aguardando 03:00.`);
+  }
 }, 2 * 60 * 1000);
 
 // Listener para comandos manuais via Redis pub/sub (ex: trigger do painel)

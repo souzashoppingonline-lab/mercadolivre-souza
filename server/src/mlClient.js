@@ -90,7 +90,7 @@ module.exports = {
   getOrder:            (id, storeId)     => get(`/orders/${id}`, storeId),
   getQuestion:         (id, storeId)     => get(`/questions/${id}`, storeId),
   answerQuestion:      (questionId, text, storeId) => post('/answers', storeId, { question_id: questionId, text }),
-  getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}`, storeId),
+  getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}/sellers/${storeId}`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
   getShipment:         (shipmentId, storeId) => get(`/shipments/${shipmentId}`, storeId),
   searchClaims:        (storeId, offset=0) => get(`/post-purchase/claims/search?seller_id=${storeId}&limit=50&offset=${offset}`, storeId),

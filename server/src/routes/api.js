@@ -1060,6 +1060,43 @@ router.get('/produtos/performance', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+router.get('/vendas/por-loja', async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 90);
+
+    const { rows: current } = await pool.query(`
+      SELECT
+        o.store_id,
+        s.nickname as loja,
+        DATE(o.date_created AT TIME ZONE 'America/Sao_Paulo') as dia,
+        COUNT(*) as pedidos,
+        SUM(o.total_amount) as receita
+      FROM orders o
+      JOIN stores s ON s.id = o.store_id
+      WHERE o.date_created >= CURRENT_DATE - ${days}
+        AND o.status != 'cancelled'
+      GROUP BY 1, 2, 3
+      ORDER BY 3, 2
+    `);
+
+    const { rows: previous } = await pool.query(`
+      SELECT
+        o.store_id,
+        DATE(o.date_created AT TIME ZONE 'America/Sao_Paulo') as dia,
+        SUM(o.total_amount) as receita
+      FROM orders o
+      WHERE o.date_created >= CURRENT_DATE - ${days} - 30
+        AND o.date_created < CURRENT_DATE - 30
+        AND o.status != 'cancelled'
+      GROUP BY 1, 2
+    `);
+
+    res.json({ current, previous });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/anuncios/:id/visitas', async (req, res) => {
   const { days = 30 } = req.query;
   const { rows } = await pool.query(

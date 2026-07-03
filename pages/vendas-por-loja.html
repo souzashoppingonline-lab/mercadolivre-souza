@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendas por Loja — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>window.PAGE_TITLE='Vendas por Loja'; window.ACTIVE_NAV='vendas-por-loja.html';</script>
+  <style>
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .kpi-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+    .kpi-card.yellow { border-left: 3px solid var(--primary); }
+    .kpi-card.blue   { border-left: 3px solid #3B82F6; }
+    .kpi-card.green  { border-left: 3px solid var(--green); }
+    .kpi-card.purple { border-left: 3px solid #9b59b6; }
+    .kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .kpi-value { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .kpi-sub   { font-size: 12px; color: var(--text-muted); }
+    .filters-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .filters-row select { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
+    .chart-wrap { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 18px; }
+    .chart-wrap h3 { margin: 0 0 16px; font-size: 14px; font-weight: 700; }
+    .chart-canvas-wrap { position: relative; height: 280px; }
+    .best-row { background: rgba(255,230,0,.05); border-color: rgba(255,230,0,.3) !important; }
+    .best-row td:first-child::after { content: ' ★'; color: var(--primary); font-size: 11px; }
+    .var-pos { color: var(--green); font-weight: 600; }
+    .var-neg { color: var(--red); font-weight: 600; }
+    .var-neu { color: var(--text-muted); }
+    th { white-space: nowrap; font-size: 11px; }
+    .tbl-num { text-align: right; white-space: nowrap; }
+    .skeleton { background: linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; height: 26px; width: 80%; }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="filters-row">
+        <select id="filterDays">
+          <option value="7">Últimos 7 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+        </select>
+        <button class="btn-primary" id="btnLoad"><i class="fas fa-sync-alt"></i> Atualizar</button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card yellow">
+          <div class="kpi-label"><i class="fas fa-dollar-sign"></i> Receita Total</div>
+          <div class="kpi-value" id="kpiReceita"><div class="skeleton"></div></div>
+          <div class="kpi-sub" id="kpiReceitaSub">no período</div>
+        </div>
+        <div class="kpi-card blue">
+          <div class="kpi-label"><i class="fas fa-shopping-bag"></i> Total Pedidos</div>
+          <div class="kpi-value" id="kpiPedidos"><div class="skeleton"></div></div>
+          <div class="kpi-sub">pedidos aprovados</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label"><i class="fas fa-trophy"></i> Melhor Loja</div>
+          <div class="kpi-value" id="kpiBestLoja" style="font-size:16px"><div class="skeleton"></div></div>
+          <div class="kpi-sub" id="kpiBestReceita"></div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-label"><i class="fas fa-tag"></i> Ticket Médio</div>
+          <div class="kpi-value" id="kpiTicket"><div class="skeleton"></div></div>
+          <div class="kpi-sub">por pedido</div>
+        </div>
+      </div>
+
+      <div class="chart-wrap">
+        <h3><i class="fas fa-chart-bar" style="color:var(--primary)"></i> Receita Diária por Loja</h3>
+        <div class="chart-canvas-wrap">
+          <canvas id="chartDiario"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Resumo por Loja</h3>
+          <span id="tableSubtitle" style="font-size:12px;color:var(--text-muted)"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="lojaTable">
+            <thead>
+              <tr>
+                <th>Loja</th>
+                <th class="tbl-num">Receita</th>
+                <th class="tbl-num">Pedidos</th>
+                <th class="tbl-num">Ticket Médio</th>
+                <th class="tbl-num">vs Mês Anterior</th>
+              </tr>
+            </thead>
+            <tbody id="lojaTbody">
+              <tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+const LOJA_COLORS = ['#FFE600', '#3B82F6', '#30d158', '#f97316', '#a855f7', '#ec4899'];
+
+let chartInstance = null;
+
+function buildPrevMap(previous) {
+  // key: storeId + '|' + dia (YYYY-MM-DD), value: receita
+  const m = {};
+  for (const r of previous) {
+    // shift: previous row dia + 30 days = corresponding current period day
+    const prevDate = new Date(r.dia + 'T00:00:00');
+    prevDate.setDate(prevDate.getDate() + 30);
+    const shiftedDia = prevDate.toISOString().slice(0, 10);
+    m[r.store_id + '|' + shiftedDia] = Number(r.receita);
+  }
+  return m;
+}
+
+async function load() {
+  const days = parseInt(document.getElementById('filterDays').value) || 30;
+  const tbody = document.getElementById('lojaTbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
+
+  // Reset KPIs
+  ['kpiReceita','kpiPedidos','kpiBestLoja','kpiTicket'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="skeleton"></div>';
+  });
+
+  const data = await DB.getVendasPorLoja({ days });
+  if (!data || data.error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color:var(--red)">${data?.error || 'Erro ao carregar dados'}</td></tr>`;
+    return;
+  }
+
+  const { current, previous } = data;
+  const prevMap = buildPrevMap(previous || []);
+
+  // Aggregate by store
+  const storeMap = {};
+  for (const r of current) {
+    const sid = r.store_id;
+    if (!storeMap[sid]) storeMap[sid] = { loja: r.loja, pedidos: 0, receita: 0 };
+    storeMap[sid].pedidos += Number(r.pedidos);
+    storeMap[sid].receita += Number(r.receita);
+  }
+
+  // Aggregate previous by store (absolute, not shifted)
+  const prevStoreMap = {};
+  for (const r of previous || []) {
+    const sid = r.store_id;
+    prevStoreMap[sid] = (prevStoreMap[sid] || 0) + Number(r.receita);
+  }
+
+  const stores = Object.entries(storeMap).sort((a, b) => b[1].receita - a[1].receita);
+  const totalReceita = stores.reduce((s, [,v]) => s + v.receita, 0);
+  const totalPedidos = stores.reduce((s, [,v]) => s + v.pedidos, 0);
+  const ticketMedio  = totalPedidos > 0 ? totalReceita / totalPedidos : 0;
+  const bestStore    = stores[0];
+
+  set('kpiReceita', R(totalReceita));
+  set('kpiReceitaSub', `em ${days} dias`);
+  set('kpiPedidos', totalPedidos);
+  set('kpiBestLoja', bestStore ? bestStore[1].loja : '—');
+  set('kpiBestReceita', bestStore ? R(bestStore[1].receita) : '');
+  set('kpiTicket', R(ticketMedio));
+
+  // --- Chart ---
+  // Build sorted days list
+  const daysSet = new Set(current.map(r => r.dia));
+  const sortedDays = [...daysSet].sort();
+  const storeIds   = stores.map(([sid]) => sid);
+  const storeNames = stores.map(([,v]) => v.loja);
+
+  // daily receita per store
+  const datasets = storeIds.map((sid, idx) => {
+    const storeRows = current.filter(r => r.store_id == sid);
+    const dayRecMap = {};
+    for (const r of storeRows) dayRecMap[r.dia] = Number(r.receita);
+    return {
+      label: storeNames[idx],
+      data: sortedDays.map(d => dayRecMap[d] || 0),
+      backgroundColor: LOJA_COLORS[idx % LOJA_COLORS.length],
+      borderRadius: 4,
+      borderSkipped: false,
+    };
+  });
+
+  // Format labels as DD/MM
+  const chartLabels = sortedDays.map(d => {
+    const [y, m, day] = d.split('-');
+    return `${day}/${m}`;
+  });
+
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById('chartDiario').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: chartLabels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#ccc', font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            title(items) {
+              const idx = items[0].dataIndex;
+              const dia = sortedDays[idx];
+              const [y, m, d] = dia.split('-');
+              return `${d}/${m}/${y}`;
+            },
+            label(item) {
+              const idx = item.dataIndex;
+              const dia = sortedDays[idx];
+              const sid = storeIds[item.datasetIndex];
+              const rec = item.raw;
+              const prevRec = prevMap[sid + '|' + dia] || 0;
+              const nome = storeNames[item.datasetIndex];
+              const lines = [`${nome}: ${R(rec)}`];
+              if (prevRec > 0) {
+                const mesAnterior = (() => {
+                  const [y, mo, d] = dia.split('-');
+                  const dt = new Date(Number(y), Number(mo) - 2, Number(d));
+                  return `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}`;
+                })();
+                const pct = ((rec - prevRec) / prevRec) * 100;
+                const arrow = pct >= 0 ? '▲' : '▼';
+                lines.push(`Mesmo dia (${mesAnterior}): ${R(prevRec)}`);
+                lines.push(`${arrow} ${Math.abs(pct).toFixed(1)}%`);
+              }
+              return lines;
+            }
+          },
+          backgroundColor: '#1a1d24',
+          borderColor: '#444',
+          borderWidth: 1,
+          titleColor: '#fff',
+          bodyColor: '#ccc',
+          padding: 10,
+        }
+      },
+      scales: {
+        x: {
+          stacked: false,
+          ticks: { color: '#888', maxTicksLimit: 15 },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        },
+        y: {
+          ticks: {
+            color: '#888',
+            callback: v => 'R$ ' + new Intl.NumberFormat('pt-BR').format(v)
+          },
+          grid: { color: 'rgba(255,255,255,0.06)' }
+        }
+      }
+    }
+  });
+
+  // --- Table ---
+  set('tableSubtitle', `${stores.length} lojas · últimos ${days} dias`);
+  tbody.innerHTML = stores.length ? stores.map(([sid, v], idx) => {
+    const prevReceita = prevStoreMap[sid] || 0;
+    let varHtml = '<span class="var-neu">—</span>';
+    if (prevReceita > 0) {
+      const pct = ((v.receita - prevReceita) / prevReceita) * 100;
+      const cls = pct >= 0 ? 'var-pos' : 'var-neg';
+      const arrow = pct >= 0 ? '▲' : '▼';
+      varHtml = `<span class="${cls}">${arrow} ${Math.abs(pct).toFixed(1)}%</span>`;
+    }
+    const ticket = v.pedidos > 0 ? v.receita / v.pedidos : 0;
+    const bestClass = idx === 0 ? 'best-row' : '';
+    const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${LOJA_COLORS[idx % LOJA_COLORS.length]};margin-right:6px"></span>`;
+    return `<tr class="${bestClass}">
+      <td>${dot}${v.loja}</td>
+      <td class="tbl-num">${R(v.receita)}</td>
+      <td class="tbl-num">${v.pedidos}</td>
+      <td class="tbl-num">${R(ticket)}</td>
+      <td class="tbl-num">${varHtml}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" class="empty-state">Nenhuma venda encontrada</td></tr>';
+}
+
+document.getElementById('btnLoad').addEventListener('click', load);
+document.getElementById('filterDays').addEventListener('change', load);
+WS.on('order_updated', load);
+
+load();
+</script>
+</body>
+</html>

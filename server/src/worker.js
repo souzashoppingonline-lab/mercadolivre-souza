@@ -722,7 +722,7 @@ async function syncVisitas() {
               console.warn(`[visitas] store=${store.nickname} item=${itemId}: ${e.message}`);
             }
           }
-          await new Promise(r => setTimeout(r, 4000)); // 4s por item = 15 req/min, deixa folga para webhooks
+          await new Promise(r => setTimeout(r, 20000)); // 20s por item = 3 req/min, usa janela de 50min
         }
         await new Promise(r => setTimeout(r, 5000)); // 5s entre lojas
       } catch (e) {

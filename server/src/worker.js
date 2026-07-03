@@ -804,7 +804,16 @@ async function tokenRefreshLoop() {
     for (const store of stores) {
       const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
 
-      // Renova se faltar menos de 3h ou já expirado — 3h dá margem para o loop de 30min
+      // Se token está válido com mais de 3h, limpa do Set de expirados (reconexão manual)
+      if (expiresIn >= 3 * 60 * 60 * 1000) {
+        if (expiredStores.has(store.id)) {
+          expiredStores.delete(store.id);
+          console.log(`[token-loop] token válido após reconexão: ${store.nickname}`);
+        }
+        continue;
+      }
+
+      // Renova se faltar menos de 3h ou já expirado — 3h dá margem para o loop de 1h
       if (expiresIn < 3 * 60 * 60 * 1000) {
         try {
           await refreshToken(store.id);

@@ -703,8 +703,8 @@ async function syncVisitas() {
         const ids = activeItems.map(r => r.ml_id);
         console.log(`[visitas] store=${store.nickname} → ${ids.length} anúncios`);
 
-        for (let i = 0; i < ids.length; i += 50) {
-          const batch = ids.slice(i, i + 50);
+        for (let i = 0; i < ids.length; i += 10) {
+          const batch = ids.slice(i, i + 10);
           try {
             const vData = await ml.getItemVisits(batch, yesterday, store.id);
             const visits = vData?.data || [];
@@ -720,7 +720,7 @@ async function syncVisitas() {
           } catch (e) {
             console.warn(`[visitas] store=${store.nickname} lote ${i}: ${e.message}`);
           }
-          if (i + 50 < ids.length) await new Promise(r => setTimeout(r, 3000)); // 3s entre lotes (20 req/min por app)
+          if (i + 10 < ids.length) await new Promise(r => setTimeout(r, 3000)); // 3s entre lotes
         }
         await new Promise(r => setTimeout(r, 5000)); // 5s entre lojas
       } catch (e) {

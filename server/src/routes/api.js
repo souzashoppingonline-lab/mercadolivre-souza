@@ -389,27 +389,22 @@ router.get('/analises/estoque-parado', async (req, res) => {
               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
               i.title, i.price, i.available_quantity as estoque,
               i.status, i.thumbnail, i.permalink,
-              COALESCE(SUM(o.quantity), 0) as vendas_periodo,
-              MAX(o.date_created) as ultima_venda
+              COALESCE(SUM(CASE WHEN o.date_created >= CURRENT_DATE - ${daysN} THEN o.quantity ELSE 0 END), 0) as vendas_periodo,
+              MAX(o.date_created) as ultimo_dia_venda
        FROM items i
        LEFT JOIN stores s ON s.id = i.store_id
        LEFT JOIN orders o ON (o.item_id = i.ml_id OR o.item_id = i.parent_item_id)
          AND o.status != 'cancelled'
-         AND o.date_created >= CURRENT_DATE - ${daysN}
        WHERE i.status = 'active'
          AND i.available_quantity > 0
          ${storeFilter}
        GROUP BY i.ml_id, i.store_id, s.nickname, i.title, i.price, i.available_quantity, i.status, i.thumbnail, i.permalink
-       HAVING COALESCE(SUM(o.quantity), 0) = 0
-       ORDER BY i.available_quantity DESC, i.price DESC
+       HAVING COALESCE(SUM(CASE WHEN o.date_created >= CURRENT_DATE - ${daysN} THEN o.quantity ELSE 0 END), 0) = 0
+       ORDER BY vendas_periodo ASC, (i.price * i.available_quantity) DESC
        LIMIT 500`
     );
 
-    res.json({
-      items: rows,
-      total: rows.length,
-      days: daysN,
-    });
+    res.json({ items: rows, total: rows.length, days: daysN });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

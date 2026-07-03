@@ -15,12 +15,16 @@
     .ep-thumb-ph { width:48px; height:48px; border-radius:8px; background:var(--surface); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:1.1rem; }
     .ep-info { flex:1; min-width:0; }
     .ep-title { font-size:.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .ep-sub { font-size:.72rem; color:var(--text-muted); margin-top:2px; }
-    .ep-cols { display:flex; gap:20px; flex-shrink:0; }
-    .ep-col { text-align:center; min-width:70px; }
-    .ep-col .lbl { font-size:.62rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+    .ep-sub { font-size:.72rem; color:var(--text-muted); margin-top:2px; display:flex; align-items:center; gap:8px; }
+    .ep-cols { display:flex; gap:16px; flex-shrink:0; align-items:center; }
+    .ep-col { text-align:center; min-width:72px; }
+    .ep-col .lbl { font-size:.6rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
     .ep-col .val { font-size:.88rem; font-weight:700; margin-top:2px; }
-    .dias-badge { padding:3px 8px; border-radius:12px; font-size:.72rem; font-weight:700; background:rgba(255,59,48,.15); color:#ff3b30; }
+    /* badges de situação */
+    .badge-nunca    { padding:3px 9px; border-radius:10px; font-size:.7rem; font-weight:700; background:rgba(255,59,48,.15); color:#ff3b30; }
+    .badge-parado   { padding:3px 9px; border-radius:10px; font-size:.7rem; font-weight:700; background:rgba(255,159,10,.15); color:#ff9f0a; }
+    .badge-recente  { padding:3px 9px; border-radius:10px; font-size:.7rem; font-weight:700; background:rgba(48,209,88,.15); color:#30d158; }
+    @media(max-width:700px){ .ep-cols{ flex-wrap:wrap; gap:8px; } .ep-col{ min-width:60px; } }
   </style>
 </head>
 <body>
@@ -33,6 +37,7 @@
       <div class="filters-row" style="margin-bottom:16px">
         <select class="filter-select" id="daysFilter">
           <option value="3">Sem venda nos últimos 3 dias</option>
+          <option value="5">Sem venda nos últimos 5 dias</option>
           <option value="7">Sem venda nos últimos 7 dias</option>
           <option value="10">Sem venda nos últimos 10 dias</option>
           <option value="15">Sem venda nos últimos 15 dias</option>
@@ -58,12 +63,12 @@
           <div class="value" id="kpi-estoque" style="color:var(--orange)">—</div>
         </div>
         <div class="stat-card">
-          <div class="label">Valor em estoque</div>
+          <div class="label">Capital parado</div>
           <div class="value" id="kpi-valor">—</div>
         </div>
         <div class="stat-card">
-          <div class="label">Preço médio</div>
-          <div class="value" id="kpi-preco-medio" style="color:var(--text-muted)">—</div>
+          <div class="label">Nunca venderam</div>
+          <div class="value" id="kpi-nunca" style="color:#ff3b30">—</div>
         </div>
       </div>
 
@@ -87,6 +92,13 @@
 const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
 
+function ultimaVendaBadge(ultimoDia, days) {
+  if (!ultimoDia) return '<span class="badge-nunca">⛔ Nunca vendeu</span>';
+  const diffDias = Math.floor((Date.now() - new Date(ultimoDia)) / 86400000);
+  if (diffDias > 15) return `<span class="badge-parado">⚠️ Parado ${diffDias}d</span>`;
+  return `<span class="badge-recente">✅ ${diffDias}d atrás</span>`;
+}
+
 async function load() {
   const days     = document.getElementById('daysFilter').value;
   const store_id = document.getElementById('storeFilter').value;
@@ -95,19 +107,22 @@ async function load() {
   document.getElementById('epList').innerHTML = '<div class="empty-state">Carregando...</div>';
 
   const data = await DB.getEstoqueParado({ days, store_id }) || { items: [] };
+  if (data.error) {
+    document.getElementById('epList').innerHTML = `<div class="empty-state" style="color:var(--red)">Erro: ${data.error}</div>`;
+    return;
+  }
   let rows = data.items || [];
-
   if (search) rows = rows.filter(r => r.title?.toLowerCase().includes(search));
 
   const totalEstoque = rows.reduce((a, r) => a + Number(r.estoque || 0), 0);
   const totalValor   = rows.reduce((a, r) => a + Number(r.estoque || 0) * Number(r.price || 0), 0);
-  const precoMedio   = rows.length ? rows.reduce((a, r) => a + Number(r.price || 0), 0) / rows.length : 0;
+  const nuncaVendeu  = rows.filter(r => !r.ultimo_dia_venda).length;
 
-  document.getElementById('kpi-total').textContent       = fmtN(rows.length);
-  document.getElementById('kpi-estoque').textContent     = fmtN(totalEstoque);
-  document.getElementById('kpi-valor').textContent       = fmt(totalValor);
-  document.getElementById('kpi-preco-medio').textContent = fmt(precoMedio);
-  document.getElementById('subtitulo').textContent       = `${rows.length} anúncio(s) ativos sem nenhuma venda nos últimos ${days} dias`;
+  document.getElementById('kpi-total').textContent   = fmtN(rows.length);
+  document.getElementById('kpi-estoque').textContent = fmtN(totalEstoque);
+  document.getElementById('kpi-valor').textContent   = fmt(totalValor);
+  document.getElementById('kpi-nunca').textContent   = fmtN(nuncaVendeu);
+  document.getElementById('subtitulo').textContent   = `${rows.length} anúncio(s) ativos sem venda nos últimos ${days} dias`;
 
   const list = document.getElementById('epList');
   if (!rows.length) {
@@ -116,6 +131,7 @@ async function load() {
   }
 
   list.innerHTML = rows.map(r => {
+    const capital = Number(r.estoque) * Number(r.price);
     const thumb = r.thumbnail
       ? `<img class="ep-thumb" src="${r.thumbnail}" onerror="this.outerHTML='<div class=\\'ep-thumb-ph\\'><i class=\\'fas fa-tag\\'></i></div>'">`
       : `<div class="ep-thumb-ph"><i class="fas fa-tag"></i></div>`;
@@ -127,7 +143,10 @@ async function load() {
         ${thumb}
         <div class="ep-info">
           <div class="ep-title" title="${r.title}">${r.title}${link}</div>
-          <div class="ep-sub"><i class="fas fa-store" style="margin-right:4px"></i>${r.loja}</div>
+          <div class="ep-sub">
+            <span><i class="fas fa-store" style="margin-right:3px"></i>${r.loja}</span>
+            ${ultimaVendaBadge(r.ultimo_dia_venda, days)}
+          </div>
         </div>
         <div class="ep-cols">
           <div class="ep-col">
@@ -140,11 +159,11 @@ async function load() {
           </div>
           <div class="ep-col">
             <div class="lbl">Capital</div>
-            <div class="val" style="color:var(--red)">${fmt(Number(r.estoque) * Number(r.price))}</div>
+            <div class="val" style="color:var(--red)">${fmt(capital)}</div>
           </div>
           <div class="ep-col">
-            <div class="lbl">Última venda</div>
-            <div class="val" style="font-size:.75rem">${r.ultima_venda ? new Date(r.ultima_venda).toLocaleDateString('pt-BR') : '<span class="dias-badge">Nunca</span>'}</div>
+            <div class="lbl">Qtd Vendida</div>
+            <div class="val" style="color:var(--text-muted)">${fmtN(r.vendas_periodo)}</div>
           </div>
         </div>
       </div>`;

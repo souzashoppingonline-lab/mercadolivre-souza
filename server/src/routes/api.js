@@ -384,34 +384,58 @@ router.get('/analises/estoque-parado', async (req, res) => {
     const storeFilter = store_id ? `AND i.store_id = ${BigInt(store_id)}` : '';
     const daysN = Number(days) || 30;
 
-    const { rows } = await pool.query(
+    // IDs que venderam no período (item_id direto OU via raw_data)
+    const { rows: soldRows } = await pool.query(
+      `SELECT DISTINCT
+         COALESCE(item_id,
+           raw_data->'order_items'->0->'item'->>'id'
+         ) as iid,
+         store_id
+       FROM orders
+       WHERE status != 'cancelled'
+         AND date_created >= CURRENT_DATE - ${daysN}
+         AND store_id IS NOT NULL`
+    );
+    const soldSet = new Set(soldRows.map(r => `${r.store_id}:${r.iid}`).filter(k => !k.endsWith(':null')));
+
+    // Última venda de cada item (histórico completo)
+    const { rows: lastSaleRows } = await pool.query(
+      `SELECT
+         COALESCE(item_id, raw_data->'order_items'->0->'item'->>'id') as iid,
+         store_id,
+         MAX(date_created) as ultima
+       FROM orders
+       WHERE status != 'cancelled'
+       GROUP BY 1,2`
+    );
+    const lastSaleMap = {};
+    lastSaleRows.forEach(r => { if (r.iid) lastSaleMap[`${r.store_id}:${r.iid}`] = r.ultima; });
+
+    const { rows: itemRows } = await pool.query(
       `SELECT i.ml_id, i.store_id,
               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
               i.title, i.price, i.available_quantity as estoque,
-              i.sold_quantity, i.thumbnail, i.permalink,
-              0 AS vendas_periodo,
-              (
-                SELECT MAX(o.date_created)
-                FROM orders o
-                WHERE o.store_id = i.store_id
-                  AND o.status != 'cancelled'
-                  AND (o.item_id = i.ml_id OR o.title = i.title)
-              ) AS ultimo_dia_venda
+              i.sold_quantity, i.thumbnail, i.permalink
        FROM items i
        LEFT JOIN stores s ON s.id = i.store_id
        WHERE i.status = 'active'
          AND i.available_quantity > 0
          ${storeFilter}
-         AND NOT EXISTS (
-           SELECT 1 FROM orders o
-           WHERE o.store_id = i.store_id
-             AND o.status != 'cancelled'
-             AND o.date_created >= CURRENT_DATE - ${daysN}
-             AND (o.item_id = i.ml_id OR o.title = i.title)
-         )
        ORDER BY (i.price * i.available_quantity) DESC
-       LIMIT 500`
+       LIMIT 2000`
     );
+
+    // Filtra: item não vendeu no período (nem pelo ml_id nem pelo parent_item_id)
+    const rows = itemRows
+      .filter(i => {
+        const k1 = `${i.store_id}:${i.ml_id}`;
+        return !soldSet.has(k1);
+      })
+      .map(i => {
+        const k = `${i.store_id}:${i.ml_id}`;
+        return { ...i, ultimo_dia_venda: lastSaleMap[k] || null };
+      })
+      .slice(0, 500);
 
     res.json({ items: rows, total: rows.length, days: daysN });
   } catch (e) {

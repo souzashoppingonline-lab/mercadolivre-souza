@@ -8,6 +8,28 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Curva ABC'; window.ACTIVE_NAV='curvaABC.html';</script>
+  <style>
+    .curva-card { cursor:pointer; transition:transform .15s,box-shadow .15s; }
+    .curva-card:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,.3); }
+    .curva-card.active { outline:2px solid var(--primary); }
+    .badge-A { background:rgba(48,209,88,.15); color:#30d158; padding:2px 8px; border-radius:8px; font-weight:700; font-size:.75rem; }
+    .badge-B { background:rgba(255,159,10,.15); color:#ff9f0a; padding:2px 8px; border-radius:8px; font-weight:700; font-size:.75rem; }
+    .badge-C { background:rgba(255,59,48,.15); color:#ff3b30; padding:2px 8px; border-radius:8px; font-weight:700; font-size:.75rem; }
+    .filters-row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .filters-row select, .filters-row input { background:var(--card-bg); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; font-size:.875rem; }
+    .filters-row input { flex:1; min-width:180px; }
+    .btn-export { margin-left:auto; background:var(--primary); color:#fff; border:none; padding:7px 16px; border-radius:6px; cursor:pointer; font-size:.875rem; display:flex; align-items:center; gap:6px; }
+    .btn-export:hover { opacity:.85; }
+    .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px; }
+    @media(max-width:640px){ .kpi-grid{ grid-template-columns:1fr; } }
+    .kpi-card { background:var(--card-bg); border-radius:12px; padding:18px 20px; border:1px solid var(--border); }
+    .kpi-card .kpi-label { font-size:.8rem; color:var(--text-muted); margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+    .kpi-card .kpi-value { font-size:1.5rem; font-weight:700; }
+    .kpi-card .kpi-sub { font-size:.8rem; color:var(--text-muted); margin-top:4px; }
+    .kpi-card.curva-a { border-left:4px solid #30d158; }
+    .kpi-card.curva-b { border-left:4px solid #ff9f0a; }
+    .kpi-card.curva-c { border-left:4px solid #ff3b30; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,93 +37,172 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card" style="border-left:4px solid var(--green)">
-          <div class="label">Classe A</div>
-          <div class="value" id="classA" style="color:var(--green)">—</div>
-          <div class="sub">~80% da receita</div>
+
+      <!-- Filtros -->
+      <div class="filters-row">
+        <select id="filterPeriod">
+          <option value="hoje">Hoje</option>
+          <option value="ontem">Ontem</option>
+          <option value="7">7 dias</option>
+          <option value="15">15 dias</option>
+          <option value="30" selected>30 dias</option>
+        </select>
+        <select id="filterLoja">
+          <option value="">Todas as lojas</option>
+        </select>
+        <input type="text" id="filterBusca" placeholder="Buscar anúncio...">
+        <button class="btn-export" onclick="exportCSV()"><i class="fas fa-download"></i> Exportar CSV</button>
+      </div>
+
+      <!-- KPI Cards clicáveis -->
+      <div class="kpi-grid">
+        <div class="kpi-card curva-card curva-a" id="cardA" onclick="toggleCurvaFilter('A')">
+          <div class="kpi-label"><span class="badge-A">A</span> Curva A &mdash; 80% do faturamento</div>
+          <div class="kpi-value" id="cardAValue" style="color:#30d158">—</div>
+          <div class="kpi-sub" id="cardAFat">R$ —</div>
         </div>
-        <div class="stat-card" style="border-left:4px solid var(--primary)">
-          <div class="label">Classe B</div>
-          <div class="value" id="classB" style="color:var(--primary)">—</div>
-          <div class="sub">~15% da receita</div>
+        <div class="kpi-card curva-card curva-b" id="cardB" onclick="toggleCurvaFilter('B')">
+          <div class="kpi-label"><span class="badge-B">B</span> Curva B &mdash; próximos 15%</div>
+          <div class="kpi-value" id="cardBValue" style="color:#ff9f0a">—</div>
+          <div class="kpi-sub" id="cardBFat">R$ —</div>
         </div>
-        <div class="stat-card" style="border-left:4px solid var(--red)">
-          <div class="label">Classe C</div>
-          <div class="value" id="classC" style="color:var(--red)">—</div>
-          <div class="sub">~5% da receita</div>
+        <div class="kpi-card curva-card curva-c" id="cardC" onclick="toggleCurvaFilter('C')">
+          <div class="kpi-label"><span class="badge-C">C</span> Curva C &mdash; últimos 5%</div>
+          <div class="kpi-value" id="cardCValue" style="color:#ff3b30">—</div>
+          <div class="kpi-sub" id="cardCFat">R$ —</div>
         </div>
       </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-header"><h3>Curva ABC — Pareto</h3></div>
-        <canvas id="abcChart" height="80"></canvas>
-      </div>
+
+      <!-- Tabela -->
       <div class="card">
-        <div class="card-header">
-          <h3>Produtos Classificados</h3>
-          <select class="filter-select" id="classFilter">
-            <option value="">Todas</option>
-            <option value="A">Classe A</option>
-            <option value="B">Classe B</option>
-            <option value="C">Classe C</option>
-          </select>
-        </div>
+        <div class="card-header"><h3>Produtos Classificados</h3><span id="rowCount" style="font-size:.8rem;color:var(--text-muted)"></span></div>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>#</th><th>Produto</th><th>Receita</th><th>% Acumulado</th><th>Classe</th></tr></thead>
-            <tbody id="abcTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+            <thead>
+              <tr>
+                <th>Curva</th>
+                <th>Loja</th>
+                <th>MLB</th>
+                <th>Anúncio</th>
+                <th>Pedidos</th>
+                <th>Faturamento</th>
+                <th>% do Total</th>
+              </tr>
+            </thead>
+            <tbody id="abcTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
+
     </div>
   </main>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
 const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
-let chart;
-async function load() {
-  const classFilter = document.getElementById('classFilter').value;
-  const data = await DB.getCurvaABC() || { items:[], summary:{} };
-  const s = data.summary || {};
-  document.getElementById('classA').textContent = s.count_a ?? '—';
-  document.getElementById('classB').textContent = s.count_b ?? '—';
-  document.getElementById('classC').textContent = s.count_c ?? '—';
-  let rows = data.items || [];
-  if (classFilter) rows = rows.filter(r=>r.class===classFilter);
-  document.getElementById('abcTable').innerHTML = rows.length
-    ? rows.map((r,i)=>`<tr>
-        <td>${i+1}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
-        <td>${fmt(r.revenue)}</td>
-        <td>${(r.cumulative||0).toFixed(1)}%</td>
-        <td><span class="tag ${r.class==='A'?'green':r.class==='B'?'yellow':'red'}">${r.class}</span></td>
-      </tr>`).join('')
-    : '<tr><td colspan="6" class="empty-state">Sem dados</td></tr>';
-  if (chart) chart.destroy();
-  const all = data.items || [];
-  chart = new Chart(document.getElementById('abcChart'), {
-    data:{ labels:all.map((r,i)=>i+1), datasets:[
-      { type:'bar', label:'Receita', data:all.map(r=>r.revenue), backgroundColor: all.map(r=>r.class==='A'?'rgba(39,174,96,0.7)':r.class==='B'?'rgba(255,230,0,0.7)':'rgba(231,76,60,0.7)'), yAxisID:'y', borderRadius:2 },
-      { type:'line', label:'% Acumulado', data:all.map(r=>r.cumulative), borderColor:'#2980b9', tension:0.4, yAxisID:'y1', pointRadius:0 }
-    ]},
-    options:{
-      responsive:true,
-      plugins:{ legend:{ labels:{ color:'#f0f0f0' } } },
-      scales:{
-        x:{ ticks:{ color:'#888' }, grid:{ color:'rgba(255,255,255,0.05)' } },
-        y:{ ticks:{ color:'#888', callback:v=>'R$'+(v/1000).toFixed(0)+'k' }, grid:{ color:'rgba(255,255,255,0.05)' } },
-        y1:{ position:'right', ticks:{ color:'#888', callback:v=>v+'%' }, grid:{ display:false }, min:0, max:100 }
-      }
-    }
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+
+let allRows = [];
+let filteredRows = [];
+let activeCurva = null;
+
+function toggleCurvaFilter(curva) {
+  activeCurva = activeCurva === curva ? null : curva;
+  ['A','B','C'].forEach(c => {
+    document.getElementById('card'+c).classList.toggle('active', activeCurva === c);
+  });
+  applyFilters();
+}
+
+function applyFilters() {
+  const busca = document.getElementById('filterBusca').value.toLowerCase();
+  filteredRows = allRows.filter(r => {
+    if (activeCurva && r.curva !== activeCurva) return false;
+    if (busca && !(r.title||'').toLowerCase().includes(busca) && !(r.item_id||'').toLowerCase().includes(busca)) return false;
+    return true;
+  });
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('abcTable');
+  document.getElementById('rowCount').textContent = filteredRows.length + ' itens';
+  if (!filteredRows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Sem dados</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filteredRows.map(r => `
+    <tr>
+      <td><span class="badge-${r.curva}">${r.curva}</span></td>
+      <td>${r.loja||'—'}</td>
+      <td style="font-family:monospace;font-size:.8rem">${r.item_id||'—'}</td>
+      <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.title||'').replace(/"/g,'&quot;')}">${(r.title||'').slice(0,60)}${(r.title||'').length>60?'…':''}</td>
+      <td>${fmtN(r.pedidos)}</td>
+      <td>${fmt(r.faturamento)}</td>
+      <td>${r.pct_item}%</td>
+    </tr>`).join('');
+}
+
+function exportCSV() {
+  const header = ['Curva','Loja','MLB','Anuncio','Pedidos','Faturamento','% do Total'];
+  const rows = filteredRows.map(r => [
+    r.curva,
+    r.loja||'',
+    r.item_id||'',
+    '"'+(r.title||'').replace(/"/g,'""')+'"',
+    r.pedidos,
+    r.faturamento.toFixed(2),
+    r.pct_item
+  ]);
+  const csv = [header, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'curva-abc-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+
+async function loadLojas() {
+  const data = await DB._get('/lojas');
+  const sel = document.getElementById('filterLoja');
+  (data?.stores||[]).forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.nickname;
+    sel.appendChild(opt);
   });
 }
-document.getElementById('classFilter').addEventListener('change', load);
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+
+async function load() {
+  const period = document.getElementById('filterPeriod').value;
+  const store_id = document.getElementById('filterLoja').value;
+  const data = await DB.getCurvaABC({ period, store_id }) || { items:[], summary:{A:{count:0,faturamento:0},B:{count:0,faturamento:0},C:{count:0,faturamento:0}}, total:0 };
+
+  const s = data.summary || {};
+  document.getElementById('cardAValue').textContent = fmtN(s.A?.count ?? 0) + ' itens';
+  document.getElementById('cardAFat').textContent = fmt(s.A?.faturamento ?? 0);
+  document.getElementById('cardBValue').textContent = fmtN(s.B?.count ?? 0) + ' itens';
+  document.getElementById('cardBFat').textContent = fmt(s.B?.faturamento ?? 0);
+  document.getElementById('cardCValue').textContent = fmtN(s.C?.count ?? 0) + ' itens';
+  document.getElementById('cardCFat').textContent = fmt(s.C?.faturamento ?? 0);
+
+  allRows = data.items || [];
+  applyFilters();
+}
+
+document.getElementById('filterPeriod').addEventListener('change', load);
+document.getElementById('filterLoja').addEventListener('change', load);
+document.getElementById('filterBusca').addEventListener('input', applyFilters);
+
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
+loadLojas();
 load();
 </script>
 </body>

@@ -828,27 +828,61 @@ router.get('/comparativos/evolucao', async (req, res) => {
 });
 
 router.get('/comparativos/curva-abc', async (req, res) => {
-  const { store_id = '', days = 90 } = req.query;
-  const { rows } = await pool.query(
-    `SELECT item_id, title,
-            SUM(total_amount) receita,
-            COUNT(*) pedidos
-     FROM orders
-     WHERE status!='cancelled' AND item_id IS NOT NULL
-       AND date_created >= CURRENT_DATE - $1::int
-       AND ($2 = '' OR store_id = $2::bigint)
-     GROUP BY item_id, title ORDER BY receita DESC`,
-    [Number(days), store_id]
-  );
-  const total = rows.reduce((a, r) => a + Number(r.receita), 0);
-  let acum = 0;
-  const items = rows.map(r => {
-    acum += Number(r.receita);
-    const cumulative = total > 0 ? (acum / total) * 100 : 0;
-    return { item_id: r.item_id, title: r.title, revenue: Number(r.receita), orders: Number(r.pedidos), cumulative, class: cumulative <= 80 ? 'A' : cumulative <= 95 ? 'B' : 'C' };
-  });
-  const summary = { count_a: items.filter(r=>r.class==='A').length, count_b: items.filter(r=>r.class==='B').length, count_c: items.filter(r=>r.class==='C').length };
-  res.json({ items, summary, total });
+  try {
+    const { store_id = '', period = '30' } = req.query;
+    const storeFilter = store_id ? `AND o.store_id = ${BigInt(store_id)}` : '';
+
+    let dateFilter;
+    if (period === 'hoje') dateFilter = `AND o.date_created::date = CURRENT_DATE`;
+    else if (period === 'ontem') dateFilter = `AND o.date_created::date = CURRENT_DATE - 1`;
+    else dateFilter = `AND o.date_created >= CURRENT_DATE - ${Number(period)}`;
+
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE(o.item_id, raw_data->'order_items'->0->'item'->>'id') as item_id,
+        MAX(o.title) as title,
+        s.nickname as loja,
+        COUNT(*) as pedidos,
+        SUM(o.total_amount) as faturamento
+      FROM orders o
+      JOIN stores s ON s.id = o.store_id
+      WHERE o.status != 'cancelled'
+        ${dateFilter}
+        ${storeFilter}
+      GROUP BY 1, s.nickname
+      HAVING SUM(o.total_amount) > 0
+      ORDER BY faturamento DESC
+    `);
+
+    const total = rows.reduce((a, r) => a + Number(r.faturamento), 0);
+    let acum = 0;
+    const items = rows.map(r => {
+      acum += Number(r.faturamento);
+      const pct = total > 0 ? (acum / total) * 100 : 0;
+      const curva = pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C';
+      return {
+        item_id: r.item_id,
+        title: r.title,
+        loja: r.loja,
+        pedidos: Number(r.pedidos),
+        faturamento: Number(r.faturamento),
+        pct_acum: Number(pct.toFixed(1)),
+        pct_item: total > 0 ? Number((Number(r.faturamento)/total*100).toFixed(1)) : 0,
+        curva,
+      };
+    });
+
+    const summary = {
+      A: { count: 0, faturamento: 0 },
+      B: { count: 0, faturamento: 0 },
+      C: { count: 0, faturamento: 0 },
+    };
+    items.forEach(i => { summary[i.curva].count++; summary[i.curva].faturamento += i.faturamento; });
+
+    res.json({ items, summary, total });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Clientes ───────────────────────────────────────────────

@@ -121,7 +121,7 @@ const DB = {
   // ── Comparativos ───────────────────────────────────────────
   async getPeriodoVsPeriodo(p1, p2) { return this._get('/comparativos/periodos', { p1, p2 }); },
   async getEvolucaoDiaria(days=30)  { return this._get('/comparativos/evolucao', { days }); },
-  async getCurvaABC()               { return this._get('/comparativos/curva-abc'); },
+  async getCurvaABC(params = {})    { return this._get('/comparativos/curva-abc', params); },
 
   // ── Alertas ────────────────────────────────────────────────
   async getReposicao(p={})        { return this._get(`/alertas/reposicao?threshold=${p.threshold||15}&store_id=${p.store_id||''}`); },

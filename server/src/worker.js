@@ -856,6 +856,17 @@ async function tokenRefreshLoop() {
         continue;
       }
 
+      // Token permanentemente inválido (epoch zero) — NÃO tentar refresh, apenas notificar.
+      // Tentativas de refresh em token epoch sempre retornam 400 do ML e reescrevem 1970-01-01,
+      // destruindo qualquer reconexão manual feita simultaneamente pelo usuário.
+      const tokenExpAt = store.token_expires_at ? new Date(store.token_expires_at) : null;
+      if (!tokenExpAt || tokenExpAt.getFullYear() < 2000) {
+        expiredStores.add(store.id);
+        console.warn(`[token-loop] ${store.nickname} (${store.id}) token epoch zero — pulando refresh, reconexão manual necessária`);
+        await tgNotify('tg_token', `❌ <b>Loja ${store.nickname} desconectada</b>\nToken permanentemente inválido.\nReconecte acessando:\n🔗 /auth/login?store_id=${store.id}`);
+        continue;
+      }
+
       // Renova se faltar menos de 4h ou já expirado — 4h dá margem para o loop de 30min
       if (expiresIn < 4 * 60 * 60 * 1000) {
         try {

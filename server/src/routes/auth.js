@@ -176,12 +176,26 @@ async function refreshToken(storeId) {
     throw err;
   }
   if (res.status === 400 || res.status === 401) {
-    // Token permanently invalid — mark store as needing reauthorization and stop retrying
+    const errBody = await res.text();
+    console.error(`[auth] refreshToken ${res.status} store=${storeId}: ${errBody}`);
+
+    // Anti-race: OAuth callback pode ter reconectado a loja enquanto o HTTP estava em voo.
+    // Se o token foi atualizado no banco DEPOIS de termos lido o refresh_token original,
+    // não sobrescrevemos — caso contrário destruímos um token válido recém salvo.
+    const { rows: rc } = await pool.query(
+      'SELECT access_token, token_expires_at FROM stores WHERE id=$1', [storeId]
+    );
+    const rcExpiry = rc[0]?.token_expires_at ? new Date(rc[0].token_expires_at) : null;
+    if (rcExpiry && rcExpiry > new Date() && rcExpiry.getFullYear() > 2000) {
+      console.log(`[auth] refreshToken: OAuth reconectou store=${storeId} enquanto refresh estava em voo — usando novo token`);
+      return rc[0].access_token;
+    }
+
     await pool.query(
       `UPDATE stores SET access_token=NULL, token_expires_at='1970-01-01', updated_at=now() WHERE id=$1`,
       [storeId]
     );
-    const err = new Error(`TOKEN_INVALID: store ${storeId} needs reauthorization — visit /auth/login`);
+    const err = new Error(`TOKEN_INVALID: store ${storeId} — ${errBody.slice(0,200)}`);
     err.permanent = true;
     throw err;
   }

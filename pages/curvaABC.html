@@ -136,13 +136,13 @@ function renderTable() {
   }
   tbody.innerHTML = filteredRows.map(r => `
     <tr>
-      <td><span class="badge-${r.curva}">${r.curva}</span></td>
+      <td><span class="badge-${r.curva||'C'}">${r.curva||'?'}</span></td>
       <td>${r.loja||'—'}</td>
       <td style="font-family:monospace;font-size:.8rem">${r.item_id||'—'}</td>
       <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.title||'').replace(/"/g,'&quot;')}">${(r.title||'').slice(0,60)}${(r.title||'').length>60?'…':''}</td>
       <td>${fmtN(r.pedidos)}</td>
       <td>${fmt(r.faturamento)}</td>
-      <td>${r.pct_item}%</td>
+      <td>${r.pct_item != null ? r.pct_item : '—'}%</td>
     </tr>`).join('');
 }
 
@@ -179,7 +179,13 @@ async function loadLojas() {
 async function load() {
   const period = document.getElementById('filterPeriod').value;
   const store_id = document.getElementById('filterLoja').value;
-  const data = await DB.getCurvaABC({ period, store_id }) || { items:[], summary:{A:{count:0,faturamento:0},B:{count:0,faturamento:0},C:{count:0,faturamento:0}}, total:0 };
+  document.getElementById('abcTable').innerHTML = '<tr><td colspan="7" class="empty-state">Carregando...</td></tr>';
+  const raw = await DB.getCurvaABC({ period, store_id });
+  if (raw?.error) {
+    document.getElementById('abcTable').innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--red)">Erro: ${raw.error}</td></tr>`;
+    return;
+  }
+  const data = raw || { items:[], summary:{A:{count:0,faturamento:0},B:{count:0,faturamento:0},C:{count:0,faturamento:0}}, total:0 };
 
   const s = data.summary || {};
   document.getElementById('cardAValue').textContent = fmtN(s.A?.count ?? 0) + ' itens';

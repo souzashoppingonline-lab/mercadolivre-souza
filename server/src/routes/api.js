@@ -839,18 +839,24 @@ router.get('/comparativos/curva-abc', async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT
-        COALESCE(o.item_id, raw_data->'order_items'->0->'item'->>'id') as item_id,
-        MAX(o.title) as title,
-        s.nickname as loja,
-        COUNT(*) as pedidos,
-        SUM(o.total_amount) as faturamento
+        iid                                                 AS item_id,
+        COALESCE(MAX(o.title), MAX(i.title))                AS title,
+        MAX(s.nickname)                                     AS loja,
+        COUNT(*)                                            AS pedidos,
+        SUM(COALESCE(o.total_amount, 0))                    AS faturamento
       FROM orders o
       JOIN stores s ON s.id = o.store_id
+      -- resolve item_id uma vez (CTE-inline)
+      CROSS JOIN LATERAL (
+        SELECT COALESCE(o.item_id, o.raw_data->'order_items'->0->'item'->>'id') AS iid
+      ) ids
+      -- busca título no catálogo quando orders.title é NULL
+      LEFT JOIN items i ON i.ml_id = ids.iid AND i.store_id = o.store_id
       WHERE o.status != 'cancelled'
         ${dateFilter}
         ${storeFilter}
-      GROUP BY 1, s.nickname
-      HAVING SUM(o.total_amount) > 0
+      GROUP BY ids.iid, s.nickname
+      HAVING SUM(COALESCE(o.total_amount, 0)) > 0
       ORDER BY faturamento DESC
     `);
 

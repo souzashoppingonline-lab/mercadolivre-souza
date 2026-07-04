@@ -463,17 +463,20 @@ async function processJob(job) {
     return;
   }
 
-  // Drop job imediatamente se token da loja está expirado
-  if (expiredStores.has(storeId)) {
-    console.warn(`[worker] drop ${topic} store=${storeId} — token expirado`);
-    return;
-  }
+  // Drop job imediatamente se token da loja está expirado — mas revalida no DB primeiro
   const { rows: tokenCheck } = await pool.query(
     `SELECT token_expires_at FROM stores WHERE id=$1`, [storeId]
   );
-  if (tokenCheck.length && tokenCheck[0].token_expires_at < new Date('2000-01-01')) {
+  const tokenExpAt = tokenCheck[0]?.token_expires_at;
+  const tokenValid = tokenExpAt && tokenExpAt > new Date('2000-01-01');
+  if (tokenValid) {
+    if (expiredStores.has(storeId)) {
+      expiredStores.delete(storeId);
+      console.log(`[worker] token revalidado store=${storeId} — processando`);
+    }
+  } else {
     expiredStores.add(storeId);
-    console.warn(`[worker] drop ${topic} store=${storeId} — token expirado (marcado)`);
+    console.warn(`[worker] drop ${topic} store=${storeId} — token expirado`);
     return;
   }
 

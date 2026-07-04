@@ -564,62 +564,100 @@ async function dailySync() {
   if (isSyncing) { console.warn('[sync] já em execução — ignorando chamada duplicada'); return; }
   isSyncing = true;
   console.log('[sync] iniciando reconciliação diária...');
-  const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
-  const dateFrom = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
 
-  for (const store of stores) {
-    try {
-      await new Promise(r => setTimeout(r, 8000));
+  try {
+    const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
+    // 72h para recuperar até 3 dias de vendas perdidas por token expirado
+    const dateFrom = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+    let totalNew = 0;
 
-      // Reputação do vendedor (1 chamada/loja/dia)
+    for (const store of stores) {
       try {
-        const rep = await ml.getSellerReputation(store.id);
-        if (rep) {
-          await pool.query(
-            `INSERT INTO store_metrics (store_id, level_id, power_seller_status, transactions_completed,
-               positive_ratings_pct, negative_ratings_pct, neutral_ratings_pct, collected_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
-            [store.id, rep.level_id, rep.power_seller_status,
-             rep.transactions?.total || 0,
-             rep.transactions?.ratings?.positive?.rate * 100 || 0,
-             rep.transactions?.ratings?.negative?.rate * 100 || 0,
-             rep.transactions?.ratings?.neutral?.rate * 100 || 0]
-          );
+        await new Promise(r => setTimeout(r, 5000));
+
+        // Renova token ANTES de usar — garante acesso mesmo se expirou às 03:00
+        try {
+          await refreshToken(store.id);
+          expiredStores.delete(store.id);
+          console.log(`[sync] token renovado: ${store.nickname}`);
+        } catch(e) {
+          console.warn(`[sync] refresh token ${store.nickname}: ${e.message}`);
+          // Continua mesmo assim — token pode ainda estar válido por alguns minutos
         }
+
+        // Reputação do vendedor (1 chamada/loja/dia)
+        try {
+          const rep = await ml.getSellerReputation(store.id);
+          if (rep) {
+            await pool.query(
+              `INSERT INTO store_metrics (store_id, level_id, power_seller_status, transactions_completed,
+                 positive_ratings_pct, negative_ratings_pct, neutral_ratings_pct, collected_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
+              [store.id, rep.level_id, rep.power_seller_status,
+               rep.transactions?.total || 0,
+               rep.transactions?.ratings?.positive?.rate * 100 || 0,
+               rep.transactions?.ratings?.negative?.rate * 100 || 0,
+               rep.transactions?.ratings?.neutral?.rate * 100 || 0]
+            );
+          }
+        } catch (e) {
+          console.warn(`[sync] reputação store=${store.id}:`, e.message);
+        }
+
+        await new Promise(r => setTimeout(r, 2000));
+
+        // Reconciliação com paginação completa — não perde pedidos se houver >50 no período
+        let offset = 0;
+        let apiTotal = Infinity;
+        let storeNew = 0;
+
+        while (offset < apiTotal) {
+          const data = await ml.searchOrders(store.id, dateFrom, offset);
+          const orders = data.results || [];
+          apiTotal = data.paging?.total ?? orders.length;
+
+          console.log(`[sync] store=${store.id} (${store.nickname}) offset=${offset}/${apiTotal} → ${orders.length} pedidos`);
+          if (!orders.length) break;
+
+          for (const order of orders) {
+            // Pula pedidos já processados nas últimas 12h — novos e status-changed são sempre sinc
+            const exists = await pool.query(
+              `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '12 hours'`, [order.id]
+            );
+            if (exists.rows.length) continue;
+            await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
+            storeNew++;
+            await new Promise(r => setTimeout(r, 1200));
+          }
+
+          offset += orders.length;
+          if (orders.length < 50) break; // última página
+          await new Promise(r => setTimeout(r, 3000));
+        }
+
+        totalNew += storeNew;
+        console.log(`[sync] store=${store.id} (${store.nickname}) → ${storeNew} importados`);
       } catch (e) {
-        console.warn(`[sync] reputação store=${store.id}:`, e.message);
+        console.error(`[sync] store=${store.id} erro:`, e.message);
       }
-
-      await new Promise(r => setTimeout(r, 2000));
-
-      // Reconciliação de pedidos das últimas 25h
-      const data = await ml.searchOrders(store.id, dateFrom);
-      const orders = data.results || [];
-      console.log(`[sync] store=${store.id} → ${orders.length} pedidos`);
-
-      for (const order of orders) {
-        const exists = await pool.query(
-          `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '25 hours'`, [order.id]
-        );
-        if (exists.rows.length) continue;
-        await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
-        await new Promise(r => setTimeout(r, 1500));
-      }
-    } catch (e) {
-      console.error(`[sync] store=${store.id} erro:`, e.message);
     }
-  }
-  console.log('[sync] reconciliação concluída');
 
-  // Preenche parent_item_id de itens que ainda não têm (roda em background após 5min para não competir com webhooks)
-  const { rows: missing } = await pool.query(`SELECT COUNT(*) as c FROM items WHERE parent_item_id IS NULL`);
-  if (Number(missing[0].c) > 0) {
-    console.log(`[sync] agendando syncParentItems em 5min (${missing[0].c} itens sem parent_item_id)...`);
-    setTimeout(() => syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message)), 5 * 60 * 1000);
-  }
+    console.log(`[sync] reconciliação concluída — ${totalNew} pedidos importados`);
+    if (totalNew > 0) {
+      await tgNotify('tg_infra', `✅ Sync concluído\n📦 ${totalNew} pedidos recuperados/atualizados`).catch(()=>{});
+    }
 
-  isSyncing = false;
-  scheduleDailySync();
+    // Preenche parent_item_id de itens que ainda não têm (roda em background após 5min)
+    const { rows: missing } = await pool.query(`SELECT COUNT(*) as c FROM items WHERE parent_item_id IS NULL`);
+    if (Number(missing[0].c) > 0) {
+      console.log(`[sync] agendando syncParentItems em 5min (${missing[0].c} itens sem parent_item_id)...`);
+      setTimeout(() => syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message)), 5 * 60 * 1000);
+    }
+  } finally {
+    // Sempre reseta isSyncing — mesmo se dailySync lançar exceção inesperada
+    isSyncing = false;
+    scheduleDailySync();
+  }
 }
 
 async function syncParentItems() {

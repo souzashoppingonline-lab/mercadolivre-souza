@@ -97,6 +97,6 @@ module.exports = {
   searchClaims:        (storeId, offset=0) => get(`/post-purchase/claims/search?seller_id=${storeId}&limit=50&offset=${offset}`, storeId),
   getClaim:            (claimId, storeId) => get(`/post-purchase/claims/${claimId}`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
-  searchOrders:        (storeId, dateFrom) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50`, storeId),
+  searchOrders:        (storeId, dateFrom, offset=0) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50&offset=${offset}`, storeId),
   getItemVisits:       (id, dateFrom, storeId) => get(`/items/${id}/visits/time_window?last=1&unit=day&ending=${encodeURIComponent(dateFrom)}`, storeId),
 };

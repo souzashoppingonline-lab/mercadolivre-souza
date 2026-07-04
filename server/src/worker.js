@@ -806,8 +806,8 @@ async function tokenRefreshLoop() {
     for (const store of stores) {
       const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
 
-      // Se token está válido com mais de 3h, limpa do Set de expirados (reconexão manual)
-      if (expiresIn >= 3 * 60 * 60 * 1000) {
+      // Se token está válido com mais de 4h, limpa do Set de expirados (reconexão manual)
+      if (expiresIn >= 4 * 60 * 60 * 1000) {
         if (expiredStores.has(store.id)) {
           expiredStores.delete(store.id);
           console.log(`[token-loop] token válido após reconexão: ${store.nickname}`);
@@ -815,8 +815,8 @@ async function tokenRefreshLoop() {
         continue;
       }
 
-      // Renova se faltar menos de 3h ou já expirado — 3h dá margem para o loop de 1h
-      if (expiresIn < 3 * 60 * 60 * 1000) {
+      // Renova se faltar menos de 4h ou já expirado — 4h dá margem para o loop de 30min
+      if (expiresIn < 4 * 60 * 60 * 1000) {
         try {
           await refreshToken(store.id);
           expiredStores.delete(store.id);
@@ -839,12 +839,12 @@ async function tokenRefreshLoop() {
   } catch (e) {
     console.error('[token-loop] erro:', e.message);
   }
-  setTimeout(tokenRefreshLoop, 60 * 60 * 1000); // verifica a cada 1h (antes era 5h)
 }
 
 scheduleDailySync();
 scheduleVisitasSync();
-tokenRefreshLoop(); // inicia imediatamente e repete a cada 5h
+tokenRefreshLoop(); // roda imediatamente no start
+setInterval(tokenRefreshLoop, 30 * 60 * 1000); // repete a cada 30min via setInterval (não setTimeout recursivo)
 
 // Ao iniciar o worker, roda dailySync após 2 min SOMENTE fora do horário de pico (22h–08h)
 setTimeout(() => {

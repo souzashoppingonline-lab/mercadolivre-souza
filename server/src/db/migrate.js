@@ -10,6 +10,7 @@ async function migrate() {
     'migrate-v4.sql',
     'migrate-v8.sql',
     'migrate-v9.sql',
+    'migrate-v11.sql',
   ];
   for (const f of files) {
     const filePath = path.join(__dirname, f);

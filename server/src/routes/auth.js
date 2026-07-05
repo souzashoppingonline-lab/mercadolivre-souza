@@ -119,13 +119,15 @@ router.get(['/callback', '/ml/callback'], async (req, res) => {
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
     await pool.query(
-      `INSERT INTO stores (id, nickname, access_token, refresh_token, token_expires_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, now())
+      `INSERT INTO stores (id, nickname, access_token, refresh_token, token_expires_at, refresh_failures, last_refresh_error, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 0, NULL, now())
        ON CONFLICT (id) DO UPDATE SET
          nickname = EXCLUDED.nickname,
          access_token = EXCLUDED.access_token,
          refresh_token = EXCLUDED.refresh_token,
          token_expires_at = EXCLUDED.token_expires_at,
+         refresh_failures = 0,
+         last_refresh_error = NULL,
          updated_at = now()`,
       [tokens.user_id, user.nickname, tokens.access_token, tokens.refresh_token, expiresAt]
     );
@@ -151,10 +153,12 @@ router.get(['/callback', '/ml/callback'], async (req, res) => {
 // Refresh a store token (called by worker before each ML API call)
 async function refreshToken(storeId) {
   const { rows } = await pool.query(
-    'SELECT refresh_token, ml_client_id, ml_client_secret FROM stores WHERE id = $1', [storeId]
+    'SELECT refresh_token, ml_client_id, ml_client_secret, refresh_failures FROM stores WHERE id = $1', [storeId]
   );
   if (!rows.length) throw new Error(`store ${storeId} not found`);
 
+  // Guarda o refresh_token lido agora para usar no CAS (compare-and-swap)
+  const oldRefreshToken = rows[0].refresh_token;
   const clientId     = rows[0].ml_client_id     || env.ml.clientId;
   const clientSecret = rows[0].ml_client_secret || env.ml.clientSecret;
 
@@ -165,7 +169,7 @@ async function refreshToken(storeId) {
       grant_type: 'refresh_token',
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: rows[0].refresh_token,
+      refresh_token: oldRefreshToken,
     }),
   });
 
@@ -175,38 +179,71 @@ async function refreshToken(storeId) {
     err.oauthRateLimit = true;
     throw err;
   }
+
   if (res.status === 400 || res.status === 401) {
     const errBody = await res.text();
     console.error(`[auth] refreshToken ${res.status} store=${storeId}: ${errBody}`);
 
-    // Anti-race: OAuth callback pode ter reconectado a loja enquanto o HTTP estava em voo.
-    // Se o token foi atualizado no banco DEPOIS de termos lido o refresh_token original,
-    // não sobrescrevemos — caso contrário destruímos um token válido recém salvo.
-    const { rows: rc } = await pool.query(
-      'SELECT access_token, token_expires_at FROM stores WHERE id=$1', [storeId]
+    // CAS: incrementa falhas SÓ se o refresh_token no banco ainda é o mesmo que lemos.
+    // Se o OAuth callback já salvou um refresh_token novo enquanto o POST estava em voo,
+    // o WHERE não bate (rowCount=0) e não tocamos no token válido recém-salvo.
+    const { rowCount } = await pool.query(
+      `UPDATE stores
+       SET refresh_failures = refresh_failures + 1,
+           last_refresh_error = $3,
+           updated_at = now()
+       WHERE id = $1 AND refresh_token = $2`,
+      [storeId, oldRefreshToken, errBody.slice(0, 200)]
     );
-    const rcExpiry = rc[0]?.token_expires_at ? new Date(rc[0].token_expires_at) : null;
-    if (rcExpiry && rcExpiry > new Date() && rcExpiry.getFullYear() > 2000) {
-      console.log(`[auth] refreshToken: OAuth reconectou store=${storeId} enquanto refresh estava em voo — usando novo token`);
+
+    if (rowCount === 0) {
+      // OAuth callback salvou token novo enquanto o POST estava em voo — usar o novo
+      console.log(`[auth] refreshToken CAS miss store=${storeId} — OAuth reconectou em paralelo, usando novo token`);
+      const { rows: rc } = await pool.query('SELECT access_token FROM stores WHERE id=$1', [storeId]);
       return rc[0].access_token;
     }
 
+    // Verifica quantas falhas acumuladas — só invalida após 3 falhas consecutivas
+    const { rows: fc } = await pool.query('SELECT refresh_failures FROM stores WHERE id=$1', [storeId]);
+    const failures = fc[0]?.refresh_failures ?? 1;
+    if (failures < 3) {
+      console.warn(`[auth] refreshToken falhou store=${storeId} (tentativa ${failures}/3) — aguardando próximo ciclo`);
+      const err = new Error(`TOKEN_REFRESH_FAILED (${failures}/3): store ${storeId} — ${errBody.slice(0,200)}`);
+      err.transient = true;
+      throw err;
+    }
+
+    // 3+ falhas consecutivas → invalida o token definitivamente
+    console.error(`[auth] refreshToken 3 falhas consecutivas store=${storeId} — invalidando token`);
     await pool.query(
-      `UPDATE stores SET access_token=NULL, token_expires_at='1970-01-01', updated_at=now() WHERE id=$1`,
-      [storeId]
+      `UPDATE stores SET access_token=NULL, token_expires_at='1970-01-01', updated_at=now()
+       WHERE id=$1 AND refresh_token=$2`,
+      [storeId, oldRefreshToken]
     );
     const err = new Error(`TOKEN_INVALID: store ${storeId} — ${errBody.slice(0,200)}`);
     err.permanent = true;
     throw err;
   }
+
   if (!res.ok) throw new Error(`Refresh failed: HTTP ${res.status}`);
   const tokens = await res.json();
 
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
-  await pool.query(
-    `UPDATE stores SET access_token=$2, refresh_token=$3, token_expires_at=$4, updated_at=now() WHERE id=$1`,
-    [storeId, tokens.access_token, tokens.refresh_token, expiresAt]
+  // CAS no sucesso: só salva se o refresh_token não mudou (OAuth não reconectou no meio)
+  const { rowCount: successRows } = await pool.query(
+    `UPDATE stores
+     SET access_token=$2, refresh_token=$3, token_expires_at=$4,
+         refresh_failures=0, last_refresh_error=NULL, updated_at=now()
+     WHERE id=$1 AND refresh_token=$5`,
+    [storeId, tokens.access_token, tokens.refresh_token, expiresAt, oldRefreshToken]
   );
+
+  if (successRows === 0) {
+    // OAuth reconectou enquanto refresh estava em voo — usa o token novo do banco
+    console.log(`[auth] refreshToken sucesso mas CAS miss store=${storeId} — OAuth reconectou em paralelo`);
+    const { rows: rc } = await pool.query('SELECT access_token FROM stores WHERE id=$1', [storeId]);
+    return rc[0].access_token;
+  }
 
   return tokens.access_token;
 }

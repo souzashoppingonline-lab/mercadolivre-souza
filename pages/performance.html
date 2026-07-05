@@ -185,7 +185,12 @@ async function loadSection(storeId) {
   const id    = storeId || 'all';
   const days  = document.getElementById('daysFilter').value;
   const search = (document.getElementById(`search-${id}`)?.value || '').toLowerCase();
-  const data  = await DB.getProdutosPerformance({ store_id: storeId, days, sort: currentSort }) || { products: [] };
+  const data  = await DB.getProdutosPerformance({ store_id: storeId, days, sort: currentSort });
+  const list0 = document.getElementById(`perfList-${id}`);
+  if (!data || data.error) {
+    if (list0) list0.innerHTML = `<div class="empty-state" style="color:var(--red)">${data?.error || 'Erro ao carregar dados'}</div>`;
+    return;
+  }
   let rows = data.products || [];
 
   if (search) rows = rows.filter(r => r.title?.toLowerCase().includes(search));

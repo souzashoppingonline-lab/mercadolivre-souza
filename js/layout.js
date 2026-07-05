@@ -222,6 +222,11 @@ function initAlerts() {
     }
   }
 
+  WS.on('_connected', () => {
+    const el = document.getElementById('wsStatus');
+    if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+  });
+
   WS.on('_disconnected', () => {
     const el = document.getElementById('wsStatus');
     if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--orange);font-size:8px"></i> reconectando...';

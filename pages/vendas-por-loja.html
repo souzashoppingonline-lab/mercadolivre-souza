@@ -124,8 +124,9 @@ function buildPrevMap(previous) {
   const m = {};
   for (const r of previous) {
     // shift: previous row dia + 30 days = corresponding current period day
-    const prevDate = new Date(r.dia + 'T00:00:00');
-    prevDate.setDate(prevDate.getDate() + 30);
+    const diaStr = typeof r.dia === 'string' ? r.dia.slice(0, 10) : new Date(r.dia).toISOString().slice(0, 10);
+    const prevDate = new Date(diaStr + 'T12:00:00Z');
+    prevDate.setUTCDate(prevDate.getUTCDate() + 30);
     const shiftedDia = prevDate.toISOString().slice(0, 10);
     m[r.store_id + '|' + shiftedDia] = Number(r.receita);
   }

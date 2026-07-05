@@ -13,11 +13,12 @@ const DB = {
       const res = await fetch(url.toString(), {
         headers: { 'Content-Type': 'application/json' }
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      return await res.json();
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      if (!res.ok) return { error: body?.error || `HTTP ${res.status}` };
+      return body;
     } catch (e) {
       console.error('[DB] GET error', path, e);
-      return null;
+      return { error: e.message };
     }
   },
 

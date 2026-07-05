@@ -1108,28 +1108,28 @@ router.get('/vendas/por-loja', async (req, res) => {
       SELECT
         o.store_id,
         s.nickname as loja,
-        DATE(o.date_created AT TIME ZONE 'America/Sao_Paulo') as dia,
+        (o.date_created - INTERVAL '3 hours')::date AS dia,
         COUNT(*) as pedidos,
         SUM(o.total_amount) as receita
       FROM orders o
       JOIN stores s ON s.id = o.store_id
-      WHERE o.date_created >= CURRENT_DATE - ${days}
+      WHERE o.date_created >= CURRENT_DATE - $1
         AND o.status != 'cancelled'
       GROUP BY 1, 2, 3
       ORDER BY 3, 2
-    `);
+    `, [days]);
 
     const { rows: previous } = await pool.query(`
       SELECT
         o.store_id,
-        DATE(o.date_created AT TIME ZONE 'America/Sao_Paulo') as dia,
+        (o.date_created - INTERVAL '3 hours')::date AS dia,
         SUM(o.total_amount) as receita
       FROM orders o
-      WHERE o.date_created >= CURRENT_DATE - ${days} - 30
+      WHERE o.date_created >= CURRENT_DATE - $1
         AND o.date_created < CURRENT_DATE - 30
         AND o.status != 'cancelled'
       GROUP BY 1, 2
-    `);
+    `, [days + 30]);
 
     res.json({ current, previous });
   } catch(e) {

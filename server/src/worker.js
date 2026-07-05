@@ -459,58 +459,66 @@ const expiredStores = new Set();
 async function processJob(job) {
   const { topic, resource, storeId, logId } = job.data;
   const handler = handlers[topic];
+  const t0 = Date.now();
 
   if (!handler) {
-    console.warn(`[worker] no handler for topic=${topic}`);
+    console.log(`[worker] tópico sem handler: ${topic} | store=${storeId}`);
     return;
   }
 
-  // Drop job imediatamente se token da loja está expirado — mas revalida no DB primeiro
+  // Valida token no DB antes de processar
   const { rows: tokenCheck } = await pool.query(
-    `SELECT token_expires_at FROM stores WHERE id=$1`, [storeId]
+    `SELECT token_expires_at, nickname FROM stores WHERE id=$1`, [storeId]
   );
-  const tokenExpAt = tokenCheck[0]?.token_expires_at;
+  const store = tokenCheck[0];
+  const nickname = store?.nickname || storeId;
+  const tokenExpAt = store?.token_expires_at;
   const tokenValid = tokenExpAt && tokenExpAt > new Date('2000-01-01');
+
   if (tokenValid) {
     if (expiredStores.has(storeId)) {
       expiredStores.delete(storeId);
-      console.log(`[worker] token revalidado store=${storeId} — processando`);
+      console.log(`[worker] ✅ token revalidado — ${nickname} (${storeId})`);
     }
   } else {
     expiredStores.add(storeId);
-    console.warn(`[worker] drop ${topic} store=${storeId} — token expirado`);
+    console.warn(`[worker] ⏭ drop ${topic} — ${nickname} (${storeId}) token expirado`);
     return;
   }
 
   try {
     await handler({ resource, storeId });
+    const ms = Date.now() - t0;
     await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [logId]);
+    console.log(`[worker] ✅ ${topic} | ${nickname} | ${resource.split('/').slice(-2).join('/')} | ${ms}ms`);
   } catch (err) {
+    const ms = Date.now() - t0;
     await pool.query(`UPDATE webhook_logs SET status='failed', error=$2, processed_at=now() WHERE id=$1`, [logId, err.message]);
 
     if (err.permanent || err.message?.includes('TOKEN_INVALID')) {
-      // Token permanently invalid — discard job, no retry, alert via Telegram
-      tgNotify('tg_token', `⚠️ Loja ${storeId} com token inválido. Reconecte em /auth/login`);
-      return; // do NOT throw — prevents BullMQ from retrying
+      console.error(`[worker] ❌ TOKEN_INVALID — ${nickname} (${storeId}) | ${err.message.slice(0, 120)}`);
+      tgNotify('tg_token', `⚠️ <b>Token inválido</b>\n🏪 ${nickname}\nReconecte em: /lojas`).catch(() => {});
+      return;
     }
     if (err.message?.includes('OAUTH_RATE_LIMITED')) {
-      // Notify only once per store per hour — avoid Telegram flood from queued jobs
       const now = Date.now();
       const lastNotified = oauthNotified.get(storeId) || 0;
+      console.warn(`[worker] 🔐 OAUTH_RATE_LIMITED — ${nickname} (${storeId})`);
       if (now - lastNotified > 60 * 60 * 1000) {
         oauthNotified.set(storeId, now);
-        tgNotify('tg_429', `🔐 <b>OAuth rate limit loja ${storeId}</b>\nPróxima tentativa automática em 35 min.\nSe persistir após 1h: reconecte a loja em /lojas`).catch(() => {});
+        tgNotify('tg_429', `🔐 <b>OAuth rate limit</b>\n🏪 ${nickname}\nAguardando cooldown. Se persistir após 1h: reconecte em /lojas`).catch(() => {});
       }
-      return; // do NOT throw — BullMQ won't retry; cooldown in mlClient prevents flood
+      return;
     }
     if (err.message?.includes('429')) {
       if (job.attemptsMade < 4) {
-        console.warn(`[worker] RATE_LIMITED ${job.name}#${job.id} — attempt ${job.attemptsMade + 1}/5, will retry`);
+        console.warn(`[worker] ⏳ rate limit — ${nickname} | ${topic} | tentativa ${job.attemptsMade + 1}/5`);
         throw err;
       }
-      console.warn(`[worker] RATE_LIMITED drop ${job.name}#${job.id} — not retrying`);
+      console.warn(`[worker] ⏭ rate limit drop — ${nickname} | ${topic} | esgotou retries`);
       return;
     }
+    console.error(`[worker] ❌ erro ${topic} | ${nickname} | ${ms}ms | ${err.message.slice(0, 200)}`);
     throw err;
   }
 }

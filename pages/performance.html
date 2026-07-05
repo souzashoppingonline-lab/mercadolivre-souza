@@ -222,7 +222,7 @@ async function loadSection(storeId) {
       ? `<img class="perf-thumb" src="${r.thumbnail}" onerror="this.outerHTML='<div class=\\'perf-thumb-ph\\'><i class=\\'fas fa-tag\\'></i></div>'">`
       : `<div class="perf-thumb-ph"><i class="fas fa-tag"></i></div>`;
     return `
-      <div class="perf-row" style="cursor:pointer" onclick="openHistorico('${r.ml_id}','${(r.title||'').replace(/'/g,'\\'')}')">
+      <div class="perf-row" style="cursor:pointer" data-mlid="${r.ml_id}" data-title="${(r.title||'').replace(/"/g,'&quot;')}">
         <div class="rank-badge ${rkCls}">${rank}</div>
         ${thumb}
         <div class="perf-title" title="${r.title}">${r.title}</div>
@@ -251,6 +251,10 @@ async function loadSection(storeId) {
         <i class="fas fa-chart-bar" style="color:var(--text-muted);font-size:.75rem;flex-shrink:0"></i>
       </div>`;
   }).join('');
+
+  list.querySelectorAll('.perf-row[data-mlid]').forEach(el => {
+    el.addEventListener('click', () => openHistorico(el.dataset.mlid, el.dataset.title));
+  });
 }
 
 function switchTab(storeId) {

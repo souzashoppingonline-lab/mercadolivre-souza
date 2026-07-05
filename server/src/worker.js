@@ -68,6 +68,17 @@ async function tgNotify(topic, text) {
 
 const noop = () => {};  // topics we receive but don't need to process
 
+// Cache de nicknames para evitar query ao Postgres a cada webhook
+const _nicknameCache = new Map(); // storeId → { name, expiresAt }
+async function getStoreName(storeId) {
+  const cached = _nicknameCache.get(storeId);
+  if (cached && cached.expiresAt > Date.now()) return cached.name;
+  const { rows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
+  const name = rows[0]?.nickname || `Loja ${storeId}`;
+  _nicknameCache.set(storeId, { name, expiresAt: Date.now() + 10 * 60 * 1000 });
+  return name;
+}
+
 async function handleShipment({ resource, storeId }) {
   const shipmentId = resource.split('/').pop();
 
@@ -163,23 +174,14 @@ async function handleOrder({ resource, storeId }) {
 
   if (order.status === 'paid') {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
-    const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
-    const loja = storeRows[0]?.nickname || `Loja ${storeId}`;
-    let envioLabel = shippingType || '—';
-    try {
-      const shipmentId = order.shipping?.id;
-      if (shipmentId) {
-        const shipment = await ml.getShipment(shipmentId, storeId);
-        const lt = (shipment?.logistic_type || '').toLowerCase();
-        envioLabel = lt.includes('fulfillment') ? '📦 FULL'
-          : lt.includes('flex')   ? '🏃 Flex'
-          : lt.includes('me2')    ? '📮 ME2'
-          : lt.includes('me1')    ? '📮 ME1'
-          : lt || shippingType || '—';
-      }
-    } catch (e) {
-      console.warn(`[worker] getShipment erro:`, e.message);
-    }
+    const loja = await getStoreName(storeId);
+    // logistic_type já vem no getOrder — não precisa de chamada extra getShipment
+    const lt = (order.shipping?.logistic_type || '').toLowerCase();
+    const envioLabel = lt.includes('fulfillment') ? '📦 FULL'
+      : lt.includes('flex')   ? '🏃 Flex'
+      : lt.includes('me2')    ? '📮 ME2'
+      : lt.includes('me1')    ? '📮 ME1'
+      : shippingType || '—';
     await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}`);
   }
 }
@@ -204,8 +206,7 @@ async function handleQuestion({ resource, storeId }) {
 
   await publish('question_received', { id: q.id, status: q.status, text: q.text });
   if (q.status === 'UNANSWERED') {
-    const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
-    const loja = storeRows[0]?.nickname || `Loja ${storeId}`;
+    const loja = await getStoreName(storeId);
     const dashUrl = (process.env.DASH_URL || 'https://multimixvendas.duckdns.org') + '/pages/perguntas.html';
     const msgId = await tgNotify('tg_perguntas',
       `❓ <b>Nova pergunta sem resposta</b>\n🏪 Loja: <b>${loja}</b>\n🏷️ Item: ${q.item_id||'—'}\n💬 ${(q.text||'').slice(0,300)}\n\n` +
@@ -282,8 +283,7 @@ async function handleItem({ resource, storeId }) {
     [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId]
   );
 
-  const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
-  const lojaNome = storeRows[0]?.nickname || `Loja ${storeId}`;
+  const lojaNome = await getStoreName(storeId);
 
   if (item.available_quantity <= 5) {
     await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity, loja: lojaNome });

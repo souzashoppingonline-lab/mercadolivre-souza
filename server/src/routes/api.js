@@ -1061,37 +1061,46 @@ router.get('/produtos/performance', async (req, res) => {
     }[sort] || 'receita_periodo DESC NULLS LAST';
 
     const { rows } = await pool.query(
-      `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.sold_quantity, i.status,
-              i.thumbnail, i.permalink,
-              COALESCE(o.pedidos_periodo, 0)  AS pedidos_periodo,
-              COALESCE(o.receita_periodo, 0)  AS receita_periodo,
-              COALESCE(v.visitas_periodo, 0)  AS visitas_periodo,
-              CASE WHEN COALESCE(v.visitas_periodo, 0) > 0
-                   THEN ROUND(COALESCE(o.pedidos_periodo,0)::numeric / v.visitas_periodo * 100, 2)
-                   ELSE 0 END AS conversao_pct
-       FROM items i
-       LEFT JOIN (
+      `WITH order_agg AS (
          SELECT COALESCE(it.parent_item_id, o.item_id) AS root_id,
-                COUNT(*)            AS pedidos_periodo,
-                SUM(o.total_amount) AS receita_periodo
+                COUNT(*)            AS pedidos,
+                SUM(o.total_amount) AS receita
          FROM orders o
          LEFT JOIN items it ON it.ml_id = o.item_id
          WHERE o.status != 'cancelled'
            AND o.date_created >= CURRENT_DATE - $1::int
            AND ($2 = '' OR o.store_id = $2::bigint)
          GROUP BY 1
-       ) o ON o.root_id = i.ml_id
-       LEFT JOIN (
+       ),
+       visit_agg AS (
          SELECT COALESCE(it.parent_item_id, iv.item_id) AS root_id,
-                SUM(iv.visits) AS visitas_periodo
+                SUM(iv.visits) AS visitas
          FROM item_visits iv
          LEFT JOIN items it ON it.ml_id = iv.item_id
          WHERE iv.date >= CURRENT_DATE - $1::int
            AND ($2 = '' OR iv.store_id = $2::bigint)
          GROUP BY 1
-       ) v ON v.root_id = i.ml_id
-       WHERE ($2 = '' OR i.store_id = $2::bigint)
-         AND i.parent_item_id IS NULL
+       ),
+       item_repr AS (
+         SELECT DISTINCT ON (COALESCE(parent_item_id, ml_id))
+           ml_id, title, price, available_quantity, sold_quantity, status,
+           thumbnail, permalink,
+           COALESCE(parent_item_id, ml_id) AS group_key
+         FROM items
+         WHERE ($2 = '' OR store_id = $2::bigint)
+         ORDER BY COALESCE(parent_item_id, ml_id), parent_item_id NULLS FIRST
+       )
+       SELECT r.ml_id, r.title, r.price, r.available_quantity, r.sold_quantity, r.status,
+              r.thumbnail, r.permalink,
+              COALESCE(o.pedidos, 0) AS pedidos_periodo,
+              COALESCE(o.receita, 0) AS receita_periodo,
+              COALESCE(v.visitas, 0) AS visitas_periodo,
+              CASE WHEN COALESCE(v.visitas, 0) > 0
+                   THEN ROUND(COALESCE(o.pedidos,0)::numeric / v.visitas * 100, 2)
+                   ELSE 0 END AS conversao_pct
+       FROM item_repr r
+       LEFT JOIN order_agg o ON o.root_id = r.group_key
+       LEFT JOIN visit_agg v ON v.root_id = r.group_key
        ORDER BY ${orderBy}
        LIMIT 200`,
       [Number(days), store_id]

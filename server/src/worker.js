@@ -575,7 +575,7 @@ async function dailySync() {
 
     for (const store of stores) {
       try {
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise(r => setTimeout(r, 30000)); // 30s entre lojas para não bater rate limit ML
 
         // Renova token só se estiver expirado ou a menos de 30 min de expirar
         // Não renovar tokens válidos evita 429 no ML OAuth
@@ -633,7 +633,7 @@ async function dailySync() {
             if (exists.rows.length) continue;
             await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
             storeNew++;
-            await new Promise(r => setTimeout(r, 1200));
+            await new Promise(r => setTimeout(r, 2500)); // 2.5s entre pedidos
           }
 
           offset += orders.length;

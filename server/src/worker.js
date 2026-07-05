@@ -111,11 +111,13 @@ const handlers = {
 async function handleOrder({ resource, storeId }) {
   const orderId = resource.split('/').pop();
 
-  // Skip duplicate — if this order was already fetched in the last 10 minutes, don't call ML API again
+  // Skip duplicate — evita chamar ML API duas vezes para o mesmo pedido em 30 min,
+  // MAS permite processar novamente se o pedido ainda não está como 'paid'
+  // (a confirmação de pagamento chega minutos depois e não deve ser bloqueada pelo dedup)
   const recent = await pool.query(
-    `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '30 minutes'`, [orderId]
+    `SELECT ml_id, status FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '30 minutes'`, [orderId]
   );
-  if (recent.rows.length) return;
+  if (recent.rows.length && recent.rows[0].status === 'paid') return;
 
   const order = await ml.getOrder(orderId, storeId);
 

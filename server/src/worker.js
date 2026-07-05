@@ -544,15 +544,16 @@ async function startWorkers() {
   for (const storeId of storeIds) {
     const w = new Worker(`ml-webhooks-${storeId}`, processJob, {
       connection: new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false }),
-      concurrency: 1,
-      // 20 req/min per store token = 1 req per 3s to stay safely below the limit
-      limiter: { max: 1, duration: 5000 },
+      // Cada loja tem app ML próprio = rate limit independente.
+      // concurrency:3 + limiter 3/3s = máx 60 req/min por loja (ML permite 3000/min por app).
+      concurrency: 3,
+      limiter: { max: 3, duration: 3000 },
     });
     attachWorkerEvents(w, storeId);
     console.log(`[worker] started queue ml-webhooks-${storeId}`);
   }
 
-  // Legacy worker — processes jobs still sitting in the old global queue
+  // Legacy worker — processa jobs ainda na fila global antiga (sem store separado)
   const legacyWorker = new Worker('ml-webhooks', processJob, {
     connection: new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false }),
     concurrency: 1,
@@ -748,22 +749,21 @@ async function syncMetricas() {
 
 async function syncParentItems() {
   console.log('[syncParentItems] preenchendo parent_item_id via multiget...');
-  const { rows: stores } = await pool.query(`SELECT id FROM stores`);
-  let updated = 0; let total = 0;
+  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores`);
 
-  for (const store of stores) {
+  async function syncStoreParent(store) {
     const { rows: items } = await pool.query(
       `SELECT ml_id FROM items WHERE parent_item_id IS NULL AND store_id = $1`,
       [store.id]
     );
-    console.log(`[syncParentItems] store=${store.id} → ${items.length} itens`);
     const ids = items.map(r => r.ml_id);
+    console.log(`[syncParentItems] ${store.nickname} → ${ids.length} itens`);
+    let updated = 0;
 
     for (let i = 0; i < ids.length; i += 20) {
       const batch = ids.slice(i, i + 20);
-      total += batch.length;
       try {
-        await new Promise(r => setTimeout(r, 12000));
+        await new Promise(r => setTimeout(r, 8000)); // 8s entre lotes por loja
         const token = await getTokenForStore(store.id);
         const qs = batch.map(id => `ids=${id}`).join('&');
         const res = await fetch(`https://api.mercadolibre.com/items?${qs}&attributes=id,parent_item_id`, {
@@ -781,19 +781,29 @@ async function syncParentItems() {
           );
           if (body.parent_item_id) updated++;
         }
-        console.log(`[syncParentItems] store=${store.id} lote ${i/20+1} ok`);
       } catch (e) {
-        console.warn(`[syncParentItems] lote store=${store.id} i=${i}:`, e.message);
-        if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 120000));
+        console.warn(`[syncParentItems] ${store.nickname} lote i=${i}:`, e.message);
+        if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 90000));
       }
-      // delay entre batches para não competir com webhooks
-      await new Promise(r => setTimeout(r, 20000));
+      // 15s entre lotes para não competir com webhooks
+      await new Promise(r => setTimeout(r, 15000));
     }
-    await new Promise(r => setTimeout(r, 30000));
+    console.log(`[syncParentItems] ${store.nickname} → ${updated}/${ids.length} com parent_item_id`);
+    return { updated, total: ids.length };
   }
 
-  console.log(`[syncParentItems] concluído — ${updated}/${total} com parent_item_id`);
-  await tgNotify('tg_infra', `✅ Sync parent_item_id concluído\n📦 ${updated}/${total} itens atualizados`).catch(()=>{});
+  // Todas as lojas em paralelo — rate limits independentes por app ML
+  const results = await Promise.allSettled(stores.map(s => syncStoreParent(s)));
+  const totals = results.reduce((acc, r) => {
+    if (r.status === 'fulfilled') { acc.updated += r.value.updated; acc.total += r.value.total; }
+    return acc;
+  }, { updated: 0, total: 0 });
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.error(`[syncParentItems] ${stores[i].nickname} erro:`, r.reason?.message);
+  });
+
+  console.log(`[syncParentItems] concluído — ${totals.updated}/${totals.total} com parent_item_id`);
+  await tgNotify('tg_infra', `✅ Sync parent_item_id concluído\n📦 ${totals.updated}/${totals.total} itens atualizados`).catch(() => {});
 }
 
 async function getTokenForStore(storeId) {
@@ -852,54 +862,56 @@ async function syncReturns() {
   await tgNotify('tg_devolucoes', `✅ Sync retroativo de devoluções concluído\n📦 ${total} registros importados`).catch(() => {});
 }
 
-// ── Sync Visitas — 02:00 diário, 30s entre lotes, cada loja com seu app ──────
+// ── Sync Visitas — 02:00 diário, lojas em paralelo (app ML independente) ─────
 let isSyncingVisitas = false;
 
 async function syncVisitas() {
-  if (isSyncingVisitas) { console.warn('[visitas] já em execução — ignorando'); return; }
+  if (isSyncingVisitas) { console.warn('[sync-visitas] já em execução — ignorando'); return; }
   isSyncingVisitas = true;
-  console.log('[visitas] iniciando coleta de visitas...');
+  console.log('[sync-visitas] iniciando coleta de visitas...');
 
   try {
     const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores`);
-    const today     = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-    for (const store of stores) {
-      try {
-        const { rows: activeItems } = await pool.query(
-          `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' LIMIT 300`, [store.id]
-        );
-        const ids = activeItems.map(r => r.ml_id);
-        console.log(`[visitas] store=${store.nickname} → ${ids.length} anúncios`);
+    async function syncStoreVisitas(store) {
+      const { rows: activeItems } = await pool.query(
+        `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' LIMIT 300`, [store.id]
+      );
+      const ids = activeItems.map(r => r.ml_id);
+      console.log(`[sync-visitas] ${store.nickname} → ${ids.length} anúncios`);
 
-        for (let i = 0; i < ids.length; i++) {
-          const itemId = ids[i];
-          try {
-            const vData = await ml.getItemVisits(itemId, yesterday, store.id);
-            const total = (vData?.results || []).reduce((s, d) => s + (d.total || 0), 0);
-            await pool.query(
-              `INSERT INTO item_visits (store_id, item_id, visits, date)
-               VALUES ($1,$2,$3,$4) ON CONFLICT (item_id, date) DO UPDATE SET visits=$3, collected_at=now()`,
-              [store.id, itemId, total, yesterday]
-            );
-            if ((i + 1) % 10 === 0) console.log(`[visitas] store=${store.nickname} ${i+1}/${ids.length} itens`);
-          } catch (e) {
-            if (e.message?.includes('429') || e.message?.includes('rate limit')) {
-              console.warn(`[visitas] 429 detectado — pausando 60s para liberar rate limit`);
-              await new Promise(r => setTimeout(r, 60000));
-            } else {
-              console.warn(`[visitas] store=${store.nickname} item=${itemId}: ${e.message}`);
-            }
+      for (let i = 0; i < ids.length; i++) {
+        const itemId = ids[i];
+        try {
+          const vData = await ml.getItemVisits(itemId, yesterday, store.id);
+          const total = (vData?.results || []).reduce((s, d) => s + (d.total || 0), 0);
+          await pool.query(
+            `INSERT INTO item_visits (store_id, item_id, visits, date)
+             VALUES ($1,$2,$3,$4) ON CONFLICT (item_id, date) DO UPDATE SET visits=$3, collected_at=now()`,
+            [store.id, itemId, total, yesterday]
+          );
+          if ((i + 1) % 20 === 0) console.log(`[sync-visitas] ${store.nickname} ${i+1}/${ids.length}`);
+        } catch (e) {
+          if (e.message?.includes('429') || e.message?.includes('rate limit')) {
+            console.warn(`[sync-visitas] 429 ${store.nickname} — pausando 60s`);
+            await new Promise(r => setTimeout(r, 60000));
+          } else {
+            console.warn(`[sync-visitas] ${store.nickname} item=${itemId}: ${e.message}`);
           }
-          await new Promise(r => setTimeout(r, 20000)); // 20s por item = 3 req/min, usa janela de 50min
         }
-        await new Promise(r => setTimeout(r, 5000)); // 5s entre lojas
-      } catch (e) {
-        console.warn(`[visitas] store=${store.nickname} erro:`, e.message);
+        // 20s por item = 3 req/min por loja — cada loja tem app próprio, não competem
+        await new Promise(r => setTimeout(r, 20000));
       }
+      console.log(`[sync-visitas] ${store.nickname} concluído — ${ids.length} itens`);
     }
-    console.log('[visitas] coleta concluída');
+
+    // Todas as lojas em paralelo — rate limits independentes por app ML
+    const results = await Promise.allSettled(stores.map(s => syncStoreVisitas(s)));
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') console.error(`[sync-visitas] ${stores[i].nickname} erro:`, r.reason?.message);
+    });
+    console.log('[sync-visitas] coleta concluída');
   } finally {
     isSyncingVisitas = false;
     scheduleAt(2, 0, syncVisitas, 'sync-visitas');

@@ -1113,7 +1113,7 @@ router.get('/vendas/por-loja', async (req, res) => {
         SUM(o.total_amount) as receita
       FROM orders o
       JOIN stores s ON s.id = o.store_id
-      WHERE o.date_created >= CURRENT_DATE - $1
+      WHERE o.date_created >= CURRENT_DATE - ($1::int)
         AND o.status != 'cancelled'
       GROUP BY 1, 2, 3
       ORDER BY 3, 2
@@ -1125,7 +1125,7 @@ router.get('/vendas/por-loja', async (req, res) => {
         (o.date_created - INTERVAL '3 hours')::date AS dia,
         SUM(o.total_amount) as receita
       FROM orders o
-      WHERE o.date_created >= CURRENT_DATE - $1
+      WHERE o.date_created >= CURRENT_DATE - ($1::int)
         AND o.date_created < CURRENT_DATE - 30
         AND o.status != 'cancelled'
       GROUP BY 1, 2

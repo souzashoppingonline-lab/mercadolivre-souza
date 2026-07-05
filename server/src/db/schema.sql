@@ -121,6 +121,18 @@ CREATE TABLE IF NOT EXISTS schedule_jobs (
   status TEXT DEFAULT 'idle' -- idle | running | success | error
 );
 
+CREATE TABLE IF NOT EXISTS schedule_runs (
+  id SERIAL PRIMARY KEY,
+  job_name TEXT NOT NULL,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ,
+  duration_ms INT,
+  status TEXT, -- success | error | running
+  report JSONB,
+  error_msg TEXT
+);
+CREATE INDEX IF NOT EXISTS schedule_runs_job ON schedule_runs(job_name, started_at DESC);
+
 CREATE TABLE IF NOT EXISTS store_metrics (
   id SERIAL PRIMARY KEY,
   store_id BIGINT NOT NULL,

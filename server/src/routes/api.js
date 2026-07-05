@@ -626,6 +626,22 @@ router.get('/schedule/worker-logs', (req, res) => {
   });
 });
 
+router.get('/schedule/runs', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const job   = req.query.job || '';
+    const { rows } = await pool.query(
+      `SELECT id, job_name, started_at, finished_at, duration_ms, status, report, error_msg
+       FROM schedule_runs
+       WHERE ($1 = '' OR job_name = $1)
+       ORDER BY started_at DESC
+       LIMIT $2`,
+      [job, limit]
+    );
+    res.json({ runs: rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/schedule/logs', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 100, 500);

@@ -8,6 +8,30 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Schedule (Jobs)'; window.ACTIVE_NAV='schedule.html';</script>
+  <style>
+    .sync-action-btn {
+      background: var(--card-bg); border: 1px solid var(--border); color: var(--text-primary);
+      font-weight: 700; padding: 9px 18px; font-size: .85rem; border-radius: 8px;
+      cursor: pointer; display: flex; align-items: center; gap: 7px; transition: all .2s;
+    }
+    .sync-action-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .sync-action-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .sync-action-btn.running { border-color: var(--primary); color: var(--primary); }
+    .run-card { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+    .run-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; background: var(--surface); }
+    .run-header:hover { background: rgba(255,255,255,.03); }
+    .run-badge { padding: 3px 10px; border-radius: 20px; font-size: .72rem; font-weight: 700; }
+    .run-badge.success { background: rgba(48,209,88,.15); color: var(--green); }
+    .run-badge.error   { background: rgba(255,59,48,.15);  color: var(--red); }
+    .run-badge.running { background: rgba(255,230,0,.15);  color: var(--primary); }
+    .run-body { padding: 14px 16px; display: none; border-top: 1px solid var(--border); }
+    .run-body.open { display: block; }
+    .run-loja-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: .83rem; }
+    .run-loja-row:last-child { border-bottom: none; }
+    .run-loja-tag { font-weight: 600; }
+    .run-loja-meta { color: var(--text-muted); font-size: .78rem; display: flex; gap: 14px; }
+    .run-loja-err { color: var(--red); font-size: .78rem; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -45,28 +69,45 @@
           </div>
         </div>
 
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <button id="syncBtn" class="action-btn" style="
-            background:var(--primary);color:#000;font-weight:700;
-            padding:10px 24px;font-size:.9rem;border-radius:8px;border:none;cursor:pointer;
-            display:flex;align-items:center;gap:8px;
-          " onclick="runSync()">
-            <i class="fas fa-sync-alt" id="syncIcon"></i> Executar Sync Agora
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="sync-action-btn" data-job="syncVisitas">
+            <i class="fas fa-eye"></i> Sync Visitas <small style="opacity:.7;font-weight:400">02:00</small>
           </button>
-          <span id="syncStatus" style="font-size:.82rem;color:var(--text-muted)">
-            Coleta visitas, reputação e reconcilia pedidos das últimas 25h.
-          </span>
+          <button class="sync-action-btn" data-job="syncVendas">
+            <i class="fas fa-shopping-cart"></i> Sync Vendas <small style="opacity:.7;font-weight:400">03:00</small>
+          </button>
+          <button class="sync-action-btn" data-job="syncMetricas">
+            <i class="fas fa-chart-bar"></i> Sync Métricas <small style="opacity:.7;font-weight:400">04:15</small>
+          </button>
+          <span id="syncStatus" style="font-size:.82rem;color:var(--text-muted);margin-left:4px"></span>
+        </div>
+      </div>
+
+      <!-- Histórico de Execuções -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header" style="justify-content:space-between">
+          <h3><i class="fas fa-history" style="margin-right:8px;color:var(--primary)"></i>Histórico de Execuções</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="filterJob" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:5px 10px;font-size:12px">
+              <option value="">Todos os jobs</option>
+              <option value="sync-visitas">sync-visitas</option>
+              <option value="sync-vendas">sync-vendas</option>
+              <option value="sync-metricas">sync-metricas</option>
+            </select>
+            <button onclick="loadRuns()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:.78rem">
+              <i class="fas fa-refresh"></i>
+            </button>
+          </div>
+        </div>
+        <div id="runsSection">
+          <div class="empty-state"><div class="spinner" style="margin:auto"></div></div>
         </div>
       </div>
 
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
-          <h3>Jobs Agendados (BullMQ)</h3>
+          <h3>Status dos Jobs</h3>
         </div>
-        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
-          Jobs de sincronização que rodam quando um Webhook não cobre o dado (ex: reputação, métricas agregadas).
-          Cada execução consulta apenas o recurso necessário e grava no PostgreSQL.
-        </p>
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Job</th><th>Frequência</th><th>Última Execução</th><th>Duração</th><th>Status</th><th>Ação</th></tr></thead>
@@ -117,47 +158,153 @@
 <script src="../js/sidebar.js"></script>
 <script>
 const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
-async function load() {
-  const data = await DB.getScheduleJobs() || { jobs:[] };
+const fmtDur = ms => ms >= 60000 ? (ms/60000).toFixed(1)+'min' : ms >= 1000 ? (ms/1000).toFixed(1)+'s' : ms+'ms';
+
+const JOB_LABEL = {
+  'sync-visitas':  '👁️ Sync Visitas',
+  'sync-vendas':   '🛒 Sync Vendas',
+  'sync-metricas': '📊 Sync Métricas',
+};
+
+async function loadJobs() {
+  const data = await DB.getScheduleJobs() || { jobs: [] };
   const rows = data.jobs || [];
   document.getElementById('jobsTable').innerHTML = rows.length
-    ? rows.map(j=>`<tr>
-        <td>${j.name}</td><td>${j.cron||j.frequency}</td>
-        <td>${fmtDt(j.last_run)}</td><td>${j.duration_ms?(j.duration_ms/1000).toFixed(1)+'s':'—'}</td>
-        <td><span class="badge ${j.status==='success'?'active':j.status==='running'?'paused':'closed'}">${j.status==='success'?'OK':j.status==='running'?'Executando':'Erro'}</span></td>
-        <td><button class="action-btn" onclick="trigger('${j.name}')">Executar agora</button></td>
+    ? rows.map(j => `<tr>
+        <td>${JOB_LABEL[j.name] || j.name}</td>
+        <td style="font-size:.78rem;color:var(--text-muted)">${j.cron || '—'}</td>
+        <td>${fmtDt(j.last_run)}</td>
+        <td>${j.duration_ms ? fmtDur(j.duration_ms) : '—'}</td>
+        <td><span class="badge ${j.status==='success'?'active':j.status==='running'?'paused':'closed'}">${j.status==='success'?'✅ OK':j.status==='running'?'⏳ Rodando':j.status==='error'?'❌ Erro':'—'}</span></td>
+        <td><button class="action-btn" onclick="triggerJob('${j.name}')">▶ Executar</button></td>
       </tr>`).join('')
-    : '<tr><td colspan="7" class="empty-state">Nenhum job configurado</td></tr>';
-}
-async function trigger(name) {
-  await DB.triggerJob(name);
-  load();
+    : '<tr><td colspan="7" class="empty-state">Nenhum job registrado ainda — execute um sync para registrar</td></tr>';
 }
 
-async function runSync() {
-  const btn  = document.getElementById('syncBtn');
-  const icon = document.getElementById('syncIcon');
-  const status = document.getElementById('syncStatus');
-
-  btn.disabled = true;
-  icon.className = 'fas fa-sync-alt fa-spin';
-  status.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="margin-right:4px"></i>Sync disparado — pode levar alguns minutos...';
-  status.style.color = 'var(--primary)';
-
-  const ok = await DB.triggerJob('dailySync');
-
+async function triggerJob(name) {
+  const statusEl = document.getElementById('syncStatus');
+  statusEl.innerHTML = `<i class="fas fa-circle-notch fa-spin"></i> Disparando ${name}...`;
+  statusEl.style.color = 'var(--primary)';
+  const ok = await DB.triggerJob(name);
   if (ok) {
-    status.innerHTML = '<i class="fas fa-check-circle" style="color:var(--green);margin-right:4px"></i>Sync iniciado! Atualize a página de Performance em alguns minutos.';
-    status.style.color = 'var(--green)';
+    statusEl.innerHTML = `<i class="fas fa-check-circle" style="color:var(--green)"></i> ${name} iniciado! Acompanhe nos logs abaixo.`;
+    statusEl.style.color = 'var(--green)';
   } else {
-    status.innerHTML = '<i class="fas fa-times-circle" style="color:var(--red);margin-right:4px"></i>Erro ao disparar sync. Verifique os logs do worker.';
-    status.style.color = 'var(--red)';
+    statusEl.innerHTML = `<i class="fas fa-times-circle" style="color:var(--red)"></i> Erro ao disparar.`;
+    statusEl.style.color = 'var(--red)';
+  }
+  setTimeout(() => { statusEl.innerHTML = ''; }, 8000);
+  setTimeout(loadJobs, 2000);
+}
+
+// Botões de sync manual
+document.querySelectorAll('.sync-action-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const name = btn.dataset.job;
+    const apiName = name === 'syncVisitas' ? 'syncVisitas' : name === 'syncVendas' ? 'dailySync' : name;
+    btn.disabled = true;
+    btn.classList.add('running');
+    await triggerJob(apiName);
+    btn.disabled = false;
+    btn.classList.remove('running');
+  });
+});
+
+// ── Histórico de execuções ───────────────────────────────────
+function renderReport(report, jobName) {
+  if (!report) return '<span style="color:var(--text-muted);font-size:.8rem">Sem relatório</span>';
+  const lojas = report.lojas || [];
+
+  if (jobName === 'sync-vendas') {
+    return `
+      <div style="margin-bottom:10px;font-size:.82rem;color:var(--text-muted)">
+        📦 Total importado: <b style="color:var(--text-primary)">${report.total_pedidos_importados ?? '?'} pedidos</b>
+      </div>
+      ${lojas.map(l => `
+        <div class="run-loja-row">
+          <span class="run-loja-tag">${l.loja}</span>
+          ${l.erro
+            ? `<span class="run-loja-err">❌ ${l.erro}</span>`
+            : `<span class="run-loja-meta"><span>📦 ${l.pedidos_importados} importados</span></span>`}
+        </div>`).join('')}`;
+  }
+  if (jobName === 'sync-metricas') {
+    return lojas.map(l => `
+      <div class="run-loja-row">
+        <span class="run-loja-tag">${l.loja}</span>
+        ${l.erro
+          ? `<span class="run-loja-err">❌ ${l.erro}</span>`
+          : `<span class="run-loja-meta">
+              <span>⭐ ${l.nivel_reputacao || '?'}</span>
+              <span>↩️ ${l.devolucoes_novas} devoluções novas</span>
+            </span>`}
+      </div>`).join('');
+  }
+  if (jobName === 'sync-visitas') {
+    return `
+      <div style="margin-bottom:10px;font-size:.82rem;color:var(--text-muted)">
+        👁️ Total de visitas coletadas: <b style="color:var(--text-primary)">${(report.total_visitas ?? 0).toLocaleString('pt-BR')}</b>
+        ${report.data_coletada ? `<span style="margin-left:8px">📅 Referente a: ${report.data_coletada}</span>` : ''}
+      </div>
+      ${lojas.map(l => `
+        <div class="run-loja-row">
+          <span class="run-loja-tag">${l.loja}</span>
+          ${l.erro
+            ? `<span class="run-loja-err">❌ ${l.erro}</span>`
+            : `<span class="run-loja-meta">
+                <span>📋 ${l.itens} itens</span>
+                <span>👁️ ${(l.visitas_total||0).toLocaleString('pt-BR')} visitas</span>
+                ${l.erros > 0 ? `<span style="color:var(--orange)">⚠️ ${l.erros} erros</span>` : ''}
+              </span>`}
+        </div>`).join('')}`;
+  }
+  return `<pre style="font-size:.75rem;color:var(--text-muted);overflow:auto;max-height:200px">${JSON.stringify(report, null, 2)}</pre>`;
+}
+
+async function loadRuns() {
+  const job = document.getElementById('filterJob').value;
+  const data = await DB.getScheduleRuns({ job, limit: 30 });
+  const runs = data?.runs || [];
+  const sec = document.getElementById('runsSection');
+
+  if (!runs.length) {
+    sec.innerHTML = '<div class="empty-state" style="padding:20px">Nenhuma execução registrada ainda — os syncs gravam aqui automaticamente após cada execução.</div>';
+    return;
   }
 
-  icon.className = 'fas fa-sync-alt';
-  btn.disabled = false;
-  load();
+  sec.innerHTML = runs.map((r, i) => {
+    const label = JOB_LABEL[r.job_name] || r.job_name;
+    const badgeCls = r.status === 'success' ? 'success' : r.status === 'running' ? 'running' : 'error';
+    const badgeTxt = r.status === 'success' ? '✅ Sucesso' : r.status === 'running' ? '⏳ Rodando' : '❌ Erro';
+    const dur = r.duration_ms ? fmtDur(r.duration_ms) : r.status === 'running' ? 'em andamento...' : '—';
+    const reportHtml = renderReport(r.report, r.job_name);
+    const errHtml = r.error_msg ? `<div style="background:rgba(255,59,48,.1);border-radius:6px;padding:10px;margin-top:8px;font-size:.8rem;color:var(--red)">${r.error_msg}</div>` : '';
+
+    return `
+      <div class="run-card">
+        <div class="run-header" onclick="toggleRun(${i})">
+          <span class="run-badge ${badgeCls}">${badgeTxt}</span>
+          <span style="font-weight:700;font-size:.88rem">${label}</span>
+          <span style="flex:1;font-size:.78rem;color:var(--text-muted)">${fmtDt(r.started_at)}</span>
+          <span style="font-size:.78rem;color:var(--text-muted)">⏱ ${dur}</span>
+          <i class="fas fa-chevron-down" id="chevron-${i}" style="font-size:.7rem;color:var(--text-muted);margin-left:8px;transition:.2s"></i>
+        </div>
+        <div class="run-body" id="run-body-${i}">
+          ${reportHtml}
+          ${errHtml}
+        </div>
+      </div>`;
+  }).join('');
 }
+
+function toggleRun(i) {
+  const body = document.getElementById(`run-body-${i}`);
+  const chev = document.getElementById(`chevron-${i}`);
+  const open = body.classList.toggle('open');
+  if (chev) chev.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+document.getElementById('filterJob').addEventListener('change', loadRuns);
 // ── Worker Logs via SSE ────────────────────────────────────────
 const MAX_LINES = 500;
 let allLines = [];
@@ -235,8 +382,10 @@ WS.on('_connected', () => {
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 
-load();
-setInterval(load, 15000);
+loadJobs();
+loadRuns();
+setInterval(loadJobs, 15000);
+setInterval(loadRuns, 30000);
 connectSSE();
 </script>
 </body>

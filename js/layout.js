@@ -3,6 +3,9 @@
 // Set window.PAGE_TITLE and window.ACTIVE_NAV before including this file.
 
 const NAV_ITEMS = [
+  { section: 'Início', items: [
+    { href: '../index.html', icon: 'fa-home', label: 'Dashboard' },
+  ]},
   { section: 'Operação', items: [
     { href: 'anuncios.html', icon: 'fa-tag', label: 'Anúncios' },
     { href: 'pedidos.html', icon: 'fa-box', label: 'Pedidos' },

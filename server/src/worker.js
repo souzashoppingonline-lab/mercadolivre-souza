@@ -571,82 +571,79 @@ async function dailySync() {
     const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
     // 72h para recuperar até 3 dias de vendas perdidas por token expirado
     const dateFrom = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    let totalNew = 0;
 
-    for (const store of stores) {
-      try {
-        await new Promise(r => setTimeout(r, 30000)); // 30s entre lojas para não bater rate limit ML
-
-        // Renova token só se estiver expirado ou a menos de 30 min de expirar
-        // Não renovar tokens válidos evita 429 no ML OAuth
-        const tokenExpAt = store.token_expires_at ? new Date(store.token_expires_at) : null;
-        const tokenExpiresIn = tokenExpAt ? (tokenExpAt - Date.now()) : -1;
-        if (tokenExpiresIn < 30 * 60 * 1000) {
-          try {
-            await refreshToken(store.id);
-            expiredStores.delete(store.id);
-            console.log(`[sync] token renovado: ${store.nickname}`);
-          } catch(e) {
-            console.warn(`[sync] refresh token ${store.nickname}: ${e.message}`);
-          }
-        }
-
-        // Reputação do vendedor (1 chamada/loja/dia)
+    // Cada loja tem app ML próprio = rate limit separado → processar em paralelo
+    async function syncStore(store) {
+      // Renova token só se estiver expirado ou a menos de 30 min de expirar
+      const tokenExpAt = store.token_expires_at ? new Date(store.token_expires_at) : null;
+      const tokenExpiresIn = tokenExpAt ? (tokenExpAt - Date.now()) : -1;
+      if (tokenExpiresIn < 30 * 60 * 1000) {
         try {
-          const rep = await ml.getSellerReputation(store.id);
-          if (rep) {
-            await pool.query(
-              `INSERT INTO store_metrics (store_id, level_id, power_seller_status, transactions_completed,
-                 positive_ratings_pct, negative_ratings_pct, neutral_ratings_pct, collected_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
-              [store.id, rep.level_id, rep.power_seller_status,
-               rep.transactions?.total || 0,
-               rep.transactions?.ratings?.positive?.rate * 100 || 0,
-               rep.transactions?.ratings?.negative?.rate * 100 || 0,
-               rep.transactions?.ratings?.neutral?.rate * 100 || 0]
-            );
-          }
-        } catch (e) {
-          console.warn(`[sync] reputação store=${store.id}:`, e.message);
+          await refreshToken(store.id);
+          expiredStores.delete(store.id);
+          console.log(`[sync] token renovado: ${store.nickname}`);
+        } catch(e) {
+          console.warn(`[sync] refresh token ${store.nickname}: ${e.message}`);
         }
-
-        await new Promise(r => setTimeout(r, 2000));
-
-        // Reconciliação com paginação completa — não perde pedidos se houver >50 no período
-        let offset = 0;
-        let apiTotal = Infinity;
-        let storeNew = 0;
-
-        while (offset < apiTotal) {
-          const data = await ml.searchOrders(store.id, dateFrom, offset);
-          const orders = data.results || [];
-          apiTotal = data.paging?.total ?? orders.length;
-
-          console.log(`[sync] store=${store.id} (${store.nickname}) offset=${offset}/${apiTotal} → ${orders.length} pedidos`);
-          if (!orders.length) break;
-
-          for (const order of orders) {
-            // Pula pedidos já processados nas últimas 12h — novos e status-changed são sempre sinc
-            const exists = await pool.query(
-              `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '12 hours'`, [order.id]
-            );
-            if (exists.rows.length) continue;
-            await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
-            storeNew++;
-            await new Promise(r => setTimeout(r, 2500)); // 2.5s entre pedidos
-          }
-
-          offset += orders.length;
-          if (orders.length < 50) break; // última página
-          await new Promise(r => setTimeout(r, 3000));
-        }
-
-        totalNew += storeNew;
-        console.log(`[sync] store=${store.id} (${store.nickname}) → ${storeNew} importados`);
-      } catch (e) {
-        console.error(`[sync] store=${store.id} erro:`, e.message);
       }
+
+      // Reputação do vendedor (1 chamada/loja/dia)
+      try {
+        const rep = await ml.getSellerReputation(store.id);
+        if (rep) {
+          await pool.query(
+            `INSERT INTO store_metrics (store_id, level_id, power_seller_status, transactions_completed,
+               positive_ratings_pct, negative_ratings_pct, neutral_ratings_pct, collected_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
+            [store.id, rep.level_id, rep.power_seller_status,
+             rep.transactions?.total || 0,
+             rep.transactions?.ratings?.positive?.rate * 100 || 0,
+             rep.transactions?.ratings?.negative?.rate * 100 || 0,
+             rep.transactions?.ratings?.neutral?.rate * 100 || 0]
+          );
+        }
+      } catch (e) {
+        console.warn(`[sync] reputação store=${store.id}:`, e.message);
+      }
+
+      // Reconciliação com paginação completa
+      let offset = 0;
+      let apiTotal = Infinity;
+      let storeNew = 0;
+
+      while (offset < apiTotal) {
+        const data = await ml.searchOrders(store.id, dateFrom, offset);
+        const orders = data.results || [];
+        apiTotal = data.paging?.total ?? orders.length;
+
+        console.log(`[sync] store=${store.id} (${store.nickname}) offset=${offset}/${apiTotal} → ${orders.length} pedidos`);
+        if (!orders.length) break;
+
+        for (const order of orders) {
+          const exists = await pool.query(
+            `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '12 hours'`, [order.id]
+          );
+          if (exists.rows.length) continue;
+          await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
+          storeNew++;
+          await new Promise(r => setTimeout(r, 1500)); // 1.5s entre pedidos da mesma loja
+        }
+
+        offset += orders.length;
+        if (orders.length < 50) break;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+
+      console.log(`[sync] store=${store.id} (${store.nickname}) → ${storeNew} importados`);
+      return storeNew;
     }
+
+    // Todas as lojas em paralelo — cada uma tem seu próprio app ML e rate limit independente
+    const results = await Promise.allSettled(stores.map(store => syncStore(store)));
+    const totalNew = results.reduce((acc, r) => acc + (r.status === 'fulfilled' ? r.value : 0), 0);
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') console.error(`[sync] store=${stores[i].id} erro:`, r.reason?.message);
+    });
 
     console.log(`[sync] reconciliação concluída — ${totalNew} pedidos importados`);
     if (totalNew > 0) {

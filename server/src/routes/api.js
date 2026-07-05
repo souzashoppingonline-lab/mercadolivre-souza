@@ -1201,12 +1201,13 @@ router.get('/produtos/:id/historico-diario', async (req, res) => {
 
     // Merge por data
     const map = {};
+    const toISO = v => (v instanceof Date ? v : new Date(v)).toISOString().slice(0, 10);
     for (const v of visitas) {
-      const d = String(v.date).slice(0, 10);
+      const d = toISO(v.date);
       map[d] = { data: d, visitas: Number(v.visitas), pedidos: 0, receita: 0 };
     }
     for (const v of vendas) {
-      const d = String(v.dia).slice(0, 10);
+      const d = toISO(v.dia);
       if (!map[d]) map[d] = { data: d, visitas: 0, pedidos: 0, receita: 0 };
       map[d].pedidos = Number(v.pedidos);
       map[d].receita = Number(v.receita);

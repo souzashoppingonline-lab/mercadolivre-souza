@@ -936,4 +936,118 @@ cmdSub.on('message', (channel, msg) => {
   } catch {}
 });
 
+// ── Telegram Bot — listener de comandos ──────────────────
+// Usa long polling para receber mensagens sem precisar configurar webhook no Telegram.
+// Comandos suportados:
+//   /refresh         — tenta renovar tokens de todas as lojas expiradas
+//   /refresh topmix  — tenta renovar token de uma loja pelo nome (busca parcial)
+//   /status          — mostra status dos tokens de todas as lojas
+let _tgOffset = 0;
+const DASH_URL = process.env.DASH_URL || 'https://multimixvendas.duckdns.org';
+
+async function tgReply(chatId, text, botToken) {
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+  } catch (e) {
+    console.error('[tg-bot] reply error:', e.message);
+  }
+}
+
+async function handleTgCommand(text, chatId, botToken) {
+  const cmd = (text || '').trim().toLowerCase().split(/\s+/);
+
+  if (cmd[0] === '/status') {
+    const { rows } = await pool.query(`SELECT id, nickname, token_expires_at, refresh_failures FROM stores ORDER BY nickname`);
+    const lines = rows.map(r => {
+      const exp = r.token_expires_at ? new Date(r.token_expires_at) : null;
+      const isEpoch = !exp || exp.getFullYear() < 2000;
+      const expiresIn = exp ? exp - Date.now() : -1;
+      const horas = isEpoch ? 0 : Math.floor(expiresIn / 3600000);
+      const status = isEpoch ? '❌ Expirado' : expiresIn > 0 ? `✅ ${horas}h restantes` : '⚠️ Expirou agora';
+      const falhas = r.refresh_failures > 0 ? ` (${r.refresh_failures} falhas)` : '';
+      return `🏪 <b>${r.nickname}</b>\n${status}${falhas}`;
+    });
+    await tgReply(chatId, `<b>Status dos tokens:</b>\n\n${lines.join('\n\n')}`, botToken);
+    return;
+  }
+
+  if (cmd[0] === '/refresh') {
+    const filtro = cmd[1] || '';
+    const { rows } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores ORDER BY nickname`);
+    const lojas = filtro
+      ? rows.filter(r => r.nickname.toLowerCase().includes(filtro))
+      : rows.filter(r => {
+          const exp = r.token_expires_at ? new Date(r.token_expires_at) : null;
+          return !exp || exp.getFullYear() < 2000 || (exp - Date.now()) < 4 * 60 * 60 * 1000;
+        });
+
+    if (!lojas.length) {
+      await tgReply(chatId, filtro ? `❓ Nenhuma loja encontrada com "<b>${filtro}</b>"` : '✅ Todos os tokens estão válidos — nenhum refresh necessário.', botToken);
+      return;
+    }
+
+    await tgReply(chatId, `🔄 Tentando renovar token de ${lojas.length} loja(s)...`, botToken);
+
+    for (const loja of lojas) {
+      try {
+        await refreshToken(loja.id);
+        expiredStores.delete(loja.id);
+        await tgReply(chatId, `✅ <b>${loja.nickname}</b> — token renovado com sucesso!`, botToken);
+      } catch (e) {
+        const link = `${DASH_URL}/auth/login?store_id=${loja.id}`;
+        await tgReply(chatId,
+          `❌ <b>${loja.nickname}</b> — refresh falhou\n` +
+          `Erro: <code>${e.message.slice(0, 150)}</code>\n\n` +
+          `Para reconectar, acesse:\n🔗 <a href="${link}">${link}</a>`,
+          botToken
+        );
+      }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    return;
+  }
+
+  if (cmd[0] === '/help' || cmd[0] === '/start') {
+    await tgReply(chatId,
+      `<b>Comandos disponíveis:</b>\n\n` +
+      `/status — ver status dos tokens de todas as lojas\n` +
+      `/refresh — renovar tokens expirados automaticamente\n` +
+      `/refresh [nome] — renovar token de uma loja específica\n\n` +
+      `Exemplo: <code>/refresh topmix</code>`,
+      botToken
+    );
+  }
+}
+
+async function tgBotLoop() {
+  const { rows } = await pool.query(`SELECT value FROM app_config WHERE key='telegram_bot_token' LIMIT 1`);
+  const botToken = rows[0]?.value || env.tg?.botToken;
+  if (!botToken) return; // bot não configurado
+
+  try {
+    const r = await fetch(
+      `https://api.telegram.org/bot${botToken}/getUpdates?offset=${_tgOffset}&timeout=25&allowed_updates=["message"]`,
+      { signal: AbortSignal.timeout(30000) }
+    );
+    if (!r.ok) { await new Promise(x => setTimeout(x, 10000)); return; }
+    const data = await r.json();
+    for (const update of (data.result || [])) {
+      _tgOffset = update.update_id + 1;
+      const msg = update.message;
+      if (!msg?.text?.startsWith('/')) continue;
+      console.log(`[tg-bot] comando: ${msg.text} de chat_id=${msg.chat.id}`);
+      handleTgCommand(msg.text, msg.chat.id, botToken).catch(e => console.error('[tg-bot] erro:', e.message));
+    }
+  } catch (e) {
+    if (e.name !== 'TimeoutError') console.error('[tg-bot] polling error:', e.message);
+  }
+  setTimeout(tgBotLoop, 1000);
+}
+
+tgBotLoop();
+
 console.log('[worker] listening for ml-webhooks jobs...');

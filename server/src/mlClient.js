@@ -39,9 +39,10 @@ async function getAccessToken(storeId) {
   const promise = refreshToken(storeId)
     .catch(err => {
       if (err.oauthRateLimit) {
-        // Block further refresh attempts for 35 min
-        oauthCooldown.set(storeId, Date.now() + 35 * 60 * 1000);
-        console.warn(`[mlClient] OAuth 429 store=${storeId} — cooldown 35 min`);
+        // Block further refresh attempts for 5 min — suficiente para ML resetar o rate limit
+        // 35 min era muito agressivo e bloqueava processamento de webhooks válidos
+        oauthCooldown.set(storeId, Date.now() + 5 * 60 * 1000);
+        console.warn(`[mlClient] OAuth 429 store=${storeId} — cooldown 5 min`);
       }
       throw err;
     })

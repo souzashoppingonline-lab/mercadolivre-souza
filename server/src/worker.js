@@ -577,14 +577,18 @@ async function dailySync() {
       try {
         await new Promise(r => setTimeout(r, 5000));
 
-        // Renova token ANTES de usar — garante acesso mesmo se expirou às 03:00
-        try {
-          await refreshToken(store.id);
-          expiredStores.delete(store.id);
-          console.log(`[sync] token renovado: ${store.nickname}`);
-        } catch(e) {
-          console.warn(`[sync] refresh token ${store.nickname}: ${e.message}`);
-          // Continua mesmo assim — token pode ainda estar válido por alguns minutos
+        // Renova token só se estiver expirado ou a menos de 30 min de expirar
+        // Não renovar tokens válidos evita 429 no ML OAuth
+        const tokenExpAt = store.token_expires_at ? new Date(store.token_expires_at) : null;
+        const tokenExpiresIn = tokenExpAt ? (tokenExpAt - Date.now()) : -1;
+        if (tokenExpiresIn < 30 * 60 * 1000) {
+          try {
+            await refreshToken(store.id);
+            expiredStores.delete(store.id);
+            console.log(`[sync] token renovado: ${store.nickname}`);
+          } catch(e) {
+            console.warn(`[sync] refresh token ${store.nickname}: ${e.message}`);
+          }
         }
 
         // Reputação do vendedor (1 chamada/loja/dia)

@@ -567,13 +567,39 @@ startWorkers().catch(err => {
   process.exit(1);
 });
 
-// ── Daily reconciliation at 03:00 ────────────────────────────
-let isSyncing = false;
+// ── Helpers compartilhados pelos syncs ───────────────────────
 
-async function dailySync() {
-  if (isSyncing) { console.warn('[sync] já em execução — ignorando chamada duplicada'); return; }
-  isSyncing = true;
-  console.log('[sync] iniciando reconciliação diária...');
+async function ensureTokenFresh(store) {
+  const tokenExpAt = store.token_expires_at ? new Date(store.token_expires_at) : null;
+  const expiresIn  = tokenExpAt ? (tokenExpAt - Date.now()) : -1;
+  if (expiresIn < 30 * 60 * 1000) {
+    try {
+      await refreshToken(store.id);
+      expiredStores.delete(store.id);
+      console.log(`[sync] 🔑 token renovado: ${store.nickname}`);
+    } catch (e) {
+      console.warn(`[sync] 🔑 refresh falhou ${store.nickname}: ${e.message}`);
+    }
+  }
+}
+
+function scheduleAt(hour, minute, fn, label) {
+  const now  = new Date();
+  const next = new Date(now);
+  next.setHours(hour, minute, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const ms = next - now;
+  console.log(`[${label}] próxima execução: ${next.toLocaleString('pt-BR')} (em ${Math.round(ms / 60000)}min)`);
+  setTimeout(fn, ms);
+}
+
+// ── Sync Vendas — 03:00 diário, pedidos dos últimos 3 dias ───
+let isSyncingVendas = false;
+
+async function syncVendas() {
+  if (isSyncingVendas) { console.warn('[sync-vendas] já em execução — ignorando'); return; }
+  isSyncingVendas = true;
+  console.log('[sync-vendas] iniciando reconciliação de pedidos...');
 
   try {
     const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
@@ -581,21 +607,81 @@ async function dailySync() {
     const dateFrom = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
 
     // Cada loja tem app ML próprio = rate limit separado → processar em paralelo
-    async function syncStore(store) {
-      // Renova token só se estiver expirado ou a menos de 30 min de expirar
-      const tokenExpAt = store.token_expires_at ? new Date(store.token_expires_at) : null;
-      const tokenExpiresIn = tokenExpAt ? (tokenExpAt - Date.now()) : -1;
-      if (tokenExpiresIn < 30 * 60 * 1000) {
-        try {
-          await refreshToken(store.id);
-          expiredStores.delete(store.id);
-          console.log(`[sync] token renovado: ${store.nickname}`);
-        } catch(e) {
-          console.warn(`[sync] refresh token ${store.nickname}: ${e.message}`);
+    async function syncStoreVendas(store) {
+      await ensureTokenFresh(store);
+
+      let offset = 0;
+      let apiTotal = Infinity;
+      let storeNew = 0;
+
+      while (offset < apiTotal) {
+        const data = await ml.searchOrders(store.id, dateFrom, offset);
+        const orders = data.results || [];
+        apiTotal = data.paging?.total ?? orders.length;
+
+        console.log(`[sync-vendas] ${store.nickname} offset=${offset}/${apiTotal} → ${orders.length} pedidos`);
+        if (!orders.length) break;
+
+        for (const order of orders) {
+          const exists = await pool.query(
+            `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '12 hours'`, [order.id]
+          );
+          if (exists.rows.length) continue;
+          await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
+          storeNew++;
+          await new Promise(r => setTimeout(r, 1500));
         }
+
+        offset += orders.length;
+        if (orders.length < 50) break;
+        await new Promise(r => setTimeout(r, 2000));
       }
 
-      // Reputação do vendedor (1 chamada/loja/dia)
+      console.log(`[sync-vendas] ${store.nickname} → ${storeNew} importados`);
+      return storeNew;
+    }
+
+    const results = await Promise.allSettled(stores.map(s => syncStoreVendas(s)));
+    const totalNew = results.reduce((acc, r) => acc + (r.status === 'fulfilled' ? r.value : 0), 0);
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') console.error(`[sync-vendas] ${stores[i].nickname} erro:`, r.reason?.message);
+    });
+
+    console.log(`[sync-vendas] concluído — ${totalNew} pedidos importados`);
+    if (totalNew > 0) {
+      await tgNotify('tg_infra', `✅ <b>Sync Vendas</b>\n📦 ${totalNew} pedidos recuperados/atualizados`).catch(() => {});
+    }
+
+    // Preenche parent_item_id de itens que ainda não têm (roda em background após 5min)
+    const { rows: missing } = await pool.query(`SELECT COUNT(*) as c FROM items WHERE parent_item_id IS NULL`);
+    if (Number(missing[0].c) > 0) {
+      console.log(`[sync-vendas] agendando syncParentItems em 5min (${missing[0].c} itens sem parent_item_id)...`);
+      setTimeout(() => syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message)), 5 * 60 * 1000);
+    }
+  } finally {
+    isSyncingVendas = false;
+    scheduleAt(3, 0, syncVendas, 'sync-vendas');
+  }
+}
+
+// Alias para compatibilidade com comandos Redis e Telegram existentes
+async function dailySync() { return syncVendas(); }
+
+// ── Sync Métricas — 04:15 diário, reputação + devoluções ─────
+let isSyncingMetricas = false;
+
+async function syncMetricas() {
+  if (isSyncingMetricas) { console.warn('[sync-metricas] já em execução — ignorando'); return; }
+  isSyncingMetricas = true;
+  console.log('[sync-metricas] iniciando coleta de métricas...');
+
+  try {
+    const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores`);
+
+    async function syncStoreMetricas(store) {
+      await ensureTokenFresh(store);
+
+      // Reputação (1 chamada/loja/dia)
       try {
         const rep = await ml.getSellerReputation(store.id);
         if (rep) {
@@ -609,65 +695,54 @@ async function dailySync() {
              rep.transactions?.ratings?.negative?.rate * 100 || 0,
              rep.transactions?.ratings?.neutral?.rate * 100 || 0]
           );
+          console.log(`[sync-metricas] ${store.nickname} reputação: ${rep.level_id}`);
         }
       } catch (e) {
-        console.warn(`[sync] reputação store=${store.id}:`, e.message);
+        console.warn(`[sync-metricas] reputação ${store.nickname}: ${e.message}`);
       }
 
-      // Reconciliação com paginação completa
-      let offset = 0;
-      let apiTotal = Infinity;
-      let storeNew = 0;
-
-      while (offset < apiTotal) {
-        const data = await ml.searchOrders(store.id, dateFrom, offset);
-        const orders = data.results || [];
-        apiTotal = data.paging?.total ?? orders.length;
-
-        console.log(`[sync] store=${store.id} (${store.nickname}) offset=${offset}/${apiTotal} → ${orders.length} pedidos`);
-        if (!orders.length) break;
-
-        for (const order of orders) {
-          const exists = await pool.query(
-            `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '12 hours'`, [order.id]
-          );
-          if (exists.rows.length) continue;
-          await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
-          storeNew++;
-          await new Promise(r => setTimeout(r, 1500)); // 1.5s entre pedidos da mesma loja
+      // Devoluções recentes (últimas 50)
+      let claimsNew = 0;
+      try {
+        const data = await ml.searchClaims(store.id, 0);
+        const claims = data?.data || [];
+        for (const c of claims) {
+          try {
+            await new Promise(r => setTimeout(r, 1500));
+            const claim = await ml.getClaim(c.id, store.id);
+            const orderId = claim.order_id || null;
+            const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
+            const { rowCount } = await pool.query(
+              `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+               ON CONFLICT DO NOTHING`,
+              [store.id, orderId, buyerNickname,
+               claim.resolution?.description || claim.reason_id || null,
+               claim.reason_id || null, claim.total || 0,
+               claim.status, claim.date_created]
+            );
+            if (rowCount) claimsNew++;
+          } catch (e) {
+            console.warn(`[sync-metricas] claim=${c.id}: ${e.message}`);
+          }
         }
-
-        offset += orders.length;
-        if (orders.length < 50) break;
-        await new Promise(r => setTimeout(r, 2000));
+      } catch (e) {
+        console.warn(`[sync-metricas] devoluções ${store.nickname}: ${e.message}`);
       }
 
-      console.log(`[sync] store=${store.id} (${store.nickname}) → ${storeNew} importados`);
-      return storeNew;
+      console.log(`[sync-metricas] ${store.nickname} → reputação OK, ${claimsNew} devoluções novas`);
     }
 
-    // Todas as lojas em paralelo — cada uma tem seu próprio app ML e rate limit independente
-    const results = await Promise.allSettled(stores.map(store => syncStore(store)));
-    const totalNew = results.reduce((acc, r) => acc + (r.status === 'fulfilled' ? r.value : 0), 0);
+    const results = await Promise.allSettled(stores.map(s => syncStoreMetricas(s)));
     results.forEach((r, i) => {
-      if (r.status === 'rejected') console.error(`[sync] store=${stores[i].id} erro:`, r.reason?.message);
+      if (r.status === 'rejected') console.error(`[sync-metricas] ${stores[i].nickname} erro:`, r.reason?.message);
     });
 
-    console.log(`[sync] reconciliação concluída — ${totalNew} pedidos importados`);
-    if (totalNew > 0) {
-      await tgNotify('tg_infra', `✅ Sync concluído\n📦 ${totalNew} pedidos recuperados/atualizados`).catch(()=>{});
-    }
-
-    // Preenche parent_item_id de itens que ainda não têm (roda em background após 5min)
-    const { rows: missing } = await pool.query(`SELECT COUNT(*) as c FROM items WHERE parent_item_id IS NULL`);
-    if (Number(missing[0].c) > 0) {
-      console.log(`[sync] agendando syncParentItems em 5min (${missing[0].c} itens sem parent_item_id)...`);
-      setTimeout(() => syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message)), 5 * 60 * 1000);
-    }
+    console.log('[sync-metricas] concluído');
+    await tgNotify('tg_infra', `📊 <b>Sync Métricas</b> concluído\n🏪 ${stores.length} lojas atualizadas`).catch(() => {});
   } finally {
-    // Sempre reseta isSyncing — mesmo se dailySync lançar exceção inesperada
-    isSyncing = false;
-    scheduleDailySync();
+    isSyncingMetricas = false;
+    scheduleAt(4, 15, syncMetricas, 'sync-metricas');
   }
 }
 
@@ -726,8 +801,9 @@ async function getTokenForStore(storeId) {
   return rows[0]?.access_token;
 }
 
+// syncReturns retroativo: busca TODAS as páginas de devoluções (usado sob demanda, não no cron)
 async function syncReturns() {
-  console.log('[syncReturns] iniciando busca retroativa de devoluções...');
+  console.log('[syncReturns] busca retroativa completa de devoluções...');
   const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores`);
   let total = 0;
 
@@ -747,7 +823,7 @@ async function syncReturns() {
             const claim = await ml.getClaim(c.id, store.id);
             const orderId = claim.order_id || null;
             const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
-            await pool.query(
+            const { rowCount } = await pool.query(
               `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
                ON CONFLICT DO NOTHING`,
@@ -756,7 +832,7 @@ async function syncReturns() {
                claim.reason_id || null, claim.total || 0,
                claim.status, claim.date_created]
             );
-            total++;
+            if (rowCount) total++;
           } catch (e) {
             console.warn(`[syncReturns] claim=${c.id}:`, e.message);
           }
@@ -769,11 +845,11 @@ async function syncReturns() {
         hasMore = false;
       }
     }
-    console.log(`[syncReturns] store=${store.id} concluído`);
+    console.log(`[syncReturns] ${store.nickname} concluído`);
   }
 
   console.log(`[syncReturns] concluído — ${total} devoluções importadas`);
-  await tgNotify('tg_devolucoes', `✅ Sync retroativo de devoluções concluído\n📦 ${total} registros importados`).catch(()=>{});
+  await tgNotify('tg_devolucoes', `✅ Sync retroativo de devoluções concluído\n📦 ${total} registros importados`).catch(() => {});
 }
 
 // ── Sync Visitas — 02:00 diário, 30s entre lotes, cada loja com seu app ──────
@@ -826,28 +902,8 @@ async function syncVisitas() {
     console.log('[visitas] coleta concluída');
   } finally {
     isSyncingVisitas = false;
-    scheduleVisitasSync();
+    scheduleAt(2, 0, syncVisitas, 'sync-visitas');
   }
-}
-
-function scheduleVisitasSync() {
-  const now   = new Date();
-  const next2am = new Date(now);
-  next2am.setHours(2, 0, 0, 0);
-  if (next2am <= now) next2am.setDate(next2am.getDate() + 1);
-  const ms = next2am - now;
-  console.log(`[visitas] próxima coleta: ${next2am.toLocaleString('pt-BR')} (em ${Math.round(ms/60000)}min)`);
-  setTimeout(syncVisitas, ms);
-}
-
-function scheduleDailySync() {
-  const now = new Date();
-  const next3am = new Date(now);
-  next3am.setHours(3, 0, 0, 0);
-  if (next3am <= now) next3am.setDate(next3am.getDate() + 1);
-  const ms = next3am - now;
-  console.log(`[sync] próxima reconciliação: ${next3am.toLocaleString('pt-BR')} (em ${Math.round(ms/60000)}min)`);
-  setTimeout(dailySync, ms);
 }
 
 // Verifica e renova tokens a cada 5 horas (independente do dailySync das 03:00)
@@ -904,17 +960,23 @@ async function tokenRefreshLoop() {
   }
 }
 
-scheduleDailySync();
-scheduleVisitasSync();
-tokenRefreshLoop(); // roda imediatamente no start
-setInterval(tokenRefreshLoop, 30 * 60 * 1000); // repete a cada 30min via setInterval (não setTimeout recursivo)
+// ── Agendadores de boot ───────────────────────────────────────
+// Sync Vendas   → 03:00  (pedidos 72h)
+// Sync Métricas → 04:15  (reputação + devoluções recentes)
+// Sync Visitas  → 02:00  (visitas por anúncio)
+scheduleAt(3,  0,  syncVendas,   'sync-vendas');
+scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
+scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 
-// Ao iniciar o worker, roda dailySync após 2 min SOMENTE fora do horário de pico (22h–08h)
+tokenRefreshLoop(); // roda imediatamente no start
+setInterval(tokenRefreshLoop, 30 * 60 * 1000);
+
+// Ao iniciar o worker, roda syncVendas após 2 min SOMENTE fora do horário de pico (22h–08h)
 setTimeout(() => {
   const h = new Date().getHours();
   if (h >= 22 || h < 8) {
     console.log('[worker] sync inicial automático (fora do pico)');
-    dailySync().catch(e => console.error('[worker] sync inicial erro:', e.message));
+    syncVendas().catch(e => console.error('[worker] sync-vendas inicial erro:', e.message));
   } else {
     console.log(`[worker] sync inicial ignorado — horário de pico (${h}h). Aguardando 03:00.`);
   }
@@ -926,12 +988,16 @@ cmdSub.subscribe('worker:cmd');
 cmdSub.on('message', (channel, msg) => {
   try {
     const { cmd } = JSON.parse(msg);
-    if (cmd === 'dailySync') {
-      console.log('[worker] dailySync disparado manualmente');
-      dailySync().catch(e => console.error('[worker] dailySync manual erro:', e.message));
+    if (cmd === 'dailySync' || cmd === 'syncVendas') {
+      console.log('[worker] syncVendas disparado manualmente');
+      syncVendas().catch(e => console.error('[worker] syncVendas manual erro:', e.message));
+    }
+    if (cmd === 'syncMetricas') {
+      console.log('[worker] syncMetricas disparado manualmente');
+      syncMetricas().catch(e => console.error('[worker] syncMetricas erro:', e.message));
     }
     if (cmd === 'syncReturns') {
-      console.log('[worker] syncReturns disparado manualmente');
+      console.log('[worker] syncReturns (retroativo) disparado manualmente');
       syncReturns().catch(e => console.error('[worker] syncReturns erro:', e.message));
     }
     if (cmd === 'syncParentItems') {
@@ -1020,15 +1086,40 @@ async function handleTgCommand(text, chatId, botToken) {
     return;
   }
 
+  if (cmd[0] === '/sync') {
+    const tipo = cmd[1] || 'vendas';
+    if (tipo === 'vendas') {
+      await tgReply(chatId, '🔄 Iniciando sync de <b>vendas</b> (últimas 72h)...', botToken);
+      syncVendas().catch(e => console.error('[tg-bot] syncVendas erro:', e.message));
+    } else if (tipo === 'metricas') {
+      await tgReply(chatId, '📊 Iniciando sync de <b>métricas</b> (reputação + devoluções)...', botToken);
+      syncMetricas().catch(e => console.error('[tg-bot] syncMetricas erro:', e.message));
+    } else if (tipo === 'visitas') {
+      await tgReply(chatId, '👁 Iniciando sync de <b>visitas</b>...', botToken);
+      syncVisitas().catch(e => console.error('[tg-bot] syncVisitas erro:', e.message));
+    } else if (tipo === 'devolucoes') {
+      await tgReply(chatId, '↩️ Iniciando busca retroativa de <b>devoluções</b>...', botToken);
+      syncReturns().catch(e => console.error('[tg-bot] syncReturns erro:', e.message));
+    } else {
+      await tgReply(chatId, '❓ Tipos disponíveis: <code>vendas</code>, <code>metricas</code>, <code>visitas</code>, <code>devolucoes</code>', botToken);
+    }
+    return;
+  }
+
   if (cmd[0] === '/help' || cmd[0] === '/start') {
     await tgReply(chatId,
       `<b>Comandos disponíveis:</b>\n\n` +
-      `/status — ver status dos tokens de todas as lojas\n` +
-      `/refresh — renovar tokens expirados automaticamente\n` +
-      `/refresh [nome] — renovar token de uma loja específica\n\n` +
-      `Exemplo: <code>/refresh topmix</code>`,
+      `/status — status dos tokens de todas as lojas\n` +
+      `/refresh — renovar tokens expirados\n` +
+      `/refresh [nome] — renovar token de uma loja específica\n` +
+      `/sync vendas — forçar reconciliação de pedidos (72h)\n` +
+      `/sync metricas — forçar coleta de reputação + devoluções\n` +
+      `/sync visitas — forçar coleta de visitas por anúncio\n` +
+      `/sync devolucoes — busca retroativa completa de devoluções\n\n` +
+      `Exemplos: <code>/refresh topmix</code>  <code>/sync vendas</code>`,
       botToken
     );
+    return;
   }
 }
 

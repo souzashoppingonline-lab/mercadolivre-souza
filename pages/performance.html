@@ -217,7 +217,7 @@ async function loadSection(storeId) {
       ? `<img class="perf-thumb" src="${r.thumbnail}" onerror="this.outerHTML='<div class=\\'perf-thumb-ph\\'><i class=\\'fas fa-tag\\'></i></div>'">`
       : `<div class="perf-thumb-ph"><i class="fas fa-tag"></i></div>`;
     return `
-      <div class="perf-row">
+      <div class="perf-row" style="cursor:pointer" onclick="openHistorico('${r.ml_id}','${(r.title||'').replace(/'/g,'\\'')}')">
         <div class="rank-badge ${rkCls}">${rank}</div>
         ${thumb}
         <div class="perf-title" title="${r.title}">${r.title}</div>
@@ -243,6 +243,7 @@ async function loadSection(storeId) {
             <div class="val">#${rank}</div>
           </div>
         </div>
+        <i class="fas fa-chart-bar" style="color:var(--text-muted);font-size:.75rem;flex-shrink:0"></i>
       </div>`;
   }).join('');
 }
@@ -295,6 +296,110 @@ WS.on('_connected', () => {
 });
 
 init();
+</script>
+
+<!-- Modal Histórico Diário -->
+<div id="historicoModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeHistorico()">
+  <div style="background:#1c1c1e;border:1px solid #3a3a3c;border-radius:16px;padding:24px 28px;width:90%;max-width:680px;max-height:85vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.9)">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px">
+      <div>
+        <h3 id="histTitle" style="margin:0 0 4px;font-size:1rem;color:#fff">—</h3>
+        <span style="font-size:.75rem;color:var(--text-muted)">Histórico dia a dia — visitas, vendas e conversão</span>
+      </div>
+      <button onclick="closeHistorico()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:2px 6px;flex-shrink:0">✕</button>
+    </div>
+    <div id="histBody">
+      <div style="text-align:center;padding:32px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function closeHistorico() {
+  document.getElementById('historicoModal').style.display = 'none';
+}
+
+async function openHistorico(itemId, title) {
+  const modal = document.getElementById('historicoModal');
+  const body  = document.getElementById('histBody');
+  document.getElementById('histTitle').textContent = title;
+  body.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>';
+  modal.style.display = 'flex';
+
+  const days = document.getElementById('daysFilter').value;
+  const data = await DB.getProdutoHistoricoDiario(itemId, { days });
+
+  if (!data || data.error) {
+    body.innerHTML = `<div style="color:var(--red);text-align:center;padding:24px">${data?.error || 'Erro ao carregar'}</div>`;
+    return;
+  }
+
+  const rows = data.rows || [];
+  if (!rows.length) {
+    body.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted)">Nenhum dado encontrado para este período</div>';
+    return;
+  }
+
+  const fmtDate = d => {
+    const [y,m,dia] = d.split('-');
+    return `${dia}/${m}/${y}`;
+  };
+  const fmtMoeda = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+
+  // Totais
+  const totVisitas = rows.reduce((s,r) => s + r.visitas, 0);
+  const totVendas  = rows.reduce((s,r) => s + r.pedidos, 0);
+  const totReceita = rows.reduce((s,r) => s + r.receita, 0);
+  const totConv    = totVisitas > 0 ? ((totVendas / totVisitas) * 100).toFixed(1) + '%' : '—';
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      <div style="background:var(--surface);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Visitas</div>
+        <div style="font-size:1.1rem;font-weight:700">${totVisitas.toLocaleString('pt-BR')}</div>
+      </div>
+      <div style="background:var(--surface);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Vendas</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--green)">${totVendas}</div>
+      </div>
+      <div style="background:var(--surface);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Conversão</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--yellow)">${totConv}</div>
+      </div>
+      <div style="background:var(--surface);border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px">Receita</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--primary)">${fmtMoeda(totReceita)}</div>
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:8px 10px;color:var(--text-muted);font-weight:600;font-size:.72rem;text-transform:uppercase">Data</th>
+          <th style="text-align:right;padding:8px 10px;color:var(--text-muted);font-weight:600;font-size:.72rem;text-transform:uppercase">Visitas</th>
+          <th style="text-align:right;padding:8px 10px;color:var(--text-muted);font-weight:600;font-size:.72rem;text-transform:uppercase">Vendas</th>
+          <th style="text-align:right;padding:8px 10px;color:var(--text-muted);font-weight:600;font-size:.72rem;text-transform:uppercase">Conversão</th>
+          <th style="text-align:right;padding:8px 10px;color:var(--text-muted);font-weight:600;font-size:.72rem;text-transform:uppercase">Receita</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => {
+          const conv = r.conversao_pct != null ? r.conversao_pct + '%' : (r.visitas > 0 ? ((r.pedidos/r.visitas)*100).toFixed(1)+'%' : '—');
+          const convColor = r.conversao_pct >= 5 ? 'var(--green)' : r.conversao_pct > 0 ? 'var(--yellow)' : 'var(--text-muted)';
+          const semVisita = r.visitas === 0 ? ';opacity:.5' : '';
+          return `<tr style="border-bottom:1px solid var(--border)${semVisita}">
+            <td style="padding:9px 10px;font-weight:600">${fmtDate(r.data)}</td>
+            <td style="padding:9px 10px;text-align:right">${r.visitas > 0 ? r.visitas.toLocaleString('pt-BR') : '<span style="color:var(--text-muted)">—</span>'}</td>
+            <td style="padding:9px 10px;text-align:right;color:${r.pedidos > 0 ? 'var(--green)' : 'var(--text-muted)'}">${r.pedidos > 0 ? r.pedidos : '—'}</td>
+            <td style="padding:9px 10px;text-align:right;color:${convColor};font-weight:700">${conv}</td>
+            <td style="padding:9px 10px;text-align:right;color:var(--primary)">${r.receita > 0 ? fmtMoeda(r.receita) : '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <div style="margin-top:14px;font-size:.72rem;color:var(--text-muted)">
+      <i class="fas fa-info-circle"></i> Visitas coletadas às 02:00 referentes ao dia anterior. Dias sem visitas = sync ainda não rodou ou sem dados.
+    </div>`;
+}
 </script>
 </body>
 </html>

@@ -1148,4 +1148,70 @@ router.get('/anuncios/:id/visitas', async (req, res) => {
   res.json({ visitas: rows });
 });
 
+// Histórico diário de visitas + vendas por item (usado no modal de performance)
+router.get('/produtos/:id/historico-diario', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const days = Math.min(parseInt(req.query.days) || 30, 90);
+    const storeFilter = req.query.store_id ? `AND o.store_id = ${BigInt(req.query.store_id)}` : '';
+
+    // Descobre o root_id (parent_item_id ou o próprio id)
+    const { rows: itemRow } = await pool.query(
+      `SELECT COALESCE(parent_item_id, ml_id) AS root_id, store_id FROM items WHERE ml_id = $1 LIMIT 1`, [id]
+    );
+    const rootId  = itemRow[0]?.root_id  || id;
+    const storeId = itemRow[0]?.store_id || null;
+
+    // Visitas por dia para o item (e suas variações)
+    const { rows: visitas } = await pool.query(
+      `SELECT iv.date, SUM(iv.visits) AS visitas
+       FROM item_visits iv
+       LEFT JOIN items it ON it.ml_id = iv.item_id
+       WHERE COALESCE(it.parent_item_id, iv.item_id) = $1
+         AND iv.date >= CURRENT_DATE - $2::int
+       GROUP BY iv.date
+       ORDER BY iv.date DESC`,
+      [rootId, days]
+    );
+
+    // Vendas por dia para o item (e suas variações)
+    const { rows: vendas } = await pool.query(
+      `SELECT (o.date_created - INTERVAL '3 hours')::date AS dia,
+              COUNT(*) AS pedidos,
+              SUM(o.total_amount) AS receita
+       FROM orders o
+       LEFT JOIN items it ON it.ml_id = o.item_id
+       WHERE COALESCE(it.parent_item_id, o.item_id) = $1
+         AND o.status != 'cancelled'
+         AND o.date_created >= CURRENT_DATE - $2::int
+         ${storeFilter}
+       GROUP BY 1
+       ORDER BY 1 DESC`,
+      [rootId, days]
+    );
+
+    // Merge por data
+    const map = {};
+    for (const v of visitas) {
+      const d = String(v.date).slice(0, 10);
+      map[d] = { data: d, visitas: Number(v.visitas), pedidos: 0, receita: 0 };
+    }
+    for (const v of vendas) {
+      const d = String(v.dia).slice(0, 10);
+      if (!map[d]) map[d] = { data: d, visitas: 0, pedidos: 0, receita: 0 };
+      map[d].pedidos = Number(v.pedidos);
+      map[d].receita = Number(v.receita);
+    }
+
+    const rows = Object.values(map)
+      .sort((a, b) => b.data.localeCompare(a.data))
+      .map(r => ({
+        ...r,
+        conversao_pct: r.visitas > 0 ? ((r.pedidos / r.visitas) * 100).toFixed(1) : null,
+      }));
+
+    res.json({ rows, item_id: id, root_id: rootId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

@@ -107,6 +107,7 @@ const DB = {
   async getProdutos(params = {})             { return this._get('/produtos', params); },
   async getPerformance(params={})            { return this._get('/produtos/performance', params); },
   async getProdutosPerformance(params={})    { return this._get('/produtos/performance', params); },
+  async getProdutoHistoricoDiario(id, params={}) { return this._get(`/produtos/${id}/historico-diario`, params); },
   async getVisitasAnuncio(id, days=30) { return this._get(`/anuncios/${id}/visitas`, { days }); },
 
   // ── Vendas ML Turbo (fonte financeira oficial) ─────────────

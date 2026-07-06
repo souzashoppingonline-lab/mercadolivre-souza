@@ -25,6 +25,25 @@ process.on('uncaughtException', (err) => {
 
 // ── Telegram notification helper ─────────────────────────
 let _tgLastSent = {};
+async function tgNotifyForce(topic, text) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT key, value FROM app_config WHERE key = ANY($1)`,
+      [['telegram_bot_token','telegram_chat_id', topic]]
+    );
+    const cfg = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const token  = cfg.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = cfg.telegram_chat_id   || process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) return;
+    if (cfg[topic] === 'false') return;
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+    });
+  } catch (e) { console.error('[worker] tgNotifyForce error:', e.message); }
+}
+
 async function tgNotify(topic, text) {
   try {
     const { rows } = await pool.query(
@@ -1039,9 +1058,78 @@ async function tokenRefreshLoop() {
 // Sync Vendas   → 03:00  (pedidos 72h)
 // Sync Métricas → 04:15  (reputação + devoluções recentes)
 // Sync Visitas  → 02:00  (visitas por anúncio)
+// ── Resumo Diário — 23:59 ────────────────────────────────────────────────────
+async function resumoDiario() {
+  console.log('[resumo-diario] gerando resumo do dia...');
+  try {
+    const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+
+    // Pedidos do dia por loja
+    const { rows: porLoja } = await pool.query(`
+      SELECT s.nickname, COUNT(*) AS pedidos,
+             SUM(o.total_amount) AS receita,
+             SUM(o.quantity)     AS itens
+      FROM orders o
+      JOIN stores s ON s.id = o.store_id
+      WHERE o.date_created::date = CURRENT_DATE AND o.status != 'cancelled'
+      GROUP BY s.nickname ORDER BY receita DESC
+    `);
+
+    // Por logística
+    const { rows: porLog } = await pool.query(`
+      SELECT COALESCE(NULLIF(o.shipping_type,''), 'Desconhecido') AS tipo,
+             COUNT(*) AS pedidos
+      FROM orders o
+      WHERE o.date_created::date = CURRENT_DATE AND o.status != 'cancelled'
+      GROUP BY 1 ORDER BY 2 DESC
+    `);
+
+    if (!porLoja.length) {
+      await tgNotifyForce('tg_resumo', '📊 <b>Resumo do Dia</b>\n\nNenhum pedido registrado hoje.');
+      scheduleAt(23, 59, resumoDiario, 'resumo-diario');
+      return;
+    }
+
+    const totalPedidos = porLoja.reduce((a, r) => a + Number(r.pedidos), 0);
+    const totalReceita = porLoja.reduce((a, r) => a + Number(r.receita), 0);
+    const totalItens   = porLoja.reduce((a, r) => a + Number(r.itens),   0);
+
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    let msg = `📊 <b>Resumo do Dia — ${hoje}</b>\n\n`;
+
+    msg += `📦 <b>Total:</b> ${totalPedidos} pedidos | ${totalItens} itens\n`;
+    msg += `💰 <b>Receita:</b> ${Rfmt(totalReceita)}\n\n`;
+
+    msg += `🏪 <b>Por Loja:</b>\n`;
+    for (const r of porLoja) {
+      msg += `  • ${r.nickname}: ${r.pedidos} pedidos — ${Rfmt(r.receita)}\n`;
+    }
+
+    msg += `\n🚚 <b>Por Logística:</b>\n`;
+    const logLabel = t => {
+      const l = (t || '').toLowerCase();
+      return l.includes('fulfillment') ? '📦 Full'
+           : l.includes('flex')        ? '🏃 Flex'
+           : l.includes('me2')         ? '📮 ME2'
+           : l.includes('me1')         ? '📮 ME1'
+           : t;
+    };
+    for (const r of porLog) {
+      msg += `  • ${logLabel(r.tipo)}: ${r.pedidos} pedidos\n`;
+    }
+
+    await tgNotifyForce('tg_resumo', msg);
+    console.log('[resumo-diario] enviado');
+  } catch (e) {
+    console.error('[resumo-diario] erro:', e.message);
+  }
+  scheduleAt(23, 59, resumoDiario, 'resumo-diario');
+}
+
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
+scheduleAt(23, 59, resumoDiario, 'resumo-diario');
 
 tokenRefreshLoop(); // roda imediatamente no start
 setInterval(tokenRefreshLoop, 30 * 60 * 1000);

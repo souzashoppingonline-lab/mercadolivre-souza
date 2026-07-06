@@ -150,6 +150,7 @@ const handlers = {
   shipments:         handleShipment,
   invoices:          noop,
   public_candidates: noop,
+  'stock-locations': noop,
 };
 
 // payments webhook: /collections/{paymentId} → busca order_id e reprocessa o pedido

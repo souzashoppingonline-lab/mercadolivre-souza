@@ -380,7 +380,11 @@ async function openHistorico(itemId, title) {
   const totVisitas = rows.reduce((s,r) => s + r.visitas, 0);
   const totVendas  = rows.reduce((s,r) => s + r.pedidos, 0);
   const totReceita = rows.reduce((s,r) => s + r.receita, 0);
-  const totConv    = totVisitas > 0 ? ((totVendas / totVisitas) * 100).toFixed(1) + '%' : '—';
+  // Conversão: só calcular com os dias que têm visitas — dias sem visita inflam o percentual
+  const rowsComVisita = rows.filter(r => r.visitas > 0);
+  const convVisitas = rowsComVisita.reduce((s,r) => s + r.visitas, 0);
+  const convVendas  = rowsComVisita.reduce((s,r) => s + r.pedidos, 0);
+  const totConv = convVisitas > 0 ? ((convVendas / convVisitas) * 100).toFixed(1) + '%' : '—';
 
   body.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">

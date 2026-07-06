@@ -130,7 +130,9 @@ router.get('/vendas/diarias', async (req, res) => {
 
 router.get('/vendas/detalhado', async (req, res) => {
   try {
-  const { store_id = '', status = 'paid', days = 30, search = '' } = req.query;
+  const { store_id = '', status = 'paid', days = 30, search = '', date_from = '', date_to = '' } = req.query;
+  const dateFrom = date_from || null;
+  const dateTo   = date_to   || null;
   const { rows } = await pool.query(
     `SELECT
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
@@ -148,10 +150,12 @@ router.get('/vendas/detalhado', async (req, res) => {
      LEFT JOIN items i ON i.ml_id = o.item_id
      WHERE ($1 = '' OR o.store_id = $1::bigint)
        AND ($2 = '' OR o.status = $2)
-       AND o.date_created >= CURRENT_DATE - $3::int
+       AND ($5::date IS NULL OR o.date_created::date >= $5::date)
+       AND ($6::date IS NULL OR o.date_created::date <= $6::date)
+       AND ($5::date IS NOT NULL OR o.date_created >= CURRENT_DATE - $3::int)
        AND ($4 = '' OR o.title ILIKE '%'||$4||'%')
-     ORDER BY o.date_created DESC LIMIT 500`,
-    [store_id, status, Number(days), search]
+     ORDER BY o.date_created DESC LIMIT 1000`,
+    [store_id, status, Number(days), search, dateFrom, dateTo]
   );
 
   const result = rows.map(r => {

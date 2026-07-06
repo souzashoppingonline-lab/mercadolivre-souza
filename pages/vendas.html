@@ -111,12 +111,18 @@
           <option value="delivered">Entregue</option>
           <option value="cancelled">Cancelado</option>
         </select>
-        <select id="filterDays">
+        <select id="filterDays" onchange="onPeriodChange()">
           <option value="7">Últimos 7 dias</option>
           <option value="30" selected>Últimos 30 dias</option>
           <option value="60">Últimos 60 dias</option>
           <option value="90">Últimos 90 dias</option>
+          <option value="custom">Período personalizado</option>
         </select>
+        <div id="customDates" style="display:none;gap:6px;align-items:center;display:none">
+          <input type="date" id="dateFrom" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
+          <span style="color:var(--text-muted);font-size:12px">até</span>
+          <input type="date" id="dateTo" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
+        </div>
         <div class="search-box"><i class="fas fa-search"></i><input type="text" id="filterSearch" placeholder="Buscar produto..."></div>
         <button class="btn-primary" id="btnLoad"><i class="fas fa-search"></i> Buscar</button>
       </div>
@@ -264,11 +270,14 @@ async function load() {
   const tbody = document.getElementById('vendasTbody');
   tbody.innerHTML = '<tr><td colspan="15" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
 
+  const isCustom = document.getElementById('filterDays').value === 'custom';
   const data = await DB.getVendasDetalhado({
-    store_id: document.getElementById('filterStore').value,
-    status:   document.getElementById('filterStatus').value,
-    days:     document.getElementById('filterDays').value,
-    search:   document.getElementById('filterSearch').value,
+    store_id:  document.getElementById('filterStore').value,
+    status:    document.getElementById('filterStatus').value,
+    days:      isCustom ? 30 : document.getElementById('filterDays').value,
+    search:    document.getElementById('filterSearch').value,
+    date_from: isCustom ? document.getElementById('dateFrom').value : '',
+    date_to:   isCustom ? document.getElementById('dateTo').value   : '',
   });
   if (!data) {
     tbody.innerHTML = '<tr><td colspan="15" class="empty-state" style="color:var(--red)">Erro ao carregar — verifique se o servidor está online</td></tr>';
@@ -355,6 +364,17 @@ async function loadHoje() {
     badge.style.background = mc >= 20 ? 'rgba(39,174,96,.2)' : mc >= 10 ? 'rgba(230,126,34,.2)' : 'rgba(231,76,60,.2)';
     badge.style.color      = mc >= 20 ? 'var(--green)' : mc >= 10 ? 'var(--orange)' : 'var(--red)';
   } catch(e) { /* silencioso — hero não bloqueia a página */ }
+}
+
+function onPeriodChange() {
+  const isCustom = document.getElementById('filterDays').value === 'custom';
+  document.getElementById('customDates').style.display = isCustom ? 'flex' : 'none';
+  if (isCustom) {
+    const today = new Date().toISOString().slice(0,10);
+    const from  = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
+    if (!document.getElementById('dateFrom').value) document.getElementById('dateFrom').value = from;
+    if (!document.getElementById('dateTo').value)   document.getElementById('dateTo').value   = today;
+  }
 }
 
 document.getElementById('btnLoad').addEventListener('click', load);

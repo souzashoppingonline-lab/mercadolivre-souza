@@ -89,6 +89,7 @@ module.exports = {
   post,
   getItem:             (id, storeId)     => get(`/items/${id}`, storeId),
   getOrder:            (id, storeId)     => get(`/orders/${id}`, storeId),
+  getPayment:          (id, storeId)     => get(`/collections/${id}`, storeId),
   getQuestion:         (id, storeId)     => get(`/questions/${id}`, storeId),
   answerQuestion:      (questionId, text, storeId) => post('/answers', storeId, { question_id: questionId, text }),
   getMessage:          (msgId, storeId)  => get(`/messages/${msgId}?tag=post_sale&seller_id=${storeId}`, storeId),

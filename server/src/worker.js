@@ -107,7 +107,7 @@ async function handleShipment({ resource, storeId }) {
 
 const handlers = {
   orders_v2:         handleOrder,
-  payments:          noop,
+  payments:          handlePayment,
   questions:         handleQuestion,
   messages:          handleMessage,
   items:             handleItem,
@@ -118,6 +118,19 @@ const handlers = {
   invoices:          noop,
   public_candidates: noop,
 };
+
+// payments webhook: /collections/{paymentId} → busca order_id e reprocessa o pedido
+async function handlePayment({ resource, storeId }) {
+  const paymentId = resource.split('/').pop();
+  try {
+    const payment = await ml.getPayment(paymentId, storeId);
+    const orderId = payment?.collection?.order?.id || payment?.order?.id || payment?.order_id;
+    if (!orderId) { console.warn(`[payments] payment=${paymentId} sem order_id`); return; }
+    await handleOrder({ resource: `/orders/${orderId}`, storeId });
+  } catch(e) {
+    console.warn(`[payments] payment=${paymentId}: ${e.message}`);
+  }
+}
 
 async function handleOrder({ resource, storeId }) {
   const orderId = resource.split('/').pop();

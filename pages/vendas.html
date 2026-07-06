@@ -341,7 +341,7 @@ const BASE_URL = (localStorage.getItem('ml_backend_url') || '/api');
 
 async function loadHoje() {
   try {
-    const d = await fetch(`${BASE_URL}/vendas/hoje`).then(r => r.json());
+    const d = await DB.getVendasHoje();
     if (d.error) return;
 
     const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);

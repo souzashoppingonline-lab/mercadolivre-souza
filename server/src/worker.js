@@ -1071,7 +1071,7 @@ async function resumoDiario() {
              SUM(o.quantity)     AS itens
       FROM orders o
       JOIN stores s ON s.id = o.store_id
-      WHERE o.date_created::date = CURRENT_DATE AND o.status != 'cancelled'
+      WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
       GROUP BY s.nickname ORDER BY receita DESC
     `);
 
@@ -1080,13 +1080,13 @@ async function resumoDiario() {
       SELECT COALESCE(NULLIF(o.shipping_type,''), 'Desconhecido') AS tipo,
              COUNT(*) AS pedidos
       FROM orders o
-      WHERE o.date_created::date = CURRENT_DATE AND o.status != 'cancelled'
+      WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
       GROUP BY 1 ORDER BY 2 DESC
     `);
 
     if (!porLoja.length) {
       await tgNotifyForce('tg_resumo', '📊 <b>Resumo do Dia</b>\n\nNenhum pedido registrado hoje.');
-      scheduleAt(23, 59, resumoDiario, 'resumo-diario');
+      scheduleAt(6, 0, resumoDiario, 'resumo-diario');
       return;
     }
 
@@ -1094,8 +1094,8 @@ async function resumoDiario() {
     const totalReceita = porLoja.reduce((a, r) => a + Number(r.receita), 0);
     const totalItens   = porLoja.reduce((a, r) => a + Number(r.itens),   0);
 
-    const hoje = new Date().toLocaleDateString('pt-BR');
-    let msg = `📊 <b>Resumo do Dia — ${hoje}</b>\n\n`;
+    const ontem = new Date(Date.now() - 86400000).toLocaleDateString('pt-BR');
+    let msg = `📊 <b>Resumo do Dia — ${ontem}</b>\n\n`;
 
     msg += `📦 <b>Total:</b> ${totalPedidos} pedidos | ${totalItens} itens\n`;
     msg += `💰 <b>Receita:</b> ${Rfmt(totalReceita)}\n\n`;
@@ -1123,13 +1123,13 @@ async function resumoDiario() {
   } catch (e) {
     console.error('[resumo-diario] erro:', e.message);
   }
-  scheduleAt(23, 59, resumoDiario, 'resumo-diario');
+  scheduleAt(6, 0, resumoDiario, 'resumo-diario');
 }
 
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
-scheduleAt(23, 59, resumoDiario, 'resumo-diario');
+scheduleAt(6, 0, resumoDiario, 'resumo-diario');
 
 tokenRefreshLoop(); // roda imediatamente no start
 setInterval(tokenRefreshLoop, 30 * 60 * 1000);

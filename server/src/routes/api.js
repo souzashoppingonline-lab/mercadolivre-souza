@@ -1240,4 +1240,22 @@ router.get('/produtos/:id/historico-diario', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Publicidade ──────────────────────────────────────────────────────────────
+router.get('/publicidade', async (req, res) => {
+  try {
+    const { rows: stores } = await pool.query('SELECT id, nickname FROM stores');
+    const ml = require('../mlClient');
+    const results = [];
+    for (const store of stores) {
+      try {
+        const campaigns = await ml.get(`/advertising/product_ads/campaigns?status=active&limit=50`, store.id);
+        results.push({ store: store.nickname, store_id: store.id, campaigns: campaigns.results || campaigns, error: null });
+      } catch (e) {
+        results.push({ store: store.nickname, store_id: store.id, campaigns: [], error: e.message });
+      }
+    }
+    res.json({ stores: results });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

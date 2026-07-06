@@ -15,21 +15,27 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Gasto Hoje</div><div class="value" id="gastoHoje" style="color:var(--orange)">—</div></div>
-        <div class="stat-card"><div class="label">Receita Gerada</div><div class="value" id="receitaGerada" style="color:var(--green)">—</div></div>
-        <div class="stat-card"><div class="label">ACOS</div><div class="value" id="acos">—</div></div>
-        <div class="stat-card"><div class="label">Anúncios Patrocinados</div><div class="value" id="patrocinados">—</div></div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3><i class="fas fa-bullhorn" style="color:var(--yellow)"></i> Diagnóstico Publicidade ML</h3>
+          <button class="btn btn-primary btn-sm" onclick="load()"><i class="fas fa-sync"></i> Testar API</button>
+        </div>
+        <div id="result" style="padding:16px;font-family:monospace;font-size:13px;white-space:pre-wrap;word-break:break-all">
+          Clique em "Testar API" para verificar acesso à API de publicidade do ML.
+        </div>
       </div>
-      <div class="card">
-        <div class="card-header"><h3>Campanhas de Produto Anúncio</h3></div>
+
+      <div class="card" style="display:none" id="campaignsCard">
+        <div class="card-header"><h3>Campanhas Ativas</h3></div>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Produto</th><th>Impressões</th><th>Cliques</th><th>CTR</th><th>Gasto</th><th>Vendas</th><th>ACOS</th></tr></thead>
-            <tbody id="pubTable"><tr><td colspan="8" class="empty-state">Carregando...</td></tr></tbody>
+            <thead><tr><th>Loja</th><th>ID</th><th>Nome</th><th>Status</th><th>Tipo</th></tr></thead>
+            <tbody id="pubTable"></tbody>
           </table>
         </div>
       </div>
+
     </div>
   </main>
 </div>
@@ -38,26 +44,41 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 async function load() {
-  const data = await DB.getPublicidade() || { campaigns:[], summary:{} };
-  const s = data.summary || {};
-  document.getElementById('gastoHoje').textContent = fmt(s.spend_today);
-  document.getElementById('receitaGerada').textContent = fmt(s.revenue_today);
-  document.getElementById('acos').textContent = s.acos ? s.acos+'%' : '—';
-  document.getElementById('patrocinados').textContent = s.sponsored_count ?? '—';
-  const rows = data.campaigns || [];
-  document.getElementById('pubTable').innerHTML = rows.length
-    ? rows.map(r=>`<tr>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
-        <td>${r.impressions||0}</td><td>${r.clicks||0}</td>
-        <td>${r.impressions?((r.clicks/r.impressions)*100).toFixed(2)+'%':'—'}</td>
-        <td>${fmt(r.spend)}</td><td>${fmt(r.revenue)}</td>
-        <td>${r.revenue?((r.spend/r.revenue)*100).toFixed(1)+'%':'—'}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="8" class="empty-state">Sem campanhas</td></tr>';
+  const el = document.getElementById('result');
+  el.textContent = 'Carregando...';
+  const data = await DB._get('/publicidade');
+  if (!data) { el.textContent = '❌ Erro: sem resposta do servidor'; return; }
+  if (data.error) { el.textContent = '❌ Erro: ' + data.error; return; }
+
+  let out = '';
+  let rows = [];
+  for (const s of data.stores || []) {
+    if (s.error) {
+      out += `❌ ${s.store}: ${s.error}\n`;
+    } else {
+      const n = Array.isArray(s.campaigns) ? s.campaigns.length : '?';
+      out += `✅ ${s.store}: ${n} campanha(s)\n`;
+      (s.campaigns || []).forEach(c => rows.push({ loja: s.store, ...c }));
+    }
+  }
+  el.textContent = out || 'Sem dados';
+
+  const tbody = document.getElementById('pubTable');
+  const card = document.getElementById('campaignsCard');
+  if (rows.length) {
+    card.style.display = '';
+    tbody.innerHTML = rows.map(r => `<tr>
+      <td>${r.loja}</td>
+      <td style="font-size:11px">${r.id||'—'}</td>
+      <td>${r.name||r.title||'—'}</td>
+      <td>${r.status||'—'}</td>
+      <td>${r.type||r.campaign_type||'—'}</td>
+    </tr>`).join('');
+  } else {
+    card.style.display = 'none';
+  }
 }
-WS.on('kpis_updated', load);
 WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 load();
 </script>

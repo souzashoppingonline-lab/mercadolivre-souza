@@ -375,6 +375,15 @@
         </div>
       </div>
 
+      <!-- Botão Download IA -->
+      <div id="iaBarContainer" style="position:sticky;bottom:0;padding:14px 0 8px;background:linear-gradient(to top,var(--bg-primary) 70%,transparent);display:flex;justify-content:center">
+        <button id="btnDownloadIA" onclick="gerarRelatorioIA()" style="display:none;align-items:center;gap:10px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:12px;padding:13px 28px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 20px rgba(124,58,237,.4);transition:all .2s">
+          <i class="fas fa-robot" style="font-size:18px"></i>
+          Download Relatório IA
+          <span style="background:rgba(255,255,255,.2);border-radius:6px;padding:2px 8px;font-size:11px">Claude</span>
+        </button>
+      </div>
+
     </div>
   </main>
 </div>
@@ -915,6 +924,109 @@ async function init() {
   document.getElementById('fDateFrom').value=`${y}-${m}-01`;
   document.getElementById('fDateTo').value=now.toISOString().slice(0,10);
   await loadMeta(); await applyFilters();
+}
+
+// ── Relatório IA ─────────────────────────────────────────────
+let _lastSalesRows = [];
+
+const _origLoadSales = loadSales;
+loadSales = async function() {
+  await _origLoadSales.apply(this, arguments);
+  // captura as vendas da página atual para o relatório
+  const f=getFilters();
+  const qs=toQS({...f, page:1, limit:500});
+  fetch(`${BASE}/api/turbo/sales?${qs}`).then(r=>r.json()).then(d=>{
+    _lastSalesRows = d.sales||[];
+    document.getElementById('btnDownloadIA').style.display = _lastSalesRows.length ? 'inline-flex' : 'none';
+  }).catch(()=>{});
+};
+
+function gerarRelatorioIA() {
+  const d = lastKpi || {};
+  const c = lastCharts || {};
+  const f = getFilters();
+  const fmt2 = v => Number(v||0).toFixed(2);
+
+  let txt = `# RELATÓRIO DE VENDAS — ML Dashboard\n`;
+  txt += `Período: ${f.date_from || '—'} a ${f.date_to || '—'}\n`;
+  txt += `Gerado em: ${new Date().toLocaleString('pt-BR')}\n\n`;
+
+  txt += `## KPIs GERAIS\n`;
+  txt += `Receita Total: R$ ${fmt2(d.receita)}\n`;
+  txt += `Lucro Bruto: R$ ${fmt2(d.lucro)}\n`;
+  txt += `Margem %: ${fmt2(d.margem_pct)}%\n`;
+  txt += `Total Pedidos: ${d.total_vendas||0}\n`;
+  txt += `Total Itens: ${d.total_qty||0}\n`;
+  txt += `Ticket Médio: R$ ${fmt2(d.ticket_medio)}\n`;
+  txt += `ROI: ${d.roi||0}%\n`;
+  txt += `CMV (Custo Mercadoria): R$ ${fmt2(d.cmv)}\n`;
+  txt += `Tarifas ML: R$ ${fmt2(d.tarifas)}\n`;
+  txt += `Impostos: R$ ${fmt2(d.impostos)}\n`;
+  txt += `Frete Vendedor: R$ ${fmt2(d.frete_vendedor)}\n`;
+  txt += `Frete Comprador: R$ ${fmt2(d.frete_comprador)}\n`;
+  txt += `ADS/Publicidade: R$ ${fmt2(d.total_ads)}\n`;
+  txt += `Cancelamentos: ${d.cancel_count||0} pedidos (R$ ${fmt2(d.cancel_revenue)})\n`;
+  txt += `Receita Hoje: R$ ${fmt2(d.receita_hoje)} (${d.pedidos_hoje||0} pedidos)\n\n`;
+
+  if (c.by_store?.length) {
+    txt += `## VENDAS POR LOJA\n`;
+    txt += `Loja,Pedidos,Receita,Lucro,Margem%\n`;
+    c.by_store.forEach(r => txt += `${r.account||r.label||'—'},${r.vendas||0},${fmt2(r.revenue)},${fmt2(r.lucro)},${fmt2(r.margem_pct)}\n`);
+    txt += '\n';
+  }
+
+  if (c.by_week?.length) {
+    txt += `## FATURAMENTO POR SEMANA\n`;
+    txt += `Semana,Receita,Lucro,Pedidos,Margem%\n`;
+    c.by_week.forEach(r => {
+      const dt = r.week_start ? new Date(r.week_start).toLocaleDateString('pt-BR') : '—';
+      txt += `${dt},${fmt2(r.revenue)},${fmt2(r.lucro)},${r.vendas||0},${fmt2(r.margem_pct)}\n`;
+    });
+    txt += '\n';
+  }
+
+  if (c.by_state?.length) {
+    txt += `## VENDAS POR ESTADO\n`;
+    txt += `Estado,Pedidos,Receita\n`;
+    c.by_state.forEach(r => txt += `${r.state||'—'},${r.vendas||0},${fmt2(r.revenue)}\n`);
+    txt += '\n';
+  }
+
+  if (_lastSalesRows.length) {
+    txt += `## DETALHAMENTO DE VENDAS (até 500 registros)\n`;
+    txt += `Data,Loja,Comprador,Estado,Produto,SKU,Logística,Qtd,Receita,Tarifa,Frete Comp,Frete Vend,ADS,CMV,Lucro,Margem%,Status\n`;
+    _lastSalesRows.forEach(r => {
+      const cols = [
+        r.sale_date ? new Date(r.sale_date).toLocaleDateString('pt-BR') : '—',
+        r.account||'—', r.buyer||'—', r.state||'—',
+        `"${(r.title||'').replace(/"/g,'')}"`,
+        r.sku||'—', r.shipping_mode||'—',
+        r.qty||1, fmt2(r.revenue), fmt2(r.tarifa),
+        fmt2(r.frete_comprador), fmt2(r.frete_vendedor),
+        fmt2(r.ads), fmt2(r.cmv), fmt2(r.lucro), fmt2(r.margem_pct),
+        r.status||'—'
+      ];
+      txt += cols.join(',') + '\n';
+    });
+  }
+
+  txt += `\n## INSTRUÇÕES PARA O CLAUDE\n`;
+  txt += `Por favor, analise este relatório de vendas e forneça:\n`;
+  txt += `1. Análise da margem de contribuição e principais desvios\n`;
+  txt += `2. Produtos/SKUs com melhor e pior desempenho\n`;
+  txt += `3. Tendência de faturamento semanal\n`;
+  txt += `4. Insights sobre logística (Full/Flex/ME2) e impacto no lucro\n`;
+  txt += `5. Alertas sobre cancelamentos e devoluções\n`;
+  txt += `6. Recomendações práticas para aumentar margem\n`;
+  txt += `7. Comparativo de desempenho entre lojas\n`;
+
+  const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `relatorio-ia-${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 WS.on('_connected',()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });

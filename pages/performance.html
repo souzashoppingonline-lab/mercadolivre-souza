@@ -36,6 +36,12 @@
     .sort-btn { padding:7px 14px; border-radius:8px; border:1px solid var(--border); background:var(--card-bg); color:var(--text-muted); font-size:.8rem; font-weight:600; cursor:pointer; transition:all .2s; display:flex; align-items:center; gap:6px; }
     .sort-btn:hover { border-color:var(--primary); color:var(--text); }
     .sort-btn.active { background:var(--primary); color:#000; border-color:var(--primary); }
+    /* Modo mascarado */
+    body.masked .perf-title { filter:blur(8px); user-select:none; pointer-events:none; }
+    body.masked .perf-sku   { filter:blur(6px); user-select:none; }
+    body.masked .perf-thumb { filter:blur(12px); }
+    body.masked .perf-thumb-ph { filter:blur(6px); }
+    #maskBtn.active { background:#ff3b30; color:#fff; border-color:#ff3b30; }
   </style>
 </head>
 <body>
@@ -61,6 +67,9 @@
           <button class="sort-btn"        data-sort="visitas"   onclick="setSort('visitas')">  <i class="fas fa-eye"></i> Mais Visitas</button>
           <button class="sort-btn"        data-sort="conversao" onclick="setSort('conversao')"><i class="fas fa-percent"></i> Maior Conversão</button>
         </div>
+        <button id="maskBtn" onclick="toggleMask()" class="sort-btn" title="Ocultar títulos e fotos para print">
+          <i class="fas fa-eye-slash" id="maskIcon"></i> <span id="maskLabel">Ocultar</span>
+        </button>
         <button id="visitasBtn" onclick="showVisitasConfirm()" class="sort-btn" style="margin-left:auto;border-color:var(--primary);color:var(--primary)" title="⚠️ Use fora do horário de pico (22h–08h) para evitar 429">
           <i class="fas fa-eye" id="visitasIcon"></i> Atualizar Visitas ⚠️
         </button>
@@ -115,6 +124,13 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
+function toggleMask() {
+  const on = document.body.classList.toggle('masked');
+  document.getElementById('maskIcon').className  = on ? 'fas fa-eye' : 'fas fa-eye-slash';
+  document.getElementById('maskLabel').textContent = on ? 'Revelar' : 'Ocultar';
+  document.getElementById('maskBtn').classList.toggle('active', on);
+}
+
 const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
 let currentSort = 'receita';

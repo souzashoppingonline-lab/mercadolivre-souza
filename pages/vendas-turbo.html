@@ -968,10 +968,10 @@ function gerarRelatorioIA() {
   txt += `Cancelamentos: ${d.cancel_count||0} pedidos (R$ ${fmt2(d.cancel_revenue)})\n`;
   txt += `Receita Hoje: R$ ${fmt2(d.receita_hoje)} (${d.pedidos_hoje||0} pedidos)\n\n`;
 
-  if (c.by_store?.length) {
+  if (c.by_account?.length) {
     txt += `## VENDAS POR LOJA\n`;
     txt += `Loja,Pedidos,Receita,Lucro,Margem%\n`;
-    c.by_store.forEach(r => txt += `${r.account||r.label||'—'},${r.vendas||0},${fmt2(r.revenue)},${fmt2(r.lucro)},${fmt2(r.margem_pct)}\n`);
+    c.by_account.forEach(r => txt += `${r.account||r.label||'—'},${r.vendas||0},${fmt2(r.revenue)},${fmt2(r.lucro)},${fmt2(r.margem_pct)}\n`);
     txt += '\n';
   }
 

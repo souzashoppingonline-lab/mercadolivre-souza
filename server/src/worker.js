@@ -23,6 +23,20 @@ process.on('uncaughtException', (err) => {
   console.error('[worker] uncaughtException — process will exit:', err);
 });
 
+// ── Logística label ──────────────────────────────────────
+function fmtLogistica(raw) {
+  const l = (raw || '').toLowerCase();
+  if (l.includes('fulfillment'))  return '📦 Full';
+  if (l.includes('self_service')) return '🏃 Flex';
+  if (l.includes('flex'))         return '🏃 Flex';
+  if (l.includes('xd_drop_off'))  return '📮 Mercado Envios';
+  if (l.includes('me2'))          return '📮 Mercado Envios';
+  if (l.includes('me1'))          return '📮 Mercado Envios';
+  if (l.includes('cross_docking'))return '📮 Mercado Envios';
+  if (l.includes('pickup'))       return '🏠 Coleta';
+  return raw || '—';
+}
+
 // ── Telegram notification helper ─────────────────────────
 let _tgLastSent = {};
 async function tgNotifyForce(topic, text) {
@@ -165,7 +179,7 @@ async function handleOrder({ resource, storeId }) {
   const order = await ml.getOrder(orderId, storeId);
 
   const item0 = order.order_items?.[0] || {};
-  const shippingType = (order.shipping?.logistic_type || '').replace('FULFILLMENT', 'Full').replace('ME2', 'ME2').replace('FLEX', 'Flex').replace('PICKUP', 'Coleta') || '';
+  const shippingType = order.shipping?.logistic_type || '';
 
   await pool.query(
     `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, raw_data, updated_at)
@@ -207,18 +221,14 @@ async function handleOrder({ resource, storeId }) {
   if (order.status === 'paid') {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
-    let lt = (order.shipping?.logistic_type || shippingType || '').toLowerCase();
+    let lt = order.shipping?.logistic_type || shippingType || '';
     if (!lt && order.shipping?.id) {
       try {
         const ship = await ml.getShipment(order.shipping.id, storeId);
-        lt = (ship?.logistic_type || ship?.shipping_option?.logistic_type || '').toLowerCase();
+        lt = ship?.logistic_type || ship?.shipping_option?.logistic_type || '';
       } catch(e) { /* ignora */ }
     }
-    const envioLabel = lt.includes('fulfillment') ? '📦 Full'
-      : lt.includes('flex')   ? '🏃 Flex'
-      : lt.includes('me2')    ? '📮 ME2'
-      : lt.includes('me1')    ? '📮 ME1'
-      : lt || '—';
+    const envioLabel = fmtLogistica(lt);
     await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}`);
   }
 }
@@ -1106,14 +1116,7 @@ async function resumoDiario() {
     }
 
     msg += `\n🚚 <b>Por Logística:</b>\n`;
-    const logLabel = t => {
-      const l = (t || '').toLowerCase();
-      return l.includes('fulfillment') ? '📦 Full'
-           : l.includes('flex')        ? '🏃 Flex'
-           : l.includes('me2')         ? '📮 ME2'
-           : l.includes('me1')         ? '📮 ME1'
-           : t;
-    };
+    const logLabel = t => fmtLogistica(t);
     for (const r of porLog) {
       msg += `  • ${logLabel(r.tipo)}: ${r.pedidos} pedidos\n`;
     }

@@ -188,13 +188,18 @@ async function handleOrder({ resource, storeId }) {
   if (order.status === 'paid') {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
-    // logistic_type já vem no getOrder — não precisa de chamada extra getShipment
-    const lt = (order.shipping?.logistic_type || '').toLowerCase();
-    const envioLabel = lt.includes('fulfillment') ? '📦 FULL'
+    let lt = (order.shipping?.logistic_type || shippingType || '').toLowerCase();
+    if (!lt && order.shipping?.id) {
+      try {
+        const ship = await ml.getShipment(order.shipping.id, storeId);
+        lt = (ship?.logistic_type || ship?.shipping_option?.logistic_type || '').toLowerCase();
+      } catch(e) { /* ignora */ }
+    }
+    const envioLabel = lt.includes('fulfillment') ? '📦 Full'
       : lt.includes('flex')   ? '🏃 Flex'
       : lt.includes('me2')    ? '📮 ME2'
       : lt.includes('me1')    ? '📮 ME1'
-      : shippingType || '—';
+      : lt || '—';
     await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}`);
   }
 }

@@ -500,6 +500,7 @@ async function handleOffer({ resource, storeId }) {
 
 let recentFailures = 0;
 const oauthNotified = new Map(); // storeId → last Telegram notification timestamp
+const apiCooldown  = new Map(); // `${topic}:${storeId}` → release timestamp (ms)
 
 const expiredStores = new Set();
 
@@ -533,6 +534,15 @@ async function processJob(job) {
     return;
   }
 
+  const cooldownKey = `${topic}:${storeId}`;
+  const cooldownUntil = apiCooldown.get(cooldownKey) || 0;
+  if (Date.now() < cooldownUntil) {
+    const remaining = Math.ceil((cooldownUntil - Date.now()) / 1000);
+    console.warn(`[worker] ⏭ cooldown ativo — ${nickname} | ${topic} | faltam ${remaining}s`);
+    await pool.query(`UPDATE webhook_logs SET status='skipped', processed_at=now() WHERE id=$1`, [logId]);
+    return;
+  }
+
   try {
     await handler({ resource, storeId });
     const ms = Date.now() - t0;
@@ -562,7 +572,8 @@ async function processJob(job) {
         console.warn(`[worker] ⏳ rate limit — ${nickname} | ${topic} | tentativa ${job.attemptsMade + 1}/5`);
         throw err;
       }
-      console.warn(`[worker] ⏭ rate limit drop — ${nickname} | ${topic} | esgotou retries`);
+      console.warn(`[worker] ⏭ rate limit drop — ${nickname} | ${topic} | esgotou retries — cooldown 5min`);
+      apiCooldown.set(cooldownKey, Date.now() + 5 * 60 * 1000);
       return;
     }
     console.error(`[worker] ❌ erro ${topic} | ${nickname} | ${ms}ms | ${err.message.slice(0, 200)}`);

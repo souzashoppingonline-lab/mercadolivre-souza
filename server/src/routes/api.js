@@ -1245,16 +1245,27 @@ router.get('/publicidade', async (req, res) => {
   try {
     const { rows: stores } = await pool.query('SELECT id, nickname FROM stores');
     const ml = require('../mlClient');
+    const endpoints = [
+      `/advertising/product_ads/campaigns?status=active&limit=10`,
+      `/advertising/v2/campaigns?limit=10`,
+      `/products/promotions?seller_id=SELLER_ID&limit=10`,
+    ];
     const results = [];
     for (const store of stores) {
-      try {
-        const campaigns = await ml.get(`/advertising/product_ads/campaigns?status=active&limit=50`, store.id);
-        results.push({ store: store.nickname, store_id: store.id, campaigns: campaigns.results || campaigns, error: null });
-      } catch (e) {
-        results.push({ store: store.nickname, store_id: store.id, campaigns: [], error: e.message });
+      const storeResult = { store: store.nickname, store_id: store.id, tests: [] };
+      for (const ep of endpoints) {
+        const url = ep.replace('SELLER_ID', store.id);
+        try {
+          const data = await ml.get(url, store.id);
+          storeResult.tests.push({ url, status: 'ok', data });
+          break; // parar no primeiro que funcionar
+        } catch (e) {
+          storeResult.tests.push({ url, status: 'error', error: e.message });
+        }
       }
+      results.push(storeResult);
     }
-    res.json({ stores: results });
+    res.json({ stores: results, raw: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -16,15 +16,18 @@
     .store-tab .tab-av { width:22px; height:22px; border-radius:50%; background:rgba(0,0,0,.2); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; }
     .store-section { display:none; }
     .store-section.active { display:block; }
-    .perf-row { display:flex; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--border); }
+    .perf-row { display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--border); }
     .perf-row:last-child { border-bottom:none; }
-    .perf-thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:var(--border); flex-shrink:0; }
-    .perf-thumb-ph { width:48px; height:48px; border-radius:8px; background:var(--surface); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:1.1rem; }
-    .perf-title { flex:1; min-width:0; font-size:.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .perf-cols { display:flex; gap:24px; flex-shrink:0; }
-    .perf-col { text-align:center; min-width:64px; }
-    .perf-col .lbl { font-size:.65rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
-    .perf-col .val { font-size:.9rem; font-weight:700; margin-top:2px; }
+    .perf-row:hover { background: rgba(255,255,255,.03); border-radius:10px; margin:0 -8px; padding:12px 8px; }
+    .perf-thumb { width:64px; height:64px; border-radius:10px; object-fit:cover; background:var(--border); flex-shrink:0; }
+    .perf-thumb-ph { width:64px; height:64px; border-radius:10px; background:var(--surface); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:1.4rem; }
+    .perf-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+    .perf-title { font-size:.84rem; font-weight:600; color:var(--text-primary); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.35; }
+    .perf-sku { font-size:.7rem; color:var(--text-muted); font-family:monospace; }
+    .perf-cols { display:flex; gap:18px; flex-shrink:0; }
+    .perf-col { text-align:center; min-width:60px; }
+    .perf-col .lbl { font-size:.62rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+    .perf-col .val { font-size:.88rem; font-weight:700; margin-top:2px; }
     .rank-badge { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:800; flex-shrink:0; }
     .rank-1 { background:rgba(255,215,0,.2); color:#ffd700; }
     .rank-2 { background:rgba(192,192,192,.2); color:#c0c0c0; }
@@ -225,7 +228,10 @@ async function loadSection(storeId) {
       <div class="perf-row" style="cursor:pointer" data-mlid="${r.ml_id}" data-title="${(r.title||'').replace(/"/g,'&quot;')}">
         <div class="rank-badge ${rkCls}">${rank}</div>
         ${thumb}
-        <div class="perf-title" title="${r.title}">${r.title}</div>
+        <div class="perf-info">
+          <div class="perf-title">${r.title}</div>
+          <div class="perf-sku">${r.ml_id || ''}</div>
+        </div>
         <div class="perf-cols">
           <div class="perf-col">
             <div class="lbl">Visitas</div>
@@ -248,7 +254,6 @@ async function loadSection(storeId) {
             <div class="val">#${rank}</div>
           </div>
         </div>
-        <i class="fas fa-chart-bar" style="color:var(--text-muted);font-size:.75rem;flex-shrink:0"></i>
       </div>`;
   }).join('');
 

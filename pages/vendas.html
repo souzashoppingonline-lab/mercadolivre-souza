@@ -535,7 +535,7 @@ async function saveCusto(sku) {
   }
 }
 
-document.getElementById('modalOverlay').addEventListener('click', e => {
+document.getElementById('modalOverlay')?.addEventListener('click', e => {
   if (e.target.id === 'modalOverlay') closeModal();
 });
 function closeModal() { document.getElementById('modalOverlay').style.display='none'; }

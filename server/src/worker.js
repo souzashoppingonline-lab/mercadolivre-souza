@@ -781,11 +781,7 @@ async function syncVendas() {
         await tgNotify('tg_infra', `✅ <b>Sync Vendas</b>\n📦 ${totalNew} pedidos recuperados/atualizados`).catch(() => {});
       }
 
-      const { rows: missing } = await pool.query(`SELECT COUNT(*) as c FROM items WHERE parent_item_id IS NULL`);
-      if (Number(missing[0].c) > 0) {
-        console.log(`[sync-vendas] agendando syncParentItems em 5min (${missing[0].c} itens sem parent_item_id)...`);
-        setTimeout(() => syncParentItems().catch(e => console.error('[sync] syncParentItems erro:', e.message)), 5 * 60 * 1000);
-      }
+      // syncParentItems roda somente às 01:30 para não competir com webhooks de pedidos
 
       return { total_pedidos_importados: totalNew, lojas: lojaReport };
     });
@@ -936,7 +932,7 @@ async function syncParentItems() {
     for (let i = 0; i < ids.length; i += 20) {
       const batch = ids.slice(i, i + 20);
       try {
-        await new Promise(r => setTimeout(r, 8000)); // 8s entre lotes por loja
+        await new Promise(r => setTimeout(r, 30000)); // 30s entre lotes — não competir com webhooks
         const token = await getTokenForStore(store.id);
         const qs = batch.map(id => `ids=${id}`).join('&');
         const res = await fetch(`https://api.mercadolibre.com/items?${qs}&attributes=id,parent_item_id`, {
@@ -958,20 +954,30 @@ async function syncParentItems() {
         console.warn(`[syncParentItems] ${store.nickname} lote i=${i}:`, e.message);
         if (e.message?.includes('429')) await new Promise(r => setTimeout(r, 90000));
       }
-      // 15s entre lotes para não competir com webhooks
-      await new Promise(r => setTimeout(r, 15000));
+      // delay extra após 429
+      await new Promise(r => setTimeout(r, 5000));
     }
     console.log(`[syncParentItems] ${store.nickname} → ${updated}/${ids.length} com parent_item_id`);
     return { updated, total: ids.length };
   }
 
-  // Todas as lojas em paralelo — rate limits independentes por app ML
-  const results = await Promise.allSettled(stores.map(s => syncStoreParent(s)));
-  const totals = results.reduce((acc, r) => {
+  // Lojas em série para não saturar rate limit durante o processamento noturno
+  const results = [];
+  for (const store of stores) {
+    try {
+      const r = await syncStoreParent(store);
+      results.push({ status: 'fulfilled', value: r });
+    } catch (e) {
+      results.push({ status: 'rejected', reason: e });
+    }
+    await new Promise(r => setTimeout(r, 30000)); // 30s entre lojas
+  }
+  const _results = results;
+  const totals = _results.reduce((acc, r) => {
     if (r.status === 'fulfilled') { acc.updated += r.value.updated; acc.total += r.value.total; }
     return acc;
   }, { updated: 0, total: 0 });
-  results.forEach((r, i) => {
+  _results.forEach((r, i) => {
     if (r.status === 'rejected') console.error(`[syncParentItems] ${stores[i].nickname} erro:`, r.reason?.message);
   });
 
@@ -1219,6 +1225,65 @@ async function resumoDiario() {
   scheduleAt(6, 0, resumoDiario, 'resumo-diario');
 }
 
+// Recupera pedidos que foram marcados como 'skipped' por cooldown de 429
+// Roda a cada hora para não perder vendas durante picos de rate limit
+let isReprocessing = false;
+async function reprocessSkipped() {
+  if (isReprocessing) return;
+  isReprocessing = true;
+  try {
+    // Busca orders_v2 skipped nas últimas 4h, agrupados por resource+store mais recente
+    const { rows } = await pool.query(`
+      SELECT DISTINCT ON (resource, store_id)
+        id, resource, store_id, topic
+      FROM webhook_logs
+      WHERE status = 'skipped'
+        AND topic = 'orders_v2'
+        AND created_at > now() - interval '4 hours'
+      ORDER BY resource, store_id, created_at DESC
+    `);
+
+    if (rows.length === 0) return;
+    console.log(`[reprocess] ${rows.length} pedidos skipped para reprocessar`);
+
+    for (const row of rows) {
+      // Verifica se o pedido já foi processado por outro webhook mais recente
+      const orderId = row.resource.split('/').pop();
+      const { rows: existing } = await pool.query(
+        `SELECT ml_id FROM orders WHERE ml_id=$1`, [orderId]
+      );
+      if (existing.length > 0) {
+        await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [row.id]);
+        continue;
+      }
+
+      // Cooldown ainda ativo?
+      const cooldownKey = `orders_v2:${row.store_id}`;
+      if (apiCooldown.has(cooldownKey) && Date.now() < apiCooldown.get(cooldownKey)) continue;
+
+      try {
+        await handleOrder({ resource: row.resource, storeId: row.store_id });
+        await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [row.id]);
+        console.log(`[reprocess] ✅ recuperado: ${row.resource}`);
+      } catch (e) {
+        console.warn(`[reprocess] ⚠ erro ao recuperar ${row.resource}:`, e.message);
+        if (e.message?.includes('429')) break; // stop se ainda em rate limit
+      }
+      await new Promise(r => setTimeout(r, 3000)); // 3s entre recuperações
+    }
+  } catch (e) {
+    console.error('[reprocess] erro:', e.message);
+  } finally {
+    isReprocessing = false;
+  }
+}
+
+// Roda reprocessSkipped a cada 30 minutos
+setInterval(() => reprocessSkipped().catch(e => console.error('[reprocess] interval erro:', e.message)), 30 * 60 * 1000);
+// Primeira execução após 5 minutos do start
+setTimeout(() => reprocessSkipped().catch(e => console.error('[reprocess] initial erro:', e.message)), 5 * 60 * 1000);
+
+scheduleAt(1, 30, syncParentItems, 'sync-parent-items');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
@@ -1268,6 +1333,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'syncPrecos') {
       console.log('[worker] syncPrecos disparado manualmente');
       syncPrecos().catch(e => console.error('[worker] syncPrecos erro:', e.message));
+    }
+    if (cmd === 'reprocessSkipped') {
+      console.log('[worker] reprocessSkipped disparado manualmente');
+      reprocessSkipped().catch(e => console.error('[worker] reprocessSkipped erro:', e.message));
     }
   } catch {}
 });

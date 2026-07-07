@@ -8,6 +8,28 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Produtos'; window.ACTIVE_NAV='produtos.html';</script>
+  <style>
+    .kpi-filter-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+    .kpi-card-btn {
+      flex:1; min-width:140px; background:var(--card-bg); border:2px solid var(--border);
+      border-radius:12px; padding:14px 16px; cursor:pointer; transition:all .18s;
+      text-align:left; color:var(--text-primary);
+    }
+    .kpi-card-btn:hover { border-color:var(--primary); transform:translateY(-1px); }
+    .kpi-card-btn.active { border-color:var(--primary); background:rgba(255,214,0,.07); }
+    .kpi-card-btn .kpi-label { font-size:.65rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.6px; margin-bottom:4px; display:flex; align-items:center; gap:5px; }
+    .kpi-card-btn .kpi-val { font-size:1.5rem; font-weight:800; line-height:1; }
+    .kpi-card-btn .kpi-sub { font-size:.72rem; color:var(--text-muted); margin-top:4px; }
+    .kpi-card-btn.sort-vendas-desc .kpi-val { color:var(--green); }
+    .kpi-card-btn.sort-vendas-asc  .kpi-val { color:#ff9f0a; }
+    .kpi-card-btn.sort-estoque-desc .kpi-val { color:var(--primary); }
+    .kpi-card-btn.sort-estoque-asc  .kpi-val { color:#ff3b30; }
+    .kpi-card-btn.sort-sem-estoque  .kpi-val { color:#ff3b30; }
+    .badge.active  { background:rgba(48,209,88,.15);  color:var(--green); }
+    .badge.paused  { background:rgba(255,159,10,.15); color:#ff9f0a; }
+    .badge.closed  { background:rgba(255,59,48,.15);  color:#ff3b30; }
+    .loja-tag { font-size:.7rem; background:var(--surface); color:var(--text-muted); border-radius:4px; padding:2px 6px; white-space:nowrap; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,36 +37,70 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
+
+      <!-- KPI cards = filtros de ordenação -->
+      <div class="kpi-filter-row" id="kpiCards">
+        <button class="kpi-card-btn sort-vendas-desc active" data-sort="vendas_desc" onclick="setSort('vendas_desc')">
+          <div class="kpi-label"><i class="fas fa-arrow-down"></i> Mais Vendas</div>
+          <div class="kpi-val" id="kpiTotalVendas">—</div>
+          <div class="kpi-sub">vendas no período</div>
+        </button>
+        <button class="kpi-card-btn sort-vendas-asc" data-sort="vendas_asc" onclick="setSort('vendas_asc')">
+          <div class="kpi-label"><i class="fas fa-arrow-up"></i> Menos Vendas</div>
+          <div class="kpi-val" id="kpiMenosVendas">—</div>
+          <div class="kpi-sub">produtos sem giro</div>
+        </button>
+        <button class="kpi-card-btn sort-estoque-desc" data-sort="estoque_desc" onclick="setSort('estoque_desc')">
+          <div class="kpi-label"><i class="fas fa-boxes"></i> Mais Estoque</div>
+          <div class="kpi-val" id="kpiTotalEstoque">—</div>
+          <div class="kpi-sub">unidades em estoque</div>
+        </button>
+        <button class="kpi-card-btn sort-estoque-asc" data-sort="estoque_asc" onclick="setSort('estoque_asc')">
+          <div class="kpi-label"><i class="fas fa-exclamation-triangle"></i> Menos Estoque</div>
+          <div class="kpi-val" id="kpiEstoqueBaixo">—</div>
+          <div class="kpi-sub">com estoque ≤ 3</div>
+        </button>
+        <button class="kpi-card-btn sort-sem-estoque" data-sort="sem_estoque" onclick="setSort('sem_estoque')">
+          <div class="kpi-label"><i class="fas fa-times-circle"></i> Sem Estoque</div>
+          <div class="kpi-val" id="kpiSemEstoque">—</div>
+          <div class="kpi-sub">produtos zerados</div>
+        </button>
+      </div>
+
       <div class="card">
         <div class="card-header">
-          <h3>Catálogo de Produtos</h3>
-          <div class="filters-bar" style="margin:0">
+          <h3 id="tableTitle">Catálogo — Mais Vendas</h3>
+          <div class="filters-bar" style="margin:0;gap:8px">
             <div class="search-box"><i class="fas fa-search"></i><input type="text" id="search" placeholder="Buscar produto..."></div>
             <select class="filter-select" id="daysFilter">
               <option value="">Todo o período</option>
-              <option value="1">Ontem + hoje</option>
+              <option value="1">Hoje</option>
               <option value="3">Últimos 3 dias</option>
-              <option value="5">Últimos 5 dias</option>
               <option value="7">Últimos 7 dias</option>
-              <option value="10">Últimos 10 dias</option>
               <option value="15">Últimos 15 dias</option>
-              <option value="21">Últimos 21 dias</option>
               <option value="30">Últimos 30 dias</option>
-            </select>
-            <select class="filter-select" id="sortBy">
-              <option value="vendas">Mais Vendidos</option>
-              <option value="receita">Maior Receita</option>
-              <option value="estoque">Menor Estoque</option>
             </select>
           </div>
         </div>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Produto</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th>Receita</th><th>Status</th></tr></thead>
-            <tbody id="produtosTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Produto</th>
+                <th>Loja</th>
+                <th>Preço</th>
+                <th>Estoque</th>
+                <th>Vendas</th>
+                <th>Receita</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="produtosTable"><tr><td colspan="8" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
+
     </div>
   </main>
 </div>
@@ -53,29 +109,79 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+
+let currentSort = 'vendas_desc';
+const SORT_LABELS = {
+  vendas_desc:   'Catálogo — Mais Vendas',
+  vendas_asc:    'Catálogo — Menos Vendas',
+  estoque_desc:  'Catálogo — Mais Estoque',
+  estoque_asc:   'Catálogo — Menos Estoque',
+  sem_estoque:   'Catálogo — Sem Estoque',
+};
+
+function setSort(sort) {
+  currentSort = sort;
+  document.querySelectorAll('.kpi-card-btn').forEach(b => b.classList.toggle('active', b.dataset.sort === sort));
+  document.getElementById('tableTitle').textContent = SORT_LABELS[sort] || 'Catálogo';
+  load();
+}
+
 async function load() {
   const search = document.getElementById('search').value;
-  const sortBy = document.getElementById('sortBy').value;
   const days   = document.getElementById('daysFilter').value;
-  const data = await DB.getProdutos({ search, sortBy, days }) || { products:[] };
+  const sortBy = currentSort === 'sem_estoque' ? 'estoque_asc' : currentSort;
+
+  const data = await DB.getProdutos({ search, sortBy, days }) || { products: [], kpi: {} };
   const rows = data.products || [];
-  document.getElementById('produtosTable').innerHTML = rows.length
-    ? rows.map(r=>`<tr>
-        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title||r.titulo}</td>
-        <td>${fmt(r.price||r.preco)}</td>
-        <td>${r.stock??r.estoque??'—'}</td>
-        <td>${r.sold||r.vendas||0}</td>
-        <td>${fmt(r.revenue||r.receita)}</td>
-        <td><span class="badge ${r.status}">${r.status==='active'?'Ativo':r.status==='paused'?'Pausado':'Encerrado'}</span></td>
-      </tr>`).join('')
-    : '<tr><td colspan="7" class="empty-state">Nenhum produto</td></tr>';
+  const kpi  = data.kpi || {};
+
+  // Atualiza KPI cards
+  const totalVendas = rows.reduce((a, r) => a + Number(r.sold||0), 0);
+  const semVenda    = rows.filter(r => Number(r.sold||0) === 0).length;
+  document.getElementById('kpiTotalVendas').textContent  = fmtN(kpi.total_vendas || totalVendas);
+  document.getElementById('kpiMenosVendas').textContent  = fmtN(semVenda);
+  document.getElementById('kpiTotalEstoque').textContent = fmtN(kpi.total_estoque || 0);
+  document.getElementById('kpiEstoqueBaixo').textContent = fmtN(kpi.estoque_baixo || 0);
+  document.getElementById('kpiSemEstoque').textContent   = fmtN(kpi.sem_estoque || 0);
+
+  // Filtra zerados se modo sem_estoque
+  const lista = currentSort === 'sem_estoque'
+    ? rows.filter(r => Number(r.stock??0) === 0)
+    : rows;
+
+  document.getElementById('produtosTable').innerHTML = lista.length
+    ? lista.map((r, i) => {
+        const stock     = r.stock ?? '—';
+        const stockColor = Number(stock) === 0 ? 'color:#ff3b30;font-weight:700'
+                         : Number(stock) <= 3   ? 'color:#ff9f0a;font-weight:700' : '';
+        const statusLabel = r.status === 'active' ? 'Ativo' : r.status === 'paused' ? 'Pausado' : 'Encerrado';
+        const statusCls   = r.status === 'active' ? 'active' : r.status === 'paused' ? 'paused' : 'closed';
+        return `<tr>
+          <td style="color:var(--text-muted);font-size:.75rem">${i+1}</td>
+          <td style="max-width:260px">
+            <div style="font-weight:600;font-size:.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.title||''}">${r.title||'—'}</div>
+            <div style="font-size:.7rem;color:var(--text-muted);font-family:monospace">${r.id||''}</div>
+          </td>
+          <td><span class="loja-tag">${r.loja||'—'}</span></td>
+          <td>${fmt(r.price)}</td>
+          <td style="${stockColor}">${stock}</td>
+          <td style="color:var(--green);font-weight:700">${fmtN(r.sold||0)}</td>
+          <td style="color:var(--primary)">${fmt(r.revenue)}</td>
+          <td><span class="badge ${statusCls}">${statusLabel}</span></td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="8" class="empty-state">Nenhum produto encontrado</td></tr>`;
 }
+
 document.getElementById('search').addEventListener('input', load);
-document.getElementById('sortBy').addEventListener('change', load);
 document.getElementById('daysFilter').addEventListener('change', load);
 WS.on('anuncio_updated', load);
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
 load();
 </script>
 </body>

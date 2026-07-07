@@ -67,21 +67,41 @@ router.get('/anuncios', async (req, res) => {
 });
 
 router.get('/produtos', async (req, res) => {
-  const { search = '', sortBy = 'vendas', days = '', store_id = '' } = req.query;
+  const { search = '', sortBy = 'vendas_desc', days = '', store_id = '' } = req.query;
   const dateFilter  = days     ? `AND i.updated_at >= now() - interval '${Number(days)} days'` : '';
   const storeFilter = store_id ? `AND i.store_id = ${BigInt(store_id)}` : '';
-  const orderBy = sortBy === 'receita' ? 'sold_quantity * price DESC' : sortBy === 'estoque' ? 'available_quantity ASC' : 'sold_quantity DESC';
+  const orderMap = {
+    vendas_desc:   'i.sold_quantity DESC',
+    vendas_asc:    'i.sold_quantity ASC',
+    estoque_desc:  'i.available_quantity DESC',
+    estoque_asc:   'i.available_quantity ASC',
+    receita:       'i.sold_quantity * i.price DESC',
+  };
+  const orderBy = orderMap[sortBy] || 'i.sold_quantity DESC';
   const { rows } = await pool.query(
     `SELECT i.ml_id as id, i.title, i.price,
             i.available_quantity as stock, i.sold_quantity as sold,
-            i.sold_quantity * i.price as revenue, i.status
+            i.sold_quantity * i.price as revenue, i.status,
+            COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja
      FROM items i
+     LEFT JOIN stores s ON s.id = i.store_id
      WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%')
        ${storeFilter} ${dateFilter}
      ORDER BY ${orderBy} LIMIT 500`,
     [search]
   );
-  res.json({ products: rows });
+  // KPI cards
+  const kpi = await pool.query(
+    `SELECT COUNT(*) as total,
+            SUM(i.available_quantity) as total_estoque,
+            SUM(i.sold_quantity) as total_vendas,
+            COUNT(*) FILTER (WHERE i.available_quantity = 0) as sem_estoque,
+            COUNT(*) FILTER (WHERE i.available_quantity <= 3 AND i.available_quantity > 0) as estoque_baixo
+     FROM items i
+     WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%') ${storeFilter} ${dateFilter}`,
+    [search]
+  );
+  res.json({ products: rows, kpi: kpi.rows[0] });
 });
 
 // ── Pedidos / Vendas ───────────────────────────────────────

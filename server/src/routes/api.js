@@ -68,7 +68,6 @@ router.get('/anuncios', async (req, res) => {
 
 router.get('/produtos', async (req, res) => {
   const { search = '', sortBy = 'vendas_desc', days = '', store_id = '' } = req.query;
-  const dateFilter  = days     ? `AND i.updated_at >= now() - interval '${Number(days)} days'` : '';
   const storeFilter = store_id ? `AND i.store_id = ${BigInt(store_id)}` : '';
   const orderMap = {
     vendas_desc:   'i.sold_quantity DESC',

@@ -412,7 +412,9 @@ WS.on('order_updated', () => {
 WS.on('_connected', () => {
   const el=document.getElementById('wsStatus');
   if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+  loadHoje(); // recarrega ao reconectar para pegar eventos perdidos
 });
+setInterval(() => loadHoje(), 60000); // fallback: atualiza a cada 60s
 
 initStores().then(() => { loadHoje(); load(); });
 

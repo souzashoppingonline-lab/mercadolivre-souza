@@ -11,6 +11,10 @@ document.addEventListener('DOMContentLoaded', () => {
   WS.on('kpis_updated', loadKPIs);
   WS.on('order_updated', () => { loadKPIs(); loadComparativo(); renderPedidosChart(); });
   WS.on('stock_alert', () => { loadKPIs(); loadAlertas(); });
+  // Ao reconectar, recarrega tudo — garante dados atualizados mesmo após WS cair
+  WS.on('_connected', () => { loadKPIs(); loadComparativo(); });
+  // Polling a cada 60s como fallback para quando eventos WS são perdidos
+  setInterval(() => { loadKPIs(); loadComparativo(); }, 60000);
 });
 
 async function loadDashboard() {

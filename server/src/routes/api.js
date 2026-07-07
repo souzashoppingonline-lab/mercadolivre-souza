@@ -21,7 +21,7 @@ router.get('/dashboard/kpis', async (req, res) => {
   const data = await cached('kpis:summary', 30, async () => {
     const today = await pool.query(
       `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) vendas
-       FROM orders WHERE date_created::date = CURRENT_DATE AND status != 'cancelled'`
+       FROM orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND status != 'cancelled'`
     );
     const perguntas = await pool.query(`SELECT COUNT(*) n FROM questions WHERE status='UNANSWERED'`);
     const anuncios = await pool.query(`SELECT COUNT(*) n FROM items WHERE status='active'`);
@@ -236,8 +236,8 @@ router.get('/pedidos', async (req, res) => {
 router.get('/vendas/diarias', async (req, res) => {
   const days = Number(req.query.days) || 30;
   const { rows } = await pool.query(
-    `SELECT date_created::date as data, COUNT(*) pedidos, SUM(total_amount) bruto
-     FROM orders WHERE date_created >= CURRENT_DATE - $1::int AND status != 'cancelled'
+    `SELECT (date_created AT TIME ZONE 'America/Sao_Paulo')::date as data, COUNT(*) pedidos, SUM(total_amount) bruto
+     FROM orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - $1::int AND status != 'cancelled'
      GROUP BY 1 ORDER BY 1`,
     [days]
   );
@@ -322,7 +322,7 @@ router.get('/vendas/hoje', async (req, res) => {
        FROM orders o
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN items i ON i.ml_id = o.item_id
-       WHERE o.date_created::date = CURRENT_DATE AND o.status != 'cancelled'`
+       WHERE (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND o.status != 'cancelled'`
     );
     const pedidos   = rows.length;
     const itens     = rows.reduce((a,r) => a + (Number(r.quantity)||1), 0);

@@ -78,29 +78,44 @@ router.get('/produtos', async (req, res) => {
     receita:       'i.sold_quantity * i.price DESC',
   };
   const orderBy = orderMap[sortBy] || 'i.sold_quantity DESC';
-  const { rows } = await pool.query(
-    `SELECT i.ml_id as id, i.title, i.price,
-            i.available_quantity as stock, i.sold_quantity as sold,
-            i.sold_quantity * i.price as revenue, i.status,
-            COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja
-     FROM items i
-     LEFT JOIN stores s ON s.id = i.store_id
-     WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%')
-       ${storeFilter} ${dateFilter}
-     ORDER BY ${orderBy} LIMIT 500`,
-    [search]
-  );
-  // KPI cards
-  const kpi = await pool.query(
-    `SELECT COUNT(*) as total,
-            SUM(i.available_quantity) as total_estoque,
-            SUM(i.sold_quantity) as total_vendas,
-            COUNT(*) FILTER (WHERE i.available_quantity = 0) as sem_estoque,
-            COUNT(*) FILTER (WHERE i.available_quantity <= 3 AND i.available_quantity > 0) as estoque_baixo
-     FROM items i
-     WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%') ${storeFilter} ${dateFilter}`,
-    [search]
-  );
+  const periodFilter = days ? `AND o.date_created >= CURRENT_DATE - ${Number(days)}` : '';
+  const [{ rows }, kpi] = await Promise.all([
+    pool.query(
+      `SELECT i.ml_id as id, i.title, i.price,
+              i.available_quantity as stock,
+              i.sold_quantity as sold_total,
+              i.sold_quantity * i.price as revenue_total,
+              i.status,
+              COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
+              COALESCE(p.vendas_periodo, 0)  as sold_periodo,
+              COALESCE(p.receita_periodo, 0) as revenue_periodo
+       FROM items i
+       LEFT JOIN stores s ON s.id = i.store_id
+       LEFT JOIN (
+         SELECT o.item_id,
+                COUNT(*) as vendas_periodo,
+                SUM(o.total_amount) as receita_periodo
+         FROM orders o
+         WHERE o.status != 'cancelled' ${periodFilter}
+           ${store_id ? `AND o.store_id = ${BigInt(store_id)}` : ''}
+         GROUP BY o.item_id
+       ) p ON p.item_id = i.ml_id
+       WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%')
+         ${storeFilter}
+       ORDER BY ${orderBy.replace('i.sold_quantity', days ? 'COALESCE(p.vendas_periodo,0)' : 'i.sold_quantity')} LIMIT 500`,
+      [search]
+    ),
+    pool.query(
+      `SELECT COUNT(*) as total,
+              SUM(i.available_quantity) as total_estoque,
+              SUM(i.sold_quantity) as total_vendas,
+              COUNT(*) FILTER (WHERE i.available_quantity = 0) as sem_estoque,
+              COUNT(*) FILTER (WHERE i.available_quantity <= 3 AND i.available_quantity > 0) as estoque_baixo
+       FROM items i
+       WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%') ${storeFilter}`,
+      [search]
+    )
+  ]);
   res.json({ products: rows, kpi: kpi.rows[0] });
 });
 

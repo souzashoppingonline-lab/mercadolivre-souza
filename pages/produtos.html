@@ -77,10 +77,13 @@
             </select>
             <select class="filter-select" id="daysFilter">
               <option value="">Todo o período</option>
-              <option value="1">Hoje</option>
+              <option value="1">Ontem</option>
               <option value="3">Últimos 3 dias</option>
-              <option value="7">Últimos 7 dias</option>
+              <option value="5">Últimos 5 dias</option>
+              <option value="7" selected>Últimos 7 dias</option>
+              <option value="10">Últimos 10 dias</option>
               <option value="15">Últimos 15 dias</option>
+              <option value="21">Últimos 21 dias</option>
               <option value="30">Últimos 30 dias</option>
             </select>
           </div>
@@ -94,12 +97,14 @@
                 <th>Loja</th>
                 <th>Preço</th>
                 <th>Estoque</th>
-                <th>Vendas</th>
-                <th>Receita</th>
+                <th style="color:var(--text-muted)">Vendas Total</th>
+                <th id="thVendasPeriodo" style="color:var(--primary)">Vendas Período</th>
+                <th style="color:var(--text-muted)">Receita Total</th>
+                <th id="thReceitaPeriodo" style="color:var(--primary)">Receita Período</th>
                 <th>Status</th>
               </tr>
             </thead>
-            <tbody id="produtosTable"><tr><td colspan="8" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="produtosTable"><tr><td colspan="10" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -137,6 +142,12 @@ async function load() {
   const store_id = document.getElementById('storeFilter').value;
   const sortBy   = currentSort === 'sem_estoque' ? 'estoque_asc' : currentSort;
 
+  // Atualiza labels das colunas de período
+  const daysEl  = document.getElementById('daysFilter');
+  const daysLbl = daysEl.options[daysEl.selectedIndex]?.text || 'Período';
+  document.getElementById('thVendasPeriodo').textContent  = `Vendas (${daysLbl})`;
+  document.getElementById('thReceitaPeriodo').textContent = `Receita (${daysLbl})`;
+
   const data = await DB.getProdutos({ search, sortBy, days, store_id }) || { products: [], kpi: {} };
   const rows = data.products || [];
   const kpi  = data.kpi || {};
@@ -162,6 +173,8 @@ async function load() {
                          : Number(stock) <= 3   ? 'color:#ff9f0a;font-weight:700' : '';
         const statusLabel = r.status === 'active' ? 'Ativo' : r.status === 'paused' ? 'Pausado' : 'Encerrado';
         const statusCls   = r.status === 'active' ? 'active' : r.status === 'paused' ? 'paused' : 'closed';
+        const soldPeriodo = Number(r.sold_periodo || 0);
+        const revPeriodo  = Number(r.revenue_periodo || 0);
         return `<tr>
           <td style="color:var(--text-muted);font-size:.75rem">${i+1}</td>
           <td style="max-width:260px">
@@ -171,12 +184,14 @@ async function load() {
           <td><span class="loja-tag">${r.loja||'—'}</span></td>
           <td>${fmt(r.price)}</td>
           <td style="${stockColor}">${stock}</td>
-          <td style="color:var(--green);font-weight:700">${fmtN(r.sold||0)}</td>
-          <td style="color:var(--primary)">${fmt(r.revenue)}</td>
+          <td style="color:var(--text-muted);font-weight:600">${fmtN(r.sold_total||0)}</td>
+          <td style="color:var(--green);font-weight:700">${soldPeriodo > 0 ? fmtN(soldPeriodo) : '<span style="color:var(--text-muted)">—</span>'}</td>
+          <td style="color:var(--text-muted)">${fmt(r.revenue_total)}</td>
+          <td style="color:var(--primary);font-weight:700">${revPeriodo > 0 ? fmt(revPeriodo) : '<span style="color:var(--text-muted)">—</span>'}</td>
           <td><span class="badge ${statusCls}">${statusLabel}</span></td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="8" class="empty-state">Nenhum produto encontrado</td></tr>`;
+    : `<tr><td colspan="10" class="empty-state">Nenhum produto encontrado</td></tr>`;
 }
 
 async function initStores() {

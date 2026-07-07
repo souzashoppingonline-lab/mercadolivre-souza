@@ -280,20 +280,21 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
     const { store_id = '' } = req.query;
     const storeFilter = store_id ? `AND o.store_id = ${BigInt(store_id)}` : '';
 
-    // Calcular intervalos no Node para evitar ambiguidade de fuso no Postgres
-    const nowBR   = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
-    const todayStr = nowBR.toLocaleDateString('en-CA'); // YYYY-MM-DD
-    const timeStr  = nowBR.toTimeString().slice(0, 8);   // HH:MM:SS
+    // Aritmética UTC pura — BRT = UTC-3
+    const BRT = 3 * 3600 * 1000;
+    const now = new Date();
 
-    // Hoje: 00:00 até agora
-    const hojeInicio = new Date(`${todayStr}T00:00:00`);
-    const hojeFim    = nowBR;
+    // Meia-noite de hoje em BRT (= UTC+3h do dia corrente em BRT)
+    const nowBRTms      = now.getTime() - BRT;
+    const d             = new Date(nowBRTms);
+    const midnightBRTms = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) + BRT;
 
-    // Ontem: 00:00 até o mesmo horário de agora
-    const ontemDate  = new Date(nowBR); ontemDate.setDate(ontemDate.getDate() - 1);
-    const ontemStr   = ontemDate.toLocaleDateString('en-CA');
-    const ontemInicio = new Date(`${ontemStr}T00:00:00`);
-    const ontemFim    = new Date(`${ontemStr}T${timeStr}`);
+    const hojeInicio  = new Date(midnightBRTms);          // 00:00 BRT hoje
+    const hojeFim     = now;                              // agora
+    const ontemInicio = new Date(midnightBRTms - 86400000); // 00:00 BRT ontem
+    const ontemFim    = new Date(now.getTime() - 86400000); // mesmo horário ontem
+
+    const todayStr = hojeInicio.toISOString().slice(0, 10);
 
     const { rows } = await pool.query(
       `SELECT

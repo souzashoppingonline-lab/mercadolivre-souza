@@ -113,7 +113,7 @@
   </main>
 <!-- Modal detalhe produto -->
 <div id="prodModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(3px);overflow-y:auto" onclick="if(event.target===this)closeProdModal()">
-  <div style="max-width:780px;margin:40px auto;background:var(--card-bg);border-radius:16px;border:1px solid var(--border);overflow:hidden">
+  <div style="max-width:780px;margin:40px auto;background:#1a1a1a;border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.8)">
     <div id="prodModalContent" style="padding:0">
       <div class="empty-state" style="padding:40px"><div class="spinner" style="margin:auto"></div></div>
     </div>
@@ -314,7 +314,7 @@ async function openProdModal(id) {
         ['Visitas 30d', totalVisitas > 0 ? fmtN(totalVisitas) : '<span style="color:var(--text-muted)">—</span>', ''],
         ['Conversão', conv ? `${conv}%` : '<span style="color:var(--text-muted)">—</span>', ''],
       ].map(([label,val]) => `
-        <div style="background:var(--card-bg);padding:14px 16px">
+        <div style="background:#1a1a1a;padding:14px 16px">
           <div style="font-size:.62rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${label}</div>
           <div style="font-size:1rem">${val}</div>
         </div>`).join('')}

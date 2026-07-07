@@ -111,7 +111,16 @@
 
     </div>
   </main>
+<!-- Modal detalhe produto -->
+<div id="prodModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(3px);overflow-y:auto" onclick="if(event.target===this)closeProdModal()">
+  <div style="max-width:780px;margin:40px auto;background:var(--card-bg);border-radius:16px;border:1px solid var(--border);overflow:hidden">
+    <div id="prodModalContent" style="padding:0">
+      <div class="empty-state" style="padding:40px"><div class="spinner" style="margin:auto"></div></div>
+    </div>
+  </div>
 </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
@@ -175,7 +184,7 @@ async function load() {
         const statusCls   = r.status === 'active' ? 'active' : r.status === 'paused' ? 'paused' : 'closed';
         const soldPeriodo = Number(r.sold_periodo || 0);
         const revPeriodo  = Number(r.revenue_periodo || 0);
-        return `<tr>
+        return `<tr style="cursor:pointer" onclick="openProdModal('${r.id}')">
           <td style="color:var(--text-muted);font-size:.75rem">${i+1}</td>
           <td style="max-width:260px">
             <div style="font-weight:600;font-size:.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.title||''}">${r.title||'—'}</div>
@@ -221,6 +230,125 @@ WS.on('_connected', () => {
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 load();
+
+// ── Modal detalhe ──────────────────────────────────────────
+let modalChart = null;
+
+function closeProdModal() {
+  document.getElementById('prodModal').style.display = 'none';
+  if (modalChart) { modalChart.destroy(); modalChart = null; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeProdModal(); });
+
+async function openProdModal(id) {
+  const modal = document.getElementById('prodModal');
+  const content = document.getElementById('prodModalContent');
+  if (modalChart) { modalChart.destroy(); modalChart = null; }
+  content.innerHTML = '<div class="empty-state" style="padding:40px"><div class="spinner" style="margin:auto"></div></div>';
+  modal.style.display = 'block';
+
+  const data = await DB.getProdutoDetalhe(id);
+  if (!data || data.error) {
+    content.innerHTML = `<div class="empty-state" style="padding:40px">Erro ao carregar: ${data?.error||'desconhecido'}</div>`;
+    return;
+  }
+
+  const { item, totais, changes, vendas_diarias, visitas } = data;
+  const statusLabel = item.status === 'active' ? 'Ativo' : item.status === 'paused' ? 'Pausado' : 'Encerrado';
+  const statusCls   = item.status === 'active' ? 'active' : item.status === 'paused' ? 'paused' : 'closed';
+  const margem = item.price > 0 && item.cost > 0
+    ? (((item.price - item.cost) / item.price) * 100).toFixed(1)
+    : null;
+
+  // Visitas totais 30d
+  const totalVisitas = visitas.reduce((a,v) => a + Number(v.visits), 0);
+  const totalPedidos30 = vendas_diarias.reduce((a,v) => a + Number(v.pedidos), 0);
+  const conv = totalVisitas > 0 ? ((totalPedidos30 / totalVisitas) * 100).toFixed(1) : null;
+
+  // Changelog
+  const changeLogs = changes.map(c => {
+    const date = new Date(c.changed_at).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const items = (Array.isArray(c.changes) ? c.changes : JSON.parse(c.changes||'[]'))
+      .map(ch => {
+        if (ch.field === 'price')  return `Preço: ${fmt(ch.old)} → <b>${fmt(ch.new)}</b>`;
+        if (ch.field === 'stock')  return `Estoque: ${ch.old} → <b>${ch.new}</b>`;
+        if (ch.field === 'status') return `Status: ${ch.old} → <b>${ch.new}</b>`;
+        if (ch.field === 'criado') return `<b>Anúncio criado</b>`;
+        return `${ch.field}: ${ch.old} → ${ch.new}`;
+      }).join(' · ');
+    return `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:.78rem">
+      <span style="color:var(--text-muted);white-space:nowrap">${date}</span>
+      <span>${items}</span></div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:.8rem;padding:8px 0">Sem histórico</div>';
+
+  content.innerHTML = `
+    <!-- Header -->
+    <div style="display:flex;gap:16px;padding:20px;border-bottom:1px solid var(--border);align-items:flex-start">
+      ${item.thumbnail
+        ? `<img src="${item.thumbnail.replace('http:','https:')}" style="width:90px;height:90px;object-fit:contain;border-radius:10px;background:var(--surface);flex-shrink:0">`
+        : `<div style="width:90px;height:90px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="fas fa-box" style="color:var(--text-muted);font-size:2rem"></i></div>`}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.95rem;font-weight:700;line-height:1.3;margin-bottom:6px">${item.title}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+          <span class="badge ${statusCls}">${statusLabel}</span>
+          <span style="font-size:.7rem;background:var(--surface);color:var(--text-muted);border-radius:4px;padding:2px 7px">${item.loja}</span>
+          ${item.category_id ? `<span style="font-size:.7rem;background:var(--surface);color:var(--text-muted);border-radius:4px;padding:2px 7px">${item.category_id}</span>` : ''}
+          ${item.permalink ? `<a href="${item.permalink}" target="_blank" style="font-size:.7rem;color:var(--primary);text-decoration:none"><i class="fas fa-external-link-alt"></i> Ver no ML</a>` : ''}
+        </div>
+        <div style="font-size:.7rem;color:var(--text-muted);margin-top:5px;font-family:monospace">${item.ml_id}</div>
+      </div>
+      <button onclick="closeProdModal()" style="background:transparent;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:4px;flex-shrink:0">✕</button>
+    </div>
+
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--border)">
+      ${[
+        ['Preço Atual', item.promo_price && Number(item.promo_price) > 0 && Number(item.promo_price) !== Number(item.price)
+          ? `<span style="color:var(--green);font-weight:800">${fmt(item.promo_price)}</span> <span style="font-size:.75rem;text-decoration:line-through;color:var(--text-muted)">${fmt(item.promo_orig||item.price)}</span>${item.discount_pct ? ` <span style="font-size:.65rem;color:var(--green)">-${Number(item.discount_pct).toFixed(0)}%</span>` : ''}`
+          : `<span style="font-weight:800">${fmt(item.price)}</span>`, ''],
+        ['Custo', item.cost > 0 ? fmt(item.cost) : '<span style="color:var(--text-muted)">—</span>', ''],
+        ['Margem', margem ? `<span style="color:${Number(margem)>20?'var(--green)':'#ff9f0a'}">${margem}%</span>` : '<span style="color:var(--text-muted)">—</span>', ''],
+        ['Estoque', `<span style="color:${item.available_quantity===0?'#ff3b30':item.available_quantity<=3?'#ff9f0a':'inherit'};font-weight:700">${item.available_quantity}</span>`, ''],
+        ['Vendas Total', fmtN(totais.pedidos_total||0), ''],
+        ['Receita Total', fmt(totais.receita_total||0), ''],
+        ['Visitas 30d', totalVisitas > 0 ? fmtN(totalVisitas) : '<span style="color:var(--text-muted)">—</span>', ''],
+        ['Conversão', conv ? `${conv}%` : '<span style="color:var(--text-muted)">—</span>', ''],
+      ].map(([label,val]) => `
+        <div style="background:var(--card-bg);padding:14px 16px">
+          <div style="font-size:.62rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${label}</div>
+          <div style="font-size:1rem">${val}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Gráfico vendas -->
+    <div style="padding:16px 20px;border-top:1px solid var(--border)">
+      <div style="font-size:.8rem;font-weight:700;margin-bottom:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Vendas diárias — últimos 30 dias</div>
+      <canvas id="modalVendasChart" height="70"></canvas>
+    </div>
+
+    <!-- Histórico -->
+    <div style="padding:0 20px 20px">
+      <div style="font-size:.8rem;font-weight:700;margin-bottom:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Histórico de Alterações</div>
+      ${changeLogs}
+    </div>`;
+
+  // Chart
+  const ctx = document.getElementById('modalVendasChart');
+  const labels = vendas_diarias.map(r => new Date(r.dia).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));
+  const vals   = vendas_diarias.map(r => Number(r.pedidos));
+  modalChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Pedidos', data: vals, backgroundColor: 'rgba(255,214,0,.5)', borderColor: 'var(--primary)', borderWidth: 1, borderRadius: 4 }] },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw + ' pedidos' } } },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#888', font: { size: 10 }, stepSize: 1 }, grid: { color: 'rgba(255,255,255,.05)' } }
+      }
+    }
+  });
+}
 </script>
 </body>
 </html>

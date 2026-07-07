@@ -130,6 +130,76 @@ router.get('/produtos', async (req, res) => {
   res.json({ products: rows, kpi: kpi.rows[0] });
 });
 
+// ── Produto — detalhe modal ────────────────────────────────
+router.get('/produtos/:id/detalhe', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [itemR, changesR, vendasR, visitasR] = await Promise.all([
+      // item + loja + promoção
+      pool.query(
+        `SELECT i.ml_id, i.title, i.price, i.original_price, i.available_quantity,
+                i.sold_quantity, i.status, i.category_id, i.thumbnail, i.permalink,
+                COALESCE(i.cost, 0) AS cost,
+                COALESCE(s.nickname, 'Loja '||i.store_id::text) AS loja,
+                COALESCE(s.imposto_pct, 0) AS imposto_pct,
+                COALESCE(NULLIF(promo.original_price,0), NULLIF(i.original_price,0)) AS promo_orig,
+                COALESCE(NULLIF(promo.promo_price,0),
+                  CASE WHEN COALESCE(NULLIF(i.original_price,0),0) > 0 THEN i.price END) AS promo_price,
+                COALESCE(promo.discount_pct,
+                  CASE WHEN COALESCE(NULLIF(i.original_price,0),0) > i.price AND i.price > 0
+                    THEN ROUND((1 - i.price / i.original_price)*100,1) END) AS discount_pct
+         FROM items i
+         LEFT JOIN stores s ON s.id = i.store_id
+         LEFT JOIN LATERAL (
+           SELECT original_price, promo_price, discount_pct FROM promotions
+           WHERE item_id = i.ml_id AND status = 'started'
+           ORDER BY changed_at DESC LIMIT 1
+         ) promo ON true
+         WHERE i.ml_id = $1`, [id]),
+
+      // últimas 6 alterações
+      pool.query(
+        `SELECT changes, changed_at FROM item_changes
+         WHERE item_id = $1 ORDER BY changed_at DESC LIMIT 6`, [id]),
+
+      // vendas diárias últimos 30 dias
+      pool.query(
+        `SELECT date_trunc('day', date_created AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+                COUNT(*) AS pedidos, SUM(total_amount) AS receita
+         FROM orders
+         WHERE item_id = $1 AND status != 'cancelled'
+           AND date_created >= now() - interval '30 days'
+         GROUP BY 1 ORDER BY 1`, [id]),
+
+      // visitas últimos 30 dias
+      pool.query(
+        `SELECT date, visits FROM item_visits
+         WHERE item_id = $1 AND date >= CURRENT_DATE - 30
+         ORDER BY date`, [id]),
+    ]);
+
+    const item = itemR.rows[0];
+    if (!item) return res.status(404).json({ error: 'not found' });
+
+    // totais de vendas (todos os tempos)
+    const { rows: totR } = await pool.query(
+      `SELECT COUNT(*) AS pedidos_total, SUM(total_amount) AS receita_total
+       FROM orders WHERE item_id=$1 AND status!='cancelled'`, [id]);
+
+    res.json({
+      item,
+      totais: totR[0],
+      changes: changesR.rows,
+      vendas_diarias: vendasR.rows,
+      visitas: visitasR.rows,
+    });
+  } catch (e) {
+    console.error('[api] /produtos/:id/detalhe error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Pedidos / Vendas ───────────────────────────────────────
 router.get('/pedidos', async (req, res) => {
   const { status = '', period = '7' } = req.query;

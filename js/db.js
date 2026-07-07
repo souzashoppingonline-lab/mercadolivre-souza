@@ -70,6 +70,7 @@ const DB = {
   async getVendas(params = {})         { return this._get('/vendas', params); },
   async getVendasDiarias(days=30)      { return this._get('/vendas/diarias', { days }); },
   async getVendasDetalhado(params={})  { return this._get('/vendas/detalhado', params); },
+  async getProdutoDetalhe(id)          { return this._get(`/produtos/${id}/detalhe`); },
   async getVendasHoje()                { return this._get('/vendas/hoje'); },
   async getVendasHojeVsOntem(store_id='') { return this._get(`/vendas/hoje-vs-ontem${store_id ? '?store_id='+store_id : ''}`); },
   async getVendasPorLoja(params = {})  { return this._get('/vendas/por-loja', params); },

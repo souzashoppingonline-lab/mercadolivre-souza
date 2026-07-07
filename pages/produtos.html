@@ -72,6 +72,9 @@
           <h3 id="tableTitle">Catálogo — Mais Vendas</h3>
           <div class="filters-bar" style="margin:0;gap:8px">
             <div class="search-box"><i class="fas fa-search"></i><input type="text" id="search" placeholder="Buscar produto..."></div>
+            <select class="filter-select" id="storeFilter">
+              <option value="">Todas as lojas</option>
+            </select>
             <select class="filter-select" id="daysFilter">
               <option value="">Todo o período</option>
               <option value="1">Hoje</option>
@@ -129,11 +132,12 @@ function setSort(sort) {
 }
 
 async function load() {
-  const search = document.getElementById('search').value;
-  const days   = document.getElementById('daysFilter').value;
-  const sortBy = currentSort === 'sem_estoque' ? 'estoque_asc' : currentSort;
+  const search   = document.getElementById('search').value;
+  const days     = document.getElementById('daysFilter').value;
+  const store_id = document.getElementById('storeFilter').value;
+  const sortBy   = currentSort === 'sem_estoque' ? 'estoque_asc' : currentSort;
 
-  const data = await DB.getProdutos({ search, sortBy, days }) || { products: [], kpi: {} };
+  const data = await DB.getProdutos({ search, sortBy, days, store_id }) || { products: [], kpi: {} };
   const rows = data.products || [];
   const kpi  = data.kpi || {};
 
@@ -175,8 +179,21 @@ async function load() {
     : `<tr><td colspan="8" class="empty-state">Nenhum produto encontrado</td></tr>`;
 }
 
+async function initStores() {
+  const data = await DB.getLojas() || { stores: [] };
+  const sel  = document.getElementById('storeFilter');
+  (data.stores || []).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id;
+    o.textContent = s.nickname;
+    sel.appendChild(o);
+  });
+}
+
 document.getElementById('search').addEventListener('input', load);
+document.getElementById('storeFilter').addEventListener('change', load);
 document.getElementById('daysFilter').addEventListener('change', load);
+initStores();
 WS.on('anuncio_updated', load);
 WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');

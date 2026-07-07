@@ -274,6 +274,66 @@ router.get('/vendas/hoje', async (req, res) => {
   }
 });
 
+// ── Vendas hoje vs ontem (mesmo horário) ───────────────────
+router.get('/vendas/hoje-vs-ontem', async (req, res) => {
+  try {
+    const { store_id = '' } = req.query;
+    const storeFilter = store_id ? `AND o.store_id = ${BigInt(store_id)}` : '';
+    const { rows } = await pool.query(
+      `SELECT
+         o.date_created::date AS dia,
+         o.total_amount, o.ml_fee, o.shipping_cost,
+         COALESCE(o.shipping_seller_cost,0) AS shipping_seller_cost,
+         o.quantity, COALESCE(i.cost,0) AS custo,
+         COALESCE(s.imposto_pct,0) AS imposto_pct
+       FROM orders o
+       JOIN stores s ON s.id = o.store_id
+       LEFT JOIN items i ON i.ml_id = o.item_id
+       WHERE o.date_created::date IN (CURRENT_DATE, CURRENT_DATE - 1)
+         AND o.date_created::time <= (now() AT TIME ZONE 'America/Sao_Paulo')::time
+         AND o.status != 'cancelled'
+         ${storeFilter}`
+    );
+
+    const calc = (r) => {
+      const fat = Number(r.total_amount);
+      const custo = Number(r.custo) * (Number(r.quantity)||1);
+      const imp = fat * (Number(r.imposto_pct)/100);
+      const tar = Number(r.ml_fee)||0;
+      const fc  = Number(r.shipping_cost)||0;
+      const fv  = Number(r.shipping_seller_cost)||0;
+      return { receita: fat, lucro: fat - custo - imp - tar - fc - fv };
+    };
+
+    const hoje  = { pedidos: 0, receita: 0, lucro: 0, itens: 0 };
+    const ontem = { pedidos: 0, receita: 0, lucro: 0, itens: 0 };
+    const today = new Date().toISOString().slice(0, 10);
+
+    for (const r of rows) {
+      const t = String(r.dia) === today ? hoje : ontem;
+      const { receita, lucro } = calc(r);
+      t.pedidos++;
+      t.itens   += Number(r.quantity)||1;
+      t.receita += receita;
+      t.lucro   += lucro;
+    }
+
+    const pct = (a, b) => b > 0 ? Number(((a - b) / b * 100).toFixed(1)) : (a > 0 ? 100 : 0);
+    res.json({
+      hoje,
+      ontem,
+      diff: {
+        receita_pct: pct(hoje.receita, ontem.receita),
+        pedidos_pct: pct(hoje.pedidos, ontem.pedidos),
+        lucro_pct:   pct(hoje.lucro,   ontem.lucro),
+      }
+    });
+  } catch (e) {
+    console.error('[api] /vendas/hoje-vs-ontem error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Configuração de loja (imposto, etc.) ───────────────────
 router.patch('/lojas/:id', async (req, res) => {
   const { imposto_pct } = req.body;

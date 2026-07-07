@@ -9,12 +9,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelector('.btn-refresh')?.addEventListener('click', loadDashboard);
 
   WS.on('kpis_updated', loadKPIs);
-  WS.on('order_updated', () => { loadKPIs(); renderPedidosChart(); });
+  WS.on('order_updated', () => { loadKPIs(); loadComparativo(); renderPedidosChart(); });
   WS.on('stock_alert', () => { loadKPIs(); loadAlertas(); });
 });
 
 async function loadDashboard() {
-  await Promise.all([loadKPIs(), loadAlertas(), renderVendasChart(), renderPedidosChart(), loadTopProdutos()]);
+  await Promise.all([loadKPIs(), loadComparativo(), loadAlertas(), renderVendasChart(), renderPedidosChart(), loadTopProdutos()]);
 }
 
 async function loadKPIs() {
@@ -24,6 +24,66 @@ async function loadKPIs() {
   setText('pedidosHoje', data.pedidos_hoje ?? 0);
   setText('perguntasPendentes', data.perguntas_pendentes ?? 0);
   setText('anunciosAtivos', data.anuncios_ativos ?? 0);
+}
+
+function _diffBadge(pct) {
+  if (pct === null || pct === undefined) return '';
+  const up    = pct >= 0;
+  const color = up ? 'var(--green)' : '#ff3b30';
+  const icon  = up ? 'fa-arrow-up' : 'fa-arrow-down';
+  const sign  = up ? '+' : '';
+  return `<span style="font-size:.72rem;color:${color};font-weight:700;display:inline-flex;align-items:center;gap:3px">
+    <i class="fas ${icon}" style="font-size:.6rem"></i>${sign}${pct}%
+  </span>`;
+}
+
+async function loadComparativo() {
+  const el = document.getElementById('comparativoHoje');
+  if (!el) return;
+  const data = await DB.getVendasHojeVsOntem();
+  if (!data || data.error) { el.style.display = 'none'; return; }
+  const { hoje, ontem, diff } = data;
+  const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div style="font-size:.78rem;color:var(--text-muted)">
+        <i class="fas fa-clock" style="margin-right:5px;color:var(--primary)"></i>
+        Comparação até <b style="color:var(--text-primary)">${hora}</b> — mesmo horário de ontem
+      </div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Receita Hoje</div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--primary)">${R(hoje.receita)}</div>
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:2px">
+            <span style="font-size:.7rem;color:var(--text-muted)">${R(ontem.receita)}</span>
+            ${_diffBadge(diff.receita_pct)}
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Pedidos Hoje</div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--green)">${hoje.pedidos}</div>
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:2px">
+            <span style="font-size:.7rem;color:var(--text-muted)">${ontem.pedidos} ontem</span>
+            ${_diffBadge(diff.pedidos_pct)}
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Lucro Hoje</div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--green)">${R(hoje.lucro)}</div>
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:2px">
+            <span style="font-size:.7rem;color:var(--text-muted)">${R(ontem.lucro)}</span>
+            ${_diffBadge(diff.lucro_pct)}
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Itens Hoje</div>
+          <div style="font-size:1.1rem;font-weight:800">${hoje.itens}</div>
+          <div style="font-size:.7rem;color:var(--text-muted);margin-top:2px">${ontem.itens} ontem</div>
+        </div>
+      </div>
+    </div>`;
+  el.style.display = 'block';
 }
 
 async function loadAlertas() {

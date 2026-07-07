@@ -71,6 +71,7 @@ const DB = {
   async getVendasDiarias(days=30)      { return this._get('/vendas/diarias', { days }); },
   async getVendasDetalhado(params={})  { return this._get('/vendas/detalhado', params); },
   async getVendasHoje()                { return this._get('/vendas/hoje'); },
+  async getVendasHojeVsOntem(store_id='') { return this._get(`/vendas/hoje-vs-ontem${store_id ? '?store_id='+store_id : ''}`); },
   async getVendasPorLoja(params = {})  { return this._get('/vendas/por-loja', params); },
   async updateLojaConfig(id, body)     { return this._patch(`/lojas/${id}`, body); },
   async updateLojaCredentials(id, ml_client_id, ml_client_secret) { return this._patch(`/lojas/${id}/credentials`, { ml_client_id, ml_client_secret }); },

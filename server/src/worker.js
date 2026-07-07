@@ -844,6 +844,51 @@ async function syncMetricas() {
   }
 }
 
+// ── Sync Preços Promocionais — 05:00 diário ───────────────────────────────────
+let isSyncingPrecos = false;
+
+async function syncPrecos() {
+  if (isSyncingPrecos) { console.warn('[sync-precos] já em execução — ignorando'); return; }
+  isSyncingPrecos = true;
+  console.log('[sync-precos] iniciando sync de preços promocionais...');
+  try {
+    return await recordSync('sync-precos', '0 5 * * *', async () => {
+      const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE access_token IS NOT NULL`);
+      let updated = 0, skipped = 0, errors = 0;
+      for (const s of stores) {
+        const { rows: items } = await pool.query(
+          `SELECT ml_id FROM items WHERE store_id=$1 AND status != 'closed'`, [s.id]
+        );
+        for (const it of items) {
+          try {
+            const data = await ml.getItem(it.ml_id, s.id);
+            if (data.original_price && Number(data.original_price) > 0) {
+              await pool.query(
+                `UPDATE items SET original_price=$1 WHERE ml_id=$2`,
+                [data.original_price, it.ml_id]
+              );
+              updated++;
+            } else {
+              // sem promoção — limpa original_price para não exibir desconto falso
+              await pool.query(`UPDATE items SET original_price=0 WHERE ml_id=$1`, [it.ml_id]);
+              skipped++;
+            }
+          } catch (e) {
+            console.warn(`[sync-precos] skip ${it.ml_id}:`, e.message);
+            errors++;
+          }
+        }
+        console.log(`[sync-precos] ${s.nickname}: ${items.length} itens processados`);
+      }
+      await publish('anuncio_updated', { sync: 'precos' });
+      return { updated, skipped, errors };
+    });
+  } finally {
+    isSyncingPrecos = false;
+    scheduleAt(5, 0, syncPrecos, 'sync-precos');
+  }
+}
+
 async function syncParentItems() {
   console.log('[syncParentItems] preenchendo parent_item_id via multiget...');
   const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores`);
@@ -1143,10 +1188,11 @@ async function resumoDiario() {
   scheduleAt(6, 0, resumoDiario, 'resumo-diario');
 }
 
+scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
-scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
-scheduleAt(6, 0, resumoDiario, 'resumo-diario');
+scheduleAt(5,  0,  syncPrecos,   'sync-precos');
+scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 
 tokenRefreshLoop(); // roda imediatamente no start
 setInterval(tokenRefreshLoop, 30 * 60 * 1000);
@@ -1187,6 +1233,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'syncVisitas') {
       console.log('[worker] syncVisitas disparado manualmente');
       syncVisitas().catch(e => console.error('[worker] syncVisitas erro:', e.message));
+    }
+    if (cmd === 'syncPrecos') {
+      console.log('[worker] syncPrecos disparado manualmente');
+      syncPrecos().catch(e => console.error('[worker] syncPrecos erro:', e.message));
     }
   } catch {}
 });

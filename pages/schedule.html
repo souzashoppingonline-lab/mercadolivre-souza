@@ -79,6 +79,9 @@
           <button class="sync-action-btn" data-job="syncMetricas">
             <i class="fas fa-chart-bar"></i> Sync Métricas <small style="opacity:.7;font-weight:400">04:15</small>
           </button>
+          <button class="sync-action-btn" data-job="syncPrecos">
+            <i class="fas fa-tag"></i> Sync Preços <small style="opacity:.7;font-weight:400">05:00</small>
+          </button>
           <span id="syncStatus" style="font-size:.82rem;color:var(--text-muted);margin-left:4px"></span>
         </div>
       </div>
@@ -93,6 +96,7 @@
               <option value="sync-visitas">sync-visitas</option>
               <option value="sync-vendas">sync-vendas</option>
               <option value="sync-metricas">sync-metricas</option>
+              <option value="sync-precos">sync-precos</option>
             </select>
             <button onclick="loadRuns()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:.78rem">
               <i class="fas fa-refresh"></i>

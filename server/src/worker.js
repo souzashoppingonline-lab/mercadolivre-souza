@@ -316,11 +316,13 @@ async function handleItem({ resource, storeId }) {
   const thumb = item.thumbnail || (item.pictures?.[0]?.url) || null;
 
   const parentId = item.parent_item_id || null;
+  const origPrice = item.original_price && Number(item.original_price) > 0 ? item.original_price : null;
   await pool.query(
-    `INSERT INTO items (ml_id, store_id, title, price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, parent_item_id, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+    `INSERT INTO items (ml_id, store_id, title, price, original_price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, parent_item_id, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        title = EXCLUDED.title, price = EXCLUDED.price,
+       original_price = COALESCE(EXCLUDED.original_price, items.original_price),
        available_quantity = EXCLUDED.available_quantity,
        sold_quantity = EXCLUDED.sold_quantity,
        status = EXCLUDED.status,
@@ -328,7 +330,7 @@ async function handleItem({ resource, storeId }) {
        permalink = COALESCE(EXCLUDED.permalink, items.permalink),
        parent_item_id = COALESCE(EXCLUDED.parent_item_id, items.parent_item_id),
        updated_at = now()`,
-    [item.id, storeId, item.title, item.price, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId]
+    [item.id, storeId, item.title, item.price, origPrice, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId]
   );
 
   const lojaNome = await getStoreName(storeId);

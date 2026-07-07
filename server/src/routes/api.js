@@ -89,9 +89,12 @@ router.get('/produtos', async (req, res) => {
               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
               COALESCE(pr.vendas_periodo, 0)  as sold_periodo,
               COALESCE(pr.receita_periodo, 0) as revenue_periodo,
-              promo.original_price,
-              promo.promo_price,
-              promo.discount_pct
+              COALESCE(NULLIF(promo.original_price,0), NULLIF(i.original_price,0)) as original_price,
+              COALESCE(NULLIF(promo.promo_price,0),
+                CASE WHEN COALESCE(NULLIF(i.original_price,0),0) > 0 THEN i.price END) as promo_price,
+              COALESCE(promo.discount_pct,
+                CASE WHEN COALESCE(NULLIF(i.original_price,0),0) > i.price AND i.price > 0
+                  THEN ROUND((1 - i.price / i.original_price) * 100, 1) END) as discount_pct
        FROM items i
        LEFT JOIN stores s ON s.id = i.store_id
        LEFT JOIN LATERAL (

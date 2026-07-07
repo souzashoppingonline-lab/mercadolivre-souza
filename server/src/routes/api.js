@@ -281,7 +281,7 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
     const storeFilter = store_id ? `AND o.store_id = ${BigInt(store_id)}` : '';
     const { rows } = await pool.query(
       `SELECT
-         o.date_created::date AS dia,
+         (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
          o.total_amount, o.ml_fee, o.shipping_cost,
          COALESCE(o.shipping_seller_cost,0) AS shipping_seller_cost,
          o.quantity, COALESCE(i.cost,0) AS custo,
@@ -289,8 +289,11 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
        FROM orders o
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN items i ON i.ml_id = o.item_id
-       WHERE o.date_created::date IN (CURRENT_DATE, CURRENT_DATE - 1)
-         AND o.date_created::time <= (now() AT TIME ZONE 'America/Sao_Paulo')::time
+       WHERE (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date
+               IN ((now() AT TIME ZONE 'America/Sao_Paulo')::date,
+                   (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1)
+         AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::time
+               <= (now() AT TIME ZONE 'America/Sao_Paulo')::time
          AND o.status != 'cancelled'
          ${storeFilter}`
     );
@@ -307,7 +310,7 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
 
     const hoje  = { pedidos: 0, receita: 0, lucro: 0, itens: 0 };
     const ontem = { pedidos: 0, receita: 0, lucro: 0, itens: 0 };
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // YYYY-MM-DD no fuso BR
 
     for (const r of rows) {
       const t = String(r.dia) === today ? hoje : ontem;

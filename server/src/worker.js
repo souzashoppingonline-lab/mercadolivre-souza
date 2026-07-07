@@ -502,8 +502,38 @@ async function handleOffer({ resource, storeId }) {
 }
 
 let recentFailures = 0;
-const oauthNotified = new Map(); // storeId → last Telegram notification timestamp
-const apiCooldown  = new Map(); // `${topic}:${storeId}` → release timestamp (ms)
+const oauthNotified  = new Map(); // storeId → last Telegram notification timestamp
+const apiCooldown    = new Map(); // `${topic}:${storeId}` → release timestamp (ms)
+const rl429Counter   = new Map(); // storeId → { count, windowStart }
+const rl429Notified  = new Map(); // storeId → last notification timestamp
+
+const RL_WINDOW_MS   = 10 * 60 * 1000; // janela de 10 minutos
+const RL_THRESHOLD   = 3;               // alerta após 3 cooldowns na janela
+
+function track429(storeId, nickname) {
+  const now = Date.now();
+  const entry = rl429Counter.get(storeId) || { count: 0, windowStart: now };
+  if (now - entry.windowStart > RL_WINDOW_MS) {
+    entry.count = 0; entry.windowStart = now; // reset janela
+  }
+  entry.count++;
+  rl429Counter.set(storeId, entry);
+
+  if (entry.count >= RL_THRESHOLD) {
+    const lastNotif = rl429Notified.get(storeId) || 0;
+    if (now - lastNotif > RL_WINDOW_MS) {
+      rl429Notified.set(storeId, now);
+      tgNotify('tg_429',
+        `🚦 <b>Rate limit frequente!</b>\n` +
+        `🏪 ${nickname}\n` +
+        `⚠️ <b>${entry.count} cooldowns de 429</b> nos últimos 10 min\n` +
+        `O worker está pausando chamadas por 5 min a cada ocorrência.\n` +
+        `Se persistir, verifique o volume de webhooks ou aumente o intervalo de sync.`
+      ).catch(() => {});
+      entry.count = 0; // reset após notificar
+    }
+  }
+}
 
 const expiredStores = new Set();
 
@@ -577,6 +607,7 @@ async function processJob(job) {
       }
       console.warn(`[worker] ⏭ rate limit drop — ${nickname} | ${topic} | esgotou retries — cooldown 5min`);
       apiCooldown.set(cooldownKey, Date.now() + 5 * 60 * 1000);
+      track429(storeId, nickname);
       return;
     }
     console.error(`[worker] ❌ erro ${topic} | ${nickname} | ${ms}ms | ${err.message.slice(0, 200)}`);

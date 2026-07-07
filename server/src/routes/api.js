@@ -279,23 +279,43 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
   try {
     const { store_id = '' } = req.query;
     const storeFilter = store_id ? `AND o.store_id = ${BigInt(store_id)}` : '';
+
+    // Calcular intervalos no Node para evitar ambiguidade de fuso no Postgres
+    const nowBR   = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const todayStr = nowBR.toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const timeStr  = nowBR.toTimeString().slice(0, 8);   // HH:MM:SS
+
+    // Hoje: 00:00 até agora
+    const hojeInicio = new Date(`${todayStr}T00:00:00`);
+    const hojeFim    = nowBR;
+
+    // Ontem: 00:00 até o mesmo horário de agora
+    const ontemDate  = new Date(nowBR); ontemDate.setDate(ontemDate.getDate() - 1);
+    const ontemStr   = ontemDate.toLocaleDateString('en-CA');
+    const ontemInicio = new Date(`${ontemStr}T00:00:00`);
+    const ontemFim    = new Date(`${ontemStr}T${timeStr}`);
+
     const { rows } = await pool.query(
       `SELECT
-         (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+         $5::text AS dia_ref,
+         o.date_created,
          o.total_amount, o.ml_fee, o.shipping_cost,
          COALESCE(o.shipping_seller_cost,0) AS shipping_seller_cost,
          o.quantity, COALESCE(i.cost,0) AS custo,
-         COALESCE(s.imposto_pct,0) AS imposto_pct
+         COALESCE(s.imposto_pct,0) AS imposto_pct,
+         CASE WHEN o.date_created >= $1 AND o.date_created < $2 THEN 'hoje'
+              WHEN o.date_created >= $3 AND o.date_created < $4 THEN 'ontem'
+         END AS periodo
        FROM orders o
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN items i ON i.ml_id = o.item_id
-       WHERE (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date
-               IN ((now() AT TIME ZONE 'America/Sao_Paulo')::date,
-                   (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1)
-         AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::time
-               <= (now() AT TIME ZONE 'America/Sao_Paulo')::time
+       WHERE ((o.date_created >= $1 AND o.date_created < $2)
+           OR (o.date_created >= $3 AND o.date_created < $4))
          AND o.status != 'cancelled'
-         ${storeFilter}`
+         ${storeFilter}`,
+      [hojeInicio.toISOString(), hojeFim.toISOString(),
+       ontemInicio.toISOString(), ontemFim.toISOString(),
+       todayStr]
     );
 
     const calc = (r) => {
@@ -310,10 +330,9 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
 
     const hoje  = { pedidos: 0, receita: 0, lucro: 0, itens: 0 };
     const ontem = { pedidos: 0, receita: 0, lucro: 0, itens: 0 };
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }); // YYYY-MM-DD no fuso BR
 
     for (const r of rows) {
-      const t = String(r.dia) === today ? hoje : ontem;
+      const t = r.periodo === 'hoje' ? hoje : ontem;
       const { receita, lucro } = calc(r);
       t.pedidos++;
       t.itens   += Number(r.quantity)||1;

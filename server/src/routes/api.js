@@ -87,10 +87,19 @@ router.get('/produtos', async (req, res) => {
               i.sold_quantity * i.price as revenue_total,
               i.status,
               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
-              COALESCE(p.vendas_periodo, 0)  as sold_periodo,
-              COALESCE(p.receita_periodo, 0) as revenue_periodo
+              COALESCE(pr.vendas_periodo, 0)  as sold_periodo,
+              COALESCE(pr.receita_periodo, 0) as revenue_periodo,
+              promo.original_price,
+              promo.promo_price,
+              promo.discount_pct
        FROM items i
        LEFT JOIN stores s ON s.id = i.store_id
+       LEFT JOIN LATERAL (
+         SELECT original_price, promo_price, discount_pct
+         FROM promotions pm
+         WHERE pm.item_id = i.ml_id AND pm.status = 'started'
+         ORDER BY pm.changed_at DESC LIMIT 1
+       ) promo ON true
        LEFT JOIN (
          SELECT o.item_id,
                 COUNT(*) as vendas_periodo,
@@ -99,10 +108,10 @@ router.get('/produtos', async (req, res) => {
          WHERE o.status != 'cancelled' ${periodFilter}
            ${store_id ? `AND o.store_id = ${BigInt(store_id)}` : ''}
          GROUP BY o.item_id
-       ) p ON p.item_id = i.ml_id
+       ) pr ON pr.item_id = i.ml_id
        WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%')
          ${storeFilter}
-       ORDER BY ${orderBy.replace('i.sold_quantity', days ? 'COALESCE(p.vendas_periodo,0)' : 'i.sold_quantity')} LIMIT 500`,
+       ORDER BY ${orderBy.replace('i.sold_quantity', days ? 'COALESCE(pr.vendas_periodo,0)' : 'i.sold_quantity')} LIMIT 500`,
       [search]
     ),
     pool.query(

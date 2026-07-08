@@ -43,6 +43,7 @@ const NAV_ITEMS = [
     { href: 'vendas-turbo.html', icon: 'fa-file-excel', label: 'Vendas ML Turbo' },
   ]},
   { section: 'Sistema', items: [
+    { href: 'mcp.html', icon: 'fa-robot', label: 'MCP Mercado Livre' },
     { href: 'monitor.html', icon: 'fa-telegram fab', label: 'Monitor & Telegram', brand: true },
     { href: 'schedule.html', icon: 'fa-calendar-check', label: 'Schedule' },
     { href: 'webhook.html', icon: 'fa-plug', label: 'Webhooks' },

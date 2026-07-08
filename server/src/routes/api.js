@@ -1472,4 +1472,127 @@ router.get('/publicidade', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── MCP Chat — Assistente de Vendas ────────────────────────────────────────
+router.post('/mcp/chat', async (req, res) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY não configurada no servidor. Adicione ao .env e reinicie.' });
+
+  const { message, store_id } = req.body || {};
+  if (!message) return res.status(400).json({ error: 'Campo message obrigatório.' });
+
+  try {
+    const storeFilter = store_id ? `AND store_id = ${BigInt(store_id)}` : '';
+    const tz = `AT TIME ZONE 'America/Sao_Paulo'`;
+
+    // Coleta dados relevantes em paralelo
+    const [kpisR, topR, pendingR, lowR, cancelR, storesR] = await Promise.all([
+      pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE (date_created ${tz})::date = (now() ${tz})::date) pedidos_hoje,
+          COALESCE(SUM(total_amount) FILTER (WHERE (date_created ${tz})::date = (now() ${tz})::date),0) receita_hoje,
+          COUNT(*) FILTER (WHERE status='ready_to_ship') aguardando_envio,
+          COUNT(*) FILTER (WHERE status='paid') pagos,
+          COUNT(*) FILTER (WHERE status='shipped') enviados,
+          COUNT(*) FILTER (WHERE (date_created ${tz})::date >= (now() ${tz})::date - 7) pedidos_7d,
+          COALESCE(SUM(total_amount) FILTER (WHERE (date_created ${tz})::date >= (now() ${tz})::date - 7),0) receita_7d,
+          COUNT(*) FILTER (WHERE (date_created ${tz})::date >= (now() ${tz})::date - 30) pedidos_30d,
+          COALESCE(SUM(total_amount) FILTER (WHERE (date_created ${tz})::date >= (now() ${tz})::date - 30),0) receita_30d
+        FROM orders WHERE status != 'cancelled' ${storeFilter}`),
+
+      pool.query(`
+        SELECT o.item_id, i.title, COUNT(*) vendas, SUM(o.total_amount) receita
+        FROM orders o LEFT JOIN items i ON i.ml_id = o.item_id
+        WHERE (o.date_created ${tz})::date >= (now() ${tz})::date - 30 AND o.status != 'cancelled' ${storeFilter}
+        GROUP BY o.item_id, i.title ORDER BY vendas DESC LIMIT 10`),
+
+      pool.query(`SELECT COUNT(*) n FROM questions WHERE status='UNANSWERED'`),
+
+      pool.query(`SELECT title, available_quantity FROM items WHERE available_quantity <= 5 AND status='active' ${storeFilter} ORDER BY available_quantity LIMIT 10`),
+
+      pool.query(`
+        SELECT o.item_id, i.title, COUNT(*) cancelamentos
+        FROM orders o LEFT JOIN items i ON i.ml_id = o.item_id
+        WHERE o.status='cancelled' AND (o.date_created ${tz})::date >= (now() ${tz})::date - 30 ${storeFilter}
+        GROUP BY o.item_id, i.title ORDER BY cancelamentos DESC LIMIT 5`),
+
+      pool.query(`SELECT nickname, token_valid FROM stores ORDER BY nickname`),
+    ]);
+
+    const ctx = {
+      kpis: kpisR.rows[0],
+      top_produtos: topR.rows,
+      perguntas_pendentes: pendingR.rows[0].n,
+      estoque_baixo: lowR.rows,
+      cancelamentos: cancelR.rows,
+      lojas: storesR.rows,
+      data_hoje: new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+    };
+
+    const fetch = require('node-fetch');
+    const mlRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: `Você é um assistente especialista em e-commerce Mercado Livre. Responda sempre em português brasileiro de forma direta e clara. Use os dados reais abaixo das lojas do usuário. Formate valores em R$ com vírgula brasileira. Hoje é ${ctx.data_hoje}.
+
+DADOS ATUAIS DAS LOJAS:
+${JSON.stringify(ctx, null, 2)}
+
+Seja direto e objetivo. Use listas quando listar itens. Destaque números importantes com **negrito**. Se não souber algo específico que não está nos dados, diga que não tem esse detalhe disponível.`,
+        messages: [{ role: 'user', content: message }],
+      }),
+    });
+
+    const aiData = await mlRes.json();
+    if (!mlRes.ok) throw new Error(aiData?.error?.message || `Anthropic API ${mlRes.status}`);
+
+    const reply = aiData.content?.[0]?.text || 'Sem resposta.';
+    res.json({ reply });
+  } catch (e) {
+    console.error('[MCP chat]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── MCP Docs — Proxy para documentação oficial ML ──────────────────────────
+router.post('/mcp/docs', async (req, res) => {
+  const { query, language = 'pt_br', siteId = 'MLB', limit = 5 } = req.body || {};
+  if (!query) return res.status(400).json({ error: 'Campo query obrigatório.' });
+
+  // Busca via ML MCP oficial — requer token de alguma loja conectada
+  try {
+    const { rows } = await pool.query(`SELECT access_token FROM stores WHERE access_token IS NOT NULL LIMIT 1`);
+    if (!rows.length) return res.status(503).json({ error: 'Nenhuma loja com token disponível.' });
+
+    const fetch = require('node-fetch');
+    const mlRes = await fetch('https://mcp.mercadolibre.com/mcp', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${rows[0].access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: {
+          name: 'search_documentation',
+          arguments: { query, language, siteId, limit },
+        }
+      }),
+    });
+
+    const data = await mlRes.json();
+    if (!mlRes.ok) throw new Error(JSON.stringify(data));
+    res.json(data.result || data);
+  } catch (e) {
+    console.error('[MCP docs]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

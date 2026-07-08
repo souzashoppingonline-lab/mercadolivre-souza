@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP Mercado Livre — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='MCP Mercado Livre'; window.ACTIVE_NAV='mcp.html';</script>
+  <style>
+    /* ── Tabs ── */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+      width: fit-content;
+    }
+    .tab-btn {
+      padding: 7px 20px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .tab-btn.active { background: #FFE600; color: #000; }
+    .tab-btn:not(.active):hover { color: var(--text-primary); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Chat layout ── */
+    .mcp-layout {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 16px;
+      height: calc(100vh - 200px);
+      min-height: 500px;
+    }
+    @media (max-width: 900px) {
+      .mcp-layout { grid-template-columns: 1fr; }
+      .mcp-sidebar-panel { display: none; }
+    }
+
+    .chat-card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .chat-header-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, #FFE600, #f59e0b);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .chat-header-info h3 { font-size: .9rem; font-weight: 700; margin: 0; }
+    .chat-header-info p  { font-size: .72rem; color: var(--text-muted); margin: 0; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); margin-left: auto;
+      box-shadow: 0 0 5px var(--green);
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .msg { display: flex; gap: 8px; max-width: 90%; }
+    .msg.user      { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.assistant { align-self: flex-start; }
+
+    .msg-avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; flex-shrink: 0;
+    }
+    .msg.user      .msg-avatar { background: #FFE600; color: #000; }
+    .msg.assistant .msg-avatar { background: #1a3a5c; color: #FFE600; }
+
+    .msg-bubble {
+      padding: 9px 13px;
+      border-radius: 12px;
+      font-size: .855rem;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+    .msg.user      .msg-bubble { background: #FFE600; color: #000; border-bottom-right-radius: 3px; }
+    .msg.assistant .msg-bubble { background: rgba(255,255,255,.05); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+
+    .msg-bubble pre {
+      background: rgba(0,0,0,.35);
+      border-radius: 6px; padding: 8px; overflow-x: auto; margin: 6px 0 0;
+      font-size: .78rem;
+    }
+    .msg-time { font-size: .65rem; color: var(--text-muted); margin-top: 3px; }
+    .msg.user .msg-time { text-align: right; }
+
+    .typing-dots { display: flex; gap: 5px; padding: 4px 0; }
+    .typing-dots span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-muted);
+      animation: bounce 1.1s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: .18s; }
+    .typing-dots span:nth-child(3) { animation-delay: .36s; }
+    @keyframes bounce {
+      0%,80%,100% { transform: translateY(0); }
+      40%          { transform: translateY(-6px); }
+    }
+
+    .chat-input-area {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .chat-input {
+      flex: 1;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--text-primary);
+      padding: 9px 12px;
+      font-size: .855rem;
+      resize: none;
+      min-height: 40px;
+      max-height: 110px;
+      outline: none;
+      font-family: inherit;
+    }
+    .chat-input:focus { border-color: #FFE600; }
+    .send-btn {
+      width: 40px; height: 40px;
+      background: #FFE600; border: none; border-radius: 9px;
+      color: #000; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; flex-shrink: 0;
+      transition: background .15s, transform .1s;
+    }
+    .send-btn:hover  { background: #f0d800; }
+    .send-btn:active { transform: scale(.94); }
+    .send-btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+    /* quick buttons */
+    .quick-btns {
+      padding: 8px 14px 0;
+      display: flex; flex-wrap: wrap; gap: 5px;
+    }
+    .quick-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--text-muted);
+      padding: 3px 10px;
+      font-size: .73rem;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    .quick-btn:hover { border-color: #FFE600; color: #FFE600; }
+
+    /* sidebar panel */
+    .mcp-sidebar-panel { display: flex; flex-direction: column; gap: 12px; }
+    .panel-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .panel-card h4 {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin: 0 0 10px;
+    }
+    .cmd-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 5px; }
+    .cmd-item {
+      background: rgba(255,255,255,.04);
+      border-radius: 7px; padding: 7px 10px;
+      font-size: .78rem; cursor: pointer;
+      transition: background .15s;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .cmd-item:hover { background: rgba(255,230,0,.1); color: #FFE600; }
+    .cmd-item i { width: 14px; text-align: center; opacity: .55; }
+
+    .store-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(255,230,0,.08); border: 1px solid rgba(255,230,0,.15);
+      border-radius: 20px; padding: 3px 9px;
+      font-size: .73rem; color: #FFE600; margin-bottom: 5px;
+    }
+    .store-pill i { font-size: .55rem; }
+
+    .history-item {
+      font-size: .77rem; color: var(--text-muted);
+      padding: 5px 0; border-bottom: 1px solid var(--border);
+      cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-item:hover { color: var(--text-primary); }
+
+    /* welcome */
+    .welcome-msg {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; height: 100%; gap: 10px;
+      color: var(--text-muted);
+    }
+    .welcome-msg .big-icon { font-size: 2.8rem; }
+    .welcome-msg h3 { font-size: 1rem; color: var(--text-primary); margin: 0; }
+    .welcome-msg p  { font-size: .82rem; max-width: 320px; margin: 0; }
+
+    /* ── Aba Docs ── */
+    .docs-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 800px) { .docs-layout { grid-template-columns: 1fr; } }
+
+    .docs-search-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .docs-search-box h3 { font-size: .9rem; margin: 0 0 14px; }
+
+    .docs-input-row {
+      display: flex; gap: 8px; margin-bottom: 12px;
+    }
+    .docs-input {
+      flex: 1;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      padding: 9px 12px;
+      font-size: .855rem;
+      outline: none;
+      font-family: inherit;
+    }
+    .docs-input:focus { border-color: #FFE600; }
+    .docs-btn {
+      padding: 9px 16px;
+      background: #FFE600; border: none; border-radius: 8px;
+      color: #000; font-weight: 700; font-size: .855rem;
+      cursor: pointer; white-space: nowrap;
+    }
+    .docs-btn:hover { background: #f0d800; }
+    .docs-btn:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+    .docs-results {
+      display: flex; flex-direction: column; gap: 10px;
+      max-height: calc(100vh - 360px);
+      overflow-y: auto;
+    }
+    .doc-item {
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px;
+      cursor: pointer; transition: border-color .15s;
+    }
+    .doc-item:hover { border-color: #FFE600; }
+    .doc-item h4 { font-size: .855rem; margin: 0 0 4px; }
+    .doc-item p  { font-size: .78rem; color: var(--text-muted); margin: 0; line-height: 1.45; }
+
+    .doc-detail {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-y: auto;
+      max-height: calc(100vh - 260px);
+    }
+    .doc-detail h3 { font-size: .9rem; margin: 0 0 12px; }
+    .doc-detail pre {
+      background: rgba(0,0,0,.3);
+      border-radius: 6px; padding: 12px;
+      font-size: .8rem; overflow-x: auto;
+      white-space: pre-wrap; word-break: break-word;
+    }
+
+    .docs-placeholder {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100%; gap: 10px;
+      color: var(--text-muted); text-align: center;
+    }
+    .docs-placeholder i { font-size: 2.5rem; opacity: .3; }
+    .docs-placeholder p { font-size: .82rem; max-width: 260px; }
+
+    /* info banner */
+    .info-banner {
+      background: rgba(255,230,0,.06);
+      border: 1px solid rgba(255,230,0,.2);
+      border-radius: 8px; padding: 10px 14px;
+      font-size: .8rem; color: var(--text-muted);
+      margin-bottom: 14px;
+      display: flex; gap: 8px; align-items: flex-start;
+    }
+    .info-banner i { color: #FFE600; margin-top: 2px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area" style="padding:16px">
+
+      <!-- Abas -->
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('chat', this)">
+          <i class="fas fa-robot"></i> Assistente de Vendas
+        </button>
+        <button class="tab-btn" onclick="switchTab('docs', this)">
+          <i class="fas fa-book"></i> Documentação ML
+        </button>
+      </div>
+
+      <!-- ══ ABA 1: ASSISTENTE ══ -->
+      <div class="tab-panel active" id="tab-chat">
+        <div class="mcp-layout">
+
+          <!-- Chat principal -->
+          <div class="chat-card">
+            <div class="chat-header">
+              <div class="chat-header-icon">🤖</div>
+              <div class="chat-header-info">
+                <h3>Assistente ML</h3>
+                <p>Pergunte sobre pedidos, anúncios, estoque e faturamento</p>
+              </div>
+              <div class="status-dot"></div>
+            </div>
+
+            <div class="quick-btns">
+              <button class="quick-btn" onclick="quickAsk('Qual o faturamento de hoje?')">💰 Faturamento hoje</button>
+              <button class="quick-btn" onclick="quickAsk('Quais pedidos estão aguardando envio?')">📦 Pedidos p/ enviar</button>
+              <button class="quick-btn" onclick="quickAsk('Há perguntas sem resposta?')">❓ Perguntas pendentes</button>
+              <button class="quick-btn" onclick="quickAsk('Quais produtos estão com estoque baixo?')">⚠️ Estoque baixo</button>
+              <button class="quick-btn" onclick="quickAsk('Mostre os 5 produtos mais vendidos dos últimos 30 dias')">🏆 Top produtos</button>
+              <button class="quick-btn" onclick="quickAsk('Resuma a situação geral das lojas agora')">📊 Resumo geral</button>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+              <div class="welcome-msg" id="welcomeMsg">
+                <div class="big-icon">🤖</div>
+                <h3>Assistente Mercado Livre</h3>
+                <p>Faça perguntas em português sobre suas vendas, pedidos, estoque e anúncios. Respondo com dados em tempo real das suas lojas.</p>
+              </div>
+            </div>
+
+            <div class="chat-input-area">
+              <textarea class="chat-input" id="chatInput" rows="1"
+                placeholder="Ex: Quais pedidos chegaram hoje?"></textarea>
+              <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Enviar (Enter)">
+                <i class="fas fa-paper-plane"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Painel lateral -->
+          <div class="mcp-sidebar-panel">
+            <div class="panel-card" id="storesPanel">
+              <h4><i class="fas fa-store"></i> Lojas</h4>
+              <div id="storesList"><span style="font-size:.78rem;color:var(--text-muted)">Carregando...</span></div>
+            </div>
+
+            <div class="panel-card">
+              <h4><i class="fas fa-bolt"></i> Ações Rápidas</h4>
+              <ul class="cmd-list">
+                <li class="cmd-item" onclick="quickAsk('Liste os pedidos pagos de hoje com nome do produto e comprador')">
+                  <i class="fas fa-receipt"></i> Pedidos de hoje
+                </li>
+                <li class="cmd-item" onclick="quickAsk('Quais anúncios têm estoque zerado ou muito baixo?')">
+                  <i class="fas fa-exclamation-triangle"></i> Estoque crítico
+                </li>
+                <li class="cmd-item" onclick="quickAsk('Compare o faturamento desta semana com a semana passada')">
+                  <i class="fas fa-chart-bar"></i> Comparativo semana
+                </li>
+                <li class="cmd-item" onclick="quickAsk('Quais produtos tiveram mais cancelamentos neste mês?')">
+                  <i class="fas fa-times-circle"></i> Cancelamentos
+                </li>
+                <li class="cmd-item" onclick="quickAsk('Faturamento dos últimos 7 dias por loja')">
+                  <i class="fas fa-store"></i> Faturamento por loja
+                </li>
+              </ul>
+            </div>
+
+            <div class="panel-card">
+              <h4><i class="fas fa-history"></i> Histórico</h4>
+              <div id="historyList"><span style="font-size:.78rem;color:var(--text-muted)">Nenhuma pergunta ainda</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ══ ABA 2: DOCUMENTAÇÃO ══ -->
+      <div class="tab-panel" id="tab-docs">
+
+        <div class="info-banner">
+          <i class="fas fa-info-circle"></i>
+          <span>Esta aba usa o <strong>MCP Server oficial do Mercado Livre</strong> (<code>mcp.mercadolibre.com</code>) para buscar na documentação técnica da API. Útil para desenvolvedores e para investigar campos de frete, tarifas e outros recursos.</span>
+        </div>
+
+        <div class="docs-layout">
+          <!-- Busca -->
+          <div class="docs-search-box">
+            <h3><i class="fas fa-search" style="color:#FFE600;margin-right:6px"></i>Buscar na Documentação ML</h3>
+            <div class="docs-input-row">
+              <input class="docs-input" id="docsQuery" placeholder="Ex: shipping cost, tarifa, fees, webhook..."
+                onkeydown="if(event.key==='Enter') searchDocs()">
+              <button class="docs-btn" id="docsBtn" onclick="searchDocs()">Buscar</button>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+              <button class="quick-btn" onclick="setDocsQuery('shipping cost calculation')">Custo frete</button>
+              <button class="quick-btn" onclick="setDocsQuery('marketplace fees tariffs')">Tarifas ML</button>
+              <button class="quick-btn" onclick="setDocsQuery('orders webhooks notifications')">Webhooks pedidos</button>
+              <button class="quick-btn" onclick="setDocsQuery('advertising product ads campaigns')">Publicidade</button>
+              <button class="quick-btn" onclick="setDocsQuery('items listing attributes')">Anúncios</button>
+            </div>
+
+            <div class="docs-results" id="docsResults">
+              <div style="color:var(--text-muted);font-size:.82rem;text-align:center;padding:20px 0">
+                <i class="fas fa-search" style="font-size:1.5rem;opacity:.3;display:block;margin-bottom:8px"></i>
+                Digite um termo para buscar na documentação oficial do ML
+              </div>
+            </div>
+          </div>
+
+          <!-- Detalhe -->
+          <div class="doc-detail">
+            <div class="docs-placeholder" id="docDetailPlaceholder">
+              <i class="fas fa-file-alt"></i>
+              <p>Clique em um resultado para ver o conteúdo completo da página</p>
+            </div>
+            <div id="docDetailContent" style="display:none">
+              <h3 id="docDetailTitle"></h3>
+              <pre id="docDetailBody"></pre>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="../js/websocket.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+// ── Tabs ──────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Utils ─────────────────────────────────────────────
+function nowTime() {
+  return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatMd(text) {
+  return text
+    .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(255,230,0,.15);padding:1px 5px;border-radius:3px">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+// ── Chat ──────────────────────────────────────────────
+const chatHistory = [];
+
+const chatInput = document.getElementById('chatInput');
+chatInput.addEventListener('input', () => {
+  chatInput.style.height = 'auto';
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 110) + 'px';
+});
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+function appendMsg(role, html) {
+  document.getElementById('welcomeMsg')?.remove();
+  const msgs = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  const icon = role === 'user' ? 'fa-user' : 'fa-robot';
+  div.innerHTML = `
+    <div class="msg-avatar"><i class="fas ${icon}"></i></div>
+    <div>
+      <div class="msg-bubble">${html}</div>
+      <div class="msg-time">${nowTime()}</div>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function showTyping() {
+  const msgs = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'msg assistant'; div.id = 'typingMsg';
+  div.innerHTML = `<div class="msg-avatar"><i class="fas fa-robot"></i></div>
+    <div><div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function sendMessage() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = ''; chatInput.style.height = 'auto';
+  document.getElementById('sendBtn').disabled = true;
+
+  appendMsg('user', escHtml(text));
+  addHistory(text);
+  showTyping();
+
+  try {
+    const storeId = localStorage.getItem('ml_active_store') || '';
+    const res = await fetch('/api/mcp/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, store_id: storeId })
+    });
+    const data = await res.json();
+    document.getElementById('typingMsg')?.remove();
+
+    if (data.error) {
+      appendMsg('assistant', `<span style="color:var(--red)"><i class="fas fa-exclamation-circle"></i> ${escHtml(data.error)}</span>`);
+    } else {
+      appendMsg('assistant', formatMd(data.reply || 'Sem resposta.'));
+    }
+  } catch (e) {
+    document.getElementById('typingMsg')?.remove();
+    appendMsg('assistant', `<span style="color:var(--red)"><i class="fas fa-exclamation-circle"></i> Erro de conexão.</span>`);
+  }
+
+  document.getElementById('sendBtn').disabled = false;
+  chatInput.focus();
+}
+
+function quickAsk(text) { chatInput.value = text; sendMessage(); }
+
+function addHistory(text) {
+  chatHistory.unshift(text);
+  if (chatHistory.length > 7) chatHistory.pop();
+  const el = document.getElementById('historyList');
+  el.innerHTML = chatHistory.map(h => `
+    <div class="history-item" onclick="quickAsk(${JSON.stringify(h)})" title="${escHtml(h)}">
+      <i class="fas fa-chevron-right" style="font-size:.55rem;margin-right:4px"></i>${escHtml(h)}
+    </div>`).join('');
+}
+
+// ── Docs ──────────────────────────────────────────────
+function setDocsQuery(q) {
+  document.getElementById('docsQuery').value = q;
+  searchDocs();
+}
+
+async function searchDocs() {
+  const q = document.getElementById('docsQuery').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('docsBtn');
+  btn.disabled = true; btn.textContent = 'Buscando...';
+
+  const resultsEl = document.getElementById('docsResults');
+  resultsEl.innerHTML = '<div style="color:var(--text-muted);font-size:.82rem;text-align:center;padding:16px">Buscando...</div>';
+
+  try {
+    const res = await fetch('/api/mcp/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, language: 'pt_br', siteId: 'MLB', limit: 8 })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      resultsEl.innerHTML = `<div style="color:var(--red);font-size:.82rem">${escHtml(data.error)}</div>`;
+    } else {
+      const items = data?.content?.[0]?.text ? JSON.parse(data.content[0].text) : (Array.isArray(data) ? data : []);
+      if (!items.length) {
+        resultsEl.innerHTML = '<div style="color:var(--text-muted);font-size:.82rem;text-align:center;padding:16px">Nenhum resultado encontrado</div>';
+      } else {
+        resultsEl.innerHTML = items.map((item, i) => `
+          <div class="doc-item" onclick="loadDocPage('${escHtml(item.path || '')}', '${escHtml(item.title || 'Sem título')}')">
+            <h4>${escHtml(item.title || 'Sem título')}</h4>
+            <p>${escHtml((item.description || item.summary || '').slice(0, 120))}${(item.description || '').length > 120 ? '...' : ''}</p>
+          </div>`).join('');
+      }
+    }
+  } catch (e) {
+    resultsEl.innerHTML = `<div style="color:var(--red);font-size:.82rem">${escHtml(e.message)}</div>`;
+  }
+
+  btn.disabled = false; btn.textContent = 'Buscar';
+}
+
+async function loadDocPage(path, title) {
+  if (!path) return;
+  document.getElementById('docDetailPlaceholder').style.display = 'none';
+  document.getElementById('docDetailContent').style.display = 'block';
+  document.getElementById('docDetailTitle').textContent = title;
+  document.getElementById('docDetailBody').textContent = 'Carregando...';
+
+  try {
+    const res = await fetch('/api/mcp/docs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: path, language: 'pt_br', action: 'page', path })
+    });
+    const data = await res.json();
+    const text = data?.content?.[0]?.text || JSON.stringify(data, null, 2);
+    document.getElementById('docDetailBody').textContent = text;
+  } catch (e) {
+    document.getElementById('docDetailBody').textContent = e.message;
+  }
+}
+
+// ── Init ──────────────────────────────────────────────
+async function loadStores() {
+  const data = await DB.getLojas();
+  const stores = data?.stores || [];
+  const el = document.getElementById('storesList');
+  if (!stores.length) { el.innerHTML = '<span style="font-size:.78rem;color:var(--text-muted)">Nenhuma loja</span>'; return; }
+  el.innerHTML = stores.map(s => `
+    <div class="store-pill">
+      <i class="fas fa-circle" style="color:${s.token_valid ? 'var(--green)' : 'var(--red)'}"></i>
+      ${escHtml(s.nickname)}
+    </div>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadStores();
+  chatInput.focus();
+});
+</script>
+</body>
+</html>

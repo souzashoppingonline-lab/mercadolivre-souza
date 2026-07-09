@@ -1185,7 +1185,7 @@ async function syncScores() {
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
             try {
-              const perf = await ml.get(`/items/${item.ml_id}/performance`, store.id);
+              const perf = await ml.get(`/item/${item.ml_id}/performance`, store.id);
               if (!perf || perf.error) { skipped++; continue; }
 
               const score     = perf.score ?? null;

@@ -132,7 +132,14 @@ const DB = {
   async getCancelamentos(params)  { return this._get('/alertas/cancelamentos', params); },
   async getDevolucoes(params)          { return this._get('/alertas/devolucoes', params); },
   async saveDevolucaoNote(id, note)    { return this._patch(`/alertas/devolucoes/${id}/note`, { note }); },
-  async getAnunciosProblema()     { return this._get('/alertas/anuncios-problema'); },
+  async getAnunciosProblema(p={})  { return this._get('/alertas/anuncios-problema', p); },
+  async syncAnunciosPerformance(body={}) {
+    return fetch(`${this.BASE}/alertas/anuncios-performance/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(r => r.json()).catch(e => ({ error: e.message }));
+  },
 
   // ── Webhooks ───────────────────────────────────────────────
   async getWebhookLogs(params={}) { return this._get('/webhooks/logs', params); },

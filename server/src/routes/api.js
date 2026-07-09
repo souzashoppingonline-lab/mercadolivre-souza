@@ -1207,46 +1207,109 @@ router.get('/alteracoes', async (req, res) => {
 });
 
 router.get('/alertas/anuncios-problema', async (req, res) => {
-  const { store_id = '' } = req.query;
-  const { rows } = await pool.query(
-    `SELECT i.ml_id, i.store_id, i.title, i.price, i.available_quantity,
-            i.sold_quantity, i.status, i.updated_at,
-            COALESCE(o.pedidos_30d, 0) as pedidos_30d
-     FROM items i
-     LEFT JOIN (
-       SELECT item_id, COUNT(*) pedidos_30d FROM orders
-       WHERE status != 'cancelled' AND date_created >= CURRENT_DATE - 30
-       GROUP BY item_id
-     ) o ON o.item_id = i.ml_id
-     WHERE ($1 = '' OR i.store_id = $1::bigint)
-       AND i.status IN ('active','paused','closed','under_review')
-     ORDER BY i.updated_at DESC LIMIT 200`,
-    [store_id]
+  try {
+    const { store_id = '', level = '', sort = 'score_asc' } = req.query;
+    const storeFilter = store_id ? `AND i.store_id = ${BigInt(store_id)}` : '';
+    const levelFilter = level ? `AND LOWER(p.level) = LOWER('${level.replace(/'/g,'')}')` : '';
+
+    const orderBy = sort === 'score_desc' ? 'p.score DESC NULLS LAST'
+      : sort === 'title' ? 'i.title ASC'
+      : 'p.score ASC NULLS LAST';
+
+    const { rows } = await pool.query(
+      `SELECT i.ml_id, i.store_id, s.nickname as store_name,
+              i.title, i.price, i.available_quantity, i.status,
+              COALESCE(o.pedidos_30d, 0) as pedidos_30d,
+              p.score, p.level, p.level_wording, p.pending_count,
+              p.buckets, p.synced_at
+       FROM items i
+       JOIN stores s ON s.id = i.store_id
+       LEFT JOIN (
+         SELECT item_id, COUNT(*) pedidos_30d FROM orders
+         WHERE status != 'cancelled' AND date_created >= CURRENT_DATE - 30
+         GROUP BY item_id
+       ) o ON o.item_id = i.ml_id
+       LEFT JOIN item_performance p ON p.item_id = i.ml_id
+       WHERE i.status = 'active' ${storeFilter} ${levelFilter}
+       ORDER BY ${orderBy}
+       LIMIT 300`
+    );
+
+    // KPI summary
+    const total = rows.length;
+    const withScore = rows.filter(r => r.score !== null);
+    const avgScore = withScore.length
+      ? Math.round(withScore.reduce((a, r) => a + Number(r.score), 0) / withScore.length)
+      : null;
+    const summary = {
+      total,
+      synced: withScore.length,
+      basico:       rows.filter(r => r.level === 'Bad').length,
+      satisfatorio: rows.filter(r => r.level === 'Medium').length,
+      profissional: rows.filter(r => r.level === 'Good').length,
+      sem_score:    rows.filter(r => r.score === null).length,
+      avg_score:    avgScore,
+      last_sync:    withScore.length ? rows.filter(r => r.synced_at).sort((a,b) => new Date(b.synced_at)-new Date(a.synced_at))[0]?.synced_at : null,
+    };
+
+    res.json({ items: rows, summary });
+  } catch(e) {
+    console.error('[anuncios-problema]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Sync performance scores — chama /item/{id}/performance no ML ──────────
+let perfSyncRunning = false;
+router.post('/alertas/anuncios-performance/sync', async (req, res) => {
+  if (perfSyncRunning) return res.json({ status: 'already_running' });
+
+  const { store_id = '', limit = 50 } = req.body || {};
+  const storeFilter = store_id ? `AND store_id = ${BigInt(store_id)}` : '';
+
+  // Items sem score ou com score > 24h desatualizado têm prioridade
+  const { rows: items } = await pool.query(
+    `SELECT i.ml_id, i.store_id FROM items i
+     LEFT JOIN item_performance p ON p.item_id = i.ml_id
+     WHERE i.status = 'active' ${storeFilter}
+       AND (p.item_id IS NULL OR p.synced_at < now() - interval '24 hours')
+     ORDER BY p.synced_at ASC NULLS FIRST
+     LIMIT $1`,
+    [Number(limit)]
   );
-  const items = rows.map(r => {
-    let problem_type = null, severity = 'medium', suggestion = null;
-    if (r.status !== 'active') {
-      problem_type = 'low_reputation';
-      severity = r.status === 'closed' ? 'high' : 'medium';
-      suggestion = r.status === 'paused' ? 'Reativar anúncio' : 'Verificar restrições do anúncio';
-    } else if (r.available_quantity === 0) {
-      problem_type = 'no_sales';
-      severity = 'high';
-      suggestion = 'Repor estoque urgente';
-    } else if (r.pedidos_30d === 0 && r.available_quantity > 0) {
-      problem_type = 'no_sales';
-      severity = 'medium';
-      suggestion = 'Revisar preço e fotos';
+
+  if (!items.length) return res.json({ status: 'nothing_to_sync', synced: 0 });
+
+  res.json({ status: 'started', total: items.length });
+
+  // Executa em background — não bloqueia a resposta HTTP
+  perfSyncRunning = true;
+  (async () => {
+    const ml = require('../mlClient');
+    let ok = 0, fail = 0;
+    for (const item of items) {
+      try {
+        const data = await ml.get(`/item/${item.ml_id}/performance`, item.store_id);
+        const pending = (data.buckets || []).flatMap(b => b.variables || []).filter(v => v.status === 'PENDING');
+        await pool.query(
+          `INSERT INTO item_performance(store_id, item_id, score, level, level_wording, pending_count, buckets, calculated_at, synced_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,now())
+           ON CONFLICT(item_id) DO UPDATE SET
+             score=$3, level=$4, level_wording=$5, pending_count=$6, buckets=$7,
+             calculated_at=$8, synced_at=now()`,
+          [item.store_id, item.ml_id, data.score, data.level, data.level_wording,
+           pending.length, JSON.stringify(data.buckets || []), data.calculated_at]
+        );
+        ok++;
+      } catch(e) {
+        fail++;
+        if (e.message.includes('429')) { await new Promise(r => setTimeout(r, 5000)); }
+      }
+      await new Promise(r => setTimeout(r, 300)); // 300ms entre chamadas
     }
-    return { ...r, problem_type, severity, suggestion };
-  }).filter(r => r.problem_type);
-  const summary = {
-    no_sales:       items.filter(r => r.problem_type === 'no_sales').length,
-    low_reputation: items.filter(r => r.problem_type === 'low_reputation').length,
-    missing_info:   0,
-    price:          0,
-  };
-  res.json({ items, summary });
+    console.log(`[perf-sync] concluído: ${ok} ok, ${fail} erros`);
+    perfSyncRunning = false;
+  })().catch(() => { perfSyncRunning = false; });
 });
 
 // ── Métricas do vendedor (reputação) ──────────────────────

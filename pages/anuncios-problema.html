@@ -2,12 +2,111 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Anúncios Problema — ML Dashboard</title>
+  <title>Anúncios com Problema — ML Dashboard</title>
   <link rel="stylesheet" href="../css/style.css">
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Anúncios com Problema'; window.ACTIVE_NAV='anuncios-problema.html';</script>
+  <style>
+    /* ── Score badge ── */
+    .score-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 20px;
+      font-size: .75rem; font-weight: 700;
+    }
+    .score-badge.bad    { background: rgba(231,76,60,.15);  color: #e74c3c; }
+    .score-badge.medium { background: rgba(243,156,18,.15); color: #f39c12; }
+    .score-badge.good   { background: rgba(39,174,96,.15);  color: #27ae60; }
+    .score-badge.none   { background: rgba(255,255,255,.06); color: var(--text-muted); }
+
+    /* ── Score bar ── */
+    .score-bar-wrap {
+      display: flex; align-items: center; gap: 8px; min-width: 120px;
+    }
+    .score-bar {
+      flex: 1; height: 6px; border-radius: 3px;
+      background: rgba(255,255,255,.08); overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%; border-radius: 3px;
+      transition: width .4s ease;
+    }
+    .score-num {
+      font-size: .78rem; font-weight: 700; min-width: 28px; text-align: right;
+    }
+
+    /* ── Pendências expandíveis ── */
+    .pending-toggle {
+      background: none; border: none; color: var(--text-muted);
+      font-size: .75rem; cursor: pointer; padding: 0;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .pending-toggle:hover { color: #FFE600; }
+
+    .pending-list {
+      margin-top: 6px; display: none;
+      border-left: 2px solid rgba(255,230,0,.2);
+      padding-left: 10px;
+    }
+    .pending-list.open { display: block; }
+
+    .pending-item {
+      font-size: .75rem; color: var(--text-muted);
+      padding: 3px 0; display: flex; align-items: flex-start; gap: 6px;
+    }
+    .pending-item i { color: #f39c12; margin-top: 2px; flex-shrink: 0; }
+    .pending-item a {
+      color: #FFE600; text-decoration: none; font-size: .72rem;
+      border: 1px solid rgba(255,230,0,.3); border-radius: 4px;
+      padding: 1px 6px; margin-left: 4px; white-space: nowrap;
+    }
+    .pending-item a:hover { background: rgba(255,230,0,.1); }
+
+    /* ── Sync button / status ── */
+    .sync-row {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .sync-info {
+      font-size: .75rem; color: var(--text-muted);
+    }
+    .btn-sync {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 16px; border-radius: 8px;
+      background: #FFE600; color: #000;
+      border: none; font-weight: 700; font-size: .82rem;
+      cursor: pointer; transition: background .15s;
+    }
+    .btn-sync:hover    { background: #f0d800; }
+    .btn-sync:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+    .btn-sync .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── KPI bar de níveis ── */
+    .level-bar-row {
+      display: flex; gap: 0; border-radius: 8px; overflow: hidden; height: 8px;
+      margin-top: 8px;
+    }
+    .level-bar-row .seg { transition: width .4s ease; }
+
+    /* ── Filtros ── */
+    .filters-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+
+    /* ── Tabela ── */
+    .item-title-cell {
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .item-title-cell a { color: var(--text-primary); text-decoration: none; }
+    .item-title-cell a:hover { color: #FFE600; }
+
+    /* ── Empty state ── */
+    .perf-empty {
+      text-align: center; padding: 40px 20px; color: var(--text-muted);
+    }
+    .perf-empty i { font-size: 2rem; opacity: .3; display: block; margin-bottom: 10px; }
+    .perf-empty p { font-size: .85rem; }
+    .perf-empty .btn-sync { margin: 12px auto 0; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,62 +114,279 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="card-grid">
-        <div class="stat-card"><div class="label">Sem Vendas (30d)</div><div class="value" id="semVendas" style="color:var(--orange)">—</div></div>
-        <div class="stat-card"><div class="label">Reputação Baixa</div><div class="value" id="repBaixa" style="color:var(--red)">—</div></div>
-        <div class="stat-card"><div class="label">Sem Imagem/Descrição</div><div class="value" id="semInfo" style="color:var(--orange)">—</div></div>
-        <div class="stat-card"><div class="label">Preço Fora do Mercado</div><div class="value" id="precoAlto" style="color:var(--red)">—</div></div>
+
+      <!-- KPI Cards -->
+      <div class="card-grid" style="margin-bottom:16px" id="kpiGrid">
+        <div class="stat-card">
+          <div class="label">Score Médio</div>
+          <div class="value" id="kpiAvg" style="color:var(--primary)">—</div>
+          <div class="level-bar-row" id="levelBar"></div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" onclick="setLevel('Bad')">
+          <div class="label"><i class="fas fa-circle" style="color:#e74c3c;font-size:8px"></i> Básico</div>
+          <div class="value" id="kpiBasico" style="color:#e74c3c">—</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">Score 0–39</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" onclick="setLevel('Medium')">
+          <div class="label"><i class="fas fa-circle" style="color:#f39c12;font-size:8px"></i> Satisfatória</div>
+          <div class="value" id="kpiMedio" style="color:#f39c12">—</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">Score 40–69</div>
+        </div>
+        <div class="stat-card" style="cursor:pointer" onclick="setLevel('Good')">
+          <div class="label"><i class="fas fa-circle" style="color:#27ae60;font-size:8px"></i> Profissional</div>
+          <div class="value" id="kpiProf" style="color:#27ae60">—</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">Score 70–100</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Sem score</div>
+          <div class="value" id="kpiSemScore" style="color:var(--text-muted)">—</div>
+          <div style="font-size:.72rem;color:var(--text-muted)">Aguardando sync</div>
+        </div>
       </div>
+
+      <!-- Tabela -->
       <div class="card">
         <div class="card-header">
-          <h3>Anúncios com Problemas</h3>
-          <select class="filter-select" id="tipoFilter">
-            <option value="">Todos</option>
-            <option value="no_sales">Sem vendas</option>
-            <option value="low_reputation">Reputação baixa</option>
-            <option value="missing_info">Info incompleta</option>
-            <option value="price">Preço fora do mercado</option>
+          <h3>Qualidade dos Anúncios</h3>
+          <div class="sync-row">
+            <span class="sync-info" id="syncInfo"></span>
+            <button class="btn-sync" id="btnSync" onclick="startSync()">
+              <i class="fas fa-sync-alt"></i> Atualizar Scores
+            </button>
+          </div>
+        </div>
+
+        <div class="filters-row" style="padding:0 0 8px">
+          <select class="filter-select" id="levelFilter" onchange="load()">
+            <option value="">Todos os níveis</option>
+            <option value="Bad">🔴 Básico</option>
+            <option value="Medium">🟡 Satisfatória</option>
+            <option value="Good">🟢 Profissional</option>
+          </select>
+          <select class="filter-select" id="sortFilter" onchange="load()">
+            <option value="score_asc">Score ↑ (piores primeiro)</option>
+            <option value="score_desc">Score ↓ (melhores primeiro)</option>
+            <option value="title">Nome A-Z</option>
           </select>
         </div>
+
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Anúncio</th><th>Problema</th><th>Gravidade</th><th>Sugestão</th></tr></thead>
-            <tbody id="probTable"><tr><td colspan="5" class="empty-state">Carregando...</td></tr></tbody>
+            <thead>
+              <tr>
+                <th>Anúncio</th>
+                <th>Loja</th>
+                <th style="min-width:140px">Score de Qualidade</th>
+                <th>Nível</th>
+                <th>Pendências</th>
+                <th>Estoque</th>
+                <th>Vendas 30d</th>
+              </tr>
+            </thead>
+            <tbody id="perfTable">
+              <tr><td colspan="7" class="empty-state">Carregando...</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
+
     </div>
   </main>
 </div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
-<script src="../js/sidebar.js"></script>
 <script>
-const tipoLabel = { no_sales:'Sem vendas', low_reputation:'Reputação baixa', missing_info:'Info incompleta', price:'Preço fora do mercado' };
-async function load() {
-  const tipo = document.getElementById('tipoFilter').value;
-  const data = await DB.getAnunciosProblema() || { items:[], summary:{} };
-  const s = data.summary || {};
-  document.getElementById('semVendas').textContent = s.no_sales ?? '—';
-  document.getElementById('repBaixa').textContent = s.low_reputation ?? '—';
-  document.getElementById('semInfo').textContent = s.missing_info ?? '—';
-  document.getElementById('precoAlto').textContent = s.price ?? '—';
-  let rows = data.items || [];
-  if (tipo) rows = rows.filter(r=>r.problem_type===tipo);
-  document.getElementById('probTable').innerHTML = rows.length
-    ? rows.map(r=>`<tr>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title}</td>
-        <td>${tipoLabel[r.problem_type]||r.problem_type}</td>
-        <td><span class="tag ${r.severity==='high'?'red':'yellow'}">${r.severity==='high'?'Alta':'Média'}</span></td>
-        <td style="font-size:12px;color:var(--text-muted)">${r.suggestion||'—'}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="5" class="empty-state">Nenhum problema encontrado</td></tr>';
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+
+function scoreColor(level) {
+  if (level === 'Bad')    return '#e74c3c';
+  if (level === 'Medium') return '#f39c12';
+  if (level === 'Good')   return '#27ae60';
+  return 'var(--text-muted)';
 }
-document.getElementById('tipoFilter').addEventListener('change', load);
+function scoreBadgeClass(level) {
+  if (level === 'Bad')    return 'bad';
+  if (level === 'Medium') return 'medium';
+  if (level === 'Good')   return 'good';
+  return 'none';
+}
+
+function setLevel(v) {
+  document.getElementById('levelFilter').value = v;
+  load();
+}
+
+let allItems = [];
+
+async function load() {
+  const level = document.getElementById('levelFilter').value;
+  const sort  = document.getElementById('sortFilter').value;
+  const storeId = localStorage.getItem('ml_active_store') || '';
+
+  const data = await DB.getAnunciosProblema({ level, sort, store_id: storeId });
+  if (!data || data.error) {
+    document.getElementById('perfTable').innerHTML =
+      `<tr><td colspan="7" class="empty-state" style="color:var(--red)">${data?.error || 'Erro ao carregar'}</td></tr>`;
+    return;
+  }
+
+  allItems = data.items || [];
+  const s   = data.summary || {};
+
+  // KPIs
+  document.getElementById('kpiAvg').textContent     = s.avg_score != null ? s.avg_score : '—';
+  document.getElementById('kpiBasico').textContent  = s.basico ?? '—';
+  document.getElementById('kpiMedio').textContent   = s.satisfatorio ?? '—';
+  document.getElementById('kpiProf').textContent    = s.profissional ?? '—';
+  document.getElementById('kpiSemScore').textContent = s.sem_score ?? '—';
+
+  // Barra de níveis proporcional
+  const total = (s.basico||0) + (s.satisfatorio||0) + (s.profissional||0);
+  if (total > 0) {
+    const lb = document.getElementById('levelBar');
+    lb.innerHTML = `
+      <div class="seg" style="width:${(s.basico/total*100).toFixed(1)}%;background:#e74c3c"></div>
+      <div class="seg" style="width:${(s.satisfatorio/total*100).toFixed(1)}%;background:#f39c12"></div>
+      <div class="seg" style="width:${(s.profissional/total*100).toFixed(1)}%;background:#27ae60"></div>`;
+  }
+
+  // Sync info
+  if (s.last_sync) {
+    const d = new Date(s.last_sync);
+    document.getElementById('syncInfo').textContent =
+      `Atualizado em ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · ${s.synced} de ${s.total} com score`;
+  } else if (s.total > 0) {
+    document.getElementById('syncInfo').textContent = `${s.total} anúncios ativos — clique em "Atualizar Scores" para buscar a qualidade`;
+  }
+
+  renderTable(allItems);
+}
+
+function renderTable(items) {
+  const tbody = document.getElementById('perfTable');
+  if (!items.length) {
+    tbody.innerHTML = `
+      <tr><td colspan="7">
+        <div class="perf-empty">
+          <i class="fas fa-check-circle"></i>
+          <p>Nenhum anúncio encontrado com este filtro.</p>
+          <button class="btn-sync" onclick="startSync()"><i class="fas fa-sync-alt"></i> Buscar scores agora</button>
+        </div>
+      </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map((item, idx) => {
+    const score = item.score != null ? Number(item.score) : null;
+    const color = scoreColor(item.level);
+    const bclass = scoreBadgeClass(item.level);
+    const wording = item.level_wording || (item.level === 'Bad' ? 'Básico' : item.level === 'Medium' ? 'Satisfatória' : item.level === 'Good' ? 'Profissional' : '—');
+
+    // Monta lista de pendências a partir dos buckets
+    const buckets = Array.isArray(item.buckets) ? item.buckets : (typeof item.buckets === 'string' ? JSON.parse(item.buckets||'[]') : []);
+    const pendingVars = buckets
+      .flatMap(b => (b.variables || []).filter(v => v.status === 'PENDING')
+        .map(v => ({
+          title: v.title || v.key,
+          link: v.rules?.[0]?.wordings?.link || null,
+          label: v.rules?.[0]?.wordings?.label || 'Corrigir',
+        }))
+      );
+
+    const pendingHtml = pendingVars.length > 0 ? `
+      <button class="pending-toggle" onclick="togglePending(this)">
+        <i class="fas fa-chevron-right" style="font-size:.6rem;transition:transform .2s"></i>
+        ${pendingVars.length} pendência${pendingVars.length > 1 ? 's' : ''}
+      </button>
+      <div class="pending-list">
+        ${pendingVars.map(p => `
+          <div class="pending-item">
+            <i class="fas fa-exclamation-circle"></i>
+            <span>${escHtml(p.title)}${p.link ? `<a href="${escHtml(p.link)}" target="_blank" rel="noopener">${escHtml(p.label)}</a>` : ''}</span>
+          </div>`).join('')}
+      </div>` : (score !== null ? '<span style="font-size:.75rem;color:var(--green)"><i class="fas fa-check"></i> Sem pendências</span>' : '<span style="font-size:.75rem;color:var(--text-muted)">—</span>');
+
+    const mlLink = `https://www.mercadolivre.com.br/anuncios/${item.ml_id}/modificar`;
+
+    return `<tr>
+      <td class="item-title-cell">
+        <a href="${mlLink}" target="_blank" rel="noopener" title="${escHtml(item.title)}">${escHtml(item.title)}</a>
+        <div style="font-size:.7rem;color:var(--text-muted);margin-top:2px">${item.ml_id}</div>
+      </td>
+      <td style="font-size:.78rem">${escHtml(item.store_name || '')}</td>
+      <td>
+        ${score !== null ? `
+          <div class="score-bar-wrap">
+            <div class="score-bar">
+              <div class="score-bar-fill" style="width:${score}%;background:${color}"></div>
+            </div>
+            <span class="score-num" style="color:${color}">${score}</span>
+          </div>` : '<span style="font-size:.75rem;color:var(--text-muted)">—</span>'}
+      </td>
+      <td>
+        <span class="score-badge ${bclass}">
+          ${score !== null ? `<i class="fas fa-circle" style="font-size:6px"></i> ${escHtml(wording)}` : '— sem dados'}
+        </span>
+      </td>
+      <td>${pendingHtml}</td>
+      <td style="font-size:.82rem">${item.available_quantity ?? '—'}</td>
+      <td style="font-size:.82rem">${item.pedidos_30d ?? '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function togglePending(btn) {
+  const list = btn.nextElementSibling;
+  const icon = btn.querySelector('i');
+  const open = list.classList.toggle('open');
+  icon.style.transform = open ? 'rotate(90deg)' : '';
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+let syncPollTimer = null;
+async function startSync() {
+  const btn = document.getElementById('btnSync');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-sync-alt spin"></i> Sincronizando...';
+  document.getElementById('syncInfo').textContent = 'Buscando scores no Mercado Livre...';
+
+  const storeId = localStorage.getItem('ml_active_store') || '';
+  const data = await DB.syncAnunciosPerformance({ store_id: storeId, limit: 50 });
+
+  if (data?.status === 'already_running') {
+    document.getElementById('syncInfo').textContent = 'Sync já em andamento...';
+  } else if (data?.status === 'nothing_to_sync') {
+    document.getElementById('syncInfo').textContent = 'Todos os scores já estão atualizados.';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sync-alt"></i> Atualizar Scores';
+    return;
+  }
+
+  // Recarrega após 15s e depois 30s para pegar os resultados conforme chegam
+  clearTimeout(syncPollTimer);
+  syncPollTimer = setTimeout(async () => {
+    await load();
+    syncPollTimer = setTimeout(async () => {
+      await load();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-sync-alt"></i> Atualizar Scores';
+    }, 30000);
+  }, 15000);
+}
+
 WS.on('anuncio_updated', load);
-WS.on('_connected', ()=>{ const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
-load();
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
+window.addEventListener('storeChanged', load);
+document.addEventListener('DOMContentLoaded', load);
 </script>
 </body>
 </html>

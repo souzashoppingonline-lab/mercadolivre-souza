@@ -1668,4 +1668,98 @@ router.post('/mcp/docs', async (req, res) => {
   }
 });
 
+// ── Promoções de um item — consulta em tempo real na ML API ───────────────
+router.get('/items/:item_id/promotion', async (req, res) => {
+  const { item_id } = req.params;
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id obrigatório' });
+
+  try {
+    const ml = require('../mlClient');
+
+    // 1. Busca dados completos do item (inclui deal_ids e campos de promoção)
+    const item = await ml.get(`/items/${item_id}?include_attributes=all`, Number(store_id));
+
+    const result = {
+      item_id,
+      in_promotion: false,
+      promotions: [],
+      deals: [],
+    };
+
+    // deal_ids → busca detalhes de cada deal
+    const dealIds = item.deal_ids || [];
+    for (const dealId of dealIds.slice(0, 5)) {
+      try {
+        const deal = await ml.get(`/items/${item_id}/deals/${dealId}`, Number(store_id));
+        result.deals.push({
+          id: dealId,
+          type: deal.type || deal.promotion_type || 'deal',
+          discount_pct: deal.discount_percentage || deal.discount || null,
+          original_price: deal.original_price || item.original_price || null,
+          price: deal.price || item.price || null,
+          start_date: deal.start_date || null,
+          end_date: deal.end_date || deal.finish_time || null,
+          status: deal.status || 'active',
+        });
+        result.in_promotion = true;
+      } catch {}
+    }
+
+    // Promoções via seller-promotions
+    try {
+      const { rows: storeRows } = await require('../db/pool').query(
+        'SELECT id FROM stores WHERE id = $1', [Number(store_id)]
+      );
+      const uid = storeRows[0]?.id;
+      if (uid) {
+        const promoList = await ml.get(
+          `/seller-promotions/users/${uid}/promotions?status=started&offset=0&limit=20`,
+          Number(store_id)
+        );
+        const promos = Array.isArray(promoList) ? promoList : (promoList.results || []);
+        for (const promo of promos) {
+          // Verifica se o item está nesta promoção
+          try {
+            const promoItems = await ml.get(
+              `/seller-promotions/${promo.id}/items?offset=0&limit=100`,
+              Number(store_id)
+            );
+            const found = (Array.isArray(promoItems) ? promoItems : promoItems.results || [])
+              .find(pi => pi.id === item_id || pi.item_id === item_id);
+            if (found) {
+              result.promotions.push({
+                id: promo.id,
+                name: promo.name || promo.type || 'Promoção',
+                type: promo.type,
+                status: promo.status,
+                discount_pct: found.discount_percentage || promo.discount_percentage || null,
+                original_price: found.original_price || null,
+                promo_price: found.price || null,
+                start_date: promo.start_date || null,
+                end_date: promo.finish_time || promo.end_date || null,
+              });
+              result.in_promotion = true;
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
+    // Campos diretos no item que indicam desconto
+    if (item.original_price && item.original_price > item.price) {
+      result.has_discount = true;
+      result.discount_pct = Math.round((1 - item.price / item.original_price) * 100);
+      result.original_price = item.original_price;
+      result.current_price  = item.price;
+      result.in_promotion   = true;
+    }
+
+    res.json(result);
+  } catch (e) {
+    console.error('[promotion]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

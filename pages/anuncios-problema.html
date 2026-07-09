@@ -178,6 +178,31 @@
     .modal-btn.primary { background:#FFE600;border-color:#FFE600;color:#000; }
     .modal-btn.primary:hover { background:#f0d800; }
 
+    /* promoção */
+    .promo-card {
+      border-radius:10px;padding:14px 16px;margin-bottom:8px;
+      display:flex;align-items:flex-start;gap:12px;
+    }
+    .promo-card.active  { background:rgba(255,230,0,.07);border:1px solid rgba(255,230,0,.25); }
+    .promo-card.none    { background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08); }
+    .promo-card .pr-icon { font-size:1.4rem;flex-shrink:0; }
+    .promo-card .pr-body { flex:1; }
+    .promo-card .pr-title { font-size:.9rem;font-weight:700;margin-bottom:4px; }
+    .promo-card .pr-row   { display:flex;flex-wrap:wrap;gap:14px;margin-top:8px; }
+    .promo-card .pr-stat  { font-size:.78rem;color:var(--text-muted); }
+    .promo-card .pr-stat strong { color:var(--text-primary); }
+    .promo-badge {
+      display:inline-flex;align-items:center;gap:5px;
+      padding:2px 9px;border-radius:20px;font-size:.72rem;font-weight:700;
+    }
+    .promo-badge.active  { background:rgba(255,230,0,.2);color:#FFE600; }
+    .promo-badge.ended   { background:rgba(255,255,255,.06);color:var(--text-muted); }
+    .discount-pill {
+      display:inline-flex;align-items:center;
+      padding:2px 8px;border-radius:6px;font-size:.75rem;font-weight:800;
+      background:#e74c3c;color:#fff;margin-left:8px;
+    }
+
     /* empty / no-score */
     .perf-empty { text-align:center;padding:40px 20px;color:var(--text-muted); }
     .perf-empty i { font-size:2rem;opacity:.3;display:block;margin-bottom:10px; }
@@ -308,6 +333,16 @@
       <!-- Infos do anúncio -->
       <p class="modal-section-title"><i class="fas fa-tag"></i> Informações do Anúncio</p>
       <div class="stats-grid" id="mInfoGrid"></div>
+
+      <!-- Promoção -->
+      <div id="mPromoSection" style="margin-bottom:20px">
+        <p class="modal-section-title"><i class="fas fa-tags" style="color:#FFE600"></i> Promoções</p>
+        <div id="mPromoContent">
+          <div style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text-muted)">
+            <i class="fas fa-circle-notch spin"></i> Consultando Mercado Livre...
+          </div>
+        </div>
+      </div>
 
       <!-- Pendências -->
       <div id="mPendSection">
@@ -597,6 +632,94 @@ function openModal(idx) {
 
   document.getElementById('modalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  // Consulta promoção em background (não bloqueia abertura do modal)
+  loadPromotion(item);
+}
+
+async function loadPromotion(item) {
+  const el = document.getElementById('mPromoContent');
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--text-muted)">
+    <i class="fas fa-circle-notch spin"></i> Consultando Mercado Livre...
+  </div>`;
+
+  try {
+    const storeId = item.store_id;
+    const data = await DB.getItemPromotion(item.ml_id, storeId);
+
+    if (data?.error) {
+      el.innerHTML = `<div class="promo-card none">
+        <div class="pr-icon">ℹ️</div>
+        <div class="pr-body">
+          <div class="pr-title" style="color:var(--text-muted)">Não foi possível verificar</div>
+          <div style="font-size:.75rem;color:var(--text-muted)">${escHtml(data.error)}</div>
+        </div>
+      </div>`;
+      return;
+    }
+
+    const fmt = d => {
+      if (!d) return '—';
+      return new Date(d).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' });
+    };
+
+    const allPromos = [...(data.promotions||[]), ...(data.deals||[])];
+
+    // Desconto direto no preço do item
+    let directDiscountHtml = '';
+    if (data.has_discount) {
+      const pct = data.discount_pct || 0;
+      directDiscountHtml = `<div class="promo-card active">
+        <div class="pr-icon">🏷️</div>
+        <div class="pr-body">
+          <div class="pr-title">
+            Preço com Desconto
+            <span class="discount-pill">-${pct}%</span>
+          </div>
+          <div class="pr-row">
+            <div class="pr-stat">De: <strong style="text-decoration:line-through;color:var(--text-muted)">${R(data.original_price)}</strong></div>
+            <div class="pr-stat">Por: <strong style="color:#27ae60">${R(data.current_price)}</strong></div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    let promosHtml = allPromos.map(p => {
+      const pct    = p.discount_pct ? `<span class="discount-pill">-${p.discount_pct}%</span>` : '';
+      const endDt  = p.end_date ? `Válido até ${fmt(p.end_date)}` : '';
+      const startDt = p.start_date ? `Início: ${fmt(p.start_date)}` : '';
+      return `<div class="promo-card active">
+        <div class="pr-icon">🎯</div>
+        <div class="pr-body">
+          <div class="pr-title">
+            ${escHtml(p.name || p.type || 'Promoção')} ${pct}
+            <span class="promo-badge active" style="margin-left:6px"><i class="fas fa-circle" style="font-size:6px"></i> Ativa</span>
+          </div>
+          <div class="pr-row">
+            ${p.original_price ? `<div class="pr-stat">Original: <strong style="text-decoration:line-through;color:var(--text-muted)">${R(p.original_price)}</strong></div>` : ''}
+            ${p.promo_price||p.price ? `<div class="pr-stat">Promoção: <strong style="color:#27ae60">${R(p.promo_price||p.price)}</strong></div>` : ''}
+            ${endDt ? `<div class="pr-stat">📅 <strong>${endDt}</strong></div>` : ''}
+            ${startDt ? `<div class="pr-stat">${startDt}</div>` : ''}
+            ${p.id ? `<div class="pr-stat" style="font-size:.7rem">ID: ${escHtml(String(p.id))}</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    if (!directDiscountHtml && !promosHtml) {
+      promosHtml = `<div class="promo-card none">
+        <div class="pr-icon">🏷️</div>
+        <div class="pr-body">
+          <div class="pr-title" style="color:var(--text-muted)">Sem promoção ativa</div>
+          <div style="font-size:.75rem;color:var(--text-muted)">Este anúncio não está participando de nenhuma promoção no momento.</div>
+        </div>
+      </div>`;
+    }
+
+    el.innerHTML = directDiscountHtml + promosHtml;
+  } catch (e) {
+    el.innerHTML = `<div style="font-size:.78rem;color:var(--red)"><i class="fas fa-exclamation-circle"></i> ${escHtml(e.message)}</div>`;
+  }
 }
 
 function closeModal() {

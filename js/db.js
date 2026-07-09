@@ -133,6 +133,7 @@ const DB = {
   async getDevolucoes(params)          { return this._get('/alertas/devolucoes', params); },
   async saveDevolucaoNote(id, note)    { return this._patch(`/alertas/devolucoes/${id}/note`, { note }); },
   async getAnunciosProblema(p={})  { return this._get('/alertas/anuncios-problema', p); },
+  async getItemPromotion(item_id, store_id) { return this._get(`/items/${item_id}/promotion`, { store_id }); },
   async syncAnunciosPerformance(body={}) {
     return fetch(`${this.BASE}/alertas/anuncios-performance/sync`, {
       method: 'POST',

@@ -1160,7 +1160,83 @@ async function tokenRefreshLoop() {
   }
 }
 
+// ── Sync Scores de Qualidade — 01:00 diário ──────────────────
+let isSyncingScores = false;
+async function syncScores() {
+  if (isSyncingScores) { console.warn('[sync-scores] já em execução — ignorando'); return; }
+  isSyncingScores = true;
+  console.log('[sync-scores] iniciando sync de scores de qualidade...');
+  try {
+    return await recordSync('sync-scores', '0 1 * * *', async () => {
+      const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores`);
+      let totalSynced = 0, totalErrors = 0, totalSkipped = 0;
+      const lojaReport = [];
+
+      for (const store of stores) {
+        try {
+          await ensureTokenFresh(store);
+          const { rows: items } = await pool.query(
+            `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' ORDER BY ml_id LIMIT 100`,
+            [store.id]
+          );
+          console.log(`[sync-scores] ${store.nickname}: ${items.length} itens ativos`);
+          let synced = 0, errors = 0, skipped = 0;
+
+          for (const item of items) {
+            try {
+              const perf = await ml.get(`/items/${item.ml_id}/performance`, store.id);
+              if (!perf || perf.error) { skipped++; continue; }
+
+              const score     = perf.score ?? null;
+              const level     = perf.level?.id ?? null;
+              const wording   = perf.level?.wording ?? null;
+              const buckets   = perf.groups || perf.buckets || [];
+              const pending   = Array.isArray(buckets)
+                ? buckets.reduce((a, g) => a + (Array.isArray(g.variables)
+                  ? g.variables.filter(v => v.status === 'PENDING').length : 0), 0)
+                : 0;
+              const calcAt    = perf.last_update ? new Date(perf.last_update) : null;
+
+              await pool.query(
+                `INSERT INTO item_performance (store_id, item_id, score, level, level_wording, pending_count, buckets, calculated_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                 ON CONFLICT (item_id) DO UPDATE SET
+                   score=EXCLUDED.score, level=EXCLUDED.level, level_wording=EXCLUDED.level_wording,
+                   pending_count=EXCLUDED.pending_count, buckets=EXCLUDED.buckets,
+                   calculated_at=EXCLUDED.calculated_at, synced_at=now()`,
+                [store.id, item.ml_id, score, level, wording, pending, JSON.stringify(buckets), calcAt]
+              );
+              synced++;
+            } catch (e) {
+              console.warn(`[sync-scores] erro em ${item.ml_id}: ${e.message}`);
+              errors++;
+            }
+            await new Promise(r => setTimeout(r, 300)); // 300ms entre itens — respeitar rate limit
+          }
+
+          totalSynced  += synced;
+          totalErrors  += errors;
+          totalSkipped += skipped;
+          lojaReport.push({ loja: store.nickname, synced, errors, skipped });
+          console.log(`[sync-scores] ${store.nickname}: ${synced} ok, ${errors} erros, ${skipped} sem score`);
+          await new Promise(r => setTimeout(r, 3000)); // 3s entre lojas
+        } catch (e) {
+          console.error(`[sync-scores] erro na loja ${store.nickname}:`, e.message);
+          lojaReport.push({ loja: store.nickname, erro: e.message });
+        }
+      }
+
+      console.log(`[sync-scores] concluído: ${totalSynced} atualizados, ${totalErrors} erros, ${totalSkipped} sem score`);
+      return { synced: totalSynced, errors: totalErrors, skipped: totalSkipped, lojas: lojaReport };
+    });
+  } finally {
+    isSyncingScores = false;
+    scheduleAt(1, 0, syncScores, 'sync-scores');
+  }
+}
+
 // ── Agendadores de boot ───────────────────────────────────────
+// Sync Scores   → 01:00  (scores de qualidade dos anúncios)
 // Sync Vendas   → 03:00  (pedidos 72h)
 // Sync Métricas → 04:15  (reputação + devoluções recentes)
 // Sync Visitas  → 02:00  (visitas por anúncio)
@@ -1283,6 +1359,7 @@ setInterval(() => reprocessSkipped().catch(e => console.error('[reprocess] inter
 // Primeira execução após 5 minutos do start
 setTimeout(() => reprocessSkipped().catch(e => console.error('[reprocess] initial erro:', e.message)), 5 * 60 * 1000);
 
+scheduleAt(1,  0,  syncScores,   'sync-scores');
 scheduleAt(1, 30, syncParentItems, 'sync-parent-items');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
@@ -1333,6 +1410,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'syncPrecos') {
       console.log('[worker] syncPrecos disparado manualmente');
       syncPrecos().catch(e => console.error('[worker] syncPrecos erro:', e.message));
+    }
+    if (cmd === 'syncScores') {
+      console.log('[worker] syncScores disparado manualmente');
+      syncScores().catch(e => console.error('[worker] syncScores erro:', e.message));
     }
     if (cmd === 'reprocessSkipped') {
       console.log('[worker] reprocessSkipped disparado manualmente');

@@ -82,6 +82,9 @@
           <button class="sync-action-btn" data-job="syncPrecos">
             <i class="fas fa-tag"></i> Sync Preços <small style="opacity:.7;font-weight:400">05:00</small>
           </button>
+          <button class="sync-action-btn" id="btnSyncScores" data-job="syncScores">
+            <i class="fas fa-star-half-alt"></i> Sync Scores <small style="opacity:.7;font-weight:400">manual</small>
+          </button>
           <span id="syncStatus" style="font-size:.82rem;color:var(--text-muted);margin-left:4px"></span>
         </div>
       </div>
@@ -97,6 +100,7 @@
               <option value="sync-vendas">sync-vendas</option>
               <option value="sync-metricas">sync-metricas</option>
               <option value="sync-precos">sync-precos</option>
+              <option value="sync-scores">sync-scores</option>
             </select>
             <button onclick="loadRuns()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:.78rem">
               <i class="fas fa-refresh"></i>
@@ -168,6 +172,7 @@ const JOB_LABEL = {
   'sync-visitas':  '👁️ Sync Visitas',
   'sync-vendas':   '🛒 Sync Vendas',
   'sync-metricas': '📊 Sync Métricas',
+  'sync-scores':   '⭐ Sync Scores',
 };
 
 async function loadJobs() {
@@ -205,7 +210,7 @@ async function triggerJob(name) {
 document.querySelectorAll('.sync-action-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
     const name = btn.dataset.job;
-    const apiName = name === 'syncVisitas' ? 'syncVisitas' : name === 'syncVendas' ? 'dailySync' : name;
+    const apiName = name === 'syncVisitas' ? 'syncVisitas' : name === 'syncVendas' ? 'dailySync' : name === 'syncScores' ? 'syncScores' : name;
     btn.disabled = true;
     btn.classList.add('running');
     await triggerJob(apiName);
@@ -259,6 +264,25 @@ function renderReport(report, jobName) {
                 <span>📋 ${l.itens} itens</span>
                 <span>👁️ ${(l.visitas_total||0).toLocaleString('pt-BR')} visitas</span>
                 ${l.erros > 0 ? `<span style="color:var(--orange)">⚠️ ${l.erros} erros</span>` : ''}
+              </span>`}
+        </div>`).join('')}`;
+  }
+  if (jobName === 'sync-scores') {
+    return `
+      <div style="margin-bottom:10px;font-size:.82rem;color:var(--text-muted)">
+        ⭐ Total: <b style="color:var(--text-primary)">${report.synced ?? 0} scores atualizados</b>
+        ${report.errors > 0 ? `<span style="color:var(--orange);margin-left:8px">⚠️ ${report.errors} erros</span>` : ''}
+        ${report.skipped > 0 ? `<span style="color:var(--text-muted);margin-left:8px">${report.skipped} sem score</span>` : ''}
+      </div>
+      ${lojas.map(l => `
+        <div class="run-loja-row">
+          <span class="run-loja-tag">${l.loja}</span>
+          ${l.erro
+            ? `<span class="run-loja-err">❌ ${l.erro}</span>`
+            : `<span class="run-loja-meta">
+                <span>⭐ ${l.synced ?? 0} atualizados</span>
+                ${(l.errors ?? 0) > 0 ? `<span style="color:var(--orange)">⚠️ ${l.errors} erros</span>` : ''}
+                ${(l.skipped ?? 0) > 0 ? `<span>${l.skipped} sem score</span>` : ''}
               </span>`}
         </div>`).join('')}`;
   }

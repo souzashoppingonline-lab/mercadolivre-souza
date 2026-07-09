@@ -1182,7 +1182,8 @@ async function syncScores() {
           console.log(`[sync-scores] ${store.nickname}: ${items.length} itens ativos`);
           let synced = 0, errors = 0, skipped = 0;
 
-          for (const item of items) {
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
             try {
               const perf = await ml.get(`/items/${item.ml_id}/performance`, store.id);
               if (!perf || perf.error) { skipped++; continue; }
@@ -1211,7 +1212,13 @@ async function syncScores() {
               console.warn(`[sync-scores] erro em ${item.ml_id}: ${e.message}`);
               errors++;
             }
-            await new Promise(r => setTimeout(r, 300)); // 300ms entre itens — respeitar rate limit
+            // 10s entre itens — conservador para não bater rate limit da ML API
+            await new Promise(r => setTimeout(r, 10000));
+            // A cada 10 itens, pausa extra de 30s
+            if ((i + 1) % 10 === 0) {
+              console.log(`[sync-scores] ${store.nickname}: lote ${Math.ceil((i+1)/10)} concluído (${i+1}/${items.length}) — pausa 30s`);
+              await new Promise(r => setTimeout(r, 30000));
+            }
           }
 
           totalSynced  += synced;

@@ -625,10 +625,10 @@ function openModal(idx) {
     compSection.style.display='none';
   }
 
-  // Footer links
-  const mlBase = 'https://www.mercadolivre.com.br';
-  document.getElementById('mLinkML').href   = `${mlBase}/p/${item.ml_id}`;
-  document.getElementById('mLinkEdit').href = `${mlBase}/anuncios/${item.ml_id}/modificar`;
+  // Footer links — permalink do anúncio: MLB1234567890 → MLB-1234567890
+  const mlId = (item.ml_id || '').replace(/^MLB(\d)/, 'MLB-$1');
+  document.getElementById('mLinkML').href   = `https://produto.mercadolivre.com.br/${mlId}`;
+  document.getElementById('mLinkEdit').href = `https://www.mercadolivre.com.br/anuncios/${item.ml_id}/modificar`;
 
   document.getElementById('modalOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';

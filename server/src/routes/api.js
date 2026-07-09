@@ -1680,14 +1680,89 @@ router.get('/items/:item_id/promotion', async (req, res) => {
     // 1. Busca dados completos do item (inclui deal_ids e campos de promoção)
     const item = await ml.get(`/items/${item_id}?include_attributes=all`, Number(store_id));
 
+    console.log(`[promotion] ${item_id} price=${item.price} original=${item.original_price} sale_price=${JSON.stringify(item.sale_price)} deal_ids=${JSON.stringify(item.deal_ids)} promotions=${JSON.stringify(item.promotions)}`);
+
     const result = {
       item_id,
       in_promotion: false,
       promotions: [],
       deals: [],
+      _debug: {
+        price: item.price,
+        original_price: item.original_price,
+        sale_price: item.sale_price || null,
+        deal_ids: item.deal_ids || [],
+        promotions_field: item.promotions || null,
+      },
     };
 
-    // deal_ids → busca detalhes de cada deal
+    // 1. sale_price object — promoção de preço ML (tipo mais comum para desconto %)
+    if (item.sale_price && item.sale_price.type === 'promotion') {
+      const sp = item.sale_price;
+      const regularPrice = sp.regular_amount || item.original_price || item.price;
+      const promoPrice   = sp.amount || item.price;
+      result.in_promotion = true;
+      result.promotions.push({
+        id: sp.promotion_id || 'sale_price',
+        name: sp.name || 'Promoção de preço',
+        type: 'price_discount',
+        status: 'active',
+        discount_pct: regularPrice > promoPrice ? Math.round((1 - promoPrice / regularPrice) * 100) : null,
+        original_price: regularPrice,
+        promo_price: promoPrice,
+        start_date: sp.start_time || null,
+        end_date: sp.end_time || null,
+      });
+    }
+
+    // 2. promotions array no item (pode vir junto com a resposta do item)
+    for (const p of (Array.isArray(item.promotions) ? item.promotions : [])) {
+      result.in_promotion = true;
+      result.promotions.push({
+        id: p.id || p.promotion_id,
+        name: p.name || p.type || 'Promoção',
+        type: p.type || 'promotion',
+        status: p.status || 'active',
+        discount_pct: p.discount_percentage || null,
+        original_price: p.original_price || null,
+        promo_price: p.price || null,
+        start_date: p.start_date || null,
+        end_date: p.end_date || p.finish_time || null,
+      });
+    }
+
+    // 3. original_price > price — desconto direto no item
+    if (item.original_price && item.original_price > item.price) {
+      result.has_discount = true;
+      result.discount_pct = Math.round((1 - item.price / item.original_price) * 100);
+      result.original_price = item.original_price;
+      result.current_price  = item.price;
+      result.in_promotion   = true;
+    }
+
+    // 4. Endpoint direto /items/{id}/promotions
+    try {
+      const directPromos = await ml.get(`/items/${item_id}/promotions`, Number(store_id));
+      const promoArr = Array.isArray(directPromos) ? directPromos : (directPromos.results || []);
+      for (const p of promoArr) {
+        if (!result.promotions.find(x => String(x.id) === String(p.id || p.promotion_id))) {
+          result.in_promotion = true;
+          result.promotions.push({
+            id: p.id || p.promotion_id,
+            name: p.name || p.type || 'Promoção',
+            type: p.type || 'promotion',
+            status: p.status || 'active',
+            discount_pct: p.discount_percentage || null,
+            original_price: p.original_price || null,
+            promo_price: p.price || null,
+            start_date: p.start_date || null,
+            end_date: p.end_date || p.finish_time || null,
+          });
+        }
+      }
+    } catch {}
+
+    // 5. deal_ids → busca detalhes de cada deal
     const dealIds = item.deal_ids || [];
     for (const dealId of dealIds.slice(0, 5)) {
       try {
@@ -1706,7 +1781,7 @@ router.get('/items/:item_id/promotion', async (req, res) => {
       } catch {}
     }
 
-    // Promoções via seller-promotions
+    // 6. seller-promotions API (listagem paginada por loja)
     try {
       const { rows: storeRows } = await require('../db/pool').query(
         'SELECT id FROM stores WHERE id = $1', [Number(store_id)]
@@ -1719,7 +1794,6 @@ router.get('/items/:item_id/promotion', async (req, res) => {
         );
         const promos = Array.isArray(promoList) ? promoList : (promoList.results || []);
         for (const promo of promos) {
-          // Verifica se o item está nesta promoção
           try {
             const promoItems = await ml.get(
               `/seller-promotions/${promo.id}/items?offset=0&limit=100`,
@@ -1727,7 +1801,7 @@ router.get('/items/:item_id/promotion', async (req, res) => {
             );
             const found = (Array.isArray(promoItems) ? promoItems : promoItems.results || [])
               .find(pi => pi.id === item_id || pi.item_id === item_id);
-            if (found) {
+            if (found && !result.promotions.find(x => String(x.id) === String(promo.id))) {
               result.promotions.push({
                 id: promo.id,
                 name: promo.name || promo.type || 'Promoção',
@@ -1745,15 +1819,6 @@ router.get('/items/:item_id/promotion', async (req, res) => {
         }
       }
     } catch {}
-
-    // Campos diretos no item que indicam desconto
-    if (item.original_price && item.original_price > item.price) {
-      result.has_discount = true;
-      result.discount_pct = Math.round((1 - item.price / item.original_price) * 100);
-      result.original_price = item.original_price;
-      result.current_price  = item.price;
-      result.in_promotion   = true;
-    }
 
     res.json(result);
   } catch (e) {

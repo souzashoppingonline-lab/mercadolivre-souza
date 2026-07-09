@@ -9,103 +9,179 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Anúncios com Problema'; window.ACTIVE_NAV='anuncios-problema.html';</script>
   <style>
-    /* ── Score badge ── */
-    .score-badge {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 3px 10px; border-radius: 20px;
-      font-size: .75rem; font-weight: 700;
-    }
-    .score-badge.bad    { background: rgba(231,76,60,.15);  color: #e74c3c; }
-    .score-badge.medium { background: rgba(243,156,18,.15); color: #f39c12; }
-    .score-badge.good   { background: rgba(39,174,96,.15);  color: #27ae60; }
-    .score-badge.none   { background: rgba(255,255,255,.06); color: var(--text-muted); }
+    /* score badge */
+    .score-badge { display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:700; }
+    .score-badge.bad    { background:rgba(231,76,60,.15);  color:#e74c3c; }
+    .score-badge.medium { background:rgba(243,156,18,.15); color:#f39c12; }
+    .score-badge.good   { background:rgba(39,174,96,.15);  color:#27ae60; }
+    .score-badge.none   { background:rgba(255,255,255,.06);color:var(--text-muted); }
 
-    /* ── Score bar ── */
-    .score-bar-wrap {
-      display: flex; align-items: center; gap: 8px; min-width: 120px;
-    }
-    .score-bar {
-      flex: 1; height: 6px; border-radius: 3px;
-      background: rgba(255,255,255,.08); overflow: hidden;
-    }
-    .score-bar-fill {
-      height: 100%; border-radius: 3px;
-      transition: width .4s ease;
-    }
-    .score-num {
-      font-size: .78rem; font-weight: 700; min-width: 28px; text-align: right;
-    }
+    /* score bar */
+    .score-bar-wrap { display:flex;align-items:center;gap:8px;min-width:120px; }
+    .score-bar      { flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden; }
+    .score-bar-fill { height:100%;border-radius:3px;transition:width .4s ease; }
+    .score-num      { font-size:.78rem;font-weight:700;min-width:28px;text-align:right; }
 
-    /* ── Pendências expandíveis ── */
-    .pending-toggle {
-      background: none; border: none; color: var(--text-muted);
-      font-size: .75rem; cursor: pointer; padding: 0;
-      display: flex; align-items: center; gap: 4px;
-    }
-    .pending-toggle:hover { color: #FFE600; }
+    /* level bar */
+    .level-bar-row  { display:flex;gap:0;border-radius:8px;overflow:hidden;height:8px;margin-top:8px; }
+    .level-bar-row .seg { transition:width .4s; }
 
-    .pending-list {
-      margin-top: 6px; display: none;
-      border-left: 2px solid rgba(255,230,0,.2);
-      padding-left: 10px;
-    }
-    .pending-list.open { display: block; }
+    /* filters */
+    .filters-row { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center; }
 
-    .pending-item {
-      font-size: .75rem; color: var(--text-muted);
-      padding: 3px 0; display: flex; align-items: flex-start; gap: 6px;
-    }
-    .pending-item i { color: #f39c12; margin-top: 2px; flex-shrink: 0; }
-    .pending-item a {
-      color: #FFE600; text-decoration: none; font-size: .72rem;
-      border: 1px solid rgba(255,230,0,.3); border-radius: 4px;
-      padding: 1px 6px; margin-left: 4px; white-space: nowrap;
-    }
-    .pending-item a:hover { background: rgba(255,230,0,.1); }
-
-    /* ── Sync button / status ── */
-    .sync-row {
-      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    }
-    .sync-info {
-      font-size: .75rem; color: var(--text-muted);
-    }
+    /* sync */
+    .sync-row { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
+    .sync-info { font-size:.75rem;color:var(--text-muted); }
     .btn-sync {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 7px 16px; border-radius: 8px;
-      background: #FFE600; color: #000;
-      border: none; font-weight: 700; font-size: .82rem;
-      cursor: pointer; transition: background .15s;
+      display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;
+      background:#FFE600;color:#000;border:none;font-weight:700;font-size:.82rem;cursor:pointer;
     }
-    .btn-sync:hover    { background: #f0d800; }
-    .btn-sync:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
-    .btn-sync .spin { animation: spin 1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-sync:hover    { background:#f0d800; }
+    .btn-sync:disabled { background:var(--border);color:var(--text-muted);cursor:not-allowed; }
+    .spin { animation:spin 1s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
 
-    /* ── KPI bar de níveis ── */
-    .level-bar-row {
-      display: flex; gap: 0; border-radius: 8px; overflow: hidden; height: 8px;
-      margin-top: 8px;
+    /* table */
+    .item-title-cell { max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .item-title-cell a { color:var(--text-primary);text-decoration:none; }
+    .item-title-cell a:hover { color:#FFE600; }
+    .row-clickable { cursor:pointer; }
+    .row-clickable:hover td { background:rgba(255,230,0,.04); }
+
+    /* pending inline */
+    .pend-count { font-size:.75rem;color:var(--text-muted); }
+    .pend-count.has-pend { color:#f39c12; }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      display:none;position:fixed;inset:0;z-index:9000;
+      background:rgba(0,0,0,.7);backdrop-filter:blur(4px);
+      align-items:center;justify-content:center;padding:20px;
     }
-    .level-bar-row .seg { transition: width .4s ease; }
+    .modal-overlay.open { display:flex; }
 
-    /* ── Filtros ── */
-    .filters-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
-
-    /* ── Tabela ── */
-    .item-title-cell {
-      max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    .modal-box {
+      background:#0f1e36;border:1px solid rgba(255,230,0,.2);
+      border-radius:16px;width:100%;max-width:780px;
+      max-height:90vh;overflow-y:auto;
+      box-shadow:0 32px 80px rgba(0,0,0,.6);
+      animation:modalIn .22s ease;
     }
-    .item-title-cell a { color: var(--text-primary); text-decoration: none; }
-    .item-title-cell a:hover { color: #FFE600; }
+    @keyframes modalIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
 
-    /* ── Empty state ── */
-    .perf-empty {
-      text-align: center; padding: 40px 20px; color: var(--text-muted);
+    .modal-header {
+      padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.08);
+      display:flex;align-items:flex-start;gap:14px;position:sticky;top:0;
+      background:#0f1e36;z-index:1;
     }
-    .perf-empty i { font-size: 2rem; opacity: .3; display: block; margin-bottom: 10px; }
-    .perf-empty p { font-size: .85rem; }
-    .perf-empty .btn-sync { margin: 12px auto 0; }
+    .modal-header-icon {
+      width:44px;height:44px;border-radius:10px;
+      background:rgba(255,230,0,.1);border:1px solid rgba(255,230,0,.2);
+      display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;
+    }
+    .modal-title { flex:1; }
+    .modal-title h2 { font-size:1rem;font-weight:700;margin:0 0 3px;line-height:1.3; }
+    .modal-title .modal-subtitle { font-size:.75rem;color:var(--text-muted); }
+    .modal-close {
+      background:none;border:none;color:var(--text-muted);font-size:1.1rem;
+      cursor:pointer;padding:4px;margin-left:8px;
+    }
+    .modal-close:hover { color:#fff; }
+
+    .modal-body { padding:20px 24px; }
+
+    /* score hero */
+    .score-hero {
+      display:flex;align-items:center;gap:20px;
+      background:rgba(255,255,255,.04);border-radius:12px;
+      padding:16px 20px;margin-bottom:20px;
+    }
+    .score-circle {
+      width:72px;height:72px;border-radius:50%;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      border:3px solid transparent;flex-shrink:0;
+    }
+    .score-circle .sc-num { font-size:1.5rem;font-weight:900;line-height:1; }
+    .score-circle .sc-max { font-size:.65rem;color:var(--text-muted); }
+    .score-hero-info h3 { font-size:1rem;margin:0 0 4px; }
+    .score-hero-info p  { font-size:.8rem;color:var(--text-muted);margin:0; }
+
+    /* big score bar */
+    .big-score-bar {
+      height:10px;border-radius:5px;
+      background:rgba(255,255,255,.08);overflow:hidden;margin:10px 0 4px;
+    }
+    .big-score-fill { height:100%;border-radius:5px;transition:width .5s ease; }
+    .score-ticks { display:flex;justify-content:space-between;font-size:.65rem;color:var(--text-muted); }
+
+    /* stats grid */
+    .stats-grid {
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px;
+    }
+    .stat-mini {
+      background:rgba(255,255,255,.04);border-radius:10px;padding:12px 14px;
+    }
+    .stat-mini .sm-label { font-size:.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px; }
+    .stat-mini .sm-val   { font-size:1.1rem;font-weight:800;margin-top:4px; }
+    .stat-mini .sm-sub   { font-size:.7rem;color:var(--text-muted);margin-top:2px; }
+
+    /* section titles */
+    .modal-section-title {
+      font-size:.72rem;text-transform:uppercase;letter-spacing:1.5px;
+      color:var(--text-muted);margin:0 0 10px;display:flex;align-items:center;gap:7px;
+    }
+    .modal-section-title::after {
+      content:'';flex:1;height:1px;background:rgba(255,255,255,.07);
+    }
+
+    /* pending list */
+    .pend-list { display:flex;flex-direction:column;gap:8px;margin-bottom:20px; }
+    .pend-card {
+      background:rgba(243,156,18,.07);border:1px solid rgba(243,156,18,.2);
+      border-radius:10px;padding:12px 14px;
+      display:flex;align-items:flex-start;gap:10px;
+    }
+    .pend-card .pc-icon { font-size:1rem;margin-top:1px;flex-shrink:0; }
+    .pend-card .pc-body { flex:1; }
+    .pend-card .pc-title { font-size:.82rem;font-weight:600;margin-bottom:3px; }
+    .pend-card .pc-desc  { font-size:.75rem;color:var(--text-muted);line-height:1.45; }
+    .pend-card .pc-fix {
+      display:inline-flex;align-items:center;gap:5px;margin-top:7px;
+      padding:4px 12px;border-radius:6px;
+      background:#FFE600;color:#000;font-weight:700;font-size:.75rem;
+      text-decoration:none;
+    }
+    .pend-card .pc-fix:hover { background:#f0d800; }
+
+    /* completed list */
+    .comp-list { display:flex;flex-direction:column;gap:6px;margin-bottom:20px; }
+    .comp-item {
+      display:flex;align-items:center;gap:8px;
+      font-size:.78rem;color:rgba(255,255,255,.6);
+      padding:6px 10px;border-radius:7px;
+      background:rgba(39,174,96,.06);border:1px solid rgba(39,174,96,.1);
+    }
+    .comp-item i { color:#27ae60; }
+
+    /* footer links */
+    .modal-footer {
+      padding:14px 24px;border-top:1px solid rgba(255,255,255,.07);
+      display:flex;gap:10px;flex-wrap:wrap;
+    }
+    .modal-btn {
+      display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+      border-radius:8px;font-size:.82rem;font-weight:600;text-decoration:none;
+      border:1px solid var(--border);color:var(--text-primary);cursor:pointer;
+      background:transparent;transition:border-color .15s,color .15s;
+    }
+    .modal-btn:hover  { border-color:#FFE600;color:#FFE600; }
+    .modal-btn.primary { background:#FFE600;border-color:#FFE600;color:#000; }
+    .modal-btn.primary:hover { background:#f0d800; }
+
+    /* empty / no-score */
+    .perf-empty { text-align:center;padding:40px 20px;color:var(--text-muted); }
+    .perf-empty i { font-size:2rem;opacity:.3;display:block;margin-bottom:10px; }
+    .perf-empty p { font-size:.85rem; }
   </style>
 </head>
 <body>
@@ -116,7 +192,7 @@
     <div class="content-area">
 
       <!-- KPI Cards -->
-      <div class="card-grid" style="margin-bottom:16px" id="kpiGrid">
+      <div class="card-grid" style="margin-bottom:16px">
         <div class="stat-card">
           <div class="label">Score Médio</div>
           <div class="value" id="kpiAvg" style="color:var(--primary)">—</div>
@@ -194,71 +270,143 @@
   </main>
 </div>
 
+<!-- ══ MODAL ══ -->
+<div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
+  <div class="modal-box" id="modalBox">
+
+    <div class="modal-header">
+      <div class="modal-header-icon">📋</div>
+      <div class="modal-title">
+        <h2 id="mTitle">—</h2>
+        <div class="modal-subtitle" id="mSubtitle">—</div>
+      </div>
+      <button class="modal-close" onclick="closeModal()"><i class="fas fa-times"></i></button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Score hero -->
+      <div class="score-hero" id="mScoreHero">
+        <div class="score-circle" id="mScoreCircle">
+          <span class="sc-num" id="mScoreNum">—</span>
+          <span class="sc-max">/100</span>
+        </div>
+        <div style="flex:1">
+          <div id="mScoreLevelBadge"></div>
+          <div class="big-score-bar">
+            <div class="big-score-fill" id="mScoreBar" style="width:0%"></div>
+          </div>
+          <div class="score-ticks"><span>0</span><span>Básico</span><span>Satisfatória</span><span>Profissional</span><span>100</span></div>
+          <div id="mScoreHint" style="font-size:.75rem;color:var(--text-muted);margin-top:6px"></div>
+        </div>
+      </div>
+
+      <!-- Stats grid -->
+      <p class="modal-section-title"><i class="fas fa-chart-bar"></i> Desempenho de Vendas</p>
+      <div class="stats-grid" id="mStatsGrid"></div>
+
+      <!-- Infos do anúncio -->
+      <p class="modal-section-title"><i class="fas fa-tag"></i> Informações do Anúncio</p>
+      <div class="stats-grid" id="mInfoGrid"></div>
+
+      <!-- Pendências -->
+      <div id="mPendSection">
+        <p class="modal-section-title"><i class="fas fa-exclamation-triangle" style="color:#f39c12"></i> O que melhorar</p>
+        <div class="pend-list" id="mPendList"></div>
+      </div>
+
+      <!-- Concluídos -->
+      <div id="mCompSection">
+        <p class="modal-section-title"><i class="fas fa-check-circle" style="color:#27ae60"></i> Itens OK</p>
+        <div class="comp-list" id="mCompList"></div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer">
+      <a id="mLinkML" href="#" target="_blank" rel="noopener" class="modal-btn primary">
+        <i class="fas fa-external-link-alt"></i> Abrir no Mercado Livre
+      </a>
+      <a id="mLinkEdit" href="#" target="_blank" rel="noopener" class="modal-btn">
+        <i class="fas fa-edit"></i> Editar Anúncio
+      </a>
+      <button class="modal-btn" onclick="closeModal()">
+        <i class="fas fa-times"></i> Fechar
+      </button>
+    </div>
+
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script>
-const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const R  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const N  = v => Number(v) || 0;
 
 function scoreColor(level) {
-  if (level === 'Bad')    return '#e74c3c';
-  if (level === 'Medium') return '#f39c12';
-  if (level === 'Good')   return '#27ae60';
+  if (level==='Bad')    return '#e74c3c';
+  if (level==='Medium') return '#f39c12';
+  if (level==='Good')   return '#27ae60';
   return 'var(--text-muted)';
 }
 function scoreBadgeClass(level) {
-  if (level === 'Bad')    return 'bad';
-  if (level === 'Medium') return 'medium';
-  if (level === 'Good')   return 'good';
+  if (level==='Bad')    return 'bad';
+  if (level==='Medium') return 'medium';
+  if (level==='Good')   return 'good';
   return 'none';
 }
-
-function setLevel(v) {
-  document.getElementById('levelFilter').value = v;
-  load();
+function wording(level, lw) {
+  if (lw) return lw;
+  if (level==='Bad')    return 'Básico';
+  if (level==='Medium') return 'Satisfatória';
+  if (level==='Good')   return 'Profissional';
+  return '—';
 }
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function setLevel(v) { document.getElementById('levelFilter').value=v; load(); }
 
 let allItems = [];
 
 async function load() {
-  const level = document.getElementById('levelFilter').value;
-  const sort  = document.getElementById('sortFilter').value;
+  const level   = document.getElementById('levelFilter').value;
+  const sort    = document.getElementById('sortFilter').value;
   const storeId = localStorage.getItem('ml_active_store') || '';
 
   const data = await DB.getAnunciosProblema({ level, sort, store_id: storeId });
   if (!data || data.error) {
     document.getElementById('perfTable').innerHTML =
-      `<tr><td colspan="7" class="empty-state" style="color:var(--red)">${data?.error || 'Erro ao carregar'}</td></tr>`;
+      `<tr><td colspan="7" class="empty-state" style="color:var(--red)">${escHtml(data?.error||'Erro ao carregar')}</td></tr>`;
     return;
   }
 
   allItems = data.items || [];
-  const s   = data.summary || {};
+  const s  = data.summary || {};
 
-  // KPIs
-  document.getElementById('kpiAvg').textContent     = s.avg_score != null ? s.avg_score : '—';
+  document.getElementById('kpiAvg').textContent     = s.avg_score ?? '—';
   document.getElementById('kpiBasico').textContent  = s.basico ?? '—';
   document.getElementById('kpiMedio').textContent   = s.satisfatorio ?? '—';
   document.getElementById('kpiProf').textContent    = s.profissional ?? '—';
   document.getElementById('kpiSemScore').textContent = s.sem_score ?? '—';
 
-  // Barra de níveis proporcional
-  const total = (s.basico||0) + (s.satisfatorio||0) + (s.profissional||0);
-  if (total > 0) {
-    const lb = document.getElementById('levelBar');
-    lb.innerHTML = `
+  const total = (s.basico||0)+(s.satisfatorio||0)+(s.profissional||0);
+  if (total>0) {
+    document.getElementById('levelBar').innerHTML = `
       <div class="seg" style="width:${(s.basico/total*100).toFixed(1)}%;background:#e74c3c"></div>
       <div class="seg" style="width:${(s.satisfatorio/total*100).toFixed(1)}%;background:#f39c12"></div>
       <div class="seg" style="width:${(s.profissional/total*100).toFixed(1)}%;background:#27ae60"></div>`;
   }
 
-  // Sync info
   if (s.last_sync) {
     const d = new Date(s.last_sync);
     document.getElementById('syncInfo').textContent =
       `Atualizado em ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} · ${s.synced} de ${s.total} com score`;
-  } else if (s.total > 0) {
-    document.getElementById('syncInfo').textContent = `${s.total} anúncios ativos — clique em "Atualizar Scores" para buscar a qualidade`;
+  } else if (s.total>0) {
+    document.getElementById('syncInfo').textContent = `${s.total} anúncios — clique "Atualizar Scores" para buscar qualidade`;
   }
 
   renderTable(allItems);
@@ -267,87 +415,202 @@ async function load() {
 function renderTable(items) {
   const tbody = document.getElementById('perfTable');
   if (!items.length) {
-    tbody.innerHTML = `
-      <tr><td colspan="7">
-        <div class="perf-empty">
-          <i class="fas fa-check-circle"></i>
-          <p>Nenhum anúncio encontrado com este filtro.</p>
-          <button class="btn-sync" onclick="startSync()"><i class="fas fa-sync-alt"></i> Buscar scores agora</button>
-        </div>
-      </td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="perf-empty">
+      <i class="fas fa-check-circle"></i>
+      <p>Nenhum anúncio com este filtro.</p>
+      <button class="btn-sync" onclick="startSync()"><i class="fas fa-sync-alt"></i> Buscar scores agora</button>
+    </div></td></tr>`;
     return;
   }
 
   tbody.innerHTML = items.map((item, idx) => {
-    const score = item.score != null ? Number(item.score) : null;
-    const color = scoreColor(item.level);
+    const score  = item.score!=null ? Number(item.score) : null;
+    const color  = scoreColor(item.level);
     const bclass = scoreBadgeClass(item.level);
-    const wording = item.level_wording || (item.level === 'Bad' ? 'Básico' : item.level === 'Medium' ? 'Satisfatória' : item.level === 'Good' ? 'Profissional' : '—');
+    const lw     = wording(item.level, item.level_wording);
 
-    // Monta lista de pendências a partir dos buckets
-    const buckets = Array.isArray(item.buckets) ? item.buckets : (typeof item.buckets === 'string' ? JSON.parse(item.buckets||'[]') : []);
-    const pendingVars = buckets
-      .flatMap(b => (b.variables || []).filter(v => v.status === 'PENDING')
-        .map(v => ({
-          title: v.title || v.key,
-          link: v.rules?.[0]?.wordings?.link || null,
-          label: v.rules?.[0]?.wordings?.label || 'Corrigir',
-        }))
-      );
+    const buckets = parseBuckets(item.buckets);
+    const pendingCount = buckets.flatMap(b=>(b.variables||[]).filter(v=>v.status==='PENDING')).length;
 
-    const pendingHtml = pendingVars.length > 0 ? `
-      <button class="pending-toggle" onclick="togglePending(this)">
-        <i class="fas fa-chevron-right" style="font-size:.6rem;transition:transform .2s"></i>
-        ${pendingVars.length} pendência${pendingVars.length > 1 ? 's' : ''}
-      </button>
-      <div class="pending-list">
-        ${pendingVars.map(p => `
-          <div class="pending-item">
-            <i class="fas fa-exclamation-circle"></i>
-            <span>${escHtml(p.title)}${p.link ? `<a href="${escHtml(p.link)}" target="_blank" rel="noopener">${escHtml(p.label)}</a>` : ''}</span>
-          </div>`).join('')}
-      </div>` : (score !== null ? '<span style="font-size:.75rem;color:var(--green)"><i class="fas fa-check"></i> Sem pendências</span>' : '<span style="font-size:.75rem;color:var(--text-muted)">—</span>');
-
-    const mlLink = `https://www.mercadolivre.com.br/anuncios/${item.ml_id}/modificar`;
-
-    return `<tr>
+    return `<tr class="row-clickable" onclick="openModal(${idx})">
       <td class="item-title-cell">
-        <a href="${mlLink}" target="_blank" rel="noopener" title="${escHtml(item.title)}">${escHtml(item.title)}</a>
+        <span title="${escHtml(item.title)}">${escHtml(item.title)}</span>
         <div style="font-size:.7rem;color:var(--text-muted);margin-top:2px">${item.ml_id}</div>
       </td>
-      <td style="font-size:.78rem">${escHtml(item.store_name || '')}</td>
+      <td style="font-size:.78rem">${escHtml(item.store_name||'')}</td>
       <td>
-        ${score !== null ? `
+        ${score!==null ? `
           <div class="score-bar-wrap">
-            <div class="score-bar">
-              <div class="score-bar-fill" style="width:${score}%;background:${color}"></div>
-            </div>
+            <div class="score-bar"><div class="score-bar-fill" style="width:${score}%;background:${color}"></div></div>
             <span class="score-num" style="color:${color}">${score}</span>
           </div>` : '<span style="font-size:.75rem;color:var(--text-muted)">—</span>'}
       </td>
+      <td><span class="score-badge ${bclass}"><i class="fas fa-circle" style="font-size:6px"></i> ${escHtml(lw)}</span></td>
       <td>
-        <span class="score-badge ${bclass}">
-          ${score !== null ? `<i class="fas fa-circle" style="font-size:6px"></i> ${escHtml(wording)}` : '— sem dados'}
-        </span>
+        ${pendingCount>0
+          ? `<span class="pend-count has-pend"><i class="fas fa-exclamation-circle" style="color:#f39c12;margin-right:4px"></i>${pendingCount} pendência${pendingCount>1?'s':''}</span>`
+          : score!==null
+            ? `<span class="pend-count"><i class="fas fa-check" style="color:#27ae60;margin-right:4px"></i>Sem pendências</span>`
+            : '<span class="pend-count">—</span>'}
       </td>
-      <td>${pendingHtml}</td>
-      <td style="font-size:.82rem">${item.available_quantity ?? '—'}</td>
-      <td style="font-size:.82rem">${item.pedidos_30d ?? '—'}</td>
+      <td style="font-size:.82rem">${item.available_quantity??'—'}</td>
+      <td style="font-size:.82rem">${item.pedidos_30d??'—'}</td>
     </tr>`;
   }).join('');
 }
 
-function togglePending(btn) {
-  const list = btn.nextElementSibling;
-  const icon = btn.querySelector('i');
-  const open = list.classList.toggle('open');
-  icon.style.transform = open ? 'rotate(90deg)' : '';
+function parseBuckets(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') try { return JSON.parse(raw); } catch { return []; }
+  return [];
 }
 
-function escHtml(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ── Modal ──────────────────────────────────────────────
+function openModal(idx) {
+  const item = allItems[idx];
+  if (!item) return;
+
+  const score   = item.score!=null ? Number(item.score) : null;
+  const color   = scoreColor(item.level);
+  const lw      = wording(item.level, item.level_wording);
+  const buckets = parseBuckets(item.buckets);
+
+  // Header
+  document.getElementById('mTitle').textContent    = item.title || '—';
+  document.getElementById('mSubtitle').textContent =
+    `${item.ml_id} · ${item.store_name||''} · ${item.status==='active'?'Ativo':'Pausado'}`;
+
+  // Score hero
+  const circle = document.getElementById('mScoreCircle');
+  circle.style.borderColor = score!==null ? color : 'rgba(255,255,255,.1)';
+  document.getElementById('mScoreNum').textContent  = score!==null ? score : '—';
+  document.getElementById('mScoreNum').style.color  = color;
+  document.getElementById('mScoreBar').style.width  = (score||0) + '%';
+  document.getElementById('mScoreBar').style.background = color;
+  document.getElementById('mScoreLevelBadge').innerHTML = score!==null
+    ? `<span class="score-badge ${scoreBadgeClass(item.level)}"><i class="fas fa-circle" style="font-size:6px"></i> ${escHtml(lw)}</span>`
+    : '<span class="score-badge none">Sem dados — clique em Atualizar Scores</span>';
+
+  // Hint de melhoria
+  const hint = score===null ? '' : score<40 ? 'Anúncio básico — melhorias podem aumentar muito a visibilidade.'
+    : score<70 ? 'Quase lá! Resolva as pendências abaixo para chegar ao nível Profissional.'
+    : score<90 ? 'Bom nível. Pequenas melhorias podem impulsionar ainda mais as vendas.'
+    : 'Excelente! Anúncio em alto nível de qualidade.';
+  document.getElementById('mScoreHint').textContent = hint;
+
+  // Stats vendas
+  const v30  = N(item.receita_30d), v7 = N(item.receita_7d);
+  const p30  = N(item.pedidos_30d), p15= N(item.pedidos_15d), p7 = N(item.pedidos_7d);
+  const tickMedio = p30>0 ? R(v30/p30) : '—';
+
+  document.getElementById('mStatsGrid').innerHTML = `
+    <div class="stat-mini">
+      <div class="sm-label">Vendas 7 dias</div>
+      <div class="sm-val" style="color:var(--primary)">${p7}</div>
+      <div class="sm-sub">${R(v7)}</div>
+    </div>
+    <div class="stat-mini">
+      <div class="sm-label">Vendas 15 dias</div>
+      <div class="sm-val">${p15}</div>
+    </div>
+    <div class="stat-mini">
+      <div class="sm-label">Vendas 30 dias</div>
+      <div class="sm-val">${p30}</div>
+      <div class="sm-sub">${R(v30)}</div>
+    </div>
+    <div class="stat-mini">
+      <div class="sm-label">Ticket Médio</div>
+      <div class="sm-val">${tickMedio}</div>
+    </div>
+    <div class="stat-mini">
+      <div class="sm-label">Ritmo diário</div>
+      <div class="sm-val">${p30>0?(p30/30).toFixed(1):'0'}</div>
+      <div class="sm-sub">vendas/dia (30d)</div>
+    </div>`;
+
+  // Info do anúncio
+  document.getElementById('mInfoGrid').innerHTML = `
+    <div class="stat-mini">
+      <div class="sm-label">Preço</div>
+      <div class="sm-val">${R(item.price)}</div>
+    </div>
+    <div class="stat-mini">
+      <div class="sm-label">Estoque</div>
+      <div class="sm-val" style="color:${N(item.available_quantity)<=5?'#e74c3c':N(item.available_quantity)<=20?'#f39c12':'var(--green)'}">${item.available_quantity??'—'}</div>
+      <div class="sm-sub">${N(item.available_quantity)<=5?'⚠️ Crítico':N(item.available_quantity)<=20?'Atenção':'OK'}</div>
+    </div>
+    <div class="stat-mini">
+      <div class="sm-label">Status</div>
+      <div class="sm-val" style="font-size:.9rem;color:${item.status==='active'?'var(--green)':'#e74c3c'}">${item.status==='active'?'Ativo':'Pausado'}</div>
+    </div>
+    <div class="stat-mini">
+      <div class="sm-label">ID ML</div>
+      <div class="sm-val" style="font-size:.78rem;font-weight:600">${item.ml_id}</div>
+      <div class="sm-sub">${escHtml(item.store_name||'')}</div>
+    </div>`;
+
+  // Pendências e itens ok
+  const allVars = buckets.flatMap(b => (b.variables||[]).map(v => ({...v, bucket_title: b.title||b.key})));
+  const pending   = allVars.filter(v => v.status==='PENDING');
+  const completed = allVars.filter(v => v.status==='COMPLETED');
+
+  const pendSection = document.getElementById('mPendSection');
+  const pendList    = document.getElementById('mPendList');
+  if (pending.length) {
+    pendSection.style.display='block';
+    pendList.innerHTML = pending.map(v => {
+      const link  = v.rules?.[0]?.wordings?.link  || null;
+      const label = v.rules?.[0]?.wordings?.label || 'Corrigir';
+      const desc  = v.rules?.[0]?.wordings?.title || '';
+      return `<div class="pend-card">
+        <div class="pc-icon">⚠️</div>
+        <div class="pc-body">
+          <div class="pc-title">${escHtml(v.title||v.key)}</div>
+          ${desc ? `<div class="pc-desc">${escHtml(desc)}</div>` : ''}
+          <div style="font-size:.7rem;color:var(--text-muted);margin-top:3px">${escHtml(v.bucket_title)}</div>
+          ${link ? `<a class="pc-fix" href="${escHtml(link)}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt"></i> ${escHtml(label)}</a>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } else {
+    pendSection.style.display = score!==null ? 'block' : 'none';
+    pendList.innerHTML = score!==null
+      ? `<div class="comp-item"><i class="fas fa-check-circle"></i> Nenhuma pendência encontrada — anúncio bem configurado!</div>`
+      : '';
+  }
+
+  const compSection = document.getElementById('mCompSection');
+  const compList    = document.getElementById('mCompList');
+  if (completed.length) {
+    compSection.style.display='block';
+    compList.innerHTML = completed.map(v =>
+      `<div class="comp-item"><i class="fas fa-check-circle"></i> ${escHtml(v.title||v.key)}</div>`
+    ).join('');
+  } else {
+    compSection.style.display='none';
+  }
+
+  // Footer links
+  const mlBase = 'https://www.mercadolivre.com.br';
+  document.getElementById('mLinkML').href   = `${mlBase}/p/${item.ml_id}`;
+  document.getElementById('mLinkEdit').href = `${mlBase}/anuncios/${item.ml_id}/modificar`;
+
+  document.getElementById('modalOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
 }
 
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+}
+
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
+
+// ── Sync ──────────────────────────────────────────────
 let syncPollTimer = null;
 async function startSync() {
   const btn = document.getElementById('btnSync');
@@ -358,33 +621,29 @@ async function startSync() {
   const storeId = localStorage.getItem('ml_active_store') || '';
   const data = await DB.syncAnunciosPerformance({ store_id: storeId, limit: 50 });
 
-  if (data?.status === 'already_running') {
+  if (data?.status==='already_running') {
     document.getElementById('syncInfo').textContent = 'Sync já em andamento...';
-  } else if (data?.status === 'nothing_to_sync') {
+  } else if (data?.status==='nothing_to_sync') {
     document.getElementById('syncInfo').textContent = 'Todos os scores já estão atualizados.';
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-sync-alt"></i> Atualizar Scores';
+    btn.disabled=false; btn.innerHTML='<i class="fas fa-sync-alt"></i> Atualizar Scores';
     return;
   }
 
-  // Recarrega após 15s e depois 30s para pegar os resultados conforme chegam
   clearTimeout(syncPollTimer);
   syncPollTimer = setTimeout(async () => {
     await load();
     syncPollTimer = setTimeout(async () => {
       await load();
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-sync-alt"></i> Atualizar Scores';
+      btn.disabled=false; btn.innerHTML='<i class="fas fa-sync-alt"></i> Atualizar Scores';
     }, 30000);
   }, 15000);
 }
 
 WS.on('anuncio_updated', load);
 WS.on('_connected', () => {
-  const el = document.getElementById('wsStatus');
-  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+  const el=document.getElementById('wsStatus');
+  if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
-
 window.addEventListener('storeChanged', load);
 document.addEventListener('DOMContentLoaded', load);
 </script>

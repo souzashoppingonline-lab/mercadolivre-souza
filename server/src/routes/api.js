@@ -1220,13 +1220,23 @@ router.get('/alertas/anuncios-problema', async (req, res) => {
       `SELECT i.ml_id, i.store_id, s.nickname as store_name,
               i.title, i.price, i.available_quantity, i.status,
               COALESCE(o.pedidos_30d, 0) as pedidos_30d,
+              COALESCE(o.pedidos_15d, 0) as pedidos_15d,
+              COALESCE(o.pedidos_7d,  0) as pedidos_7d,
+              COALESCE(o.receita_30d, 0) as receita_30d,
+              COALESCE(o.receita_7d,  0) as receita_7d,
               p.score, p.level, p.level_wording, p.pending_count,
               p.buckets, p.synced_at
        FROM items i
        JOIN stores s ON s.id = i.store_id
        LEFT JOIN (
-         SELECT item_id, COUNT(*) pedidos_30d FROM orders
-         WHERE status != 'cancelled' AND date_created >= CURRENT_DATE - 30
+         SELECT item_id,
+           COUNT(*) FILTER (WHERE date_created >= CURRENT_DATE - 30) pedidos_30d,
+           COUNT(*) FILTER (WHERE date_created >= CURRENT_DATE - 15) pedidos_15d,
+           COUNT(*) FILTER (WHERE date_created >= CURRENT_DATE - 7)  pedidos_7d,
+           COALESCE(SUM(total_amount) FILTER (WHERE date_created >= CURRENT_DATE - 30),0) receita_30d,
+           COALESCE(SUM(total_amount) FILTER (WHERE date_created >= CURRENT_DATE - 7),0)  receita_7d
+         FROM orders
+         WHERE status != 'cancelled'
          GROUP BY item_id
        ) o ON o.item_id = i.ml_id
        LEFT JOIN item_performance p ON p.item_id = i.ml_id

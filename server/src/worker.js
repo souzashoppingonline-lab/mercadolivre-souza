@@ -1182,21 +1182,46 @@ async function syncScores() {
           console.log(`[sync-scores] ${store.nickname}: ${items.length} itens ativos`);
           let synced = 0, errors = 0, skipped = 0;
 
+          let consecutiveRateLimit = 0;
+
           for (let i = 0; i < items.length; i++) {
             const item = items[i];
             try {
-              const perf = await ml.get(`/item/${item.ml_id}/performance`, store.id);
+              let perf = null;
+              // Tenta com 1 retry em caso de 429
+              for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                  perf = await ml.get(`/item/${item.ml_id}/performance`, store.id);
+                  consecutiveRateLimit = 0;
+                  break;
+                } catch (e) {
+                  if (e.message?.includes('429') || e.message?.includes('rate limit')) {
+                    consecutiveRateLimit++;
+                    const waitMs = attempt === 0 ? 60000 : 120000; // 1min na 1ª, 2min na 2ª
+                    console.warn(`[sync-scores] 429 em ${item.ml_id} (tentativa ${attempt+1}) — aguardando ${waitMs/1000}s`);
+                    await new Promise(r => setTimeout(r, waitMs));
+                    // Se 5 erros 429 seguidos, aborta a loja para proteger o token
+                    if (consecutiveRateLimit >= 5) {
+                      console.error(`[sync-scores] ${store.nickname}: 5 rate limits seguidos — abortando loja`);
+                      throw new Error('Rate limit persistente — abortado após 5 tentativas consecutivas');
+                    }
+                  } else {
+                    throw e;
+                  }
+                }
+              }
+
               if (!perf || perf.error) { skipped++; continue; }
 
-              const score     = perf.score ?? null;
-              const level     = perf.level?.id ?? null;
-              const wording   = perf.level?.wording ?? null;
-              const buckets   = perf.groups || perf.buckets || [];
-              const pending   = Array.isArray(buckets)
+              const score   = perf.score ?? null;
+              const level   = perf.level?.id ?? null;
+              const wording = perf.level?.wording ?? null;
+              const buckets = perf.groups || perf.buckets || [];
+              const pending = Array.isArray(buckets)
                 ? buckets.reduce((a, g) => a + (Array.isArray(g.variables)
                   ? g.variables.filter(v => v.status === 'PENDING').length : 0), 0)
                 : 0;
-              const calcAt    = perf.last_update ? new Date(perf.last_update) : null;
+              const calcAt  = perf.last_update ? new Date(perf.last_update) : null;
 
               await pool.query(
                 `INSERT INTO item_performance (store_id, item_id, score, level, level_wording, pending_count, buckets, calculated_at)
@@ -1209,10 +1234,11 @@ async function syncScores() {
               );
               synced++;
             } catch (e) {
+              if (e.message?.includes('Rate limit persistente')) throw e; // propaga para abortar loja
               console.warn(`[sync-scores] erro em ${item.ml_id}: ${e.message}`);
               errors++;
             }
-            // 10s entre itens — conservador para não bater rate limit da ML API
+            // 10s entre itens
             await new Promise(r => setTimeout(r, 10000));
             // A cada 10 itens, pausa extra de 30s
             if ((i + 1) % 10 === 0) {

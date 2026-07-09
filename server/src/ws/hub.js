@@ -11,8 +11,23 @@ const subscriber = redis.duplicate();
 function attach(server) {
   const wss = new WebSocket.Server({ server, path: '/ws' });
 
+  // Ping nativo WS a cada 30s para manter conexão viva no nginx/proxy
+  const pingTimer = setInterval(() => {
+    for (const socket of clients) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.ping();
+      } else {
+        clients.delete(socket);
+      }
+    }
+  }, 30000);
+
+  wss.on('close', () => clearInterval(pingTimer));
+
   wss.on('connection', (socket) => {
     clients.add(socket);
+    socket.isAlive = true;
+    socket.on('pong', () => { socket.isAlive = true; });
     socket.on('close', () => clients.delete(socket));
     socket.on('message', (data) => {
       try {

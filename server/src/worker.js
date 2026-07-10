@@ -1348,8 +1348,8 @@ async function reprocessSkipped() {
       FROM webhook_logs
       WHERE status = 'skipped'
         AND topic = 'orders_v2'
-        AND created_at > now() - interval '4 hours'
-      ORDER BY resource, store_id, created_at DESC
+        AND received_at > now() - interval '4 hours'
+      ORDER BY resource, store_id, received_at DESC
     `);
 
     if (rows.length === 0) return;

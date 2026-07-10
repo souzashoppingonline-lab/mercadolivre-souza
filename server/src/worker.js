@@ -166,7 +166,7 @@ async function handlePayment({ resource, storeId }) {
   }
 }
 
-async function handleOrder({ resource, storeId }) {
+async function handleOrder({ resource, storeId, silent = false }) {
   const orderId = resource.split('/').pop();
 
   // Skip duplicate — evita chamar ML API duas vezes para o mesmo pedido em 30 min,
@@ -230,7 +230,7 @@ async function handleOrder({ resource, storeId }) {
       } catch(e) { /* ignora */ }
     }
     const envioLabel = fmtLogistica(lt);
-    await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}`);
+    if (!silent) await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}`);
   }
 }
 
@@ -757,7 +757,7 @@ async function syncVendas() {
               `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '12 hours'`, [order.id]
             );
             if (exists.rows.length) continue;
-            await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id });
+            await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id, silent: true });
             storeNew++;
             await new Promise(r => setTimeout(r, 1500));
           }
@@ -1371,7 +1371,7 @@ async function reprocessSkipped() {
       if (apiCooldown.has(cooldownKey) && Date.now() < apiCooldown.get(cooldownKey)) continue;
 
       try {
-        await handleOrder({ resource: row.resource, storeId: row.store_id });
+        await handleOrder({ resource: row.resource, storeId: row.store_id, silent: true });
         await pool.query(`UPDATE webhook_logs SET status='processed', processed_at=now() WHERE id=$1`, [row.id]);
         console.log(`[reprocess] ✅ recuperado: ${row.resource}`);
       } catch (e) {

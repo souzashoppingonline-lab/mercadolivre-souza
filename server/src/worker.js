@@ -227,7 +227,17 @@ async function handleOrder({ resource, storeId, silent = false }) {
 
   // Só é "Nova venda!" na transição real para 'paid' — evita reenviar o alerta
   // quando um webhook tardio (shipments, payments) reprocessa um pedido que já estava pago.
-  const isNewSale = order.status === 'paid' && previousStatus !== 'paid';
+  const saleDate = order.date_closed || order.date_created;
+  const saleAgeMs = saleDate ? Date.now() - new Date(saleDate).getTime() : 0;
+  // Guarda extra: mesmo sendo a 1ª vez que este pedido aparece no nosso banco
+  // (ex: pedido nunca importado, e hoje chegou um webhook de shipments/claims
+  // referenciando-o), só é "tempo real" se a venda em si aconteceu há pouco.
+  // Tolerância generosa (24h) cobre atraso de fila/rate-limit e boleto compensando.
+  const isRecentEnough = saleAgeMs < 24 * 60 * 60 * 1000;
+  const isNewSale = order.status === 'paid' && previousStatus !== 'paid' && isRecentEnough;
+  if (order.status === 'paid' && previousStatus !== 'paid' && !isRecentEnough) {
+    console.log(`[worker] venda antiga ignorada no Telegram: order=${order.id} date_closed=${order.date_closed} idade=${Math.round(saleAgeMs/3600000)}h`);
+  }
   if (isNewSale) {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
@@ -240,7 +250,6 @@ async function handleOrder({ resource, storeId, silent = false }) {
     }
     const envioLabel = fmtLogistica(lt);
     const fmtDataHora = d => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' });
-    const saleDate = order.date_closed || order.date_created;
     const saleDateFmt = saleDate ? fmtDataHora(saleDate) : fmtDataHora(new Date());
     const notifiedAtFmt = fmtDataHora(new Date());
     if (!silent) await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}`);

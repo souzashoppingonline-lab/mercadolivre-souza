@@ -66,6 +66,12 @@ server/                ← Backend Node.js (dois processos — ver acima)
       migrate.js                  ← aplica schema + migrations em sequência
     queues/
       webhookQueue.js            ← fábrica de filas BullMQ por loja
+    marketplaces/                ← "Marketplace Engine" — camada comum multi-marketplace
+      interfaces/MarketplaceClient.js  ← contrato (refreshAccessToken, getOrder, listRecentOrders)
+      base/errors.js                    ← erros compartilhados (RateLimit, TokenInvalid, Transient)
+      mercadolivre/                       ← reservado, vazio — ML continua em mlClient.js/routes/auth.js
+      amazon/amazonClient.js                ← implementado, AINDA NÃO conectado a rotas/worker
+      shopee/shopeeClient.js                  ← stub — app em aprovação (ver shopee.md)
     routes/
       api.js                      ← REST API consumida pelo frontend
       auth.js                       ← OAuth (login, callback, refresh de token)

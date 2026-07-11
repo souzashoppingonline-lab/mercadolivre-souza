@@ -217,6 +217,15 @@ sku TEXT PK, cost NUMERIC DEFAULT 0, updated_at TIMESTAMPTZ
 ```
 Ao salvar via `PATCH /api/custos/:sku`, o mesmo valor também é gravado em `items.cost` para o `ml_id` correspondente (join implícito por SKU == `ml_id` no uso atual — não há coluna `sku` em `items`).
 
+## Views ML-only (v17)
+
+```sql
+CREATE VIEW ml_orders AS SELECT * FROM orders WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
+CREATE VIEW ml_items  AS SELECT * FROM items  WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
+CREATE VIEW ml_stores AS SELECT * FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
+```
+Toda leitura (`FROM`/`JOIN`) em `routes/api.js` usa essas views em vez das tabelas diretamente — telas construídas só para o ML (a maioria hoje) não misturam pedidos/itens/lojas de outros marketplaces. Os `UPDATE`s pontuais (custo, imposto, frete vendedor) continuam direto nas tabelas reais, escopados por ID específico. Ver `decisions.md` ("Marketplace Engine — schema evolutivo", efeito colateral corrigido na v17).
+
 ## Índices relevantes
 
 `orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15).

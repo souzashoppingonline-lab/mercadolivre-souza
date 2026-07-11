@@ -61,9 +61,12 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 ## Lojas
 | Rota | Descrição |
 |---|---|
-| `GET /api/lojas` | lista com status de token (`token_valid`), se tem credenciais próprias |
+| `GET /api/lojas` | lojas **ML apenas** (lê da view `ml_stores` — v17). Status de token (`token_valid`), se tem credenciais próprias |
 | `PATCH /api/lojas/:id { imposto_pct }` | atualiza percentual de imposto |
 | `PATCH /api/lojas/:id/credentials { ml_client_id, ml_client_secret }` | credenciais ML próprias da loja |
+| `GET /api/lojas/amazon` | v17: lista contas Amazon (`id`, `nickname`, `amazon_marketplace_id`, `amazon_region`, `has_refresh_token`) |
+| `POST /api/lojas/amazon { nickname, refresh_token, amazon_marketplace_id?, amazon_region? }` | v17: cadastra nova conta Amazon — `nickname`/`refresh_token` obrigatórios; gera `store_id` sintético (faixa `9000000001`+). Resposta inclui aviso de que o worker precisa ser reiniciado para sincronizar a conta nova (sem hot-reload ainda, ver `todo.md`) |
+| `DELETE /api/lojas/amazon/:id` | v17: remove conta Amazon (só linhas com `marketplace_id=AMAZON` — não afeta lojas ML mesmo que o `:id` colida) |
 
 ## Alertas
 | Rota | Descrição |

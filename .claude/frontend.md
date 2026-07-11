@@ -52,6 +52,21 @@ Objeto `DB` com um método por endpoint (`DB.getDashboardKPIs()`, `DB.getPedidos
 
 Ao adicionar um endpoint novo em `routes/api.js`, adicionar o método correspondente em `db.js` na mesma tarefa — a documentação em `api.md` deve ser atualizada junto.
 
+**Exceção ao padrão `_post`/`_patch`**: esses dois helpers descartam o corpo da resposta em erro e retornam `null` (o chamador só sabe que falhou, não por quê). `DB.getLojasAmazon()`, `DB.addLojaAmazon(data)` e `DB.deleteLojaAmazon(id)` (endpoints em `api.md`, seção "Lojas") **não** usam `_post`/`_patch` — implementam o próprio `fetch` (mesmo padrão de `_get`) para preservar `{ error: "mensagem" }` do backend mesmo em resposta não-OK, porque `pages/lojas.html` precisa mostrar esse texto exato dentro do modal de cadastro em vez de um erro genérico. Qualquer método novo que precise repassar a mensagem de erro do backend ao usuário deve seguir esse mesmo padrão, não `_post`/`_patch`.
+
+## `pages/lojas.html` — modal "Adicionar loja" (multi-marketplace)
+
+O grid principal da página (`#lojasGrid`) mostra só lojas ML (`DB.getLojas()`, view `ml_stores` — ver `api.md`). O botão "+ Adicionar loja" abre um modal (`#addLojaModal`, mesmo padrão visual do modal de detalhe de `pages/produtos.html`: overlay fixo `rgba(0,0,0,.7)` + blur, fecha ao clicar fora) com três opções renderizadas dentro de `#addLojaModalBody`, trocadas via funções JS (sem navegação de página):
+
+- `renderLojaChoice()` — tela inicial com os 3 botões (`.add-loja-option`).
+- **Mercado Livre** → mantém o comportamento antigo do botão: navega para `/auth/login` (fluxo OAuth, ver `mercadolivre.md`).
+- **Amazon** → `renderAmazonForm()`: formulário (`nickname`, `refresh_token` como `input type="password"`, `amazon_marketplace_id` opcional, `amazon_region` opcional) que chama `DB.addLojaAmazon(data)` (`submitAmazonForm()`). Sucesso: fecha o modal, `alert()` com o campo `note` da resposta (aviso de que o worker precisa reiniciar — ver `api.md`/`decisions.md`), recarrega `#amazonGrid`. Erro: mensagem exibida dentro do próprio modal (`#az-error`), modal permanece aberto para o usuário corrigir.
+- **Shopee** → `renderShopeeInfo()`: só um aviso informativo (integração aguardando aprovação do app, ver `shopee.md`) e um botão "Salvar" desabilitado — sem formulário nem submit.
+
+Abaixo do grid ML existe uma segunda seção, "Contas Amazon" (`#amazonGrid`, populada por `loadContasAmazon()` via `DB.getLojasAmazon()`), com nickname, se tem `refresh_token` configurado, marketplace ID/região (ou "padrão do .env") e um botão remover que pede `confirm()` antes de chamar `DB.deleteLojaAmazon(id)`. Estado vazio: "Nenhuma conta Amazon cadastrada ainda." Reaproveita a mesma classe `.loja-card` do grid ML para não duplicar visual.
+
+Qualquer página nova que precise de um modal de escolha/formulário deve reaproveitar esse mesmo padrão (overlay + card centralizado + `innerHTML` trocado por função) em vez de criar um componente do zero — não existe um `modal.css` genérico no projeto, cada página estiliza o próprio modal inline, seguindo esse exemplo.
+
 ## `js/layout.js` — sidebar, topbar e alertas globais
 
 - Injeta `<aside class="sidebar">` e `<header class="topbar">` a partir de `NAV_ITEMS`.

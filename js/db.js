@@ -100,6 +100,41 @@ const DB = {
   async getLojas()                { return this._get('/lojas'); },
   async getAlteracoes(days=7, store_id='') { return this._get(`/alteracoes?days=${days}&store_id=${encodeURIComponent(store_id)}`); },
 
+  // ── Lojas — Amazon ─────────────────────────────────────────
+  // Ao contrário de _post/_patch (que descartam o corpo do erro e retornam
+  // null), estes preservam { error: "..." } do backend em caso de falha,
+  // para exibir a mensagem exata dentro do modal em vez de um erro genérico.
+  async getLojasAmazon()           { return this._get('/lojas/amazon'); },
+  async addLojaAmazon(data) {
+    try {
+      const res = await fetch(new URL(`${this.BASE}/lojas/amazon`, location.origin).toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      if (!res.ok) return { error: body?.error || `HTTP ${res.status}` };
+      return body;
+    } catch (e) {
+      console.error('[DB] POST error', '/lojas/amazon', e);
+      return { error: e.message };
+    }
+  },
+  async deleteLojaAmazon(id) {
+    try {
+      const res = await fetch(new URL(`${this.BASE}/lojas/amazon/${id}`, location.origin).toString(), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      if (!res.ok) return { error: body?.error || `HTTP ${res.status}` };
+      return body;
+    } catch (e) {
+      console.error('[DB] DELETE error', `/lojas/amazon/${id}`, e);
+      return { error: e.message };
+    }
+  },
+
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },
   async getDiasSemana(days=90)    { return this._get(`/analises/dias-semana?days=${days}`); },

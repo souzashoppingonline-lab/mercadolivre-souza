@@ -32,6 +32,24 @@
     .lojas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
     .summary-bar { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
     .summary-chip { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .section-title { font-size: 15px; font-weight: 700; margin: 32px 0 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+    .section-title small { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+    .add-loja-option { display: flex; align-items: center; gap: 14px; width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; cursor: pointer; text-align: left; color: var(--text-primary); font-family: inherit; font-size: 14px; transition: border-color 0.2s, background 0.2s; }
+    .add-loja-option:hover { border-color: var(--primary); background: rgba(255,230,0,0.05); }
+    .add-loja-option i { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
+    .add-loja-option .opt-title { font-weight: 700; }
+    .add-loja-option .opt-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .modal-back { align-self: flex-start; background: none; border: none; color: var(--text-muted); font-size: 12px; cursor: pointer; padding: 0; margin-bottom: 4px; }
+    .modal-back:hover { color: var(--text-primary); }
+    .modal-field label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+    .modal-field input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 9px 10px; color: var(--text-primary); font-size: 13px; box-sizing: border-box; }
+    .modal-field input:focus { outline: none; border-color: var(--primary); }
+    .modal-error { display: none; font-size: 12px; padding: 8px 10px; border-radius: 6px; background: rgba(231,76,60,.12); color: var(--red); }
+    .modal-info { background: rgba(255,230,0,.08); border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-size: 13px; color: var(--text-muted); display: flex; gap: 10px; align-items: flex-start; }
+    .modal-submit { background: var(--primary); border: none; border-radius: 8px; padding: 10px; font-weight: 700; color: #000; cursor: pointer; font-size: 13px; }
+    .modal-submit:disabled { background: var(--surface); color: var(--text-muted); cursor: not-allowed; }
+    .btn-remover { margin-top: 4px; background: rgba(231,76,60,0.1); border: 1px solid var(--red); color: var(--red); border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .btn-remover:hover { background: var(--red); color: #fff; }
   </style>
 </head>
 <body>
@@ -44,8 +62,24 @@
       <div class="lojas-grid" id="lojasGrid">
         <div class="empty-state" style="grid-column:1/-1">Carregando lojas...</div>
       </div>
+
+      <div class="section-title"><i class="fab fa-amazon" style="color:#ff9900"></i> Contas Amazon <small>— outros marketplaces</small></div>
+      <div class="lojas-grid" id="amazonGrid">
+        <div class="empty-state" style="grid-column:1/-1">Carregando contas Amazon...</div>
+      </div>
     </div>
   </main>
+
+  <!-- Modal: adicionar loja/conta -->
+  <div id="addLojaModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(3px);overflow-y:auto" onclick="if(event.target===this)closeAddLojaModal()">
+    <div style="max-width:460px;margin:60px auto;background:#1a1a1a;border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.8)">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <h3 style="margin:0;font-size:16px">Adicionar loja</h3>
+        <i class="fas fa-times" style="cursor:pointer;color:var(--text-muted)" onclick="closeAddLojaModal()"></i>
+      </div>
+      <div id="addLojaModalBody" style="padding:22px"></div>
+    </div>
+  </div>
 </div>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
@@ -76,7 +110,7 @@ async function load() {
     <div class="summary-chip"><i class="fas fa-store" style="color:var(--primary)"></i> ${stores.length} loja${stores.length!==1?'s':''} cadastrada${stores.length!==1?'s':''}</div>
     <div class="summary-chip"><i class="fas fa-circle" style="color:var(--green);font-size:9px"></i> ${connected} conectada${connected!==1?'s':''}</div>
     ${disconnected ? `<div class="summary-chip"><i class="fas fa-circle" style="color:var(--red);font-size:9px"></i> ${disconnected} com token expirado</div>` : ''}
-    <a href="/auth/login" class="summary-chip" style="color:var(--primary);border-color:var(--primary);text-decoration:none;cursor:pointer"><i class="fas fa-plus"></i> Adicionar loja</a>`;
+    <div class="summary-chip" style="color:var(--primary);border-color:var(--primary);cursor:pointer" onclick="openAddLojaModal()"><i class="fas fa-plus"></i> Adicionar loja</div>`;
 
   grid.innerHTML = stores.length ? stores.map(s => `
     <div class="loja-card ${s.token_valid ? 'connected' : 'disconnected'}">
@@ -220,12 +254,148 @@ async function saveImposto(storeId) {
   }
 }
 
+// ── Contas Amazon (marketplace separado do grid ML acima) ─────
+async function loadContasAmazon() {
+  const data = await DB.getLojasAmazon() || { stores: [] };
+  const stores = data.stores || [];
+  const grid = document.getElementById('amazonGrid');
+  if (!grid) return;
+
+  grid.innerHTML = stores.length ? stores.map(s => `
+    <div class="loja-card connected">
+      <div class="loja-header">
+        <div class="loja-icon connected"><i class="fab fa-amazon"></i></div>
+        <div class="loja-meta">
+          <div class="loja-nickname">${s.nickname}</div>
+          <div class="loja-id">ID: ${s.id}</div>
+          <span class="status-badge ${s.has_refresh_token ? 'ok' : 'err'}" style="margin-top:4px">
+            <i class="fas fa-circle" style="font-size:7px"></i>
+            ${s.has_refresh_token ? 'Refresh token configurado' : 'Sem refresh token'}
+          </span>
+        </div>
+      </div>
+      <div class="loja-rows">
+        <div class="loja-row"><span class="k">Marketplace ID</span><span class="v">${s.amazon_marketplace_id || 'padrão do .env'}</span></div>
+        <div class="loja-row"><span class="k">Região</span><span class="v">${s.amazon_region || 'padrão do .env'}</span></div>
+        <div class="loja-row"><span class="k">Atualizado</span><span class="v" style="font-size:11px">${fmtExpiry(s.updated_at)}</span></div>
+      </div>
+      <button class="btn-remover" onclick="removeContaAmazon('${s.id}', ${JSON.stringify(s.nickname || '')})"><i class="fas fa-trash"></i> Remover</button>
+    </div>
+  `).join('') : '<div class="empty-state" style="grid-column:1/-1">Nenhuma conta Amazon cadastrada ainda.</div>';
+}
+
+async function removeContaAmazon(id, nickname) {
+  if (!confirm(`Remover a conta Amazon "${nickname}"? Essa ação não pode ser desfeita.`)) return;
+  const res = await DB.deleteLojaAmazon(id);
+  if (res?.ok) {
+    if (res.note) alert(res.note);
+    loadContasAmazon();
+  } else {
+    alert(res?.error || 'Erro ao remover conta Amazon.');
+  }
+}
+
+// ── Modal "Adicionar loja" (ML / Amazon / Shopee) ──────────────
+function openAddLojaModal() {
+  renderLojaChoice();
+  document.getElementById('addLojaModal').style.display = 'block';
+}
+
+function closeAddLojaModal() {
+  document.getElementById('addLojaModal').style.display = 'none';
+}
+
+function renderLojaChoice() {
+  document.getElementById('addLojaModalBody').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button type="button" class="add-loja-option" onclick="location.href='/auth/login'">
+        <i class="fas fa-store" style="color:var(--primary)"></i>
+        <div><div class="opt-title">Mercado Livre</div><div class="opt-desc">Conectar via OAuth do ML</div></div>
+      </button>
+      <button type="button" class="add-loja-option" onclick="renderAmazonForm()">
+        <i class="fab fa-amazon" style="color:#ff9900"></i>
+        <div><div class="opt-title">Amazon</div><div class="opt-desc">Cadastrar refresh token da SP-API</div></div>
+      </button>
+      <button type="button" class="add-loja-option" onclick="renderShopeeInfo()">
+        <i class="fas fa-shopping-bag" style="color:#ee4d2d"></i>
+        <div><div class="opt-title">Shopee</div><div class="opt-desc">Integração em aprovação</div></div>
+      </button>
+    </div>`;
+}
+
+function renderAmazonForm() {
+  document.getElementById('addLojaModalBody').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <button type="button" class="modal-back" onclick="renderLojaChoice()"><i class="fas fa-arrow-left"></i> Voltar</button>
+      <div class="modal-field">
+        <label>Nome da conta *</label>
+        <input type="text" id="az-nickname" placeholder="Ex: Amazon Loja Principal">
+      </div>
+      <div class="modal-field">
+        <label>Refresh Token *</label>
+        <input type="password" id="az-refresh-token" placeholder="Atzr|...">
+      </div>
+      <div class="modal-field">
+        <label>Marketplace ID (opcional)</label>
+        <input type="text" id="az-marketplace-id" placeholder="Em branco = padrão do .env (Brasil: A2Q3Y263D00KWC)">
+      </div>
+      <div class="modal-field">
+        <label>Região (opcional)</label>
+        <input type="text" id="az-region" placeholder="na | eu | fe — deixe em branco para usar o padrão">
+      </div>
+      <div class="modal-error" id="az-error"></div>
+      <button type="button" class="modal-submit" onclick="submitAmazonForm()">Salvar</button>
+    </div>`;
+}
+
+function renderShopeeInfo() {
+  document.getElementById('addLojaModalBody').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <button type="button" class="modal-back" onclick="renderLojaChoice()"><i class="fas fa-arrow-left"></i> Voltar</button>
+      <div class="modal-info">
+        <i class="fas fa-info-circle" style="color:var(--primary);margin-top:2px"></i>
+        <span>Aguardando aprovação do app pela Shopee. O cadastro de contas será liberado assim que a integração estiver pronta.</span>
+      </div>
+      <button type="button" class="modal-submit" disabled>Salvar</button>
+    </div>`;
+}
+
+async function submitAmazonForm() {
+  const nickname     = document.getElementById('az-nickname').value.trim();
+  const refreshToken = document.getElementById('az-refresh-token').value.trim();
+  const marketplaceId = document.getElementById('az-marketplace-id').value.trim();
+  const region        = document.getElementById('az-region').value.trim();
+  const errorEl = document.getElementById('az-error');
+  errorEl.style.display = 'none';
+
+  if (!nickname || !refreshToken) {
+    errorEl.textContent = 'Preencha nome da conta e refresh token — ambos são obrigatórios.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const body = { nickname, refresh_token: refreshToken };
+  if (marketplaceId) body.amazon_marketplace_id = marketplaceId;
+  if (region) body.amazon_region = region;
+
+  const res = await DB.addLojaAmazon(body);
+  if (res?.ok) {
+    closeAddLojaModal();
+    alert(res.note || 'Conta Amazon salva com sucesso.');
+    loadContasAmazon();
+  } else {
+    errorEl.textContent = res?.error || 'Erro ao salvar conta Amazon. Verifique os dados e tente novamente.';
+    errorEl.style.display = 'block';
+  }
+}
+
 WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 WS.on('kpis_updated', load);
 load();
+loadContasAmazon();
 </script>
 </body>
 </html>

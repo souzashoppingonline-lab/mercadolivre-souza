@@ -42,7 +42,11 @@ O sandbox **estático** da SP-API não aceita parâmetros reais (data/marketplac
 
 Qualquer outro valor retorna `400 InvalidInput "Could not match input arguments"` — foi exatamente o que aconteceu em produção: `listRecentOrders` já usava os literais certos e funcionou, mas `getOrder` chamado com o `AmazonOrderId` real (devolvido pela lista) falhava, porque o sandbox exige o literal `TEST_CASE_200` também no path. `amazonClient.js` (`listRecentOrders` e `getOrder`) já trata os dois casos: quando `AMAZON_ENV !== 'production'`, ignora os valores reais e usa os literais de teste — a resposta é sempre o mesmo pedido fixo, não dados reais. Em produção os valores reais são usados normalmente.
 
-**Limite de investigação de sandbox respeitado**: essas duas correções vieram direto do modelo oficial da SP-API (não tentativa e erro). Qualquer outro comportamento inconsistente do sandbox estático (fora esses dois padrões documentados) não deve ser mais investigado — desenvolver o resto do pipeline com um `MockEventSource` e validar de verdade só quando o app tiver acesso de produção aprovado.
+**Limite de investigação de sandbox respeitado**: essas duas correções vieram direto do modelo oficial da SP-API (não tentativa e erro). Qualquer outro comportamento inconsistente do sandbox estático (fora esses dois padrões documentados) não deve ser mais investigado — o resto do desenvolvimento usa o `MockEventSource` abaixo, e a validação de verdade só acontece quando o app tiver acesso de produção aprovado.
+
+## Modo mock — `AMAZON_ENV=mock`
+
+`server/src/marketplaces/mock/mockProvider.js` implementa `MockClient` (contrato `MarketplaceClient`) e `MockEventSource` (contrato `EventSource`), gerando pedidos fabricados variados (status, valores, `AmazonOrderId` diferentes a cada execução — ~70% de chance de "descobrir" 1 pedido novo a cada 2 min) e publicando na **mesma fila** `marketplace-events-amazon` que a Amazon real usaria. `marketplaceEventWorker.js` decide entre `AmazonClient`/`AmazonPollingEventSource` (real) e `MockClient`/`MockEventSource` (fabricado) só olhando `AMAZON_ENV` — nenhum outro arquivo do pipeline (fila, `handleOrderEvent`, `orders`/`amazon_order_data`, dashboard) precisa saber qual dos dois está ativo. Serve para testar dashboard/KPIs/financeiro com dados variados sem depender do sandbox estático da Amazon (que sempre devolve o mesmo pedido fixo). Trocar para a Amazon real de verdade é só mudar `AMAZON_ENV` para `sandbox` ou `production`.
 
 ## O que NÃO foi feito nesta fase (deliberado — ver `decisions.md`/`todo.md`)
 

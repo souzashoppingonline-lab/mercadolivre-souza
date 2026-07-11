@@ -12,10 +12,17 @@ const { publish } = require('./ws/hub');
 const { Scheduler } = require('./marketplaces/Scheduler');
 const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
 const { AmazonClient } = require('./marketplaces/amazon/amazonClient');
+const { MockClient, MockEventSource } = require('./marketplaces/mock/mockProvider');
 
 const AMAZON_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — ajustável sem tocar no restante do pipeline
+const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar feedback visível em dev
 
-const clients = { AMAZON: new AmazonClient(env) };
+// AMAZON_ENV=mock troca o cliente/EventSource real por um que fabrica pedidos
+// de teste variados, sem depender do sandbox estático da Amazon (que só
+// devolve um pedido fixo). Trocar de volta para a Amazon real é só mudar
+// AMAZON_ENV — nada mais no pipeline muda (ver .claude/amazon.md).
+const isMock = env.amazon?.env === 'mock';
+const clients = { AMAZON: isMock ? new MockClient() : new AmazonClient(env) };
 
 // Vocabulário compartilhado de `orders.status` — ajuste fino de quais status
 // da Amazon contam como "pago" fica para quando pedidos reais de sandbox/
@@ -96,7 +103,11 @@ function startMarketplaceEventWorkers() {
   console.log('[marketplace-worker] started queue marketplace-events-amazon');
 
   const scheduler = new Scheduler();
-  scheduler.register(new AmazonPollingEventSource(), { intervalMs: AMAZON_POLL_INTERVAL_MS });
+  if (isMock) {
+    scheduler.register(new MockEventSource(), { intervalMs: MOCK_POLL_INTERVAL_MS });
+  } else {
+    scheduler.register(new AmazonPollingEventSource(), { intervalMs: AMAZON_POLL_INTERVAL_MS });
+  }
   scheduler.startAll().catch((err) => console.error('[marketplace-worker] scheduler startAll falhou:', err.message));
 }
 

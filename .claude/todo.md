@@ -8,8 +8,11 @@
 - [x] Credenciais `AMAZON_LWA_CLIENT_ID`/`AMAZON_LWA_CLIENT_SECRET`/`AMAZON_MARKETPLACE_ID`/`AMAZON_REGION` já configuradas em `server/.env`.
 - [x] Primeiro corte usa polling periódico (`AmazonPollingEventSource`, 15 min) — Notifications API (SNS/SQS) fica como evolução futura se o polling não escalar.
 - [x] Migration (`migrate-v15.sql`), worker/fila dedicado (`marketplaceEventWorker.js`), `database.md`/`workers.md`/`amazon.md` atualizados.
-- [x] Validado que `AmazonPollingEventSource` roda e dispara o polling a cada 15 min. Encontrado e corrigido: o sandbox **estático** da Amazon não aceita data/marketplace reais — só reconhece os valores literais documentados (`CreatedAfter=TEST_CASE_200`, `MarketplaceIds=ATVPDKIKX0DER`), senão retorna 400 "Could not match input arguments". `amazonClient.listRecentOrders` agora usa esses valores fixos quando `AMAZON_ENV!=='production'`.
-- [ ] Confirmar que o pedido de teste retornado pelo `TEST_CASE_200` chega até `orders`/`amazon_order_data` de ponta a ponta (próximo ciclo de polling após o deploy desta correção).
+- [x] Validado em produção que `AmazonPollingEventSource` roda e dispara o polling a cada 15 min.
+- [x] Corrigido: sandbox estático exige literais fixos documentados (`CreatedAfter=TEST_CASE_200`/`MarketplaceIds=ATVPDKIKX0DER` em `listRecentOrders`; `orderId=TEST_CASE_200` no path de `getOrder`) — confirmado no modelo oficial `ordersV0.json`. Ambos aplicados em `amazonClient.js`.
+- [x] Criado `MockEventSource`/`MockClient` (`AMAZON_ENV=mock`) para desenvolver/testar dashboard/KPIs sem depender do sandbox estático (que sempre devolve o mesmo pedido fixo) — ver `amazon.md`.
+- [ ] Confirmar em produção que o pedido de teste do `TEST_CASE_200` chega até `orders`/`amazon_order_data` de ponta a ponta (próximo ciclo de polling após o deploy da correção do `getOrder`).
+- [ ] Testar `AMAZON_ENV=mock` no servidor e confirmar que pedidos fabricados aparecem em `orders`/`amazon_order_data`.
 - [ ] Validar se `mapAmazonStatus()` (`marketplaceEventWorker.js`) está mapeando `OrderStatus` da Amazon para `orders.status` de forma sensata — só dá pra confirmar de fato quando pedidos (mesmo que de sandbox) começarem a chegar.
 - [ ] Expor Amazon nos endpoints de leitura (`routes/api.js`) filtrando/agrupando por `marketplace_id` — hoje as queries existentes não incluem pedidos Amazon nas telas do dashboard.
 - [ ] Rota REST dedicada só é necessária se algo não couber nos endpoints existentes com `marketplace_id`.

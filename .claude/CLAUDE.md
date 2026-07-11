@@ -6,17 +6,19 @@ Esta pasta é a documentação modular e viva do projeto **ML Dashboard Multimar
 
 **Antes de responder qualquer solicitação neste repositório, leia todos os arquivos desta pasta.** Nessa ordem sugerida:
 
-1. `architecture.md` — para entender o fluxo de dados e a topologia de processos.
-2. Os arquivos específicos da área que a tarefa toca (tabela abaixo).
-3. `business-rules.md` e `decisions.md` — para não recriar uma regra ou reverter uma decisão já tomada.
-4. `known-bugs.md` e `todo.md` — para saber o que já é gap conhecido, em vez de redescobrir.
+1. `workflow.md` — para saber COMO abordar a tarefa (análise antes de código, padrões nunca aceitos, prioridades do projeto).
+2. `architecture.md` — para entender o fluxo de dados e a topologia de processos.
+3. Os arquivos específicos da área que a tarefa toca (tabela abaixo).
+4. `business-rules.md` e `decisions.md` — para não recriar uma regra ou reverter uma decisão já tomada.
+5. `known-bugs.md` e `todo.md` — para saber o que já é gap conhecido, em vez de redescobrir.
 
-Só depois de entender arquitetura + regras de negócio + histórico de decisões, faça alterações.
+Só depois de entender processo + arquitetura + regras de negócio + histórico de decisões, faça alterações. `workflow.md` é obrigatório em toda tarefa, mesmo pequena — nunca escreva código antes de explicar problema, solução, vantagens, riscos e impacto.
 
 ## Índice — um arquivo, um assunto, sem repetição entre eles
 
 | Arquivo | Assunto (e só esse assunto) |
 |---|---|
+| `workflow.md` | Processo obrigatório antes/durante/depois de qualquer alteração: checklist de análise, padrões de qualidade nunca aceitos, verificação de duplicação, objetivos e prioridades do projeto, regra de melhoria proativa |
 | `architecture.md` | Fluxo EDA ponta-a-ponta, topologia dos dois processos (server/worker), árvore de diretórios, regras de fronteira entre camadas |
 | `backend.md` | Processo HTTP Express: `server.js`, `config/env.js`, montagem de rotas, dependências, conexões singleton |
 | `frontend.md` | Estrutura estática (HTML/CSS/JS sem build), páginas, `js/db.js`, `js/websocket.js`, `js/layout.js`, contrato para criar página nova |

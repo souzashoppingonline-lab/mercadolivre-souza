@@ -1,6 +1,6 @@
 # Integração — Amazon
 
-> Status atual: **em construção, desconectada do sistema em produção.** App já criado (`FinanceEcom`), mas com **Status = Sandbox** no Developer Console (Solution Provider Portal) — ainda sem "Autorizações restantes" de produção aprovadas pela Amazon. Falta configurar `server/.env` com os valores restantes e confirmar a decisão de schema antes de ligar ao worker/rotas. Ver `.claude/decisions.md` (Marketplace Engine) e `.claude/roadmap.md`.
+> Status atual: **em construção, desconectada do sistema em produção.** App já criado (`FinanceEcom`), com **Status = Sandbox** no Developer Console (Solution Provider Portal) — ainda sem "Autorizações restantes" de produção aprovadas pela Amazon. Todas as credenciais de sandbox já foram configuradas em `server/.env` (ver tabela abaixo); falta apenas confirmar a decisão de schema antes de ligar ao worker/rotas. Ver `.claude/decisions.md` (Marketplace Engine) e `.claude/roadmap.md`.
 
 ## O que já existe
 
@@ -17,12 +17,12 @@
 | Nome do app (`FinanceEcom`) | ✅ recebido |
 | `AMAZON_APP_ID` (`amzn1.sp.solution...`) | ✅ recebido — **atenção**: este é o Application ID do Developer Console, **não** é o mesmo valor que `AMAZON_LWA_CLIENT_ID` |
 | `AMAZON_REFRESH_TOKEN` (prefixo `Atzr\|`) | ✅ recebido — confirmado que é o **token de atualização de sandbox** (tela "Teste de sandbox" do Seller Central), não um token de produção. Nunca commitado no repositório, só em `server/.env` (protegido pelo `.gitignore`) |
-| `AMAZON_LWA_CLIENT_ID` / `AMAZON_LWA_CLIENT_SECRET` | ❌ faltando — ficam em Seller Central → Central de Desenvolvedores → app `FinanceEcom` → link "Exibir credenciais de sandbox" |
-| `AMAZON_MARKETPLACE_ID` (Brasil = `A2Q3Y263D00KWC`) | ❌ faltando |
-| `AMAZON_REGION` | assumido `na` (Brasil fica na região NA da SP-API) — confirmar |
+| `AMAZON_LWA_CLIENT_ID` / `AMAZON_LWA_CLIENT_SECRET` | ✅ recebido e configurado em `server/.env` — obtido em Seller Central → Central de Desenvolvedores → app `FinanceEcom` → link "Exibir credenciais de sandbox" |
+| `AMAZON_MARKETPLACE_ID` (Brasil = `A2Q3Y263D00KWC`) | ✅ configurado |
+| `AMAZON_REGION` | `na` (Brasil fica na região NA da SP-API) — configurado |
 | `AMAZON_ENV` | `sandbox` — o app está com **Status = Sandbox** no Developer Console, sem "Autorizações restantes" de produção ainda. Trocar para `production` só depois de solicitar e receber autorização de produção no Seller Central (fluxo separado da autorização de sandbox) |
 
-Sem `AMAZON_LWA_CLIENT_ID`/`AMAZON_LWA_CLIENT_SECRET` o `amazonClient.js` não autentica de verdade — ele já lança `MarketplaceTokenInvalidError` explicando quais variáveis faltam se chamado sem configuração completa. Mesmo com todas as credenciais de sandbox configuradas, as chamadas retornam **dados de teste estáticos**, não pedidos reais — sandbox só serve para validar se o fluxo de autenticação/chamada está correto.
+Com todas as credenciais de sandbox configuradas, o `amazonClient.js` já consegue autenticar de verdade — mas as chamadas retornam **dados de teste estáticos**, não pedidos reais, até a Amazon aprovar a autorização de produção. Sandbox só serve para validar se o fluxo de autenticação/chamada está correto.
 
 ## O que ainda falta para ligar ao sistema em produção
 

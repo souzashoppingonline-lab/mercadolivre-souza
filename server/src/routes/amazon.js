@@ -60,11 +60,23 @@ router.get('/pedidos', async (req, res) => {
 router.get('/produtos', async (req, res) => {
   try {
     const mpId = await amazonMarketplaceId();
+    // status=active é usado pela página "Anúncios" (listagens ativas) —
+    // sem status filtra o catálogo completo, usado pela página "Produtos".
+    // Não há sync de catálogo Amazon ainda (ver nota abaixo), então hoje as
+    // duas telas mostram o mesmo vazio até a Listings Items API da Amazon
+    // ser integrada (ver .claude/todo.md).
+    const { status } = req.query;
+    const params = [mpId];
+    let statusFilter = '';
+    if (status) {
+      params.push(status);
+      statusFilter = `AND status = $${params.length}`;
+    }
     const { rows } = await pool.query(
       `SELECT ml_id AS sku, title, available_quantity AS estoque, price, status
-       FROM items WHERE marketplace_id = $1
+       FROM items WHERE marketplace_id = $1 ${statusFilter}
        ORDER BY updated_at DESC LIMIT 200`,
-      [mpId]
+      params
     );
     res.json({
       rows,

@@ -18,12 +18,14 @@
 - [x] **Contaminação de KPIs/relatórios do ML corrigida (v17)** — views `vw_ml_orders`/`vw_ml_items`/`vw_ml_stores`, `routes/api.js` lê delas. Ver `database.md`/`decisions.md`.
 - [x] Modal "Adicionar loja" (Mercado Livre/Amazon/Shopee) na página Lojas do frontend, usando as rotas acima para Amazon.
 - [x] **Dashboard dedicado Amazon (`pages/dashboard-amazon.html`)** — cards Vendas Totais/Pedidos/Produtos, tabelas de pedidos e produtos, card Status da Integração; rotas próprias `/api/amazon/*` (ver `api.md`). Página independente: sem sidebar ML, sem `js/layout.js`. `pages/dashboard-shopee.html` criado como placeholder (Shopee ainda bloqueada), mesmo padrão independente. Ver `frontend.md`.
+- [x] **Menu lateral próprio da Amazon (`js/layout-amazon.js`)** — Dashboard/Vendas Totais/Pedidos/Produtos/Anúncios, com páginas dedicadas (`amazon-vendas.html`, `amazon-pedidos.html`, `amazon-produtos.html`, `amazon-anuncios.html`). Nunca aparece numa página ML, e a sidebar ML nunca aparece numa página Amazon. `GET /api/amazon/produtos?status=active` filtra anúncios ativos. Ver `frontend.md`.
 - [x] **Alternador de marketplace (`.mkt-switcher-compact`) no topbar de toda página** — Mercado Livre/Amazon/Shopee, sempre no canto superior direito, para trocar de marketplace de qualquer tela sem passar pela sidebar. Injetado por `js/layout.js` em toda página ML e hardcoded em `index.html`; cada dashboard dedicado (`dashboard-amazon.html`/`dashboard-shopee.html`) tem sua própria cópia no topbar independente. Ver `frontend.md`.
 - [ ] `dashboard-ml.html` dedicado (hoje o botão "Mercado Livre" do switcher aponta para `../index.html`, o dashboard ML existente) — só criar se/quando fizer sentido separar do `index.html` atual.
 - [ ] Dashboard unificado "visão geral" (`dashboard.html`, todos os marketplaces juntos: Receita Total, Pedidos Totais, Produtos Totais, Anúncios Ativos) — explicitamente deixado para depois pelo usuário.
 - [ ] Hot-reload de contas Amazon no worker — hoje uma conta cadastrada via `POST /api/lojas/amazon` só é sincronizada depois de reiniciar `ml-worker-novo` manualmente.
 - [ ] Validar se `mapAmazonStatus()` (`marketplaceEventWorker.js`) está mapeando `OrderStatus` da Amazon para `orders.status` de forma sensata — só dá pra confirmar de fato quando pedidos reais começarem a chegar.
 - [ ] Dashboard multi-marketplace de verdade (ML+Amazon juntos) — hoje as telas continuam ML-only por padrão (views `ml_*`); unificar é decisão de produto/UX futura, não bloqueia o uso atual.
+- [ ] Sincronizar catálogo de produtos Amazon (Listings Items API do SP-API) — hoje `items` só é populada indiretamente via pedido (nenhum produto sem venda aparece); `amazon-produtos.html` e `amazon-anuncios.html` mostram o mesmo vazio até isso existir.
 - [ ] Notificação Telegram de vendas Amazon (fora de escopo até agora).
 - [ ] Trocar `AMAZON_ENV` para `production` só depois de autorização de produção aprovada pela Amazon no Seller Central.
 

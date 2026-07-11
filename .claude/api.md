@@ -75,7 +75,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 |---|---|
 | `GET /api/amazon/kpis` | `vendas_hoje` (soma `total_amount` de hoje, exclui `cancelled`), `pedidos_hoje` (contagem hoje), `produtos_ativos` (`items.status='active'`) |
 | `GET /api/amazon/pedidos` | até 200 pedidos Amazon mais recentes (`id`, `cliente`, `sku`, `valor`, `status`, `data`, `conta`) |
-| `GET /api/amazon/produtos` | até 200 itens Amazon (`sku`, `title`, `estoque`, `price`, `status`); campo `note` explica quando vazio — catálogo de produtos Amazon ainda não é sincronizado, só pedidos (ver `todo.md`) |
+| `GET /api/amazon/produtos?status` | até 200 itens Amazon (`sku`, `title`, `estoque`, `price`, `status`); `status=active` filtra só anúncios ativos (usado por `pages/amazon-anuncios.html`), sem o parâmetro retorna o catálogo completo (`pages/amazon-produtos.html`). Campo `note` explica quando vazio — catálogo de produtos Amazon ainda não é sincronizado, só pedidos (ver `todo.md`) |
 | `GET /api/amazon/status` | `ultima_sincronizacao` (`MAX(last_synced_at)` de `marketplace_sync_state`), `contas_conectadas`/`contas_total` (`stores` com `refresh_token`), `ultimo_erro` (sempre `null` hoje — sem tracking estruturado de erro de polling ainda) |
 
 ## Alertas

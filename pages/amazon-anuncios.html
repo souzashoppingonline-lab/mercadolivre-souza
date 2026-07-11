@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anúncios Amazon — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Anúncios'; window.ACTIVE_NAV='amazon-anuncios.html';</script>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Anúncios Ativos Amazon</h3>
+          <span id="azAnunciosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Título</th>
+                <th class="tbl-num">Estoque</th>
+                <th class="tbl-num">Preço</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="azAnunciosTbody">
+              <tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-amazon.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+async function loadAnuncios() {
+  const tbody = document.getElementById('azAnunciosTbody');
+  const d = await DB.getAmazonProdutos({ status: 'active' });
+  if (!d || d.error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color:var(--red)">Erro ao carregar anúncios${d?.error ? ': '+d.error : ''}</td></tr>`;
+    return;
+  }
+  const rows = d.rows || [];
+  set('azAnunciosCount', `${rows.length} anúncio(s) ativo(s)`);
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td style="font-size:11px;color:var(--text-muted)">${r.sku || '—'}</td>
+      <td>${r.title || '—'}</td>
+      <td class="tbl-num">${r.estoque ?? 0}</td>
+      <td class="tbl-num">${R(r.price)}</td>
+      <td>${r.status || '—'}</td>
+    </tr>`).join('') : `<tr><td colspan="5" class="empty-state">${d.note || 'Nenhum anúncio ativo sincronizado ainda'}</td></tr>`;
+}
+
+WS.on('order_updated', payload => { if (payload?.marketplace === 'AMAZON') loadAnuncios(); });
+WS.on('_connected', loadAnuncios);
+setInterval(loadAnuncios, 60000);
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadAnuncios);
+  loadAnuncios();
+});
+</script>
+</body>
+</html>

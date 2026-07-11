@@ -36,7 +36,7 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 - **Financeiro**: vendas-turbo (dashboard da planilha Vendas ML Turbo — ver `finance.md`)
 - **Sistema**: mcp (chat com IA), monitor (métricas de servidor + config Telegram), schedule (jobs agendados), webhook (logs de webhooks recebidos)
 
-Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar — ver seção "Alternador de marketplace" abaixo): `dashboard-amazon` (dashboard dedicado da Amazon — vendas/pedidos/produtos, 100% isolado do ML), `dashboard-shopee` (placeholder — integração bloqueada aguardando aprovação do app, ver `shopee.md`).
+Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee` (placeholder — integração bloqueada aguardando aprovação do app, ver `shopee.md`).
 
 ## Padrão de nova página (contrato)
 
@@ -79,13 +79,28 @@ Todo o sistema é multi-marketplace, mas cada marketplace tem seu **dashboard e 
 
 Convenção de nome para dashboards dedicados por marketplace: `dashboard-<marketplace>.html`. `dashboard-ml.html` ainda não existe — o botão "Mercado Livre" aponta para o `index.html` atual.
 
-## `pages/dashboard-amazon.html` e `pages/dashboard-shopee.html` — dashboards independentes por marketplace
+## `js/layout-amazon.js` — sidebar e topbar exclusivos da Amazon
 
-**Não usam `js/layout.js` nem `<div id="app-sidebar">`/`<div id="app-topbar">`.** Cada uma monta o próprio `<header class="topbar">` inline (reaproveitando as classes genéricas `.topbar`/`.topbar-left`/`.topbar-right`/`.page-title` de `css/style.css`, que não dependem de sidebar) com só o título do marketplace + o switcher — sem nenhum item da sidebar ML. Isso é proposital: cada loja/marketplace é uma área independente, o menu lateral de um nunca deve aparecer na página de outro. Só incluem `css/style.css` + `css/cards.css` (não `sidebar.css`, que estiliza a sidebar/nav-item que essas páginas não têm) e, no JS, só `js/db.js` + `js/websocket.js` (sem `js/layout.js`/`js/sidebar.js`, que dependem da sidebar/alertas ML-específicos como o badge de "Perguntas").
+Igual em espírito a `js/layout.js`, mas **exclusivo das páginas Amazon** — nunca incluído por página ML nenhuma, e `js/layout.js` nunca é incluído pelas páginas Amazon. Cada marketplace tem seu próprio menu lateral; o da Amazon nunca aparece numa página ML e vice-versa (regra explícita do usuário — cada loja/marketplace é uma área independente).
 
-- **`pages/dashboard-amazon.html`** — 100% isolado do ML: busca dados só via `DB.getAmazonKpis()/getAmazonPedidos()/getAmazonProdutos()/getAmazonStatus()` (rotas `/api/amazon/*`, ver `api.md`), nunca reutiliza `DB.getDashboardKPIs()`/`DB.getPedidos()`/etc. do ML. Estrutura: 3 cards de KPI (Vendas Totais/Pedidos — valores de hoje, já que `/api/amazon/kpis` só calcula o dia; Produtos ativos), tabela "Últimos pedidos Amazon", tabela "Produtos Amazon" (mostra a `note` do backend quando vazia — catálogo de produtos Amazon ainda não é sincronizado, só pedidos), e card "Status da Integração" (última sincronização, último polling — mesmo valor de `marketplace_sync_state`, não há tracking granular separado ainda —, último erro, token conectado/desconectado por conta). Recarrega em tempo real escutando `WS.on('order_updated', ...)` filtrado por `payload.marketplace === 'AMAZON'` (evento publicado por `marketplaceEventWorker.js`), com fallback de polling a cada 60s e botão de refresh manual.
-- **`pages/dashboard-shopee.html`** — placeholder sem dados (Shopee ainda não implementada, ver `shopee.md`), só o switcher + um card informativo. Vira dashboard real seguindo o mesmo padrão da Amazon quando o app for aprovado.
-- Quando `dashboard-ml.html` ou qualquer outro dashboard dedicado por marketplace for criado no futuro, deve seguir esse mesmo padrão de independência (próprio topbar, sem `js/layout.js`/sidebar ML).
+- `AMAZON_NAV_ITEMS`: Dashboard (`dashboard-amazon.html`), Vendas Totais (`amazon-vendas.html`), Pedidos (`amazon-pedidos.html`), Produtos (`amazon-produtos.html`), Anúncios (`amazon-anuncios.html`).
+- `buildAmazonSidebar()`/`buildAmazonTopbar()` reaproveitam as mesmas classes CSS de `css/sidebar.css`/`css/style.css` que a sidebar ML usa (`.sidebar`, `.nav-item`, `.topbar`, etc.) — só troca a lista de itens e a cor de destaque (laranja `#ff9900`, identidade Amazon) — não duplica CSS.
+- O topbar da Amazon já inclui o switcher `.mkt-switcher-compact` (Mercado Livre/Amazon ativo/Shopee) e um botão de refresh (`#btnRefresh`), igual ao padrão ML.
+- Injeta em `<div id="app-sidebar">`/`<div id="app-topbar">` dentro de um `document.addEventListener('DOMContentLoaded', ...)` — **qualquer script inline da página que dependa desses elementos (ex.: `#btnRefresh`) também precisa rodar dentro de um `DOMContentLoaded` próprio**, registrado depois da tag `<script src="../js/layout-amazon.js">`, para garantir que o elemento já exista (scripts síncronos executam antes do evento `DOMContentLoaded` disparar).
+- Páginas que usam este layout incluem só `css/style.css` + `css/sidebar.css` + `css/cards.css` e, no JS, `js/db.js` + `js/websocket.js` + `js/layout-amazon.js` + `js/sidebar.js` (o `sidebar.js` de toggle mobile é genérico, reaproveitado sem alteração).
+
+## `pages/dashboard-amazon.html`, `amazon-vendas.html`, `amazon-pedidos.html`, `amazon-produtos.html`, `amazon-anuncios.html` e `pages/dashboard-shopee.html`
+
+Todas 100% isoladas do ML: buscam dados só via `DB.getAmazonKpis()/getAmazonPedidos()/getAmazonProdutos()/getAmazonStatus()` (rotas `/api/amazon/*`, ver `api.md`), nunca reutilizam `DB.getDashboardKPIs()`/`DB.getPedidos()`/etc. do ML.
+
+- **`dashboard-amazon.html`** — visão geral: 3 cards de KPI (Vendas Totais/Pedidos — valores de hoje, já que `/api/amazon/kpis` só calcula o dia; Produtos ativos), tabela "Últimos pedidos Amazon", tabela "Produtos Amazon" (mostra a `note` do backend quando vazia), e card "Status da Integração" (última sincronização, último polling — mesmo valor de `marketplace_sync_state`, sem tracking granular separado ainda —, último erro, token conectado/desconectado por conta).
+- **`amazon-vendas.html`** — card "Vendas Totais" (hoje) + card "Vendas Pagas" (contagem) + tabela de pedidos com `status='paid'` (filtro feito no cliente sobre `DB.getAmazonPedidos()` — não há endpoint de vendas agregadas por período para Amazon ainda, diferente do `vendas.html` do ML que tem margem calculada por venda; a Amazon não tem custo/imposto por pedido implementado).
+- **`amazon-pedidos.html`** — tabela completa de pedidos com filtro de status (`<select>`, filtro no cliente).
+- **`amazon-produtos.html`** — catálogo completo (`DB.getAmazonProdutos()`, sem filtro).
+- **`amazon-anuncios.html`** — só anúncios ativos (`DB.getAmazonProdutos({status:'active'})`). **Importante**: como a sincronização de catálogo Amazon ainda não existe (ver `todo.md`), hoje `amazon-produtos.html` e `amazon-anuncios.html` mostram o mesmo vazio — a distinção fica pronta para quando a Listings Items API da Amazon for integrada.
+- Todas recarregam em tempo real escutando `WS.on('order_updated', ...)` filtrado por `payload.marketplace === 'AMAZON'` (evento publicado por `marketplaceEventWorker.js`), com fallback de polling a cada 60s e botão de refresh manual (`#btnRefresh`, no topbar do `layout-amazon.js`).
+- **`pages/dashboard-shopee.html`** — não usa `layout-amazon.js` (é de outro marketplace) nem `layout.js`; monta o próprio topbar mínimo inline (mesmo padrão descrito abaixo em "Alternador de marketplace"), sem sidebar — só o switcher + um card informativo, já que a Shopee ainda não tem nenhuma página funcional (ver `shopee.md`). Quando a integração Shopee sair do bloqueio, criar um `js/layout-shopee.js` seguindo o mesmo padrão de `layout-amazon.js`.
+- Quando `dashboard-ml.html` for criado no futuro, deve seguir esse mesmo padrão de independência (sidebar própria, sem misturar com a da Amazon/Shopee).
 
 ## `js/layout.js` — sidebar, topbar e alertas globais
 

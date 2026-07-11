@@ -4,13 +4,13 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard Amazon — ML Dashboard</title>
   <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Independente do ML: usa js/layout-amazon.js (sidebar/topbar próprios da
+       Amazon), nunca js/layout.js (sidebar ML) — ver .claude/frontend.md. -->
+  <script>window.PAGE_TITLE='Dashboard'; window.ACTIVE_NAV='dashboard-amazon.html';</script>
   <style>
-    /* Página independente: não usa .app-container/.sidebar/.main-content
-       nem js/layout.js — cada marketplace tem seu próprio layout, sem
-       nenhum menu lateral de outra loja aparecendo aqui (ver frontend.md). */
-    body { min-height: 100vh; }
     .amz-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
     .amz-kpi { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid #ff9900; border-radius: 12px; padding: 18px 20px; }
     .amz-kpi .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
@@ -27,113 +27,106 @@
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-left">
-      <h1 class="page-title"><i class="fab fa-amazon"></i> Amazon</h1>
-    </div>
-    <div class="topbar-right">
-      <nav class="mkt-switcher-compact">
-        <a href="../index.html"><i class="fas fa-shopping-bag"></i> Mercado Livre</a>
-        <a href="dashboard-amazon.html" class="active"><i class="fab fa-amazon"></i> Amazon</a>
-        <a href="dashboard-shopee.html"><i class="fas fa-store"></i> Shopee</a>
-      </nav>
-      <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
-    </div>
-  </header>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
 
-  <div class="content-area">
-
-    <div class="amz-kpis">
-      <div class="amz-kpi">
-        <div class="lbl"><i class="fas fa-dollar-sign"></i> Vendas Totais</div>
-        <div class="val" id="azVendas"><div class="skeleton"></div></div>
-        <div class="sub">▲ Hoje</div>
-      </div>
-      <div class="amz-kpi">
-        <div class="lbl"><i class="fas fa-box"></i> Pedidos</div>
-        <div class="val" id="azPedidos"><div class="skeleton"></div></div>
-        <div class="sub">▲ Hoje</div>
-      </div>
-      <div class="amz-kpi">
-        <div class="lbl"><i class="fas fa-cubes"></i> Produtos</div>
-        <div class="val" id="azProdutos"><div class="skeleton"></div></div>
-        <div class="sub" style="color:var(--text-muted)">Ativos</div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:20px">
-      <div class="card-header">
-        <h3>Últimos pedidos Amazon</h3>
-        <span id="azPedidosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
-      </div>
-      <div class="table-responsive">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Cliente</th>
-              <th>SKU</th>
-              <th class="tbl-num">Valor</th>
-              <th>Status</th>
-              <th>Data</th>
-            </tr>
-          </thead>
-          <tbody id="azPedidosTbody">
-            <tr><td colspan="6" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:20px">
-      <div class="card-header">
-        <h3>Produtos Amazon</h3>
-        <span id="azProdutosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
-      </div>
-      <div class="table-responsive">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Título</th>
-              <th class="tbl-num">Estoque</th>
-              <th class="tbl-num">Preço</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="azProdutosTbody">
-            <tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><h3>Status da Integração</h3></div>
-      <div class="status-grid">
-        <div class="status-item">
-          <div class="label">Última sincronização</div>
-          <div class="value" id="azUltimaSync">—</div>
+      <div class="amz-kpis">
+        <div class="amz-kpi">
+          <div class="lbl"><i class="fas fa-dollar-sign"></i> Vendas Totais</div>
+          <div class="val" id="azVendas"><div class="skeleton"></div></div>
+          <div class="sub">▲ Hoje</div>
         </div>
-        <div class="status-item">
-          <div class="label">Último polling</div>
-          <div class="value" id="azUltimoPolling">—</div>
+        <div class="amz-kpi">
+          <div class="lbl"><i class="fas fa-box"></i> Pedidos</div>
+          <div class="val" id="azPedidos"><div class="skeleton"></div></div>
+          <div class="sub">▲ Hoje</div>
         </div>
-        <div class="status-item">
-          <div class="label">Último erro</div>
-          <div class="value" id="azUltimoErro">—</div>
-        </div>
-        <div class="status-item">
-          <div class="label">Token</div>
-          <div class="value" id="azToken">—</div>
+        <div class="amz-kpi">
+          <div class="lbl"><i class="fas fa-cubes"></i> Produtos</div>
+          <div class="val" id="azProdutos"><div class="skeleton"></div></div>
+          <div class="sub" style="color:var(--text-muted)">Ativos</div>
         </div>
       </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Últimos pedidos Amazon</h3>
+          <span id="azPedidosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Cliente</th>
+                <th>SKU</th>
+                <th class="tbl-num">Valor</th>
+                <th>Status</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="azPedidosTbody">
+              <tr><td colspan="6" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Produtos Amazon</h3>
+          <span id="azProdutosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Título</th>
+                <th class="tbl-num">Estoque</th>
+                <th class="tbl-num">Preço</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="azProdutosTbody">
+              <tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Status da Integração</h3></div>
+        <div class="status-grid">
+          <div class="status-item">
+            <div class="label">Última sincronização</div>
+            <div class="value" id="azUltimaSync">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Último polling</div>
+            <div class="value" id="azUltimoPolling">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Último erro</div>
+            <div class="value" id="azUltimoErro">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Token</div>
+            <div class="value" id="azToken">—</div>
+          </div>
+        </div>
+      </div>
+
     </div>
-
-  </div>
-
+  </main>
+</div>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
+<script src="../js/layout-amazon.js"></script>
+<script src="../js/sidebar.js"></script>
 <script>
 const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
 const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
@@ -210,10 +203,14 @@ function loadAll() { loadKpis(); loadPedidos(); loadProdutos(); loadStatus(); }
 
 WS.on('order_updated', payload => { if (payload?.marketplace === 'AMAZON') loadAll(); });
 WS.on('_connected', loadAll);
-document.getElementById('btnRefresh')?.addEventListener('click', loadAll);
 setInterval(loadAll, 60000);
 
-loadAll();
+// Espera o layout-amazon.js montar #app-sidebar/#app-topbar (DOMContentLoaded
+// registrado antes deste script) antes de tocar em elementos que ele cria.
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadAll);
+  loadAll();
+});
 </script>
 </body>
 </html>

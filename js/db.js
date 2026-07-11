@@ -138,7 +138,7 @@ const DB = {
   // ── Dashboard Amazon (isolado — não reutiliza rotas do ML) ──
   async getAmazonKpis()     { return this._get('/amazon/kpis'); },
   async getAmazonPedidos()  { return this._get('/amazon/pedidos'); },
-  async getAmazonProdutos() { return this._get('/amazon/produtos'); },
+  async getAmazonProdutos(params = {}) { return this._get('/amazon/produtos', params); },
   async getAmazonStatus()   { return this._get('/amazon/status'); },
 
   // ── Horários & Dias ────────────────────────────────────────

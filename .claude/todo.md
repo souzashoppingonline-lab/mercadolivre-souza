@@ -11,8 +11,8 @@
 - [x] Validado em produção que `AmazonPollingEventSource` roda e dispara o polling a cada 15 min.
 - [x] Corrigido: sandbox estático exige literais fixos documentados (`CreatedAfter=TEST_CASE_200`/`MarketplaceIds=ATVPDKIKX0DER` em `listRecentOrders`; `orderId=TEST_CASE_200` no path de `getOrder`) — confirmado no modelo oficial `ordersV0.json`. Ambos aplicados em `amazonClient.js`.
 - [x] Criado `MockEventSource`/`MockClient` (`AMAZON_ENV=mock`) para desenvolver/testar dashboard/KPIs sem depender do sandbox estático (que sempre devolve o mesmo pedido fixo) — ver `amazon.md`.
-- [ ] Confirmar em produção que o pedido de teste do `TEST_CASE_200` chega até `orders`/`amazon_order_data` de ponta a ponta (próximo ciclo de polling após o deploy da correção do `getOrder`).
-- [ ] Testar `AMAZON_ENV=mock` no servidor e confirmar que pedidos fabricados aparecem em `orders`/`amazon_order_data`.
+- [ ] Confirmar em produção que o pedido de teste do `TEST_CASE_200` chega até `orders`/`amazon_order_data` de ponta a ponta (a correção do `getOrder` foi deployada junto com o mock — ainda não testada isoladamente com `AMAZON_ENV=sandbox`).
+- [x] Testado `AMAZON_ENV=mock` em produção — pedido fabricado (`MOCK-924-4509518-5060956`) passou pela fila e foi gravado em `orders`/`amazon_order_data` corretamente.
 - [ ] Validar se `mapAmazonStatus()` (`marketplaceEventWorker.js`) está mapeando `OrderStatus` da Amazon para `orders.status` de forma sensata — só dá pra confirmar de fato quando pedidos (mesmo que de sandbox) começarem a chegar.
 - [ ] Expor Amazon nos endpoints de leitura (`routes/api.js`) filtrando/agrupando por `marketplace_id` — hoje as queries existentes não incluem pedidos Amazon nas telas do dashboard.
 - [ ] Rota REST dedicada só é necessária se algo não couber nos endpoints existentes com `marketplace_id`.

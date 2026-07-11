@@ -17,15 +17,28 @@
 //   AMAZON_REFRESH_TOKEN       — refresh token (prefixo "Atzr|") obtido na autorização do seller
 //   AMAZON_MARKETPLACE_ID      — ex: A2Q3Y263D00KWC (Brasil)
 //   AMAZON_REGION              — na | eu | fe (Brasil = na)
+//   AMAZON_ENV                 — sandbox | production (padrão: sandbox — troque só depois que
+//                                 o app tiver acesso de produção aprovado pela Amazon; o refresh
+//                                 token de "Teste de sandbox" do Seller Central NÃO funciona no
+//                                 endpoint de produção, e vice-versa)
 const { MarketplaceClient } = require('../interfaces/MarketplaceClient');
 const { MarketplaceRateLimitError, MarketplaceTokenInvalidError, MarketplaceTransientError } = require('../base/errors');
 
-const LWA_TOKEN_URL = 'https://api.amazon.com/auth/o2/token';
+const LWA_TOKEN_URL = 'https://api.amazon.com/auth/o2/token'; // mesmo endpoint para sandbox e produção
 
+// Sandbox devolve dados de teste estáticos (não pedidos reais) — serve para validar
+// autenticação/formato de chamada antes da aprovação de acesso de produção pela Amazon.
 const SPAPI_ENDPOINTS = {
-  na: 'https://sellingpartnerapi-na.amazon.com',
-  eu: 'https://sellingpartnerapi-eu.amazon.com',
-  fe: 'https://sellingpartnerapi-fe.amazon.com',
+  production: {
+    na: 'https://sellingpartnerapi-na.amazon.com',
+    eu: 'https://sellingpartnerapi-eu.amazon.com',
+    fe: 'https://sellingpartnerapi-fe.amazon.com',
+  },
+  sandbox: {
+    na: 'https://sandbox.sellingpartnerapi-na.amazon.com',
+    eu: 'https://sandbox.sellingpartnerapi-eu.amazon.com',
+    fe: 'https://sandbox.sellingpartnerapi-fe.amazon.com',
+  },
 };
 
 class AmazonClient extends MarketplaceClient {
@@ -88,8 +101,9 @@ class AmazonClient extends MarketplaceClient {
   async _get(path) {
     const token = await this.refreshAccessToken();
     const region = this.cfg.region || 'na';
-    const base = SPAPI_ENDPOINTS[region];
-    if (!base) throw new Error(`Região Amazon inválida: ${region}`);
+    const env = this.cfg.env === 'production' ? 'production' : 'sandbox';
+    const base = SPAPI_ENDPOINTS[env]?.[region];
+    if (!base) throw new Error(`Região/ambiente Amazon inválido: env=${env} region=${region}`);
 
     const res = await fetch(`${base}${path}`, {
       headers: { 'x-amz-access-token': token },

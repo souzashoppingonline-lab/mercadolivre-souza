@@ -24,5 +24,7 @@ module.exports = {
     refreshToken: process.env.AMAZON_REFRESH_TOKEN,
     marketplaceId: process.env.AMAZON_MARKETPLACE_ID,
     region: process.env.AMAZON_REGION || 'na',
+    // 'sandbox' até o app ter acesso de produção aprovado pela Amazon (ver .claude/amazon.md)
+    env: process.env.AMAZON_ENV || 'sandbox',
   },
 };

@@ -1,22 +1,22 @@
 # Integração — Shopee
 
-> Status atual: **não implementada.** Não existe nenhum código relacionado a Shopee no repositório hoje (nenhuma rota, worker, tabela ou cliente HTTP). Este arquivo documenta o gap e como uma futura integração deve se encaixar na arquitetura existente — ver prioridade em `roadmap.md`.
+> Status atual: **bloqueada — app em análise/aprovação pela Shopee.** Sem `client_id`/`client_secret` da Shopee, nenhuma chamada real é possível. Existe hoje um **stub** (`server/src/marketplaces/shopee/shopeeClient.js`) que só documenta o contrato e lança erro explicando o bloqueio — não é uma implementação funcional. Ver prioridade em `roadmap.md` e a decisão de arquitetura "Marketplace Engine" em `decisions.md`.
 
-## O que já existe hoje que é Shopee-ready
+## O que já existe
 
-Nada específico. O nome do projeto ("mercadolivre-souza") e todo o schema (`stores`, `orders`, `items`, etc. — ver `database.md`) são modelados 1:1 em torno da API do Mercado Livre, sem coluna de "marketplace"/"canal" em nenhuma tabela.
+- `server/src/marketplaces/shopee/shopeeClient.js` — implementa `MarketplaceClient` (`interfaces/MarketplaceClient.js`) lançando erro em todo método, com a mensagem apontando para este arquivo. Existe só para o resto do código já poder referenciar `'shopee'` como marketplace sem quebrar, e para não perder o contrato quando a implementação real começar.
+- Nenhuma rota, fila, worker ou coluna de banco específica de Shopee — nada disso deve ser criado antes do app ser aprovado e as credenciais chegarem (evita código morto/especulativo, ver `workflow.md`: "nunca aceite... arquivos desnecessários").
 
-## Como uma integração deveria ser adicionada (seguindo o padrão EDA do projeto)
+## Pré-requisitos antes de sair do stub
 
-Se/quando a Shopee for integrada, ela deve seguir exatamente o mesmo pipeline documentado em `architecture.md`, não um caminho paralelo:
+1. App aprovado pela Shopee com `Partner ID`/`Partner Key` (Shopee usa assinatura HMAC-SHA256 por requisição, não OAuth Authorization Code como o ML).
+2. Confirmar se a Shopee Open Platform expõe push/webhook de pedidos (ela tem, mas com formato próprio) ou se o primeiro corte também será por polling, como decidido para a Amazon (`amazon.md`).
+3. A decisão de schema já tomada para múltiplos marketplaces (coluna `marketplace` discriminadora — ver `decisions.md`) já cobre a Shopee; não é necessário decidir de novo quando a implementação começar, só seguir o padrão.
 
-1. **Cliente HTTP dedicado** — `server/src/shopeeClient.js`, análogo a `mlClient.js`, usado só pelo worker (nunca por rotas de leitura).
-2. **OAuth próprio** — a Shopee usa um fluxo de assinatura HMAC diferente do OAuth do ML; não reaproveitar `routes/auth.js` diretamente, criar `routes/authShopee.js` ou generalizar `stores` para um discriminador de marketplace.
-3. **Gateway de webhook** — `POST /webhooks/shopee`, mesmo contrato de resposta imediata (200) + enfileiramento que `webhookGateway.js` usa para o ML.
-4. **Filas dedicadas** — `shopee-webhooks-{shopId}`, seguindo o padrão de isolamento por loja/canal de `workers.md` (rate limits são por plataforma e por loja, não devem competer com as filas do ML).
-5. **Schema** — decisão em aberto: reusar `orders`/`items` com uma coluna `marketplace` (`'ml' | 'shopee'`), ou tabelas paralelas (`shopee_orders`, `shopee_items`). Qualquer uma das duas precisa ser decidida e registrada em `decisions.md` **antes** de implementar, porque afeta todas as queries agregadas hoje escritas assumindo uma única origem (`api.md`: `/dashboard/kpis`, `/comparativos/*`, etc.).
-6. **Frontend** — `js/db.js` ganharia métodos novos, mas o contrato "frontend só fala com `/api/*`" (regra 1 de `architecture.md`) não muda.
+## Como a implementação real deve seguir o padrão já estabelecido (Amazon como referência)
+
+Quando o app for aprovado, `shopeeClient.js` deixa de ser stub e passa a implementar de verdade `refreshAccessToken`/`getOrder`/`listRecentOrders` (mesmo contrato usado por `amazon/amazonClient.js`), lendo credenciais só de `server/.env` (nunca hardcoded), sem tocar em `mlClient.js`/`routes/auth.js`.
 
 ## O que NÃO fazer
 
-Não adicionar um cliente Shopee direto no frontend (violaria a regra de arquitetura), e não misturar credenciais/tokens Shopee na tabela `stores` sem antes decidir o discriminador de marketplace (item 5 acima) — isso quebraria silenciosamente todo agrupamento por `store_id` que hoje assume "1 store_id = 1 conta ML".
+Não adicionar um cliente Shopee direto no frontend (violaria a regra de arquitetura), não tentar implementar chamadas reais antes do app ser aprovado (não há como testar, e assinatura HMAC errada rejeitada silenciosamente é difícil de depurar às cegas), e não criar tabelas/colunas específicas de Shopee antecipadamente — a coluna `marketplace` genérica já decidida em `decisions.md` cobre o caso quando chegar a hora.

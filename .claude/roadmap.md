@@ -4,9 +4,9 @@
 
 ## Multi-marketplace: Shopee e Amazon
 
-Hoje o sistema é 100% Mercado Livre (ver `mercadolivre.md`). Não há trabalho iniciado para Shopee (`shopee.md`) ou Amazon (`amazon.md`) — ambos os arquivos documentam apenas como a integração *deveria* se encaixar na arquitetura existente, sem cronograma definido.
+Em andamento — camada comum "Marketplace Engine" criada em `server/src/marketplaces/` (decisão registrada em `decisions.md`). Status por marketplace: `mercadolivre.md` (único em produção), `amazon.md` (cliente implementado, desconectado, credenciais parciais), `shopee.md` (bloqueada — app em aprovação, só stub).
 
-Antes de iniciar qualquer implementação de um novo marketplace, decisão obrigatória a se tomar e registrar em `decisions.md`: **schema compartilhado com discriminador de marketplace** (`orders.marketplace`, `items.marketplace`, etc.) vs. **tabelas paralelas por marketplace** (`shopee_orders`, `shopee_items`). Essa escolha afeta todas as queries agregadas hoje escritas assumindo Mercado Livre como única origem (praticamente todos os endpoints em `api.md`).
+**Decisão pendente de confirmação** (bloqueia ligar a Amazon a qualquer rota/worker — ver `todo.md`): **schema compartilhado com coluna `marketplace` discriminadora** (`stores.marketplace`, `orders.marketplace`, `items.marketplace`) vs. **tabelas paralelas por marketplace** (`amazon_orders`, `amazon_items`). Proposta em avaliação: coluna discriminadora, por preservar todos os endpoints de agregação já existentes (`api.md`) funcionando para múltiplos marketplaces sem duplicar rota/query — mas ainda não confirmada com o usuário.
 
 ## Descomissionamento do sistema antigo (`ml-dashboard.service`)
 

@@ -2,6 +2,22 @@
 
 > Lista viva de itens acionáveis e concretos — granularidade de tarefa, não de direção estratégica (`roadmap.md`) nem de defeito documentado sem plano de ação definido (`known-bugs.md`, embora todo item de `known-bugs.md` com "Correção esperada" definida vire candidato natural a entrar aqui). Marque `[x]` ao concluir e mova o resultado relevante para `decisions.md`/`database.md`/etc. conforme o caso. Adicione itens novos sempre que uma tarefa ficar pendente ao final de uma sessão.
 
+## Integração Amazon — bloqueado aguardando resposta do usuário
+
+- [ ] **Confirmar a decisão de schema** antes de escrever qualquer migration: coluna `marketplace` discriminadora em `stores`/`orders`/`items` (recomendado, ver `roadmap.md`) vs. tabelas paralelas (`amazon_orders`, `amazon_items`).
+- [ ] Obter `AMAZON_LWA_CLIENT_ID` e `AMAZON_LWA_CLIENT_SECRET` (Login with Amazon) — sem eles `amazonClient.js` não troca o refresh token por access token.
+- [ ] Confirmar `AMAZON_MARKETPLACE_ID` (Brasil = `A2Q3Y263D00KWC`) e `AMAZON_REGION` (assumido `na`).
+- [ ] Definir se o primeiro corte usa polling periódico (mais simples, recomendado) ou assinatura da Notifications API (SNS/SQS) — ver `amazon.md`.
+- [ ] Depois de confirmado: migration da coluna `marketplace`, worker/fila dedicado, rota REST (ou extensão das existentes se for coluna discriminadora), atualizar `database.md`/`workers.md`/`api.md`.
+
+## Integração Shopee — bloqueado no app
+
+- [ ] Aguardando aprovação do app pela Shopee (`Partner ID`/`Partner Key`). Sem isso, `shopeeClient.js` permanece stub — não iniciar implementação real antes disso (ver `shopee.md`).
+
+## Débito técnico registrado nesta tarefa
+
+- [ ] Avaliar migrar `mlClient.js`/`routes/auth.js` para `server/src/marketplaces/mercadolivre/` seguindo o padrão `MarketplaceClient` — só depois que a Amazon estiver de fato funcionando em produção com esse padrão (ver `decisions.md`, "Marketplace Engine").
+
 ## Correções pendentes (originadas de `known-bugs.md`)
 
 - [ ] Criar migration adicionando `questions.tg_message_id BIGINT` e incluí-la em `db/migrate.js` (item 1 de `known-bugs.md`) — sem isso, responder perguntas via reply no Telegram não persiste o vínculo.

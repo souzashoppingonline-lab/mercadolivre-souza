@@ -15,4 +15,14 @@ module.exports = {
     chatId: process.env.TELEGRAM_CHAT_ID,
   },
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  // Amazon SP-API — usado só por server/src/marketplaces/amazon/amazonClient.js.
+  // Ainda não conectado a nenhuma rota/worker (ver .claude/roadmap.md).
+  amazon: {
+    appId: process.env.AMAZON_APP_ID,
+    lwaClientId: process.env.AMAZON_LWA_CLIENT_ID,
+    lwaClientSecret: process.env.AMAZON_LWA_CLIENT_SECRET,
+    refreshToken: process.env.AMAZON_REFRESH_TOKEN,
+    marketplaceId: process.env.AMAZON_MARKETPLACE_ID,
+    region: process.env.AMAZON_REGION || 'na',
+  },
 };

@@ -42,6 +42,16 @@
 
 **Decisão**: existe uma rota específica para "vendas de hoje" em vez de reusar `GET /api/vendas/detalhado?days=1` (que poderia ter drift de fuso horário/cache). **Por quê**: KPIs do dia precisam ser exatos e sempre relativos a `CURRENT_DATE`, independente de qualquer filtro de período selecionado em outra tela — um endpoint dedicado remove ambiguidade. Ver `api.md`.
 
+## Marketplace Engine — camada comum para Mercado Livre/Shopee/Amazon
+
+**Decisão**: em vez de três integrações totalmente independentes, criar `server/src/marketplaces/{interfaces,base,mercadolivre,shopee,amazon}/` — um contrato comum (`interfaces/MarketplaceClient.js`: `refreshAccessToken`, `getOrder`, `listRecentOrders`) e erros compartilhados (`base/errors.js`: `MarketplaceRateLimitError`, `MarketplaceTokenInvalidError`, `MarketplaceTransientError`) que todo adapter novo implementa. **Por quê**: evita reimplementar a mesma forma de lidar com rate limit/token inválido/erro transiente a cada novo marketplace — o Mercado Livre já fez essa descoberta "na marra" (histórico de bugs em `mercadolivre.md`/decisões acima); os adapters novos partem já sabendo disso.
+
+**Trade-off aceito conscientemente**: `mlClient.js`/`routes/auth.js` (Mercado Livre) **não foram migrados** para essa estrutura nem tocados de forma alguma — é a única integração em produção, testada e com histórico de correções (CAS no refresh, cooldown de 429, etc.); migrá-la agora seria risco sem benefício imediato. A migração do ML para `marketplaces/mercadolivre/` fica como tarefa futura explícita (ver `todo.md`), só depois do padrão provar valor com a Amazon.
+
+**Status da Amazon**: `marketplaces/amazon/amazonClient.js` implementa o fluxo LWA (refresh token → access token) e chamadas básicas de Orders da SP-API, mas **não está conectado** a nenhuma rota/worker/fila ainda — falta confirmar a decisão de schema (ver `todo.md`, item pendente) e completar as credenciais (`AMAZON_LWA_CLIENT_ID`/`AMAZON_LWA_CLIENT_SECRET`/`AMAZON_MARKETPLACE_ID`, ver `amazon.md`).
+
+**Status da Shopee**: app em aprovação — só existe um stub que documenta o contrato e recusa qualquer chamada real (ver `shopee.md`).
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

@@ -5,10 +5,11 @@
 ## Integração Amazon — bloqueado aguardando resposta do usuário
 
 - [ ] **Confirmar a decisão de schema** antes de escrever qualquer migration: coluna `marketplace` discriminadora em `stores`/`orders`/`items` (recomendado, ver `roadmap.md`) vs. tabelas paralelas (`amazon_orders`, `amazon_items`).
-- [ ] Obter `AMAZON_LWA_CLIENT_ID` e `AMAZON_LWA_CLIENT_SECRET` (Login with Amazon) — sem eles `amazonClient.js` não troca o refresh token por access token.
+- [ ] Obter `AMAZON_LWA_CLIENT_ID` e `AMAZON_LWA_CLIENT_SECRET` — clicar em "Exibir credenciais de sandbox" na Central de Desenvolvedores (Solution Provider Portal) do app `FinanceEcom`. Sem eles `amazonClient.js` não troca o refresh token por access token.
 - [ ] Confirmar `AMAZON_MARKETPLACE_ID` (Brasil = `A2Q3Y263D00KWC`) e `AMAZON_REGION` (assumido `na`).
 - [ ] Definir se o primeiro corte usa polling periódico (mais simples, recomendado) ou assinatura da Notifications API (SNS/SQS) — ver `amazon.md`.
-- [ ] Depois de confirmado: migration da coluna `marketplace`, worker/fila dedicado, rota REST (ou extensão das existentes se for coluna discriminadora), atualizar `database.md`/`workers.md`/`api.md`.
+- [ ] Validar o fluxo end-to-end em **sandbox** primeiro (`AMAZON_ENV=sandbox`, dados de teste estáticos) antes de solicitar autorização de produção no Seller Central — o app `FinanceEcom` hoje está com Status=Sandbox, sem autorização de produção.
+- [ ] Depois de validado em sandbox e confirmado o schema: migration da coluna `marketplace`, worker/fila dedicado, rota REST (ou extensão das existentes se for coluna discriminadora), atualizar `database.md`/`workers.md`/`api.md`. Só então trocar `AMAZON_ENV=production` (após autorização aprovada pela Amazon).
 
 ## Integração Shopee — bloqueado no app
 

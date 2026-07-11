@@ -126,6 +126,20 @@ CREATE TABLE IF NOT EXISTS returns (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Em bancos existentes, os CREATE TABLE acima são no-op (orders/returns já
+-- existem) e não mudam o tipo de uma coluna já criada como BIGINT. A
+-- conversão para TEXT precisa ser um ALTER explícito, feito ANTES de
+-- qualquer tabela nova que faça FK para orders(ml_id) (ex: amazon_order_data
+-- abaixo) — senão a FK falha por incompatibilidade de tipo. A constraint
+-- precisa ser solta antes de alterar o tipo da coluna referenciada (Postgres
+-- não permite alterar um lado sem o outro com a FK ativa) e recriada depois.
+-- Todo o bloco é idempotente: em instalação nova ambos já são TEXT (no-op),
+-- e reexecutar em bancos já migrados só recria a mesma constraint.
+ALTER TABLE returns DROP CONSTRAINT IF EXISTS returns_order_id_fkey;
+ALTER TABLE orders  ALTER COLUMN ml_id    TYPE TEXT USING ml_id::TEXT;
+ALTER TABLE returns ALTER COLUMN order_id TYPE TEXT USING order_id::TEXT;
+ALTER TABLE returns ADD CONSTRAINT returns_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(ml_id);
+
 -- Campos exclusivos de pedidos Amazon — orders continua só com campos comuns.
 CREATE TABLE IF NOT EXISTS amazon_order_data (
   order_id TEXT PRIMARY KEY REFERENCES orders(ml_id),

@@ -41,8 +41,13 @@ CREATE INDEX IF NOT EXISTS idx_stores_marketplace  ON stores(marketplace_id);
 -- Amazon (ex: "902-1845936-3456781") não são numéricos — precisa ser TEXT.
 -- Seguro: ml_id é usado em todo o código só como chave opaca de
 -- igualdade/join, nunca em ORDER BY/aritmética (verificado em api.js/worker.js).
-ALTER TABLE orders  ALTER COLUMN ml_id TYPE TEXT USING ml_id::TEXT;
+-- A FK de returns precisa ser solta antes de alterar o tipo do lado
+-- referenciado (Postgres não aceita os dois lados temporariamente
+-- incompatíveis) e recriada depois — bloco idempotente, seguro para reexecutar.
+ALTER TABLE returns DROP CONSTRAINT IF EXISTS returns_order_id_fkey;
+ALTER TABLE orders  ALTER COLUMN ml_id    TYPE TEXT USING ml_id::TEXT;
 ALTER TABLE returns ALTER COLUMN order_id TYPE TEXT USING order_id::TEXT;
+ALTER TABLE returns ADD CONSTRAINT returns_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(ml_id);
 
 -- Campos exclusivos de pedidos Amazon — `orders` continua só com os campos
 -- comuns entre marketplaces.

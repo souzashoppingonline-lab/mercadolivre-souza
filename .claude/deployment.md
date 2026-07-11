@@ -2,6 +2,10 @@
 
 > Escopo: como o sistema roda em produção — servidor, processos, banco, proxy. Ambiente de desenvolvimento local está em `backend.md` (variáveis de ambiente) e no `server/README.md`. **Sempre que a topologia de produção mudar (novo domínio, novo serviço, nova migration aplicada manualmente), atualize este arquivo.**
 
+## Branch principal do repositório
+
+**O branch padrão (principal) no GitHub é `claude/archive-files-git-8vn8pv`** — este repositório não tem `main` nem `master`. Qualquer trabalho que precise "ir para o branch principal" deve ser mesclado/enviado para `claude/archive-files-git-8vn8pv`. Branches de sessão do Claude Code (`claude/<nome-da-sessão>`) são criados a partir dele e devem ser mesclados de volta nele quando o trabalho estiver pronto para ficar permanente — não presumir que existe um branch `main` a criar.
+
 ## Produção
 
 - **URL pública**: `https://multimixvendas.duckdns.org`

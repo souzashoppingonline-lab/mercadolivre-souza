@@ -9,18 +9,28 @@
 - `server/src/marketplaces/amazon/amazonClient.js` — troca `AMAZON_REFRESH_TOKEN` por access token via LWA, chama a SP-API (`getOrder`, `listRecentOrders`). Suporta sandbox e produção via `AMAZON_ENV`.
 - `server/src/marketplaces/interfaces/EventSource.js` — contrato `start/stop/discoverEvents` para descoberta de eventos de marketplace, independente do mecanismo (polling, webhook, Notifications API).
 - `server/src/marketplaces/Scheduler.js` — orquestra múltiplas `EventSource`, chamando `discoverEvents()` no intervalo registrado.
-- `server/src/marketplaces/amazon/AmazonPollingEventSource.js` — implementação real do `EventSource` para a Amazon: a cada 15 min, lê o cursor em `marketplace_sync_state`, chama `AmazonClient.listRecentOrders`, e publica um evento padronizado por pedido (`{marketplace:'AMAZON', event:'ORDER_UPDATED', resourceId, sellerId, timestamp}`) na fila BullMQ `marketplace-events-amazon`.
-- `server/src/queues/marketplaceEventQueue.js` — fila BullMQ por marketplace (mesmo padrão de `queues/webhookQueue.js` do ML).
-- `server/src/marketplaceEventWorker.js` — consome a fila acima, busca o pedido completo, faz upsert em `orders` (campos comuns, `marketplace_id`, `store_id` = store sentinela `9000000001`) e nos campos exclusivos em `amazon_order_data`. **Totalmente desacoplado** do dispatch table `handlers`/`processJob` do ML — `worker.js` só ganhou 2 linhas aditivas no final do arquivo para iniciar esse worker novo.
-- `config/env.js` tem o namespace `amazon` (`appId`, `lwaClientId`, `lwaClientSecret`, `refreshToken`, `marketplaceId`, `region`, `env`), lido de `server/.env`.
+- `server/src/marketplaces/amazon/AmazonPollingEventSource.js` — implementação real do `EventSource` para a Amazon, **uma instância por conta** (por linha de `stores`): a cada 15 min, lê o cursor em `marketplace_sync_state` (chave `source_key = stores.id`), chama `AmazonClient.listRecentOrders`, e publica um evento padronizado por pedido (`{marketplace:'AMAZON', event:'ORDER_UPDATED', resourceId, storeId, sellerId, timestamp}`) na fila BullMQ `marketplace-events-amazon`. `storeId` é a chave de roteamento — identifica de qual conta veio o pedido.
+- `server/src/queues/marketplaceEventQueue.js` — fila BullMQ por marketplace (mesmo padrão de `queues/webhookQueue.js` do ML) — compartilhada entre todas as contas Amazon, não uma fila por conta.
+- `server/src/marketplaceEventWorker.js` — no boot, busca todas as linhas de `stores` com `marketplace_id=AMAZON` e registra uma `AmazonPollingEventSource` + um `AmazonClient` por conta (mapa `clients` chaveado por `stores.id`). Ao consumir um evento, usa `evt.storeId` para achar o client certo e gravar `orders.store_id` — nada fixo/hardcoded. **Totalmente desacoplado** do dispatch table `handlers`/`processJob` do ML — `worker.js` só ganhou 2 linhas aditivas no final do arquivo para iniciar esse worker novo.
+- `config/env.js` tem o namespace `amazon` (`appId`, `lwaClientId`, `lwaClientSecret`, `refreshToken`, `marketplaceId`, `region`, `env`), lido de `server/.env` — esses valores são os **defaults globais**; `lwaClientId`/`lwaClientSecret`/`env` (sandbox/production/mock) são compartilhados por todas as contas (identificam o app, não o seller), enquanto `refreshToken`/`marketplaceId`/`region` são sobrepostos por conta quando a linha de `stores` correspondente tiver valor (ver Schema abaixo).
 
-## Schema (v15 — ver `database.md` para colunas completas)
+## Suporte a múltiplas contas (v16)
 
-- Tabela `marketplaces` (catálogo: `ML`, `AMAZON`, `SHOPEE`, `MAGALU`, `TIKTOK`) + coluna `marketplace_id` em `stores`/`orders`/`items`/`messages`.
-- `orders.ml_id` deixou de ser `BIGINT` e virou `TEXT` (IDs de pedido Amazon não são numéricos) — mesmo nome de coluna por ora, guardando IDs de qualquer marketplace.
-- `amazon_order_data` — campos exclusivos da Amazon (`amazon_order_id`, `seller_id`, `fulfillment_channel`, `order_type`, `raw_data`), `orders` continua só com os campos comuns entre marketplaces.
-- `marketplace_sync_state` — cursor de última sincronização usado pelo `AmazonPollingEventSource`.
-- Store sentinela `id=9000000001` (`nickname='Amazon'`) — só uma conta Amazon configurada hoje via `.env`, sem descoberta dinâmica de lojas como o ML tem.
+Cada conta Amazon é uma linha em `stores` com `marketplace_id=AMAZON`:
+- `stores.refresh_token` — refresh token OAuth **dessa conta** (mesma coluna genérica que o ML usa).
+- `stores.amazon_marketplace_id` / `stores.amazon_region` — override por conta (uma conta pode vender no Brasil, outra nos EUA); quando `NULL`, cai para `AMAZON_MARKETPLACE_ID`/`AMAZON_REGION` do `.env` (mesmo padrão de `ml_client_id`/`ml_client_secret` já usado pelo ML, ver `auth.js`).
+- `AMAZON_LWA_CLIENT_ID`/`AMAZON_LWA_CLIENT_SECRET` continuam **só globais** — identificam o app na Amazon (Login with Amazon), não o seller; todas as contas autorizadas ao mesmo app `FinanceEcom` compartilham esse client.
+
+**Como adicionar uma segunda conta hoje**: ainda não existe rota/UI para isso — é um `INSERT INTO stores (id, nickname, marketplace_id, refresh_token, amazon_marketplace_id, amazon_region) VALUES (...)` manual (id sintético seguindo a convenção `9000000002`, `9000000003`...), reiniciar o `ml-worker-novo.service`, e a nova conta é automaticamente registrada no `Scheduler` no próximo boot. Uma rota REST dedicada para cadastrar contas fica como próximo passo em `todo.md`.
+
+## Schema (v15/v16 — ver `database.md` para colunas completas)
+
+- Tabela `marketplaces` (catálogo: `ML`, `AMAZON`, `SHOPEE`, `MAGALU`, `TIKTOK`) + coluna `marketplace_id` em `stores`/`orders`/`items`/`messages` (v15).
+- `orders.ml_id` deixou de ser `BIGINT` e virou `TEXT` (IDs de pedido Amazon não são numéricos) — mesmo nome de coluna por ora, guardando IDs de qualquer marketplace (v15).
+- `amazon_order_data` — campos exclusivos da Amazon (`amazon_order_id`, `seller_id`, `fulfillment_channel`, `order_type`, `raw_data`), `orders` continua só com os campos comuns entre marketplaces (v15).
+- `marketplace_sync_state` — cursor de última sincronização por conta (`source_key = stores.id`), usado pelo `AmazonPollingEventSource` (v15).
+- `stores.amazon_marketplace_id` / `stores.amazon_region` — override de credencial por conta (v16, ver acima).
+- Store sentinela `id=9000000001` (`nickname='Amazon'`) — a primeira conta cadastrada; contas adicionais seguem a mesma convenção de id sintético.
 
 ## Credenciais
 

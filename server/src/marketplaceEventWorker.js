@@ -1,7 +1,8 @@
 // Consome eventos padronizados publicados por EventSources de marketplace
-// (hoje: AmazonPollingEventSource) numa fila BullMQ própria, totalmente
-// desacoplada do dispatch table `handlers`/`processJob` do Mercado Livre em
-// worker.js — este arquivo não altera nenhuma linha do pipeline ML existente.
+// (hoje: AmazonPollingEventSource, uma instância por conta Amazon cadastrada
+// em `stores`) numa fila BullMQ própria, totalmente desacoplada do dispatch
+// table `handlers`/`processJob` do Mercado Livre em worker.js — este arquivo
+// não altera nenhuma linha do pipeline ML existente.
 // Ver .claude/decisions.md ("Marketplace Engine — EventSource").
 const { Worker } = require('bullmq');
 const IORedis = require('ioredis');
@@ -11,7 +12,6 @@ const redis = require('./db/redis');
 const { publish } = require('./ws/hub');
 const { Scheduler } = require('./marketplaces/Scheduler');
 const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
-const { AmazonClient } = require('./marketplaces/amazon/amazonClient');
 const { MockClient, MockEventSource } = require('./marketplaces/mock/mockProvider');
 
 const AMAZON_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — ajustável sem tocar no restante do pipeline
@@ -22,7 +22,12 @@ const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar f
 // devolve um pedido fixo). Trocar de volta para a Amazon real é só mudar
 // AMAZON_ENV — nada mais no pipeline muda (ver .claude/amazon.md).
 const isMock = env.amazon?.env === 'mock';
-const clients = { AMAZON: isMock ? new MockClient() : new AmazonClient(env) };
+
+// Client Amazon (ou mock) por conta — chave é `stores.id`, não o código do
+// marketplace, porque pode haver várias contas Amazon simultâneas. Populado
+// em startMarketplaceEventWorkers() a partir das linhas de `stores` com
+// marketplace_id=AMAZON.
+const clients = new Map();
 
 // Vocabulário compartilhado de `orders.status` — ajuste fino de quais status
 // da Amazon contam como "pago" fica para quando pedidos reais de sandbox/
@@ -42,11 +47,9 @@ function mapAmazonStatus(orderStatus) {
   }
 }
 
-const AMAZON_STORE_ID = 9000000001; // store sentinela criada em migrate-v15.sql
-
 async function handleOrderEvent(evt) {
-  const client = clients[evt.marketplace];
-  if (!client) { console.warn(`[marketplace-worker] sem client para ${evt.marketplace}`); return; }
+  const client = clients.get(evt.storeId);
+  if (!client) { console.warn(`[marketplace-worker] sem client para storeId=${evt.storeId}`); return; }
 
   const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = $1`, [evt.marketplace]);
   const marketplaceId = mp[0]?.id;
@@ -70,7 +73,7 @@ async function handleOrderEvent(evt) {
        total_amount = EXCLUDED.total_amount,
        status = EXCLUDED.status,
        updated_at = now()`,
-    [o.AmazonOrderId, marketplaceId, AMAZON_STORE_ID, totalAmount, status, o.PurchaseDate || null]
+    [o.AmazonOrderId, marketplaceId, evt.storeId, totalAmount, status, o.PurchaseDate || null]
   );
 
   await pool.query(
@@ -85,14 +88,14 @@ async function handleOrderEvent(evt) {
   );
 
   await redis.del('kpis:summary');
-  await publish('order_updated', { id: o.AmazonOrderId, status, marketplace: 'AMAZON' });
+  await publish('order_updated', { id: o.AmazonOrderId, status, marketplace: 'AMAZON', storeId: evt.storeId });
 
   if (status === 'paid' && previousStatus !== 'paid') {
-    console.log(`[marketplace-worker] ✅ nova venda Amazon: ${o.AmazonOrderId} | R$ ${totalAmount}`);
+    console.log(`[marketplace-worker] ✅ nova venda Amazon (store_id=${evt.storeId}): ${o.AmazonOrderId} | R$ ${totalAmount}`);
   }
 }
 
-function startMarketplaceEventWorkers() {
+async function startMarketplaceEventWorkers() {
   const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
   const w = new Worker('marketplace-events-amazon', (job) => handleOrderEvent(job.data), {
     connection,
@@ -102,11 +105,25 @@ function startMarketplaceEventWorkers() {
   w.on('error', (err) => console.error('[marketplace-worker] error:', err.message));
   console.log('[marketplace-worker] started queue marketplace-events-amazon');
 
+  // Uma EventSource por conta Amazon cadastrada — suporta múltiplas contas
+  // (cada linha de `stores` com marketplace_id=AMAZON é uma conta), não só a
+  // store sentinela original. Ver .claude/decisions.md.
+  const { rows: amazonStores } = await pool.query(
+    `SELECT id, nickname, refresh_token, amazon_marketplace_id, amazon_region
+     FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'AMAZON')`
+  );
+  if (!amazonStores.length) {
+    console.warn('[marketplace-worker] nenhuma conta Amazon cadastrada em `stores` — nada para sincronizar');
+    return;
+  }
+
   const scheduler = new Scheduler();
-  if (isMock) {
-    scheduler.register(new MockEventSource(), { intervalMs: MOCK_POLL_INTERVAL_MS });
-  } else {
-    scheduler.register(new AmazonPollingEventSource(), { intervalMs: AMAZON_POLL_INTERVAL_MS });
+  const mockClient = isMock ? new MockClient() : null; // stateless o bastante pra ser compartilhado entre contas
+  for (const store of amazonStores) {
+    const source = isMock ? new MockEventSource(store) : new AmazonPollingEventSource(store);
+    clients.set(store.id, isMock ? mockClient : source.client);
+    scheduler.register(source, { intervalMs: isMock ? MOCK_POLL_INTERVAL_MS : AMAZON_POLL_INTERVAL_MS });
+    console.log(`[marketplace-worker] conta Amazon registrada: ${store.nickname} (store_id=${store.id})`);
   }
   scheduler.startAll().catch((err) => console.error('[marketplace-worker] scheduler startAll falhou:', err.message));
 }

@@ -17,6 +17,8 @@
 
 Quando o app for aprovado, `shopeeClient.js` deixa de ser stub e passa a implementar de verdade `refreshAccessToken`/`getOrder`/`listRecentOrders` (mesmo contrato usado por `amazon/amazonClient.js`), lendo credenciais só de `server/.env` (nunca hardcoded), sem tocar em `mlClient.js`/`routes/auth.js`.
 
+**Múltiplas contas desde o início**: a Amazon (v16, ver `amazon.md`/`decisions.md`) já estabeleceu o padrão de suportar várias contas por marketplace — uma linha em `stores` por conta (com `marketplace_id=SHOPEE`), credenciais mescladas por conta com fallback pro `.env` global, uma `EventSource` por conta registrada no `Scheduler`, e o campo `storeId` no evento padronizado como chave de roteamento. A implementação real da Shopee deve seguir esse mesmo padrão desde o primeiro commit — não implementar "conta única fixa" e refatorar depois.
+
 ## O que NÃO fazer
 
 Não adicionar um cliente Shopee direto no frontend (violaria a regra de arquitetura), não tentar implementar chamadas reais antes do app ser aprovado (não há como testar, e assinatura HMAC errada rejeitada silenciosamente é difícil de depurar às cegas), e não criar tabelas/colunas específicas de Shopee antecipadamente — a coluna `marketplace` genérica já decidida em `decisions.md` cobre o caso quando chegar a hora.

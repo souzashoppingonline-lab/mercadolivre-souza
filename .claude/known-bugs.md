@@ -29,3 +29,9 @@ Não é bug de execução, mas risco de uso incorreto: essa rota retorna `liquid
 ## 6. Cache `kpis:{storeId}` invalidado mas nunca escrito/lido
 
 `handleOrder` (worker) chama `redis.del(\`kpis:${storeId}\`)` a cada pedido processado, mas nenhuma rota em `routes/api.js` usa essa chave (`cached('kpis:{storeId}', ...)`) hoje — só `kpis:summary` existe de fato. Código morto de invalidação, sem efeito prático, mas indica uma feature de "KPIs por loja com cache" que foi removida ou nunca terminada.
+
+## 7. `routes/api.js` não filtra `marketplace_id` — pedidos Amazon contaminam KPIs/relatórios do ML
+
+Desde a v15 (`orders.marketplace_id`, ver `database.md`/`amazon.md`), `orders` pode conter pedidos de qualquer marketplace, mas as 30+ queries em `routes/api.js` que leem `orders` (incluindo `/dashboard/kpis`, que alimenta o card "vendas hoje" do dashboard principal) não filtram por `marketplace_id` — somam/listam tudo. Confirmado na prática: um pedido de teste (mock) com `date_created` do dia chegou a somar no "vendas hoje" real em produção antes de ser apagado manualmente.
+
+**Correção esperada**: decisão de produto pendente — unificar KPIs/relatórios por padrão (mostrando ML+Amazon juntos) vs. manter as telas atuais ML-only por padrão com Amazon como visão separada/opt-in — e só depois ajustar as queries de acordo. Ver `todo.md` ("Urgente/risco em aberto").

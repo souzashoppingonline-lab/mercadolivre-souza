@@ -69,8 +69,15 @@ class MockClient extends MarketplaceClient {
 }
 
 class MockEventSource extends EventSource {
+  // store: mesma linha de `stores` que uma AmazonPollingEventSource real
+  // receberia — só usamos o id, pra marcar o evento com a conta certa.
+  constructor(store) {
+    super();
+    this.store = store;
+  }
+
   async start() {
-    console.log('[mock-provider] MockEventSource ativo — gerando pedidos de teste variados');
+    console.log(`[mock-provider] MockEventSource ativo (${this.store.nickname}) — gerando pedidos de teste variados`);
   }
 
   async stop() {}
@@ -80,11 +87,12 @@ class MockEventSource extends EventSource {
   async discoverEvents() {
     if (Math.random() > 0.7) return;
     const order = generateMockOrder();
-    const jobId = `AMAZON:ORDER_UPDATED:${order.AmazonOrderId}`;
+    const jobId = `AMAZON:${this.store.id}:ORDER_UPDATED:${order.AmazonOrderId}`;
     await getQueue('amazon').add('marketplace-event', {
       marketplace: 'AMAZON',
       event: 'ORDER_UPDATED',
       resourceId: order.AmazonOrderId,
+      storeId: this.store.id,
       sellerId: 'mock',
       timestamp: new Date().toISOString(),
     }, { jobId });

@@ -11,15 +11,17 @@
 - [x] Validado em produção que `AmazonPollingEventSource` roda e dispara o polling a cada 15 min.
 - [x] Corrigido: sandbox estático exige literais fixos documentados (`CreatedAfter=TEST_CASE_200`/`MarketplaceIds=ATVPDKIKX0DER` em `listRecentOrders`; `orderId=TEST_CASE_200` no path de `getOrder`) — confirmado no modelo oficial `ordersV0.json`. Ambos aplicados em `amazonClient.js`.
 - [x] Criado `MockEventSource`/`MockClient` (`AMAZON_ENV=mock`) para desenvolver/testar dashboard/KPIs sem depender do sandbox estático (que sempre devolve o mesmo pedido fixo) — ver `amazon.md`.
-- [ ] Confirmar em produção que o pedido de teste do `TEST_CASE_200` chega até `orders`/`amazon_order_data` de ponta a ponta (a correção do `getOrder` foi deployada junto com o mock — ainda não testada isoladamente com `AMAZON_ENV=sandbox`).
+- [x] Confirmado em produção que o pedido de teste do `TEST_CASE_200` chega até `orders`/`amazon_order_data` de ponta a ponta (`✅ nova venda Amazon: 902-1845936-5435065 | R$ 11.01`).
 - [x] Testado `AMAZON_ENV=mock` em produção — pedido fabricado (`MOCK-924-4509518-5060956`) passou pela fila e foi gravado em `orders`/`amazon_order_data` corretamente.
-- [ ] Validar se `mapAmazonStatus()` (`marketplaceEventWorker.js`) está mapeando `OrderStatus` da Amazon para `orders.status` de forma sensata — só dá pra confirmar de fato quando pedidos (mesmo que de sandbox) começarem a chegar.
-- [ ] Expor Amazon nos endpoints de leitura (`routes/api.js`) filtrando/agrupando por `marketplace_id` — hoje as queries existentes não incluem pedidos Amazon nas telas do dashboard.
-- [ ] Rota REST dedicada só é necessária se algo não couber nos endpoints existentes com `marketplace_id`.
-- [ ] Notificação Telegram de vendas Amazon (fora de escopo da v15).
+- [x] **Banco e backend preparados para múltiplas contas Amazon/Shopee (v16)** — `stores` guarda uma linha por conta, `marketplaceEventWorker.js` registra uma `EventSource`/`client` por conta, eventos carregam `storeId` como chave de roteamento. Ver `decisions.md` ("Marketplace Engine — múltiplas contas por marketplace").
+- [ ] **Criar rota REST/admin para cadastrar nova conta Amazon** — hoje é um `INSERT` manual em `stores` (ver `amazon.md`, "Como adicionar uma segunda conta").
+- [ ] **Urgente/risco em aberto**: `routes/api.js` tem 30+ pontos lendo `orders` sem filtrar `marketplace_id` — qualquer pedido Amazon real vai se misturar nos KPIs/relatórios do ML até essas queries serem revisadas (decisão de produto pendente: unificar por padrão vs. ML-only por padrão com Amazon opt-in). Pedidos de teste já foram apagados do banco (ver `decisions.md`), mas o risco de contaminação futura continua.
+- [ ] Validar se `mapAmazonStatus()` (`marketplaceEventWorker.js`) está mapeando `OrderStatus` da Amazon para `orders.status` de forma sensata — só dá pra confirmar de fato quando pedidos reais começarem a chegar.
+- [ ] Expor Amazon nos endpoints de leitura (`routes/api.js`) filtrando/agrupando por `marketplace_id` — depende da decisão de produto do item "urgente" acima.
+- [ ] Notificação Telegram de vendas Amazon (fora de escopo até agora).
 - [ ] Trocar `AMAZON_ENV` para `production` só depois de autorização de produção aprovada pela Amazon no Seller Central.
 
-## Débito técnico — Marketplace Engine (v15)
+## Débito técnico — Marketplace Engine (v15/v16)
 
 - [ ] Fase 2: normalização completa (`order_items`/`products`/`inventory`/`shipments`/`customers`) via Strangler Pattern, módulo a módulo — ver `roadmap.md`.
 - [ ] Renomear `orders.ml_id` para algo marketplace-neutro (ex: `external_order_id`) — mantido por ora para não tocar em todo `api.js`/`worker.js`/frontend que já referenciam esse nome.

@@ -5,22 +5,19 @@
 // por rotas de leitura do dashboard — mesma regra de fronteira usada para
 // mlClient.js (ver .claude/architecture.md, regra 2-3).
 //
-// AINDA NÃO CONECTADO a server.js/worker.js/routes — este arquivo só existe
-// isolado até a decisão de schema (coluna `marketplace` discriminadora) ser
-// confirmada. Ver .claude/decisions.md e .claude/roadmap.md.
+// Suporta múltiplas contas Amazon: o construtor recebe um `cfg` já mesclado
+// (não o objeto `env` inteiro) — quem instancia (AmazonPollingEventSource,
+// marketplaceEventWorker.js) monta esse cfg combinando a linha de `stores`
+// da conta (refresh_token, amazon_marketplace_id, amazon_region) com os
+// defaults globais de server/.env. Ver .claude/decisions.md.
 //
-// Credenciais — SOMENTE via variáveis de ambiente (server/.env), nunca hardcoded:
-//   AMAZON_APP_ID              — "amzn1.sp.solution.xxxx" (Application ID do Developer Console;
-//                                 NÃO é o mesmo que AMAZON_LWA_CLIENT_ID)
-//   AMAZON_LWA_CLIENT_ID       — Client ID da Login with Amazon (necessário p/ trocar o refresh token)
-//   AMAZON_LWA_CLIENT_SECRET   — Client Secret da Login with Amazon
-//   AMAZON_REFRESH_TOKEN       — refresh token (prefixo "Atzr|") obtido na autorização do seller
-//   AMAZON_MARKETPLACE_ID      — ex: A2Q3Y263D00KWC (Brasil)
-//   AMAZON_REGION              — na | eu | fe (Brasil = na)
-//   AMAZON_ENV                 — sandbox | production (padrão: sandbox — troque só depois que
-//                                 o app tiver acesso de produção aprovado pela Amazon; o refresh
-//                                 token de "Teste de sandbox" do Seller Central NÃO funciona no
-//                                 endpoint de produção, e vice-versa)
+// Campos esperados em `cfg` (mesmos nomes de server/.env, sem prefixo AMAZON_):
+//   lwaClientId, lwaClientSecret  — compartilhados entre todas as contas
+//                                    (identificam o app, não o seller)
+//   refreshToken                  — por conta (prefixo "Atzr|")
+//   marketplaceId                 — ex: A2Q3Y263D00KWC (Brasil) — por conta
+//   region                        — na | eu | fe (Brasil = na) — por conta
+//   env                           — sandbox | production | mock — global (AMAZON_ENV)
 const { MarketplaceClient } = require('../interfaces/MarketplaceClient');
 const { MarketplaceRateLimitError, MarketplaceTokenInvalidError, MarketplaceTransientError } = require('../base/errors');
 
@@ -44,9 +41,9 @@ const SPAPI_ENDPOINTS = {
 class AmazonClient extends MarketplaceClient {
   static get id() { return 'amazon'; }
 
-  constructor(env) {
+  constructor(cfg) {
     super();
-    this.cfg = env.amazon;
+    this.cfg = cfg;
     this._accessToken = null;
     this._accessTokenExpiresAt = 0;
   }
@@ -62,8 +59,9 @@ class AmazonClient extends MarketplaceClient {
   }
 
   // Troca o refresh token por um access token de curta duração (LWA).
-  // Não precisa de storeId — a Amazon usa um refresh token por seller autorizado,
-  // e hoje só temos uma conta configurada via .env (ver known-bugs.md se isso mudar).
+  // Cada conta tem sua própria instância de AmazonClient (cfg.refreshToken
+  // já é o dessa conta), então o cache de access token em memória
+  // (_accessToken/_accessTokenExpiresAt) é naturalmente isolado por conta.
   async refreshAccessToken() {
     this._assertConfigured();
     if (this._accessToken && Date.now() < this._accessTokenExpiresAt - 60000) {

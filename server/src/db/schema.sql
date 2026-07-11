@@ -42,11 +42,15 @@ CREATE TABLE IF NOT EXISTS stores (
   ml_client_id TEXT,
   ml_client_secret TEXT,
   marketplace_id INT REFERENCES marketplaces(id),
+  amazon_marketplace_id TEXT, -- override por conta Amazon; fallback AMAZON_MARKETPLACE_ID (.env) quando NULL
+  amazon_region TEXT,         -- override por conta Amazon; fallback AMAZON_REGION (.env) quando NULL
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 -- Em bancos existentes, o CREATE TABLE acima é no-op — a coluna precisa
 -- deste ALTER explícito para existir antes de qualquer INSERT/index que a use.
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS amazon_marketplace_id TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS amazon_region TEXT;
 
 CREATE TABLE IF NOT EXISTS items (
   ml_id TEXT PRIMARY KEY,

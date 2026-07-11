@@ -31,12 +31,15 @@ created_at TIMESTAMPTZ
 ```
 Referenciada por `marketplace_id` em `stores`/`orders`/`items`/`messages` (coluna discriminadora, v15). Todo dado pré-existente foi backfillado para `code='ML'`. Ver `decisions.md` ("Marketplace Engine — schema evolutivo").
 
-### `stores` — lojas/contas autorizadas por marketplace
+### `stores` — lojas/contas autorizadas por marketplace (suporta múltiplas contas por marketplace — v16)
 ```
-id BIGINT PK              -- user_id do Mercado Livre; para Amazon é a store sentinela fixa 9000000001
+id BIGINT PK              -- user_id do Mercado Livre; para Amazon/Shopee, um id sintético por conta
+                           -- (convenção: sentinela original 9000000001, próximas contas 9000000002...)
 nickname TEXT
 level_id TEXT
-access_token, refresh_token TEXT
+access_token, refresh_token TEXT  -- refresh_token também usado pela Amazon (por conta)
+amazon_marketplace_id TEXT  -- v16: override por conta (país/marketplace Amazon); NULL usa AMAZON_MARKETPLACE_ID global
+amazon_region TEXT          -- v16: override por conta (na|eu|fe); NULL usa AMAZON_REGION global
 token_expires_at TIMESTAMPTZ
 active_listings INT, monthly_revenue NUMERIC   -- não populados automaticamente hoje
 imposto_pct NUMERIC DEFAULT 0                  -- % de imposto usada no cálculo de margem

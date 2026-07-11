@@ -4,18 +4,31 @@
 // ao syncVendas do ML), publicando eventos padronizados numa fila BullMQ.
 // O Worker que consome esses eventos (server/src/marketplaceEventWorker.js)
 // não sabe que a origem foi polling — só reage ao formato do evento.
+//
+// Uma instância por conta Amazon (uma linha em `stores` com
+// marketplace_id=AMAZON) — quem cria as instâncias e chama startAll() é
+// server/src/marketplaceEventWorker.js, que itera todas as contas cadastradas.
 const { EventSource } = require('../interfaces/EventSource');
 const { AmazonClient } = require('./amazonClient');
 const { getQueue } = require('../../queues/marketplaceEventQueue');
 const pool = require('../../db/pool');
 const env = require('../../config/env');
 
-const SOURCE_KEY = 'default'; // só uma conta Amazon configurada via .env hoje
-
 class AmazonPollingEventSource extends EventSource {
-  constructor() {
+  // store: linha de `stores` da conta (id, nickname, refresh_token,
+  // amazon_marketplace_id, amazon_region) — colunas específicas da conta
+  // sobrepõem os defaults globais de server/.env quando não forem NULL,
+  // mesmo padrão de ml_client_id/ml_client_secret já usado para o ML.
+  constructor(store) {
     super();
-    this.client = new AmazonClient(env);
+    this.store = store;
+    this.sourceKey = String(store.id);
+    this.client = new AmazonClient({
+      ...env.amazon,
+      refreshToken: store.refresh_token || env.amazon.refreshToken,
+      marketplaceId: store.amazon_marketplace_id || env.amazon.marketplaceId,
+      region: store.amazon_region || env.amazon.region,
+    });
     this.marketplaceId = null;
   }
 
@@ -30,7 +43,7 @@ class AmazonPollingEventSource extends EventSource {
   async stop() {}
 
   async discoverEvents() {
-    if (!env.amazon?.lwaClientId) return; // não configurada — no-op silencioso, mesma postura do amazonClient.js
+    if (!this.client.cfg?.lwaClientId) return; // não configurada — no-op silencioso, mesma postura do amazonClient.js
     if (!this.marketplaceId) await this.start();
 
     const since = await this._getLastSyncedAt();
@@ -40,7 +53,7 @@ class AmazonPollingEventSource extends EventSource {
     try {
       orders = await this.client.listRecentOrders(since.toISOString());
     } catch (e) {
-      console.warn('[amazon-polling] listRecentOrders falhou:', e.message);
+      console.warn(`[amazon-polling] (${this.store.nickname}) listRecentOrders falhou:`, e.message);
       return;
     }
 
@@ -48,24 +61,25 @@ class AmazonPollingEventSource extends EventSource {
     const queue = getQueue('amazon');
     for (const o of list) {
       if (!o.AmazonOrderId) continue;
-      const jobId = `AMAZON:ORDER_UPDATED:${o.AmazonOrderId}`;
+      const jobId = `AMAZON:${this.store.id}:ORDER_UPDATED:${o.AmazonOrderId}`;
       await queue.add('marketplace-event', {
         marketplace: 'AMAZON',
         event: 'ORDER_UPDATED',
         resourceId: o.AmazonOrderId,
-        sellerId: SOURCE_KEY,
+        storeId: this.store.id, // chave de roteamento — qual client/store usar no consumidor
+        sellerId: this.sourceKey,
         timestamp: new Date().toISOString(),
       }, { jobId });
     }
 
-    if (list.length) console.log(`[amazon-polling] ${list.length} pedido(s) descobertos desde ${since.toISOString()}`);
+    if (list.length) console.log(`[amazon-polling] (${this.store.nickname}) ${list.length} pedido(s) descobertos desde ${since.toISOString()}`);
     await this._setLastSyncedAt(startedAt);
   }
 
   async _getLastSyncedAt() {
     const { rows } = await pool.query(
       `SELECT last_synced_at FROM marketplace_sync_state WHERE marketplace_id = $1 AND source_key = $2`,
-      [this.marketplaceId, SOURCE_KEY]
+      [this.marketplaceId, this.sourceKey]
     );
     if (rows[0]?.last_synced_at) return new Date(rows[0].last_synced_at);
     return new Date(Date.now() - 24 * 60 * 60 * 1000); // 1ª execução: olha as últimas 24h
@@ -76,7 +90,7 @@ class AmazonPollingEventSource extends EventSource {
       `INSERT INTO marketplace_sync_state (marketplace_id, source_key, last_synced_at, updated_at)
        VALUES ($1, $2, $3, now())
        ON CONFLICT (marketplace_id, source_key) DO UPDATE SET last_synced_at = EXCLUDED.last_synced_at, updated_at = now()`,
-      [this.marketplaceId, SOURCE_KEY, date.toISOString()]
+      [this.marketplaceId, this.sourceKey, date.toISOString()]
     );
   }
 }

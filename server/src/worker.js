@@ -650,9 +650,10 @@ function attachWorkerEvents(w, label) {
 }
 
 async function startWorkers() {
-  // Exclui a store sentinela da Amazon (9000000001, ver migrate-v15.sql) —
-  // não é uma loja ML de verdade, não deve ganhar fila/worker de webhook ML.
-  const { rows } = await pool.query('SELECT id FROM stores WHERE id <> 9000000001');
+  // Exclui contas de outros marketplaces (Amazon/Shopee) — qualquer
+  // quantidade delas, não só a store sentinela original — que não têm
+  // token OAuth do ML e não devem ganhar fila/worker de webhook ML.
+  const { rows } = await pool.query(`SELECT id FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
 
   // Always include a worker for the 'default' queue (storeId unknown)
   const storeIds = ['default', ...rows.map(r => String(r.id))];
@@ -763,8 +764,8 @@ async function syncVendas() {
 
   try {
     return await recordSync('sync-vendas', '0 3 * * *', async () => {
-      // Exclui a store sentinela da Amazon (9000000001) — não tem token OAuth do ML.
-      const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE id <> 9000000001`);
+      // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
+      const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
       const dateFrom = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
       const lojaReport = [];
 
@@ -829,8 +830,8 @@ async function syncMetricas() {
 
   try {
     return await recordSync('sync-metricas', '15 4 * * *', async () => {
-      // Exclui a store sentinela da Amazon (9000000001) — não tem token OAuth do ML.
-      const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE id <> 9000000001`);
+      // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
+      const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
       const lojaReport = [];
 
       async function syncStoreMetricas(store) {
@@ -944,8 +945,8 @@ async function syncPrecos() {
 
 async function syncParentItems() {
   console.log('[syncParentItems] preenchendo parent_item_id via multiget...');
-  // Exclui a store sentinela da Amazon (9000000001) — não tem token OAuth do ML.
-  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE id <> 9000000001`);
+  // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
+  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
 
   async function syncStoreParent(store) {
     const { rows: items } = await pool.query(
@@ -1020,8 +1021,8 @@ async function getTokenForStore(storeId) {
 // syncReturns retroativo: busca TODAS as páginas de devoluções (usado sob demanda, não no cron)
 async function syncReturns() {
   console.log('[syncReturns] busca retroativa completa de devoluções...');
-  // Exclui a store sentinela da Amazon (9000000001) — não tem token OAuth do ML.
-  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE id <> 9000000001`);
+  // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
+  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
   let total = 0;
 
   for (const store of stores) {
@@ -1079,8 +1080,8 @@ async function syncVisitas() {
 
   try {
     return await recordSync('sync-visitas', '0 2 * * *', async () => {
-      // Exclui a store sentinela da Amazon (9000000001) — não tem token OAuth do ML.
-  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE id <> 9000000001`);
+      // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
+  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const lojaReport = [];
 
@@ -1139,9 +1140,9 @@ async function syncVisitas() {
 async function tokenRefreshLoop() {
   console.log('[token-loop] verificando tokens...');
   try {
-    // Exclui a store sentinela da Amazon (9000000001) — não tem token OAuth do ML,
-    // senão o loop a marca como "epoch zero" e manda alerta falso de reconexão no Telegram.
-    const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE id <> 9000000001`);
+    // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML,
+    // senão o loop as marca como "epoch zero" e manda alerta falso de reconexão no Telegram.
+    const { rows: stores } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
     for (const store of stores) {
       const expiresIn = store.token_expires_at ? (new Date(store.token_expires_at) - Date.now()) : -1;
 
@@ -1199,8 +1200,8 @@ async function syncScores() {
   console.log('[sync-scores] iniciando sync de scores de qualidade...');
   try {
     return await recordSync('sync-scores', '0 1 * * *', async () => {
-      // Exclui a store sentinela da Amazon (9000000001) — não tem token OAuth do ML.
-  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE id <> 9000000001`);
+      // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
+  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
       let totalSynced = 0, totalErrors = 0, totalSkipped = 0;
       const lojaReport = [];
 
@@ -1512,7 +1513,7 @@ async function handleTgCommand(text, chatId, botToken) {
   const cmd = (text || '').trim().toLowerCase().split(/\s+/);
 
   if (cmd[0] === '/status') {
-    const { rows } = await pool.query(`SELECT id, nickname, token_expires_at, refresh_failures FROM stores WHERE id <> 9000000001 ORDER BY nickname`);
+    const { rows } = await pool.query(`SELECT id, nickname, token_expires_at, refresh_failures FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') ORDER BY nickname`);
     const lines = rows.map(r => {
       const exp = r.token_expires_at ? new Date(r.token_expires_at) : null;
       const isEpoch = !exp || exp.getFullYear() < 2000;
@@ -1528,7 +1529,7 @@ async function handleTgCommand(text, chatId, botToken) {
 
   if (cmd[0] === '/refresh') {
     const filtro = cmd[1] || '';
-    const { rows } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE id <> 9000000001 ORDER BY nickname`);
+    const { rows } = await pool.query(`SELECT id, nickname, token_expires_at FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') ORDER BY nickname`);
     const lojas = filtro
       ? rows.filter(r => r.nickname.toLowerCase().includes(filtro))
       : rows.filter(r => {

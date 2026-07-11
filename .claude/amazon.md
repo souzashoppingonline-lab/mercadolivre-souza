@@ -36,7 +36,13 @@
 
 ## Sandbox estático — valores literais obrigatórios
 
-O sandbox **estático** da SP-API não aceita parâmetros reais (data/marketplace) em `GET /orders/v0/orders` — ele faz *pattern-matching* e só reconhece os valores exatos documentados pela Amazon: `CreatedAfter=TEST_CASE_200` e `MarketplaceIds=ATVPDKIKX0DER`. Qualquer outro valor retorna `400 InvalidInput "Could not match input arguments"`. `amazonClient.listRecentOrders` já trata isso: quando `AMAZON_ENV !== 'production'`, ignora a data/marketplace reais e usa os literais de teste — a resposta é sempre o mesmo pedido de teste fixo da Amazon, não dados reais. Em produção (`AMAZON_ENV=production`) os valores reais (`sinceISODate`, `AMAZON_MARKETPLACE_ID`) são usados normalmente.
+O sandbox **estático** da SP-API não aceita parâmetros reais (data/marketplace/orderId) — ele faz *pattern-matching* e só reconhece os valores exatos documentados pela Amazon (confirmado no modelo oficial `ordersV0.json`, seção `x-amzn-api-sandbox.static`):
+- `GET /orders/v0/orders`: `CreatedAfter=TEST_CASE_200` + `MarketplaceIds=ATVPDKIKX0DER` → devolve uma lista fixa de pedidos de teste.
+- `GET /orders/v0/orders/{orderId}`: o path precisa ser literalmente `TEST_CASE_200` (não o `AmazonOrderId` real devolvido pela lista) → devolve o pedido de teste `AmazonOrderId=902-1845936-5435065`.
+
+Qualquer outro valor retorna `400 InvalidInput "Could not match input arguments"` — foi exatamente o que aconteceu em produção: `listRecentOrders` já usava os literais certos e funcionou, mas `getOrder` chamado com o `AmazonOrderId` real (devolvido pela lista) falhava, porque o sandbox exige o literal `TEST_CASE_200` também no path. `amazonClient.js` (`listRecentOrders` e `getOrder`) já trata os dois casos: quando `AMAZON_ENV !== 'production'`, ignora os valores reais e usa os literais de teste — a resposta é sempre o mesmo pedido fixo, não dados reais. Em produção os valores reais são usados normalmente.
+
+**Limite de investigação de sandbox respeitado**: essas duas correções vieram direto do modelo oficial da SP-API (não tentativa e erro). Qualquer outro comportamento inconsistente do sandbox estático (fora esses dois padrões documentados) não deve ser mais investigado — desenvolver o resto do pipeline com um `MockEventSource` e validar de verdade só quando o app tiver acesso de produção aprovado.
 
 ## O que NÃO foi feito nesta fase (deliberado — ver `decisions.md`/`todo.md`)
 

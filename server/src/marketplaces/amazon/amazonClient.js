@@ -115,8 +115,13 @@ class AmazonClient extends MarketplaceClient {
     return res.json();
   }
 
+  // O sandbox estático também exige um literal de teste no path (não o
+  // AmazonOrderId real devolvido por listRecentOrders) — "TEST_CASE_200"
+  // devolve sempre o mesmo pedido fixo (AmazonOrderId "902-1845936-5435065").
+  // Confirmado no modelo oficial da SP-API (ordersV0.json, x-amzn-api-sandbox.static).
   async getOrder(orderId) {
-    return this._get(`/orders/v0/orders/${orderId}`);
+    const isSandbox = this.cfg.env !== 'production';
+    return this._get(`/orders/v0/orders/${isSandbox ? 'TEST_CASE_200' : orderId}`);
   }
 
   // sinceISODate: ISO 8601 — equivalente ao dateFrom usado em ml.searchOrders (mercadolivre.md)

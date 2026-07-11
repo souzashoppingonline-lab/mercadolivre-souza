@@ -220,9 +220,9 @@ Ao salvar via `PATCH /api/custos/:sku`, o mesmo valor também é gravado em `ite
 ## Views ML-only (v17)
 
 ```sql
-CREATE VIEW ml_orders AS SELECT * FROM orders WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
-CREATE VIEW ml_items  AS SELECT * FROM items  WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
-CREATE VIEW ml_stores AS SELECT * FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
+CREATE VIEW vw_ml_orders AS SELECT * FROM orders WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
+CREATE VIEW vw_ml_items  AS SELECT * FROM items  WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
+CREATE VIEW vw_ml_stores AS SELECT * FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL;
 ```
 Toda leitura (`FROM`/`JOIN`) em `routes/api.js` usa essas views em vez das tabelas diretamente — telas construídas só para o ML (a maioria hoje) não misturam pedidos/itens/lojas de outros marketplaces. Os `UPDATE`s pontuais (custo, imposto, frete vendedor) continuam direto nas tabelas reais, escopados por ID específico. Ver `decisions.md` ("Marketplace Engine — schema evolutivo", efeito colateral corrigido na v17).
 

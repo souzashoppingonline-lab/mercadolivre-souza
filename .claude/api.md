@@ -61,7 +61,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 ## Lojas
 | Rota | Descrição |
 |---|---|
-| `GET /api/lojas` | lojas **ML apenas** (lê da view `ml_stores` — v17). Status de token (`token_valid`), se tem credenciais próprias |
+| `GET /api/lojas` | lojas **ML apenas** (lê da view `vw_ml_stores` — v17). Status de token (`token_valid`), se tem credenciais próprias |
 | `PATCH /api/lojas/:id { imposto_pct }` | atualiza percentual de imposto |
 | `PATCH /api/lojas/:id/credentials { ml_client_id, ml_client_secret }` | credenciais ML próprias da loja |
 | `GET /api/lojas/amazon` | v17: lista contas Amazon (`id`, `nickname`, `amazon_marketplace_id`, `amazon_region`, `has_refresh_token`) |

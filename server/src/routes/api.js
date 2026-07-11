@@ -21,10 +21,10 @@ router.get('/dashboard/kpis', async (req, res) => {
   const data = await cached('kpis:summary', 30, async () => {
     const today = await pool.query(
       `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) vendas
-       FROM ml_orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND status != 'cancelled'`
+       FROM vw_ml_orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND status != 'cancelled'`
     );
     const perguntas = await pool.query(`SELECT COUNT(*) n FROM questions WHERE status='UNANSWERED'`);
-    const anuncios = await pool.query(`SELECT COUNT(*) n FROM ml_items WHERE status='active'`);
+    const anuncios = await pool.query(`SELECT COUNT(*) n FROM vw_ml_items WHERE status='active'`);
     return {
       vendas_hoje: Number(today.rows[0].vendas),
       pedidos_hoje: Number(today.rows[0].pedidos),
@@ -37,7 +37,7 @@ router.get('/dashboard/kpis', async (req, res) => {
 
 router.get('/dashboard/alerts', async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT title, available_quantity FROM ml_items WHERE status='active' AND available_quantity <= 5 ORDER BY available_quantity ASC LIMIT 10`
+    `SELECT title, available_quantity FROM vw_ml_items WHERE status='active' AND available_quantity <= 5 ORDER BY available_quantity ASC LIMIT 10`
   );
   res.json(rows);
 });
@@ -48,7 +48,7 @@ router.get('/anuncios', async (req, res) => {
   const dateFilter = days ? `AND updated_at >= now() - interval '${Number(days)} days'` : '';
   const { rows } = await pool.query(
     `SELECT ml_id, store_id, title, price, available_quantity, sold_quantity, status, updated_at
-     FROM ml_items
+     FROM vw_ml_items
      WHERE ($1 = '' OR status = $1)
        AND ($2 = '' OR title ILIKE '%'||$2||'%')
        AND ($3 = '' OR store_id = $3::bigint)
@@ -60,7 +60,7 @@ router.get('/anuncios', async (req, res) => {
     `SELECT COUNT(*) total, COUNT(*) FILTER (WHERE status='active') active,
             COUNT(*) FILTER (WHERE status='paused') paused,
             COUNT(*) FILTER (WHERE status='closed') closed
-     FROM ml_items WHERE ($1 = '' OR store_id = $1::bigint) ${dateFilter}`,
+     FROM vw_ml_items WHERE ($1 = '' OR store_id = $1::bigint) ${dateFilter}`,
     [store_id]
   );
   res.json({ results: rows, summary: summary.rows[0] });
@@ -94,8 +94,8 @@ router.get('/produtos', async (req, res) => {
               COALESCE(promo.discount_pct,
                 CASE WHEN COALESCE(NULLIF(i.original_price,0),0) > i.price AND i.price > 0
                   THEN ROUND((1 - i.price / i.original_price) * 100, 1) END) as discount_pct
-       FROM ml_items i
-       LEFT JOIN ml_stores s ON s.id = i.store_id
+       FROM vw_ml_items i
+       LEFT JOIN vw_ml_stores s ON s.id = i.store_id
        LEFT JOIN LATERAL (
          SELECT original_price, promo_price, discount_pct
          FROM promotions pm
@@ -106,7 +106,7 @@ router.get('/produtos', async (req, res) => {
          SELECT o.item_id,
                 COUNT(*) as vendas_periodo,
                 SUM(o.total_amount) as receita_periodo
-         FROM ml_orders o
+         FROM vw_ml_orders o
          WHERE o.status != 'cancelled' ${periodFilter}
            ${store_id ? `AND o.store_id = ${BigInt(store_id)}` : ''}
          GROUP BY o.item_id
@@ -122,7 +122,7 @@ router.get('/produtos', async (req, res) => {
               SUM(i.sold_quantity) as total_vendas,
               COUNT(*) FILTER (WHERE i.available_quantity = 0) as sem_estoque,
               COUNT(*) FILTER (WHERE i.available_quantity <= 3 AND i.available_quantity > 0) as estoque_baixo
-       FROM ml_items i
+       FROM vw_ml_items i
        WHERE ($1 = '' OR i.title ILIKE '%'||$1||'%') ${storeFilter}`,
       [search]
     )
@@ -149,8 +149,8 @@ router.get('/produtos/:id/detalhe', async (req, res) => {
                 COALESCE(promo.discount_pct,
                   CASE WHEN COALESCE(NULLIF(i.original_price,0),0) > i.price AND i.price > 0
                     THEN ROUND((1 - i.price / i.original_price)*100,1) END) AS discount_pct
-         FROM ml_items i
-         LEFT JOIN ml_stores s ON s.id = i.store_id
+         FROM vw_ml_items i
+         LEFT JOIN vw_ml_stores s ON s.id = i.store_id
          LEFT JOIN LATERAL (
            SELECT original_price, promo_price, discount_pct FROM promotions
            WHERE item_id = i.ml_id AND status = 'started'
@@ -167,7 +167,7 @@ router.get('/produtos/:id/detalhe', async (req, res) => {
       pool.query(
         `SELECT date_trunc('day', date_created AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
                 COUNT(*) AS pedidos, SUM(total_amount) AS receita
-         FROM ml_orders
+         FROM vw_ml_orders
          WHERE item_id = $1 AND status != 'cancelled'
            AND date_created >= now() - interval '30 days'
          GROUP BY 1 ORDER BY 1`, [id]),
@@ -185,7 +185,7 @@ router.get('/produtos/:id/detalhe', async (req, res) => {
     // totais de vendas (todos os tempos)
     const { rows: totR } = await pool.query(
       `SELECT COUNT(*) AS pedidos_total, SUM(total_amount) AS receita_total
-       FROM ml_orders WHERE item_id=$1 AND status!='cancelled'`, [id]);
+       FROM vw_ml_orders WHERE item_id=$1 AND status!='cancelled'`, [id]);
 
     res.json({
       item,
@@ -214,7 +214,7 @@ router.get('/pedidos', async (req, res) => {
     pool.query(
       `SELECT o.ml_id as id, o.buyer_nickname, o.title, o.total_amount, o.status, o.date_created,
               COALESCE(s.nickname, 'Loja '||o.store_id::text) as loja
-       FROM ml_orders o LEFT JOIN ml_stores s ON s.id = o.store_id
+       FROM vw_ml_orders o LEFT JOIN vw_ml_stores s ON s.id = o.store_id
        WHERE 1=1 ${dateFilter} ${statusFilter}
        ORDER BY o.date_created DESC LIMIT 500`
     ),
@@ -227,7 +227,7 @@ router.get('/pedidos', async (req, res) => {
          COUNT(*) FILTER (WHERE status = 'shipped') as shipped,
          COUNT(*) FILTER (WHERE status = 'delivered') as delivered,
          COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
-       FROM ml_orders o WHERE 1=1 ${dateFilter}`
+       FROM vw_ml_orders o WHERE 1=1 ${dateFilter}`
     )
   ]);
   res.json({ results: rows, summary: kpi.rows[0] });
@@ -237,7 +237,7 @@ router.get('/vendas/diarias', async (req, res) => {
   const days = Number(req.query.days) || 30;
   const { rows } = await pool.query(
     `SELECT (date_created AT TIME ZONE 'America/Sao_Paulo')::date as data, COUNT(*) pedidos, SUM(total_amount) bruto
-     FROM ml_orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - $1::int AND status != 'cancelled'
+     FROM vw_ml_orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - $1::int AND status != 'cancelled'
      GROUP BY 1 ORDER BY 1`,
     [days]
   );
@@ -261,9 +261,9 @@ router.get('/vendas/detalhado', async (req, res) => {
        o.status, o.date_created,
        COALESCE(i.cost, 0) as custo,
        COALESCE(s.imposto_pct, 0) as imposto_pct
-     FROM ml_orders o
-     JOIN ml_stores s ON s.id = o.store_id
-     LEFT JOIN ml_items i ON i.ml_id = o.item_id
+     FROM vw_ml_orders o
+     JOIN vw_ml_stores s ON s.id = o.store_id
+     LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
      WHERE ($1 = '' OR o.store_id = $1::bigint)
        AND ($2 = '' OR o.status = $2)
        AND ($5::date IS NULL OR o.date_created::date >= $5::date)
@@ -319,9 +319,9 @@ router.get('/vendas/hoje', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT o.total_amount, o.ml_fee, o.shipping_cost, COALESCE(o.shipping_seller_cost,0) AS shipping_seller_cost,
               o.quantity, COALESCE(i.cost,0) AS custo, COALESCE(s.imposto_pct,0) AS imposto_pct
-       FROM ml_orders o
-       JOIN ml_stores s ON s.id = o.store_id
-       LEFT JOIN ml_items i ON i.ml_id = o.item_id
+       FROM vw_ml_orders o
+       JOIN vw_ml_stores s ON s.id = o.store_id
+       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
        WHERE (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND o.status != 'cancelled'`
     );
     const pedidos   = rows.length;
@@ -377,9 +377,9 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
          CASE WHEN o.date_created >= $1 AND o.date_created < $2 THEN 'hoje'
               WHEN o.date_created >= $3 AND o.date_created < $4 THEN 'ontem'
          END AS periodo
-       FROM ml_orders o
-       JOIN ml_stores s ON s.id = o.store_id
-       LEFT JOIN ml_items i ON i.ml_id = o.item_id
+       FROM vw_ml_orders o
+       JOIN vw_ml_stores s ON s.id = o.store_id
+       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
        WHERE ((o.date_created >= $1 AND o.date_created < $2)
            OR (o.date_created >= $3 AND o.date_created < $4))
          AND o.status != 'cancelled'
@@ -489,9 +489,9 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
               o.raw_data,
               s.nickname as store_name, s.imposto_pct,
               COALESCE(i.cost, 0) as custo_unitario
-       FROM ml_orders o
-       JOIN ml_stores s ON s.id = o.store_id
-       LEFT JOIN ml_items i ON i.ml_id = o.item_id
+       FROM vw_ml_orders o
+       JOIN vw_ml_stores s ON s.id = o.store_id
+       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
        WHERE o.ml_id = $1`,
       [req.params.id]
     );
@@ -519,7 +519,7 @@ router.get('/perguntas', async (req, res) => {
       `SELECT q.ml_id as id, q.store_id, COALESCE(s.nickname,'Loja '||q.store_id::text) as loja,
               q.item_id, q.item_title, q.text, q.answer_text, q.status, q.date_created
        FROM questions q
-       LEFT JOIN ml_stores s ON s.id = q.store_id
+       LEFT JOIN vw_ml_stores s ON s.id = q.store_id
        WHERE ($1 = '' OR q.status = $1)
          AND ($2 = '' OR q.store_id = $2::bigint)
        ORDER BY q.date_created DESC LIMIT 200`,
@@ -576,7 +576,7 @@ router.post('/perguntas/:id/responder', express.json(), async (req, res) => {
 router.get('/mensagens', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT m.pack_id, m.buyer_nickname, m.last_message, m.unread, m.last_message_date, s.nickname as loja
-     FROM messages m LEFT JOIN ml_stores s ON s.id = m.store_id
+     FROM messages m LEFT JOIN vw_ml_stores s ON s.id = m.store_id
      ORDER BY m.last_message_date DESC LIMIT 50`
   );
   res.json({ conversations: rows, summary: {} });
@@ -596,7 +596,7 @@ router.get('/analises/estoque-parado', async (req, res) => {
          store_id,
          SUM(CASE WHEN date_created >= CURRENT_DATE - ${daysN} THEN quantity ELSE 0 END) as qtd_periodo,
          MAX(date_created) as ultimo_dia_venda
-       FROM ml_orders
+       FROM vw_ml_orders
        WHERE status != 'cancelled'
        GROUP BY 1, 2`
     );
@@ -610,8 +610,8 @@ router.get('/analises/estoque-parado', async (req, res) => {
               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
               i.title, i.price, i.available_quantity as estoque,
               i.sold_quantity, i.thumbnail, i.permalink
-       FROM ml_items i
-       LEFT JOIN ml_stores s ON s.id = i.store_id
+       FROM vw_ml_items i
+       LEFT JOIN vw_ml_stores s ON s.id = i.store_id
        WHERE i.status = 'active'
          AND i.available_quantity > 0
          ${storeFilter}
@@ -655,8 +655,8 @@ router.get('/alertas/reposicao', async (req, res) => {
               i.available_quantity as stock, i.sold_quantity,
               COALESCE(i.sold_quantity::float / 30, 0) as daily_sales,
               i.thumbnail, i.permalink, i.updated_at
-       FROM ml_items i
-       LEFT JOIN ml_stores s ON s.id = i.store_id
+       FROM vw_ml_items i
+       LEFT JOIN vw_ml_stores s ON s.id = i.store_id
        WHERE i.status = 'active'
          AND i.available_quantity <= $1
          ${storeFilter}
@@ -680,7 +680,7 @@ router.get('/alertas/reposicao', async (req, res) => {
 router.get('/alertas/cancelamentos', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT ml_id as order_id, title, total_amount as amount, cancelled_by, cancel_reason as reason, date_closed as date
-     FROM ml_orders WHERE status='cancelled' ORDER BY date_closed DESC LIMIT 100`
+     FROM vw_ml_orders WHERE status='cancelled' ORDER BY date_closed DESC LIMIT 100`
   );
   res.json({ items: rows, summary: {} });
 });
@@ -693,7 +693,7 @@ router.get('/lojas', async (req, res) => {
             ml_client_id,
             CASE WHEN ml_client_id IS NOT NULL THEN true ELSE false END as has_own_credentials,
             CASE WHEN token_expires_at > now() THEN true ELSE false END as token_valid
-     FROM ml_stores ORDER BY nickname`
+     FROM vw_ml_stores ORDER BY nickname`
   );
   res.json({ stores: rows });
 });
@@ -927,8 +927,8 @@ router.get('/promocoes', async (req, res) => {
               COALESCE(NULLIF(p.promo_price,0), i.price, 0) as promo_price,
               p.discount_pct, p.changed_at, p.raw_data
        FROM promotions p
-       LEFT JOIN ml_stores s ON s.id = p.store_id
-       LEFT JOIN ml_items i ON i.ml_id = p.item_id
+       LEFT JOIN vw_ml_stores s ON s.id = p.store_id
+       LEFT JOIN vw_ml_items i ON i.ml_id = p.item_id
        WHERE ($1 = '' OR p.store_id = $1::bigint)
          AND p.changed_at >= CURRENT_DATE - ($2::int - 1)
        ORDER BY p.changed_at DESC LIMIT 500`,
@@ -998,7 +998,7 @@ router.get('/dashboard/chart', async (req, res) => {
     `SELECT date_created::date as data,
             COUNT(*) pedidos,
             COALESCE(SUM(total_amount),0) receita
-     FROM ml_orders
+     FROM vw_ml_orders
      WHERE date_created >= CURRENT_DATE - $1::int AND status != 'cancelled'
      GROUP BY 1 ORDER BY 1`,
     [period]
@@ -1013,7 +1013,7 @@ router.get('/dashboard/top-products', async (req, res) => {
             COUNT(*) pedidos,
             SUM(quantity) unidades,
             SUM(total_amount) receita
-     FROM ml_orders
+     FROM vw_ml_orders
      WHERE status != 'cancelled' AND item_id IS NOT NULL
      GROUP BY item_id, title
      ORDER BY receita DESC LIMIT $1`,
@@ -1035,7 +1035,7 @@ router.get('/analises/horarios', async (req, res) => {
       `SELECT EXTRACT(hour FROM date_created AT TIME ZONE 'America/Sao_Paulo')::int as hora,
               COUNT(*) pedidos,
               COALESCE(SUM(total_amount),0) receita
-       FROM ml_orders
+       FROM vw_ml_orders
        WHERE status != 'cancelled'
          ${dateFilter}
          ${storeFilter}
@@ -1052,7 +1052,7 @@ router.get('/analises/dias-semana', async (req, res) => {
     `SELECT EXTRACT(dow FROM date_created AT TIME ZONE 'America/Sao_Paulo')::int as dow,
             COUNT(*) pedidos,
             COALESCE(SUM(total_amount),0) receita
-     FROM ml_orders
+     FROM vw_ml_orders
      WHERE status != 'cancelled'
        AND date_created >= CURRENT_DATE - $1::int
        AND ($2 = '' OR store_id = $2::bigint)
@@ -1076,11 +1076,11 @@ router.get('/comparativos/periodos', async (req, res) => {
     pool.query(`SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita,
                        CASE WHEN COUNT(*)>0 THEN SUM(total_amount)/COUNT(*) ELSE 0 END avg_ticket,
                        SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) cancelamentos
-                FROM ml_orders WHERE ${clause1}`, args1),
+                FROM vw_ml_orders WHERE ${clause1}`, args1),
     pool.query(`SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) receita,
                        CASE WHEN COUNT(*)>0 THEN SUM(total_amount)/COUNT(*) ELSE 0 END avg_ticket,
                        SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) cancelamentos
-                FROM ml_orders WHERE ${clause2}`, args2),
+                FROM vw_ml_orders WHERE ${clause2}`, args2),
   ]);
   const map = r => ({ orders: Number(r.pedidos), revenue: Number(r.receita), avg_ticket: Number(r.avg_ticket), cancellations: Number(r.cancelamentos) });
   res.json({ p1: map(r1.rows[0]), p2: map(r2.rows[0]), chart: [] });
@@ -1092,7 +1092,7 @@ router.get('/comparativos/evolucao', async (req, res) => {
     `SELECT date_created::date as date,
             SUM(total_amount) as revenue,
             COUNT(*) as orders
-     FROM ml_orders
+     FROM vw_ml_orders
      WHERE status!='cancelled'
        AND date_created >= CURRENT_DATE - $1::int
        AND ($2 = '' OR store_id = $2::bigint)
@@ -1119,14 +1119,14 @@ router.get('/comparativos/curva-abc', async (req, res) => {
         MAX(s.nickname)                                     AS loja,
         COUNT(*)                                            AS pedidos,
         SUM(COALESCE(o.total_amount, 0))                    AS faturamento
-      FROM ml_orders o
-      JOIN ml_stores s ON s.id = o.store_id
+      FROM vw_ml_orders o
+      JOIN vw_ml_stores s ON s.id = o.store_id
       -- resolve item_id uma vez (CTE-inline)
       CROSS JOIN LATERAL (
         SELECT COALESCE(o.item_id, o.raw_data->'order_items'->0->'item'->>'id') AS iid
       ) ids
       -- busca título no catálogo quando orders.title é NULL
-      LEFT JOIN ml_items i ON i.ml_id = ids.iid AND i.store_id = o.store_id
+      LEFT JOIN vw_ml_items i ON i.ml_id = ids.iid AND i.store_id = o.store_id
       WHERE o.status != 'cancelled'
         ${dateFilter}
         ${storeFilter}
@@ -1176,7 +1176,7 @@ router.get('/clientes', async (req, res) => {
             AVG(total_amount) avg_ticket,
             MAX(date_created) last_order_date,
             MIN(date_created) first_order_date
-     FROM ml_orders
+     FROM vw_ml_orders
      WHERE status != 'cancelled'
        AND ($1 = '' OR store_id = $1::bigint)
        AND date_created >= CURRENT_DATE - $2::int
@@ -1199,7 +1199,7 @@ router.get('/clientes', async (req, res) => {
 router.get('/clientes/:nickname', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT ml_id, item_id, title, total_amount, status, date_created, store_id
-     FROM ml_orders WHERE buyer_nickname = $1 ORDER BY date_created DESC LIMIT 100`,
+     FROM vw_ml_orders WHERE buyer_nickname = $1 ORDER BY date_created DESC LIMIT 100`,
     [req.params.nickname]
   );
   res.json({ pedidos: rows });
@@ -1215,7 +1215,7 @@ router.get('/alertas/devolucoes', async (req, res) => {
     `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
             r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note
      FROM returns r
-     LEFT JOIN ml_stores s ON s.id = r.store_id
+     LEFT JOIN vw_ml_stores s ON s.id = r.store_id
      WHERE ($1 = '' OR r.store_id = $1::bigint) ${searchFilter}
      ORDER BY r.date DESC LIMIT 200`,
     params
@@ -1250,8 +1250,8 @@ router.get('/alteracoes', async (req, res) => {
               i.thumbnail, i.permalink,
               COALESCE(s.nickname, 'Loja '||ic.store_id::text) as loja
        FROM item_changes ic
-       LEFT JOIN ml_items i ON i.ml_id = ic.item_id
-       LEFT JOIN ml_stores s ON s.id = ic.store_id
+       LEFT JOIN vw_ml_items i ON i.ml_id = ic.item_id
+       LEFT JOIN vw_ml_stores s ON s.id = ic.store_id
        WHERE ic.changed_at >= now() - ($1::int * interval '1 day')
          ${storeFilter}
        ORDER BY ic.changed_at DESC
@@ -1282,8 +1282,8 @@ router.get('/alertas/anuncios-problema', async (req, res) => {
               COALESCE(o.receita_7d,  0) as receita_7d,
               p.score, p.level, p.level_wording, p.pending_count,
               p.buckets, p.synced_at
-       FROM ml_items i
-       JOIN ml_stores s ON s.id = i.store_id
+       FROM vw_ml_items i
+       JOIN vw_ml_stores s ON s.id = i.store_id
        LEFT JOIN (
          SELECT item_id,
            COUNT(*) FILTER (WHERE date_created >= CURRENT_DATE - 30) pedidos_30d,
@@ -1291,7 +1291,7 @@ router.get('/alertas/anuncios-problema', async (req, res) => {
            COUNT(*) FILTER (WHERE date_created >= CURRENT_DATE - 7)  pedidos_7d,
            COALESCE(SUM(total_amount) FILTER (WHERE date_created >= CURRENT_DATE - 30),0) receita_30d,
            COALESCE(SUM(total_amount) FILTER (WHERE date_created >= CURRENT_DATE - 7),0)  receita_7d
-         FROM ml_orders
+         FROM vw_ml_orders
          WHERE status != 'cancelled'
          GROUP BY item_id
        ) o ON o.item_id = i.ml_id
@@ -1335,7 +1335,7 @@ router.post('/alertas/anuncios-performance/sync', async (req, res) => {
 
   // Items sem score ou com score > 24h desatualizado têm prioridade
   const { rows: items } = await pool.query(
-    `SELECT i.ml_id, i.store_id FROM ml_items i
+    `SELECT i.ml_id, i.store_id FROM vw_ml_items i
      LEFT JOIN item_performance p ON p.item_id = i.ml_id
      WHERE i.status = 'active' ${storeFilter}
        AND (p.item_id IS NULL OR p.synced_at < now() - interval '24 hours')
@@ -1387,7 +1387,7 @@ router.get('/metricas', async (req, res) => {
               sm.transactions_completed, sm.positive_ratings_pct,
               sm.negative_ratings_pct, sm.neutral_ratings_pct, sm.collected_at
        FROM store_metrics sm
-       JOIN ml_stores s ON s.id = sm.store_id
+       JOIN vw_ml_stores s ON s.id = sm.store_id
        ORDER BY store_id, collected_at DESC`
     );
     res.json({ metricas: rows });
@@ -1413,8 +1413,8 @@ router.get('/produtos/performance', async (req, res) => {
          SELECT COALESCE(it.parent_item_id, o.item_id) AS root_id,
                 COUNT(*)            AS pedidos,
                 SUM(o.total_amount) AS receita
-         FROM ml_orders o
-         LEFT JOIN ml_items it ON it.ml_id = o.item_id
+         FROM vw_ml_orders o
+         LEFT JOIN vw_ml_items it ON it.ml_id = o.item_id
          WHERE o.status != 'cancelled'
            AND o.date_created >= CURRENT_DATE - $1::int
            AND ($2 = '' OR o.store_id = $2::bigint)
@@ -1424,7 +1424,7 @@ router.get('/produtos/performance', async (req, res) => {
          SELECT COALESCE(it.parent_item_id, iv.item_id) AS root_id,
                 SUM(iv.visits) AS visitas
          FROM item_visits iv
-         LEFT JOIN ml_items it ON it.ml_id = iv.item_id
+         LEFT JOIN vw_ml_items it ON it.ml_id = iv.item_id
          WHERE iv.date >= CURRENT_DATE - $1::int
            AND ($2 = '' OR iv.store_id = $2::bigint)
          GROUP BY 1
@@ -1434,7 +1434,7 @@ router.get('/produtos/performance', async (req, res) => {
            ml_id, title, price, available_quantity, sold_quantity, status,
            thumbnail, permalink,
            COALESCE(parent_item_id, ml_id) AS group_key
-         FROM ml_items
+         FROM vw_ml_items
          WHERE ($2 = '' OR store_id = $2::bigint)
          ORDER BY COALESCE(parent_item_id, ml_id), parent_item_id NULLS FIRST
        )
@@ -1468,8 +1468,8 @@ router.get('/vendas/por-loja', async (req, res) => {
         (o.date_created - INTERVAL '3 hours')::date AS dia,
         COUNT(*) as pedidos,
         SUM(o.total_amount) as receita
-      FROM ml_orders o
-      JOIN ml_stores s ON s.id = o.store_id
+      FROM vw_ml_orders o
+      JOIN vw_ml_stores s ON s.id = o.store_id
       WHERE o.date_created >= CURRENT_DATE - ($1::int)
         AND o.status != 'cancelled'
       GROUP BY 1, 2, 3
@@ -1481,7 +1481,7 @@ router.get('/vendas/por-loja', async (req, res) => {
         o.store_id,
         (o.date_created - INTERVAL '3 hours')::date AS dia,
         SUM(o.total_amount) as receita
-      FROM ml_orders o
+      FROM vw_ml_orders o
       WHERE o.date_created >= CURRENT_DATE - ($1::int)
         AND o.date_created < CURRENT_DATE - 30
         AND o.status != 'cancelled'
@@ -1514,7 +1514,7 @@ router.get('/produtos/:id/historico-diario', async (req, res) => {
 
     // Descobre o root_id (parent_item_id ou o próprio id)
     const { rows: itemRow } = await pool.query(
-      `SELECT COALESCE(parent_item_id, ml_id) AS root_id, store_id FROM ml_items WHERE ml_id = $1 LIMIT 1`, [id]
+      `SELECT COALESCE(parent_item_id, ml_id) AS root_id, store_id FROM vw_ml_items WHERE ml_id = $1 LIMIT 1`, [id]
     );
     const rootId  = itemRow[0]?.root_id  || id;
     const storeId = itemRow[0]?.store_id || null;
@@ -1523,7 +1523,7 @@ router.get('/produtos/:id/historico-diario', async (req, res) => {
     const { rows: visitas } = await pool.query(
       `SELECT iv.date, SUM(iv.visits) AS visitas
        FROM item_visits iv
-       LEFT JOIN ml_items it ON it.ml_id = iv.item_id
+       LEFT JOIN vw_ml_items it ON it.ml_id = iv.item_id
        WHERE COALESCE(it.parent_item_id, iv.item_id) = $1
          AND iv.date >= CURRENT_DATE - $2::int
        GROUP BY iv.date
@@ -1536,8 +1536,8 @@ router.get('/produtos/:id/historico-diario', async (req, res) => {
       `SELECT (o.date_created - INTERVAL '3 hours')::date AS dia,
               COUNT(*) AS pedidos,
               SUM(o.total_amount) AS receita
-       FROM ml_orders o
-       LEFT JOIN ml_items it ON it.ml_id = o.item_id
+       FROM vw_ml_orders o
+       LEFT JOIN vw_ml_items it ON it.ml_id = o.item_id
        WHERE COALESCE(it.parent_item_id, o.item_id) = $1
          AND o.status != 'cancelled'
          AND o.date_created >= CURRENT_DATE - $2::int
@@ -1575,7 +1575,7 @@ router.get('/produtos/:id/historico-diario', async (req, res) => {
 // ── Publicidade ──────────────────────────────────────────────────────────────
 router.get('/publicidade', async (req, res) => {
   try {
-    const { rows: stores } = await pool.query('SELECT id, nickname FROM ml_stores');
+    const { rows: stores } = await pool.query('SELECT id, nickname FROM vw_ml_stores');
     const ml = require('../mlClient');
     const endpoints = [
       `/advertising/product_ads/campaigns?status=active&limit=10`,
@@ -1626,25 +1626,25 @@ router.post('/mcp/chat', async (req, res) => {
           COALESCE(SUM(total_amount) FILTER (WHERE (date_created ${tz})::date >= (now() ${tz})::date - 7),0) receita_7d,
           COUNT(*) FILTER (WHERE (date_created ${tz})::date >= (now() ${tz})::date - 30) pedidos_30d,
           COALESCE(SUM(total_amount) FILTER (WHERE (date_created ${tz})::date >= (now() ${tz})::date - 30),0) receita_30d
-        FROM ml_orders WHERE status != 'cancelled' ${storeFilter}`),
+        FROM vw_ml_orders WHERE status != 'cancelled' ${storeFilter}`),
 
       pool.query(`
         SELECT o.item_id, i.title, COUNT(*) vendas, SUM(o.total_amount) receita
-        FROM ml_orders o LEFT JOIN ml_items i ON i.ml_id = o.item_id
+        FROM vw_ml_orders o LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
         WHERE (o.date_created ${tz})::date >= (now() ${tz})::date - 30 AND o.status != 'cancelled' ${storeFilter}
         GROUP BY o.item_id, i.title ORDER BY vendas DESC LIMIT 10`),
 
       pool.query(`SELECT COUNT(*) n FROM questions WHERE status='UNANSWERED'`),
 
-      pool.query(`SELECT title, available_quantity FROM ml_items WHERE available_quantity <= 5 AND status='active' ${storeFilter} ORDER BY available_quantity LIMIT 10`),
+      pool.query(`SELECT title, available_quantity FROM vw_ml_items WHERE available_quantity <= 5 AND status='active' ${storeFilter} ORDER BY available_quantity LIMIT 10`),
 
       pool.query(`
         SELECT o.item_id, i.title, COUNT(*) cancelamentos
-        FROM ml_orders o LEFT JOIN ml_items i ON i.ml_id = o.item_id
+        FROM vw_ml_orders o LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
         WHERE o.status='cancelled' AND (o.date_created ${tz})::date >= (now() ${tz})::date - 30 ${storeFilter}
         GROUP BY o.item_id, i.title ORDER BY cancelamentos DESC LIMIT 5`),
 
-      pool.query(`SELECT nickname, token_valid FROM ml_stores ORDER BY nickname`),
+      pool.query(`SELECT nickname, token_valid FROM vw_ml_stores ORDER BY nickname`),
     ]);
 
     const ctx = {
@@ -1696,7 +1696,7 @@ router.post('/mcp/docs', async (req, res) => {
 
   // Busca via ML MCP oficial — requer token de alguma loja conectada
   try {
-    const { rows } = await pool.query(`SELECT access_token FROM ml_stores WHERE access_token IS NOT NULL LIMIT 1`);
+    const { rows } = await pool.query(`SELECT access_token FROM vw_ml_stores WHERE access_token IS NOT NULL LIMIT 1`);
     if (!rows.length) return res.status(503).json({ error: 'Nenhuma loja com token disponível.' });
 
     const fetch = require('node-fetch');
@@ -1840,7 +1840,7 @@ router.get('/items/:item_id/promotion', async (req, res) => {
     // 6. seller-promotions API (listagem paginada por loja)
     try {
       const { rows: storeRows } = await require('../db/pool').query(
-        'SELECT id FROM ml_stores WHERE id = $1', [Number(store_id)]
+        'SELECT id FROM vw_ml_stores WHERE id = $1', [Number(store_id)]
       );
       const uid = storeRows[0]?.id;
       if (uid) {

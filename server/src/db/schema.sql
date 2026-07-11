@@ -308,15 +308,17 @@ CREATE INDEX IF NOT EXISTS promotions_offer ON promotions(offer_id, changed_at D
 
 -- Views ML-only — telas existentes (construídas só para o ML) leem daqui em
 -- vez de orders/items/stores diretamente, para não misturar outros
--- marketplaces (Amazon) nos KPIs/relatórios. Ver migrate-v17.sql.
-CREATE OR REPLACE VIEW ml_orders AS
+-- marketplaces (Amazon) nos KPIs/relatórios. Prefixo vw_ (não ml_) para não
+-- colidir com as tabelas reais ml_orders/ml_items do sistema antigo
+-- (ml-dashboard.service) que compartilha o mesmo Postgres. Ver migrate-v17.sql.
+CREATE OR REPLACE VIEW vw_ml_orders AS
   SELECT * FROM orders
   WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML') OR marketplace_id IS NULL;
 
-CREATE OR REPLACE VIEW ml_items AS
+CREATE OR REPLACE VIEW vw_ml_items AS
   SELECT * FROM items
   WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML') OR marketplace_id IS NULL;
 
-CREATE OR REPLACE VIEW ml_stores AS
+CREATE OR REPLACE VIEW vw_ml_stores AS
   SELECT * FROM stores
   WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML') OR marketplace_id IS NULL;

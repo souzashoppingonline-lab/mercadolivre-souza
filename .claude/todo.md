@@ -15,7 +15,7 @@
 - [x] Testado `AMAZON_ENV=mock` em produção — pedido fabricado (`MOCK-924-4509518-5060956`) passou pela fila e foi gravado em `orders`/`amazon_order_data` corretamente.
 - [x] **Banco e backend preparados para múltiplas contas Amazon/Shopee (v16)** — `stores` guarda uma linha por conta, `marketplaceEventWorker.js` registra uma `EventSource`/`client` por conta, eventos carregam `storeId` como chave de roteamento. Ver `decisions.md` ("Marketplace Engine — múltiplas contas por marketplace").
 - [x] **Rotas REST/admin para cadastrar conta Amazon** — `GET/POST/DELETE /api/lojas/amazon` (v17, ver `api.md`), sem precisar `INSERT` manual.
-- [x] **Contaminação de KPIs/relatórios do ML corrigida (v17)** — views `ml_orders`/`ml_items`/`ml_stores`, `routes/api.js` lê delas. Ver `database.md`/`decisions.md`.
+- [x] **Contaminação de KPIs/relatórios do ML corrigida (v17)** — views `vw_ml_orders`/`vw_ml_items`/`vw_ml_stores`, `routes/api.js` lê delas. Ver `database.md`/`decisions.md`.
 - [ ] Modal "Adicionar loja" (Mercado Livre/Amazon/Shopee) na página Lojas do frontend, usando as rotas acima para Amazon.
 - [ ] Hot-reload de contas Amazon no worker — hoje uma conta cadastrada via `POST /api/lojas/amazon` só é sincronizada depois de reiniciar `ml-worker-novo` manualmente.
 - [ ] Validar se `mapAmazonStatus()` (`marketplaceEventWorker.js`) está mapeando `OrderStatus` da Amazon para `orders.status` de forma sensata — só dá pra confirmar de fato quando pedidos reais começarem a chegar.

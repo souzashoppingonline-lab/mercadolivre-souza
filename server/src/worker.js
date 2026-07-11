@@ -239,11 +239,11 @@ async function handleOrder({ resource, storeId, silent = false }) {
       } catch(e) { /* ignora */ }
     }
     const envioLabel = fmtLogistica(lt);
+    const fmtDataHora = d => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' });
     const saleDate = order.date_closed || order.date_created;
-    const saleDateFmt = saleDate
-      ? new Date(saleDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' })
-      : new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' });
-    if (!silent) await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 ${saleDateFmt}`);
+    const saleDateFmt = saleDate ? fmtDataHora(saleDate) : fmtDataHora(new Date());
+    const notifiedAtFmt = fmtDataHora(new Date());
+    if (!silent) await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}`);
   }
 }
 

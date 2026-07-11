@@ -61,7 +61,10 @@ class AmazonPollingEventSource extends EventSource {
     const queue = getQueue('amazon');
     for (const o of list) {
       if (!o.AmazonOrderId) continue;
-      const jobId = `AMAZON:${this.store.id}:ORDER_UPDATED:${o.AmazonOrderId}`;
+      // BullMQ exige que um jobId customizado com ':' tenha exatamente 2
+      // (3 partes) — por isso storeId+orderId ficam combinados com '-' no
+      // 3º segmento, em vez de um 3º ':' separado (ver .claude/known-bugs.md).
+      const jobId = `AMAZON:ORDER_UPDATED:${this.store.id}-${o.AmazonOrderId}`;
       await queue.add('marketplace-event', {
         marketplace: 'AMAZON',
         event: 'ORDER_UPDATED',

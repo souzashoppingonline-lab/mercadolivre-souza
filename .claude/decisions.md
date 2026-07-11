@@ -78,6 +78,8 @@
 
 **Trade-off aceito**: ainda não existe rota/UI para cadastrar uma nova conta Amazon — hoje é um `INSERT` manual em `stores` (id sintético seguindo a convenção `9000000001`, `9000000002`...) seguido de restart do worker. Uma rota de administração fica registrada em `todo.md`.
 
+**Bug corrigido em produção logo após o deploy**: o `jobId` passou a incluir `storeId` (`AMAZON:{storeId}:ORDER_UPDATED:{orderId}`, 3 ocorrências de `:`) para manter deduplicação por conta+pedido — mas o BullMQ **exige que um `jobId` customizado, se contiver `:`, tenha exatamente 2** (`split(':').length === 3`); com 3 `:` ele lança `Custom Id cannot contain :`. Corrigido combinando `storeId` e `orderId` com `-` no terceiro segmento (`AMAZON:ORDER_UPDATED:{storeId}-{orderId}`), voltando a 2 `:`. O `jobId` do Gateway do ML (`${topic}:${resource}:${storeId}`) sempre respeitou esse limite por coincidência (2 `:`) — vale lembrar dessa regra do BullMQ em qualquer `jobId` customizado novo.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

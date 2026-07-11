@@ -87,7 +87,8 @@ class MockEventSource extends EventSource {
   async discoverEvents() {
     if (Math.random() > 0.7) return;
     const order = generateMockOrder();
-    const jobId = `AMAZON:${this.store.id}:ORDER_UPDATED:${order.AmazonOrderId}`;
+    // BullMQ exige que um jobId customizado com ':' tenha exatamente 2 (3 partes).
+    const jobId = `AMAZON:ORDER_UPDATED:${this.store.id}-${order.AmazonOrderId}`;
     await getQueue('amazon').add('marketplace-event', {
       marketplace: 'AMAZON',
       event: 'ORDER_UPDATED',

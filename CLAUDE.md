@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Convenção de branch
+
+**O branch principal (padrão/default) deste repositório no GitHub é `claude/archive-files-git-8vn8pv`** — não existe `main` nem `master` neste repositório. Qualquer alteração que precise "estar no branch principal" deve ser mesclada/enviada para `claude/archive-files-git-8vn8pv`, não para um branch chamado `main`. Detalhes de fluxo de branches em `.claude/deployment.md`.
+
 ## Memória Permanente — pasta `.claude/`
 
 Este projeto mantém documentação modular e viva em `.claude/` — um arquivo por assunto (arquitetura, backend, frontend, banco de dados, API, WebSocket, Redis, workers, integração Mercado Livre, Shopee, Amazon, regras de negócio, financeiro, deployment, roadmap, bugs conhecidos, decisões arquiteturais e todo). Índice completo com a lista de arquivos e o que cada um cobre: `.claude/CLAUDE.md`.

@@ -1,0 +1,143 @@
+# API REST
+
+> Escopo: contrato de todos os endpoints HTTP expostos pelo backend. Único ponto de acesso a dados permitido para o frontend (via `js/db.js` — ver `frontend.md`). Nenhum destes handlers chama a API do Mercado Livre, exceto os marcados explicitamente. **Sempre que uma rota nova for criada em `routes/*.js`, documente-a aqui e adicione o método correspondente em `js/db.js` na mesma tarefa.**
+
+Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/turbo.js), `/webhooks` (routes/webhookGateway.js), `/auth` e `/ml` (routes/auth.js — ver `mercadolivre.md`).
+
+## Dashboard
+| Rota | Descrição |
+|---|---|
+| `GET /api/dashboard/kpis` | vendas/pedidos de hoje, perguntas pendentes, anúncios ativos. Cache Redis 30s (`kpis:summary`) |
+| `GET /api/dashboard/chart?period=N` | série diária de pedidos/receita, últimos N dias |
+| `GET /api/dashboard/top-products?limit=N` | produtos mais vendidos por receita |
+| `GET /api/dashboard/alerts` | itens com estoque ≤ 5 |
+
+## Anúncios / Produtos
+| Rota | Descrição |
+|---|---|
+| `GET /api/anuncios?status&search&store_id&days` | lista + summary (total/active/paused/closed) |
+| `GET /api/produtos?search&sortBy&days&store_id` | lista com vendas/receita do período + promoção ativa via `LEFT JOIN LATERAL promotions` |
+| `GET /api/produtos/:id/detalhe` | item + últimas 6 alterações (`item_changes`) + vendas diárias 30d + visitas 30d |
+| `GET /api/produtos/performance?store_id&days&sort` | agrupado por `parent_item_id` (variações somadas): pedidos, receita, visitas, conversão% |
+| `GET /api/produtos/:id/historico-diario?days&store_id` | série diária mesclada de visitas + vendas para um item (e variações) |
+| `PATCH /api/items/:id/custo { cost }` | atualiza `items.cost` |
+| `GET /api/custos/:sku` / `PATCH /api/custos/:sku { cost }` | custo por SKU (`sku_costs`), também espelha em `items.cost` |
+| `GET /api/anuncios/:id/visitas?days` | série de visitas (`item_visits`) |
+| `GET /api/items/:item_id/promotion?store_id` | **chama a API do ML em tempo real** (`mlClient`) — verifica `sale_price`, `promotions[]`, `original_price`, `deal_ids`, endpoint `/items/:id/promotions` e `seller-promotions` para detectar se o item está em promoção. Usado sob demanda no modal de detalhe, não em listagens |
+| `GET /api/alertas/anuncios-problema?store_id&level&sort` | itens ativos + score de qualidade (`item_performance`) + pedidos/receita 30/15/7d |
+| `POST /api/alertas/anuncios-performance/sync { store_id, limit }` | dispara em background a chamada `/item/:id/performance` na API do ML para itens sem score ou desatualizados (>24h); roda com mutex `perfSyncRunning` |
+
+## Pedidos / Vendas (webhook-driven — tabela `orders`)
+| Rota | Descrição |
+|---|---|
+| `GET /api/pedidos?status&period` | lista + summary por status. `period`: `hoje`, `ontem` ou N dias |
+| `GET /api/pedidos/:id/detalhes` | pedido completo com cálculo de margem (custo, imposto, tarifa, fretes) |
+| `PATCH /api/pedidos/:id/frete-vendedor { cost }` | grava `shipping_seller_cost` manualmente |
+| `GET /api/vendas/diarias?days` | série diária, com estimativa fixa `liquido = bruto*0.88` / `taxas = bruto*0.12` (aproximação, não usa custo real por pedido) |
+| `GET /api/vendas/detalhado?store_id&status&days&search&date_from&date_to` | linha a linha com margem calculada por pedido — fórmula em `finance.md` |
+| `GET /api/vendas/hoje` | KPI do dia (sempre `CURRENT_DATE`, independe de filtro de período) |
+| `GET /api/vendas/hoje-vs-ontem?store_id` | comparação até o mesmo horário do dia anterior (aritmética em UTC ajustada para BRT) |
+| `GET /api/vendas/por-loja?days` | receita diária por loja, período atual vs período anterior equivalente |
+| `GET /api/analises/estoque-parado?store_id&days&modo` | itens ativos sem venda no período (`modo=parado`) ou todos com contagem de vendas |
+| `GET /api/analises/horarios?store_id&period` | pedidos/receita por hora do dia (fuso America/Sao_Paulo) |
+| `GET /api/analises/dias-semana?store_id&days` | pedidos/receita por dia da semana |
+| `GET /api/comparativos/periodos?p1&p2` | compara dois períodos (N dias ou `from|to`) |
+| `GET /api/comparativos/evolucao?days&store_id` | série diária receita/pedidos |
+| `GET /api/comparativos/curva-abc?store_id&period` | classificação ABC por % acumulado de faturamento (A≤80%, B≤95%, C resto) |
+
+## Perguntas / Mensagens
+| Rota | Descrição |
+|---|---|
+| `GET /api/perguntas?status&store_id` | lista + summary (não respondidas, respondidas hoje, tempo médio de resposta) |
+| `POST /api/perguntas/:id/responder { text }` | **chama a API do ML** (`mlClient.answerQuestion`) e atualiza `questions` |
+| `GET /api/mensagens` | últimas 50 conversas (`messages`) |
+
+## Clientes
+| Rota | Descrição |
+|---|---|
+| `GET /api/clientes?store_id&search&days` | agregado por `buyer_nickname`: total de pedidos, gasto total, ticket médio, primeira/última compra |
+| `GET /api/clientes/:nickname` | histórico de pedidos de um comprador |
+
+## Lojas
+| Rota | Descrição |
+|---|---|
+| `GET /api/lojas` | lista com status de token (`token_valid`), se tem credenciais próprias |
+| `PATCH /api/lojas/:id { imposto_pct }` | atualiza percentual de imposto |
+| `PATCH /api/lojas/:id/credentials { ml_client_id, ml_client_secret }` | credenciais ML próprias da loja |
+
+## Alertas
+| Rota | Descrição |
+|---|---|
+| `GET /api/alertas/reposicao?threshold&store_id` | itens com estoque ≤ threshold (padrão 15), com resumo por faixa (zero/critical≤3/low≤10/medium) |
+| `GET /api/alertas/cancelamentos` | últimos 100 pedidos cancelados |
+| `GET /api/alertas/devolucoes?store_id&q` | devoluções + summary por status |
+| `PATCH /api/alertas/devolucoes/:id/note { note }` | anotação manual em uma devolução |
+| `GET /api/alteracoes?store_id&days&limit` | trilha de `item_changes` com título/thumbnail do item |
+
+## Métricas (reputação)
+| Rota | Descrição |
+|---|---|
+| `GET /api/metricas` | última linha de `store_metrics` por loja (`DISTINCT ON`) |
+
+## Publicidade (exploratório)
+| Rota | Descrição |
+|---|---|
+| `GET /api/publicidade` | **chama a API do ML** testando múltiplos endpoints de advertising por loja até um responder OK; usado como diagnóstico, não como fonte estável de dados |
+
+## Webhooks / Schedule (operação/observabilidade)
+| Rota | Descrição |
+|---|---|
+| `GET /api/webhooks/logs?topic&limit` | últimos logs de `webhook_logs` |
+| `GET /api/webhooks/config` | contadores do dia + status da config do Telegram |
+| `GET /api/schedule/jobs` | estado atual de cada sync (`schedule_jobs`) |
+| `POST /api/schedule/jobs/:name/trigger` | publica comando no canal Redis `worker:cmd` para disparar um sync manualmente — nomes aceitos: `dailySync`, `syncVendas`, `syncMetricas`, `syncReturns`, `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores` |
+| `GET /api/schedule/worker-logs` | **SSE** — stream de `journalctl -u ml-worker-novo -f` (produção; depende do ambiente ter systemd/journalctl) |
+| `GET /api/schedule/runs?job&limit` | histórico de execuções (`schedule_runs`) |
+| `GET /api/schedule/logs?limit` | alias de leitura crua de `webhook_logs` |
+
+## Configuração Telegram
+| Rota | Descrição |
+|---|---|
+| `GET /api/config/telegram` | config atual (token mascarado) |
+| `PATCH /api/config/telegram { bot_token, chat_id, tg_*, tg_interval, silence_start, silence_end }` | grava em `app_config` |
+| `POST /api/config/telegram/test { message }` | envia mensagem de teste |
+
+## Promoções
+| Rota | Descrição |
+|---|---|
+| `GET /api/promocoes?store_id&days` | histórico de `promotions` + resumo (entrou/saiu hoje) |
+
+## Monitor (infra do servidor)
+| Rota | Descrição |
+|---|---|
+| `GET /api/monitor/metrics` | CPU/mem/disco via `top`/`free`/`df` (shell — só funciona em Linux com esses binários) |
+| `GET /api/monitor/security` | status `fail2ban` + últimos logins SSH via `last` |
+
+## Assistente IA (MCP)
+| Rota | Descrição |
+|---|---|
+| `POST /api/mcp/chat { message, store_id }` | monta contexto (KPIs, top produtos, pendências, estoque baixo, cancelamentos) e chama a API da Anthropic (`claude-haiku-4-5-20251001`) — requer `ANTHROPIC_API_KEY` |
+| `POST /api/mcp/docs { query, language, siteId, limit }` | proxy para o MCP oficial de documentação do Mercado Livre (`mcp.mercadolibre.com`), autenticado com o token de qualquer loja conectada |
+
+## `/api/turbo/*` — Vendas ML Turbo
+
+Ver `finance.md` para o significado de cada campo e o formato da planilha.
+
+| Rota | Descrição |
+|---|---|
+| `POST /api/turbo/import` (multipart `file`) | parseia `.xlsx/.xls/.csv`, autodetecta linha de cabeçalho e mapeia colunas por alias, faz upsert em `ml_turbo_sales` por `sale_id` |
+| `GET /api/turbo/kpis?date_from&date_to&account&sku&state&order_status` | KPIs agregados + resultado do dia + ROI |
+| `GET /api/turbo/sales?...&page&limit` | listagem paginada |
+| `GET /api/turbo/charts?date_from&date_to&account&order_status` | 10 séries agregadas em paralelo (diária, por estado, por conta, top receita/margem, baixa margem, por modal de envio, semanal, top quantidade, por status) |
+| `GET /api/turbo/filters-meta` | valores distintos para popular filtros do frontend |
+
+## `/webhooks/*` — ver `mercadolivre.md` e `websocket.md`
+
+| Rota | Descrição |
+|---|---|
+| `POST /webhooks/ml` | entrada de webhooks do Mercado Livre — responde 200 imediato, enfileira no BullMQ |
+| `POST /webhooks/telegram` | recebe replies do bot Telegram para responder perguntas ML diretamente do chat |
+
+## `/auth/*` e `/ml/*` — ver `mercadolivre.md`
+
+`GET /auth/config`, `GET /auth/login`, `GET /auth/callback` (+ alias `/ml/callback`).

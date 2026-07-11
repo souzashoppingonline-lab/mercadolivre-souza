@@ -94,6 +94,8 @@
 
 **Limite real da API de visitas do ML**: não documentado publicamente com um número exato (o limite geral de 1500 req/min por vendedor não é o gargalo aqui — o volume gerado é muito menor que isso); o comportamento observado em produção indica um limite bem mais restrito e específico desse endpoint. Não vale investir mais tempo tentando descobrir o número exato — a defesa por circuit breaker + backoff escalonado funciona independente do valor real do limite.
 
+**Validado em produção (11/07/2026, sync manual via `/sync visitas` no Telegram)**: RICOPI_MULTIMERCADO 72 itens/4 erros (5,6%), TOP_MIX_ 29 itens/3 erros (10,3%), UNIFULL_MULTIMERCADO 99 itens/3 erros (3,0%) — total 200 itens/10 erros (5%), contra ~68% de erro médio no dia anterior (mesmo código antigo). Nenhuma loja acionou o circuit breaker; a troca pra sequencial já eliminou a maior parte do problema sozinha. Rodada completa das 3 lojas em ~1h20.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

@@ -16,6 +16,10 @@ Este projeto mantém documentação modular e viva em `.claude/` — um arquivo 
 2. **A documentação é parte do projeto, tratada como código.** Toda tarefa que altera comportamento — nova rota REST, nova tabela/migration, novo handler de webhook/worker, novo tópico WebSocket, nova página frontend, nova regra de negócio, nova decisão arquitetural — deve terminar com o(s) arquivo(s) `.claude/*.md` correspondente(s) atualizado(s), **na mesma tarefa** em que o código muda. Nunca deixe a documentação desatualizada.
 3. Registre decisões arquiteturais importantes em `.claude/decisions.md` e regras de negócio novas em `.claude/business-rules.md` (ou `.claude/finance.md` se for especificamente financeira) assim que forem descobertas ou definidas.
 
+## Fluxo de trabalho obrigatório (resumo — detalhes em `.claude/workflow.md`)
+
+**Nunca escreva código imediatamente.** Antes de qualquer alteração: entenda o problema, procure código semelhante, analise impacto/performance/segurança/banco/frontend/backend — e só depois implemente. Explique por escrito **problema, solução, vantagens, riscos e impacto** antes de programar. Nunca aceite código duplicado, funções gigantes, queries N+1/lentas, ou código sem tratamento de erro/log/documentação. Antes de criar arquivo/função/endpoint/migration/worker/página, procure se já existe algo semelhante (tabela de referência em `.claude/workflow.md`). Prioridades do projeto, em ordem: performance > escalabilidade > simplicidade > manutenção > organização > aparência. Ao encontrar uma melhoria não solicitada: pare, explique, mostre os benefícios e pergunte antes de implementar.
+
 ## Project Overview
 
 Full-stack Mercado Livre seller dashboard using an **event-driven architecture (EDA)**. The frontend never calls the Mercado Livre API directly — all data flows through webhooks.

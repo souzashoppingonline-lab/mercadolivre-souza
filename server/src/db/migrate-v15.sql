@@ -41,13 +41,22 @@ CREATE INDEX IF NOT EXISTS idx_stores_marketplace  ON stores(marketplace_id);
 -- Amazon (ex: "902-1845936-3456781") não são numéricos — precisa ser TEXT.
 -- Seguro: ml_id é usado em todo o código só como chave opaca de
 -- igualdade/join, nunca em ORDER BY/aritmética (verificado em api.js/worker.js).
--- A FK de returns precisa ser solta antes de alterar o tipo do lado
--- referenciado (Postgres não aceita os dois lados temporariamente
--- incompatíveis) e recriada depois — bloco idempotente, seguro para reexecutar.
-ALTER TABLE returns DROP CONSTRAINT IF EXISTS returns_order_id_fkey;
-ALTER TABLE orders  ALTER COLUMN ml_id    TYPE TEXT USING ml_id::TEXT;
-ALTER TABLE returns ALTER COLUMN order_id TYPE TEXT USING order_id::TEXT;
-ALTER TABLE returns ADD CONSTRAINT returns_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(ml_id);
+-- schema.sql já faz essa mesma conversão (roda antes deste arquivo) — este
+-- bloco é só uma rede de segurança para quem rodar migrate-v15.sql isolado.
+-- Precisa do guard "IF ... <> 'text'": depois que schema.sql cria a view
+-- vw_ml_orders (v17) sobre orders.ml_id, um ALTER COLUMN TYPE aqui — mesmo
+-- sendo um no-op (TEXT → TEXT) — quebra com "cannot alter type of a column
+-- used by a view" porque o Postgres não permite ALTER COLUMN TYPE em coluna
+-- referenciada por view/rule, independente do tipo mudar de fato ou não.
+DO $$
+BEGIN
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'ml_id') <> 'text' THEN
+    ALTER TABLE returns DROP CONSTRAINT IF EXISTS returns_order_id_fkey;
+    ALTER TABLE orders  ALTER COLUMN ml_id    TYPE TEXT USING ml_id::TEXT;
+    ALTER TABLE returns ALTER COLUMN order_id TYPE TEXT USING order_id::TEXT;
+    ALTER TABLE returns ADD CONSTRAINT returns_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(ml_id);
+  END IF;
+END $$;
 
 -- Campos exclusivos de pedidos Amazon — `orders` continua só com os campos
 -- comuns entre marketplaces.

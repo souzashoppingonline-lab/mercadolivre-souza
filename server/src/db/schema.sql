@@ -143,12 +143,22 @@ CREATE TABLE IF NOT EXISTS returns (
 -- abaixo) — senão a FK falha por incompatibilidade de tipo. A constraint
 -- precisa ser solta antes de alterar o tipo da coluna referenciada (Postgres
 -- não permite alterar um lado sem o outro com a FK ativa) e recriada depois.
--- Todo o bloco é idempotente: em instalação nova ambos já são TEXT (no-op),
--- e reexecutar em bancos já migrados só recria a mesma constraint.
-ALTER TABLE returns DROP CONSTRAINT IF EXISTS returns_order_id_fkey;
-ALTER TABLE orders  ALTER COLUMN ml_id    TYPE TEXT USING ml_id::TEXT;
-ALTER TABLE returns ALTER COLUMN order_id TYPE TEXT USING order_id::TEXT;
-ALTER TABLE returns ADD CONSTRAINT returns_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(ml_id);
+-- Guard "IF ... <> 'text'": a partir do momento em que este script já rodou
+-- uma vez e criou a view vw_ml_orders (mais abaixo, v17) sobre orders.ml_id,
+-- reexecuções seguintes deste ALTER (mesmo sendo um no-op TEXT→TEXT) quebram
+-- com "cannot alter type of a column used by a view" — o Postgres recusa
+-- ALTER COLUMN TYPE em coluna referenciada por view/rule mesmo quando o tipo
+-- não muda de fato. O guard evita executar o ALTER quando não há nada a
+-- converter, então nunca chega a tocar na coluna usada pela view.
+DO $$
+BEGIN
+  IF (SELECT data_type FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'ml_id') <> 'text' THEN
+    ALTER TABLE returns DROP CONSTRAINT IF EXISTS returns_order_id_fkey;
+    ALTER TABLE orders  ALTER COLUMN ml_id    TYPE TEXT USING ml_id::TEXT;
+    ALTER TABLE returns ALTER COLUMN order_id TYPE TEXT USING order_id::TEXT;
+    ALTER TABLE returns ADD CONSTRAINT returns_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders(ml_id);
+  END IF;
+END $$;
 
 -- Campos exclusivos de pedidos Amazon — orders continua só com campos comuns.
 CREATE TABLE IF NOT EXISTS amazon_order_data (

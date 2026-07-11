@@ -35,6 +35,7 @@ Os dois processos se comunicam **apenas via Redis** (filas BullMQ + pub/sub), nu
 2. `server/src/mlClient.js` (cliente da API do ML) só pode ser importado por `worker.js` ou por rotas que executam ações pontuais autorizadas pelo usuário (ex.: responder pergunta em `routes/api.js`, `routes/webhookGateway.js` para replies do Telegram). Rotas de **leitura** do dashboard nunca chamam `mlClient`.
 3. `routes/api.js` só lê Postgres/Redis — não faz chamadas HTTP externas para popular listagens.
 4. `routes/webhookGateway.js` responde `200` imediatamente e enfileira o processamento — nunca faz trabalho síncrono pesado na requisição do webhook.
+5. O pipeline de eventos de outros marketplaces (`marketplaceEventWorker.js`, fila `marketplace-events-*`) é desacoplado do dispatch table ML (`handlers`/`processJob` em `worker.js`) — um nunca chama o outro. Ver `workers.md` ("Eventos de outros marketplaces") e `decisions.md` ("Marketplace Engine — schema evolutivo").
 
 ## Estrutura de diretórios
 
@@ -55,22 +56,28 @@ Os dois processos se comunicam **apenas via Redis** (filas BullMQ + pub/sub), nu
 server/                ← Backend Node.js (dois processos — ver acima)
   src/
     server.js           ← entry point HTTP
-    worker.js             ← entry point worker BullMQ
+    worker.js             ← entry point worker BullMQ (pipeline ML — intocado desde v15)
+    marketplaceEventWorker.js  ← v15: entry point (chamado por worker.js) do worker de eventos
+                                   de outros marketplaces — fila/dispatch separados do ML
     mlClient.js            ← cliente HTTP da API do ML — uso restrito (ver regra 2)
     config/env.js           ← leitura de variáveis de ambiente
     db/
       pool.js               ← pool de conexões PostgreSQL (pg)
       redis.js                ← cliente ioredis compartilhado
       schema.sql                ← schema base
-      migrate-v2.sql … v14.sql   ← migrations incrementais
+      migrate-v2.sql … v15.sql   ← migrations incrementais
       migrate.js                  ← aplica schema + migrations em sequência
     queues/
-      webhookQueue.js            ← fábrica de filas BullMQ por loja
+      webhookQueue.js            ← fábrica de filas BullMQ por loja (ML)
+      marketplaceEventQueue.js     ← v15: fábrica de filas BullMQ por marketplace (`marketplace-events-{code}`)
     marketplaces/                ← "Marketplace Engine" — camada comum multi-marketplace
       interfaces/MarketplaceClient.js  ← contrato (refreshAccessToken, getOrder, listRecentOrders)
+      interfaces/EventSource.js          ← v15: contrato (start, stop, discoverEvents)
+      Scheduler.js                         ← v15: orquestra EventSources no intervalo registrado
       base/errors.js                    ← erros compartilhados (RateLimit, TokenInvalid, Transient)
       mercadolivre/                       ← reservado, vazio — ML continua em mlClient.js/routes/auth.js
-      amazon/amazonClient.js                ← implementado, AINDA NÃO conectado a rotas/worker
+      amazon/amazonClient.js                ← cliente SP-API (LWA + Orders API)
+      amazon/AmazonPollingEventSource.js      ← v15: EventSource real — polling 15min, publica em marketplaceEventQueue
       shopee/shopeeClient.js                  ← stub — app em aprovação (ver shopee.md)
     routes/
       api.js                      ← REST API consumida pelo frontend

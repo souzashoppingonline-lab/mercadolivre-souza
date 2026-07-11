@@ -2,14 +2,24 @@
 
 > Lista viva de itens acionáveis e concretos — granularidade de tarefa, não de direção estratégica (`roadmap.md`) nem de defeito documentado sem plano de ação definido (`known-bugs.md`, embora todo item de `known-bugs.md` com "Correção esperada" definida vire candidato natural a entrar aqui). Marque `[x]` ao concluir e mova o resultado relevante para `decisions.md`/`database.md`/etc. conforme o caso. Adicione itens novos sempre que uma tarefa ficar pendente ao final de uma sessão.
 
-## Integração Amazon — bloqueado aguardando resposta do usuário
+## Integração Amazon — v15 conectada, falta validar em sandbox e depois produção
 
-- [ ] **Confirmar a decisão de schema** antes de escrever qualquer migration: coluna `marketplace` discriminadora em `stores`/`orders`/`items` (recomendado, ver `roadmap.md`) vs. tabelas paralelas (`amazon_orders`, `amazon_items`).
-- [ ] Obter `AMAZON_LWA_CLIENT_ID` e `AMAZON_LWA_CLIENT_SECRET` — clicar em "Exibir credenciais de sandbox" na Central de Desenvolvedores (Solution Provider Portal) do app `FinanceEcom`. Sem eles `amazonClient.js` não troca o refresh token por access token.
-- [ ] Confirmar `AMAZON_MARKETPLACE_ID` (Brasil = `A2Q3Y263D00KWC`) e `AMAZON_REGION` (assumido `na`).
-- [ ] Definir se o primeiro corte usa polling periódico (mais simples, recomendado) ou assinatura da Notifications API (SNS/SQS) — ver `amazon.md`.
-- [ ] Validar o fluxo end-to-end em **sandbox** primeiro (`AMAZON_ENV=sandbox`, dados de teste estáticos) antes de solicitar autorização de produção no Seller Central — o app `FinanceEcom` hoje está com Status=Sandbox, sem autorização de produção.
-- [ ] Depois de validado em sandbox e confirmado o schema: migration da coluna `marketplace`, worker/fila dedicado, rota REST (ou extensão das existentes se for coluna discriminadora), atualizar `database.md`/`workers.md`/`api.md`. Só então trocar `AMAZON_ENV=production` (após autorização aprovada pela Amazon).
+- [x] Confirmar a decisão de schema — coluna `marketplace_id` discriminadora, sem normalização profunda (ver `decisions.md`).
+- [x] Credenciais `AMAZON_LWA_CLIENT_ID`/`AMAZON_LWA_CLIENT_SECRET`/`AMAZON_MARKETPLACE_ID`/`AMAZON_REGION` já configuradas em `server/.env`.
+- [x] Primeiro corte usa polling periódico (`AmazonPollingEventSource`, 15 min) — Notifications API (SNS/SQS) fica como evolução futura se o polling não escalar.
+- [x] Migration (`migrate-v15.sql`), worker/fila dedicado (`marketplaceEventWorker.js`), `database.md`/`workers.md`/`amazon.md` atualizados.
+- [ ] **Validar o fluxo end-to-end em sandbox**: iniciar o worker em produção com `AMAZON_ENV=sandbox` e confirmar nos logs que `AmazonPollingEventSource` roda, publica jobs em `marketplace-events-amazon`, e que `orders`/`amazon_order_data` recebem os pedidos de teste estáticos da SP-API sandbox.
+- [ ] Validar se `mapAmazonStatus()` (`marketplaceEventWorker.js`) está mapeando `OrderStatus` da Amazon para `orders.status` de forma sensata — só dá pra confirmar de fato quando pedidos (mesmo que de sandbox) começarem a chegar.
+- [ ] Expor Amazon nos endpoints de leitura (`routes/api.js`) filtrando/agrupando por `marketplace_id` — hoje as queries existentes não incluem pedidos Amazon nas telas do dashboard.
+- [ ] Rota REST dedicada só é necessária se algo não couber nos endpoints existentes com `marketplace_id`.
+- [ ] Notificação Telegram de vendas Amazon (fora de escopo da v15).
+- [ ] Trocar `AMAZON_ENV` para `production` só depois de autorização de produção aprovada pela Amazon no Seller Central.
+
+## Débito técnico — Marketplace Engine (v15)
+
+- [ ] Fase 2: normalização completa (`order_items`/`products`/`inventory`/`shipments`/`customers`) via Strangler Pattern, módulo a módulo — ver `roadmap.md`.
+- [ ] Renomear `orders.ml_id` para algo marketplace-neutro (ex: `external_order_id`) — mantido por ora para não tocar em todo `api.js`/`worker.js`/frontend que já referenciam esse nome.
+- [ ] Avaliar migrar `MercadoLivreEventSource`/`ShopeeEventSource` para o padrão `EventSource`/`Scheduler` — só depois que Amazon (e Shopee) provarem o padrão estável em produção (ver `decisions.md`).
 
 ## Integração Shopee — bloqueado no app
 

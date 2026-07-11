@@ -1617,3 +1617,7 @@ async function tgBotLoop() {
 tgBotLoop();
 
 console.log('[worker] listening for ml-webhooks jobs...');
+
+// Marketplace Engine — consumo de eventos de outros marketplaces (Amazon hoje),
+// totalmente à parte do dispatch table ML acima. Ver .claude/decisions.md.
+require('./marketplaceEventWorker').startMarketplaceEventWorkers();

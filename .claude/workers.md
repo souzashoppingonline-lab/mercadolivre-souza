@@ -23,7 +23,7 @@ O Gateway (`webhookGateway.js`) usa `jobId = \`${topic}:${resource}:${storeId}\`
 
 | Tópico ML | Handler | Ação |
 |---|---|---|
-| `orders_v2` | `handleOrder` | busca `/orders/:id`, upsert em `orders`, invalida `kpis:*`, publica `order_updated`, notifica Telegram (`tg_vendas`) só na transição real para `status='paid'` |
+| `orders_v2` | `handleOrder` | busca `/orders/:id`, upsert em `orders`, invalida `kpis:*`, publica `order_updated`, notifica Telegram (`tg_vendas`) só na transição real para `status='paid'` **e** se `date_closed`/`date_created` do pedido tiver menos de 24h (evita notificar como "Nova venda!" um pedido antigo que só agora entrou no banco via webhook tardio de `shipments`/`payments`) — mensagem inclui data/hora da venda e do disparo do alerta |
 | `payments` | `handlePayment` | busca `/collections/:id`, extrai `order_id`, delega para `handleOrder` |
 | `questions` | `handleQuestion` | busca `/questions/:id`, upsert em `questions`, publica `question_received`, notifica Telegram (`tg_perguntas`) se `UNANSWERED`, salva `tg_message_id` para permitir responder via reply (ver `known-bugs.md`) |
 | `messages` | `handleMessage` | busca `/messages/:id`, upsert em `messages` (incrementa `unread`), publica `message_received`, notifica Telegram (`tg_mensagens`) |
@@ -68,6 +68,16 @@ Outros loops independentes:
 - `tokenRefreshLoop` — roda no boot e a cada 30 min; renova token se faltar <4h, alerta Telegram (`tg_token`) escalonado (a cada 6h se >48h, sempre se <4h). Tokens "epoch zero" (`token_expires_at < ano 2000`, ver `mercadolivre.md`) nunca são renovados automaticamente — só alerta, exige reconexão manual.
 - `reprocessSkipped` — roda no boot (+5min) e a cada 30 min; reprocessa `webhook_logs` com `status='skipped'` e `topic='orders_v2'` das últimas 4h, respeitando o cooldown ainda ativo.
 - Sync inicial automático de vendas 2 min após o boot, **só fora do horário de pico** (22h–08h) para não competir com tráfego de webhook.
+
+## Eventos de outros marketplaces — v15 (`marketplaceEventWorker.js`, processo à parte do dispatch acima)
+
+Desde v15, `worker.js` também sobe (2 linhas aditivas no final do arquivo, nenhum handler ML tocado) um segundo `Worker` BullMQ, definido em `server/src/marketplaceEventWorker.js`, que consome eventos padronizados de EventSources de marketplace — hoje só a Amazon. Este worker **não conhece** o dispatch table `handlers`/`processJob` do ML e vice-versa; são pipelines paralelos e independentes.
+
+- **Descoberta de eventos**: `server/src/marketplaces/Scheduler.js` orquestra `EventSource`s registradas (`server/src/marketplaces/interfaces/EventSource.js`: `start/stop/discoverEvents`). Hoje só `AmazonPollingEventSource` (`marketplaces/amazon/AmazonPollingEventSource.js`) está registrada, com polling a cada 15 min — a Amazon SP-API não tem webhook simples "topic+resource" como o ML.
+- Cada execução de `discoverEvents()` lê o cursor `last_synced_at` de `marketplace_sync_state` (24h atrás na 1ª execução), chama `AmazonClient.listRecentOrders`, e publica um evento por pedido na fila `marketplace-events-amazon` (`queues/marketplaceEventQueue.js`), com `jobId` estável `AMAZON:ORDER_UPDATED:{amazonOrderId}` (mesma técnica anti-duplicata do Gateway ML).
+- **Consumo**: o `Worker('marketplace-events-amazon', ...)` em `marketplaceEventWorker.js` busca o pedido completo (`AmazonClient.getOrder`), faz upsert em `orders` (com `marketplace_id`, `store_id` = store sentinela `9000000001`) e nos campos exclusivos em `amazon_order_data`, invalida `kpis:summary` e publica `order_updated` no WS — mesmo formato que o pipeline ML usa, para as telas do dashboard não precisarem saber a origem.
+- Notificação Telegram de vendas Amazon **não está implementada** (fora de escopo da v15 — ver `todo.md`).
+- Se `AMAZON_LWA_CLIENT_ID`/`AMAZON_LWA_CLIENT_SECRET` não estiverem configurados, `discoverEvents()` é um no-op silencioso (mesma postura defensiva do `amazonClient.js`).
 
 ## Comandos manuais (canal Redis `worker:cmd`)
 

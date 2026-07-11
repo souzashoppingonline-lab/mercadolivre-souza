@@ -1,0 +1,103 @@
+// Consome eventos padronizados publicados por EventSources de marketplace
+// (hoje: AmazonPollingEventSource) numa fila BullMQ própria, totalmente
+// desacoplada do dispatch table `handlers`/`processJob` do Mercado Livre em
+// worker.js — este arquivo não altera nenhuma linha do pipeline ML existente.
+// Ver .claude/decisions.md ("Marketplace Engine — EventSource").
+const { Worker } = require('bullmq');
+const IORedis = require('ioredis');
+const env = require('./config/env');
+const pool = require('./db/pool');
+const redis = require('./db/redis');
+const { publish } = require('./ws/hub');
+const { Scheduler } = require('./marketplaces/Scheduler');
+const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
+const { AmazonClient } = require('./marketplaces/amazon/amazonClient');
+
+const AMAZON_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — ajustável sem tocar no restante do pipeline
+
+const clients = { AMAZON: new AmazonClient(env) };
+
+// Vocabulário compartilhado de `orders.status` — ajuste fino de quais status
+// da Amazon contam como "pago" fica para quando pedidos reais de sandbox/
+// produção começarem a chegar (hoje sandbox só devolve dados de teste estáticos).
+function mapAmazonStatus(orderStatus) {
+  switch (orderStatus) {
+    case 'Shipped':
+    case 'PartiallyShipped':
+    case 'Unshipped':
+      return 'paid'; // Amazon só libera o pedido para o seller depois do pagamento capturado
+    case 'Canceled':
+      return 'cancelled';
+    case 'Pending':
+      return 'pending';
+    default:
+      return (orderStatus || '').toLowerCase();
+  }
+}
+
+const AMAZON_STORE_ID = 9000000001; // store sentinela criada em migrate-v15.sql
+
+async function handleOrderEvent(evt) {
+  const client = clients[evt.marketplace];
+  if (!client) { console.warn(`[marketplace-worker] sem client para ${evt.marketplace}`); return; }
+
+  const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = $1`, [evt.marketplace]);
+  const marketplaceId = mp[0]?.id;
+  if (!marketplaceId) { console.warn(`[marketplace-worker] marketplace ${evt.marketplace} não cadastrado`); return; }
+
+  const orderResp = await client.getOrder(evt.resourceId);
+  const o = orderResp?.payload || orderResp;
+  if (!o?.AmazonOrderId) { console.warn(`[marketplace-worker] resposta sem AmazonOrderId para ${evt.resourceId}`); return; }
+
+  const status = mapAmazonStatus(o.OrderStatus);
+  const totalAmount = Number(o.OrderTotal?.Amount || 0);
+
+  const { rows: prevRows } = await pool.query(`SELECT status FROM orders WHERE ml_id = $1`, [o.AmazonOrderId]);
+  const previousStatus = prevRows[0]?.status || null;
+
+  await pool.query(
+    `INSERT INTO orders (ml_id, marketplace_id, store_id, total_amount, status, date_created, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6, now())
+     ON CONFLICT (ml_id) DO UPDATE SET
+       marketplace_id = EXCLUDED.marketplace_id,
+       total_amount = EXCLUDED.total_amount,
+       status = EXCLUDED.status,
+       updated_at = now()`,
+    [o.AmazonOrderId, marketplaceId, AMAZON_STORE_ID, totalAmount, status, o.PurchaseDate || null]
+  );
+
+  await pool.query(
+    `INSERT INTO amazon_order_data (order_id, amazon_order_id, seller_id, fulfillment_channel, order_type, raw_data, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6, now())
+     ON CONFLICT (order_id) DO UPDATE SET
+       fulfillment_channel = EXCLUDED.fulfillment_channel,
+       order_type = EXCLUDED.order_type,
+       raw_data = EXCLUDED.raw_data,
+       updated_at = now()`,
+    [o.AmazonOrderId, o.AmazonOrderId, evt.sellerId || null, o.FulfillmentChannel || null, o.OrderType || null, JSON.stringify(o)]
+  );
+
+  await redis.del('kpis:summary');
+  await publish('order_updated', { id: o.AmazonOrderId, status, marketplace: 'AMAZON' });
+
+  if (status === 'paid' && previousStatus !== 'paid') {
+    console.log(`[marketplace-worker] ✅ nova venda Amazon: ${o.AmazonOrderId} | R$ ${totalAmount}`);
+  }
+}
+
+function startMarketplaceEventWorkers() {
+  const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
+  const w = new Worker('marketplace-events-amazon', (job) => handleOrderEvent(job.data), {
+    connection,
+    concurrency: 2,
+  });
+  w.on('failed', (job, err) => console.error('[marketplace-worker] failed', job?.id, err.message));
+  w.on('error', (err) => console.error('[marketplace-worker] error:', err.message));
+  console.log('[marketplace-worker] started queue marketplace-events-amazon');
+
+  const scheduler = new Scheduler();
+  scheduler.register(new AmazonPollingEventSource(), { intervalMs: AMAZON_POLL_INTERVAL_MS });
+  scheduler.startAll().catch((err) => console.error('[marketplace-worker] scheduler startAll falhou:', err.message));
+}
+
+module.exports = { startMarketplaceEventWorkers };

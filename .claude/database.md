@@ -16,15 +16,24 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
 ## Tabelas
 
-### `stores` — lojas autorizadas via OAuth
+### `marketplaces` — v15: catálogo de marketplaces suportados
 ```
-id BIGINT PK              -- user_id do Mercado Livre
+id SERIAL PK, code TEXT UNIQUE  -- 'ML' | 'AMAZON' | 'SHOPEE' | 'MAGALU' | 'TIKTOK'
+name TEXT, api_type TEXT        -- 'webhook' | 'polling'
+enabled BOOLEAN DEFAULT true
+created_at TIMESTAMPTZ
+```
+Referenciada por `marketplace_id` em `stores`/`orders`/`items`/`messages` (coluna discriminadora, v15). Todo dado pré-existente foi backfillado para `code='ML'`. Ver `decisions.md` ("Marketplace Engine — schema evolutivo").
+
+### `stores` — lojas/contas autorizadas por marketplace
+```
+id BIGINT PK              -- user_id do Mercado Livre; para Amazon é a store sentinela fixa 9000000001
 nickname TEXT
 level_id TEXT
 access_token, refresh_token TEXT
@@ -34,6 +43,7 @@ imposto_pct NUMERIC DEFAULT 0                  -- % de imposto usada no cálculo
 ml_client_id, ml_client_secret TEXT            -- credenciais próprias por loja (opcional)
 refresh_failures INT DEFAULT 0                 -- v11: contagem de falhas consecutivas de refresh
 last_refresh_error TEXT                        -- v11
+marketplace_id INT FK marketplaces             -- v15
 updated_at TIMESTAMPTZ
 ```
 
@@ -46,12 +56,17 @@ thumbnail, permalink TEXT
 cost NUMERIC DEFAULT 0            -- custo unitário (editável manualmente)
 original_price NUMERIC DEFAULT 0  -- v13: preço "de" quando em promoção
 parent_item_id TEXT               -- item pai (variações) — preenchido por syncParentItems
+marketplace_id INT FK marketplaces -- v15
 updated_at TIMESTAMPTZ
 ```
 
-### `orders` — pedidos (fonte webhook-driven, não confundir com `ml_turbo_sales`)
+### `orders` — pedidos (fonte webhook/polling-driven, não confundir com `ml_turbo_sales`)
 ```
-ml_id BIGINT PK
+ml_id TEXT PK                     -- v15: era BIGINT; convertido para TEXT porque IDs de pedido
+                                   -- de outros marketplaces (ex: Amazon "902-1845936-3456781")
+                                   -- não são numéricos. Continua chamado `ml_id` por ora (débito
+                                   -- técnico consciente — ver decisions.md) mesmo guardando IDs
+                                   -- de outros marketplaces.
 store_id BIGINT FK stores
 buyer_nickname, item_id, title TEXT
 quantity INT, unit_price NUMERIC, total_amount NUMERIC
@@ -60,9 +75,11 @@ shipping_type TEXT, shipping_cost NUMERIC          -- frete pago pelo comprador
 shipping_seller_cost NUMERIC DEFAULT 0             -- v4: frete pago pelo vendedor (entrada manual)
 status TEXT, cancelled_by TEXT, cancel_reason TEXT
 date_created, date_closed TIMESTAMPTZ
-raw_data JSONB                    -- payload completo do pedido retornado pela API do ML
+raw_data JSONB                    -- payload completo do pedido (só preenchido pelo pipeline ML)
+marketplace_id INT FK marketplaces -- v15
 updated_at TIMESTAMPTZ
 ```
+Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data` hoje). `orders` só guarda os campos comuns entre marketplaces.
 
 ### `questions` — perguntas de compradores
 ```
@@ -81,6 +98,7 @@ store_id BIGINT FK stores
 pack_id TEXT              -- índice único (v10: messages_pack_id_unique)
 buyer_nickname, last_message TEXT
 unread INT DEFAULT 0      -- incrementado a cada mensagem nova do mesmo pack
+marketplace_id INT FK marketplaces -- v15
 last_message_date, updated_at TIMESTAMPTZ
 ```
 
@@ -88,13 +106,32 @@ last_message_date, updated_at TIMESTAMPTZ
 ```
 id BIGSERIAL PK
 store_id BIGINT FK stores
-order_id BIGINT FK orders
+order_id TEXT FK orders   -- v15: acompanha a conversão de orders.ml_id para TEXT
 buyer_nickname TEXT
 title, reason, status TEXT
 amount NUMERIC
 date, updated_at TIMESTAMPTZ
 note  -- usado pelo endpoint PATCH /api/alertas/devolucoes/:id/note (anotação manual do time)
 ```
+
+### `amazon_order_data` — v15: campos exclusivos de pedidos Amazon
+```
+order_id TEXT PK FK orders(ml_id)
+amazon_order_id TEXT NOT NULL  -- índice único; hoje é sempre igual a order_id
+seller_id TEXT
+fulfillment_channel, order_type TEXT
+raw_data JSONB                 -- resposta completa da Orders API (SP-API)
+updated_at TIMESTAMPTZ
+```
+Gravada por `server/src/marketplaceEventWorker.js`. Mesmo papel do `orders.raw_data` no pipeline ML, mas isolada — `orders` continua marketplace-agnóstica.
+
+### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
+```
+marketplace_id INT FK marketplaces, source_key TEXT   -- PK composta
+last_synced_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
+```
+Usada por `AmazonPollingEventSource` (`source_key='default'`, única conta configurada hoje). **Não confundir** com `schedule_jobs`/`schedule_runs` — aquelas guardam status/histórico de execução de cron; esta guarda um cursor de dados (até quando já foi sincronizado).
 
 ### `webhook_logs` — auditoria de todo webhook recebido
 ```
@@ -179,7 +216,7 @@ Ao salvar via `PATCH /api/custos/:sku`, o mesmo valor também é gravado em `ite
 
 ## Índices relevantes
 
-`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`.
+`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15).
 
 ## Relação `items.parent_item_id` (variações)
 

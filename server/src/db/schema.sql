@@ -1,6 +1,24 @@
 -- PostgreSQL schema — single source of truth for the dashboard.
 -- Populated exclusively by BullMQ workers reacting to ML webhooks.
 
+-- Marketplace Engine — tabela discriminadora usada por marketplace_id em
+-- stores/orders/items/messages (ver migrate-v15.sql e .claude/decisions.md).
+CREATE TABLE IF NOT EXISTS marketplaces (
+  id SERIAL PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  api_type TEXT,
+  enabled BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+INSERT INTO marketplaces (code, name, api_type, enabled) VALUES
+  ('ML',     'Mercado Livre', 'webhook', true),
+  ('AMAZON', 'Amazon',        'polling', true),
+  ('SHOPEE', 'Shopee',        'webhook', false),
+  ('MAGALU', 'Magalu',        'polling', false),
+  ('TIKTOK', 'TikTok',        'polling', false)
+ON CONFLICT (code) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS item_changes (
   id SERIAL PRIMARY KEY,
   item_id TEXT NOT NULL,
@@ -23,6 +41,7 @@ CREATE TABLE IF NOT EXISTS stores (
   imposto_pct NUMERIC DEFAULT 0,
   ml_client_id TEXT,
   ml_client_secret TEXT,
+  marketplace_id INT REFERENCES marketplaces(id),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -38,6 +57,7 @@ CREATE TABLE IF NOT EXISTS items (
   thumbnail TEXT,
   permalink TEXT,
   cost NUMERIC DEFAULT 0,
+  marketplace_id INT REFERENCES marketplaces(id),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE items ADD COLUMN IF NOT EXISTS thumbnail TEXT;
@@ -45,8 +65,10 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS permalink TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS parent_item_id TEXT;
 
+-- ml_id é TEXT (não BIGINT) para caber IDs de pedido não-numéricos de
+-- outros marketplaces (ex: Amazon "902-1845936-3456781"). Ver migrate-v15.sql.
 CREATE TABLE IF NOT EXISTS orders (
-  ml_id BIGINT PRIMARY KEY,
+  ml_id TEXT PRIMARY KEY,
   store_id BIGINT REFERENCES stores(id),
   buyer_nickname TEXT,
   item_id TEXT,
@@ -64,6 +86,7 @@ CREATE TABLE IF NOT EXISTS orders (
   date_created TIMESTAMPTZ,
   date_closed TIMESTAMPTZ,
   raw_data JSONB,
+  marketplace_id INT REFERENCES marketplaces(id),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -87,19 +110,41 @@ CREATE TABLE IF NOT EXISTS messages (
   last_message TEXT,
   unread INT DEFAULT 0,
   last_message_date TIMESTAMPTZ,
+  marketplace_id INT REFERENCES marketplaces(id),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS returns (
   id BIGSERIAL PRIMARY KEY,
   store_id BIGINT REFERENCES stores(id),
-  order_id BIGINT REFERENCES orders(ml_id),
+  order_id TEXT REFERENCES orders(ml_id),
   title TEXT,
   reason TEXT,
   amount NUMERIC,
   status TEXT,
   date TIMESTAMPTZ,
   updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Campos exclusivos de pedidos Amazon — orders continua só com campos comuns.
+CREATE TABLE IF NOT EXISTS amazon_order_data (
+  order_id TEXT PRIMARY KEY REFERENCES orders(ml_id),
+  amazon_order_id TEXT NOT NULL,
+  seller_id TEXT,
+  fulfillment_channel TEXT,
+  order_type TEXT,
+  raw_data JSONB,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_amazon_order_data_amazon_id ON amazon_order_data(amazon_order_id);
+
+-- Cursor de "última sincronização" para EventSources de polling (Amazon hoje).
+CREATE TABLE IF NOT EXISTS marketplace_sync_state (
+  marketplace_id INT NOT NULL REFERENCES marketplaces(id),
+  source_key TEXT NOT NULL,
+  last_synced_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (marketplace_id, source_key)
 );
 
 CREATE TABLE IF NOT EXISTS webhook_logs (
@@ -159,6 +204,15 @@ CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(date_created);
 CREATE INDEX IF NOT EXISTS idx_items_store_status ON items(store_id, status);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_topic ON webhook_logs(topic);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_status ON webhook_logs(status);
+CREATE INDEX IF NOT EXISTS idx_orders_marketplace ON orders(marketplace_id);
+CREATE INDEX IF NOT EXISTS idx_items_marketplace ON items(marketplace_id);
+CREATE INDEX IF NOT EXISTS idx_stores_marketplace ON stores(marketplace_id);
+
+-- Store sentinela para a conta Amazon — só uma conta configurada via
+-- server/.env hoje, sem descoberta dinâmica de lojas como o ML tem.
+INSERT INTO stores (id, nickname, marketplace_id)
+VALUES (9000000001, 'Amazon', (SELECT id FROM marketplaces WHERE code = 'AMAZON'))
+ON CONFLICT (id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS item_visits (
   id SERIAL PRIMARY KEY,
   store_id BIGINT,

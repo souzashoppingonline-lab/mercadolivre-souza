@@ -4,9 +4,15 @@
 
 ## Multi-marketplace: Shopee e Amazon
 
-Em andamento — camada comum "Marketplace Engine" criada em `server/src/marketplaces/` (decisão registrada em `decisions.md`). Status por marketplace: `mercadolivre.md` (único em produção), `amazon.md` (cliente implementado, desconectado, credenciais parciais), `shopee.md` (bloqueada — app em aprovação, só stub).
+Amazon **ligada ao banco/worker desde v15** (tabela `marketplaces` + `marketplace_id` discriminador, `AmazonPollingEventSource` → `marketplaceEventWorker.js`, rodando em sandbox). Status por marketplace: `mercadolivre.md` (único em produção real), `amazon.md` (conectada, sandbox), `shopee.md` (bloqueada — app em aprovação, só stub).
 
-**Decisão pendente de confirmação** (bloqueia ligar a Amazon a qualquer rota/worker — ver `todo.md`): **schema compartilhado com coluna `marketplace` discriminadora** (`stores.marketplace`, `orders.marketplace`, `items.marketplace`) vs. **tabelas paralelas por marketplace** (`amazon_orders`, `amazon_items`). Proposta em avaliação: coluna discriminadora, por preservar todos os endpoints de agregação já existentes (`api.md`) funcionando para múltiplos marketplaces sem duplicar rota/query — mas ainda não confirmada com o usuário.
+### Fase 2 — normalização completa via Strangler Pattern (não iniciada)
+
+A v15 deliberadamente **não** normalizou o schema: `orders`/`items` continuam "achatados" (item+frete embutidos em `orders`, sem tabelas `order_items`/`products`/`inventory`/`shipments`/`customers` separadas) para não arriscar o pipeline ML em produção. Quando fizer sentido (Amazon estável, Shopee integrada), a normalização completa deve ser feita em fases pelo padrão **Strangler Pattern**: extrair um módulo por vez (ex: primeiro `shipments` para fora de `orders`, depois `order_items`, depois `customers`) mantendo compatibilidade com o schema antigo até cada extração ser validada em produção — nunca uma migração "big bang" que troca tudo de uma vez. Ver `decisions.md` ("Marketplace Engine — schema evolutivo").
+
+### `EventSource`/`Scheduler` — migração futura do ML/Shopee (avaliação, não decidida)
+
+O padrão `EventSource` (`start/stop/discoverEvents`) + `Scheduler` foi implementado para a Amazon (`AmazonPollingEventSource`). Migrar o Mercado Livre (hoje webhook direto, `Gateway → BullMQ → worker.js`) para uma `MercadoLivreEventSource` sob esse mesmo padrão é uma possibilidade futura, não uma decisão tomada — só faz sentido avaliar depois que Amazon (e Shopee, quando integrada) provarem o padrão estável em produção. Ver `decisions.md`.
 
 ## Descomissionamento do sistema antigo (`ml-dashboard.service`)
 

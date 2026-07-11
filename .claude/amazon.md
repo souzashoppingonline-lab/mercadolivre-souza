@@ -1,44 +1,55 @@
 # Integração — Amazon
 
-> Status atual: **em construção, desconectada do sistema em produção.** App já criado (`FinanceEcom`), com **Status = Sandbox** no Developer Console (Solution Provider Portal) — ainda sem "Autorizações restantes" de produção aprovadas pela Amazon. Todas as credenciais de sandbox já foram configuradas em `server/.env` (ver tabela abaixo); falta apenas confirmar a decisão de schema antes de ligar ao worker/rotas. Ver `.claude/decisions.md` (Marketplace Engine) e `.claude/roadmap.md`.
+> Status atual: **ligada ao banco/worker desde v15, rodando em sandbox.** App já criado (`FinanceEcom`), com **Status = Sandbox** no Developer Console (Solution Provider Portal) — ainda sem "Autorizações restantes" de produção aprovadas pela Amazon, então as chamadas retornam dados de teste estáticos, não pedidos reais. Todas as credenciais já configuradas em `server/.env`. Ver `.claude/decisions.md` (Marketplace Engine) e `.claude/workers.md` (seção "Eventos de outros marketplaces").
 
 ## O que já existe
 
-- `server/src/marketplaces/interfaces/MarketplaceClient.js` — contrato comum que todo adapter de marketplace implementa (`refreshAccessToken`, `getOrder`, `listRecentOrders`).
-- `server/src/marketplaces/base/errors.js` — `MarketplaceRateLimitError`, `MarketplaceTokenInvalidError`, `MarketplaceTransientError`, compartilhadas entre adapters novos.
-- `server/src/marketplaces/amazon/amazonClient.js` — implementação real: troca de `AMAZON_REFRESH_TOKEN` por access token via LWA (`https://api.amazon.com/auth/o2/token`), chamadas à SP-API (`getOrder`, `listRecentOrders`) usando o header `x-amz-access-token`. Suporta **sandbox e produção** (`AMAZON_ENV`) com endpoints diferentes por ambiente. **Não é chamado por nenhuma rota/worker ainda** — só existe isolado.
-- `config/env.js` ganhou o namespace `amazon` (`appId`, `lwaClientId`, `lwaClientSecret`, `refreshToken`, `marketplaceId`, `region`, `env`), lido de `server/.env` (nunca hardcoded).
-- `server/.env.example` documenta as variáveis novas (`AMAZON_*`), sem valores reais.
+- `server/src/marketplaces/interfaces/MarketplaceClient.js` — contrato comum de todo adapter de marketplace (`refreshAccessToken`, `getOrder`, `listRecentOrders`).
+- `server/src/marketplaces/base/errors.js` — `MarketplaceRateLimitError`, `MarketplaceTokenInvalidError`, `MarketplaceTransientError`, compartilhadas entre adapters.
+- `server/src/marketplaces/amazon/amazonClient.js` — troca `AMAZON_REFRESH_TOKEN` por access token via LWA, chama a SP-API (`getOrder`, `listRecentOrders`). Suporta sandbox e produção via `AMAZON_ENV`.
+- `server/src/marketplaces/interfaces/EventSource.js` — contrato `start/stop/discoverEvents` para descoberta de eventos de marketplace, independente do mecanismo (polling, webhook, Notifications API).
+- `server/src/marketplaces/Scheduler.js` — orquestra múltiplas `EventSource`, chamando `discoverEvents()` no intervalo registrado.
+- `server/src/marketplaces/amazon/AmazonPollingEventSource.js` — implementação real do `EventSource` para a Amazon: a cada 15 min, lê o cursor em `marketplace_sync_state`, chama `AmazonClient.listRecentOrders`, e publica um evento padronizado por pedido (`{marketplace:'AMAZON', event:'ORDER_UPDATED', resourceId, sellerId, timestamp}`) na fila BullMQ `marketplace-events-amazon`.
+- `server/src/queues/marketplaceEventQueue.js` — fila BullMQ por marketplace (mesmo padrão de `queues/webhookQueue.js` do ML).
+- `server/src/marketplaceEventWorker.js` — consome a fila acima, busca o pedido completo, faz upsert em `orders` (campos comuns, `marketplace_id`, `store_id` = store sentinela `9000000001`) e nos campos exclusivos em `amazon_order_data`. **Totalmente desacoplado** do dispatch table `handlers`/`processJob` do ML — `worker.js` só ganhou 2 linhas aditivas no final do arquivo para iniciar esse worker novo.
+- `config/env.js` tem o namespace `amazon` (`appId`, `lwaClientId`, `lwaClientSecret`, `refreshToken`, `marketplaceId`, `region`, `env`), lido de `server/.env`.
 
-## Credenciais — o que já temos e o que falta
+## Schema (v15 — ver `database.md` para colunas completas)
+
+- Tabela `marketplaces` (catálogo: `ML`, `AMAZON`, `SHOPEE`, `MAGALU`, `TIKTOK`) + coluna `marketplace_id` em `stores`/`orders`/`items`/`messages`.
+- `orders.ml_id` deixou de ser `BIGINT` e virou `TEXT` (IDs de pedido Amazon não são numéricos) — mesmo nome de coluna por ora, guardando IDs de qualquer marketplace.
+- `amazon_order_data` — campos exclusivos da Amazon (`amazon_order_id`, `seller_id`, `fulfillment_channel`, `order_type`, `raw_data`), `orders` continua só com os campos comuns entre marketplaces.
+- `marketplace_sync_state` — cursor de última sincronização usado pelo `AmazonPollingEventSource`.
+- Store sentinela `id=9000000001` (`nickname='Amazon'`) — só uma conta Amazon configurada hoje via `.env`, sem descoberta dinâmica de lojas como o ML tem.
+
+## Credenciais
 
 | Credencial | Status |
 |---|---|
-| Nome do app (`FinanceEcom`) | ✅ recebido |
-| `AMAZON_APP_ID` (`amzn1.sp.solution...`) | ✅ recebido — **atenção**: este é o Application ID do Developer Console, **não** é o mesmo valor que `AMAZON_LWA_CLIENT_ID` |
-| `AMAZON_REFRESH_TOKEN` (prefixo `Atzr\|`) | ✅ recebido — confirmado que é o **token de atualização de sandbox** (tela "Teste de sandbox" do Seller Central), não um token de produção. Nunca commitado no repositório, só em `server/.env` (protegido pelo `.gitignore`) |
-| `AMAZON_LWA_CLIENT_ID` / `AMAZON_LWA_CLIENT_SECRET` | ✅ recebido e configurado em `server/.env` — obtido em Seller Central → Central de Desenvolvedores → app `FinanceEcom` → link "Exibir credenciais de sandbox" |
-| `AMAZON_MARKETPLACE_ID` (Brasil = `A2Q3Y263D00KWC`) | ✅ configurado |
-| `AMAZON_REGION` | `na` (Brasil fica na região NA da SP-API) — configurado |
-| `AMAZON_ENV` | `sandbox` — o app está com **Status = Sandbox** no Developer Console, sem "Autorizações restantes" de produção ainda. Trocar para `production` só depois de solicitar e receber autorização de produção no Seller Central (fluxo separado da autorização de sandbox) |
+| Nome do app (`FinanceEcom`) | ✅ |
+| `AMAZON_APP_ID` | ✅ — Application ID do Developer Console, **não** é o mesmo valor que `AMAZON_LWA_CLIENT_ID` |
+| `AMAZON_REFRESH_TOKEN` (prefixo `Atzr\|`) | ✅ — token de **sandbox**, não produção |
+| `AMAZON_LWA_CLIENT_ID` / `AMAZON_LWA_CLIENT_SECRET` | ✅ |
+| `AMAZON_MARKETPLACE_ID` (Brasil = `A2Q3Y263D00KWC`) | ✅ |
+| `AMAZON_REGION` | `na` ✅ |
+| `AMAZON_ENV` | `sandbox` — trocar para `production` só depois de autorização de produção aprovada pela Amazon no Seller Central |
 
-Com todas as credenciais de sandbox configuradas, o `amazonClient.js` já consegue autenticar de verdade — mas as chamadas retornam **dados de teste estáticos**, não pedidos reais, até a Amazon aprovar a autorização de produção. Sandbox só serve para validar se o fluxo de autenticação/chamada está correto.
+## O que NÃO foi feito nesta fase (deliberado — ver `decisions.md`/`todo.md`)
 
-## O que ainda falta para ligar ao sistema em produção
-
-1. Confirmar a decisão de schema (coluna `marketplace` discriminadora vs. tabelas paralelas — proposta em `decisions.md`, pendente de confirmação).
-2. Migration correspondente (`database.md`).
-3. Um worker/fila dedicado (`amazon-orders-{...}`) que chama `AmazonClient.listRecentOrders`/`getOrder` — a Amazon não tem um webhook "topic+resource" simples como o ML; usa *Notifications API* (SQS/EventBridge) ou polling periódico. Para o primeiro corte, polling periódico (como `syncVendas` do ML) é mais simples de implementar corretamente do que assinar Notifications API — decisão a registrar quando essa etapa começar.
-4. Rota REST espelhando o que já existe para ML (`api.md`) — ou, se a decisão de schema for "coluna discriminadora", os endpoints existentes passam a incluir Amazon automaticamente sem rota nova.
+- **Normalização completa do schema** (`order_items`/`products`/`inventory`/`shipments`/`customers` como tabelas separadas) — `orders`/`items` continuam "achatados" como sempre foram para o ML; a Amazon usa a mesma estrutura + `amazon_order_data` para o que não é comum. Normalização de verdade fica para uma fase 2 via Strangler Pattern.
+- **Nenhuma linha do pipeline ML foi tocada** — `worker.js` (handlers, `processJob`), `webhookGateway.js`, `mlClient.js` seguem exatamente como estavam.
+- `MercadoLivreEventSource`/`ShopeeEventSource` reais — não criadas (sem código-esqueleto sem uso); só o padrão `EventSource` está documentado para quando fizer sentido migrá-las.
+- Notificação Telegram de vendas Amazon.
+- Rota REST dedicada — como o schema usa coluna discriminadora, os endpoints existentes (`api.md`) podem passar a incluir Amazon filtrando/agrupando por `marketplace_id`, mas isso ainda não foi feito nas queries de `routes/api.js`.
+- `AMAZON_ENV=production` — depende de aprovação da Amazon, fora de controle do time.
 
 ## Particularidades da Amazon a considerar
 
-A Amazon Selling Partner API (SP-API) difere do modelo do Mercado Livre em pontos que afetam diretamente decisões já tomadas neste projeto:
-
-- **Autenticação**: LWA (Login with Amazon) para o access token — implementado em `amazonClient.js`. AWS Signature v4 (IAM) só é exigida hoje pela Amazon para *restricted operations* (dados pessoais de comprador); a Orders API sem PII funciona só com o bearer token da LWA, por isso o cliente atual não implementa SigV4 ainda — se no futuro precisarmos de PII do comprador, isso vira um item novo aqui.
-- **Notificações**: a Amazon usa *Notifications API* (SNS/SQS) em vez de webhook HTTP simples "topic+resource" como o ML. Por isso o primeiro corte planejado é **polling periódico** (equivalente ao `syncVendas` do ML), não um gateway de webhook — mais simples e correto para um volume inicial baixo. Assinar a Notifications API fica como evolução futura se o polling não escalar.
-- **Rate limits**: a SP-API usa *token bucket* por operação (não por app como o ML) — cada endpoint (`getOrders`, `getOrder`, etc.) tem seu próprio limite documentado pela Amazon. O `amazonClient.js` atual não implementa esse controle ainda (só trata 429 lançando `MarketplaceRateLimitError`); um limiter por operação é trabalho para quando o polling for de fato ligado.
+- **Autenticação**: LWA para o access token — implementado em `amazonClient.js`. AWS Signature v4 (IAM) só é exigida hoje pela Amazon para *restricted operations* (dados pessoais de comprador); a Orders API sem PII funciona só com o bearer token da LWA. Se no futuro precisarmos de PII do comprador, SigV4 vira um item novo aqui.
+- **Notificações**: a Amazon usa *Notifications API* (SNS/SQS) em vez de webhook HTTP simples como o ML — por isso o corte atual usa **polling periódico** via `AmazonPollingEventSource`. Assinar a Notifications API (trocando só essa peça, sem tocar no `EventSource`/worker consumidor) fica como evolução futura se o polling não escalar.
+- **Rate limits**: a SP-API usa *token bucket* por operação (não por app como o ML). `amazonClient.js` só trata 429 lançando `MarketplaceRateLimitError`; um limiter por operação ainda não existe — a considerar se o polling a cada 15 min começar a esbarrar em rate limit real.
+- **Mapeamento de status**: `mapAmazonStatus()` em `marketplaceEventWorker.js` traduz `OrderStatus` da Amazon (`Pending`/`Unshipped`/`Shipped`/`Canceled`) para o vocabulário compartilhado de `orders.status` (`paid`/`pending`/`cancelled`). Ajuste fino de quais valores realmente contam como "pago" só pode ser validado quando pedidos reais (sandbox ou produção) começarem a chegar — hoje sandbox só devolve dados de teste estáticos.
 
 ## O que NÃO fazer
 
-Não adicionar chamadas à SP-API no frontend nem em rotas de leitura de `routes/api.js` — mesma regra de fronteira que vale para o Mercado Livre (`architecture.md`, regra 1–3). Não modificar `mlClient.js`/`routes/auth.js` para "generalizar" para Amazon — o ML fica intocado (ver `decisions.md`).
+Não adicionar chamadas à SP-API no frontend nem em rotas de leitura de `routes/api.js` — mesma regra de fronteira que vale para o Mercado Livre (`architecture.md`, regra 1–3). Não modificar `mlClient.js`/`routes/auth.js`/os handlers de `worker.js` para "generalizar" para Amazon — o ML fica intocado (ver `decisions.md`).

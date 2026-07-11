@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Amazon — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="../css/marketplace-switcher.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Amazon'; window.ACTIVE_NAV='dashboard-amazon.html';</script>
+  <style>
+    .amz-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .amz-kpi { background: var(--card-bg); border: 1px solid var(--border); border-left: 3px solid #ff9900; border-radius: 12px; padding: 18px 20px; }
+    .amz-kpi .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .amz-kpi .val { font-size: 28px; font-weight: 800; line-height: 1.1; }
+    .amz-kpi .sub { font-size: 12px; color: var(--green); margin-top: 6px; }
+    .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; height: 26px; width: 70%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+    .status-item .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .status-item .value { font-size: 15px; font-weight: 700; }
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .status-badge.ok  { background: rgba(39,174,96,.15); color: var(--green); }
+    .status-badge.bad { background: rgba(231,76,60,.15); color: var(--red); }
+    .empty-note { font-size: 12px; color: var(--text-muted); padding: 10px 4px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <nav class="mkt-switcher">
+        <a class="mkt-btn" href="../index.html"><i class="fas fa-shopping-bag"></i> Mercado Livre</a>
+        <a class="mkt-btn active" href="dashboard-amazon.html"><i class="fab fa-amazon"></i> Amazon</a>
+        <a class="mkt-btn" href="dashboard-shopee.html"><i class="fas fa-store"></i> Shopee</a>
+      </nav>
+
+      <div class="amz-kpis">
+        <div class="amz-kpi">
+          <div class="lbl"><i class="fas fa-dollar-sign"></i> Vendas Totais</div>
+          <div class="val" id="azVendas"><div class="skeleton"></div></div>
+          <div class="sub">▲ Hoje</div>
+        </div>
+        <div class="amz-kpi">
+          <div class="lbl"><i class="fas fa-box"></i> Pedidos</div>
+          <div class="val" id="azPedidos"><div class="skeleton"></div></div>
+          <div class="sub">▲ Hoje</div>
+        </div>
+        <div class="amz-kpi">
+          <div class="lbl"><i class="fas fa-cubes"></i> Produtos</div>
+          <div class="val" id="azProdutos"><div class="skeleton"></div></div>
+          <div class="sub" style="color:var(--text-muted)">Ativos</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Últimos pedidos Amazon</h3>
+          <span id="azPedidosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Cliente</th>
+                <th>SKU</th>
+                <th class="tbl-num">Valor</th>
+                <th>Status</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="azPedidosTbody">
+              <tr><td colspan="6" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Produtos Amazon</h3>
+          <span id="azProdutosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Título</th>
+                <th class="tbl-num">Estoque</th>
+                <th class="tbl-num">Preço</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="azProdutosTbody">
+              <tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Status da Integração</h3></div>
+        <div class="status-grid">
+          <div class="status-item">
+            <div class="label">Última sincronização</div>
+            <div class="value" id="azUltimaSync">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Último polling</div>
+            <div class="value" id="azUltimoPolling">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Último erro</div>
+            <div class="value" id="azUltimoErro">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Token</div>
+            <div class="value" id="azToken">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+const STATUS_LABEL = { paid:'Pago', pending:'Pendente', cancelled:'Cancelado', shipped:'Enviado' };
+
+async function loadKpis() {
+  const d = await DB.getAmazonKpis();
+  if (!d || d.error) { set('azVendas','—'); set('azPedidos','—'); set('azProdutos','—'); return; }
+  set('azVendas', R(d.vendas_hoje));
+  set('azPedidos', d.pedidos_hoje ?? 0);
+  set('azProdutos', d.produtos_ativos ?? 0);
+}
+
+async function loadPedidos() {
+  const tbody = document.getElementById('azPedidosTbody');
+  const d = await DB.getAmazonPedidos();
+  if (!d || d.error) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Erro ao carregar pedidos${d?.error ? ': '+d.error : ''}</td></tr>`;
+    return;
+  }
+  const rows = d.rows || [];
+  set('azPedidosCount', `${rows.length} pedido(s)`);
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${r.id || '—'}</td>
+      <td>${r.cliente || '—'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${r.sku || '—'}</td>
+      <td class="tbl-num">${R(r.valor)}</td>
+      <td>${STATUS_LABEL[r.status] || r.status || '—'}</td>
+      <td style="white-space:nowrap;font-size:12px">${fmtDt(r.data)}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Nenhum pedido Amazon ainda</td></tr>';
+}
+
+async function loadProdutos() {
+  const tbody = document.getElementById('azProdutosTbody');
+  const d = await DB.getAmazonProdutos();
+  if (!d || d.error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color:var(--red)">Erro ao carregar produtos${d?.error ? ': '+d.error : ''}</td></tr>`;
+    return;
+  }
+  const rows = d.rows || [];
+  set('azProdutosCount', `${rows.length} produto(s)`);
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td style="font-size:11px;color:var(--text-muted)">${r.sku || '—'}</td>
+      <td>${r.title || '—'}</td>
+      <td class="tbl-num">${r.estoque ?? 0}</td>
+      <td class="tbl-num">${R(r.price)}</td>
+      <td>${r.status || '—'}</td>
+    </tr>`).join('') : `<tr><td colspan="5" class="empty-state">${d.note || 'Nenhum produto Amazon sincronizado ainda'}</td></tr>`;
+}
+
+async function loadStatus() {
+  const d = await DB.getAmazonStatus();
+  if (!d || d.error) return;
+  const syncLabel = d.ultima_sincronizacao ? fmtDt(d.ultima_sincronizacao) : 'Nunca';
+  set('azUltimaSync', syncLabel);
+  set('azUltimoPolling', syncLabel);
+  set('azUltimoErro', d.ultimo_erro || 'Nenhum');
+
+  const tokenEl = document.getElementById('azToken');
+  const conectadas = d.contas_conectadas ?? 0;
+  const total = d.contas_total ?? 0;
+  if (conectadas > 0) {
+    tokenEl.innerHTML = `<span class="status-badge ok"><i class="fas fa-check-circle"></i> Conectado</span> <span style="color:var(--text-muted);font-size:12px;margin-left:6px">${conectadas}/${total} conta(s)</span>`;
+  } else {
+    tokenEl.innerHTML = `<span class="status-badge bad"><i class="fas fa-times-circle"></i> Desconectado</span>`;
+  }
+}
+
+function loadAll() { loadKpis(); loadPedidos(); loadProdutos(); loadStatus(); }
+
+WS.on('order_updated', payload => { if (payload?.marketplace === 'AMAZON') loadAll(); });
+WS.on('_connected', loadAll);
+setInterval(loadAll, 60000);
+
+loadAll();
+</script>
+</body>
+</html>

@@ -42,6 +42,10 @@ const NAV_ITEMS = [
   { section: 'Financeiro', items: [
     { href: 'vendas-turbo.html', icon: 'fa-file-excel', label: 'Vendas ML Turbo' },
   ]},
+  { section: 'Marketplaces', items: [
+    { href: 'dashboard-amazon.html', icon: 'fa-amazon', label: 'Amazon', brand: true },
+    { href: 'dashboard-shopee.html', icon: 'fa-store', label: 'Shopee' },
+  ]},
   { section: 'Sistema', items: [
     { href: 'mcp.html', icon: 'fa-robot', label: 'MCP Mercado Livre' },
     { href: 'monitor.html', icon: 'fa-telegram fab', label: 'Monitor & Telegram', brand: true },

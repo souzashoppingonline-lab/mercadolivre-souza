@@ -5,6 +5,7 @@ const cors = require('cors');
 const env = require('./config/env');
 const apiRoutes = require('./routes/api');
 const turboRoutes = require('./routes/turbo');
+const amazonRoutes = require('./routes/amazon');
 const webhookGateway = require('./routes/webhookGateway');
 const authRoutes = require('./routes/auth');
 const wsHub = require('./ws/hub');
@@ -16,6 +17,8 @@ app.use(express.json());
 // Frontend reads exclusively from here.
 app.use('/api', apiRoutes);
 app.use('/api/turbo', turboRoutes);
+// Dashboard Amazon — isolado, não reutiliza nada do ML (ver routes/amazon.js).
+app.use('/api/amazon', amazonRoutes);
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

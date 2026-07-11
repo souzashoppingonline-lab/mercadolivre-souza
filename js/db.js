@@ -135,6 +135,12 @@ const DB = {
     }
   },
 
+  // ── Dashboard Amazon (isolado — não reutiliza rotas do ML) ──
+  async getAmazonKpis()     { return this._get('/amazon/kpis'); },
+  async getAmazonPedidos()  { return this._get('/amazon/pedidos'); },
+  async getAmazonProdutos() { return this._get('/amazon/produtos'); },
+  async getAmazonStatus()   { return this._get('/amazon/status'); },
+
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },
   async getDiasSemana(days=90)    { return this._get(`/analises/dias-semana?days=${days}`); },

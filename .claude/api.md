@@ -68,6 +68,16 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `POST /api/lojas/amazon { nickname, refresh_token, amazon_marketplace_id?, amazon_region? }` | v17: cadastra nova conta Amazon — `nickname`/`refresh_token` obrigatórios; gera `store_id` sintético (faixa `9000000001`+). Resposta inclui aviso de que o worker precisa ser reiniciado para sincronizar a conta nova (sem hot-reload ainda, ver `todo.md`) |
 | `DELETE /api/lojas/amazon/:id` | v17: remove conta Amazon (só linhas com `marketplace_id=AMAZON` — não afeta lojas ML mesmo que o `:id` colida) |
 
+## Dashboard Amazon (`routes/amazon.js`, montado em `/api/amazon`)
+> 100% isolado do pipeline ML: consulta `orders`/`items`/`stores` direto, filtrando `marketplace_id = (SELECT id FROM marketplaces WHERE code='AMAZON')` — não usa as views `vw_ml_*` (que excluem Amazon de propósito) nem nenhuma query já existente do ML. Consumido só por `pages/dashboard-amazon.html`.
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/amazon/kpis` | `vendas_hoje` (soma `total_amount` de hoje, exclui `cancelled`), `pedidos_hoje` (contagem hoje), `produtos_ativos` (`items.status='active'`) |
+| `GET /api/amazon/pedidos` | até 200 pedidos Amazon mais recentes (`id`, `cliente`, `sku`, `valor`, `status`, `data`, `conta`) |
+| `GET /api/amazon/produtos` | até 200 itens Amazon (`sku`, `title`, `estoque`, `price`, `status`); campo `note` explica quando vazio — catálogo de produtos Amazon ainda não é sincronizado, só pedidos (ver `todo.md`) |
+| `GET /api/amazon/status` | `ultima_sincronizacao` (`MAX(last_synced_at)` de `marketplace_sync_state`), `contas_conectadas`/`contas_total` (`stores` com `refresh_token`), `ultimo_erro` (sempre `null` hoje — sem tracking estruturado de erro de polling ainda) |
+
 ## Alertas
 | Rota | Descrição |
 |---|---|

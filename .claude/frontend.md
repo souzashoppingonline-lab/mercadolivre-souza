@@ -35,6 +35,7 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 - **Alertas**: reposicao, cancelamentos, devolucoes, anuncios-problema, alteracoes
 - **Financeiro**: vendas-turbo (dashboard da planilha Vendas ML Turbo — ver `finance.md`)
 - **Sistema**: mcp (chat com IA), monitor (métricas de servidor + config Telegram), schedule (jobs agendados), webhook (logs de webhooks recebidos)
+- **Marketplaces**: dashboard-amazon (dashboard dedicado da Amazon — vendas/pedidos/produtos, 100% isolado do ML), dashboard-shopee (placeholder — integração bloqueada aguardando aprovação do app, ver `shopee.md`)
 
 ## Padrão de nova página (contrato)
 
@@ -66,6 +67,15 @@ O grid principal da página (`#lojasGrid`) mostra só lojas ML (`DB.getLojas()`,
 Abaixo do grid ML existe uma segunda seção, "Contas Amazon" (`#amazonGrid`, populada por `loadContasAmazon()` via `DB.getLojasAmazon()`), com nickname, se tem `refresh_token` configurado, marketplace ID/região (ou "padrão do .env") e um botão remover que pede `confirm()` antes de chamar `DB.deleteLojaAmazon(id)`. Estado vazio: "Nenhuma conta Amazon cadastrada ainda." Reaproveita a mesma classe `.loja-card` do grid ML para não duplicar visual.
 
 Qualquer página nova que precise de um modal de escolha/formulário deve reaproveitar esse mesmo padrão (overlay + card centralizado + `innerHTML` trocado por função) em vez de criar um componente do zero — não existe um `modal.css` genérico no projeto, cada página estiliza o próprio modal inline, seguindo esse exemplo.
+
+## `pages/dashboard-amazon.html` e `pages/dashboard-shopee.html` — dashboards por marketplace
+
+Convenção de nome adotada para dashboards dedicados por marketplace: `dashboard-<marketplace>.html` (`dashboard-ml.html`/`dashboard.html` unificado ainda não existem — só `dashboard-amazon.html` e o placeholder `dashboard-shopee.html` foram criados até agora; o dashboard ML atual continua sendo `index.html`, intocado).
+
+- **`css/marketplace-switcher.css`** (novo, não usado por nenhuma página ML existente) — estiliza `.mkt-switcher`, os 3 botões de navegação (Mercado Livre/Amazon/Shopee) que aparecem no canto superior direito da área de conteúdo dessas páginas. Não é injetado por `js/layout.js` (que é compartilhado por toda página) justamente para não vazar para as páginas ML — cada página `dashboard-*.html` inclui o CSS e o markup do switcher no próprio HTML. "Mercado Livre" aponta para `../index.html`; "Amazon" para `dashboard-amazon.html`; "Shopee" para `dashboard-shopee.html`.
+- **`pages/dashboard-amazon.html`** — 100% isolado do ML: busca dados só via `DB.getAmazonKpis()/getAmazonPedidos()/getAmazonProdutos()/getAmazonStatus()` (rotas `/api/amazon/*`, ver `api.md`), nunca reutiliza `DB.getDashboardKPIs()`/`DB.getPedidos()`/etc. do ML. Estrutura: 3 cards de KPI (Vendas Totais/Pedidos — valores de hoje, já que `/api/amazon/kpis` só calcula o dia; Produtos ativos), tabela "Últimos pedidos Amazon", tabela "Produtos Amazon" (mostra a `note` do backend quando vazia — catálogo de produtos Amazon ainda não é sincronizado, só pedidos), e card "Status da Integração" (última sincronização, último polling — mesmo valor de `marketplace_sync_state`, não há tracking granular separado ainda —, último erro, token conectado/desconectado por conta). Recarrega em tempo real escutando `WS.on('order_updated', ...)` filtrado por `payload.marketplace === 'AMAZON'` (evento publicado por `marketplaceEventWorker.js`), com fallback de polling a cada 60s.
+- **`pages/dashboard-shopee.html`** — placeholder sem dados (Shopee ainda não implementada, ver `shopee.md`), só o switcher + um card informativo. Vira dashboard real seguindo o mesmo padrão da Amazon quando o app for aprovado.
+- Nenhuma dessas duas páginas está sob `NAV_ITEMS` de uma seção pré-existente — foi criada a seção "Marketplaces" própria em `js/layout.js` (aditiva, não altera nenhum item existente).
 
 ## `js/layout.js` — sidebar, topbar e alertas globais
 

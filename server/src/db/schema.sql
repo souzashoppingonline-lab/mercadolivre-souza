@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS stores (
   marketplace_id INT REFERENCES marketplaces(id),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+-- Em bancos existentes, o CREATE TABLE acima é no-op — a coluna precisa
+-- deste ALTER explícito para existir antes de qualquer INSERT/index que a use.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
 
 CREATE TABLE IF NOT EXISTS items (
   ml_id TEXT PRIMARY KEY,
@@ -64,6 +67,7 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS thumbnail TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS permalink TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS parent_item_id TEXT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
 
 -- ml_id é TEXT (não BIGINT) para caber IDs de pedido não-numéricos de
 -- outros marketplaces (ex: Amazon "902-1845936-3456781"). Ver migrate-v15.sql.
@@ -89,6 +93,7 @@ CREATE TABLE IF NOT EXISTS orders (
   marketplace_id INT REFERENCES marketplaces(id),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
 
 CREATE TABLE IF NOT EXISTS questions (
   ml_id BIGINT PRIMARY KEY,
@@ -113,6 +118,7 @@ CREATE TABLE IF NOT EXISTS messages (
   marketplace_id INT REFERENCES marketplaces(id),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
 
 CREATE TABLE IF NOT EXISTS returns (
   id BIGSERIAL PRIMARY KEY,

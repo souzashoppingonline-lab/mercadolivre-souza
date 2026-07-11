@@ -179,6 +179,12 @@ async function handleOrder({ resource, storeId, silent = false }) {
 
   const order = await ml.getOrder(orderId, storeId);
 
+  // Status anterior (antes deste upsert) — usado para só notificar "Nova venda!"
+  // na transição real para 'paid', e não em todo webhook tardio (ex: shipments)
+  // que chega para um pedido que já estava pago.
+  const { rows: prevRows } = await pool.query(`SELECT status FROM orders WHERE ml_id=$1`, [orderId]);
+  const previousStatus = prevRows[0]?.status || null;
+
   const item0 = order.order_items?.[0] || {};
   const shippingType = order.shipping?.logistic_type || '';
 
@@ -219,7 +225,10 @@ async function handleOrder({ resource, storeId, silent = false }) {
   await redis.del('kpis:summary');
   await publish('order_updated', { id: order.id, status: order.status });
 
-  if (order.status === 'paid') {
+  // Só é "Nova venda!" na transição real para 'paid' — evita reenviar o alerta
+  // quando um webhook tardio (shipments, payments) reprocessa um pedido que já estava pago.
+  const isNewSale = order.status === 'paid' && previousStatus !== 'paid';
+  if (isNewSale) {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
     let lt = order.shipping?.logistic_type || shippingType || '';
@@ -230,7 +239,11 @@ async function handleOrder({ resource, storeId, silent = false }) {
       } catch(e) { /* ignora */ }
     }
     const envioLabel = fmtLogistica(lt);
-    if (!silent) await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}`);
+    const saleDate = order.date_closed || order.date_created;
+    const saleDateFmt = saleDate
+      ? new Date(saleDate).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' })
+      : new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' });
+    if (!silent) await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 ${saleDateFmt}`);
   }
 }
 

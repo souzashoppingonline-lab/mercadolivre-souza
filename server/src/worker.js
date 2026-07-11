@@ -1070,7 +1070,14 @@ async function syncReturns() {
   await tgNotify('tg_devolucoes', `✅ Sync retroativo de devoluções concluído\n📦 ${total} registros importados`).catch(() => {});
 }
 
-// ── Sync Visitas — 02:00 diário, lojas em paralelo (app ML independente) ─────
+// ── Sync Visitas — 02:00 diário, lojas sequenciais (evita 429 em lockstep) ───
+// Lojas em paralelo (Promise.allSettled) faziam as 3 baterem no endpoint de
+// visitas quase no mesmo instante; cada 429 pausava as 3 pelo mesmo tempo,
+// então voltavam a tentar juntas e tomavam 429 de novo — em produção isso já
+// causou 15+ min seguidos sem uma única chamada bem-sucedida (todas as 300
+// tentativas de uma loja fadadas ao fracasso). Mesmo padrão de proteção já
+// usado em syncScores para o mesmo tipo de rate limit do ML: loja por loja
+// (sequencial) + circuit breaker de 5 429 consecutivos abortando a loja.
 let isSyncingVisitas = false;
 
 async function syncVisitas() {
@@ -1085,12 +1092,12 @@ async function syncVisitas() {
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const lojaReport = [];
 
-      async function syncStoreVisitas(store) {
+      for (const store of stores) {
         const { rows: activeItems } = await pool.query(
           `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' LIMIT 300`, [store.id]
         );
         const ids = activeItems.map(r => r.ml_id);
-        let visitasTotal = 0, errors = 0;
+        let visitasTotal = 0, errors = 0, consecutiveRateLimit = 0, aborted = false;
         console.log(`[sync-visitas] ${store.nickname} → ${ids.length} anúncios`);
 
         for (let i = 0; i < ids.length; i++) {
@@ -1104,27 +1111,30 @@ async function syncVisitas() {
               [store.id, itemId, total, yesterday]
             );
             visitasTotal += total;
+            consecutiveRateLimit = 0;
             if ((i + 1) % 20 === 0) console.log(`[sync-visitas] ${store.nickname} ${i+1}/${ids.length}`);
           } catch (e) {
             errors++;
             if (e.message?.includes('429') || e.message?.includes('rate limit')) {
-              console.warn(`[sync-visitas] 429 ${store.nickname} — pausando 60s`);
-              await new Promise(r => setTimeout(r, 60000));
+              consecutiveRateLimit++;
+              const waitMs = consecutiveRateLimit === 1 ? 60000 : 120000; // 1min na 1ª, 2min da 2ª em diante
+              console.warn(`[sync-visitas] 429 ${store.nickname} item=${itemId} (${consecutiveRateLimit}ª seguida) — aguardando ${waitMs/1000}s`);
+              await new Promise(r => setTimeout(r, waitMs));
+              if (consecutiveRateLimit >= 5) {
+                console.error(`[sync-visitas] ${store.nickname}: 5 rate limits seguidos — abortando loja (${i+1}/${ids.length} tentados)`);
+                aborted = true;
+                break;
+              }
             } else {
               console.warn(`[sync-visitas] ${store.nickname} item=${itemId}: ${e.message}`);
             }
           }
           await new Promise(r => setTimeout(r, 20000));
         }
-        console.log(`[sync-visitas] ${store.nickname} concluído — ${ids.length} itens, ${visitasTotal} visitas`);
-        return { loja: store.nickname, itens: ids.length, visitas_total: visitasTotal, erros: errors };
+        console.log(`[sync-visitas] ${store.nickname} concluído — ${ids.length} itens, ${visitasTotal} visitas, ${errors} erros${aborted ? ' (abortado por rate limit)' : ''}`);
+        lojaReport.push({ loja: store.nickname, itens: ids.length, visitas_total: visitasTotal, erros: errors, abortado: aborted });
+        await new Promise(r => setTimeout(r, 5000)); // respiro entre lojas
       }
-
-      const results = await Promise.allSettled(stores.map(s => syncStoreVisitas(s)));
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled') lojaReport.push(r.value);
-        else { lojaReport.push({ loja: stores[i].nickname, erro: r.reason?.message }); console.error(`[sync-visitas] ${stores[i].nickname} erro:`, r.reason?.message); }
-      });
 
       const totalVisitas = lojaReport.reduce((s, l) => s + (l.visitas_total || 0), 0);
       console.log('[sync-visitas] coleta concluída');

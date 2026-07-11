@@ -56,7 +56,7 @@ Não usa `node-cron`; cada job se reagenda no `finally` chamando `scheduleAt(hor
 |---|---|---|
 | 01:00 | `syncScores` | busca `/item/:id/performance` para até 100 itens ativos por loja, grava em `item_performance`. 10s entre itens, pausa 30s a cada 10, aborta a loja após 5 429 seguidos |
 | 01:30 | `syncParentItems` | preenche `items.parent_item_id` via multiget (lotes de 20, 30s entre lotes/lojas) |
-| 02:00 | `syncVisitas` | coleta visitas do dia anterior por item ativo (até 300/loja), 20s entre itens |
+| 02:00 | `syncVisitas` | coleta visitas do dia anterior por item ativo (até 300/loja), **lojas sequenciais** (não paralelo — ver `decisions.md`), 20s entre itens, circuit breaker de 5 429 consecutivos aborta a loja |
 | 03:00 | `syncVendas` (alias `dailySync`) | reconcilia pedidos das últimas 72h via `/orders/search`, paginado, chama `handleOrder(..., silent: true)` para não gerar notificação "Nova venda!" duplicada |
 | 04:15 | `syncMetricas` | reputação (`store_metrics`) + devoluções recentes (`returns`) |
 | 05:00 | `syncPrecos` | atualiza `items.original_price` de itens não fechados; zera se não há promoção ativa |

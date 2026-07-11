@@ -84,6 +84,16 @@
 
 **Bug corrigido em produção logo após o deploy**: o `jobId` passou a incluir `storeId` (`AMAZON:{storeId}:ORDER_UPDATED:{orderId}`, 3 ocorrências de `:`) para manter deduplicação por conta+pedido — mas o BullMQ **exige que um `jobId` customizado, se contiver `:`, tenha exatamente 2** (`split(':').length === 3`); com 3 `:` ele lança `Custom Id cannot contain :`. Corrigido combinando `storeId` e `orderId` com `-` no terceiro segmento (`AMAZON:ORDER_UPDATED:{storeId}-{orderId}`), voltando a 2 `:`. O `jobId` do Gateway do ML (`${topic}:${resource}:${storeId}`) sempre respeitou esse limite por coincidência (2 `:`) — vale lembrar dessa regra do BullMQ em qualquer `jobId` customizado novo.
 
+## `syncVisitas` — lojas sequenciais + circuit breaker (não paralelo)
+
+**Contexto**: `syncVisitas` (02:00 diário) rodava as lojas em paralelo (`Promise.allSettled`), cada uma chamando `/items/{id}/visits/time_window` item a item. Em produção (11/07/2026), isso causou falha quase total: as 3 lojas disparavam a primeira chamada quase no mesmo instante, tomavam 429 juntas, pausavam o mesmo tempo fixo (60s) e voltavam a tentar exatamente no mesmo instante de novo — 15+ minutos seguidos sem uma única chamada bem-sucedida em nenhuma das 3 lojas. Sintoma visível: coluna "Visitas" vazia (`—`) para a maioria dos anúncios no modal de histórico de `performance.html`, e "50/67", "22/28", "57/97 erros" no card de status do sync (ver `.claude/todo.md`/investigação desta tarefa).
+
+**Decisão**: aplicar o mesmo padrão que `syncScores` já usa pro mesmo tipo de 429 do ML — lojas processadas **sequencialmente** (`for...of`, não `Promise.allSettled`), backoff que escala (60s na 1ª tentativa consecutiva, 120s da 2ª em diante) e **circuit breaker**: depois de 5 429 seguidos, aborta o restante dos itens daquela loja no dia (loga e segue pra próxima loja) em vez de esgotar as até 300 tentativas fadadas ao fracasso.
+
+**Por quê não paralelo**: rodar em paralelo era mais rápido no caso feliz, mas sem nenhuma proteção contra as lojas ficarem sincronizadas nas retentativas — uma vez que isso acontece, o job trava indefinidamente sem progresso em nenhuma loja. Sequencial é mais lento no total, mas cada loja tem uma chance real de sucesso independente das outras, e o circuit breaker evita desperdiçar o restante da janela de sync numa loja que já está claramente bloqueada.
+
+**Limite real da API de visitas do ML**: não documentado publicamente com um número exato (o limite geral de 1500 req/min por vendedor não é o gargalo aqui — o volume gerado é muito menor que isso); o comportamento observado em produção indica um limite bem mais restrito e específico desse endpoint. Não vale investir mais tempo tentando descobrir o número exato — a defesa por circuit breaker + backoff escalonado funciona independente do valor real do limite.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

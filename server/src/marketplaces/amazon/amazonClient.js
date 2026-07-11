@@ -120,10 +120,18 @@ class AmazonClient extends MarketplaceClient {
   }
 
   // sinceISODate: ISO 8601 — equivalente ao dateFrom usado em ml.searchOrders (mercadolivre.md)
+  //
+  // O sandbox ESTÁTICO da Amazon não aceita data/marketplace reais — ele só
+  // reconhece por pattern-matching os valores literais documentados
+  // (CreatedAfter=TEST_CASE_200, MarketplaceIds=ATVPDKIKX0DER), devolvendo
+  // sempre o mesmo pedido de teste fixo. Qualquer outro valor retorna
+  // 400 InvalidInput "Could not match input arguments". Em produção usamos
+  // os valores reais normalmente.
   async listRecentOrders(sinceISODate) {
+    const isSandbox = this.cfg.env !== 'production';
     const qs = new URLSearchParams({
-      MarketplaceIds: this.cfg.marketplaceId,
-      CreatedAfter: sinceISODate,
+      MarketplaceIds: isSandbox ? 'ATVPDKIKX0DER' : this.cfg.marketplaceId,
+      CreatedAfter: isSandbox ? 'TEST_CASE_200' : sinceISODate,
     });
     return this._get(`/orders/v0/orders?${qs}`);
   }

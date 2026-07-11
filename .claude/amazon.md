@@ -34,6 +34,10 @@
 | `AMAZON_REGION` | `na` ✅ |
 | `AMAZON_ENV` | `sandbox` — trocar para `production` só depois de autorização de produção aprovada pela Amazon no Seller Central |
 
+## Sandbox estático — valores literais obrigatórios
+
+O sandbox **estático** da SP-API não aceita parâmetros reais (data/marketplace) em `GET /orders/v0/orders` — ele faz *pattern-matching* e só reconhece os valores exatos documentados pela Amazon: `CreatedAfter=TEST_CASE_200` e `MarketplaceIds=ATVPDKIKX0DER`. Qualquer outro valor retorna `400 InvalidInput "Could not match input arguments"`. `amazonClient.listRecentOrders` já trata isso: quando `AMAZON_ENV !== 'production'`, ignora a data/marketplace reais e usa os literais de teste — a resposta é sempre o mesmo pedido de teste fixo da Amazon, não dados reais. Em produção (`AMAZON_ENV=production`) os valores reais (`sinceISODate`, `AMAZON_MARKETPLACE_ID`) são usados normalmente.
+
 ## O que NÃO foi feito nesta fase (deliberado — ver `decisions.md`/`todo.md`)
 
 - **Normalização completa do schema** (`order_items`/`products`/`inventory`/`shipments`/`customers` como tabelas separadas) — `orders`/`items` continuam "achatados" como sempre foram para o ML; a Amazon usa a mesma estrutura + `amazon_order_data` para o que não é comum. Normalização de verdade fica para uma fase 2 via Strangler Pattern.

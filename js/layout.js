@@ -42,10 +42,6 @@ const NAV_ITEMS = [
   { section: 'Financeiro', items: [
     { href: 'vendas-turbo.html', icon: 'fa-file-excel', label: 'Vendas ML Turbo' },
   ]},
-  { section: 'Marketplaces', items: [
-    { href: 'dashboard-amazon.html', icon: 'fa-amazon', label: 'Amazon', brand: true },
-    { href: 'dashboard-shopee.html', icon: 'fa-store', label: 'Shopee' },
-  ]},
   { section: 'Sistema', items: [
     { href: 'mcp.html', icon: 'fa-robot', label: 'MCP Mercado Livre' },
     { href: 'monitor.html', icon: 'fa-telegram fab', label: 'Monitor & Telegram', brand: true },
@@ -76,6 +72,22 @@ function buildSidebar(activeHref) {
     </aside>`;
 }
 
+// Alternador de marketplace (Mercado Livre/Amazon/Shopee) — aparece no
+// topbar de toda página ML para ir e voltar entre os dashboards dedicados.
+// Só o link, não o menu lateral: a sidebar de cada marketplace é independente
+// (ver dashboard-amazon.html/dashboard-shopee.html, que não usam este
+// layout.js) para nunca misturar o menu de uma loja com o de outra.
+function buildMarketplaceSwitcher() {
+  const items = [
+    { href: '../index.html', icon: 'fa-shopping-bag', label: 'Mercado Livre', active: true },
+    { href: 'dashboard-amazon.html', icon: 'fab fa-amazon', label: 'Amazon' },
+    { href: 'dashboard-shopee.html', icon: 'fa-store', label: 'Shopee' },
+  ];
+  return `<nav class="mkt-switcher-compact">${items.map(i => `
+    <a href="${i.href}" class="${i.active ? 'active' : ''}"><i class="${i.icon.startsWith('fab') ? i.icon : 'fas ' + i.icon}"></i> ${i.label}</a>
+  `).join('')}</nav>`;
+}
+
 function buildTopbar(title) {
   return `
     <header class="topbar">
@@ -84,6 +96,7 @@ function buildTopbar(title) {
         <h1 class="page-title">${title}</h1>
       </div>
       <div class="topbar-right">
+        ${buildMarketplaceSwitcher()}
         <div class="store-switcher" id="storeSwitcher">
           <button class="store-switcher-btn" id="storeSwitcherBtn" title="Trocar loja">
             <span class="store-avatar" id="storeAvatar">?</span>

@@ -56,6 +56,24 @@ body {
 .topbar-left { display: flex; align-items: center; gap: 16px; }
 .topbar-right { display: flex; align-items: center; gap: 16px; }
 
+.mkt-switcher-compact { display: flex; align-items: center; gap: 6px; }
+.mkt-switcher-compact a {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.mkt-switcher-compact a:hover { border-color: var(--primary); color: var(--text-main); }
+.mkt-switcher-compact a.active { background: var(--primary); color: #000; border-color: var(--primary); }
+
 .menu-toggle, .btn-refresh {
   background: none;
   border: none;

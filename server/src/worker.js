@@ -784,13 +784,14 @@ async function syncVendas() {
           } catch (e) {
             if (e.message?.includes('429')) {
               consecutive429++;
-              console.warn(`[sync-vendas] ${store.nickname} 429 (${consecutive429}/5) — aguardando 60s`);
+              const waitMs = consecutive429 === 1 ? 60000 : 120000; // 1min na 1ª, 2min da 2ª em diante
+              console.warn(`[sync-vendas] ${store.nickname} 429 (${consecutive429}/5) — aguardando ${waitMs/1000}s`);
               if (consecutive429 >= 5) {
                 console.warn(`[sync-vendas] ${store.nickname} 5 consecutive 429s — abortando loja`);
                 lojaReport.push({ loja: store.nickname, pedidos_importados: storeNew, erro: 'rate_limit_abort' });
                 break storeLoop;
               }
-              await new Promise(r => setTimeout(r, 60000));
+              await new Promise(r => setTimeout(r, waitMs));
               continue;
             }
             console.error(`[sync-vendas] ${store.nickname} erro:`, e.message);
@@ -811,21 +812,23 @@ async function syncVendas() {
             try {
               await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id, silent: true });
               storeNew++;
+              consecutive429 = 0;
             } catch (e) {
               if (e.message?.includes('429')) {
                 consecutive429++;
-                console.warn(`[sync-vendas] ${store.nickname} 429 no handleOrder (${consecutive429}/5)`);
+                const waitMs = consecutive429 === 1 ? 60000 : 120000; // 1min na 1ª, 2min da 2ª em diante
+                console.warn(`[sync-vendas] ${store.nickname} 429 no handleOrder (${consecutive429}/5) — aguardando ${waitMs/1000}s`);
                 if (consecutive429 >= 5) {
                   console.warn(`[sync-vendas] ${store.nickname} 5 consecutive 429s — abortando loja`);
                   lojaReport.push({ loja: store.nickname, pedidos_importados: storeNew, erro: 'rate_limit_abort' });
                   break storeLoop;
                 }
-                await new Promise(r => setTimeout(r, 60000));
+                await new Promise(r => setTimeout(r, waitMs));
               } else {
                 console.error(`[sync-vendas] ${store.nickname} order ${order.id} erro:`, e.message);
               }
             }
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 20000)); // 20s entre pedidos — mesmo ritmo do sync-visitas (ver decisions.md)
           }
 
           offset += orders.length;

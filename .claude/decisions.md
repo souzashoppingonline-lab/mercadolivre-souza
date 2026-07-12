@@ -96,6 +96,14 @@
 
 **Validado em produção (11/07/2026, sync manual via `/sync visitas` no Telegram)**: RICOPI_MULTIMERCADO 72 itens/4 erros (5,6%), TOP_MIX_ 29 itens/3 erros (10,3%), UNIFULL_MULTIMERCADO 99 itens/3 erros (3,0%) — total 200 itens/10 erros (5%), contra ~68% de erro médio no dia anterior (mesmo código antigo). Nenhuma loja acionou o circuit breaker; a troca pra sequencial já eliminou a maior parte do problema sozinha. Rodada completa das 3 lojas em ~1h20.
 
+## `syncVendas` — alinhado ao ritmo do `syncVisitas` (20s/item, backoff escalonado)
+
+**Contexto**: um commit concorrente (`b083fea`, fora desta sessão) já havia trazido `syncVendas` para o mesmo padrão estrutural do `syncVisitas`/`syncScores` — lojas sequenciais + circuit breaker de 5 429 consecutivos. Mas na execução real de 12/07/2026 (03:00), as 3 lojas ainda estouraram o circuit breaker (`erro: 'rate_limit_abort'` no relatório) — 34 pedidos importados no total, bem abaixo do esperado.
+
+**Causa**: o ritmo entre chamadas ficou em 1,5s por pedido (contra 20s no `syncVisitas`) e o backoff após 429 era fixo em 60s, sem escalar — 13x mais agressivo que a versão que já provou funcionar bem (5% de erro). Também havia um bug de contagem: `consecutive429` era resetado após um `searchOrders` bem-sucedido, mas **não** após um `handleOrder` bem-sucedido dentro do loop de pedidos — então 429s espalhados (não necessariamente consecutivos de verdade) podiam somar até 5 e abortar a loja prematuramente.
+
+**Decisão**: alinhar os 3 parâmetros ao que já foi validado no `syncVisitas` — pausa de 20s entre pedidos processados (era 1,5s), backoff escalonado 60s→120s (era fixo 60s) e reset de `consecutive429` também no sucesso de `handleOrder`. Mesma lógica, mesmo trade-off: mais lento no total, mas com taxa de sucesso muito maior — decisão do usuário, que já tinha visto o resultado do `syncVisitas` e pediu explicitamente para replicar.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

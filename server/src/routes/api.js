@@ -1368,8 +1368,9 @@ router.post('/alertas/anuncios-performance/sync', async (req, res) => {
         );
         ok++;
       } catch(e) {
-        fail++;
-        if (e.message.includes('429')) { await new Promise(r => setTimeout(r, 5000)); }
+        // 400 = item sem score no ML — não conta como erro, só pula
+        if (!e.message?.includes('400')) fail++;
+        if (e.message?.includes('429')) { await new Promise(r => setTimeout(r, 5000)); }
       }
       await new Promise(r => setTimeout(r, 300)); // 300ms entre chamadas
     }

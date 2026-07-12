@@ -1238,12 +1238,16 @@ async function syncScores() {
                   consecutiveRateLimit = 0;
                   break;
                 } catch (e) {
+                  // 400 = item sem score calculado pelo ML — trata como skipped, não erro
+                  if (e.message?.includes('400')) {
+                    perf = null;
+                    break;
+                  }
                   if (e.message?.includes('429') || e.message?.includes('rate limit')) {
                     consecutiveRateLimit++;
-                    const waitMs = attempt === 0 ? 60000 : 120000; // 1min na 1ª, 2min na 2ª
+                    const waitMs = attempt === 0 ? 60000 : 120000;
                     console.warn(`[sync-scores] 429 em ${item.ml_id} (tentativa ${attempt+1}) — aguardando ${waitMs/1000}s`);
                     await new Promise(r => setTimeout(r, waitMs));
-                    // Se 5 erros 429 seguidos, aborta a loja para proteger o token
                     if (consecutiveRateLimit >= 5) {
                       console.error(`[sync-scores] ${store.nickname}: 5 rate limits seguidos — abortando loja`);
                       throw new Error('Rate limit persistente — abortado após 5 tentativas consecutivas');

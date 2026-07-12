@@ -79,19 +79,21 @@ body {
   .mkt-switcher-compact { gap: 4px; }
   .mkt-switcher-compact a {
     padding: 7px 10px;
-    font-size: 0;    /* esconde o texto */
+    font-size: 0;
     gap: 0;
     min-width: 36px;
     justify-content: center;
   }
-  .mkt-switcher-compact a i {
-    font-size: 15px; /* mantém o ícone visível */
-  }
-}
-/* Telas muito pequenas: reduz padding da topbar também */
-@media (max-width: 480px) {
-  .topbar { padding: 0 12px; }
+  .mkt-switcher-compact a i { font-size: 15px; }
+  /* Esconde a data e o botão refresh no mobile para dar espaço */
+  .date-display { display: none !important; }
+  .btn-refresh  { display: none !important; }
   .topbar-right { gap: 8px; }
+}
+@media (max-width: 480px) {
+  .topbar { padding: 0 10px; }
+  .topbar-left { gap: 10px; }
+  .page-title { font-size: 16px; }
 }
 
 .menu-toggle, .btn-refresh {

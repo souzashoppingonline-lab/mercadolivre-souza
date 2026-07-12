@@ -85,6 +85,9 @@
           <button class="sync-action-btn" id="btnSyncScores" data-job="syncScores">
             <i class="fas fa-star-half-alt"></i> Sync Scores <small style="opacity:.7;font-weight:400">01:00</small>
           </button>
+          <button class="sync-action-btn" id="btnSyncNotion" data-job="syncNotionTarefas">
+            <i class="fab fa-notion"></i> Notion Tarefas <small style="opacity:.7;font-weight:400">2ª 08:00</small>
+          </button>
           <span id="syncStatus" style="font-size:.82rem;color:var(--text-muted);margin-left:4px"></span>
         </div>
       </div>
@@ -101,6 +104,7 @@
               <option value="sync-metricas">sync-metricas</option>
               <option value="sync-precos">sync-precos</option>
               <option value="sync-scores">sync-scores</option>
+              <option value="sync-notion">sync-notion</option>
             </select>
             <button onclick="loadRuns()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:.78rem">
               <i class="fas fa-refresh"></i>
@@ -173,6 +177,7 @@ const JOB_LABEL = {
   'sync-vendas':   '🛒 Sync Vendas',
   'sync-metricas': '📊 Sync Métricas',
   'sync-scores':   '⭐ Sync Scores',
+  'sync-notion':   '📋 Notion Tarefas',
 };
 
 async function loadJobs() {
@@ -210,7 +215,7 @@ async function triggerJob(name) {
 document.querySelectorAll('.sync-action-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
     const name = btn.dataset.job;
-    const apiName = name === 'syncVisitas' ? 'syncVisitas' : name === 'syncVendas' ? 'dailySync' : name === 'syncScores' ? 'syncScores' : name;
+    const apiName = name === 'syncVisitas' ? 'syncVisitas' : name === 'syncVendas' ? 'dailySync' : name === 'syncScores' ? 'syncScores' : name === 'syncNotionTarefas' ? 'syncNotionTarefas' : name;
     btn.disabled = true;
     btn.classList.add('running');
     await triggerJob(apiName);
@@ -285,6 +290,19 @@ function renderReport(report, jobName) {
                 ${(l.skipped ?? 0) > 0 ? `<span>${l.skipped} sem score</span>` : ''}
               </span>`}
         </div>`).join('')}`;
+  }
+  if (jobName === 'sync-notion') {
+    return `
+      <div style="margin-bottom:10px;font-size:.82rem;color:var(--text-muted)">
+        📋 Tarefas criadas no Notion: <b style="color:var(--text-primary)">${report.criadas ?? 0}</b>
+        ${(report.duplicadas ?? 0) > 0 ? `<span style="margin-left:8px">⏭️ ${report.duplicadas} já existiam</span>` : ''}
+        ${(report.erros ?? 0) > 0 ? `<span style="color:var(--orange);margin-left:8px">⚠️ ${report.erros} erros</span>` : ''}
+      </div>
+      <div style="font-size:.82rem;color:var(--text-muted)">
+        📉 Anúncios parados (0 vendas/30d): <b>${report.parados ?? 0}</b>
+        &nbsp;|&nbsp; ⚠️ Vendas baixas (1-3/30d): <b>${report.baixos ?? 0}</b>
+        ${report.erro === 'not_configured' ? '<br><span style="color:var(--red)">❌ NOTION_TOKEN ou NOTION_DATABASE_ID não configurados no .env</span>' : ''}
+      </div>`;
   }
   return `<pre style="font-size:.75rem;color:var(--text-muted);overflow:auto;max-height:200px">${JSON.stringify(report, null, 2)}</pre>`;
 }

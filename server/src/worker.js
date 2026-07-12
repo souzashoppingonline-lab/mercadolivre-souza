@@ -1356,6 +1356,143 @@ async function syncScores() {
   }
 }
 
+// ── Sync Notion Tarefas — Segunda-feira 08:00 ────────────────────────────────
+// Avalia anúncios com baixa performance (0 vendas nos últimos 30 dias)
+// e cria tarefas no Notion database configurado em NOTION_DATABASE_ID.
+let isSyncingNotion = false;
+
+async function syncNotionTarefas() {
+  if (isSyncingNotion) { console.warn('[notion] já em execução — ignorando'); return; }
+  isSyncingNotion = true;
+
+  try {
+    return await recordSync('sync-notion', '0 8 * * 1', async () => {
+      const notion = require('./notionClient');
+      if (!notion.isConfigured()) {
+        console.warn('[notion] NOTION_TOKEN ou NOTION_DATABASE_ID não configurados — pulando');
+        return { criadas: 0, duplicadas: 0, erro: 'not_configured' };
+      }
+
+      // Busca anúncios ativos com estoque mas sem vendas nos últimos 30 dias
+      const { rows: salesRows } = await pool.query(`
+        SELECT
+          COALESCE(item_id, raw_data->'order_items'->0->'item'->>'id') as iid,
+          store_id,
+          SUM(CASE WHEN date_created >= CURRENT_DATE - 30 THEN COALESCE(quantity,1) ELSE 0 END) as qtd_30d
+        FROM orders
+        WHERE status != 'cancelled'
+        GROUP BY 1, 2
+      `);
+      const salesMap = {};
+      salesRows.forEach(r => { if (r.iid) salesMap[`${r.store_id}:${r.iid}`] = Number(r.qtd_30d); });
+
+      const { rows: items } = await pool.query(`
+        SELECT i.ml_id, i.store_id,
+               COALESCE(s.nickname, 'Loja '||i.store_id::text) as loja,
+               i.title, i.price, i.available_quantity as estoque,
+               i.sold_quantity, i.permalink
+        FROM items i
+        LEFT JOIN stores s ON s.id = i.store_id
+        WHERE i.status = 'active' AND i.available_quantity > 0
+        ORDER BY i.price * i.available_quantity DESC
+        LIMIT 2000
+      `);
+
+      // Classifica: 0 vendas = parado, 1-3 = baixo, >3 = ok
+      const parados = items.filter(i => (salesMap[`${i.store_id}:${i.ml_id}`] || 0) === 0);
+      const baixos  = items.filter(i => { const v = salesMap[`${i.store_id}:${i.ml_id}`] || 0; return v >= 1 && v <= 3; });
+
+      console.log(`[notion] ${parados.length} parados, ${baixos.length} com vendas baixas`);
+
+      const prazo = new Date();
+      prazo.setDate(prazo.getDate() + 7);
+      const prazoStr = prazo.toISOString().slice(0, 10);
+
+      let criadas = 0, duplicadas = 0, erros = 0;
+
+      // Cria tarefas para anúncios parados (prioridade alta)
+      for (const item of parados.slice(0, 20)) {
+        try {
+          const titulo = item.ml_id;
+          const existente = await notion.buscarTarefaExistente(titulo);
+          if (existente) { duplicadas++; continue; }
+
+          const capital = (Number(item.price) * Number(item.estoque)).toFixed(0);
+          await notion.criarTarefa({
+            title: `📢 Avaliar anúncio parado: ${item.title.slice(0, 80)}`,
+            prazo: prazoStr,
+            fonte: 'ML Dashboard — Estoque Parado',
+            content:
+              `🏪 Loja: ${item.loja}\n` +
+              `🆔 MLB: ${item.ml_id}\n` +
+              `💰 Preço: R$ ${Number(item.price).toFixed(2)}\n` +
+              `📦 Estoque: ${item.estoque} unidades (capital parado: R$ ${capital})\n` +
+              `📉 Vendas nos últimos 30 dias: 0\n` +
+              `📊 Total histórico de vendas: ${item.sold_quantity}\n` +
+              `🔗 Anúncio: ${item.permalink || 'https://produto.mercadolivre.com.br/' + item.ml_id.replace(/^MLB(\d)/, 'MLB-$1')}\n\n` +
+              `Ações sugeridas:\n- Revisar título e fotos\n- Verificar preço frente à concorrência\n- Considerar promoção ou redução de preço`,
+          });
+          criadas++;
+          await new Promise(r => setTimeout(r, 400)); // respeita rate limit Notion
+        } catch (e) {
+          console.error(`[notion] erro ao criar tarefa para ${item.ml_id}:`, e.message);
+          erros++;
+        }
+      }
+
+      // Cria tarefas para anúncios com vendas baixas (1-3/mês)
+      for (const item of baixos.slice(0, 10)) {
+        try {
+          const existente = await notion.buscarTarefaExistente(item.ml_id);
+          if (existente) { duplicadas++; continue; }
+
+          const vendas30d = salesMap[`${item.store_id}:${item.ml_id}`] || 0;
+          await notion.criarTarefa({
+            title: `⚠️ Anúncio com vendas baixas: ${item.title.slice(0, 75)}`,
+            prazo: prazoStr,
+            fonte: 'ML Dashboard — Baixas Vendas',
+            content:
+              `🏪 Loja: ${item.loja}\n` +
+              `🆔 MLB: ${item.ml_id}\n` +
+              `💰 Preço: R$ ${Number(item.price).toFixed(2)}\n` +
+              `📦 Estoque: ${item.estoque} unidades\n` +
+              `📉 Vendas nos últimos 30 dias: ${vendas30d}\n` +
+              `📊 Total histórico de vendas: ${item.sold_quantity}\n` +
+              `🔗 Anúncio: ${item.permalink || 'https://produto.mercadolivre.com.br/' + item.ml_id.replace(/^MLB(\d)/, 'MLB-$1')}\n\n` +
+              `Ações sugeridas:\n- Otimizar título com palavras-chave de busca\n- Melhorar descrição e imagens\n- Avaliar anúncio patrocinado`,
+          });
+          criadas++;
+          await new Promise(r => setTimeout(r, 400));
+        } catch (e) {
+          console.error(`[notion] erro ao criar tarefa para ${item.ml_id}:`, e.message);
+          erros++;
+        }
+      }
+
+      console.log(`[notion] concluído: ${criadas} tarefas criadas, ${duplicadas} duplicadas ignoradas, ${erros} erros`);
+      if (criadas > 0) {
+        await tgNotify('tg_infra',
+          `📋 <b>Notion — Tarefas de Anúncios</b>\n✅ ${criadas} tarefas criadas\n` +
+          `⏭ ${duplicadas} já existiam\n📢 ${parados.length} anúncios parados detectados`
+        ).catch(() => {});
+      }
+
+      return { criadas, duplicadas, erros, parados: parados.length, baixos: baixos.length };
+    });
+  } finally {
+    isSyncingNotion = false;
+    // Segunda-feira 08:00
+    const now = new Date();
+    const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
+    const nextMonday = new Date(now);
+    nextMonday.setDate(now.getDate() + daysUntilMonday);
+    nextMonday.setHours(8, 0, 0, 0);
+    const msUntil = nextMonday - now;
+    setTimeout(() => syncNotionTarefas().catch(e => console.error('[notion] erro agendado:', e.message)), msUntil);
+    console.log(`[notion] próxima execução: ${nextMonday.toLocaleString('pt-BR')}`);
+  }
+}
+
 // ── Agendadores de boot ───────────────────────────────────────
 // Sync Scores   → 01:00  (scores de qualidade dos anúncios)
 // Sync Vendas   → 03:00  (pedidos 72h)
@@ -1488,6 +1625,18 @@ scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 
+// Notion Tarefas — 2ª feira 08:00 (usa setTimeout próprio, não scheduleAt)
+setTimeout(() => syncNotionTarefas().catch(e => console.error('[notion] boot erro:', e.message)), (() => {
+  const now = new Date();
+  const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
+  const next = new Date(now);
+  next.setDate(now.getDate() + daysUntilMonday);
+  next.setHours(8, 0, 0, 0);
+  const ms = next - now;
+  console.log(`[notion] agendado para ${next.toLocaleString('pt-BR')} (${Math.round(ms/3600000)}h)`);
+  return ms;
+})());
+
 tokenRefreshLoop(); // roda imediatamente no start
 setInterval(tokenRefreshLoop, 30 * 60 * 1000);
 
@@ -1535,6 +1684,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'syncScores') {
       console.log('[worker] syncScores disparado manualmente');
       syncScores().catch(e => console.error('[worker] syncScores erro:', e.message));
+    }
+    if (cmd === 'syncNotionTarefas') {
+      console.log('[worker] syncNotionTarefas disparado manualmente');
+      syncNotionTarefas().catch(e => console.error('[worker] syncNotionTarefas erro:', e.message));
     }
     if (cmd === 'reprocessSkipped') {
       console.log('[worker] reprocessSkipped disparado manualmente');

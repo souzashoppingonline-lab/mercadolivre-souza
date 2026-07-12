@@ -61,6 +61,7 @@ Não usa `node-cron`; cada job se reagenda no `finally` chamando `scheduleAt(hor
 | 04:15 | `syncMetricas` | reputação (`store_metrics`) + devoluções recentes (`returns`) |
 | 05:00 | `syncPrecos` | atualiza `items.original_price` de itens não fechados; zera se não há promoção ativa |
 | 06:00 | `resumoDiario` | envia ao Telegram (`tg_resumo`, sempre — não respeita as flags de tópico) o resumo do dia anterior por loja e por modal de logística |
+| 2ª 08:00 | `syncNotionTarefas` | avalia anúncios ativos com 0 vendas/30d (estoque parado) e 1-3 vendas/30d (baixo); cria tarefas no Notion database (`NOTION_DATABASE_ID`). Anti-duplicata via busca por MLB antes de criar. Máx 20 parados + 10 baixos por execução. Rate-limit de 400ms entre chamadas Notion. Requer `NOTION_TOKEN` + `NOTION_DATABASE_ID` no `.env`; sem esses, loga aviso e retorna `not_configured` |
 
 Todos (exceto `resumoDiario` e `tokenRefreshLoop`) são registrados em `schedule_jobs`/`schedule_runs` via `recordSync(name, cron, fn)` — consultável em `GET /api/schedule/jobs` e `GET /api/schedule/runs`.
 
@@ -83,7 +84,7 @@ Desde v15, `worker.js` também sobe (2 linhas aditivas no final do arquivo, nenh
 
 ## Comandos manuais (canal Redis `worker:cmd`)
 
-Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (busca retroativa completa, não agendada), `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `reprocessSkipped`. Disparado por `POST /api/schedule/jobs/:name/trigger` ou `server/sync-now.sh`.
+Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (busca retroativa completa, não agendada), `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `reprocessSkipped`. Disparado por `POST /api/schedule/jobs/:name/trigger` ou `server/sync-now.sh`.
 
 ## Bot do Telegram (long polling)
 

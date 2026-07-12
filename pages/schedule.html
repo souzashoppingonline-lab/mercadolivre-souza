@@ -88,6 +88,9 @@
           <button class="sync-action-btn" id="btnSyncNotion" data-job="syncNotionTarefas">
             <i class="fab fa-notion"></i> Notion Tarefas <small style="opacity:.7;font-weight:400">2ª 08:00</small>
           </button>
+          <button class="sync-action-btn" data-job="syncTopVendas">
+            <i class="fas fa-fire"></i> Top Vendas <small style="opacity:.7;font-weight:400">a cada 4h</small>
+          </button>
           <span id="syncStatus" style="font-size:.82rem;color:var(--text-muted);margin-left:4px"></span>
         </div>
       </div>
@@ -105,6 +108,7 @@
               <option value="sync-precos">sync-precos</option>
               <option value="sync-scores">sync-scores</option>
               <option value="sync-notion">sync-notion</option>
+              <option value="top-vendas">top-vendas</option>
             </select>
             <button onclick="loadRuns()" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:.78rem">
               <i class="fas fa-refresh"></i>

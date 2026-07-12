@@ -754,6 +754,20 @@ function scheduleAt(hour, minute, fn, label) {
   setTimeout(fn, ms);
 }
 
+// Igual a scheduleAt, mas para jobs que rodam várias vezes ao dia num
+// intervalo fixo (ex: a cada 4h — 00h/04h/08h/12h/16h/20h) em vez de uma
+// vez por dia num horário fixo. Mesma mecânica de auto-reagendamento via
+// setTimeout recursivo.
+function scheduleEvery(hours, fn, label) {
+  const now = new Date();
+  let next = new Date(now);
+  next.setHours(0, 0, 0, 0);
+  while (next <= now) next = new Date(next.getTime() + hours * 3600000);
+  const ms = next - now;
+  console.log(`[${label}] próxima execução: ${next.toLocaleString('pt-BR')} (em ${Math.round(ms / 60000)}min)`);
+  setTimeout(fn, ms);
+}
+
 // ── Sync Vendas — 03:00 diário, pedidos dos últimos 3 dias ───
 let isSyncingVendas = false;
 
@@ -1559,6 +1573,58 @@ async function resumoDiario() {
   scheduleAt(6, 0, resumoDiario, 'resumo-diario');
 }
 
+// ── Top Vendas — a cada 4h, ranking de itens mais vendidos por loja ──────
+// Objetivo: dar visibilidade rápida do que está vendendo bem "agora" (janela
+// de 4h, não acumulado do dia) para decisão de reposição de estoque — ver
+// .claude/business-rules.md.
+let isSyncingTopVendas = false;
+
+async function syncTopVendas() {
+  if (isSyncingTopVendas) { console.warn('[top-vendas] já em execução — ignorando'); return; }
+  isSyncingTopVendas = true;
+  console.log('[top-vendas] verificando itens mais vendidos...');
+
+  try {
+    return await recordSync('top-vendas', '0 */4 * * *', async () => {
+      const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+
+      // vw_ml_orders/vw_ml_stores — views ML-only (v17), evita contaminar
+      // o ranking com pedidos Amazon.
+      const { rows } = await pool.query(`
+        SELECT o.item_id, o.title, s.nickname AS loja,
+               SUM(o.quantity) AS unidades,
+               SUM(o.total_amount) AS receita
+        FROM vw_ml_orders o
+        LEFT JOIN vw_ml_stores s ON s.id = o.store_id
+        WHERE o.status != 'cancelled'
+          AND o.item_id IS NOT NULL
+          AND o.date_created >= now() - interval '4 hours'
+        GROUP BY o.item_id, o.title, s.nickname
+        ORDER BY unidades DESC
+        LIMIT 5
+      `);
+
+      if (!rows.length) {
+        console.log('[top-vendas] nenhuma venda nas últimas 4h — nada a notificar');
+        return { itens: 0 };
+      }
+
+      const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
+      let msg = `📈 <b>Top Vendas — últimas 4h</b>\n🕐 ${agora}\n\n`;
+      rows.forEach((r, i) => {
+        msg += `${i + 1}. 🏪 <b>${r.loja || '—'}</b>\n   📦 ${r.title || r.item_id}\n   🔢 ${r.unidades} un. · ${Rfmt(r.receita)}\n\n`;
+      });
+
+      await tgNotify('tg_topvendas', msg.trim());
+      console.log(`[top-vendas] notificado — ${rows.length} item(ns)`);
+      return { itens: rows.length, top: rows.map(r => ({ loja: r.loja, item: r.title, unidades: Number(r.unidades), receita: Number(r.receita) })) };
+    });
+  } finally {
+    isSyncingTopVendas = false;
+    scheduleEvery(4, syncTopVendas, 'top-vendas');
+  }
+}
+
 // Recupera pedidos que foram marcados como 'skipped' por cooldown de 429
 // Roda a cada hora para não perder vendas durante picos de rate limit
 let isReprocessing = false;
@@ -1624,6 +1690,7 @@ scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
+scheduleEvery(4,   syncTopVendas, 'top-vendas');
 
 // Notion Tarefas — 2ª feira 08:00 (usa setTimeout próprio, não scheduleAt)
 setTimeout(() => syncNotionTarefas().catch(e => console.error('[notion] boot erro:', e.message)), (() => {
@@ -1692,6 +1759,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'reprocessSkipped') {
       console.log('[worker] reprocessSkipped disparado manualmente');
       reprocessSkipped().catch(e => console.error('[worker] reprocessSkipped erro:', e.message));
+    }
+    if (cmd === 'syncTopVendas') {
+      console.log('[worker] syncTopVendas disparado manualmente');
+      syncTopVendas().catch(e => console.error('[worker] syncTopVendas erro:', e.message));
     }
   } catch {}
 });
@@ -1785,8 +1856,11 @@ async function handleTgCommand(text, chatId, botToken) {
     } else if (tipo === 'devolucoes') {
       await tgReply(chatId, '↩️ Iniciando busca retroativa de <b>devoluções</b>...', botToken);
       syncReturns().catch(e => console.error('[tg-bot] syncReturns erro:', e.message));
+    } else if (tipo === 'topvendas') {
+      await tgReply(chatId, '📈 Verificando <b>top vendas</b> (últimas 4h)...', botToken);
+      syncTopVendas().catch(e => console.error('[tg-bot] syncTopVendas erro:', e.message));
     } else {
-      await tgReply(chatId, '❓ Tipos disponíveis: <code>vendas</code>, <code>metricas</code>, <code>visitas</code>, <code>devolucoes</code>', botToken);
+      await tgReply(chatId, '❓ Tipos disponíveis: <code>vendas</code>, <code>metricas</code>, <code>visitas</code>, <code>devolucoes</code>, <code>topvendas</code>', botToken);
     }
     return;
   }
@@ -1800,7 +1874,8 @@ async function handleTgCommand(text, chatId, botToken) {
       `/sync vendas — forçar reconciliação de pedidos (72h)\n` +
       `/sync metricas — forçar coleta de reputação + devoluções\n` +
       `/sync visitas — forçar coleta de visitas por anúncio\n` +
-      `/sync devolucoes — busca retroativa completa de devoluções\n\n` +
+      `/sync devolucoes — busca retroativa completa de devoluções\n` +
+      `/sync topvendas — forçar checagem de top vendas (últimas 4h)\n\n` +
       `Exemplos: <code>/refresh topmix</code>  <code>/sync vendas</code>`,
       botToken
     );

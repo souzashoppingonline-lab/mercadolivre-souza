@@ -785,7 +785,7 @@ router.get('/webhooks/config', async (req, res) => {
   });
 });
 
-const TG_NOTIF_KEYS = ['tg_vendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra','tg_interval','silence_start','silence_end'];
+const TG_NOTIF_KEYS = ['tg_vendas','tg_topvendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra','tg_interval','silence_start','silence_end'];
 const ALL_TG_KEYS   = ['telegram_bot_token','telegram_chat_id', ...TG_NOTIF_KEYS];
 
 router.get('/config/telegram', async (req, res) => {
@@ -847,7 +847,7 @@ router.get('/schedule/jobs', async (req, res) => {
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   const { name } = req.params;
-  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
+  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
   await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });

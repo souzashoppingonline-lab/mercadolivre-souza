@@ -36,6 +36,10 @@ O worker (`handleOffer`) compara o `status` anterior salvo em `promotions` com o
 - Não tinha registro anterior, ou não estava `active` e passou a estar → "🟢 Entrou em promoção!".
 - Qualquer outra mudança de status → "🏷️ Promoção alterada" (genérico).
 
+## Top Vendas — alerta periódico de itens mais vendidos
+
+`syncTopVendas` (a cada 4h — 00h/04h/08h/12h/16h/20h) envia ao Telegram o top 5 itens (por unidades vendidas, não receita) das **últimas 4h**, não do dia acumulado — é uma janela deslizante para dar visibilidade do que está vendendo "agora" e permitir reação rápida de reposição de estoque, não um relatório histórico. Cada linha inclui o nome da loja (`stores.nickname`). Pedidos cancelados não contam. **Não notifica se não houve nenhuma venda no período** (evita 6 mensagens/dia de "nada vendeu"). Não usa `tgNotifyForce` — respeita a janela de silêncio e pode ser desligado individualmente (`tg_topvendas`), diferente do resumo diário e dos relatórios de sync (que são "operacionais", não "alertas").
+
 ## Notificações Telegram — regras de silêncio e throttle
 
 Cada tópico (`tg_vendas`, `tg_perguntas`, etc.) pode ser individualmente desativado em `app_config`. Além disso, globalmente:

@@ -769,38 +769,76 @@ async function syncVendas() {
       const dateFrom = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
       const lojaReport = [];
 
-      async function syncStoreVendas(store) {
+      let totalNew = 0;
+
+      for (const store of stores) {
         await ensureTokenFresh(store);
-        let offset = 0, apiTotal = Infinity, storeNew = 0;
+        let offset = 0, apiTotal = Infinity, storeNew = 0, consecutive429 = 0;
+
+        storeLoop:
         while (offset < apiTotal) {
-          const data = await ml.searchOrders(store.id, dateFrom, offset);
+          let data;
+          try {
+            data = await ml.searchOrders(store.id, dateFrom, offset);
+            consecutive429 = 0;
+          } catch (e) {
+            if (e.message?.includes('429')) {
+              consecutive429++;
+              console.warn(`[sync-vendas] ${store.nickname} 429 (${consecutive429}/5) — aguardando 60s`);
+              if (consecutive429 >= 5) {
+                console.warn(`[sync-vendas] ${store.nickname} 5 consecutive 429s — abortando loja`);
+                lojaReport.push({ loja: store.nickname, pedidos_importados: storeNew, erro: 'rate_limit_abort' });
+                break storeLoop;
+              }
+              await new Promise(r => setTimeout(r, 60000));
+              continue;
+            }
+            console.error(`[sync-vendas] ${store.nickname} erro:`, e.message);
+            lojaReport.push({ loja: store.nickname, pedidos_importados: storeNew, erro: e.message });
+            break storeLoop;
+          }
+
           const orders = data.results || [];
           apiTotal = data.paging?.total ?? orders.length;
           console.log(`[sync-vendas] ${store.nickname} offset=${offset}/${apiTotal} → ${orders.length} pedidos`);
           if (!orders.length) break;
+
           for (const order of orders) {
             const exists = await pool.query(
               `SELECT ml_id FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '12 hours'`, [order.id]
             );
             if (exists.rows.length) continue;
-            await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id, silent: true });
-            storeNew++;
+            try {
+              await handleOrder({ resource: `/orders/${order.id}`, storeId: store.id, silent: true });
+              storeNew++;
+            } catch (e) {
+              if (e.message?.includes('429')) {
+                consecutive429++;
+                console.warn(`[sync-vendas] ${store.nickname} 429 no handleOrder (${consecutive429}/5)`);
+                if (consecutive429 >= 5) {
+                  console.warn(`[sync-vendas] ${store.nickname} 5 consecutive 429s — abortando loja`);
+                  lojaReport.push({ loja: store.nickname, pedidos_importados: storeNew, erro: 'rate_limit_abort' });
+                  break storeLoop;
+                }
+                await new Promise(r => setTimeout(r, 60000));
+              } else {
+                console.error(`[sync-vendas] ${store.nickname} order ${order.id} erro:`, e.message);
+              }
+            }
             await new Promise(r => setTimeout(r, 1500));
           }
+
           offset += orders.length;
           if (orders.length < 50) break;
           await new Promise(r => setTimeout(r, 2000));
         }
-        console.log(`[sync-vendas] ${store.nickname} → ${storeNew} importados`);
-        return { loja: store.nickname, pedidos_importados: storeNew };
-      }
 
-      const results = await Promise.allSettled(stores.map(s => syncStoreVendas(s)));
-      let totalNew = 0;
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled') { lojaReport.push(r.value); totalNew += r.value.pedidos_importados; }
-        else { lojaReport.push({ loja: stores[i].nickname, erro: r.reason?.message }); console.error(`[sync-vendas] ${stores[i].nickname} erro:`, r.reason?.message); }
-      });
+        console.log(`[sync-vendas] ${store.nickname} → ${storeNew} importados`);
+        if (!lojaReport.find(r => r.loja === store.nickname)) {
+          lojaReport.push({ loja: store.nickname, pedidos_importados: storeNew });
+        }
+        totalNew += storeNew;
+      }
 
       console.log(`[sync-vendas] concluído — ${totalNew} pedidos importados`);
       if (totalNew > 0) {

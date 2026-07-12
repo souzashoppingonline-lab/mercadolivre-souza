@@ -10,9 +10,14 @@
   <script>window.PAGE_TITLE='Promoções'; window.ACTIVE_NAV='promocoes.html';</script>
   <style>
     .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-    .tab-btn { background:var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:7px 16px; cursor:pointer; font-size:13px; color:var(--text-muted); transition:.2s; }
+    .tab-btn { background:var(--card-bg); border:1px solid var(--border); border-radius:8px; padding:7px 16px; cursor:pointer; font-size:13px; color:var(--text-muted); transition:.2s; white-space:nowrap; min-height:40px; }
     .tab-btn.active { background:var(--primary); color:#000; border-color:var(--primary); font-weight:700; }
     .tab-btn:hover:not(.active) { border-color:var(--primary); color:var(--primary); }
+    @media (max-width:600px) {
+      .tabs { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-bottom:4px; margin-left:-16px; margin-right:-16px; padding-left:16px; padding-right:16px; }
+      .tabs::-webkit-scrollbar { display:none; }
+      .tab-btn { flex-shrink:0; font-size:12px; padding:8px 14px; min-height:44px; }
+    }
     .promo-summary { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; margin-bottom:16px; }
     .ps-card { background:var(--card-bg); border:1px solid var(--border); border-radius:12px; padding:14px 18px; }
     .ps-card.green { border-left:3px solid var(--green); }

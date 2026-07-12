@@ -9,12 +9,15 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Anúncios'; window.ACTIVE_NAV='anuncios.html';</script>
   <style>
-    .store-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .store-tabs {
+      display: flex; gap: 8px; margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
     .store-tab {
       display: flex; align-items: center; gap: 8px;
       padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
       border: 1px solid var(--border); background: var(--card-bg); color: var(--text-muted);
-      transition: all 0.2s;
+      transition: all 0.2s; white-space: nowrap; min-height: 40px;
     }
     .store-tab:hover { border-color: var(--primary); color: var(--text-primary); }
     .store-tab.active { background: var(--primary); color: #000; border-color: var(--primary); }
@@ -24,6 +27,24 @@
       justify-content: center; font-size: 9px; font-weight: 800;
     }
     .store-tab.active .tab-avatar { background: rgba(0,0,0,0.25); }
+    @media (max-width: 600px) {
+      .store-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: 4px;
+        margin-left: -16px; margin-right: -16px;
+        padding-left: 16px; padding-right: 16px;
+      }
+      .store-tabs::-webkit-scrollbar { display: none; }
+      .store-tab {
+        flex-shrink: 0;
+        font-size: 12px;
+        padding: 8px 14px;
+        min-height: 44px;
+      }
+    }
     .store-section { display: none; }
     .store-section.active { display: block; }
     .section-title-bar {

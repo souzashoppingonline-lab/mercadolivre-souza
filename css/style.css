@@ -74,6 +74,26 @@ body {
 .mkt-switcher-compact a:hover { border-color: var(--primary); color: var(--text-main); }
 .mkt-switcher-compact a.active { background: var(--primary); color: #000; border-color: var(--primary); }
 
+/* Mobile: só ícone nos botões de marketplace */
+@media (max-width: 768px) {
+  .mkt-switcher-compact { gap: 4px; }
+  .mkt-switcher-compact a {
+    padding: 7px 10px;
+    font-size: 0;    /* esconde o texto */
+    gap: 0;
+    min-width: 36px;
+    justify-content: center;
+  }
+  .mkt-switcher-compact a i {
+    font-size: 15px; /* mantém o ícone visível */
+  }
+}
+/* Telas muito pequenas: reduz padding da topbar também */
+@media (max-width: 480px) {
+  .topbar { padding: 0 12px; }
+  .topbar-right { gap: 8px; }
+}
+
 .menu-toggle, .btn-refresh {
   background: none;
   border: none;

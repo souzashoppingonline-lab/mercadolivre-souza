@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Análise de Vendas do Mês — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Análise de Vendas do Mês'; window.ACTIVE_NAV='analise-vendas-mes.html';</script>
+  <style>
+    .filters-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+    .filters-row select, .filters-row input[type=month] { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+    .filters-row .btn-primary { background: var(--primary); border: none; border-radius: 8px; padding: 8px 18px; font-weight: 700; color: #000; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .kpi-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; opacity: 0; animation: fadeUp .4s ease forwards; }
+    .kpi-card:nth-child(1) { animation-delay: .02s; } .kpi-card:nth-child(2) { animation-delay: .08s; }
+    .kpi-card:nth-child(3) { animation-delay: .14s; } .kpi-card:nth-child(4) { animation-delay: .2s; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .kpi-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .kpi-value { font-size: 24px; font-weight: 800; margin-top: 6px; }
+    .kpi-sub { font-size: 12px; margin-top: 4px; }
+    .kpi-sub.pos { color: var(--green); } .kpi-sub.neg { color: var(--red); }
+    .kpi-spark { height: 34px; margin-top: 8px; }
+
+    .charts-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
+    .chart-wrap { position: relative; height: 300px; }
+    .chart-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+
+    .heatmap-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .heat-cell { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); transition: transform .15s; position: relative; }
+    .heat-cell:hover { transform: scale(1.08); z-index: 2; border-color: var(--primary); }
+    .heat-cell.empty { visibility: hidden; }
+    .heat-cell.future { opacity: .25; cursor: default; }
+    .heat-cell .d { font-size: 13px; }
+    .heat-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+    .heat-legend .swatch { width: 14px; height: 14px; border-radius: 3px; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media(max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+    .rank-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 13px; }
+    .rank-row:last-child { border-bottom: none; }
+    .rank-day { display: flex; align-items: center; gap: 10px; }
+
+    .insight-panel { display: flex; flex-direction: column; gap: 10px; }
+    .insight-item { background: var(--bg-card2); border-radius: 10px; padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; }
+    .insight-item i { margin-top: 2px; width: 16px; text-align: center; flex-shrink: 0; }
+    .insight-item .txt { font-size: 12.5px; line-height: 1.5; }
+    .insight-item .txt b { color: var(--text-main); }
+
+    .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="filters-row">
+        <select id="filterStore"><option value="">Todas as lojas</option></select>
+        <input type="month" id="filterMonth">
+        <button class="btn-primary" id="btnLoad"><i class="fas fa-search"></i> Analisar</button>
+        <span id="loadStatus" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-row" id="kpiRow">
+        <div class="kpi-card">
+          <div class="kpi-top"><span class="kpi-label"><i class="fas fa-dollar-sign"></i> Receita Acumulada</span></div>
+          <div class="kpi-value" id="kpiReceita"><div class="skeleton" style="height:26px;width:70%"></div></div>
+          <div class="kpi-sub" id="kpiReceitaSub"></div>
+          <canvas class="kpi-spark" id="sparkReceita"></canvas>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top"><span class="kpi-label"><i class="fas fa-box"></i> Pedidos</span></div>
+          <div class="kpi-value" id="kpiPedidos"><div class="skeleton" style="height:26px;width:50%"></div></div>
+          <div class="kpi-sub" style="color:var(--text-muted)">no período</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top"><span class="kpi-label"><i class="fas fa-receipt"></i> Ticket Médio</span></div>
+          <div class="kpi-value" id="kpiTicket"><div class="skeleton" style="height:26px;width:60%"></div></div>
+          <div class="kpi-sub" style="color:var(--text-muted)">por pedido</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top"><span class="kpi-label"><i class="fas fa-chart-line"></i> Crescimento vs. Mês Anterior</span></div>
+          <div class="kpi-value" id="kpiCrescimento"><div class="skeleton" style="height:26px;width:40%"></div></div>
+          <div class="kpi-sub" style="color:var(--text-muted)" id="kpiCrescimentoSub">mesmo nº de dias comparado</div>
+        </div>
+      </div>
+
+      <!-- Gráfico 1 -->
+      <div class="card charts-grid">
+        <div class="card-header"><h3><i class="fas fa-chart-bar" style="color:var(--primary)"></i> Comparativo — Mês Atual vs. Anterior vs. Retrasado</h3></div>
+        <div class="chart-wrap"><canvas id="chart1"></canvas></div>
+        <div class="chart-note">Linhas sobrepostas: tendência (regressão linear) e média histórica de 12 meses por dia-do-mês. Clique numa coluna pra ver os pedidos daquele dia.</div>
+      </div>
+
+      <!-- Gráfico 2 -->
+      <div class="card charts-grid">
+        <div class="card-header"><h3><i class="fas fa-history" style="color:var(--blue)"></i> Média Histórica (12 meses) por Dia do Mês</h3></div>
+        <div class="chart-wrap"><canvas id="chart2"></canvas></div>
+        <div class="chart-note">Faixa sombreada = banda estatística (média ± 1 desvio-padrão) — dias fora da faixa são os que mais fogem do padrão.</div>
+      </div>
+
+      <!-- Gráfico 3 -->
+      <div class="card charts-grid">
+        <div class="card-header"><h3><i class="fas fa-percentage" style="color:var(--orange)"></i> Variação % vs. Média Histórica</h3></div>
+        <div class="chart-wrap" style="height:220px"><canvas id="chart3"></canvas></div>
+      </div>
+
+      <!-- Heatmap -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3><i class="fas fa-th" style="color:var(--purple)"></i> Heatmap de Receita por Dia</h3></div>
+        <div class="heatmap-grid" id="heatmapGrid"></div>
+        <div class="heat-legend">
+          <span>Menor</span>
+          <span class="swatch" style="background:rgba(39,174,96,.12)"></span>
+          <span class="swatch" style="background:rgba(39,174,96,.4)"></span>
+          <span class="swatch" style="background:rgba(39,174,96,.7)"></span>
+          <span class="swatch" style="background:rgba(39,174,96,1)"></span>
+          <span>Maior</span>
+        </div>
+      </div>
+
+      <!-- Rankings + Insights -->
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-trophy" style="color:var(--green)"></i> Top 10 Melhores Dias</h3></div>
+          <div id="rankTop"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-arrow-trend-down" style="color:var(--red)"></i> Top 10 Piores Dias</h3></div>
+          <div id="rankBottom"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3><i class="fas fa-lightbulb" style="color:var(--primary)"></i> Insights Automáticos</h3></div>
+        <div class="insight-panel" id="insightPanel">
+          <div class="empty-state"><div class="spinner" style="margin:auto"></div></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Modal drill-down -->
+<div id="modalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#23272f;border:1px solid #444;border-radius:14px;width:100%;max-width:700px;max-height:85vh;overflow-y:auto;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #333;position:sticky;top:0;background:#23272f;z-index:1">
+      <h3 id="modalTitle" style="margin:0;font-size:14px;font-weight:700"></h3>
+      <button onclick="closeModal()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div class="table-responsive" style="padding:16px 20px">
+      <table class="data-table">
+        <thead><tr><th>Pedido</th><th>Item</th><th>Conta</th><th class="tbl-num">Qtd.</th><th class="tbl-num">Valor</th><th>Hora</th></tr></thead>
+        <tbody id="modalBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+const Rk = v => 'R$' + (Number(v) / 1000).toFixed(1) + 'k';
+const Pct = v => `${Number(v) >= 0 ? '▲' : '▼'} ${Math.abs(Number(v)).toFixed(1)}%`;
+const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerHTML = v; };
+
+const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+let charts = { spark: null, c1: null, c2: null, c3: null };
+
+function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
+
+async function initStores() {
+  const data = await DB.getLojas() || { stores: [] };
+  const sel = document.getElementById('filterStore');
+  (data.stores || []).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.nickname;
+    sel.appendChild(o);
+  });
+}
+
+function initMonthDefault() {
+  const now = new Date();
+  const val = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  document.getElementById('filterMonth').value = val;
+}
+
+async function load() {
+  const status = document.getElementById('loadStatus');
+  status.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Carregando...';
+
+  const [year, month] = document.getElementById('filterMonth').value.split('-').map(Number);
+  const store_id = document.getElementById('filterStore').value;
+
+  const data = await DB.getAnaliseVendasMes({ year, month, store_id });
+  if (!data || data.error) {
+    status.innerHTML = `<span style="color:var(--red)">Erro: ${data?.error || 'falha ao carregar'}</span>`;
+    return;
+  }
+  status.textContent = '';
+
+  renderKpis(data);
+  renderChart1(data);
+  renderChart2(data);
+  renderChart3(data);
+  renderHeatmap(data);
+  renderRankings(data);
+  renderInsights(data);
+}
+
+// ── KPIs ─────────────────────────────────────────────────────
+function renderKpis(data) {
+  const k = data.kpis;
+  set('kpiReceita', R(k.receita_acumulada));
+  set('kpiPedidos', k.pedidos);
+  set('kpiTicket', R(k.ticket_medio));
+  set('kpiCrescimento', Pct(k.crescimento_pct));
+  const el = document.getElementById('kpiCrescimento');
+  el.style.color = k.crescimento_pct >= 0 ? 'var(--green)' : 'var(--red)';
+
+  destroyChart('spark');
+  const ctx = document.getElementById('sparkReceita');
+  if (ctx && k.sparkline?.length) {
+    charts.spark = new Chart(ctx, {
+      type: 'line',
+      data: { labels: k.sparkline.map((_, i) => i + 1), datasets: [{ data: k.sparkline, borderColor: '#FFE600', backgroundColor: 'rgba(255,230,0,.08)', fill: true, tension: .35, pointRadius: 0, borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } }, animation: { duration: 500 } }
+    });
+  }
+}
+
+// ── Gráfico 1: comparativo 3 meses + tendência + média histórica ─
+function renderChart1(data) {
+  destroyChart('c1');
+  const labels = data.mes_atual.map(d => d.dia);
+  const atual = data.mes_atual.map(d => d.receita);
+  const anterior = labels.map((_, i) => data.mes_anterior[i]?.receita ?? null);
+  const retrasado = labels.map((_, i) => data.mes_retrasado[i]?.receita ?? null);
+  const tendenciaLine = labels.map(d => Math.max(0, data.insights.tendencia.intercept + data.insights.tendencia.slope * d));
+  const mediaLine = labels.map((_, i) => data.media_historica[i]?.media ?? null);
+
+  const ctx = document.getElementById('chart1');
+  charts.c1 = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Mês Atual', data: atual, backgroundColor: '#FFE600', borderRadius: 3 },
+        { type: 'bar', label: 'Mês Anterior', data: anterior, backgroundColor: 'rgba(41,128,185,.6)', borderRadius: 3 },
+        { type: 'bar', label: 'Mês Retrasado', data: retrasado, backgroundColor: 'rgba(155,89,182,.5)', borderRadius: 3 },
+        { type: 'line', label: 'Tendência', data: tendenciaLine, borderColor: '#e74c3c', borderWidth: 2, borderDash: [5, 4], pointRadius: 0, tension: 0 },
+        { type: 'line', label: 'Média Histórica', data: mediaLine, borderColor: '#888', borderWidth: 1.5, pointRadius: 0, tension: .3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: (evt, els) => { if (els.length) { const dia = labels[els[0].index]; openDrillDown(dia); } },
+      plugins: {
+        legend: { labels: { color: '#f0f0f0', font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${R(c.raw)}` } }
+      },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { ticks: { color: '#888', callback: v => Rk(v) }, grid: { color: 'rgba(255,255,255,.04)' } }
+      },
+      animation: { duration: 500 }
+    }
+  });
+}
+
+// ── Gráfico 2: média histórica + banda estatística ────────────
+function renderChart2(data) {
+  destroyChart('c2');
+  const labels = data.media_historica.map(d => d.dia);
+  const media = data.media_historica.map(d => d.media);
+  const bandaMax = data.media_historica.map(d => d.banda_max);
+  const bandaMin = data.media_historica.map(d => d.banda_min);
+
+  const ctx = document.getElementById('chart2');
+  charts.c2 = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        { type: 'line', label: 'Banda superior', data: bandaMax, borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(41,128,185,.12)', fill: false },
+        { type: 'line', label: 'Banda (±1 desvio)', data: bandaMin, borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(41,128,185,.12)', fill: '-1' },
+        { type: 'bar', label: 'Média por dia', data: media, backgroundColor: 'rgba(41,128,185,.7)', borderRadius: 3 },
+        { type: 'line', label: 'Média geral', data: labels.map(() => data.media_geral), borderColor: '#FFE600', borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#f0f0f0', font: { size: 11 } }, filter: item => item.text !== 'Banda superior' },
+        tooltip: { filter: item => item.dataset.label !== 'Banda superior', callbacks: { label: c => `${c.dataset.label}: ${R(c.raw)}` } }
+      },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { ticks: { color: '#888', callback: v => Rk(v) }, grid: { color: 'rgba(255,255,255,.04)' } }
+      },
+      animation: { duration: 500 }
+    }
+  });
+}
+
+// ── Gráfico 3: variação % vs. média histórica ─────────────────
+function renderChart3(data) {
+  destroyChart('c3');
+  const labels = data.mes_atual.map(d => d.dia);
+  const variacao = labels.map((dia, i) => {
+    const receita = data.mes_atual[i]?.receita;
+    const media = data.media_historica[i]?.media;
+    if (receita == null || !media) return null;
+    return ((receita - media) / media) * 100;
+  });
+
+  const ctx = document.getElementById('chart3');
+  charts.c3 = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Variação vs. média histórica',
+        data: variacao,
+        backgroundColor: variacao.map(v => v == null ? 'transparent' : (v >= 0 ? 'rgba(39,174,96,.75)' : 'rgba(231,76,60,.75)')),
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => `${c.raw >= 0 ? '+' : ''}${Number(c.raw).toFixed(1)}%` } }
+      },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { display: false } },
+        y: { ticks: { color: '#888', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,.04)' }, grace: '10%' }
+      },
+      animation: { duration: 500 }
+    }
+  });
+}
+
+// ── Heatmap ─────────────────────────────────────────────────
+function renderHeatmap(data) {
+  const grid = document.getElementById('heatmapGrid');
+  const dias = data.mes_atual;
+  const max = Math.max(1, ...dias.filter(d => d.ocorrido).map(d => d.receita));
+
+  // Alinha o dia 1 ao dia da semana correto (0=domingo)
+  const primeiroDiaSemana = new Date(data.periodo.ano, data.periodo.mes - 1, 1).getDay();
+  let html = '';
+  for (let i = 0; i < primeiroDiaSemana; i++) html += `<div class="heat-cell empty"></div>`;
+
+  dias.forEach(d => {
+    if (!d.ocorrido) {
+      html += `<div class="heat-cell future" style="background:var(--bg-card2)"><span class="d">${d.dia}</span></div>`;
+      return;
+    }
+    const intensidade = d.receita / max;
+    const bg = d.receita > 0 ? `rgba(39,174,96,${(0.12 + intensidade * 0.88).toFixed(2)})` : 'var(--bg-card2)';
+    html += `<div class="heat-cell" style="background:${bg}" onclick="openDrillDown(${d.dia})" title="Dia ${d.dia} — ${R(d.receita)} · ${d.pedidos} pedido(s) · ticket ${R(d.ticket_medio)}">
+      <span class="d">${d.dia}</span><span style="font-size:9px;font-weight:400;opacity:.85">${R(d.receita).replace('R$','').trim()}</span>
+    </div>`;
+  });
+  grid.innerHTML = html;
+}
+
+// ── Rankings ────────────────────────────────────────────────
+function renderRankings(data) {
+  const dt = (dia) => `${String(dia).padStart(2,'0')}/${String(data.periodo.mes).padStart(2,'0')}`;
+  const rowsHtml = (rows, cor) => rows.length
+    ? rows.map((d, i) => `
+      <div class="rank-row" style="cursor:pointer" onclick="openDrillDown(${d.dia})">
+        <div class="rank-day"><span class="number-badge" style="background:${cor}">${i+1}</span><span>${dt(d.dia)}</span></div>
+        <div style="text-align:right"><div style="font-weight:700">${R(d.receita)}</div><div style="font-size:11px;color:var(--text-muted)">${d.pedidos} pedido(s)</div></div>
+      </div>`).join('')
+    : '<div class="empty-state">Sem dados no período</div>';
+
+  set('rankTop', rowsHtml(data.ranking_top10, 'var(--green)'));
+  set('rankBottom', rowsHtml(data.ranking_bottom10, 'var(--red)'));
+}
+
+// ── Insights ────────────────────────────────────────────────
+function renderInsights(data) {
+  const ins = data.insights;
+  const dt = (dia) => dia ? `${String(dia).padStart(2,'0')}/${String(data.periodo.mes).padStart(2,'0')}` : '—';
+  const items = [];
+
+  const top3 = data.ranking_top10.slice(0, 3).map(d => dt(d.dia)).join(', ');
+  const bottom3 = data.ranking_bottom10.slice(0, 3).map(d => dt(d.dia)).join(', ');
+  items.push({ icon: 'fa-fire', color: 'var(--green)', html: `Dias mais fortes do mês: <b>${top3 || '—'}</b>` });
+  items.push({ icon: 'fa-icicles', color: 'var(--blue)', html: `Dias mais fracos do mês: <b>${bottom3 || '—'}</b>` });
+
+  const tendIcon = ins.tendencia.direcao === 'alta' ? 'fa-arrow-trend-up' : ins.tendencia.direcao === 'queda' ? 'fa-arrow-trend-down' : 'fa-arrows-left-right';
+  const tendCor = ins.tendencia.direcao === 'alta' ? 'var(--green)' : ins.tendencia.direcao === 'queda' ? 'var(--red)' : 'var(--text-muted)';
+  items.push({ icon: tendIcon, color: tendCor, html: `Tendência atual: <b>${ins.tendencia.direcao}</b> (${ins.tendencia.slope >= 0 ? '+' : ''}${R(ins.tendencia.slope)}/dia)` });
+
+  const acelIcon = ins.aceleracao > 0 ? 'fa-gauge-high' : 'fa-gauge-simple';
+  items.push({ icon: acelIcon, color: ins.aceleracao >= 0 ? 'var(--green)' : 'var(--orange)', html: `Índice de aceleração: <b>${ins.aceleracao >= 0 ? '+' : ''}${ins.aceleracao}%</b> — vendas estão ${ins.aceleracao >= 0 ? 'acelerando' : 'desacelerando'} na 2ª metade do período` });
+
+  if (ins.melhor_semana) items.push({ icon: 'fa-calendar-check', color: 'var(--green)', html: `Melhor semana: dias <b>${ins.melhor_semana.inicio}-${ins.melhor_semana.fim}</b> (${R(ins.melhor_semana.receita)})` });
+  if (ins.pior_semana) items.push({ icon: 'fa-calendar-xmark', color: 'var(--red)', html: `Pior semana: dias <b>${ins.pior_semana.inicio}-${ins.pior_semana.fim}</b> (${R(ins.pior_semana.receita)})` });
+
+  items.push({ icon: 'fa-layer-group', color: 'var(--primary)', html: `<b>${ins.concentracao_top5_pct}%</b> do faturamento está concentrado nos 5 melhores dias` });
+
+  const acumIcon = ins.acumulado_diff_pct >= 0 ? 'fa-forward' : 'fa-backward';
+  items.push({ icon: acumIcon, color: ins.acumulado_diff_pct >= 0 ? 'var(--green)' : 'var(--red)', html: `Acumulado está <b>${Pct(ins.acumulado_diff_pct)}</b> em relação ao mesmo ponto do mês anterior` });
+
+  items.push({ icon: 'fa-flag-checkered', color: 'var(--blue)', html: `Projeção de fechamento do mês: <b>${R(ins.projecao_fechamento)}</b>` });
+
+  if (ins.sugestao_anuncios?.length) {
+    items.push({ icon: 'fa-bullhorn', color: 'var(--orange)', html: `Sugestão de reforço de anúncios: dias <b>${ins.sugestao_anuncios.map(d => dt(d.dia)).join(', ')}</b> historicamente vendem menos — considere promoções nesses dias` });
+  }
+  if (ins.sugestao_estoque?.length) {
+    const lista = ins.sugestao_estoque.map(s => `${s.title || s.item_id} (${s.estoque_atual} un.)`).join(', ');
+    items.push({ icon: 'fa-boxes-stacked', color: 'var(--red)', html: `Sugestão de reposição: <b>${lista}</b> — vendendo bem e com estoque baixo` });
+  } else {
+    items.push({ icon: 'fa-boxes-stacked', color: 'var(--text-muted)', html: `Nenhum dos itens mais vendidos está com estoque crítico no momento` });
+  }
+
+  set('insightPanel', items.map(i => `<div class="insight-item"><i class="fas ${i.icon}" style="color:${i.color}"></i><span class="txt">${i.html}</span></div>`).join(''));
+}
+
+// ── Drill-down modal ────────────────────────────────────────
+async function openDrillDown(dia) {
+  const [year, month] = document.getElementById('filterMonth').value.split('-').map(Number);
+  const store_id = document.getElementById('filterStore').value;
+  const date = `${year}-${String(month).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+
+  document.getElementById('modalTitle').textContent = `Pedidos — ${String(dia).padStart(2,'0')}/${String(month).padStart(2,'0')}/${year}`;
+  document.getElementById('modalBody').innerHTML = '<tr><td colspan="6" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
+  document.getElementById('modalOverlay').style.display = 'flex';
+
+  const data = await DB.getVendasDoDia(date, store_id);
+  const rows = data?.rows || [];
+  document.getElementById('modalBody').innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${r.ml_id}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.title || r.item_id || '—'}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${r.conta || '—'}</td>
+      <td class="tbl-num">${r.quantity ?? 1}</td>
+      <td class="tbl-num">${R(r.total_amount)}</td>
+      <td style="font-size:12px">${new Date(r.date_created).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Nenhum pedido nesse dia</td></tr>';
+}
+function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+document.getElementById('modalOverlay')?.addEventListener('click', e => { if (e.target.id === 'modalOverlay') closeModal(); });
+
+// ── Init ────────────────────────────────────────────────────
+document.getElementById('btnLoad').addEventListener('click', load);
+document.getElementById('filterStore').addEventListener('change', load);
+document.getElementById('filterMonth').addEventListener('change', load);
+
+initMonthDefault();
+initStores().then(load);
+</script>
+</body>
+</html>

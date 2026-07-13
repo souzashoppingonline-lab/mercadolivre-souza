@@ -31,6 +31,7 @@ const NAV_ITEMS = [
     { href: 'periodo.html', icon: 'fa-calendar-alt', label: 'Período vs Período' },
     { href: 'evolucao.html', icon: 'fa-chart-area', label: 'Evolução Diária' },
     { href: 'curvaABC.html', icon: 'fa-sort-amount-down', label: 'Curva ABC' },
+    { href: 'analise-vendas-mes.html', icon: 'fa-chart-column', label: 'Análise de Vendas do Mês' },
   ]},
   { section: 'Alertas', items: [
     { href: 'reposicao.html', icon: 'fa-boxes', label: 'Reposição' },

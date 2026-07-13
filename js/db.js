@@ -168,6 +168,10 @@ const DB = {
   async getEvolucaoDiaria(days=30)  { return this._get('/comparativos/evolucao', { days }); },
   async getCurvaABC(params = {})    { return this._get('/comparativos/curva-abc', params); },
 
+  // ── Análise de Vendas do Mês (BI) ────────────────────────────
+  async getAnaliseVendasMes(params = {}) { return this._get('/analises/vendas-mes', params); },
+  async getVendasDoDia(date, store_id='') { return this._get('/analises/vendas-mes/dia', { date, store_id }); },
+
   // ── Alertas ────────────────────────────────────────────────
   async getReposicao(p={})        { return this._get(`/alertas/reposicao?threshold=${p.threshold||15}&store_id=${p.store_id||''}`); },
   async getCancelamentos(params)  { return this._get('/alertas/cancelamentos', params); },

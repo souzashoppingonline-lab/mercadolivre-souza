@@ -31,7 +31,7 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 
 - **Operação**: anuncios, pedidos, vendas, vendas-por-loja, promocoes, perguntas, mensagens, metricas, clientes, lojas
 - **Análises**: horarios, diasemana, produtos, performance, estoque-parado, publicidade, concorrentes
-- **Comparativos**: periodo, evolucao, curvaABC
+- **Comparativos**: periodo, evolucao, curvaABC, analise-vendas-mes (BI — comparativo mensal, média histórica 12 meses, heatmap, rankings, insights automáticos e drill-down por dia; usa Chart.js, mesmo padrão do `dashboard.js`)
 - **Alertas**: reposicao, cancelamentos, devolucoes, anuncios-problema, alteracoes
 - **Financeiro**: vendas-turbo (dashboard da planilha Vendas ML Turbo — ver `finance.md`)
 - **Sistema**: mcp (chat com IA), monitor (métricas de servidor + config Telegram), schedule (jobs agendados), webhook (logs de webhooks recebidos)

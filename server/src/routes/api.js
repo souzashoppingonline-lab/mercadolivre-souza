@@ -1203,6 +1203,258 @@ router.get('/comparativos/curva-abc', async (req, res) => {
   }
 });
 
+// ── Análise de Vendas do Mês (BI) ────────────────────────────
+// Sem normalização por dia útil (decisão explícita do usuário — todo dia
+// conta igual). Toda a matemática (regressão, aceleração, projeção) é
+// feita em JS depois de 2 queries agregadas por dia — mantém o SQL simples
+// e a lógica testável. Ver .claude/business-rules.md para as fórmulas.
+function daysInMonth(year, month) { return new Date(year, month, 0).getDate(); } // month 1-indexed
+
+function linearRegression(points) {
+  // points: [{x, y}] — mínimos quadrados simples
+  const n = points.length;
+  if (n < 2) return { slope: 0, intercept: points[0]?.y || 0 };
+  const sumX = points.reduce((a, p) => a + p.x, 0);
+  const sumY = points.reduce((a, p) => a + p.y, 0);
+  const meanX = sumX / n, meanY = sumY / n;
+  const num = points.reduce((a, p) => a + (p.x - meanX) * (p.y - meanY), 0);
+  const den = points.reduce((a, p) => a + (p.x - meanX) ** 2, 0);
+  const slope = den !== 0 ? num / den : 0;
+  const intercept = meanY - slope * meanX;
+  return { slope, intercept };
+}
+
+function buildDiasArray(rows, ano, mes, hoje) {
+  // Preenche 1..N dias do mês com receita/pedidos (zero se não houve venda),
+  // e marca `ocorrido:false` para dias futuros (mês corrente ainda em curso)
+  // — não confundir "zero vendas" com "dia ainda não aconteceu".
+  const total = daysInMonth(ano, mes);
+  const isMesAtualReal = hoje.getFullYear() === ano && (hoje.getMonth() + 1) === mes;
+  const ultimoDiaOcorrido = isMesAtualReal ? hoje.getDate() : total;
+  const byDay = new Map(rows.map(r => [Number(r.dia), r]));
+  const dias = [];
+  for (let d = 1; d <= total; d++) {
+    const r = byDay.get(d);
+    const ocorrido = d <= ultimoDiaOcorrido;
+    dias.push({
+      dia: d,
+      receita: ocorrido ? Number(r?.receita || 0) : null,
+      pedidos: ocorrido ? Number(r?.pedidos || 0) : null,
+      ticket_medio: ocorrido && Number(r?.pedidos || 0) > 0 ? Number(r.receita) / Number(r.pedidos) : (ocorrido ? 0 : null),
+      ocorrido,
+    });
+  }
+  return { dias, totalDias: total, ultimoDiaOcorrido };
+}
+
+router.get('/analises/vendas-mes', async (req, res) => {
+  try {
+    const { store_id = '' } = req.query;
+    const hoje = new Date();
+    const ano  = Number(req.query.year)  || hoje.getFullYear();
+    const mes  = Number(req.query.month) || (hoje.getMonth() + 1); // 1-indexed
+
+    const inicioAtual     = new Date(ano, mes - 1, 1);
+    const inicioAnterior  = new Date(ano, mes - 2, 1);
+    const inicioRetrasado = new Date(ano, mes - 3, 1);
+    const inicioHistorico = new Date(ano, mes - 13, 1); // 12 meses antes do início do mês atual
+    const fimAtual        = new Date(ano, mes, 1);
+
+    const storeFilter = `AND ($2 = '' OR o.store_id = $2::bigint)`;
+
+    // Query 1: os 3 meses de comparação, numa passada só
+    const { rows: comparRows } = await pool.query(
+      `SELECT date_created::date AS d,
+              EXTRACT(YEAR FROM date_created)::int AS ano,
+              EXTRACT(MONTH FROM date_created)::int AS mes,
+              EXTRACT(DAY FROM date_created)::int AS dia,
+              SUM(total_amount) AS receita, COUNT(*) AS pedidos
+       FROM vw_ml_orders o
+       WHERE o.status != 'cancelled'
+         AND o.date_created >= $1 AND o.date_created < $3
+         ${storeFilter}
+       GROUP BY 1,2,3,4`,
+      [inicioRetrasado, store_id, fimAtual]
+    );
+    const rowsAtual     = comparRows.filter(r => r.ano === ano && r.mes === mes);
+    const rowsAnterior  = comparRows.filter(r => { const d = new Date(ano, mes - 2, 1); return r.ano === d.getFullYear() && r.mes === d.getMonth() + 1; });
+    const rowsRetrasado = comparRows.filter(r => { const d = new Date(ano, mes - 3, 1); return r.ano === d.getFullYear() && r.mes === d.getMonth() + 1; });
+
+    const mesAtual     = buildDiasArray(rowsAtual,     ano, mes,               hoje);
+    const anoAnt       = new Date(ano, mes - 2, 1);
+    const mesAnterior  = buildDiasArray(rowsAnterior,  anoAnt.getFullYear(),  anoAnt.getMonth() + 1,  hoje);
+    const anoRetr      = new Date(ano, mes - 3, 1);
+    const mesRetrasado = buildDiasArray(rowsRetrasado, anoRetr.getFullYear(), anoRetr.getMonth() + 1, hoje);
+
+    // Query 2: média histórica por dia-do-mês, 12 meses antes do mês selecionado
+    const { rows: histRaw } = await pool.query(
+      `SELECT dia, AVG(receita) AS media, COALESCE(STDDEV_POP(receita), 0) AS desvio, AVG(pedidos) AS media_pedidos
+       FROM (
+         SELECT date_created::date AS d, EXTRACT(DAY FROM date_created)::int AS dia,
+                SUM(total_amount) AS receita, COUNT(*) AS pedidos
+         FROM vw_ml_orders o
+         WHERE o.status != 'cancelled'
+           AND o.date_created >= $1 AND o.date_created < $3
+           ${storeFilter}
+         GROUP BY 1,2
+       ) daily
+       GROUP BY dia ORDER BY dia`,
+      [inicioHistorico, store_id, inicioAtual]
+    );
+    const histByDay = new Map(histRaw.map(r => [Number(r.dia), { media: Number(r.media), desvio: Number(r.desvio), media_pedidos: Number(r.media_pedidos) }]));
+    const mediaHistorica = Array.from({ length: mesAtual.totalDias }, (_, i) => {
+      const d = i + 1;
+      const h = histByDay.get(d) || { media: 0, desvio: 0, media_pedidos: 0 };
+      return { dia: d, media: h.media, desvio: h.desvio, banda_min: Math.max(0, h.media - h.desvio), banda_max: h.media + h.desvio };
+    });
+    const mediaGeral = mediaHistorica.length ? mediaHistorica.reduce((a, m) => a + m.media, 0) / mediaHistorica.length : 0;
+
+    // ── KPIs (só dias já ocorridos do mês atual) ──────────────
+    const diasOcorridosAtual = mesAtual.dias.filter(d => d.ocorrido);
+    const receitaAcumulada = diasOcorridosAtual.reduce((a, d) => a + d.receita, 0);
+    const pedidosTotal     = diasOcorridosAtual.reduce((a, d) => a + d.pedidos, 0);
+    const ticketMedio      = pedidosTotal > 0 ? receitaAcumulada / pedidosTotal : 0;
+
+    // Crescimento vs mês anterior — mesmo nº de dias decorridos em ambos, comparação justa
+    const nDias = diasOcorridosAtual.length;
+    const receitaAnteriorMesmoPeriodo = mesAnterior.dias.slice(0, Math.min(nDias, mesAnterior.totalDias))
+      .reduce((a, d) => a + (d.receita || 0), 0);
+    const crescimentoPct = receitaAnteriorMesmoPeriodo > 0
+      ? ((receitaAcumulada - receitaAnteriorMesmoPeriodo) / receitaAnteriorMesmoPeriodo) * 100
+      : (receitaAcumulada > 0 ? 100 : 0);
+
+    // Sparkline dos KPIs = receita diária dos dias já ocorridos
+    const sparkline = diasOcorridosAtual.map(d => d.receita);
+
+    // ── Rankings ───────────────────────────────────────────────
+    const diasComVenda = [...diasOcorridosAtual].sort((a, b) => b.receita - a.receita);
+    const top10 = diasComVenda.slice(0, 10);
+    const bottom10 = [...diasComVenda].sort((a, b) => a.receita - b.receita).slice(0, 10);
+
+    // ── Insights ────────────────────────────────────────────────
+    // Tendência: regressão linear sobre os dias já ocorridos
+    const pontosRegressao = diasOcorridosAtual.map(d => ({ x: d.dia, y: d.receita }));
+    const { slope, intercept } = linearRegression(pontosRegressao);
+    const tendencia = {
+      slope: Number(slope.toFixed(2)),
+      intercept: Number(intercept.toFixed(2)),
+      direcao: Math.abs(slope) < 1 ? 'estável' : (slope > 0 ? 'alta' : 'queda'),
+    };
+
+    // Índice de aceleração: variação da taxa de crescimento dia-a-dia entre 1ª e 2ª metade do período decorrido
+    function taxaCrescimentoMedia(dias) {
+      if (dias.length < 2) return 0;
+      const variacoes = [];
+      for (let i = 1; i < dias.length; i++) {
+        const prev = dias[i - 1].receita, cur = dias[i].receita;
+        if (prev > 0) variacoes.push((cur - prev) / prev * 100);
+      }
+      return variacoes.length ? variacoes.reduce((a, v) => a + v, 0) / variacoes.length : 0;
+    }
+    const meio = Math.floor(diasOcorridosAtual.length / 2);
+    const taxa1 = taxaCrescimentoMedia(diasOcorridosAtual.slice(0, meio));
+    const taxa2 = taxaCrescimentoMedia(diasOcorridosAtual.slice(meio));
+    const aceleracao = Number((taxa2 - taxa1).toFixed(1)); // positivo = acelerando, negativo = desacelerando
+
+    // Melhor/pior semana (blocos de 7 dias corridos dentro do mês)
+    const semanas = [];
+    for (let inicio = 1; inicio <= mesAtual.totalDias; inicio += 7) {
+      const fim = Math.min(inicio + 6, mesAtual.totalDias);
+      const diasSemana = diasOcorridosAtual.filter(d => d.dia >= inicio && d.dia <= fim);
+      if (diasSemana.length) semanas.push({ inicio, fim, receita: diasSemana.reduce((a, d) => a + d.receita, 0) });
+    }
+    const melhorSemana = semanas.length ? semanas.reduce((a, s) => s.receita > a.receita ? s : a) : null;
+    const piorSemana   = semanas.length ? semanas.reduce((a, s) => s.receita < a.receita ? s : a) : null;
+
+    // Concentração — % da receita nos 5 melhores dias
+    const top5Receita = top10.slice(0, 5).reduce((a, d) => a + d.receita, 0);
+    const concentracaoTop5Pct = receitaAcumulada > 0 ? Number((top5Receita / receitaAcumulada * 100).toFixed(1)) : 0;
+
+    // Acumulado — curva de receita acumulada, atual vs anterior, mesmo nº de dias
+    const acumuladoAtual = [];
+    let acAtual = 0;
+    diasOcorridosAtual.forEach(d => { acAtual += d.receita; acumuladoAtual.push({ dia: d.dia, valor: acAtual }); });
+    const acumuladoAnterior = [];
+    let acAnt = 0;
+    mesAnterior.dias.slice(0, nDias).forEach(d => { acAnt += (d.receita || 0); acumuladoAnterior.push({ dia: d.dia, valor: acAnt }); });
+    const acumuladoDiffPct = acAnt > 0 ? Number(((acAtual - acAnt) / acAnt * 100).toFixed(1)) : 0;
+
+    // Projeção de fechamento — dias restantes projetados pela reta de regressão (piso em 0)
+    let projecaoFechamento = receitaAcumulada;
+    for (let d = mesAtual.ultimoDiaOcorrido + 1; d <= mesAtual.totalDias; d++) {
+      projecaoFechamento += Math.max(0, intercept + slope * d);
+    }
+    projecaoFechamento = Number(projecaoFechamento.toFixed(2));
+
+    // Sugestão de estoque — top 5 itens por unidades vendidas no mês, cruzado com estoque atual
+    const { rows: topItens } = await pool.query(
+      `SELECT o.item_id, COALESCE(MAX(o.title), MAX(i.title)) AS title,
+              SUM(o.quantity) AS unidades, MAX(i.available_quantity) AS estoque
+       FROM vw_ml_orders o
+       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id AND i.store_id = o.store_id
+       WHERE o.status != 'cancelled' AND o.item_id IS NOT NULL
+         AND o.date_created >= $1 AND o.date_created < $3
+         ${storeFilter}
+       GROUP BY o.item_id ORDER BY unidades DESC LIMIT 5`,
+      [inicioAtual, store_id, fimAtual]
+    );
+    const sugestaoEstoque = topItens
+      .filter(r => r.estoque != null && Number(r.estoque) <= 15)
+      .map(r => ({ item_id: r.item_id, title: r.title, unidades_vendidas: Number(r.unidades), estoque_atual: Number(r.estoque) }));
+
+    // Sugestão de anúncios — dias historicamente mais fracos (bottom 5 do ranking do mês)
+    const sugestaoAnuncios = bottom10.slice(0, 5).map(d => ({ dia: d.dia, receita: d.receita }));
+
+    res.json({
+      periodo: { ano, mes, total_dias: mesAtual.totalDias, ultimo_dia_ocorrido: mesAtual.ultimoDiaOcorrido },
+      kpis: {
+        receita_acumulada: receitaAcumulada, pedidos: pedidosTotal, ticket_medio: Number(ticketMedio.toFixed(2)),
+        crescimento_pct: Number(crescimentoPct.toFixed(1)), sparkline,
+      },
+      mes_atual: mesAtual.dias,
+      mes_anterior: mesAnterior.dias,
+      mes_retrasado: mesRetrasado.dias,
+      media_historica: mediaHistorica,
+      media_geral: Number(mediaGeral.toFixed(2)),
+      ranking_top10: top10,
+      ranking_bottom10: bottom10,
+      insights: {
+        tendencia, aceleracao, melhor_semana: melhorSemana, pior_semana: piorSemana,
+        concentracao_top5_pct: concentracaoTop5Pct,
+        acumulado_atual: acumuladoAtual, acumulado_anterior: acumuladoAnterior, acumulado_diff_pct: acumuladoDiffPct,
+        projecao_fechamento: projecaoFechamento,
+        sugestao_estoque: sugestaoEstoque, sugestao_anuncios: sugestaoAnuncios,
+      },
+    });
+  } catch (e) {
+    console.error('[api] /analises/vendas-mes error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Drill-down: pedidos de um dia específico (heatmap/gráfico 1 → modal)
+router.get('/analises/vendas-mes/dia', async (req, res) => {
+  try {
+    const { date = '', store_id = '' } = req.query;
+    if (!date) return res.status(400).json({ error: 'date é obrigatório (YYYY-MM-DD)' });
+    const { rows } = await pool.query(
+      `SELECT o.ml_id, o.title, o.item_id, s.nickname AS conta, o.quantity, o.unit_price,
+              o.total_amount, o.status, o.date_created
+       FROM vw_ml_orders o
+       JOIN vw_ml_stores s ON s.id = o.store_id
+       WHERE o.date_created::date = $1::date
+         AND ($2 = '' OR o.store_id = $2::bigint)
+         AND o.status != 'cancelled'
+       ORDER BY o.date_created DESC`,
+      [date, store_id]
+    );
+    res.json({ rows });
+  } catch (e) {
+    console.error('[api] /analises/vendas-mes/dia error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Clientes ───────────────────────────────────────────────
 router.get('/clientes', async (req, res) => {
   const { store_id = '', search = '', days = 365 } = req.query;

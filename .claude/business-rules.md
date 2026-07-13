@@ -2,6 +2,23 @@
 
 > Escopo: comportamento de domínio que não é óbvio olhando só a assinatura de uma função — thresholds, definições, e por que o sistema decide X e não Y. Regras puramente financeiras (fórmula de margem, ROI) estão em `finance.md` para não duplicar. **Sempre que uma nova regra de negócio for descoberta ou definida, registre aqui.**
 
+## Análise de Vendas do Mês — fórmulas dos insights (`GET /api/analises/vendas-mes`)
+
+**Sem normalização por dia útil** — decisão explícita do usuário: todo dia do mês conta igual nas comparações (não pondera por quantos dias úteis cada mês teve). Ver `decisions.md`.
+
+- **Dia "ocorrido" vs. futuro**: se o mês selecionado é o mês corrente, dias após hoje ficam com `receita`/`pedidos`/`ticket_medio` = `null` e `ocorrido: false` — nunca contam como "zero vendas" nos KPIs, rankings ou insights.
+- **Crescimento vs. mês anterior**: compara receita acumulada do mês atual (só dias já ocorridos) com a receita do mês anterior **no mesmo número de dias** (não o mês anterior inteiro) — comparação justa entre períodos de tamanho igual.
+- **Média histórica por dia-do-mês**: média (e desvio-padrão populacional) da receita de cada dia-do-mês (1..31) ao longo dos 12 meses **anteriores ao mês selecionado** (janela móvel, não fixa em "últimos 12 meses a partir de hoje") — evita que o próprio mês analisado contamine sua baseline.
+- **Banda estatística**: `banda_min = max(0, média − desvio)`, `banda_max = média + desvio` — 1 desvio-padrão, não 2 (não é Bollinger Band clássico de trading).
+- **Tendência**: regressão linear simples (mínimos quadrados) sobre os pares (dia, receita) dos dias já ocorridos do mês. `direcao` = "alta" se `|slope| ≥ 1`, senão "estável"/"queda".
+- **Índice de aceleração**: divide os dias já ocorridos em duas metades; calcula a taxa média de crescimento dia-a-dia (%) de cada metade; `aceleração = taxa(2ª metade) − taxa(1ª metade)`. Positivo = vendas crescendo mais rápido na 2ª metade do período; negativo = desacelerando.
+- **Melhor/pior semana**: blocos fixos de 7 dias corridos dentro do mês (dias 1-7, 8-14, ...) — não é semana ISO (segunda-domingo), é só um agrupamento simples pra achar o bloco de 7 dias com mais/menos receita.
+- **Concentração top 5**: % da receita acumulada do mês que veio só dos 5 dias de maior faturamento — sinaliza dependência de poucos picos (ex: dias de promoção) vs. distribuição mais uniforme.
+- **Acumulado**: soma corrida da receita dia a dia; compara o valor acumulado do mês atual com o acumulado do mês anterior no mesmo dia-do-mês (não o total do mês anterior).
+- **Projeção de fechamento**: `receita_acumulada + Σ(dias restantes) de max(0, intercept + slope × dia)` — usa a reta de regressão do item "tendência" para projetar cada dia que falta, não uma simples extrapolação linear de "média diária × dias restantes".
+- **Sugestão de reposição de estoque**: top 5 itens por unidades vendidas no mês, cruzado com `items.available_quantity` — só entra na sugestão quem tem estoque ≤ 15 (mesmo threshold "medium" já usado em `GET /api/alertas/reposicao`, ver seção "Estoque" acima — reaproveitado, não uma constante nova).
+- **Sugestão de reforço de anúncios**: os 5 dias de menor faturamento do mês (`ranking_bottom10`, top 5) — heurística simples, não analisa causa (não distingue "dia fraco por sazonalidade" de "dia fraco por falta de anúncio ativo").
+
 ## "Nova venda!" — quando notificar
 
 Uma notificação Telegram de nova venda só dispara na **transição real** de status para `paid` (`previousStatus !== 'paid' && order.status === 'paid'`). Um webhook tardio de `shipments`/`payments` que reprocessa um pedido já pago não gera notificação duplicada. Syncs agendados (`syncVendas`) chamam `handleOrder` com `silent: true` para nunca notificar em reconciliação retroativa.

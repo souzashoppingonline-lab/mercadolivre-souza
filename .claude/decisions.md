@@ -114,6 +114,14 @@
 
 **Reaproveitamento de fórmulas existentes, não reinventadas**: o relatório semanal usa a mesma fórmula de margem de `GET /api/vendas/detalhado` (`finance.md`) e a mesma lógica de curva ABC de `GET /api/comparativos/curva-abc` — replicadas via query direta no worker (arquitetura não permite o worker chamar a própria API HTTP do server, só o Postgres diretamente), não uma fórmula nova inventada para o e-mail.
 
+## Análise de Vendas do Mês — sem normalização por dia útil (decisão explícita)
+
+**Contexto**: o pedido original da página especificava normalização por dia útil como "muito importante" (comparar receita ÷ dias úteis decorridos entre meses, já que meses com mais fins de semana têm menos potencial de venda estruturalmente). Perguntado sobre a convenção (segunda-sábado vs. segunda-sexta vs. sem normalização), **o usuário optou explicitamente por não normalizar** — todo dia do mês conta igual em todas as comparações (KPI de crescimento, Gráfico 1, projeção de fechamento).
+
+**Decisão**: implementado sem qualquer ajuste por dia útil. Se o usuário mudar de ideia no futuro, o ponto de entrada é `getResumoDiarioData`-style — nenhuma normalização está pré-computada em nenhuma query, então adicionar depois é aditivo (não requer desfazer nada), mas exige decidir a convenção de dia útil que ficou em aberto (segunda-sábado foi a sugestão original não confirmada).
+
+**Toda a matemática dos insights (regressão, aceleração, projeção, banda estatística) é feita em JavaScript no backend**, depois de só 2 queries agregadas por dia — não em SQL puro. Trade-off consciente: SQL simples e fácil de auditar, mas o payload da rota carrega junto com os dados brutos os campos já calculados (não é uma API "burra" que só devolve linhas cruas) — o frontend não reimplementa nenhuma fórmula, só renderiza o que o backend já calculou. Ver `.claude/business-rules.md` para as fórmulas exatas.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

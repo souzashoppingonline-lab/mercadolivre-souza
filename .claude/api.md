@@ -45,6 +45,14 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/comparativos/evolucao?days&store_id` | série diária receita/pedidos |
 | `GET /api/comparativos/curva-abc?store_id&period` | classificação ABC por % acumulado de faturamento (A≤80%, B≤95%, C resto) |
 
+## Análise de Vendas do Mês (BI)
+> Sem normalização por dia útil (decisão explícita — todo dia conta igual, ver `decisions.md`). Fórmulas dos insights em `business-rules.md`.
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/analises/vendas-mes?year&month&store_id` | payload único com tudo que a página usa: `kpis` (receita/pedidos/ticket/crescimento% + sparkline), `mes_atual`/`mes_anterior`/`mes_retrasado` (array de 1..N dias, `receita`/`pedidos`/`ticket_medio`/`ocorrido`), `media_historica` (12 meses anteriores ao selecionado, por dia-do-mês, com banda `banda_min`/`banda_max` = média±desvio-padrão), `media_geral`, `ranking_top10`/`ranking_bottom10`, `insights` (tendência, aceleração, melhor/pior semana, concentração top5, acumulado atual vs. anterior, projeção de fechamento, sugestão de anúncios, sugestão de estoque) |
+| `GET /api/analises/vendas-mes/dia?date&store_id` | drill-down — pedidos de um dia específico (`YYYY-MM-DD`), usado pelo modal ao clicar num dia do heatmap/gráfico |
+
 ## Perguntas / Mensagens
 | Rota | Descrição |
 |---|---|

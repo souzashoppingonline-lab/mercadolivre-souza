@@ -10,7 +10,7 @@
   <script>window.PAGE_TITLE='Vendas Totais'; window.ACTIVE_NAV='vendas.html';</script>
   <style>
     .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; margin-bottom: 16px; }
-    .sum-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+    .sum-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
     .sum-card.purple { border-left: 3px solid #9b59b6; }
     .sum-card.red    { border-left: 3px solid var(--red); }
     .sum-card.yellow { border-left: 3px solid var(--primary); }
@@ -23,12 +23,12 @@
     .mc-pct { font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: rgba(39,174,96,0.15); color: var(--green); }
     .mc-pct.neg { background: rgba(231,76,60,0.12); color: var(--red); }
     .secondary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
-    .sec-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+    .sec-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
     .sec-card .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
     .sec-card .value { font-size: 18px; font-weight: 700; }
     .sec-card .sub   { font-size: 11px; color: var(--text-muted); }
     .filters-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-    .filters-row select, .filters-row input[type=text] { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
+    .filters-row select, .filters-row input[type=text] { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
     .tbl-num  { text-align: right; white-space: nowrap; }
     .tbl-neg  { text-align: right; white-space: nowrap; color: var(--red); }
     .tbl-pos  { text-align: right; white-space: nowrap; color: var(--green); font-weight: 600; }
@@ -51,7 +51,7 @@
     .hoje-badge-live i{font-size:7px}
     .hoje-date{font-size:12px;color:var(--text-muted)}
     .hoje-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
-    .hoje-kpi{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative}
+    .hoje-kpi{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative}
     .hoje-kpi.hl{border-color:rgba(255,230,0,.4);background:rgba(255,230,0,.04)}
     .hoje-kpi.gl{border-color:rgba(39,174,96,.3);background:rgba(39,174,96,.03)}
     .hoje-kpi .lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
@@ -124,9 +124,9 @@
           <option value="custom">Período personalizado</option>
         </select>
         <div id="customDates" style="display:none;gap:6px;align-items:center;display:none">
-          <input type="date" id="dateFrom" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
+          <input type="date" id="dateFrom" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
           <span style="color:var(--text-muted);font-size:12px">até</span>
-          <input type="date" id="dateTo" style="background:var(--card-bg);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
+          <input type="date" id="dateTo" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
         </div>
         <div class="search-box"><i class="fas fa-search"></i><input type="text" id="filterSearch" placeholder="Buscar produto..."></div>
         <button class="btn-primary" id="btnLoad"><i class="fas fa-search"></i> Buscar</button>
@@ -564,7 +564,7 @@ function closeModal() { document.getElementById('modalOverlay').style.display='n
 </div>
 
 <style>
-.msec { background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px; }
+.msec { background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px; }
 .msec-title { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;gap:6px; }
 .mrow { display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04); }
 .mk { color:var(--text-muted); }

@@ -10,12 +10,12 @@
   <script>window.PAGE_TITLE='Vendas ML Turbo'; window.ACTIVE_NAV='vendas-turbo.html';</script>
   <style>
     /* Upload */
-    .upload-zone{border:2px dashed var(--border);border-radius:12px;padding:24px 32px;text-align:center;cursor:pointer;transition:.2s;background:var(--card-bg)}
+    .upload-zone{border:2px dashed var(--border);border-radius:12px;padding:24px 32px;text-align:center;cursor:pointer;transition:.2s;background:var(--bg-card)}
     .upload-zone:hover,.upload-zone.drag{border-color:var(--primary);background:rgba(255,230,0,.04)}
     .upload-zone i{font-size:32px;color:var(--primary);margin-bottom:8px;display:block}
-    .import-log{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-top:10px;font-size:13px}
+    .import-log{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-top:10px;font-size:13px}
     .import-log .ok{color:var(--green)} .import-log .err{color:var(--red)}
-    .progress-wrap{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px;display:none;margin-top:10px}
+    .progress-wrap{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px;display:none;margin-top:10px}
     .progress-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden}
     .progress-bar-fill{height:100%;background:var(--primary);border-radius:3px;transition:width .3s}
     /* Filtros */
@@ -31,7 +31,7 @@
     .cfo-line i{margin-top:2px;flex-shrink:0;width:14px}
     /* KPIs principais */
     .kpi-primary{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;margin-bottom:14px}
-    .kpi-big{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+    .kpi-big{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
     .kpi-big.highlight{border-color:rgba(255,230,0,.4);background:rgba(255,230,0,.04)}
     .kpi-big.green-hl{border-color:rgba(39,174,96,.35);background:rgba(39,174,96,.04)}
     .kpi-big.red-hl{border-color:rgba(231,76,60,.25)}
@@ -40,11 +40,11 @@
     .kpi-big .sub{font-size:11px;color:var(--text-muted)}
     /* KPIs secundários */
     .kpi-secondary{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;margin-bottom:16px}
-    .kpi-sm{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+    .kpi-sm{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
     .kpi-sm .lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
     .kpi-sm .val{font-size:17px;font-weight:700}
     /* Cancelamentos & Devoluções */
-    .canc-block{background:var(--card-bg);border:1px solid rgba(231,76,60,.3);border-radius:12px;padding:16px;margin-bottom:16px}
+    .canc-block{background:var(--bg-card);border:1px solid rgba(231,76,60,.3);border-radius:12px;padding:16px;margin-bottom:16px}
     .canc-block h4{margin:0 0 12px;font-size:13px;color:var(--red);text-transform:uppercase;letter-spacing:.5px}
     .canc-kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px}
     .canc-kpi{background:rgba(231,76,60,.06);border:1px solid rgba(231,76,60,.2);border-radius:10px;padding:12px 14px}
@@ -60,7 +60,7 @@
     /* Pedidos block */
     .orders-block{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
     @media(max-width:700px){.orders-block{grid-template-columns:1fr}}
-    .modal-block{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .modal-block{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px}
     .modal-block h4{margin:0 0 12px;font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
     .mode-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px}
     .mode-row:last-child{border-bottom:none}
@@ -69,7 +69,7 @@
     /* Rankings */
     .rankings-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
     @media(max-width:800px){.rankings-grid{grid-template-columns:1fr}}
-    .rank-card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    .rank-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
     .rank-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border)}
     .rank-header h4{margin:0;font-size:13px;font-weight:700}
     .rank-header span{font-size:11px;color:var(--text-muted)}
@@ -88,7 +88,7 @@
     /* Gráficos */
     .charts-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
     @media(max-width:768px){.charts-2{grid-template-columns:1fr}}
-    .chart-card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .chart-card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px}
     .chart-card h4{margin:0 0 12px;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
     .chart-full{grid-column:1/-1}
     /* Tabela */

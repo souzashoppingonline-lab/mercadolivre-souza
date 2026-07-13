@@ -318,7 +318,7 @@ body {
 .store-switcher { position: relative; }
 .store-switcher-btn {
   display: flex; align-items: center; gap: 8px;
-  background: var(--card-bg); border: 1px solid var(--border);
+  background: var(--bg-card); border: 1px solid var(--border);
   border-radius: 8px; padding: 6px 10px; cursor: pointer; color: var(--text-primary);
   font-size: 13px; transition: border-color 0.2s;
 }

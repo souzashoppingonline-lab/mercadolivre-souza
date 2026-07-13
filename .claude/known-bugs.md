@@ -29,3 +29,11 @@ Não é bug de execução, mas risco de uso incorreto: essa rota retorna `liquid
 ## 6. Cache `kpis:{storeId}` invalidado mas nunca escrito/lido
 
 `handleOrder` (worker) chama `redis.del(\`kpis:${storeId}\`)` a cada pedido processado, mas nenhuma rota em `routes/api.js` usa essa chave (`cached('kpis:{storeId}', ...)`) hoje — só `kpis:summary` existe de fato. Código morto de invalidação, sem efeito prático, mas indica uma feature de "KPIs por loja com cache" que foi removida ou nunca terminada.
+
+## 7. `var(--text-primary)` e `var(--text)` — variáveis CSS que não existem
+
+Mesma classe de bug do `var(--card-bg)` (já corrigido em todo o projeto — ver `decisions.md`), mas para as variáveis de cor de texto. `css/style.css` só define `--text-main`/`--text-muted` no `:root`; `--text-primary` e `--text` nunca existiram. Como `color: var(--indefinida)` cai no valor herdado (geralmente já um texto claro, por herança do `body`), o efeito visual é bem mais discreto que o do `--card-bg` (que sumia o fundo inteiro) — por isso não foi corrigido junto, para não misturar um sweep silencioso com o que foi pedido/aprovado nesta tarefa.
+
+**Arquivos afetados**: `var(--text-primary)` em `anuncios.html`, `vendas-por-loja.html`, `devolucoes.html`, `produtos.html`, `lojas.html`, `vendas.html`, `monitor.html`, `anuncios-problema.html`, `mcp.html`, `vendas-turbo.html`, `performance.html`, `schedule.html`, `css/style.css` (`.store-switcher-btn`), `js/dashboard.js` (gerado dinamicamente). `var(--text)` em `diasemana.html`, `reposicao.html`, `curvaABC.html`, `performance.html`, `schedule.html`.
+
+**Correção esperada**: trocar ambos por `var(--text-main)` nesses arquivos, mesmo padrão da correção já aplicada para `--card-bg` → `--bg-card`.

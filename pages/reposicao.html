@@ -10,7 +10,7 @@
   <script>window.PAGE_TITLE='Reposição de Estoque'; window.ACTIVE_NAV='reposicao.html';</script>
   <style>
     .reposicao-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px; }
-    .kpi-card { background:var(--card-bg); border-radius:12px; padding:18px 20px; display:flex; flex-direction:column; gap:6px; border-left:4px solid transparent; }
+    .kpi-card { background:var(--bg-card); border-radius:12px; padding:18px 20px; display:flex; flex-direction:column; gap:6px; border-left:4px solid transparent; }
     .kpi-card.zerado { border-color:#ef4444; }
     .kpi-card.critico { border-color:#f97316; }
     .kpi-card.baixo   { border-color:#eab308; }
@@ -24,14 +24,14 @@
     .kpi-card .kpi-desc  { font-size:.72rem; color:var(--text-muted); }
 
     .filters-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
-    .filters-row select, .filters-row input { background:var(--card-bg); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:7px 12px; font-size:.85rem; }
+    .filters-row select, .filters-row input { background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:7px 12px; font-size:.85rem; }
     .view-toggle { display:flex; gap:6px; margin-left:auto; }
-    .view-btn { background:var(--card-bg); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:7px 14px; cursor:pointer; font-size:.85rem; }
+    .view-btn { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:7px 14px; cursor:pointer; font-size:.85rem; }
     .view-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
 
     /* GRID VIEW */
     .product-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:16px; }
-    .product-card { background:var(--card-bg); border-radius:12px; overflow:hidden; border:1px solid var(--border); transition:transform .15s,box-shadow .15s; }
+    .product-card { background:var(--bg-card); border-radius:12px; overflow:hidden; border:1px solid var(--border); transition:transform .15s,box-shadow .15s; }
     .product-card:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.3); }
     .product-card a { text-decoration:none; color:inherit; }
     .product-thumb { width:100%; aspect-ratio:1; object-fit:contain; background:#1a1a2e; padding:8px; }

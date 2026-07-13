@@ -140,6 +140,18 @@
 
 Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, limiar do outlier) em `business-rules.md`.
 
+## Bug corrigido: `var(--card-bg)` — variável CSS que nunca existiu, usada em 16 arquivos
+
+**Sintoma**: modal novo em `diasemana.html` renderizava totalmente transparente (conteúdo da página vazando por trás). Investigando, a causa era `background: var(--card-bg)` — `--card-bg` nunca foi definida em `css/style.css` (a variável real, definida no `:root`, é `--bg-card`, nome invertido). Em `var()` com custom property indefinida, o navegador cai no valor inicial da propriedade (`transparent` para `background`), então qualquer seletor com esse typo ficava sem fundo próprio.
+
+**Por que passou despercebido até agora**: o fundo da página (`body { background: var(--bg-dark) }`) já é escuro, então um card "transparente" contra um fundo escuro parece só um pouco mais claro por causa da borda — visualmente quase indistinguível de um card com fundo próprio. Só ficou óbvio no modal, porque ali havia conteúdo real (texto/números de outros cards) atrás dele para vazar.
+
+**Escopo do bug**: o mesmo typo existia em 16 arquivos — `css/style.css` (`.store-switcher-btn`, o botão de trocar loja no topbar, presente em toda página) e 15 páginas (`diasemana.html`, `anuncios.html`, `promocoes.html`, `vendas-por-loja.html`, `produtos.html`, `reposicao.html`, `curvaABC.html`, `perguntas.html`, `lojas.html`, `vendas.html`, `alteracoes.html`, `monitor.html`, `mcp.html`, `vendas-turbo.html`, `performance.html`, `schedule.html`).
+
+**Correção**: usuário aprovou explicitamente corrigir em todo o projeto (não só na página reportada) — trocado `var(--card-bg)` → `var(--bg-card)` nos 16 arquivos, mecanicamente (mesma troca em todos, sem variação), com verificação de sintaxe JS de cada página depois.
+
+**Fora de escopo desta correção**: o mesmo padrão de bug existe para `var(--text-primary)`/`var(--text)` (nomes corretos: `--text-main`) em outro conjunto de arquivos — não corrigido junto porque não foi o que foi pedido/aprovado, e o efeito visual é bem mais discreto (cai em herança de cor, não em fundo transparente). Registrado em `known-bugs.md` item 7.
+
 ## Bug corrigido: totais de `GET /api/vendas/detalhado` truncados pelo `LIMIT 1000`
 
 **Sintoma**: com "Todas as lojas" + período personalizado de vários dias numa operação de alto volume, os cards de totais (Vendas Aprovadas, Custo, Frete, Margem) na página `pages/vendas.html` mostravam valores incompletos — "Qtd Vendas Aprovadas" batendo suspeitosamente igual ao limite de linhas da query (1000).

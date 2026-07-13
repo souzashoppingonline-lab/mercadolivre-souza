@@ -177,6 +177,7 @@ const DB = {
   async getResumoOntem()       { return this._get('/dashboard/resumo-ontem'); },
   async getTopVendasDia()      { return this._get('/dashboard/top-vendas-dia'); },
   async getResumoSemanalDash() { return this._get('/dashboard/resumo-semanal'); },
+  async getAlertasDia()        { return this._get('/dashboard/alertas-dia'); },
 
   // ── Alertas ────────────────────────────────────────────────
   async getReposicao(p={})        { return this._get(`/alertas/reposicao?threshold=${p.threshold||15}&store_id=${p.store_id||''}`); },

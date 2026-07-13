@@ -48,6 +48,13 @@ Job diário (06:20, ver `workers.md`) que compara a receita de **ontem** de cada
 - Só dispara se houver `≥ 3` meses de histórico para aquele dia-do-mês (`n < 3` → ignora, sem alertar) — evita alertar com base estatística fraca.
 - Respeita janela de silêncio e pode ser desligado por tópico (`tg_outlier`) — **não** usa `tgNotifyForce`, é tratado como alerta, não como relatório operacional (mesma categoria de `tg_topvendas`).
 
+## Alerta do Dia (`GET /api/dashboard/alertas-dia`, `pages/top-vendas-online.html`)
+
+Card que consolida dois sinais já calculados em outro lugar (nenhuma fórmula nova):
+- **Outliers de loja**: reaproveita `getOutliersOntem()` — mesmo cálculo/limiar (±1.5 desvio-padrão) do alerta Telegram `tg_outlier` (ver seção "Alerta de outlier estatístico" acima).
+- **Estoque crítico entre os mais vendidos**: cruza os itens mais vendidos (unidades) nas últimas 24h com `available_quantity <= 15` — mesmo threshold "medium" já usado em `GET /api/alertas/reposicao` (ver seção "Estoque" acima), reaproveitado, não uma constante nova. Objetivo: destacar item que "vendeu bem e pode faltar", não estoque baixo em geral (isso já existe na página de Reposição).
+- Se nenhum dos dois disparar, mostra estado vazio positivo ("nenhum alerta hoje") — nunca mostra "sem dados" como se fosse erro.
+
 ## "Nova venda!" — quando notificar
 
 Uma notificação Telegram de nova venda só dispara na **transição real** de status para `paid` (`previousStatus !== 'paid' && order.status === 'paid'`). Um webhook tardio de `shipments`/`payments` que reprocessa um pedido já pago não gera notificação duplicada. Syncs agendados (`syncVendas`) chamam `handleOrder` com `silent: true` para nunca notificar em reconciliação retroativa.

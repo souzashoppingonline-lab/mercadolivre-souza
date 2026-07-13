@@ -23,7 +23,7 @@ O Gateway (`webhookGateway.js`) usa `jobId = \`${topic}:${resource}:${storeId}\`
 
 | Tópico ML | Handler | Ação |
 |---|---|---|
-| `orders_v2` | `handleOrder` | busca `/orders/:id`, upsert em `orders`, invalida `kpis:*`, publica `order_updated`, notifica Telegram (`tg_vendas`) só na transição real para `status='paid'` **e** se `date_closed`/`date_created` do pedido tiver menos de 24h (evita notificar como "Nova venda!" um pedido antigo que só agora entrou no banco via webhook tardio de `shipments`/`payments`) — mensagem inclui data/hora da venda e do disparo do alerta |
+| `orders_v2` | `handleOrder` | busca `/orders/:id`, upsert em `orders`, invalida `kpis:*`, publica `order_updated`, notifica Telegram (`tg_vendas`) só na transição real para `status='paid'` **e** se `date_closed`/`date_created` do pedido tiver menos de 24h (evita notificar como "Nova venda!" um pedido antigo que só agora entrou no banco via webhook tardio de `shipments`/`payments`) — mensagem inclui data/hora da venda e do disparo do alerta | Resolve e persiste `shipping_type` (logística) em `orders` antes do upsert — a resposta de `/orders/:id` quase nunca traz `shipping.logistic_type`, então busca `/shipments/:id` como fallback, mas só quando ainda não sabe a logística daquele pedido (nem no payload atual, nem já persistida antes), pra não gerar 1 chamada extra à API por webhook já resolvido (ver `decisions.md`).
 | `payments` | `handlePayment` | busca `/collections/:id`, extrai `order_id`, delega para `handleOrder` |
 | `questions` | `handleQuestion` | busca `/questions/:id`, upsert em `questions`, publica `question_received`, notifica Telegram (`tg_perguntas`) se `UNANSWERED`, salva `tg_message_id` para permitir responder via reply (ver `known-bugs.md`) |
 | `messages` | `handleMessage` | busca `/messages/:id`, upsert em `messages` (incrementa `unread`), publica `message_received`, notifica Telegram (`tg_mensagens`) |
@@ -52,7 +52,7 @@ Cada handler que grava dados relevantes para cache também é responsável por i
 
 `getResumoDiarioData()`, `getTopVendas({hours, limit})` e `getResumoSemanal()` vivem em `server/src/reports.js` (não em `worker.js`) — módulo puro de leitura do Postgres, sem BullMQ/Telegram/e-mail. `worker.js` importa essas funções para montar as mensagens/e-mails; `routes/api.js` importa as mesmas funções para as rotas `GET /api/dashboard/resumo-ontem`/`top-vendas-dia`/`resumo-semanal` (consumidas por `pages/top-vendas-online.html`). Única fonte de verdade por cálculo — nunca duplicar a query em worker.js e api.js separadamente (ver `decisions.md`).
 
-`syncTopVendas` (4h/5), a seção "Top vendas do dia" de `emailDailyReports` (24h/10) e `emailRelatorioSemanal` foram refatorados para chamar `getTopVendas`/`getResumoSemanal` em vez de SQL inline — comportamento e mensagens enviadas não mudaram, só a fonte da query.
+`syncTopVendas` (4h/5), a seção "Top vendas do dia" de `emailDailyReports` (24h/10) e `emailRelatorioSemanal` foram refatorados para chamar `getTopVendas`/`getResumoSemanal` em vez de SQL inline — comportamento e mensagens enviadas não mudaram, só a fonte da query. `checkOutlierEstatistico` também foi refatorado para chamar `getOutliersOntem()` — o mesmo array alimenta o alerta Telegram (`tg_outlier`) e o card "Alerta do Dia" de `pages/top-vendas-online.html` (via `GET /api/dashboard/alertas-dia`, que também cruza `getTopVendas` com estoque via `getEstoqueCriticoTopVendas()`).
 
 ## Jobs agendados (cron manual via `setTimeout` recursivo — `scheduleAt`)
 

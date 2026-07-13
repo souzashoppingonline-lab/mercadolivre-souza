@@ -121,4 +121,83 @@ async function getResumoSemanal() {
   };
 }
 
-module.exports = { getResumoDiarioData, getTopVendas, getResumoSemanal };
+// Outliers estatísticos de ontem — compara a receita de ontem de cada loja ML
+// com a média histórica do mesmo dia-do-mês (12 meses), mesma janela/limiar
+// (±1.5 desvio-padrão) do gráfico "Análise de Vendas do Mês". Usado tanto
+// pelo alerta Telegram diário (checkOutlierEstatistico) quanto pelo card
+// "Alerta do Dia" (GET /api/dashboard/alertas-dia).
+async function getOutliersOntem() {
+  const ontem = new Date(Date.now() - 86400000);
+  const diaDoMes = ontem.getDate();
+  const inicioOntem = new Date(ontem.getFullYear(), ontem.getMonth(), ontem.getDate());
+  const fimOntem = new Date(inicioOntem.getTime() + 86400000);
+  const inicioHistorico = new Date(ontem.getFullYear(), ontem.getMonth() - 12, 1);
+
+  const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
+
+  const outliers = [];
+  for (const store of stores) {
+    const { rows: ontemRows } = await pool.query(
+      `SELECT COALESCE(SUM(total_amount), 0) AS receita FROM orders
+       WHERE store_id = $1 AND status != 'cancelled' AND date_created >= $2 AND date_created < $3`,
+      [store.id, inicioOntem, fimOntem]
+    );
+    const receitaOntem = Number(ontemRows[0]?.receita || 0);
+
+    const { rows: histRows } = await pool.query(
+      `SELECT AVG(receita) AS media, COALESCE(STDDEV_POP(receita), 0) AS desvio, COUNT(*) AS n
+       FROM (
+         SELECT date_created::date AS d, SUM(total_amount) AS receita
+         FROM orders
+         WHERE store_id = $1 AND status != 'cancelled'
+           AND EXTRACT(DAY FROM date_created) = $2
+           AND date_created >= $3 AND date_created < $4
+         GROUP BY 1
+       ) daily`,
+      [store.id, diaDoMes, inicioHistorico, inicioOntem]
+    );
+    const h = histRows[0];
+    const n = Number(h?.n || 0);
+    if (n < 3) continue; // histórico insuficiente pra confiar na estatística
+    const media = Number(h.media), desvio = Number(h.desvio);
+    if (desvio === 0) continue;
+
+    const limiteSuperior = media + 1.5 * desvio;
+    const limiteInferior = Math.max(0, media - 1.5 * desvio);
+    if (receitaOntem <= limiteSuperior && receitaOntem >= limiteInferior) continue;
+
+    const acima = receitaOntem > limiteSuperior;
+    const diffPct = media > 0 ? ((receitaOntem - media) / media) * 100 : 0;
+    outliers.push({
+      store_id: store.id, nickname: store.nickname, dia_do_mes: diaDoMes,
+      receita_ontem: receitaOntem, media, desvio, meses_analisados: n,
+      diff_pct: Number(diffPct.toFixed(1)), acima,
+    });
+  }
+  return outliers;
+}
+
+// Itens mais vendidos nas últimas N horas que estão com estoque baixo —
+// cruza getTopVendas com available_quantity, mesmo threshold "medium" já
+// usado em GET /api/alertas/reposicao (business-rules.md, reaproveitado).
+async function getEstoqueCriticoTopVendas({ hours = 24, estoqueMax = 15, limit = 10 } = {}) {
+  const top = await getTopVendas({ hours, limit: 50 });
+  if (!top.length) return [];
+
+  const itemIds = top.map(r => r.item_id).filter(Boolean);
+  if (!itemIds.length) return [];
+
+  const { rows } = await pool.query(
+    `SELECT ml_id AS item_id, available_quantity FROM vw_ml_items WHERE ml_id = ANY($1::text[])`,
+    [itemIds]
+  );
+  const estoqueByItem = new Map(rows.map(r => [r.item_id, Number(r.available_quantity)]));
+
+  return top
+    .map(r => ({ ...r, available_quantity: estoqueByItem.has(r.item_id) ? estoqueByItem.get(r.item_id) : null }))
+    .filter(r => r.available_quantity != null && r.available_quantity <= estoqueMax)
+    .sort((a, b) => a.available_quantity - b.available_quantity)
+    .slice(0, limit);
+}
+
+module.exports = { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas };

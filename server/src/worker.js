@@ -12,7 +12,7 @@ const redis = require('./db/redis');
 const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
-const { getResumoDiarioData, getTopVendas, getResumoSemanal } = require('./reports');
+const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem } = require('./reports');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -183,11 +183,26 @@ async function handleOrder({ resource, storeId, silent = false }) {
   // Status anterior (antes deste upsert) — usado para só notificar "Nova venda!"
   // na transição real para 'paid', e não em todo webhook tardio (ex: shipments)
   // que chega para um pedido que já estava pago.
-  const { rows: prevRows } = await pool.query(`SELECT status FROM orders WHERE ml_id=$1`, [orderId]);
+  const { rows: prevRows } = await pool.query(`SELECT status, shipping_type FROM orders WHERE ml_id=$1`, [orderId]);
   const previousStatus = prevRows[0]?.status || null;
 
   const item0 = order.order_items?.[0] || {};
-  const shippingType = order.shipping?.logistic_type || '';
+
+  // A resposta de /orders/:id do ML quase nunca traz shipping.logistic_type
+  // preenchido — só vem buscando /shipments/:id separadamente. Sem persistir
+  // o valor resolvido aqui, orders.shipping_type ficava em branco pra maioria
+  // dos pedidos (só a notificação "Nova venda!" resolvia isso, de forma
+  // efêmera, sem gravar no banco — daí o gráfico "Por Logística" mostrar só
+  // "Desconhecido"). Guarda: só busca /shipments/:id se ainda não sabemos a
+  // logística deste pedido (nem no payload atual, nem já persistida antes) —
+  // evita 1 chamada extra à API por webhook já resolvido.
+  let shippingType = order.shipping?.logistic_type || prevRows[0]?.shipping_type || '';
+  if (!shippingType && order.shipping?.id) {
+    try {
+      const ship = await ml.getShipment(order.shipping.id, storeId);
+      shippingType = ship?.logistic_type || ship?.shipping_option?.logistic_type || '';
+    } catch (e) { /* ignora — próximo webhook/reconciliação tenta de novo */ }
+  }
 
   await pool.query(
     `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, raw_data, updated_at)
@@ -242,14 +257,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
   if (isNewSale) {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
-    let lt = order.shipping?.logistic_type || shippingType || '';
-    if (!lt && order.shipping?.id) {
-      try {
-        const ship = await ml.getShipment(order.shipping.id, storeId);
-        lt = ship?.logistic_type || ship?.shipping_option?.logistic_type || '';
-      } catch(e) { /* ignora */ }
-    }
-    const envioLabel = fmtLogistica(lt);
+    const envioLabel = fmtLogistica(shippingType);
     const fmtDataHora = d => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' });
     const saleDateFmt = saleDate ? fmtDataHora(saleDate) : fmtDataHora(new Date());
     const notifiedAtFmt = fmtDataHora(new Date());
@@ -1736,52 +1744,15 @@ async function emailRelatorioSemanal() {
 async function checkOutlierEstatistico() {
   console.log('[outlier] verificando outliers estatísticos...');
   try {
-    const ontem = new Date(Date.now() - 86400000);
-    const diaDoMes = ontem.getDate();
-    const inicioOntem = new Date(ontem.getFullYear(), ontem.getMonth(), ontem.getDate());
-    const fimOntem = new Date(inicioOntem.getTime() + 86400000);
-    const inicioHistorico = new Date(ontem.getFullYear(), ontem.getMonth() - 12, 1);
-
-    const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
+    const outliers = await getOutliersOntem();
     const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 
-    for (const store of stores) {
-      const { rows: ontemRows } = await pool.query(
-        `SELECT COALESCE(SUM(total_amount), 0) AS receita FROM orders
-         WHERE store_id = $1 AND status != 'cancelled' AND date_created >= $2 AND date_created < $3`,
-        [store.id, inicioOntem, fimOntem]
-      );
-      const receitaOntem = Number(ontemRows[0]?.receita || 0);
-
-      const { rows: histRows } = await pool.query(
-        `SELECT AVG(receita) AS media, COALESCE(STDDEV_POP(receita), 0) AS desvio, COUNT(*) AS n
-         FROM (
-           SELECT date_created::date AS d, SUM(total_amount) AS receita
-           FROM orders
-           WHERE store_id = $1 AND status != 'cancelled'
-             AND EXTRACT(DAY FROM date_created) = $2
-             AND date_created >= $3 AND date_created < $4
-           GROUP BY 1
-         ) daily`,
-        [store.id, diaDoMes, inicioHistorico, inicioOntem]
-      );
-      const h = histRows[0];
-      const n = Number(h?.n || 0);
-      if (n < 3) continue; // histórico insuficiente pra confiar na estatística
-      const media = Number(h.media), desvio = Number(h.desvio);
-      if (desvio === 0) continue;
-
-      const limiteSuperior = media + 1.5 * desvio;
-      const limiteInferior = Math.max(0, media - 1.5 * desvio);
-      if (receitaOntem <= limiteSuperior && receitaOntem >= limiteInferior) continue;
-
-      const acima = receitaOntem > limiteSuperior;
-      const diffPct = media > 0 ? ((receitaOntem - media) / media) * 100 : 0;
+    for (const o of outliers) {
       await tgNotify('tg_outlier',
-        `${acima ? '🚀' : '⚠️'} <b>Dia fora do padrão — ${store.nickname}</b>\n` +
-        `📅 Ontem (dia ${diaDoMes}) fechou ${acima ? 'muito acima' : 'muito abaixo'} da média histórica\n` +
-        `💰 Receita: ${Rfmt(receitaOntem)} (média: ${Rfmt(media)}, ${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)\n` +
-        `📊 Baseado em ${n} mês(es) de histórico`
+        `${o.acima ? '🚀' : '⚠️'} <b>Dia fora do padrão — ${o.nickname}</b>\n` +
+        `📅 Ontem (dia ${o.dia_do_mes}) fechou ${o.acima ? 'muito acima' : 'muito abaixo'} da média histórica\n` +
+        `💰 Receita: ${Rfmt(o.receita_ontem)} (média: ${Rfmt(o.media)}, ${o.diff_pct >= 0 ? '+' : ''}${o.diff_pct}%)\n` +
+        `📊 Baseado em ${o.meses_analisados} mês(es) de histórico`
       );
     }
   } catch (e) {

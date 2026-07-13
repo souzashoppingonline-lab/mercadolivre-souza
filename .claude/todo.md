@@ -42,6 +42,7 @@
 ## Débito técnico registrado nesta tarefa
 
 - [ ] Avaliar migrar `mlClient.js`/`routes/auth.js` para `server/src/marketplaces/mercadolivre/` seguindo o padrão `MarketplaceClient` — só depois que a Amazon estiver de fato funcionando em produção com esse padrão (ver `decisions.md`, "Marketplace Engine").
+- [ ] Backfill de `orders.shipping_type` para pedidos históricos já gravados com o campo vazio — a correção em `handleOrder` (ver `decisions.md`) só resolve a logística de pedidos novos/reprocessados a partir de agora. Um job dedicado (throttled, sequencial, mesmo padrão de `syncVisitas`) que busca `/shipments/:id` para todo pedido antigo sem `shipping_type` resolveria o histórico, mas não foi feito por ser tarefa de escopo/risco de rate-limit diferente.
 
 ## Correções pendentes (originadas de `known-bugs.md`)
 

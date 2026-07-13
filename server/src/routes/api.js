@@ -5,7 +5,7 @@ const express = require('express');
 const { spawn } = require('child_process');
 const pool = require('../db/pool');
 const redis = require('../db/redis');
-const { getResumoDiarioData, getTopVendas, getResumoSemanal } = require('../reports');
+const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas } = require('../reports');
 
 const router = express.Router();
 
@@ -79,6 +79,21 @@ router.get('/dashboard/resumo-semanal', async (req, res) => {
     res.json(await getResumoSemanal());
   } catch (e) {
     console.error('[api] /dashboard/resumo-semanal error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Alertas do dia — outliers estatísticos de ontem (mesma lógica do Telegram
+// tg_outlier) + itens mais vendidos nas últimas 24h com estoque baixo.
+router.get('/dashboard/alertas-dia', async (req, res) => {
+  try {
+    const [outliers, estoqueCritico] = await Promise.all([
+      getOutliersOntem(),
+      getEstoqueCriticoTopVendas({ hours: 24, estoqueMax: 15, limit: 10 }),
+    ]);
+    res.json({ outliers, estoque_critico: estoqueCritico });
+  } catch (e) {
+    console.error('[api] /dashboard/alertas-dia error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

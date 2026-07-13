@@ -52,6 +52,17 @@
     .tvo-abc-badge.B { background: rgba(255,230,0,.15); color: var(--primary); }
     .tvo-abc-badge.C { background: rgba(231,76,60,.15); color: var(--red); }
 
+    .tvo-alert-row { display: flex; align-items: flex-start; gap: 12px; background: var(--bg-card2); border-left: 3px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .tvo-alert-row.warn { border-left-color: var(--red); }
+    .tvo-alert-row.good { border-left-color: var(--green); }
+    .tvo-alert-row.stock { border-left-color: var(--orange); }
+    .tvo-alert-icon { font-size: 16px; width: 22px; text-align: center; flex-shrink: 0; margin-top: 1px; }
+    .tvo-alert-row.warn .tvo-alert-icon, .tvo-alert-row.warn .tvo-alert-title { color: var(--red); }
+    .tvo-alert-row.good .tvo-alert-icon, .tvo-alert-row.good .tvo-alert-title { color: var(--green); }
+    .tvo-alert-row.stock .tvo-alert-icon, .tvo-alert-row.stock .tvo-alert-title { color: var(--orange); }
+    .tvo-alert-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .tvo-alert-desc { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
     .tvo-empty { text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px; }
     .tvo-skeleton { animation: tvoPulse 1.4s infinite; background: var(--border); border-radius: 8px; }
     @keyframes tvoPulse { 0%,100% { opacity: .4; } 50% { opacity: .9; } }
@@ -147,6 +158,18 @@
               </table>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ═══ ALERTA DO DIA ═══ -->
+      <div class="tvo-card">
+        <div class="tvo-card-header">
+          <div class="tvo-card-title"><i class="fas fa-triangle-exclamation" style="color:var(--red)"></i> Alerta do Dia</div>
+        </div>
+        <div class="tvo-card-desc">O que fugiu do esperado: lojas que fecharam ontem muito acima/abaixo da média histórica (mesmo gatilho do alerta Telegram) e itens que mais venderam nas últimas 24h mas estão com estoque baixo — risco de ruptura logo depois de vender bem.</div>
+        <div id="alertasList" class="tvo-rank-list">
+          <div class="tvo-skeleton" style="height:52px"></div>
+          <div class="tvo-skeleton" style="height:52px"></div>
         </div>
       </div>
 
@@ -317,8 +340,42 @@ async function loadResumoSemanal() {
   `).join('') : '<tr><td colspan="3" class="tvo-empty">Sem vendas nos últimos 7 dias</td></tr>';
 }
 
+// ── Alerta do Dia ────────────────────────────────────────────
+async function loadAlertasDia() {
+  const data = await DB.getAlertasDia();
+  const list = document.getElementById('alertasList');
+  if (!data || data.error) { list.innerHTML = '<div class="tvo-empty" style="color:var(--red)">Erro ao carregar</div>'; return; }
+
+  const items = [];
+  (data.outliers || []).forEach(o => {
+    items.push({
+      cls: o.acima ? 'good' : 'warn',
+      icon: o.acima ? 'fa-rocket' : 'fa-triangle-exclamation',
+      title: `${o.nickname} — ontem fechou ${o.acima ? 'muito acima' : 'muito abaixo'} da média`,
+      desc: `Receita ${R(o.receita_ontem)} vs. média histórica ${R(o.media)} (${o.diff_pct >= 0 ? '+' : ''}${o.diff_pct}%) — baseado em ${o.meses_analisados} mês(es) de histórico do dia ${o.dia_do_mes}.`,
+    });
+  });
+  (data.estoque_critico || []).forEach(r => {
+    items.push({
+      cls: 'stock',
+      icon: 'fa-box-open',
+      title: `${r.title || r.item_id} — vendendo bem e com estoque baixo`,
+      desc: `${r.loja || '—'} · ${N(r.unidades)} un. vendidas nas últimas 24h · restam apenas ${N(r.available_quantity)} em estoque.`,
+    });
+  });
+
+  list.innerHTML = items.length ? items.map(a => `
+    <div class="tvo-alert-row ${a.cls}">
+      <div class="tvo-alert-icon"><i class="fas ${a.icon}"></i></div>
+      <div>
+        <div class="tvo-alert-title">${a.title}</div>
+        <div class="tvo-alert-desc">${a.desc}</div>
+      </div>
+    </div>`).join('') : '<div class="tvo-empty"><i class="fas fa-circle-check" style="color:var(--green);margin-right:6px"></i>Nenhum alerta hoje — tudo dentro do esperado.</div>';
+}
+
 // ── Init ──────────────────────────────────────────────────────
-Promise.all([loadTopVendasOnline(), loadResumoOntem(), loadTopVendasDia(), loadResumoSemanal()]);
+Promise.all([loadTopVendasOnline(), loadResumoOntem(), loadTopVendasDia(), loadResumoSemanal(), loadAlertasDia()]);
 setInterval(loadTopVendasOnline, 4 * 3600000);
 WS.on('order_updated', () => { loadTopVendasDia(); });
 WS.on('_connected', () => {

@@ -14,6 +14,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/dashboard/resumo-ontem` | pedidos/receita/itens de ontem, por loja e por logística — usa `reports.getResumoDiarioData()` (mesma função do resumo diário Telegram/e-mail, ver `workers.md`). Consumido por `pages/top-vendas-online.html` |
 | `GET /api/dashboard/top-vendas-dia` | top 10 itens mais vendidos (unidades) nas últimas 24h, com loja — usa `reports.getTopVendas({hours:24, limit:10})`, mesma função do e-mail diário |
 | `GET /api/dashboard/resumo-semanal` | comparativo 7 dias vs. 7 dias anteriores (pedidos/receita/margem) + curva ABC top 10 — usa `reports.getResumoSemanal()`, mesma função do e-mail semanal |
+| `GET /api/dashboard/alertas-dia` | `outliers` (lojas cujo faturamento de ontem fugiu de ±1.5 desvio-padrão da média histórica — mesma lógica/limiar de `tg_outlier`, via `reports.getOutliersOntem()`) + `estoque_critico` (itens mais vendidos nas últimas 24h com `available_quantity <= 15` — `reports.getEstoqueCriticoTopVendas()`) |
 
 ## Anúncios / Produtos
 | Rota | Descrição |

@@ -10,7 +10,7 @@
   <script>window.PAGE_TITLE='Dias da Semana'; window.ACTIVE_NAV='diasemana.html';</script>
   <style>
     .ds-hero{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:20px}
-    .ds-day{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 10px;text-align:center;cursor:default;transition:.2s;position:relative;overflow:hidden}
+    .ds-day{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 10px;text-align:center;cursor:pointer;transition:.2s;position:relative;overflow:hidden}
     .ds-day:hover{border-color:rgba(255,230,0,.4);transform:translateY(-2px)}
     .ds-day.best{border-color:var(--primary);background:rgba(255,230,0,.06)}
     .ds-day.best::after{content:'MELHOR';position:absolute;top:6px;right:6px;font-size:8px;font-weight:800;color:var(--primary);background:rgba(255,230,0,.15);padding:1px 5px;border-radius:3px}
@@ -53,6 +53,23 @@
     @keyframes pulse{0%,100%{opacity:.4}50%{opacity:.9}}
     @media(max-width:900px){.ds-hero{grid-template-columns:repeat(4,1fr)}.ds-insights{grid-template-columns:1fr 1fr}}
     @media(max-width:600px){.ds-hero{grid-template-columns:repeat(2,1fr)}.ds-insights{grid-template-columns:1fr}}
+
+    .ds-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;padding:20px}
+    .ds-modal{background:var(--card-bg);border:1px solid var(--border);border-radius:14px;width:100%;max-width:440px;overflow:hidden}
+    .ds-modal-header{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--border)}
+    .ds-modal-header h3{margin:0;font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px}
+    .ds-modal-close{background:none;border:none;color:var(--text-muted);font-size:22px;cursor:pointer;line-height:1}
+    .ds-modal-body{padding:20px 22px}
+    .ds-modal-hero{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+    .ds-modal-stat{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+    .ds-modal-stat .lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+    .ds-modal-stat .val{font-size:19px;font-weight:800}
+    .ds-modal-avg{background:rgba(255,230,0,.06);border:1px solid rgba(255,230,0,.25);border-radius:10px;padding:14px 16px;margin-top:4px}
+    .ds-modal-avg-title{font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+    .ds-modal-avg-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0}
+    .ds-modal-avg-row .k{color:var(--text-muted)}
+    .ds-modal-avg-row .v{font-weight:700}
+    .ds-modal-sub{font-size:11px;color:var(--text-muted);margin-top:14px;text-align:center}
   </style>
 </head>
 <body>
@@ -109,6 +126,18 @@
     </div>
   </main>
 </div>
+
+<!-- Modal drill-down por dia da semana -->
+<div class="ds-modal-overlay" id="dsModalOverlay">
+  <div class="ds-modal">
+    <div class="ds-modal-header">
+      <h3 id="dsModalTitle"></h3>
+      <button class="ds-modal-close" onclick="closeDayModal()">&times;</button>
+    </div>
+    <div class="ds-modal-body" id="dsModalBody"></div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
@@ -122,6 +151,8 @@ const DIAS_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const DIAS_EMOJI = ['☀️','📅','📅','📅','📅','🎉','🏖️'];
 const COLORS = ['#FF6384','#FFE600','#36A2EB','#4CAF50','#FF9800','#9C27B0','#00BCD4'];
 let chartInst = null;
+let lastRows = [];
+let lastDays = 90;
 
 // Garante 7 dias (preenche dias sem venda com zero)
 function normalize(rows) {
@@ -137,6 +168,8 @@ async function load() {
   const days = document.getElementById('fDays').value;
   const data = await DB.getDiasSemana(days) || { days:[] };
   const rows = normalize(data.days || []);
+  lastRows = rows;
+  lastDays = Number(days);
 
   const totalOrders  = rows.reduce((a,r) => a + r.orders,  0);
   const totalRevenue = rows.reduce((a,r) => a + r.revenue, 0);
@@ -148,7 +181,7 @@ async function load() {
   document.getElementById('dsHero').innerHTML = rows.map((r,i) => {
     const pct = maxOrders ? (r.orders / maxOrders * 100).toFixed(0) : 0;
     const cls = i === bestIdx ? 'best' : (i === worstIdx && r.orders > 0 ? 'worst' : '');
-    return `<div class="ds-day ${cls}">
+    return `<div class="ds-day ${cls}" onclick="openDayModal(${r.day})">
       <div class="ds-day-name">${DIAS_SHORT[r.day]}</div>
       <div class="ds-day-orders">${fmtN(r.orders)}</div>
       <div class="ds-day-label">pedidos</div>
@@ -225,6 +258,51 @@ async function load() {
 
   if (btn) { btn.disabled = false; icon.className = 'fas fa-sync-alt'; }
 }
+
+// ── Modal drill-down por dia da semana ──────────────────────
+function countOccurrences(dayOfWeek, days) {
+  let n = 0;
+  const today = new Date();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    if (d.getDay() === dayOfWeek) n++;
+  }
+  return n;
+}
+
+function openDayModal(dayOfWeek) {
+  const r = lastRows.find(row => row.day === dayOfWeek);
+  if (!r) return;
+
+  const ocorrencias = countOccurrences(dayOfWeek, lastDays);
+  const ticketMedio = r.orders > 0 ? r.revenue / r.orders : 0;
+  const pedidosMediosOcorrencia = ocorrencias > 0 ? r.orders / ocorrencias : 0;
+  const receitaMediaOcorrencia = ocorrencias > 0 ? r.revenue / ocorrencias : 0;
+
+  document.getElementById('dsModalTitle').innerHTML = `${DIAS_EMOJI[dayOfWeek]} ${DIAS_FULL[dayOfWeek]}`;
+  document.getElementById('dsModalBody').innerHTML = `
+    <div class="ds-modal-hero">
+      <div class="ds-modal-stat"><div class="lbl">Pedidos no período</div><div class="val">${fmtN(r.orders)}</div></div>
+      <div class="ds-modal-stat"><div class="lbl">Faturamento no período</div><div class="val">${fmt(r.revenue)}</div></div>
+    </div>
+    <div class="ds-modal-avg">
+      <div class="ds-modal-avg-title"><i class="fas fa-calculator"></i> Valores médios</div>
+      <div class="ds-modal-avg-row"><span class="k">Ticket médio por pedido</span><span class="v">${fmt(ticketMedio)}</span></div>
+      <div class="ds-modal-avg-row"><span class="k">Pedidos médios por ${DIAS_FULL[dayOfWeek].toLowerCase()}</span><span class="v">${pedidosMediosOcorrencia.toFixed(1)}</span></div>
+      <div class="ds-modal-avg-row"><span class="k">Faturamento médio por ${DIAS_FULL[dayOfWeek].toLowerCase()}</span><span class="v">${fmt(receitaMediaOcorrencia)}</span></div>
+    </div>
+    <div class="ds-modal-sub">Baseado em ${ocorrencias} ${DIAS_FULL[dayOfWeek].toLowerCase()}${ocorrencias===1?'':'s'} dentro do período filtrado (últimos ${lastDays} dias)</div>
+  `;
+  document.getElementById('dsModalOverlay').style.display = 'flex';
+}
+
+function closeDayModal() {
+  document.getElementById('dsModalOverlay').style.display = 'none';
+}
+
+document.getElementById('dsModalOverlay').addEventListener('click', e => {
+  if (e.target.id === 'dsModalOverlay') closeDayModal();
+});
 
 WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');

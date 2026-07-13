@@ -40,6 +40,17 @@ O worker (`handleOffer`) compara o `status` anterior salvo em `promotions` com o
 
 `syncTopVendas` (a cada 4h — 00h/04h/08h/12h/16h/20h) envia ao Telegram o top 5 itens (por unidades vendidas, não receita) das **últimas 4h**, não do dia acumulado — é uma janela deslizante para dar visibilidade do que está vendendo "agora" e permitir reação rápida de reposição de estoque, não um relatório histórico. Cada linha inclui o nome da loja (`stores.nickname`). Pedidos cancelados não contam. **Não notifica se não houve nenhuma venda no período** (evita 6 mensagens/dia de "nada vendeu"). Não usa `tgNotifyForce` — respeita a janela de silêncio e pode ser desligado individualmente (`tg_topvendas`), diferente do resumo diário e dos relatórios de sync (que são "operacionais", não "alertas").
 
+## Relatórios por e-mail (Resend) — o que difere do alerta de Telegram
+
+Mesmo dado, propósito diferente: os relatórios por e-mail (`emailDailyReports`, `emailRelatorioSemanal`) são **digest**, não alerta em tempo real — por isso rodam bem menos vezes que os equivalentes de Telegram:
+
+- **Top vendas por e-mail é janela de 24h** (top 10), não 4h (top 5) como o alerta de Telegram — faz mais sentido como "os melhores do dia" num resumo diário do que como snapshot frequente.
+- **Resumo diário por e-mail** reaproveita a mesma consulta do `resumoDiario` do Telegram (`getResumoDiarioData()`) — mesmo conteúdo, dois formatos/canais.
+- **Relatório semanal** é exclusivo do e-mail (não existe versão Telegram) — toda 2ª-feira, cobre pedidos/receita/margem dos últimos 7 dias comparados aos 7 dias anteriores, por loja, e curva ABC top 10. Margem usa a mesma fórmula de `GET /api/vendas/detalhado` (ver `finance.md`) — não recalcular com fórmula diferente.
+- Cada um dos 3 relatórios tem seu próprio toggle (`email_resumo`/`email_topvendas`/`email_semanal`, `app_config`) — desligado por padrão, o usuário liga pelo Monitor.
+- **Não notifica se não há dado no período** (mesma regra do `syncTopVendas`) — evita e-mail vazio.
+- Credencial do Resend (`RESEND_API_KEY`/`RESEND_FROM_EMAIL`/`RESEND_TO_EMAIL`) só via `.env` do servidor, nunca pela UI — só os 3 toggles são editáveis pelo Monitor (ver `decisions.md`).
+
 ## Notificações Telegram — regras de silêncio e throttle
 
 Cada tópico (`tg_vendas`, `tg_perguntas`, etc.) pode ser individualmente desativado em `app_config`. Além disso, globalmente:

@@ -104,6 +104,16 @@
 
 **Decisão**: alinhar os 3 parâmetros ao que já foi validado no `syncVisitas` — pausa de 20s entre pedidos processados (era 1,5s), backoff escalonado 60s→120s (era fixo 60s) e reset de `consecutive429` também no sucesso de `handleOrder`. Mesma lógica, mesmo trade-off: mais lento no total, mas com taxa de sucesso muito maior — decisão do usuário, que já tinha visto o resultado do `syncVisitas` e pediu explicitamente para replicar.
 
+## Relatórios por e-mail — Resend, credencial só em `.env`, toggle em `app_config`
+
+**Decisão**: usar a API do Resend (`server/src/resendClient.js`) para enviar 3 relatórios (resumo diário, top vendas do dia, semanal) — free tier (3.000 e-mails/mês, 100/dia) cobre bem o volume de um dashboard single-tenant. Credencial (`RESEND_API_KEY`/`RESEND_FROM_EMAIL`/`RESEND_TO_EMAIL`) fica só no `.env` do servidor, seguindo o mesmo padrão já estabelecido pelo `notionClient.js` — **não** o padrão do Telegram (`app_config` com fallback pro `.env`, editável por formulário na UI). Só os **3 toggles liga/desliga** de cada relatório (`email_resumo`/`email_topvendas`/`email_semanal`) ficam em `app_config`, editáveis pelo Monitor.
+
+**Por quê essa assimetria com o Telegram**: o Telegram permite trocar de bot/chat pela UI porque múltiplas contas fazem sentido ali (histórico do projeto já tinha esse caso de uso). Para e-mail, o usuário confirmou que só precisa de **um destinatário fixo** — não há necessidade de reconstruir toda a UI de credencial mascarada (`****`+últimos 4 dígitos, endpoint de teste, etc.) só para um único endereço. Se um dia for necessário múltiplos destinatários ou trocar de provedor pela UI, migrar para o padrão do Telegram é a referência a seguir.
+
+**`RESEND_FROM_EMAIL` usa o domínio de teste do Resend por padrão** (`onboarding@resend.dev`) — funciona sem verificação de domínio, ideal para começar rápido. Verificar um domínio próprio no Resend (DNS) é melhoria futura opcional, não bloqueia o uso atual.
+
+**Reaproveitamento de fórmulas existentes, não reinventadas**: o relatório semanal usa a mesma fórmula de margem de `GET /api/vendas/detalhado` (`finance.md`) e a mesma lógica de curva ABC de `GET /api/comparativos/curva-abc` — replicadas via query direta no worker (arquitetura não permite o worker chamar a própria API HTTP do server, só o Postgres diretamente), não uma fórmula nova inventada para o e-mail.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

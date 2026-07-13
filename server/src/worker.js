@@ -768,6 +768,19 @@ function scheduleEvery(hours, fn, label) {
   setTimeout(fn, ms);
 }
 
+// Igual a scheduleAt, mas para jobs semanais (ex: toda 2ª-feira). dayOfWeek:
+// 0=domingo, 1=segunda, ... 6=sábado (mesma convenção de Date.getDay()).
+function scheduleWeekly(dayOfWeek, hour, minute, fn, label) {
+  const now  = new Date();
+  const next = new Date(now);
+  next.setHours(hour, minute, 0, 0);
+  next.setDate(next.getDate() + ((dayOfWeek - next.getDay() + 7) % 7));
+  if (next <= now) next.setDate(next.getDate() + 7);
+  const ms = next - now;
+  console.log(`[${label}] próxima execução: ${next.toLocaleString('pt-BR')} (em ${Math.round(ms / 60000)}min)`);
+  setTimeout(fn, ms);
+}
+
 // ── Sync Vendas — 03:00 diário, pedidos dos últimos 3 dias ───
 let isSyncingVendas = false;
 
@@ -1513,30 +1526,35 @@ async function syncNotionTarefas() {
 // Sync Métricas → 04:15  (reputação + devoluções recentes)
 // Sync Visitas  → 02:00  (visitas por anúncio)
 // ── Resumo Diário — 23:59 ────────────────────────────────────────────────────
+// Reaproveitada por resumoDiario (Telegram) e emailDailyReports (e-mail) —
+// mesma consulta, dois canais de saída. Não duplicar a query nos dois lugares.
+async function getResumoDiarioData() {
+  const { rows: porLoja } = await pool.query(`
+    SELECT s.nickname, COUNT(*) AS pedidos,
+           SUM(o.total_amount) AS receita,
+           SUM(o.quantity)     AS itens
+    FROM orders o
+    JOIN stores s ON s.id = o.store_id
+    WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
+    GROUP BY s.nickname ORDER BY receita DESC
+  `);
+
+  const { rows: porLog } = await pool.query(`
+    SELECT COALESCE(NULLIF(o.shipping_type,''), 'Desconhecido') AS tipo,
+           COUNT(*) AS pedidos
+    FROM orders o
+    WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
+    GROUP BY 1 ORDER BY 2 DESC
+  `);
+
+  return { porLoja, porLog };
+}
+
 async function resumoDiario() {
   console.log('[resumo-diario] gerando resumo do dia...');
   try {
     const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
-
-    // Pedidos do dia por loja
-    const { rows: porLoja } = await pool.query(`
-      SELECT s.nickname, COUNT(*) AS pedidos,
-             SUM(o.total_amount) AS receita,
-             SUM(o.quantity)     AS itens
-      FROM orders o
-      JOIN stores s ON s.id = o.store_id
-      WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
-      GROUP BY s.nickname ORDER BY receita DESC
-    `);
-
-    // Por logística
-    const { rows: porLog } = await pool.query(`
-      SELECT COALESCE(NULLIF(o.shipping_type,''), 'Desconhecido') AS tipo,
-             COUNT(*) AS pedidos
-      FROM orders o
-      WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
-      GROUP BY 1 ORDER BY 2 DESC
-    `);
+    const { porLoja, porLog } = await getResumoDiarioData();
 
     if (!porLoja.length) {
       await tgNotifyForce('tg_resumo', '📊 <b>Resumo do Dia</b>\n\nNenhum pedido registrado hoje.');
@@ -1571,6 +1589,223 @@ async function resumoDiario() {
     console.error('[resumo-diario] erro:', e.message);
   }
   scheduleAt(6, 0, resumoDiario, 'resumo-diario');
+}
+
+// ── Relatórios por e-mail (Resend) ────────────────────────────────────────
+// Credencial só via .env (RESEND_API_KEY/RESEND_FROM_EMAIL/RESEND_TO_EMAIL,
+// ver resendClient.js) — o que é configurável pela UI (Monitor) é só o
+// toggle liga/desliga de cada relatório (app_config: email_resumo,
+// email_topvendas, email_semanal), lido aqui antes de enviar.
+function emailWrap(title, bodyHtml) {
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',Arial,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
+      <div style="background:#fff;border-radius:12px;padding:28px;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+        <h1 style="font-size:20px;margin:0 0 4px;color:#111;">${title}</h1>
+        <p style="font-size:12px;color:#888;margin:0 0 20px;">ML Dashboard Multimarcas</p>
+        ${bodyHtml}
+      </div>
+      <p style="text-align:center;font-size:11px;color:#aaa;margin-top:16px;">Enviado automaticamente pelo ML Dashboard</p>
+    </div>
+  </body></html>`;
+}
+
+function emailTable(headers, rows) {
+  const th = headers.map(h => `<th style="text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;color:#888;border-bottom:2px solid #eee;">${h}</th>`).join('');
+  const tr = rows.map(r => `<tr>${r.map(c => `<td style="padding:8px 10px;font-size:13px;border-bottom:1px solid #f0f0f0;color:#333;">${c}</td>`).join('')}</tr>`).join('');
+  return `<table style="width:100%;border-collapse:collapse;margin:12px 0;"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
+}
+
+// Só envia se o toggle correspondente estiver ligado em app_config — mesma
+// ideia do tgNotify (tópico desativável), mas sem janela de silêncio/throttle
+// (relatórios por e-mail já são de baixa frequência por natureza).
+async function sendReportEmail(topicKey, subject, bodyHtml) {
+  try {
+    const { rows } = await pool.query(`SELECT value FROM app_config WHERE key = $1`, [topicKey]);
+    if (rows[0]?.value !== 'true') return;
+
+    const resend = require('./resendClient');
+    if (!resend.isConfigured()) {
+      console.warn(`[email] ${topicKey} habilitado mas RESEND_API_KEY/RESEND_TO_EMAIL não configurados no .env`);
+      return;
+    }
+    await resend.sendEmail({ subject, html: emailWrap(subject, bodyHtml) });
+    console.log(`[email] enviado: ${subject}`);
+  } catch (e) {
+    console.error(`[email] erro ao enviar "${subject}":`, e.message);
+  }
+}
+
+// Resumo diário + Top vendas do dia — mesmo horário de resumoDiario (06:00
+// Telegram), 10 min depois, pra não competir pela mesma janela de queries.
+async function emailDailyReports() {
+  console.log('[email-diario] gerando relatórios do dia...');
+  const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+  const ontem = new Date(Date.now() - 86400000).toLocaleDateString('pt-BR');
+
+  try {
+    const { porLoja, porLog } = await getResumoDiarioData();
+    if (porLoja.length) {
+      const totalPedidos = porLoja.reduce((a, r) => a + Number(r.pedidos), 0);
+      const totalReceita = porLoja.reduce((a, r) => a + Number(r.receita), 0);
+      const totalItens   = porLoja.reduce((a, r) => a + Number(r.itens),   0);
+
+      const html = `
+        <p style="font-size:14px;color:#333;">📅 ${ontem}</p>
+        <div style="display:flex;gap:16px;margin:16px 0;">
+          <div style="flex:1;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;">Pedidos</div>
+            <div style="font-size:22px;font-weight:700;">${totalPedidos}</div>
+          </div>
+          <div style="flex:1;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;">Receita</div>
+            <div style="font-size:22px;font-weight:700;">${Rfmt(totalReceita)}</div>
+          </div>
+          <div style="flex:1;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;">Itens</div>
+            <div style="font-size:22px;font-weight:700;">${totalItens}</div>
+          </div>
+        </div>
+        <h3 style="font-size:14px;margin:20px 0 4px;">Por loja</h3>
+        ${emailTable(['Loja', 'Pedidos', 'Receita'], porLoja.map(r => [r.nickname, r.pedidos, Rfmt(r.receita)]))}
+        <h3 style="font-size:14px;margin:20px 0 4px;">Por logística</h3>
+        ${emailTable(['Tipo', 'Pedidos'], porLog.map(r => [fmtLogistica(r.tipo), r.pedidos]))}
+      `;
+      await sendReportEmail('email_resumo', `Resumo do Dia — ${ontem}`, html);
+    }
+  } catch (e) {
+    console.error('[email-diario] erro no resumo:', e.message);
+  }
+
+  try {
+    // Top vendas do e-mail cobre 24h (não 4h como o alerta do Telegram) —
+    // faz mais sentido como "melhores do dia" num digest diário.
+    const { rows } = await pool.query(`
+      SELECT o.item_id, o.title, s.nickname AS loja,
+             SUM(o.quantity) AS unidades, SUM(o.total_amount) AS receita
+      FROM vw_ml_orders o
+      LEFT JOIN vw_ml_stores s ON s.id = o.store_id
+      WHERE o.status != 'cancelled' AND o.item_id IS NOT NULL
+        AND o.date_created >= now() - interval '24 hours'
+      GROUP BY o.item_id, o.title, s.nickname
+      ORDER BY unidades DESC LIMIT 10
+    `);
+    if (rows.length) {
+      const html = emailTable(
+        ['#', 'Loja', 'Item', 'Unidades', 'Receita'],
+        rows.map((r, i) => [i + 1, r.loja || '—', r.title || r.item_id, r.unidades, Rfmt(r.receita)])
+      );
+      await sendReportEmail('email_topvendas', `Top Vendas do Dia — ${ontem}`, html);
+    }
+  } catch (e) {
+    console.error('[email-diario] erro no top vendas:', e.message);
+  }
+
+  scheduleAt(6, 10, emailDailyReports, 'email-diario');
+}
+
+// Relatório semanal completo — toda 2ª-feira 07:00: vendas do período (7d)
+// vs período anterior (7d antes disso), por loja, e curva ABC (top 10 por
+// faturamento). Fórmula de margem idêntica à de GET /api/vendas/detalhado
+// (ver .claude/finance.md) — não reinventar outra fórmula aqui.
+async function emailRelatorioSemanal() {
+  console.log('[email-semanal] gerando relatório semanal...');
+  const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+  const Pfmt = v => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
+
+  try {
+    const periodoQuery = (fromDays, toDays) => pool.query(`
+      SELECT COUNT(*) AS pedidos,
+             COALESCE(SUM(o.total_amount), 0) AS receita,
+             COALESCE(SUM(
+               o.total_amount
+               - COALESCE(i.cost, 0) * o.quantity
+               - o.total_amount * COALESCE(s.imposto_pct, 0) / 100
+               - COALESCE(o.ml_fee, 0)
+               - COALESCE(o.shipping_cost, 0)
+               - COALESCE(o.shipping_seller_cost, 0)
+             ), 0) AS margem
+      FROM vw_ml_orders o
+      JOIN vw_ml_stores s ON s.id = o.store_id
+      LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+      WHERE o.status != 'cancelled'
+        AND o.date_created >= now() - interval '${fromDays} days'
+        AND o.date_created <  now() - interval '${toDays} days'
+    `);
+
+    const { rows: atualRows }    = await periodoQuery(7, 0);
+    const { rows: anteriorRows } = await periodoQuery(14, 7);
+    const atual    = atualRows[0]    || {};
+    const anterior = anteriorRows[0] || {};
+
+    const varPedidos = Number(anterior.pedidos) > 0 ? ((atual.pedidos - anterior.pedidos) / anterior.pedidos) * 100 : 0;
+    const varReceita = Number(anterior.receita) > 0 ? ((atual.receita - anterior.receita) / anterior.receita) * 100 : 0;
+
+    const { rows: porLoja } = await pool.query(`
+      SELECT s.nickname, COUNT(*) AS pedidos, SUM(o.total_amount) AS receita
+      FROM vw_ml_orders o JOIN vw_ml_stores s ON s.id = o.store_id
+      WHERE o.status != 'cancelled' AND o.date_created >= now() - interval '7 days'
+      GROUP BY s.nickname ORDER BY receita DESC
+    `);
+
+    // Curva ABC — mesma lógica de GET /api/comparativos/curva-abc (ver api.js), 7 dias, top 10.
+    const { rows: abcRows } = await pool.query(`
+      SELECT iid AS item_id,
+             COALESCE(MAX(o.title), MAX(i.title)) AS title,
+             SUM(COALESCE(o.total_amount, 0)) AS faturamento
+      FROM vw_ml_orders o
+      CROSS JOIN LATERAL (SELECT COALESCE(o.item_id, o.raw_data->'order_items'->0->'item'->>'id') AS iid) ids
+      LEFT JOIN vw_ml_items i ON i.ml_id = ids.iid AND i.store_id = o.store_id
+      WHERE o.status != 'cancelled' AND o.date_created >= now() - interval '7 days'
+      GROUP BY ids.iid
+      HAVING SUM(COALESCE(o.total_amount, 0)) > 0
+      ORDER BY faturamento DESC LIMIT 10
+    `);
+    const totalAbc = abcRows.reduce((a, r) => a + Number(r.faturamento), 0);
+    let acumAbc = 0;
+    const abc = abcRows.map(r => {
+      acumAbc += Number(r.faturamento);
+      const pct = totalAbc > 0 ? (acumAbc / totalAbc) * 100 : 0;
+      return { ...r, curva: pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C' };
+    });
+
+    if (!porLoja.length) {
+      console.log('[email-semanal] nenhum pedido nos últimos 7 dias — nada a enviar');
+    } else {
+      const de = new Date(Date.now() - 7 * 86400000).toLocaleDateString('pt-BR');
+      const ate = new Date().toLocaleDateString('pt-BR');
+      const mc_pct = Number(atual.receita) > 0 ? (Number(atual.margem) / Number(atual.receita)) * 100 : 0;
+
+      const html = `
+        <p style="font-size:14px;color:#333;">📅 ${de} — ${ate} (vs. 7 dias anteriores)</p>
+        <div style="display:flex;gap:16px;margin:16px 0;flex-wrap:wrap;">
+          <div style="flex:1;min-width:130px;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;">Pedidos</div>
+            <div style="font-size:22px;font-weight:700;">${atual.pedidos}</div>
+            <div style="font-size:12px;color:${varPedidos >= 0 ? '#27ae60' : '#e74c3c'};">${Pfmt(varPedidos)}</div>
+          </div>
+          <div style="flex:1;min-width:130px;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;">Receita</div>
+            <div style="font-size:22px;font-weight:700;">${Rfmt(atual.receita)}</div>
+            <div style="font-size:12px;color:${varReceita >= 0 ? '#27ae60' : '#e74c3c'};">${Pfmt(varReceita)}</div>
+          </div>
+          <div style="flex:1;min-width:130px;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
+            <div style="font-size:11px;color:#888;text-transform:uppercase;">Margem</div>
+            <div style="font-size:22px;font-weight:700;">${Rfmt(atual.margem)}</div>
+            <div style="font-size:12px;color:#888;">${mc_pct.toFixed(1)}% MC</div>
+          </div>
+        </div>
+        <h3 style="font-size:14px;margin:20px 0 4px;">Por loja</h3>
+        ${emailTable(['Loja', 'Pedidos', 'Receita'], porLoja.map(r => [r.nickname, r.pedidos, Rfmt(r.receita)]))}
+        <h3 style="font-size:14px;margin:20px 0 4px;">Curva ABC — top 10 por faturamento</h3>
+        ${emailTable(['Item', 'Faturamento', 'Curva'], abc.map(r => [r.title || r.item_id, Rfmt(r.faturamento), r.curva]))}
+      `;
+      await sendReportEmail('email_semanal', `Relatório Semanal — ${de} a ${ate}`, html);
+    }
+  } catch (e) {
+    console.error('[email-semanal] erro:', e.message);
+  }
+
+  scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 }
 
 // ── Top Vendas — a cada 4h, ranking de itens mais vendidos por loja ──────
@@ -1690,6 +1925,8 @@ scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
+scheduleAt(6, 10,  emailDailyReports, 'email-diario');
+scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
 
 // Notion Tarefas — 2ª feira 08:00 (usa setTimeout próprio, não scheduleAt)
@@ -1763,6 +2000,14 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'syncTopVendas') {
       console.log('[worker] syncTopVendas disparado manualmente');
       syncTopVendas().catch(e => console.error('[worker] syncTopVendas erro:', e.message));
+    }
+    if (cmd === 'emailDailyReports') {
+      console.log('[worker] emailDailyReports disparado manualmente');
+      emailDailyReports().catch(e => console.error('[worker] emailDailyReports erro:', e.message));
+    }
+    if (cmd === 'emailRelatorioSemanal') {
+      console.log('[worker] emailRelatorioSemanal disparado manualmente');
+      emailRelatorioSemanal().catch(e => console.error('[worker] emailRelatorioSemanal erro:', e.message));
     }
   } catch {}
 });
@@ -1859,8 +2104,14 @@ async function handleTgCommand(text, chatId, botToken) {
     } else if (tipo === 'topvendas') {
       await tgReply(chatId, '📈 Verificando <b>top vendas</b> (últimas 4h)...', botToken);
       syncTopVendas().catch(e => console.error('[tg-bot] syncTopVendas erro:', e.message));
+    } else if (tipo === 'email-diario') {
+      await tgReply(chatId, '📧 Gerando <b>relatórios diários</b> por e-mail...', botToken);
+      emailDailyReports().catch(e => console.error('[tg-bot] emailDailyReports erro:', e.message));
+    } else if (tipo === 'email-semanal') {
+      await tgReply(chatId, '📧 Gerando <b>relatório semanal</b> por e-mail...', botToken);
+      emailRelatorioSemanal().catch(e => console.error('[tg-bot] emailRelatorioSemanal erro:', e.message));
     } else {
-      await tgReply(chatId, '❓ Tipos disponíveis: <code>vendas</code>, <code>metricas</code>, <code>visitas</code>, <code>devolucoes</code>, <code>topvendas</code>', botToken);
+      await tgReply(chatId, '❓ Tipos disponíveis: <code>vendas</code>, <code>metricas</code>, <code>visitas</code>, <code>devolucoes</code>, <code>topvendas</code>, <code>email-diario</code>, <code>email-semanal</code>', botToken);
     }
     return;
   }
@@ -1875,7 +2126,9 @@ async function handleTgCommand(text, chatId, botToken) {
       `/sync metricas — forçar coleta de reputação + devoluções\n` +
       `/sync visitas — forçar coleta de visitas por anúncio\n` +
       `/sync devolucoes — busca retroativa completa de devoluções\n` +
-      `/sync topvendas — forçar checagem de top vendas (últimas 4h)\n\n` +
+      `/sync topvendas — forçar checagem de top vendas (últimas 4h)\n` +
+      `/sync email-diario — forçar envio dos e-mails diários (resumo + top vendas)\n` +
+      `/sync email-semanal — forçar envio do relatório semanal por e-mail\n\n` +
       `Exemplos: <code>/refresh topmix</code>  <code>/sync vendas</code>`,
       botToken
     );

@@ -103,7 +103,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/webhooks/logs?topic&limit` | últimos logs de `webhook_logs` |
 | `GET /api/webhooks/config` | contadores do dia + status da config do Telegram |
 | `GET /api/schedule/jobs` | estado atual de cada sync (`schedule_jobs`) |
-| `POST /api/schedule/jobs/:name/trigger` | publica comando no canal Redis `worker:cmd` para disparar um sync manualmente — nomes aceitos: `dailySync`, `syncVendas`, `syncMetricas`, `syncReturns`, `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncTopVendas` |
+| `POST /api/schedule/jobs/:name/trigger` | publica comando no canal Redis `worker:cmd` para disparar um sync manualmente — nomes aceitos: `dailySync`, `syncVendas`, `syncMetricas`, `syncReturns`, `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal` |
 | `GET /api/schedule/worker-logs` | **SSE** — stream de `journalctl -u ml-worker-novo -f` (produção; depende do ambiente ter systemd/journalctl) |
 | `GET /api/schedule/runs?job&limit` | histórico de execuções (`schedule_runs`) |
 | `GET /api/schedule/logs?limit` | alias de leitura crua de `webhook_logs` |
@@ -114,6 +114,15 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/config/telegram` | config atual (token mascarado) |
 | `PATCH /api/config/telegram { bot_token, chat_id, tg_*, tg_interval, silence_start, silence_end }` | grava em `app_config` |
 | `POST /api/config/telegram/test { message }` | envia mensagem de teste |
+
+## Configuração E-mail (Resend)
+> Credencial (`RESEND_API_KEY`/`RESEND_FROM_EMAIL`/`RESEND_TO_EMAIL`) só via `.env` do servidor — estas rotas só leem/gravam os toggles liga/desliga de cada relatório em `app_config`.
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/config/email` | `{ configured, email_resumo, email_topvendas, email_semanal }` — `configured` reflete se `RESEND_API_KEY`+`RESEND_TO_EMAIL` estão no `.env` |
+| `PATCH /api/config/email { email_resumo?, email_topvendas?, email_semanal? }` | grava os toggles em `app_config` |
+| `POST /api/config/email/test` | envia e-mail de teste para `RESEND_TO_EMAIL` |
 
 ## Promoções
 | Rota | Descrição |

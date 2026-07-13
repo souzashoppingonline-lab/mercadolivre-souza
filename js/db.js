@@ -196,6 +196,11 @@ const DB = {
   async saveTelegramConfig(body)      { return this._patch('/config/telegram', body); },
   async testTelegram(message)         { return this._post('/config/telegram/test', { message }); },
 
+  // ── E-mail (Resend) ────────────────────────────────────────
+  async getEmailConfig()              { return this._get('/config/email'); },
+  async saveEmailConfig(body)         { return this._patch('/config/email', body); },
+  async testEmail()                   { return this._post('/config/email/test', {}); },
+
   // ── Schedule ───────────────────────────────────────────────
   async getScheduleJobs()              { return this._get('/schedule/jobs'); },
   async triggerJob(name)               { return this._post(`/schedule/jobs/${name}/trigger`, {}); },

@@ -240,6 +240,47 @@
         </div>
       </div>
 
+      <!-- E-mail (Resend) -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3><i class="fas fa-envelope-open-text" style="color:#00d492"></i> Relatórios por E-mail</h3>
+          <span id="emailStatusBadge"></span>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">
+          Chave da API, remetente e destinatário são configurados no <code>.env</code> do servidor (Resend) — aqui só liga/desliga cada relatório.
+        </p>
+
+        <div class="notif-grid">
+          <div class="notif-item">
+            <div class="notif-info">
+              <span class="notif-name"><i class="fas fa-chart-bar" style="color:var(--green);margin-right:6px"></i>Resumo diário</span>
+              <span class="notif-desc">Pedidos, receita e logística do dia anterior — 06:10</span>
+            </div>
+            <label class="toggle-wrap"><input type="checkbox" id="email_resumo"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="notif-item">
+            <div class="notif-info">
+              <span class="notif-name"><i class="fas fa-fire" style="color:var(--orange);margin-right:6px"></i>Top vendas do dia</span>
+              <span class="notif-desc">Top 10 itens mais vendidos nas últimas 24h — 06:10</span>
+            </div>
+            <label class="toggle-wrap"><input type="checkbox" id="email_topvendas"><span class="toggle-slider"></span></label>
+          </div>
+          <div class="notif-item">
+            <div class="notif-info">
+              <span class="notif-name"><i class="fas fa-calendar-week" style="color:var(--primary);margin-right:6px"></i>Relatório semanal</span>
+              <span class="notif-desc">Comparativo, por loja e curva ABC — toda 2ª-feira 07:00</span>
+            </div>
+            <label class="toggle-wrap"><input type="checkbox" id="email_semanal"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+
+        <div class="tg-actions">
+          <button class="btn-save" onclick="saveEmailConfig()"><i class="fas fa-save"></i> Salvar</button>
+          <button class="btn-test" onclick="testEmail()"><i class="fas fa-paper-plane"></i> Enviar Teste</button>
+          <span id="emailFeedback" class="tg-msg"></span>
+        </div>
+      </div>
+
       <!-- Serviços -->
       <div class="card" style="margin-bottom:16px">
         <div class="card-header"><h3><i class="fas fa-server"></i> Monitoramento de Serviços</h3>
@@ -369,6 +410,40 @@ function showFeedback(msg, ok) {
   setTimeout(() => { fb.className = 'tg-msg'; }, 4000);
 }
 
+// ── E-mail (Resend) ────────────────────────────────────────
+async function loadEmailConfig() {
+  const d = await DB.getEmailConfig() || {};
+  ['email_resumo', 'email_topvendas', 'email_semanal'].forEach(k => {
+    const el = document.getElementById(k);
+    if (el) el.checked = d[k] === true;
+  });
+  const badge = document.getElementById('emailStatusBadge');
+  badge.innerHTML = d.configured
+    ? '<span class="tag green"><i class="fas fa-check-circle"></i> Configurado</span>'
+    : '<span class="tag red"><i class="fas fa-times-circle"></i> RESEND_API_KEY não configurada no .env</span>';
+}
+
+async function saveEmailConfig() {
+  const body = {
+    email_resumo:    document.getElementById('email_resumo').checked,
+    email_topvendas: document.getElementById('email_topvendas').checked,
+    email_semanal:   document.getElementById('email_semanal').checked,
+  };
+  const res = await DB.saveEmailConfig(body);
+  const fb = document.getElementById('emailFeedback');
+  fb.textContent = res?.ok ? 'Salvo!' : 'Erro ao salvar';
+  fb.className = 'tg-msg ' + (res?.ok ? 'ok' : 'err');
+  setTimeout(() => { fb.className = 'tg-msg'; }, 3000);
+}
+
+async function testEmail() {
+  const fb = document.getElementById('emailFeedback');
+  const res = await DB.testEmail();
+  fb.textContent = res?.ok ? 'E-mail de teste enviado!' : (res?.error || 'Erro ao enviar');
+  fb.className = 'tg-msg ' + (res?.ok ? 'ok' : 'err');
+  setTimeout(() => { fb.className = 'tg-msg'; }, 5000);
+}
+
 // ── Services monitor ──────────────────────────────────────
 async function loadServices() {
   const tbody = document.getElementById('svcTable');
@@ -483,6 +558,7 @@ WS.on('_connected', () => {
 // ── Init ──────────────────────────────────────────────────
 load();
 loadTelegramConfig();
+loadEmailConfig();
 loadServices();
 loadMetrics();
 loadSecurity();

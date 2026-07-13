@@ -838,6 +838,43 @@ router.post('/config/telegram/test', async (req, res) => {
   }
 });
 
+// Relatórios por e-mail (Resend) — credencial (API key/from/to) só via
+// .env (ver resendClient.js), aqui só os toggles liga/desliga por relatório.
+const EMAIL_NOTIF_KEYS = ['email_resumo', 'email_topvendas', 'email_semanal'];
+
+router.get('/config/email', async (req, res) => {
+  const { rows } = await pool.query(`SELECT key, value FROM app_config WHERE key = ANY($1)`, [EMAIL_NOTIF_KEYS]);
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  const result = { configured: !!(process.env.RESEND_API_KEY && process.env.RESEND_TO_EMAIL) };
+  EMAIL_NOTIF_KEYS.forEach(k => { result[k] = map[k] === 'true'; });
+  res.json(result);
+});
+
+router.patch('/config/email', async (req, res) => {
+  const upsert = async (key, val) => pool.query(
+    `INSERT INTO app_config (key, value, updated_at) VALUES ($1,$2,now())
+     ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=now()`, [key, String(val)]
+  );
+  for (const k of EMAIL_NOTIF_KEYS) {
+    if (req.body[k] !== undefined) await upsert(k, req.body[k]);
+  }
+  res.json({ ok: true });
+});
+
+router.post('/config/email/test', async (req, res) => {
+  try {
+    const resend = require('../resendClient');
+    if (!resend.isConfigured()) return res.status(400).json({ error: 'RESEND_API_KEY ou RESEND_TO_EMAIL não configurado no .env do servidor' });
+    await resend.sendEmail({
+      subject: 'Teste — ML Dashboard',
+      html: '<p style="font-family:sans-serif">✅ Configuração do Resend funcionando corretamente.</p>',
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 router.get('/schedule/jobs', async (req, res) => {
   try {
     const { rows } = await pool.query(`SELECT name, cron, last_run, duration_ms, status FROM schedule_jobs`);
@@ -847,7 +884,7 @@ router.get('/schedule/jobs', async (req, res) => {
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   const { name } = req.params;
-  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
+  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
   await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });

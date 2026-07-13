@@ -173,6 +173,11 @@ const DB = {
   async getVendasDoDia(date, store_id='') { return this._get('/analises/vendas-mes/dia', { date, store_id }); },
   async getDiaHistorico(params = {}) { return this._get('/analises/vendas-mes/dia-historico', params); },
 
+  // ── Top Vendas Online (dashboard matinal) ────────────────────
+  async getResumoOntem()       { return this._get('/dashboard/resumo-ontem'); },
+  async getTopVendasDia()      { return this._get('/dashboard/top-vendas-dia'); },
+  async getResumoSemanalDash() { return this._get('/dashboard/resumo-semanal'); },
+
   // ── Alertas ────────────────────────────────────────────────
   async getReposicao(p={})        { return this._get(`/alertas/reposicao?threshold=${p.threshold||15}&store_id=${p.store_id||''}`); },
   async getCancelamentos(params)  { return this._get('/alertas/cancelamentos', params); },

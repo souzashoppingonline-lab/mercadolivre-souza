@@ -12,6 +12,7 @@ const redis = require('./db/redis');
 const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
+const { getResumoDiarioData, getTopVendas, getResumoSemanal } = require('./reports');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -1528,28 +1529,6 @@ async function syncNotionTarefas() {
 // ── Resumo Diário — 23:59 ────────────────────────────────────────────────────
 // Reaproveitada por resumoDiario (Telegram) e emailDailyReports (e-mail) —
 // mesma consulta, dois canais de saída. Não duplicar a query nos dois lugares.
-async function getResumoDiarioData() {
-  const { rows: porLoja } = await pool.query(`
-    SELECT s.nickname, COUNT(*) AS pedidos,
-           SUM(o.total_amount) AS receita,
-           SUM(o.quantity)     AS itens
-    FROM orders o
-    JOIN stores s ON s.id = o.store_id
-    WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
-    GROUP BY s.nickname ORDER BY receita DESC
-  `);
-
-  const { rows: porLog } = await pool.query(`
-    SELECT COALESCE(NULLIF(o.shipping_type,''), 'Desconhecido') AS tipo,
-           COUNT(*) AS pedidos
-    FROM orders o
-    WHERE o.date_created::date = CURRENT_DATE - 1 AND o.status != 'cancelled'
-    GROUP BY 1 ORDER BY 2 DESC
-  `);
-
-  return { porLoja, porLog };
-}
-
 async function resumoDiario() {
   console.log('[resumo-diario] gerando resumo do dia...');
   try {
@@ -1679,16 +1658,7 @@ async function emailDailyReports() {
   try {
     // Top vendas do e-mail cobre 24h (não 4h como o alerta do Telegram) —
     // faz mais sentido como "melhores do dia" num digest diário.
-    const { rows } = await pool.query(`
-      SELECT o.item_id, o.title, s.nickname AS loja,
-             SUM(o.quantity) AS unidades, SUM(o.total_amount) AS receita
-      FROM vw_ml_orders o
-      LEFT JOIN vw_ml_stores s ON s.id = o.store_id
-      WHERE o.status != 'cancelled' AND o.item_id IS NOT NULL
-        AND o.date_created >= now() - interval '24 hours'
-      GROUP BY o.item_id, o.title, s.nickname
-      ORDER BY unidades DESC LIMIT 10
-    `);
+    const rows = await getTopVendas({ hours: 24, limit: 10 });
     if (rows.length) {
       const html = emailTable(
         ['#', 'Loja', 'Item', 'Unidades', 'Receita'],
@@ -1713,67 +1683,14 @@ async function emailRelatorioSemanal() {
   const Pfmt = v => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
 
   try {
-    const periodoQuery = (fromDays, toDays) => pool.query(`
-      SELECT COUNT(*) AS pedidos,
-             COALESCE(SUM(o.total_amount), 0) AS receita,
-             COALESCE(SUM(
-               o.total_amount
-               - COALESCE(i.cost, 0) * o.quantity
-               - o.total_amount * COALESCE(s.imposto_pct, 0) / 100
-               - COALESCE(o.ml_fee, 0)
-               - COALESCE(o.shipping_cost, 0)
-               - COALESCE(o.shipping_seller_cost, 0)
-             ), 0) AS margem
-      FROM vw_ml_orders o
-      JOIN vw_ml_stores s ON s.id = o.store_id
-      LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-      WHERE o.status != 'cancelled'
-        AND o.date_created >= now() - interval '${fromDays} days'
-        AND o.date_created <  now() - interval '${toDays} days'
-    `);
-
-    const { rows: atualRows }    = await periodoQuery(7, 0);
-    const { rows: anteriorRows } = await periodoQuery(14, 7);
-    const atual    = atualRows[0]    || {};
-    const anterior = anteriorRows[0] || {};
-
-    const varPedidos = Number(anterior.pedidos) > 0 ? ((atual.pedidos - anterior.pedidos) / anterior.pedidos) * 100 : 0;
-    const varReceita = Number(anterior.receita) > 0 ? ((atual.receita - anterior.receita) / anterior.receita) * 100 : 0;
-
-    const { rows: porLoja } = await pool.query(`
-      SELECT s.nickname, COUNT(*) AS pedidos, SUM(o.total_amount) AS receita
-      FROM vw_ml_orders o JOIN vw_ml_stores s ON s.id = o.store_id
-      WHERE o.status != 'cancelled' AND o.date_created >= now() - interval '7 days'
-      GROUP BY s.nickname ORDER BY receita DESC
-    `);
-
-    // Curva ABC — mesma lógica de GET /api/comparativos/curva-abc (ver api.js), 7 dias, top 10.
-    const { rows: abcRows } = await pool.query(`
-      SELECT iid AS item_id,
-             COALESCE(MAX(o.title), MAX(i.title)) AS title,
-             SUM(COALESCE(o.total_amount, 0)) AS faturamento
-      FROM vw_ml_orders o
-      CROSS JOIN LATERAL (SELECT COALESCE(o.item_id, o.raw_data->'order_items'->0->'item'->>'id') AS iid) ids
-      LEFT JOIN vw_ml_items i ON i.ml_id = ids.iid AND i.store_id = o.store_id
-      WHERE o.status != 'cancelled' AND o.date_created >= now() - interval '7 days'
-      GROUP BY ids.iid
-      HAVING SUM(COALESCE(o.total_amount, 0)) > 0
-      ORDER BY faturamento DESC LIMIT 10
-    `);
-    const totalAbc = abcRows.reduce((a, r) => a + Number(r.faturamento), 0);
-    let acumAbc = 0;
-    const abc = abcRows.map(r => {
-      acumAbc += Number(r.faturamento);
-      const pct = totalAbc > 0 ? (acumAbc / totalAbc) * 100 : 0;
-      return { ...r, curva: pct <= 80 ? 'A' : pct <= 95 ? 'B' : 'C' };
-    });
+    const resumo = await getResumoSemanal();
+    const { atual, anterior, variacao, por_loja: porLoja, curva_abc: abc } = resumo;
 
     if (!porLoja.length) {
       console.log('[email-semanal] nenhum pedido nos últimos 7 dias — nada a enviar');
     } else {
       const de = new Date(Date.now() - 7 * 86400000).toLocaleDateString('pt-BR');
       const ate = new Date().toLocaleDateString('pt-BR');
-      const mc_pct = Number(atual.receita) > 0 ? (Number(atual.margem) / Number(atual.receita)) * 100 : 0;
 
       const html = `
         <p style="font-size:14px;color:#333;">📅 ${de} — ${ate} (vs. 7 dias anteriores)</p>
@@ -1781,17 +1698,17 @@ async function emailRelatorioSemanal() {
           <div style="flex:1;min-width:130px;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
             <div style="font-size:11px;color:#888;text-transform:uppercase;">Pedidos</div>
             <div style="font-size:22px;font-weight:700;">${atual.pedidos}</div>
-            <div style="font-size:12px;color:${varPedidos >= 0 ? '#27ae60' : '#e74c3c'};">${Pfmt(varPedidos)}</div>
+            <div style="font-size:12px;color:${variacao.pedidos_pct >= 0 ? '#27ae60' : '#e74c3c'};">${Pfmt(variacao.pedidos_pct)}</div>
           </div>
           <div style="flex:1;min-width:130px;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
             <div style="font-size:11px;color:#888;text-transform:uppercase;">Receita</div>
             <div style="font-size:22px;font-weight:700;">${Rfmt(atual.receita)}</div>
-            <div style="font-size:12px;color:${varReceita >= 0 ? '#27ae60' : '#e74c3c'};">${Pfmt(varReceita)}</div>
+            <div style="font-size:12px;color:${variacao.receita_pct >= 0 ? '#27ae60' : '#e74c3c'};">${Pfmt(variacao.receita_pct)}</div>
           </div>
           <div style="flex:1;min-width:130px;background:#f8f8f8;border-radius:8px;padding:12px 16px;">
             <div style="font-size:11px;color:#888;text-transform:uppercase;">Margem</div>
             <div style="font-size:22px;font-weight:700;">${Rfmt(atual.margem)}</div>
-            <div style="font-size:12px;color:#888;">${mc_pct.toFixed(1)}% MC</div>
+            <div style="font-size:12px;color:#888;">${atual.mc_pct.toFixed(1)}% MC</div>
           </div>
         </div>
         <h3 style="font-size:14px;margin:20px 0 4px;">Por loja</h3>
@@ -1888,21 +1805,7 @@ async function syncTopVendas() {
     return await recordSync('top-vendas', '0 */4 * * *', async () => {
       const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 
-      // vw_ml_orders/vw_ml_stores — views ML-only (v17), evita contaminar
-      // o ranking com pedidos Amazon.
-      const { rows } = await pool.query(`
-        SELECT o.item_id, o.title, s.nickname AS loja,
-               SUM(o.quantity) AS unidades,
-               SUM(o.total_amount) AS receita
-        FROM vw_ml_orders o
-        LEFT JOIN vw_ml_stores s ON s.id = o.store_id
-        WHERE o.status != 'cancelled'
-          AND o.item_id IS NOT NULL
-          AND o.date_created >= now() - interval '4 hours'
-        GROUP BY o.item_id, o.title, s.nickname
-        ORDER BY unidades DESC
-        LIMIT 5
-      `);
+      const rows = await getTopVendas({ hours: 4, limit: 5 });
 
       if (!rows.length) {
         console.log('[top-vendas] nenhuma venda nas últimas 4h — nada a notificar');

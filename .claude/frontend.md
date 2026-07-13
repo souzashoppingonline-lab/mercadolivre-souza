@@ -29,6 +29,7 @@ js/
 
 Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`):
 
+- **Início**: top-vendas-online (dashboard matinal "morning digest" — consolida em cards/gráficos coloridos o que já vai por Telegram/e-mail: top vendas últimas 4h — mesmo dado do alerta Telegram, via `GET /api/schedule/runs?job=top-vendas`, auto-refresh 4h —, resumo do dia anterior, top vendas do dia 24h, relatório semanal; usa Chart.js, sem rota exclusiva além de `GET /api/dashboard/resumo-ontem`/`top-vendas-dia`/`resumo-semanal`, ver `api.md`)
 - **Operação**: anuncios, pedidos, vendas, vendas-por-loja, promocoes, perguntas, mensagens, metricas, clientes, lojas
 - **Análises**: horarios, diasemana, produtos, performance, estoque-parado, publicidade, concorrentes
 - **Comparativos**: periodo, evolucao, curvaABC, analise-vendas-mes (BI — comparativo mensal, média histórica 12 meses, heatmap, rankings, insights automáticos e drill-down por dia; usa Chart.js, mesmo padrão do `dashboard.js`)

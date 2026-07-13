@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Top Vendas Online — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Top Vendas Online'; window.ACTIVE_NAV='top-vendas-online.html';</script>
+  <style>
+    .tvo-subtitle { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
+    .tvo-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 22px; }
+    .tvo-card-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
+    .tvo-card-title { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+    .tvo-card-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5; }
+    .tvo-live-badge { background: rgba(39,174,96,.15); color: var(--green); border: 1px solid rgba(39,174,96,.3); border-radius: 20px; font-size: 10px; font-weight: 700; padding: 3px 10px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .tvo-live-badge i { font-size: 7px; }
+    .tvo-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+    .tvo-meta b { color: var(--text-main); }
+    .tvo-refresh-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .tvo-refresh-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    .tvo-rank-list { display: flex; flex-direction: column; gap: 8px; }
+    .tvo-rank-row { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px; background: var(--bg-card2); border-radius: 10px; padding: 10px 14px; }
+    .tvo-rank-medal { font-size: 18px; text-align: center; }
+    .tvo-rank-medal.n { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+    .tvo-rank-item { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tvo-rank-store { font-size: 11px; color: var(--primary); font-weight: 700; display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+    .tvo-rank-nums { text-align: right; white-space: nowrap; }
+    .tvo-rank-units { font-size: 15px; font-weight: 800; color: var(--text-main); }
+    .tvo-rank-rev { font-size: 11px; color: var(--green); font-weight: 600; }
+
+    .tvo-stat-mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .tvo-stat-mini { background: var(--bg-card2); border-radius: 10px; padding: 12px 14px; }
+    .tvo-stat-mini .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .tvo-stat-mini .val { font-size: 18px; font-weight: 800; }
+    .tvo-stat-mini .sub { font-size: 11px; margin-top: 2px; }
+    .tvo-stat-mini .sub.pos { color: var(--green); }
+    .tvo-stat-mini .sub.neg { color: var(--red); }
+
+    .tvo-charts-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; margin-bottom: 18px; }
+    @media (max-width: 900px) { .tvo-charts-row { grid-template-columns: 1fr; } }
+
+    .tvo-table-wrap { overflow-x: auto; }
+    .tvo-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .tvo-table th { text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .tvo-table td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.04); white-space: nowrap; }
+    .tvo-table td.tvo-item-cell { white-space: normal; max-width: 320px; }
+    .tvo-abc-badge { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 5px; }
+    .tvo-abc-badge.A { background: rgba(39,174,96,.15); color: var(--green); }
+    .tvo-abc-badge.B { background: rgba(255,230,0,.15); color: var(--primary); }
+    .tvo-abc-badge.C { background: rgba(231,76,60,.15); color: var(--red); }
+
+    .tvo-empty { text-align: center; padding: 30px; color: var(--text-muted); font-size: 13px; }
+    .tvo-skeleton { animation: tvoPulse 1.4s infinite; background: var(--border); border-radius: 8px; }
+    @keyframes tvoPulse { 0%,100% { opacity: .4; } 50% { opacity: .9; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="tvo-subtitle">Resumo matinal — tudo que já vai pro Telegram/e-mail, num painel só, com gráficos.</p>
+
+      <!-- ═══ TOP VENDAS ONLINE (4h, mesmo dado do Telegram) ═══ -->
+      <div class="tvo-card">
+        <div class="tvo-card-header">
+          <div class="tvo-card-title"><i class="fas fa-bolt" style="color:var(--primary)"></i> Top Vendas Online</div>
+          <span class="tvo-live-badge" id="tvoLiveBadge"><i class="fas fa-circle"></i> ao vivo</span>
+        </div>
+        <div class="tvo-card-desc">Os 5 itens mais vendidos (por unidades) nas últimas 4h por loja — o mesmo dado enviado ao Telegram no alerta "Top Vendas". Atualiza sozinho a cada 4h (00h/04h/08h/12h/16h/20h).</div>
+        <div class="tvo-meta">
+          <span>Última atualização: <b id="tvoAtualizadoEm">—</b></span>
+          <span>Próxima automática: <b id="tvoProximaEm">—</b></span>
+          <button class="tvo-refresh-btn" id="tvoRefreshBtn" onclick="loadTopVendasOnline()"><i class="fas fa-sync-alt"></i> Atualizar agora</button>
+        </div>
+        <div class="tvo-rank-list" id="tvoRankList">
+          <div class="tvo-skeleton" style="height:52px"></div>
+          <div class="tvo-skeleton" style="height:52px"></div>
+          <div class="tvo-skeleton" style="height:52px"></div>
+        </div>
+      </div>
+
+      <!-- ═══ RESUMO DO DIA ANTERIOR ═══ -->
+      <div class="tvo-card">
+        <div class="tvo-card-header">
+          <div class="tvo-card-title"><i class="fas fa-newspaper" style="color:var(--blue)"></i> Resumo do Dia Anterior</div>
+        </div>
+        <div class="tvo-card-desc" id="resumoDesc">Pedidos, receita e logística de ontem — mesmo conteúdo do resumo diário (Telegram 06:00 / e-mail 06:10).</div>
+        <div class="tvo-stat-mini-grid" id="resumoKpis">
+          <div class="tvo-skeleton" style="height:64px"></div>
+          <div class="tvo-skeleton" style="height:64px"></div>
+          <div class="tvo-skeleton" style="height:64px"></div>
+          <div class="tvo-skeleton" style="height:64px"></div>
+        </div>
+        <div class="tvo-charts-row">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Por loja</div>
+            <canvas id="resumoLojaChart" height="140"></canvas>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Por logística</div>
+            <canvas id="resumoLogChart" height="140"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ TOP VENDAS DO DIA (24h) ═══ -->
+      <div class="tvo-card">
+        <div class="tvo-card-header">
+          <div class="tvo-card-title"><i class="fas fa-trophy" style="color:var(--orange)"></i> Top Vendas do Dia</div>
+        </div>
+        <div class="tvo-card-desc">Top 10 itens mais vendidos (por unidades) nas últimas 24h — mesmo conteúdo do e-mail diário, com nome do anúncio e loja.</div>
+        <div class="tvo-table-wrap">
+          <table class="tvo-table">
+            <thead><tr><th>#</th><th>Loja</th><th>Anúncio</th><th>Unidades</th><th>Receita</th></tr></thead>
+            <tbody id="topDiaTbody"><tr><td colspan="5" class="tvo-empty">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ RELATÓRIO SEMANAL ═══ -->
+      <div class="tvo-card">
+        <div class="tvo-card-header">
+          <div class="tvo-card-title"><i class="fas fa-calendar-week" style="color:var(--purple)"></i> Relatório Semanal</div>
+        </div>
+        <div class="tvo-card-desc" id="semanalDesc">Últimos 7 dias vs. 7 dias anteriores — mesmo conteúdo do e-mail semanal (toda 2ª-feira 07:00).</div>
+        <section class="kpi-grid" id="semanalKpis" style="margin-bottom:20px">
+          <div class="tvo-skeleton" style="height:80px"></div>
+          <div class="tvo-skeleton" style="height:80px"></div>
+          <div class="tvo-skeleton" style="height:80px"></div>
+        </section>
+        <div class="tvo-charts-row">
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Receita por loja (7 dias)</div>
+            <canvas id="semanalLojaChart" height="140"></canvas>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Curva ABC — top 10 por faturamento</div>
+            <div class="tvo-table-wrap">
+              <table class="tvo-table">
+                <thead><tr><th>Item</th><th>Faturamento</th><th>Curva</th></tr></thead>
+                <tbody id="abcTbody"><tr><td colspan="3" class="tvo-empty">Carregando...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const N  = v => new Intl.NumberFormat('pt-BR').format(Number(v)||0);
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`<span class="tvo-rank-medal n">${i+1}</span>`;
+let charts = {};
+function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
+
+// ── Top Vendas Online (últimas 4h — mesmo dado do Telegram) ─
+function nextTopVendasSlot() {
+  const slots = [0,4,8,12,16,20];
+  const now = new Date();
+  let next = new Date(now);
+  next.setMinutes(0,0,0);
+  while (!slots.includes(next.getHours()) || next <= now) next = new Date(next.getTime() + 3600000);
+  return next;
+}
+
+async function loadTopVendasOnline() {
+  const btn = document.getElementById('tvoRefreshBtn');
+  if (btn) btn.querySelector('i').className = 'fas fa-spinner fa-spin';
+  try {
+    const data = await DB.getScheduleRuns({ job: 'top-vendas', limit: 1 });
+    const run = (data?.runs || [])[0];
+    const top = run?.report?.top || [];
+
+    set('tvoAtualizadoEm', run?.finished_at ? new Date(run.finished_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+    set('tvoProximaEm', nextTopVendasSlot().toLocaleString('pt-BR', { timeStyle: 'short' }));
+
+    const list = document.getElementById('tvoRankList');
+    list.innerHTML = top.length ? top.map((r, i) => `
+      <div class="tvo-rank-row">
+        <div class="tvo-rank-medal">${medal(i)}</div>
+        <div>
+          <div class="tvo-rank-item">${r.item || r.title || '—'}</div>
+          <div class="tvo-rank-store"><i class="fas fa-store"></i> ${r.loja || '—'}</div>
+        </div>
+        <div class="tvo-rank-nums">
+          <div class="tvo-rank-units">${N(r.unidades)} un.</div>
+          <div class="tvo-rank-rev">${R(r.receita)}</div>
+        </div>
+      </div>`).join('') : '<div class="tvo-empty">Nenhuma venda nas últimas 4h ainda.</div>';
+  } catch (e) {
+    document.getElementById('tvoRankList').innerHTML = '<div class="tvo-empty" style="color:var(--red)">Erro ao carregar</div>';
+  } finally {
+    if (btn) btn.querySelector('i').className = 'fas fa-sync-alt';
+  }
+}
+
+// ── Resumo do Dia Anterior ───────────────────────────────────
+const LOG_COLORS = { 'Full':'#27ae60', 'Flex':'#9b59b6', 'Mercado Envios':'#e67e22', 'Coleta':'#2980b9' };
+function logLabel(tipo) {
+  const l = (tipo||'').toLowerCase();
+  if (l.includes('fulfillment')) return 'Full';
+  if (l.includes('self_service') || l.includes('flex')) return 'Flex';
+  if (l.includes('xd_drop_off') || l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return 'Mercado Envios';
+  if (l.includes('pickup')) return 'Coleta';
+  return tipo || 'Desconhecido';
+}
+
+async function loadResumoOntem() {
+  const data = await DB.getResumoOntem();
+  if (!data || data.error) {
+    document.getElementById('resumoKpis').innerHTML = '<div class="tvo-empty">Erro ao carregar</div>';
+    return;
+  }
+  const dataFmt = new Date(data.data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+  set('resumoDesc', `Pedidos, receita e logística de ${dataFmt} — mesmo conteúdo do resumo diário (Telegram 06:00 / e-mail 06:10).`);
+
+  const t = data.totais || {};
+  const ticket = t.pedidos > 0 ? t.receita / t.pedidos : 0;
+  document.getElementById('resumoKpis').innerHTML = `
+    <div class="tvo-stat-mini"><div class="lbl"><i class="fas fa-shopping-bag" style="color:var(--blue)"></i> Pedidos</div><div class="val">${N(t.pedidos)}</div></div>
+    <div class="tvo-stat-mini"><div class="lbl"><i class="fas fa-dollar-sign" style="color:var(--green)"></i> Receita</div><div class="val">${R(t.receita)}</div></div>
+    <div class="tvo-stat-mini"><div class="lbl"><i class="fas fa-cubes" style="color:var(--purple)"></i> Itens</div><div class="val">${N(t.itens)}</div></div>
+    <div class="tvo-stat-mini"><div class="lbl"><i class="fas fa-receipt" style="color:var(--orange)"></i> Ticket Médio</div><div class="val">${R(ticket)}</div></div>
+  `;
+
+  destroyChart('resumoLoja');
+  const porLoja = data.por_loja || [];
+  charts.resumoLoja = new Chart(document.getElementById('resumoLojaChart'), {
+    type: 'bar',
+    data: {
+      labels: porLoja.map(r => r.nickname),
+      datasets: [{ label: 'Receita', data: porLoja.map(r => r.receita), backgroundColor: '#FFE600', borderRadius: 6 }],
+    },
+    options: {
+      responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => R(c.raw) } } },
+      scales: { x: { ticks: { color: '#888' }, grid: { display: false } }, y: { ticks: { color: '#888', callback: v => 'R$'+(v/1000).toFixed(0)+'k' }, grid: { color: 'rgba(255,255,255,.04)' } } },
+    },
+  });
+
+  destroyChart('resumoLog');
+  const porLog = data.por_logistica || [];
+  charts.resumoLog = new Chart(document.getElementById('resumoLogChart'), {
+    type: 'doughnut',
+    data: {
+      labels: porLog.map(r => logLabel(r.tipo)),
+      datasets: [{ data: porLog.map(r => r.pedidos), backgroundColor: porLog.map(r => LOG_COLORS[logLabel(r.tipo)] || '#888') }],
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#ccc', boxWidth: 10, font: { size: 11 } } } } },
+  });
+}
+
+// ── Top Vendas do Dia (24h) ──────────────────────────────────
+async function loadTopVendasDia() {
+  const data = await DB.getTopVendasDia();
+  const tbody = document.getElementById('topDiaTbody');
+  const itens = data?.itens || [];
+  tbody.innerHTML = itens.length ? itens.map((r, i) => `
+    <tr>
+      <td>${medal(i)}</td>
+      <td><span style="color:var(--primary);font-weight:700;font-size:12px">${r.loja || '—'}</span></td>
+      <td class="tvo-item-cell">${r.title || r.item_id || '—'}</td>
+      <td><strong>${N(r.unidades)}</strong></td>
+      <td style="color:var(--green);font-weight:600">${R(r.receita)}</td>
+    </tr>`).join('') : '<tr><td colspan="5" class="tvo-empty">Nenhuma venda nas últimas 24h</td></tr>';
+}
+
+// ── Relatório Semanal ─────────────────────────────────────────
+async function loadResumoSemanal() {
+  const data = await DB.getResumoSemanalDash();
+  if (!data || data.error) {
+    document.getElementById('semanalKpis').innerHTML = '<div class="tvo-empty">Erro ao carregar</div>';
+    return;
+  }
+  const de = new Date(Date.now() - 7*86400000).toLocaleDateString('pt-BR');
+  const ate = new Date().toLocaleDateString('pt-BR');
+  set('semanalDesc', `${de} — ${ate}, comparado aos 7 dias anteriores — mesmo conteúdo do e-mail semanal (toda 2ª-feira 07:00).`);
+
+  const { atual, variacao, por_loja: porLoja, curva_abc: abc } = data;
+  const pct = (v) => `${v>=0?'+':''}${v.toFixed(1)}%`;
+  document.getElementById('semanalKpis').innerHTML = `
+    <div class="kpi-card blue"><div class="kpi-icon"><i class="fas fa-shopping-bag"></i></div>
+      <div class="kpi-info"><span class="kpi-label">Pedidos (7 dias)</span><span class="kpi-value">${N(atual.pedidos)}</span>
+      <span class="kpi-change ${variacao.pedidos_pct>=0?'positive':'negative'}">${pct(variacao.pedidos_pct)} vs. semana anterior</span></div></div>
+    <div class="kpi-card green"><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div>
+      <div class="kpi-info"><span class="kpi-label">Receita (7 dias)</span><span class="kpi-value">${R(atual.receita)}</span>
+      <span class="kpi-change ${variacao.receita_pct>=0?'positive':'negative'}">${pct(variacao.receita_pct)} vs. semana anterior</span></div></div>
+    <div class="kpi-card purple"><div class="kpi-icon"><i class="fas fa-equals"></i></div>
+      <div class="kpi-info"><span class="kpi-label">Margem (7 dias)</span><span class="kpi-value">${R(atual.margem)}</span>
+      <span class="kpi-change positive">${atual.mc_pct.toFixed(1)}% MC</span></div></div>
+  `;
+
+  destroyChart('semanalLoja');
+  charts.semanalLoja = new Chart(document.getElementById('semanalLojaChart'), {
+    type: 'bar',
+    data: { labels: porLoja.map(r=>r.nickname), datasets: [{ label:'Receita', data: porLoja.map(r=>r.receita), backgroundColor:'#8e44ad', borderRadius:6 }] },
+    options: {
+      responsive: true, plugins: { legend: { display:false }, tooltip: { callbacks: { label: c => R(c.raw) } } },
+      scales: { x: { ticks:{color:'#888'}, grid:{display:false} }, y: { ticks:{color:'#888', callback:v=>'R$'+(v/1000).toFixed(0)+'k'}, grid:{color:'rgba(255,255,255,.04)'} } },
+    },
+  });
+
+  document.getElementById('abcTbody').innerHTML = abc.length ? abc.map(r => `
+    <tr><td class="tvo-item-cell">${r.title || r.item_id}</td><td>${R(r.faturamento)}</td><td><span class="tvo-abc-badge ${r.curva}">${r.curva}</span></td></tr>
+  `).join('') : '<tr><td colspan="3" class="tvo-empty">Sem vendas nos últimos 7 dias</td></tr>';
+}
+
+// ── Init ──────────────────────────────────────────────────────
+Promise.all([loadTopVendasOnline(), loadResumoOntem(), loadTopVendasDia(), loadResumoSemanal()]);
+setInterval(loadTopVendasOnline, 4 * 3600000);
+WS.on('order_updated', () => { loadTopVendasDia(); });
+WS.on('_connected', () => {
+  const btn = document.getElementById('tvoLiveBadge');
+  if (btn) btn.innerHTML = '<i class="fas fa-circle"></i> ao vivo';
+});
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ const express = require('express');
 const { spawn } = require('child_process');
 const pool = require('../db/pool');
 const redis = require('../db/redis');
+const { getResumoDiarioData, getTopVendas, getResumoSemanal } = require('../reports');
 
 const router = express.Router();
 
@@ -40,6 +41,46 @@ router.get('/dashboard/alerts', async (req, res) => {
     `SELECT title, available_quantity FROM vw_ml_items WHERE status='active' AND available_quantity <= 5 ORDER BY available_quantity ASC LIMIT 10`
   );
   res.json(rows);
+});
+
+// ── Top Vendas Online (página "morning digest") ─────────────
+// Reaproveita reports.js — mesmas queries usadas pelo worker para os
+// relatórios de Telegram/e-mail, nunca duplicadas aqui. Ver .claude/workers.md.
+router.get('/dashboard/resumo-ontem', async (req, res) => {
+  try {
+    const { porLoja, porLog } = await getResumoDiarioData();
+    const totalPedidos = porLoja.reduce((a, r) => a + Number(r.pedidos), 0);
+    const totalReceita = porLoja.reduce((a, r) => a + Number(r.receita), 0);
+    const totalItens   = porLoja.reduce((a, r) => a + Number(r.itens),   0);
+    res.json({
+      data: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+      totais: { pedidos: totalPedidos, receita: totalReceita, itens: totalItens },
+      por_loja: porLoja.map(r => ({ nickname: r.nickname, pedidos: Number(r.pedidos), receita: Number(r.receita), itens: Number(r.itens) })),
+      por_logistica: porLog.map(r => ({ tipo: r.tipo, pedidos: Number(r.pedidos) })),
+    });
+  } catch (e) {
+    console.error('[api] /dashboard/resumo-ontem error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/dashboard/top-vendas-dia', async (req, res) => {
+  try {
+    const rows = await getTopVendas({ hours: 24, limit: 10 });
+    res.json({ periodo_horas: 24, itens: rows });
+  } catch (e) {
+    console.error('[api] /dashboard/top-vendas-dia error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/dashboard/resumo-semanal', async (req, res) => {
+  try {
+    res.json(await getResumoSemanal());
+  } catch (e) {
+    console.error('[api] /dashboard/resumo-semanal error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Anúncios / Produtos ────────────────────────────────────

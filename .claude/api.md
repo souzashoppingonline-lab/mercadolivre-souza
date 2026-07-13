@@ -11,6 +11,9 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/dashboard/chart?period=N` | série diária de pedidos/receita, últimos N dias |
 | `GET /api/dashboard/top-products?limit=N` | produtos mais vendidos por receita |
 | `GET /api/dashboard/alerts` | itens com estoque ≤ 5 |
+| `GET /api/dashboard/resumo-ontem` | pedidos/receita/itens de ontem, por loja e por logística — usa `reports.getResumoDiarioData()` (mesma função do resumo diário Telegram/e-mail, ver `workers.md`). Consumido por `pages/top-vendas-online.html` |
+| `GET /api/dashboard/top-vendas-dia` | top 10 itens mais vendidos (unidades) nas últimas 24h, com loja — usa `reports.getTopVendas({hours:24, limit:10})`, mesma função do e-mail diário |
+| `GET /api/dashboard/resumo-semanal` | comparativo 7 dias vs. 7 dias anteriores (pedidos/receita/margem) + curva ABC top 10 — usa `reports.getResumoSemanal()`, mesma função do e-mail semanal |
 
 ## Anúncios / Produtos
 | Rota | Descrição |

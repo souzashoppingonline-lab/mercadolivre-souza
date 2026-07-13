@@ -5,6 +5,7 @@
 const NAV_ITEMS = [
   { section: 'Início', items: [
     { href: '../index.html', icon: 'fa-home', label: 'Dashboard' },
+    { href: 'top-vendas-online.html', icon: 'fa-bolt', label: 'Top Vendas Online' },
   ]},
   { section: 'Operação', items: [
     { href: 'anuncios.html', icon: 'fa-tag', label: 'Anúncios' },

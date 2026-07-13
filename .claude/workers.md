@@ -48,6 +48,12 @@ Cada handler que grava dados relevantes para cache também é responsável por i
    - `429` esgotando as 5 tentativas → aplica cooldown de 5 min naquele `topic:storeId` (`apiCooldown`) e conta em `track429` (alerta Telegram `tg_429` se ≥3 cooldowns em 10 min).
    - Outros erros → relança (BullMQ registra `failed`; 5 falhas consecutivas seguidas disparam alerta `tg_fila`).
 
+## Consultas compartilhadas — `server/src/reports.js`
+
+`getResumoDiarioData()`, `getTopVendas({hours, limit})` e `getResumoSemanal()` vivem em `server/src/reports.js` (não em `worker.js`) — módulo puro de leitura do Postgres, sem BullMQ/Telegram/e-mail. `worker.js` importa essas funções para montar as mensagens/e-mails; `routes/api.js` importa as mesmas funções para as rotas `GET /api/dashboard/resumo-ontem`/`top-vendas-dia`/`resumo-semanal` (consumidas por `pages/top-vendas-online.html`). Única fonte de verdade por cálculo — nunca duplicar a query em worker.js e api.js separadamente (ver `decisions.md`).
+
+`syncTopVendas` (4h/5), a seção "Top vendas do dia" de `emailDailyReports` (24h/10) e `emailRelatorioSemanal` foram refatorados para chamar `getTopVendas`/`getResumoSemanal` em vez de SQL inline — comportamento e mensagens enviadas não mudaram, só a fonte da query.
+
 ## Jobs agendados (cron manual via `setTimeout` recursivo — `scheduleAt`)
 
 Não usa `node-cron`; cada job se reagenda no `finally` chamando `scheduleAt(hora, minuto, fn, label)` de novo.

@@ -123,6 +123,13 @@
             </div>
             <div class="notif-item">
               <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-chart-simple" style="color:var(--purple);margin-right:6px"></i>Outlier estatístico</span>
+                <span class="notif-desc">Dia fechou muito acima/abaixo da média histórica (±1,5 desvio-padrão) — 06:20</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_outlier"><span class="toggle-slider"></span></label>
+            </div>
+            <div class="notif-item">
+              <div class="notif-info">
                 <span class="notif-name"><i class="fas fa-server" style="color:#2980b9;margin-right:6px"></i>Serviços do sistema</span>
                 <span class="notif-desc">Alerta se ml-dashboard ou worker cair</span>
               </div>
@@ -349,7 +356,7 @@ async function loadTelegramConfig() {
   if (d.bot_token) document.getElementById('tgToken').placeholder = d.bot_token;
 
   // Load notification prefs
-  const keys = ['tg_vendas','tg_topvendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra'];
+  const keys = ['tg_vendas','tg_topvendas','tg_outlier','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra'];
   keys.forEach(k => {
     const el = document.getElementById(k);
     if (el && d[k] !== undefined) el.checked = d[k] === true || d[k] === 'true';
@@ -363,6 +370,7 @@ async function saveNotifConfig() {
   const body = {
     tg_vendas:     document.getElementById('tg_vendas').checked,
     tg_topvendas:  document.getElementById('tg_topvendas').checked,
+    tg_outlier:    document.getElementById('tg_outlier').checked,
     tg_servicos:   document.getElementById('tg_servicos').checked,
     tg_recursos:   document.getElementById('tg_recursos').checked,
     tg_reposicao:  document.getElementById('tg_reposicao').checked,

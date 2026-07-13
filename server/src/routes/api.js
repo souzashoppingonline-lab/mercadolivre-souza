@@ -785,7 +785,7 @@ router.get('/webhooks/config', async (req, res) => {
   });
 });
 
-const TG_NOTIF_KEYS = ['tg_vendas','tg_topvendas','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra','tg_interval','silence_start','silence_end'];
+const TG_NOTIF_KEYS = ['tg_vendas','tg_topvendas','tg_outlier','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra','tg_interval','silence_start','silence_end'];
 const ALL_TG_KEYS   = ['telegram_bot_token','telegram_chat_id', ...TG_NOTIF_KEYS];
 
 router.get('/config/telegram', async (req, res) => {
@@ -884,7 +884,7 @@ router.get('/schedule/jobs', async (req, res) => {
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   const { name } = req.params;
-  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
+  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal','checkOutlierEstatistico'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
   await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });
@@ -1249,7 +1249,7 @@ function buildDiasArray(rows, ano, mes, hoje) {
 
 router.get('/analises/vendas-mes', async (req, res) => {
   try {
-    const { store_id = '' } = req.query;
+    const { store_id = '', item_id = '' } = req.query;
     const hoje = new Date();
     const ano  = Number(req.query.year)  || hoje.getFullYear();
     const mes  = Number(req.query.month) || (hoje.getMonth() + 1); // 1-indexed
@@ -1260,7 +1260,8 @@ router.get('/analises/vendas-mes', async (req, res) => {
     const inicioHistorico = new Date(ano, mes - 13, 1); // 12 meses antes do início do mês atual
     const fimAtual        = new Date(ano, mes, 1);
 
-    const storeFilter = `AND ($2 = '' OR o.store_id = $2::bigint)`;
+    // $2 = store_id, $4 = item_id — mesmos placeholders reaproveitados nas 3 queries desta rota.
+    const storeFilter = `AND ($2 = '' OR o.store_id = $2::bigint) AND ($4 = '' OR o.item_id = $4)`;
 
     // Query 1: os 3 meses de comparação, numa passada só
     const { rows: comparRows } = await pool.query(
@@ -1274,7 +1275,7 @@ router.get('/analises/vendas-mes', async (req, res) => {
          AND o.date_created >= $1 AND o.date_created < $3
          ${storeFilter}
        GROUP BY 1,2,3,4`,
-      [inicioRetrasado, store_id, fimAtual]
+      [inicioRetrasado, store_id, fimAtual, item_id]
     );
     const rowsAtual     = comparRows.filter(r => r.ano === ano && r.mes === mes);
     const rowsAnterior  = comparRows.filter(r => { const d = new Date(ano, mes - 2, 1); return r.ano === d.getFullYear() && r.mes === d.getMonth() + 1; });
@@ -1286,28 +1287,66 @@ router.get('/analises/vendas-mes', async (req, res) => {
     const anoRetr      = new Date(ano, mes - 3, 1);
     const mesRetrasado = buildDiasArray(rowsRetrasado, anoRetr.getFullYear(), anoRetr.getMonth() + 1, hoje);
 
-    // Query 2: média histórica por dia-do-mês, 12 meses antes do mês selecionado
+    // Query 2: média histórica por dia-do-mês, 12 meses antes do mês selecionado.
+    // Inclui lucro (mesma fórmula de margem de GET /api/vendas/detalhado, ver finance.md)
+    // e maior/menor/meses_analisados — usados pelo Calendário de Sazonalidade e Dia Ideal.
     const { rows: histRaw } = await pool.query(
-      `SELECT dia, AVG(receita) AS media, COALESCE(STDDEV_POP(receita), 0) AS desvio, AVG(pedidos) AS media_pedidos
+      `SELECT dia, AVG(receita) AS media, COALESCE(STDDEV_POP(receita), 0) AS desvio,
+              AVG(pedidos) AS media_pedidos, AVG(lucro) AS media_lucro,
+              MAX(receita) AS maior, MIN(receita) AS menor, COUNT(*) AS meses_analisados
        FROM (
-         SELECT date_created::date AS d, EXTRACT(DAY FROM date_created)::int AS dia,
-                SUM(total_amount) AS receita, COUNT(*) AS pedidos
+         SELECT o.date_created::date AS d, EXTRACT(DAY FROM o.date_created)::int AS dia,
+                SUM(o.total_amount) AS receita, COUNT(*) AS pedidos,
+                SUM(
+                  o.total_amount
+                  - COALESCE(i.cost, 0) * o.quantity
+                  - o.total_amount * COALESCE(s.imposto_pct, 0) / 100
+                  - COALESCE(o.ml_fee, 0)
+                  - COALESCE(o.shipping_cost, 0)
+                  - COALESCE(o.shipping_seller_cost, 0)
+                ) AS lucro
          FROM vw_ml_orders o
+         JOIN vw_ml_stores s ON s.id = o.store_id
+         LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id AND i.store_id = o.store_id
          WHERE o.status != 'cancelled'
            AND o.date_created >= $1 AND o.date_created < $3
            ${storeFilter}
          GROUP BY 1,2
        ) daily
        GROUP BY dia ORDER BY dia`,
-      [inicioHistorico, store_id, inicioAtual]
+      [inicioHistorico, store_id, inicioAtual, item_id]
     );
-    const histByDay = new Map(histRaw.map(r => [Number(r.dia), { media: Number(r.media), desvio: Number(r.desvio), media_pedidos: Number(r.media_pedidos) }]));
+    const histByDay = new Map(histRaw.map(r => [Number(r.dia), {
+      media: Number(r.media), desvio: Number(r.desvio), media_pedidos: Number(r.media_pedidos),
+      media_lucro: Number(r.media_lucro || 0), maior: Number(r.maior || 0), menor: Number(r.menor || 0),
+      meses_analisados: Number(r.meses_analisados || 0),
+    }]));
     const mediaHistorica = Array.from({ length: mesAtual.totalDias }, (_, i) => {
       const d = i + 1;
-      const h = histByDay.get(d) || { media: 0, desvio: 0, media_pedidos: 0 };
-      return { dia: d, media: h.media, desvio: h.desvio, banda_min: Math.max(0, h.media - h.desvio), banda_max: h.media + h.desvio };
+      const h = histByDay.get(d) || { media: 0, desvio: 0, media_pedidos: 0, media_lucro: 0, maior: 0, menor: 0, meses_analisados: 0 };
+      return {
+        dia: d, media: h.media, desvio: h.desvio, media_pedidos: h.media_pedidos, media_lucro: h.media_lucro,
+        maior: h.maior, menor: h.menor, meses_analisados: h.meses_analisados,
+        banda_min: Math.max(0, h.media - h.desvio), banda_max: h.media + h.desvio,
+      };
     });
     const mediaGeral = mediaHistorica.length ? mediaHistorica.reduce((a, m) => a + m.media, 0) / mediaHistorica.length : 0;
+
+    // ── Sazonalidade: ranking histórico, estrelas por percentil, participação % ──
+    // Estrelas: top 20% dos dias (por média histórica) = 5, próximos 20% = 4, ... até 1.
+    // Mesmos objetos de `mediaHistorica` — ordenar a cópia seta `ranking`/`estrelas`
+    // por referência, sem precisar reordenar `mediaHistorica` (que fica por dia).
+    const somaMediaHist = mediaHistorica.reduce((a, m) => a + m.media, 0);
+    const ordenadoPorMedia = [...mediaHistorica].sort((a, b) => b.media - a.media);
+    const nDiasHist = mediaHistorica.length;
+    ordenadoPorMedia.forEach((m, i) => {
+      m.ranking = i + 1;
+      const posPct = nDiasHist > 0 ? i / nDiasHist : 0;
+      m.estrelas = posPct < 0.2 ? 5 : posPct < 0.4 ? 4 : posPct < 0.6 ? 3 : posPct < 0.8 ? 2 : 1;
+      m.participacao_pct = somaMediaHist > 0 ? Number((m.media / somaMediaHist * 100).toFixed(2)) : 0;
+    });
+    const sazonalidadeTop10    = ordenadoPorMedia.slice(0, 10);
+    const sazonalidadeBottom10 = [...ordenadoPorMedia].reverse().slice(0, 10);
 
     // ── KPIs (só dias já ocorridos do mês atual) ──────────────
     const diasOcorridosAtual = mesAtual.dias.filter(d => d.ocorrido);
@@ -1396,7 +1435,7 @@ router.get('/analises/vendas-mes', async (req, res) => {
          AND o.date_created >= $1 AND o.date_created < $3
          ${storeFilter}
        GROUP BY o.item_id ORDER BY unidades DESC LIMIT 5`,
-      [inicioAtual, store_id, fimAtual]
+      [inicioAtual, store_id, fimAtual, item_id]
     );
     const sugestaoEstoque = topItens
       .filter(r => r.estoque != null && Number(r.estoque) <= 15)
@@ -1404,6 +1443,34 @@ router.get('/analises/vendas-mes', async (req, res) => {
 
     // Sugestão de anúncios — dias historicamente mais fracos (bottom 5 do ranking do mês)
     const sugestaoAnuncios = bottom10.slice(0, 5).map(d => ({ dia: d.dia, receita: d.receita }));
+
+    // ── Dia Ideal — só quando o mês/ano selecionado é o mês corrente de verdade ──
+    // "Esperado" = média histórica do mesmo dia-do-mês (12 meses); "atual" = receita
+    // de hoje até agora (já está em mesAtual, porque hoje conta como `ocorrido`).
+    let diaIdeal = null;
+    if (ano === hoje.getFullYear() && mes === hoje.getMonth() + 1) {
+      const diaAtualNum = hoje.getDate();
+      const h = mediaHistorica.find(m => m.dia === diaAtualNum);
+      const atualReceita = mesAtual.dias.find(d => d.dia === diaAtualNum)?.receita ?? 0;
+      if (h && h.meses_analisados > 0) {
+        const diferenca = atualReceita - h.media;
+        const diferencaPct = h.media > 0 ? (diferenca / h.media) * 100 : (atualReceita > 0 ? 100 : 0);
+        const status = diferencaPct >= 20 ? 'muito_acima'
+          : diferencaPct >= 5 ? 'acima'
+          : diferencaPct >= -5 ? 'dentro_da_media'
+          : diferencaPct >= -20 ? 'abaixo'
+          : 'muito_abaixo';
+        diaIdeal = {
+          dia: diaAtualNum,
+          esperado: Number(h.media.toFixed(2)),
+          atual: Number(atualReceita.toFixed(2)),
+          diferenca: Number(diferenca.toFixed(2)),
+          diferenca_pct: Number(diferencaPct.toFixed(1)),
+          status,
+          historico: { media: h.media, maior: h.maior, menor: h.menor, desvio: h.desvio, meses_analisados: h.meses_analisados },
+        };
+      }
+    }
 
     res.json({
       periodo: { ano, mes, total_dias: mesAtual.totalDias, ultimo_dia_ocorrido: mesAtual.ultimoDiaOcorrido },
@@ -1418,6 +1485,8 @@ router.get('/analises/vendas-mes', async (req, res) => {
       media_geral: Number(mediaGeral.toFixed(2)),
       ranking_top10: top10,
       ranking_bottom10: bottom10,
+      dia_ideal: diaIdeal,
+      sazonalidade: { top10: sazonalidadeTop10, bottom10: sazonalidadeBottom10 },
       insights: {
         tendencia, aceleracao, melhor_semana: melhorSemana, pior_semana: piorSemana,
         concentracao_top5_pct: concentracaoTop5Pct,
@@ -1428,6 +1497,56 @@ router.get('/analises/vendas-mes', async (req, res) => {
     });
   } catch (e) {
     console.error('[api] /analises/vendas-mes error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Drawer de sazonalidade: evolução mês a mês + produtos mais vendidos desse
+// dia-do-mês, na mesma janela histórica de 12 meses da rota principal.
+router.get('/analises/vendas-mes/dia-historico', async (req, res) => {
+  try {
+    const { store_id = '' } = req.query;
+    const dia  = Number(req.query.dia);
+    const ano  = Number(req.query.year)  || new Date().getFullYear();
+    const mes  = Number(req.query.month) || (new Date().getMonth() + 1);
+    if (!dia || dia < 1 || dia > 31) return res.status(400).json({ error: 'dia é obrigatório (1-31)' });
+
+    const inicioAtual     = new Date(ano, mes - 1, 1);
+    const inicioHistorico = new Date(ano, mes - 13, 1);
+    const storeFilter = `AND ($3 = '' OR o.store_id = $3::bigint)`;
+
+    const { rows: evolucao } = await pool.query(
+      `SELECT EXTRACT(YEAR FROM o.date_created)::int AS ano, EXTRACT(MONTH FROM o.date_created)::int AS mes,
+              SUM(o.total_amount) AS receita, COUNT(*) AS pedidos
+       FROM vw_ml_orders o
+       WHERE o.status != 'cancelled'
+         AND EXTRACT(DAY FROM o.date_created) = $4
+         AND o.date_created >= $1 AND o.date_created < $2
+         ${storeFilter}
+       GROUP BY 1,2 ORDER BY 1,2`,
+      [inicioHistorico, inicioAtual, store_id, dia]
+    );
+
+    const { rows: produtos } = await pool.query(
+      `SELECT o.item_id, COALESCE(MAX(o.title), MAX(i.title)) AS title,
+              SUM(o.quantity) AS unidades, SUM(o.total_amount) AS receita
+       FROM vw_ml_orders o
+       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id AND i.store_id = o.store_id
+       WHERE o.status != 'cancelled' AND o.item_id IS NOT NULL
+         AND EXTRACT(DAY FROM o.date_created) = $4
+         AND o.date_created >= $1 AND o.date_created < $2
+         ${storeFilter}
+       GROUP BY o.item_id ORDER BY unidades DESC LIMIT 10`,
+      [inicioHistorico, inicioAtual, store_id, dia]
+    );
+
+    res.json({
+      dia,
+      evolucao: evolucao.map(r => ({ ano: r.ano, mes: r.mes, receita: Number(r.receita), pedidos: Number(r.pedidos) })),
+      produtos_mais_vendidos: produtos.map(r => ({ item_id: r.item_id, title: r.title, unidades: Number(r.unidades), receita: Number(r.receita) })),
+    });
+  } catch (e) {
+    console.error('[api] /analises/vendas-mes/dia-historico error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

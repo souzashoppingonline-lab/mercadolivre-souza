@@ -1808,6 +1808,71 @@ async function emailRelatorioSemanal() {
   scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 }
 
+// ── Outlier estatístico — 06:20 diário, compara ontem com a média histórica ─
+// Mesma lógica de `media_historica`/`banda_min`/`banda_max` da página
+// "Análise de Vendas do Mês" (GET /api/analises/vendas-mes), reimplementada
+// aqui porque o worker fala só com o Postgres, nunca com a própria API HTTP
+// do server (ver decisions.md). Limiar de alerta é ±1.5 desvio-padrão —
+// mais largo que a banda de ±1 desvio mostrada no gráfico (que é só "faixa
+// normal" visual, não gatilho de alerta) — evita notificar toda vez que um
+// dia sai um pouco da média, o que aconteceria com frequência.
+async function checkOutlierEstatistico() {
+  console.log('[outlier] verificando outliers estatísticos...');
+  try {
+    const ontem = new Date(Date.now() - 86400000);
+    const diaDoMes = ontem.getDate();
+    const inicioOntem = new Date(ontem.getFullYear(), ontem.getMonth(), ontem.getDate());
+    const fimOntem = new Date(inicioOntem.getTime() + 86400000);
+    const inicioHistorico = new Date(ontem.getFullYear(), ontem.getMonth() - 12, 1);
+
+    const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
+    const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+
+    for (const store of stores) {
+      const { rows: ontemRows } = await pool.query(
+        `SELECT COALESCE(SUM(total_amount), 0) AS receita FROM orders
+         WHERE store_id = $1 AND status != 'cancelled' AND date_created >= $2 AND date_created < $3`,
+        [store.id, inicioOntem, fimOntem]
+      );
+      const receitaOntem = Number(ontemRows[0]?.receita || 0);
+
+      const { rows: histRows } = await pool.query(
+        `SELECT AVG(receita) AS media, COALESCE(STDDEV_POP(receita), 0) AS desvio, COUNT(*) AS n
+         FROM (
+           SELECT date_created::date AS d, SUM(total_amount) AS receita
+           FROM orders
+           WHERE store_id = $1 AND status != 'cancelled'
+             AND EXTRACT(DAY FROM date_created) = $2
+             AND date_created >= $3 AND date_created < $4
+           GROUP BY 1
+         ) daily`,
+        [store.id, diaDoMes, inicioHistorico, inicioOntem]
+      );
+      const h = histRows[0];
+      const n = Number(h?.n || 0);
+      if (n < 3) continue; // histórico insuficiente pra confiar na estatística
+      const media = Number(h.media), desvio = Number(h.desvio);
+      if (desvio === 0) continue;
+
+      const limiteSuperior = media + 1.5 * desvio;
+      const limiteInferior = Math.max(0, media - 1.5 * desvio);
+      if (receitaOntem <= limiteSuperior && receitaOntem >= limiteInferior) continue;
+
+      const acima = receitaOntem > limiteSuperior;
+      const diffPct = media > 0 ? ((receitaOntem - media) / media) * 100 : 0;
+      await tgNotify('tg_outlier',
+        `${acima ? '🚀' : '⚠️'} <b>Dia fora do padrão — ${store.nickname}</b>\n` +
+        `📅 Ontem (dia ${diaDoMes}) fechou ${acima ? 'muito acima' : 'muito abaixo'} da média histórica\n` +
+        `💰 Receita: ${Rfmt(receitaOntem)} (média: ${Rfmt(media)}, ${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)\n` +
+        `📊 Baseado em ${n} mês(es) de histórico`
+      );
+    }
+  } catch (e) {
+    console.error('[outlier] erro:', e.message);
+  }
+  scheduleAt(6, 20, checkOutlierEstatistico, 'outlier-check');
+}
+
 // ── Top Vendas — a cada 4h, ranking de itens mais vendidos por loja ──────
 // Objetivo: dar visibilidade rápida do que está vendendo bem "agora" (janela
 // de 4h, não acumulado do dia) para decisão de reposição de estoque — ver
@@ -1926,6 +1991,7 @@ scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
+scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
 
@@ -2008,6 +2074,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'emailRelatorioSemanal') {
       console.log('[worker] emailRelatorioSemanal disparado manualmente');
       emailRelatorioSemanal().catch(e => console.error('[worker] emailRelatorioSemanal erro:', e.message));
+    }
+    if (cmd === 'checkOutlierEstatistico') {
+      console.log('[worker] checkOutlierEstatistico disparado manualmente');
+      checkOutlierEstatistico().catch(e => console.error('[worker] checkOutlierEstatistico erro:', e.message));
     }
   } catch {}
 });
@@ -2110,8 +2180,11 @@ async function handleTgCommand(text, chatId, botToken) {
     } else if (tipo === 'email-semanal') {
       await tgReply(chatId, '📧 Gerando <b>relatório semanal</b> por e-mail...', botToken);
       emailRelatorioSemanal().catch(e => console.error('[tg-bot] emailRelatorioSemanal erro:', e.message));
+    } else if (tipo === 'outlier') {
+      await tgReply(chatId, '📊 Verificando <b>outliers estatísticos</b> (dia anterior vs. média histórica)...', botToken);
+      checkOutlierEstatistico().catch(e => console.error('[tg-bot] checkOutlierEstatistico erro:', e.message));
     } else {
-      await tgReply(chatId, '❓ Tipos disponíveis: <code>vendas</code>, <code>metricas</code>, <code>visitas</code>, <code>devolucoes</code>, <code>topvendas</code>, <code>email-diario</code>, <code>email-semanal</code>', botToken);
+      await tgReply(chatId, '❓ Tipos disponíveis: <code>vendas</code>, <code>metricas</code>, <code>visitas</code>, <code>devolucoes</code>, <code>topvendas</code>, <code>email-diario</code>, <code>email-semanal</code>, <code>outlier</code>', botToken);
     }
     return;
   }
@@ -2128,7 +2201,8 @@ async function handleTgCommand(text, chatId, botToken) {
       `/sync devolucoes — busca retroativa completa de devoluções\n` +
       `/sync topvendas — forçar checagem de top vendas (últimas 4h)\n` +
       `/sync email-diario — forçar envio dos e-mails diários (resumo + top vendas)\n` +
-      `/sync email-semanal — forçar envio do relatório semanal por e-mail\n\n` +
+      `/sync email-semanal — forçar envio do relatório semanal por e-mail\n` +
+      `/sync outlier — forçar checagem de outlier estatístico (dia anterior vs. média histórica)\n\n` +
       `Exemplos: <code>/refresh topmix</code>  <code>/sync vendas</code>`,
       botToken
     );

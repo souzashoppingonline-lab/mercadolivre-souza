@@ -62,6 +62,7 @@ Não usa `node-cron`; cada job se reagenda no `finally` chamando `scheduleAt(hor
 | 05:00 | `syncPrecos` | atualiza `items.original_price` de itens não fechados; zera se não há promoção ativa |
 | 06:00 | `resumoDiario` | envia ao Telegram (`tg_resumo`, sempre — não respeita as flags de tópico) o resumo do dia anterior por loja e por modal de logística |
 | 06:10 | `emailDailyReports` | envia por e-mail (Resend) o "Resumo do Dia" (mesma query de `resumoDiario`, extraída em `getResumoDiarioData()`) e o "Top Vendas do Dia" (top 10, janela de 24h — diferente do alerta de `syncTopVendas`, que é 4h). Cada um só é enviado se o toggle correspondente (`email_resumo`/`email_topvendas`) estiver ligado. Ver `business-rules.md` |
+| 06:20 | `checkOutlierEstatistico` | compara a receita de ontem de cada loja ML com a média/desvio histórico do mesmo dia-do-mês (12 meses, recalculado em JS — mesma janela da página BI `analise-vendas-mes.html`); fora de `±1.5` desvio-padrão e com `≥3` meses de histórico, alerta Telegram (`tg_outlier`). Ver `business-rules.md` |
 | 2ª 07:00 | `emailRelatorioSemanal` | e-mail com vendas dos últimos 7 dias vs. 7 dias anteriores (pedidos/receita/margem — mesma fórmula de `GET /api/vendas/detalhado`, ver `finance.md`), por loja, e curva ABC top 10 (mesma lógica de `GET /api/comparativos/curva-abc`). Só envia se `email_semanal` estiver ligado e houve pedido no período |
 | 2ª 08:00 | `syncNotionTarefas` | avalia anúncios ativos com 0 vendas/30d (estoque parado) e 1-3 vendas/30d (baixo); cria tarefas no Notion database (`NOTION_DATABASE_ID`). Anti-duplicata via busca por MLB antes de criar. Máx 20 parados + 10 baixos por execução. Rate-limit de 400ms entre chamadas Notion. Requer `NOTION_TOKEN` + `NOTION_DATABASE_ID` no `.env`; sem esses, loga aviso e retorna `not_configured` |
 | a cada 4h (00/04/08/12/16/20h) | `syncTopVendas` | **não chama a API do ML** — só consulta `vw_ml_orders`/`vw_ml_stores` (dado já sincronizado via webhook) e envia ao Telegram (`tg_topvendas`) o top 5 itens mais vendidos (por unidades) nas últimas 4h, com nome da loja. Não notifica se não houve venda no período. Ver `business-rules.md` |
@@ -87,7 +88,7 @@ Desde v15, `worker.js` também sobe (2 linhas aditivas no final do arquivo, nenh
 
 ## Comandos manuais (canal Redis `worker:cmd`)
 
-Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (busca retroativa completa, não agendada), `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `reprocessSkipped`. Disparado por `POST /api/schedule/jobs/:name/trigger` ou `server/sync-now.sh`.
+Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (busca retroativa completa, não agendada), `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `checkOutlierEstatistico`, `reprocessSkipped`. Disparado por `POST /api/schedule/jobs/:name/trigger` ou `server/sync-now.sh`.
 
 ## Bot do Telegram (long polling)
 
@@ -97,7 +98,7 @@ Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (bu
 |---|---|
 | `/status` | status de token de todas as lojas |
 | `/refresh [nome]` | força refresh de token (todas as expiradas, ou busca parcial por nome) |
-| `/sync vendas\|metricas\|visitas\|devolucoes\|topvendas\|email-diario\|email-semanal` | dispara o sync correspondente |
+| `/sync vendas\|metricas\|visitas\|devolucoes\|topvendas\|email-diario\|email-semanal\|outlier` | dispara o sync correspondente |
 | `/help`, `/start` | lista de comandos |
 
 Notificações Telegram em geral (`tgNotify`) respeitam: flag por tópico em `app_config` (`tg_*` = `'false'` desativa), janela de silêncio (`silence_start`/`silence_end`, padrão 22:00–07:00) e intervalo mínimo entre envios do mesmo tópico (`tg_interval`, minutos). `tgNotifyForce` (usado por `syncVendas`, `syncMetricas`, `resumoDiario`) ignora essas regras — sempre envia.

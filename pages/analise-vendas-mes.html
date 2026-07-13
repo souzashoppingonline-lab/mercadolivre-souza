@@ -53,6 +53,45 @@
 
     .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* Dia Ideal */
+    .ideal-day-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+    @media(max-width: 800px) { .ideal-day-grid { grid-template-columns: 1fr; } }
+    .ideal-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 16px; }
+    .ideal-field .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .ideal-field .val { font-size: 19px; font-weight: 700; margin-top: 3px; }
+    .ideal-status { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 8px 16px; border-radius: 20px; margin-bottom: 14px; }
+    .ideal-status.muito_acima, .ideal-status.acima { background: rgba(39,174,96,.15); color: var(--green); }
+    .ideal-status.dentro_da_media { background: rgba(255,230,0,.12); color: var(--primary); }
+    .ideal-status.abaixo, .ideal-status.muito_abaixo { background: rgba(231,76,60,.12); color: var(--red); }
+    .ideal-insight { font-size: 13px; color: var(--text-main); background: var(--bg-card2); border-radius: 10px; padding: 12px 14px; line-height: 1.5; margin-top: 4px; }
+    .ideal-progress-wrap { margin-top: 14px; }
+    .ideal-progress-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+    .ideal-progress-bg { height: 12px; border-radius: 6px; background: rgba(255,255,255,.06); overflow: hidden; position: relative; }
+    .ideal-progress-fill { height: 100%; border-radius: 6px; transition: width 1s cubic-bezier(.22,1,.36,1); }
+    .ideal-progress-marker { position: absolute; top: -4px; width: 2px; height: 20px; background: #fff; opacity: .6; }
+
+    .gauge-wrap { position: relative; width: 100%; max-width: 260px; margin: 0 auto; }
+    .gauge-zones { width: 100%; }
+    .gauge-needle-label { text-align: center; font-size: 26px; font-weight: 800; margin-top: -38px; }
+    .gauge-needle-sub { text-align: center; font-size: 11px; color: var(--text-muted); }
+
+    /* Calendário de Sazonalidade */
+    .season-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .season-cell { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; border: 1px solid var(--border); transition: transform .15s; }
+    .season-cell:hover { transform: scale(1.08); z-index: 2; border-color: var(--primary); }
+    .season-cell.empty { visibility: hidden; cursor: default; }
+    .season-cell .d { font-size: 12px; font-weight: 700; }
+    .season-cell .stars { font-size: 8px; letter-spacing: 1px; color: #ffd54f; }
+
+    /* Drawer */
+    .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1100; }
+    .drawer-overlay.open { display: block; }
+    .drawer-panel { position: fixed; top: 0; right: -420px; width: 100%; max-width: 420px; height: 100vh; background: #23272f; border-left: 1px solid #444; z-index: 1101; transition: right .3s cubic-bezier(.22,1,.36,1); overflow-y: auto; }
+    .drawer-panel.open { right: 0; }
+    .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; border-bottom: 1px solid #333; position: sticky; top: 0; background: #23272f; z-index: 1; }
+    .drawer-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 18px; }
+    .drawer-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -65,7 +104,9 @@
       <div class="filters-row">
         <select id="filterStore"><option value="">Todas as lojas</option></select>
         <input type="month" id="filterMonth">
+        <select id="filterItem"><option value="">Todos os anúncios</option></select>
         <button class="btn-primary" id="btnLoad"><i class="fas fa-search"></i> Analisar</button>
+        <button class="action-btn" id="btnExportCsv" title="Exportar CSV do mês"><i class="fas fa-file-csv"></i> Exportar CSV</button>
         <span id="loadStatus" style="font-size:12px;color:var(--text-muted)"></span>
       </div>
 
@@ -91,6 +132,35 @@
           <div class="kpi-top"><span class="kpi-label"><i class="fas fa-chart-line"></i> Crescimento vs. Mês Anterior</span></div>
           <div class="kpi-value" id="kpiCrescimento"><div class="skeleton" style="height:26px;width:40%"></div></div>
           <div class="kpi-sub" style="color:var(--text-muted)" id="kpiCrescimentoSub">mesmo nº de dias comparado</div>
+        </div>
+      </div>
+
+      <!-- Dia Ideal -->
+      <div class="card" id="idealDayCard" style="margin-bottom:16px;display:none">
+        <div class="card-header"><h3><i class="fas fa-bullseye" style="color:var(--primary)"></i> Hoje deveria vender</h3></div>
+        <div class="ideal-day-grid">
+          <div>
+            <div class="ideal-status" id="idealStatus"></div>
+            <div class="ideal-fields">
+              <div class="ideal-field"><div class="lbl">Receita Esperada</div><div class="val" id="idealEsperado">—</div></div>
+              <div class="ideal-field"><div class="lbl">Receita Atual</div><div class="val" id="idealAtual">—</div></div>
+              <div class="ideal-field"><div class="lbl">Diferença</div><div class="val" id="idealDiferenca">—</div></div>
+              <div class="ideal-field"><div class="lbl">Resultado</div><div class="val" id="idealDiferencaPct">—</div></div>
+            </div>
+            <div class="ideal-progress-wrap">
+              <div class="ideal-progress-labels"><span>Esperado</span><span>Realizado</span></div>
+              <div class="ideal-progress-bg">
+                <div class="ideal-progress-fill" id="idealProgressFill" style="width:0%"></div>
+                <div class="ideal-progress-marker" id="idealProgressMarker" style="left:50%"></div>
+              </div>
+            </div>
+            <div class="ideal-insight" id="idealInsight" style="margin-top:14px"></div>
+          </div>
+          <div class="gauge-wrap" title="">
+            <svg id="idealGauge" class="gauge-zones" viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div class="gauge-needle-label" id="idealGaugeLabel">—</div>
+            <div class="gauge-needle-sub">vs. média histórica</div>
+          </div>
         </div>
       </div>
 
@@ -147,6 +217,31 @@
         </div>
       </div>
 
+      <!-- Calendário de Sazonalidade -->
+      <div class="card" style="margin-top:16px;margin-bottom:16px">
+        <div class="card-header"><h3><i class="fas fa-calendar-star" style="color:#ffd54f"></i> Calendário de Sazonalidade (histórico 12 meses)</h3></div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Cada dia mostra o desempenho médio histórico (não do mês atual) — quanto mais estrelas e mais intensa a cor, melhor o dia costuma ser. Clique num dia pra ver o detalhe.</p>
+        <div class="season-grid" id="seasonGrid"></div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-star" style="color:#ffd54f"></i> Top 10 Dias — Histórico</h3></div>
+          <div id="seasonTop"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-star-half-stroke" style="color:var(--text-muted)"></i> Bottom 10 Dias — Histórico</h3></div>
+          <div id="seasonBottom"><div class="empty-state"><div class="spinner" style="margin:auto"></div></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3><i class="fas fa-wand-magic-sparkles" style="color:var(--primary)"></i> Insights de Sazonalidade</h3></div>
+        <div class="insight-panel" id="seasonInsightPanel">
+          <div class="empty-state"><div class="spinner" style="margin:auto"></div></div>
+        </div>
+      </div>
+
     </div>
   </main>
 </div>
@@ -165,6 +260,16 @@
       </table>
     </div>
   </div>
+</div>
+
+<!-- Drawer de sazonalidade -->
+<div id="drawerOverlay" class="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawerPanel" class="drawer-panel">
+  <div class="drawer-header">
+    <h3 id="drawerTitle" style="margin:0;font-size:15px;font-weight:700"></h3>
+    <button onclick="closeDrawer()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1">&times;</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
 </div>
 
 <script src="../js/db.js"></script>
@@ -192,11 +297,23 @@ async function initStores() {
   });
 }
 
+async function initItems() {
+  const data = await DB.getProdutos() || { products: [] };
+  const sel = document.getElementById('filterItem');
+  (data.products || []).forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id; o.textContent = p.title || p.id;
+    sel.appendChild(o);
+  });
+}
+
 function initMonthDefault() {
   const now = new Date();
   const val = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   document.getElementById('filterMonth').value = val;
 }
+
+let lastData = null;
 
 async function load() {
   const status = document.getElementById('loadStatus');
@@ -204,13 +321,15 @@ async function load() {
 
   const [year, month] = document.getElementById('filterMonth').value.split('-').map(Number);
   const store_id = document.getElementById('filterStore').value;
+  const item_id  = document.getElementById('filterItem').value;
 
-  const data = await DB.getAnaliseVendasMes({ year, month, store_id });
+  const data = await DB.getAnaliseVendasMes({ year, month, store_id, item_id });
   if (!data || data.error) {
     status.innerHTML = `<span style="color:var(--red)">Erro: ${data?.error || 'falha ao carregar'}</span>`;
     return;
   }
   status.textContent = '';
+  lastData = data;
 
   renderKpis(data);
   renderChart1(data);
@@ -219,6 +338,10 @@ async function load() {
   renderHeatmap(data);
   renderRankings(data);
   renderInsights(data);
+  renderDiaIdeal(data);
+  renderSeason(data);
+  renderSeasonRankings(data);
+  renderSeasonInsights(data);
 }
 
 // ── KPIs ─────────────────────────────────────────────────────
@@ -458,13 +581,255 @@ async function openDrillDown(dia) {
 function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
 document.getElementById('modalOverlay')?.addEventListener('click', e => { if (e.target.id === 'modalOverlay') closeModal(); });
 
+// ── Dia Ideal ───────────────────────────────────────────────
+const STATUS_LABEL = {
+  muito_acima: '🟢 Muito acima da média histórica',
+  acima: '🟢 Acima da média histórica',
+  dentro_da_media: '🟡 Dentro da média histórica',
+  abaixo: '🔴 Abaixo do esperado',
+  muito_abaixo: '🔴 Muito abaixo do esperado',
+};
+
+function polarToCartesian(cx, cy, r, angleDeg) {
+  const rad = angleDeg * Math.PI / 180;
+  return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
+}
+function describeArc(cx, cy, r, startAngle, endAngle) {
+  const start = polarToCartesian(cx, cy, r, startAngle);
+  const end = polarToCartesian(cx, cy, r, endAngle);
+  const largeArc = Math.abs(startAngle - endAngle) <= 180 ? 0 : 1;
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
+}
+
+function renderDiaIdeal(data) {
+  const card = document.getElementById('idealDayCard');
+  const di = data.dia_ideal;
+  if (!di) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  set('idealEsperado', R(di.esperado));
+  set('idealAtual', R(di.atual));
+  set('idealDiferenca', `${di.diferenca >= 0 ? '+' : ''}${R(di.diferenca)}`);
+  document.getElementById('idealDiferenca').style.color = di.diferenca >= 0 ? 'var(--green)' : 'var(--red)';
+  set('idealDiferencaPct', `${di.diferenca_pct >= 0 ? '+' : ''}${di.diferenca_pct}%`);
+  document.getElementById('idealDiferencaPct').style.color = di.diferenca_pct >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const statusEl = document.getElementById('idealStatus');
+  statusEl.className = `ideal-status ${di.status}`;
+  statusEl.textContent = STATUS_LABEL[di.status] || di.status;
+
+  const maxBarra = Math.max(di.esperado, di.atual, 1) * 1.15;
+  const pctFill = Math.min(100, (di.atual / maxBarra) * 100);
+  const pctMarker = Math.min(100, (di.esperado / maxBarra) * 100);
+  const fillEl = document.getElementById('idealProgressFill');
+  fillEl.style.background = di.diferenca >= 0 ? 'linear-gradient(90deg, var(--green), #7ed957)' : 'linear-gradient(90deg, var(--red), #e67e22)';
+  fillEl.style.width = '0%';
+  requestAnimationFrame(() => { fillEl.style.width = pctFill + '%'; });
+  document.getElementById('idealProgressMarker').style.left = pctMarker + '%';
+
+  const dirTxt = di.diferenca_pct >= 0 ? 'acima' : 'abaixo';
+  let extra = '';
+  const rankDia = data.media_historica.find(m => m.dia === di.dia);
+  if (rankDia?.ranking) {
+    if (rankDia.ranking <= 5) extra = ' Historicamente este é um dos dias mais fortes do mês.';
+    else if (rankDia.ranking > data.media_historica.length - 5) extra = ' Historicamente este é um dos dias mais fracos do mês.';
+  }
+  set('idealInsight', `As vendas de hoje estão <b>${Math.abs(di.diferenca_pct)}%</b> ${dirTxt} da média histórica para este período.${extra}`);
+
+  const cx = 100, cy = 95, r = 75, sw = 16;
+  const zonas = [
+    { de: 180, ate: 144, cor: '#e74c3c' },
+    { de: 144, ate: 108, cor: '#e67e22' },
+    { de: 108, ate: 72,  cor: '#FFE600' },
+    { de: 72,  ate: 36,  cor: '#7ed957' },
+    { de: 36,  ate: 0,   cor: '#27ae60' },
+  ];
+  const arcos = zonas.map(z => `<path d="${describeArc(cx,cy,r,z.de,z.ate)}" stroke="${z.cor}" stroke-width="${sw}" fill="none"/>`).join('');
+  const pctClamped = Math.max(-50, Math.min(50, di.diferenca_pct));
+  const needleAngle = 180 - ((pctClamped + 50) / 100) * 180;
+  const tip = polarToCartesian(cx, cy, r - sw / 2 - 4, needleAngle);
+  const needle = `<line x1="${cx}" y1="${cy}" x2="${tip.x}" y2="${tip.y}" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="6" fill="#fff"/>`;
+  document.getElementById('idealGauge').innerHTML = arcos + needle;
+  set('idealGaugeLabel', `${di.diferenca_pct >= 0 ? '+' : ''}${di.diferenca_pct}%`);
+  document.getElementById('idealGaugeLabel').style.color = di.diferenca_pct >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.querySelector('.gauge-wrap').title =
+    `Histórico (${di.historico.meses_analisados} mês(es) analisados): média ${R(di.historico.media)} · maior ${R(di.historico.maior)} · menor ${R(di.historico.menor)} · desvio-padrão ${R(di.historico.desvio)}`;
+}
+
+// ── Calendário de Sazonalidade ──────────────────────────────
+function seasonColor(intensidade) {
+  const stops = [[0, [100,100,100]], [.2, [52,152,219]], [.4, [39,174,96]], [.6, [255,230,0]], [.8, [230,126,34]], [1, [231,76,60]]];
+  for (let i = 1; i < stops.length; i++) {
+    if (intensidade <= stops[i][0]) {
+      const [p0, c0] = stops[i-1], [p1, c1] = stops[i];
+      const t = p1 > p0 ? (intensidade - p0) / (p1 - p0) : 0;
+      const c = c0.map((v,j) => Math.round(v + (c1[j]-v)*t));
+      return `rgba(${c[0]},${c[1]},${c[2]},.55)`;
+    }
+  }
+  return 'rgba(231,76,60,.55)';
+}
+
+function renderSeason(data) {
+  const grid = document.getElementById('seasonGrid');
+  const mh = data.media_historica;
+  const max = Math.max(1, ...mh.map(m => m.media));
+  const primeiroDiaSemana = new Date(data.periodo.ano, data.periodo.mes - 1, 1).getDay();
+  let html = '';
+  for (let i = 0; i < primeiroDiaSemana; i++) html += `<div class="season-cell empty"></div>`;
+  mh.forEach(m => {
+    const bg = m.media > 0 ? seasonColor(m.media / max) : 'var(--bg-card2)';
+    const stars = '★'.repeat(m.estrelas || 0) + '☆'.repeat(5 - (m.estrelas || 0));
+    const ticketMedio = m.media_pedidos > 0 ? m.media / m.media_pedidos : 0;
+    html += `<div class="season-cell" style="background:${bg}" onclick="openDrawer(${m.dia})"
+      title="Dia ${m.dia} — Receita média ${R(m.media)} · Pedidos médios ${m.media_pedidos.toFixed(1)} · Ticket médio ${R(ticketMedio)} · Participação ${m.participacao_pct}% · Ranking #${m.ranking || '—'}">
+      <span class="d">${m.dia}</span><span class="stars">${stars}</span>
+    </div>`;
+  });
+  grid.innerHTML = html;
+}
+
+function renderSeasonRankings(data) {
+  const rowsHtml = (rows) => rows.length ? rows.map((m, i) => `
+    <div class="rank-row" style="cursor:pointer" onclick="openDrawer(${m.dia})">
+      <div class="rank-day"><span class="number-badge">${i+1}</span><span>Dia ${m.dia}</span></div>
+      <div style="text-align:right">
+        <div style="font-weight:700">${R(m.media)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">lucro médio ${R(m.media_lucro)} · ${m.participacao_pct}% do mês</div>
+      </div>
+    </div>`).join('') : '<div class="empty-state">Sem histórico suficiente</div>';
+  set('seasonTop', rowsHtml(data.sazonalidade.top10));
+  set('seasonBottom', rowsHtml(data.sazonalidade.bottom10));
+}
+
+function renderSeasonInsights(data) {
+  const mh = data.media_historica;
+  const items = [];
+  const top = data.sazonalidade.top10[0];
+  if (top) items.push({ icon: 'fa-crown', color: '#ffd54f', html: `O dia <b>${top.dia}</b> é historicamente o melhor dia do mês (média ${R(top.media)})` });
+  const bottom = data.sazonalidade.bottom10[0];
+  if (bottom) items.push({ icon: 'fa-arrow-trend-down', color: 'var(--red)', html: `O dia <b>${bottom.dia}</b> é historicamente o dia mais fraco (média ${R(bottom.media)})` });
+
+  let streak = [], melhorStreak = [];
+  mh.forEach(m => {
+    if ((m.estrelas || 0) <= 2) { streak.push(m.dia); if (streak.length > melhorStreak.length) melhorStreak = [...streak]; }
+    else streak = [];
+  });
+  if (melhorStreak.length >= 3) {
+    const queda = mh.filter(m => melhorStreak.includes(m.dia));
+    const mediaQueda = queda.reduce((a, m) => a + m.media, 0) / queda.length;
+    const pctQueda = data.media_geral > 0 ? ((mediaQueda - data.media_geral) / data.media_geral * 100) : 0;
+    items.push({ icon: 'fa-water', color: 'var(--orange)', html: `Os dias <b>${melhorStreak[0]} até ${melhorStreak[melhorStreak.length-1]}</b> possuem queda média de <b>${Math.abs(pctQueda).toFixed(0)}%</b> em relação à média geral` });
+  }
+
+  const top5Pct = data.sazonalidade.top10.slice(0, 5).reduce((a, m) => a + m.participacao_pct, 0);
+  items.push({ icon: 'fa-layer-group', color: 'var(--primary)', html: `Os 5 melhores dias representam historicamente <b>${top5Pct.toFixed(1)}%</b> do faturamento mensal` });
+
+  const top4 = data.sazonalidade.top10.slice(0, 4).map(m => m.dia).join(', ');
+  if (top4) items.push({ icon: 'fa-bullhorn', color: 'var(--green)', html: `Historicamente os melhores dias para investir em anúncios são <b>${top4}</b>` });
+
+  set('seasonInsightPanel', items.length
+    ? items.map(i => `<div class="insight-item"><i class="fas ${i.icon}" style="color:${i.color}"></i><span class="txt">${i.html}</span></div>`).join('')
+    : '<div class="empty-state">Histórico insuficiente ainda</div>');
+}
+
+// ── Drawer (drill-down de sazonalidade) ────────────────────
+async function openDrawer(dia) {
+  const [year, month] = document.getElementById('filterMonth').value.split('-').map(Number);
+  const store_id = document.getElementById('filterStore').value;
+
+  document.getElementById('drawerTitle').textContent = `Dia ${dia} — Histórico`;
+  document.getElementById('drawerBody').innerHTML = '<div class="empty-state"><div class="spinner" style="margin:auto"></div></div>';
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('drawerPanel').classList.add('open');
+
+  const data = await DB.getDiaHistorico({ dia, year, month, store_id });
+  if (!data || data.error) {
+    document.getElementById('drawerBody').innerHTML = `<div class="empty-state" style="color:var(--red)">Erro: ${data?.error || 'falha ao carregar'}</div>`;
+    return;
+  }
+
+  const evoHtml = data.evolucao.length ? `
+    <div class="chart-wrap" style="height:180px"><canvas id="drawerChart"></canvas></div>
+    <table class="data-table" style="margin-top:10px">
+      <thead><tr><th>Mês</th><th class="tbl-num">Receita</th><th class="tbl-num">Pedidos</th></tr></thead>
+      <tbody>${data.evolucao.map(e => `<tr><td>${MESES[e.mes-1]}/${e.ano}</td><td class="tbl-num">${R(e.receita)}</td><td class="tbl-num">${e.pedidos}</td></tr>`).join('')}</tbody>
+    </table>` : '<div class="empty-state">Sem histórico suficiente</div>';
+
+  const produtosHtml = data.produtos_mais_vendidos.length ? data.produtos_mais_vendidos.map(p => `
+    <div class="rank-row"><span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title || p.item_id}</span><span style="font-weight:700">${p.unidades} un.</span></div>
+  `).join('') : '<div class="empty-state">Sem dados</div>';
+
+  document.getElementById('drawerBody').innerHTML = `
+    <div>
+      <div class="drawer-section-title"><i class="fas fa-chart-line"></i> Evolução mês a mês (últimos 12 meses)</div>
+      ${evoHtml}
+    </div>
+    <div>
+      <div class="drawer-section-title"><i class="fas fa-box"></i> Produtos mais vendidos nesse dia (histórico)</div>
+      ${produtosHtml}
+    </div>
+    <div>
+      <div class="drawer-section-title"><i class="fas fa-tags"></i> Contexto</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="tag blue">Mercado Livre</span>
+        <span class="tag">${document.getElementById('filterStore').selectedOptions[0]?.textContent || 'Todas as lojas'}</span>
+      </div>
+    </div>
+  `;
+
+  if (data.evolucao.length) {
+    destroyChart('drawer');
+    const ctx = document.getElementById('drawerChart');
+    charts.drawer = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.evolucao.map(e => `${MESES[e.mes-1]}/${String(e.ano).slice(2)}`),
+        datasets: [{ data: data.evolucao.map(e => e.receita), borderColor: '#FFE600', backgroundColor: 'rgba(255,230,0,.1)', fill: true, tension: .3, pointRadius: 3 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => R(c.raw) } } },
+        scales: {
+          x: { ticks: { color: '#888', font: { size: 10 } }, grid: { display: false } },
+          y: { ticks: { color: '#888', callback: v => Rk(v) }, grid: { color: 'rgba(255,255,255,.04)' } }
+        }
+      }
+    });
+  }
+}
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('drawerPanel').classList.remove('open');
+}
+
+// ── Exportar CSV ────────────────────────────────────────────
+function exportCsv() {
+  if (!lastData) return;
+  const rows = [['Dia', 'Receita', 'Pedidos', 'Ticket Médio', 'Ocorrido']];
+  lastData.mes_atual.forEach(d => {
+    rows.push([d.dia, d.receita ?? '', d.pedidos ?? '', d.ticket_medio ?? '', d.ocorrido ? 'sim' : 'não']);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `analise-vendas-${lastData.periodo.ano}-${String(lastData.periodo.mes).padStart(2, '0')}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── Init ────────────────────────────────────────────────────
 document.getElementById('btnLoad').addEventListener('click', load);
 document.getElementById('filterStore').addEventListener('change', load);
 document.getElementById('filterMonth').addEventListener('change', load);
+document.getElementById('filterItem').addEventListener('change', load);
+document.getElementById('btnExportCsv').addEventListener('click', exportCsv);
 
 initMonthDefault();
-initStores().then(load);
+Promise.all([initStores(), initItems()]).then(load);
 </script>
 </body>
 </html>

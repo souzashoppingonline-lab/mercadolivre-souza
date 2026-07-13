@@ -46,12 +46,13 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/comparativos/curva-abc?store_id&period` | classificação ABC por % acumulado de faturamento (A≤80%, B≤95%, C resto) |
 
 ## Análise de Vendas do Mês (BI)
-> Sem normalização por dia útil (decisão explícita — todo dia conta igual, ver `decisions.md`). Fórmulas dos insights em `business-rules.md`.
+> Sem normalização por dia útil (decisão explícita — todo dia conta igual, ver `decisions.md`). Fórmulas dos insights, do status "Dia Ideal", das estrelas de sazonalidade e do outlier estatístico em `business-rules.md`.
 
 | Rota | Descrição |
 |---|---|
-| `GET /api/analises/vendas-mes?year&month&store_id` | payload único com tudo que a página usa: `kpis` (receita/pedidos/ticket/crescimento% + sparkline), `mes_atual`/`mes_anterior`/`mes_retrasado` (array de 1..N dias, `receita`/`pedidos`/`ticket_medio`/`ocorrido`), `media_historica` (12 meses anteriores ao selecionado, por dia-do-mês, com banda `banda_min`/`banda_max` = média±desvio-padrão), `media_geral`, `ranking_top10`/`ranking_bottom10`, `insights` (tendência, aceleração, melhor/pior semana, concentração top5, acumulado atual vs. anterior, projeção de fechamento, sugestão de anúncios, sugestão de estoque) |
+| `GET /api/analises/vendas-mes?year&month&store_id&item_id` | payload único com tudo que a página usa: `kpis` (receita/pedidos/ticket/crescimento% + sparkline), `mes_atual`/`mes_anterior`/`mes_retrasado` (array de 1..N dias, `receita`/`pedidos`/`ticket_medio`/`ocorrido`), `media_historica` (12 meses anteriores ao selecionado, por dia-do-mês, com `media`/`desvio`/`media_pedidos`/`media_lucro`/`maior`/`menor`/`meses_analisados`/`banda_min`/`banda_max`), `media_geral`, `ranking_top10`/`ranking_bottom10`, `insights` (tendência, aceleração, melhor/pior semana, concentração top5, acumulado atual vs. anterior, projeção de fechamento, sugestão de anúncios, sugestão de estoque), `dia_ideal` (só populado quando `year`/`month` = mês corrente real — ver `business-rules.md`), `sazonalidade.top10`/`sazonalidade.bottom10` (dias históricos ordenados por receita média, com `ranking`/`estrelas`/`participacao_pct`). `item_id` filtra as 3 queries agregadas por `orders.item_id` (opcional, combina com `store_id`) |
 | `GET /api/analises/vendas-mes/dia?date&store_id` | drill-down — pedidos de um dia específico (`YYYY-MM-DD`), usado pelo modal ao clicar num dia do heatmap/gráfico |
+| `GET /api/analises/vendas-mes/dia-historico?dia&year&month&store_id` | drill-down do **drawer de sazonalidade** — para um dia-do-mês (1-31), retorna `evolucao` (receita/pedidos desse dia-do-mês nos últimos 12 meses, ano a ano) e `produtos_mais_vendidos` (top 10 por unidades nesse dia-do-mês, últimos 12 meses) |
 
 ## Perguntas / Mensagens
 | Rota | Descrição |
@@ -111,7 +112,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/webhooks/logs?topic&limit` | últimos logs de `webhook_logs` |
 | `GET /api/webhooks/config` | contadores do dia + status da config do Telegram |
 | `GET /api/schedule/jobs` | estado atual de cada sync (`schedule_jobs`) |
-| `POST /api/schedule/jobs/:name/trigger` | publica comando no canal Redis `worker:cmd` para disparar um sync manualmente — nomes aceitos: `dailySync`, `syncVendas`, `syncMetricas`, `syncReturns`, `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal` |
+| `POST /api/schedule/jobs/:name/trigger` | publica comando no canal Redis `worker:cmd` para disparar um sync manualmente — nomes aceitos: `dailySync`, `syncVendas`, `syncMetricas`, `syncReturns`, `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `checkOutlierEstatistico` |
 | `GET /api/schedule/worker-logs` | **SSE** — stream de `journalctl -u ml-worker-novo -f` (produção; depende do ambiente ter systemd/journalctl) |
 | `GET /api/schedule/runs?job&limit` | histórico de execuções (`schedule_runs`) |
 | `GET /api/schedule/logs?limit` | alias de leitura crua de `webhook_logs` |

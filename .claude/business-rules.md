@@ -18,6 +18,35 @@
 - **Projeção de fechamento**: `receita_acumulada + Σ(dias restantes) de max(0, intercept + slope × dia)` — usa a reta de regressão do item "tendência" para projetar cada dia que falta, não uma simples extrapolação linear de "média diária × dias restantes".
 - **Sugestão de reposição de estoque**: top 5 itens por unidades vendidas no mês, cruzado com `items.available_quantity` — só entra na sugestão quem tem estoque ≤ 15 (mesmo threshold "medium" já usado em `GET /api/alertas/reposicao`, ver seção "Estoque" acima — reaproveitado, não uma constante nova).
 - **Sugestão de reforço de anúncios**: os 5 dias de menor faturamento do mês (`ranking_bottom10`, top 5) — heurística simples, não analisa causa (não distingue "dia fraco por sazonalidade" de "dia fraco por falta de anúncio ativo").
+- **Filtro por anúncio (`item_id`)**: opcional, filtra `mes_atual`/`mes_anterior`/`mes_retrasado`/`media_historica` por `orders.item_id`. Combina com `store_id` (AND, não OR). Não filtra `dia_ideal`/`sazonalidade` de forma diferente — eles usam a mesma `media_historica` já filtrada.
+
+## Dia Ideal — comparação do dia corrente com a média histórica
+
+`dia_ideal` (dentro do payload de `GET /api/analises/vendas-mes`) só é calculado quando o `year`/`month` consultado é o mês corrente real (`hoje.getFullYear()`/`hoje.getMonth()+1`) — em qualquer outro mês (histórico ou futuro) o campo vem `null`, porque "dia ideal" só faz sentido comparando o dia de hoje com o esperado, não um dia de um mês já fechado.
+
+- **Esperado**: `media_historica` do dia-do-mês atual (mesma base de 12 meses anteriores usada nos outros gráficos — **sem normalização por dia útil**, mesma decisão da seção acima, reconfirmada explicitamente pelo usuário para esta feature).
+- Só calcula se houver pelo menos 1 mês de histórico para aquele dia (`meses_analisados > 0`) — evita mostrar "esperado: R$ 0" para dia 29/30/31 em meses com pouco histórico.
+- **Status por `diferenca_pct`**: `≥ 20%` → `muito_acima`; `≥ 5%` → `acima`; `≥ -5%` → `dentro_da_media`; `≥ -20%` → `abaixo`; `< -20%` → `muito_abaixo`. Os mesmos limiares alimentam as 5 zonas coloridas do gauge no frontend.
+- **Insight automático**: além do texto de "X% acima/abaixo da média", quando o dia atual está entre os top/bottom 20% históricos (`ranking` em `media_historica`), acrescenta contexto — "este é um dos dias mais fortes/fracos do mês historicamente".
+
+## Calendário de Sazonalidade — estrelas, ranking e participação
+
+Calculado em cima da mesma `media_historica` (12 meses anteriores, por dia-do-mês) já usada pelo resto da página — não é uma nova consulta, é uma segunda leitura dos mesmos dados agregados.
+
+- **Estrelas por percentil** (não por valor absoluto): os dias são ordenados por receita média histórica e divididos em quintis — top 20% = 5 estrelas, próximos 20% = 4, ..., bottom 20% = 1 estrela. Dinâmico por loja/item filtrado — os mesmos 5 pontos de corte não são reaproveitados entre filtros diferentes.
+- **Participação %**: `media do dia / soma das médias de todos os dias do mês × 100` — "quanto desse dia representa dentro de um mês histórico médio", não participação no mês real selecionado.
+- **Lucro médio por dia histórico**: usa a mesma fórmula de margem de `finance.md` (`total_amount − custo − imposto − ml_fee − shipping_cost − shipping_seller_cost`), agregada por dia-do-mês nos mesmos 12 meses — não é recalculada com fórmula diferente da usada em `GET /api/vendas/detalhado`/relatório semanal por e-mail.
+- **Escopo deliberadamente reduzido**: a Calendário de Sazonalidade **não inclui Conversão nem ROAS** por dia — Conversão exigiria profundidade histórica de `item_visits` que o sync só passou a coletar de forma confiável nesta mesma sessão (sem 12 meses de histórico ainda); ROAS exigiria gasto de anúncio por dia, que o sistema não rastreia granularmente. Decisão consciente de não mostrar um número que pareça preciso mas seja baseado em dado insuficiente (ver `decisions.md`).
+- **Sem filtro de marketplace/categoria**: a página é ML-only (Amazon tem páginas isoladas, ver `decisions.md`/`amazon.md`) e não existe campo "categoria" sincronizado nos itens — os únicos filtros são loja (`store_id`) e anúncio (`item_id`).
+- **Drawer de drill-down** (`GET /api/analises/vendas-mes/dia-historico`): ao clicar num dia do calendário, mostra a evolução desse dia-do-mês ano a ano (últimos 12 meses) e os produtos mais vendidos nesse dia-do-mês — granularidade "esse dia do mês ao longo do tempo", diferente do modal do heatmap principal (`GET /api/analises/vendas-mes/dia`), que mostra os pedidos de uma data específica (`YYYY-MM-DD`) só do mês selecionado.
+
+## Alerta de outlier estatístico (`checkOutlierEstatistico`)
+
+Job diário (06:20, ver `workers.md`) que compara a receita de **ontem** de cada loja ML com a média histórica do mesmo dia-do-mês (mesma janela de 12 meses da página BI, recalculada em JS dentro do worker, sem chamar a própria API HTTP).
+
+- **Limiar de disparo**: `±1.5 desvio-padrão` da média histórica — mais rígido que a banda visual do Chart 2 da página BI (`±1` desvio, ver acima), porque o alerta de Telegram precisa de menos ruído/falsos positivos do que um gráfico exploratório.
+- Só dispara se houver `≥ 3` meses de histórico para aquele dia-do-mês (`n < 3` → ignora, sem alertar) — evita alertar com base estatística fraca.
+- Respeita janela de silêncio e pode ser desligado por tópico (`tg_outlier`) — **não** usa `tgNotifyForce`, é tratado como alerta, não como relatório operacional (mesma categoria de `tg_topvendas`).
 
 ## "Nova venda!" — quando notificar
 

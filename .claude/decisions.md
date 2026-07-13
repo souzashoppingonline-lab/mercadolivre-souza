@@ -122,6 +122,24 @@
 
 **Toda a matemática dos insights (regressão, aceleração, projeção, banda estatística) é feita em JavaScript no backend**, depois de só 2 queries agregadas por dia — não em SQL puro. Trade-off consciente: SQL simples e fácil de auditar, mas o payload da rota carrega junto com os dados brutos os campos já calculados (não é uma API "burra" que só devolve linhas cruas) — o frontend não reimplementa nenhuma fórmula, só renderiza o que o backend já calculou. Ver `.claude/business-rules.md` para as fórmulas exatas.
 
+## Dia Ideal + Calendário de Sazonalidade — Caminho A (vanilla JS), não React/TS
+
+**Contexto**: o pedido do usuário para essas duas features veio especificando uma stack completa (React + TypeScript Strict Mode + Tailwind + shadcn/ui + Recharts + Framer Motion + TanStack Query, componentes `.tsx` em `/lib/analytics`) que não existe em nenhuma outra parte deste projeto (`frontend.md`: HTML puro + CSS + JS vanilla, sem bundler/framework).
+
+**Decisão**: antes de escrever qualquer código, o mismatch foi sinalizado ao usuário e perguntado explicitamente qual caminho seguir — Caminho A (JS vanilla, mesma stack do projeto, reaproveitando o padrão já usado em `analise-vendas-mes.html`) ou Caminho B (introduzir de fato um pipeline React/TS novo). **O usuário escolheu o Caminho A**. Implementado com Chart.js (já em uso), CSS puro (grid/flex, sem Tailwind) e funções JS soltas no `<script>` da página (sem separação `/lib/analytics`, já que não há bundler para módulos ES) — mesmo padrão de `renderDiaIdeal`/`renderSeason`/etc. dos demais gráficos da página.
+
+**Por quê**: introduzir um segundo stack de frontend só para 2 componentes quebraria a premissa "HTML puro, sem build step" do projeto inteiro, exigiria decidir bundler/roteamento/deploy do zero, e nenhuma outra página se beneficiaria — custo alto para um ganho que o vanilla JS já entrega (SVG desenhado à mão para o gauge, `Chart.js` para o gráfico de evolução do drawer, grid CSS para o calendário).
+
+## Dia Ideal — sem normalização por dia útil (reconfirmado) e sem Conversão/ROAS na Sazonalidade
+
+**Decisões tomadas sem nova pergunta ao usuário, sinalizadas de forma transparente antes de implementar** (mesma classe de decisão já registrada acima para a página como um todo):
+
+- **Dia Ideal reutiliza a decisão de "sem normalização por dia útil"** já tomada para o resto da página (ver seção acima) — a receita esperada do dia é a média histórica bruta do mesmo dia-do-mês, não ajustada por dia útil/dia da semana equivalente (apesar do pedido original mencionar essas duas normalizações como opção).
+- **Calendário de Sazonalidade não inclui Conversão nem ROAS por dia**, apesar de pedidos: Conversão exigiria profundidade histórica de `item_visits` (o sync de visitas só ficou confiável nesta mesma sessão, sem 12 meses de dado consistente ainda); ROAS exigiria gasto de anúncio rastreado por dia, que o sistema não tem. Preferência explícita: não mostrar um número que pareça preciso mas seja calculado sobre dado insuficiente/ausente.
+- **Sem filtro de marketplace/categoria** na página — ela é ML-only por design (Amazon já tem páginas isoladas, ver `amazon.md`), e não existe campo "categoria" sincronizado em `items` hoje. Os únicos filtros são loja (`store_id`, já existia) e anúncio (`item_id`, novo nesta fase).
+
+Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, limiar do outlier) em `business-rules.md`.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

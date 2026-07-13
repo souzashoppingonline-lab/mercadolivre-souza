@@ -249,6 +249,16 @@ router.get('/vendas/detalhado', async (req, res) => {
   const { store_id = '', status = 'paid', days = 30, search = '', date_from = '', date_to = '' } = req.query;
   const dateFrom = date_from || null;
   const dateTo   = date_to   || null;
+  const params = [store_id, status, Number(days), search, dateFrom, dateTo];
+  const whereClause = `
+     WHERE ($1 = '' OR o.store_id = $1::bigint)
+       AND ($2 = '' OR o.status = $2)
+       AND ($5::date IS NULL OR o.date_created::date >= $5::date)
+       AND ($6::date IS NULL OR o.date_created::date <= $6::date)
+       AND ($5::date IS NOT NULL OR o.date_created >= CURRENT_DATE - $3::int)
+       AND ($4 = '' OR o.title ILIKE '%'||$4||'%')`;
+
+  // Linhas para a tabela — cap de 1000 (payload/render), não usado para os totais.
   const { rows } = await pool.query(
     `SELECT
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
@@ -264,14 +274,9 @@ router.get('/vendas/detalhado', async (req, res) => {
      FROM vw_ml_orders o
      JOIN vw_ml_stores s ON s.id = o.store_id
      LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-     WHERE ($1 = '' OR o.store_id = $1::bigint)
-       AND ($2 = '' OR o.status = $2)
-       AND ($5::date IS NULL OR o.date_created::date >= $5::date)
-       AND ($6::date IS NULL OR o.date_created::date <= $6::date)
-       AND ($5::date IS NOT NULL OR o.date_created >= CURRENT_DATE - $3::int)
-       AND ($4 = '' OR o.title ILIKE '%'||$4||'%')
+     ${whereClause}
      ORDER BY o.date_created DESC LIMIT 1000`,
-    [store_id, status, Number(days), search, dateFrom, dateTo]
+    params
   );
 
   const result = rows.map(r => {
@@ -286,23 +291,54 @@ router.get('/vendas/detalhado', async (req, res) => {
     return { ...r, custo, imposto, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
   });
 
-  // Summary
-  const approved = result.filter(r => r.status !== 'cancelled');
-  const cancelled = result.filter(r => r.status === 'cancelled');
+  // Totais — agregados no banco sobre TODO o range filtrado (sem LIMIT), agrupados
+  // por status para separar aprovadas/canceladas. Corrige bug: antes os cards de
+  // totais eram somados em cima da mesma lista já cortada em 1000 linhas, então
+  // qualquer período/loja com mais de 1000 pedidos mostrava valores incompletos.
+  const { rows: aggRows } = await pool.query(
+    `SELECT
+       o.status,
+       COALESCE(SUM(o.total_amount), 0) AS faturamento,
+       COALESCE(SUM(COALESCE(i.cost, 0) * o.quantity), 0) AS custo,
+       COALESCE(SUM(o.total_amount * COALESCE(s.imposto_pct, 0) / 100), 0) AS imposto,
+       COALESCE(SUM(o.ml_fee), 0) AS tarifa,
+       COALESCE(SUM(o.shipping_cost), 0) AS frete_comprador,
+       COALESCE(SUM(o.shipping_seller_cost), 0) AS frete_vendedor,
+       COALESCE(SUM(o.quantity), 0) AS qtd,
+       COUNT(*) AS pedidos
+     FROM vw_ml_orders o
+     JOIN vw_ml_stores s ON s.id = o.store_id
+     LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+     ${whereClause}
+     GROUP BY o.status`,
+    params
+  );
+
+  const approvedAgg = aggRows.filter(r => r.status !== 'cancelled');
+  const cancelledAgg = aggRows.filter(r => r.status === 'cancelled');
+  const sumField = (list, field) => list.reduce((a, r) => a + Number(r[field] || 0), 0);
+  const custoTotal = sumField(approvedAgg, 'custo');
+  const impostoTotal = sumField(approvedAgg, 'imposto');
+  const tarifaTotal = sumField(approvedAgg, 'tarifa');
+  const freteCompradorTotal = sumField(approvedAgg, 'frete_comprador');
+  const freteVendedorTotal = sumField(approvedAgg, 'frete_vendedor');
+  const vendasAprovadas = sumField(approvedAgg, 'faturamento');
+  const pedidosAprovados = approvedAgg.reduce((a, r) => a + Number(r.pedidos || 0), 0);
+
   const summary = {
-    vendas_aprovadas: approved.reduce((a, r) => a + Number(r.faturamento), 0),
-    vendas_canceladas: cancelled.reduce((a, r) => a + Number(r.faturamento), 0),
-    custo_total: approved.reduce((a, r) => a + r.custo, 0),
-    imposto_total: approved.reduce((a, r) => a + r.imposto, 0),
-    tarifa_total: approved.reduce((a, r) => a + Number(r.tarifa), 0),
-    frete_comprador_total: approved.reduce((a, r) => a + Number(r.frete_comprador), 0),
-    frete_vendedor_total: approved.reduce((a, r) => a + (r.freteVend || 0), 0),
-    margem_total: approved.reduce((a, r) => a + r.margem, 0),
-    qtd_aprovadas: approved.reduce((a, r) => a + (Number(r.quantity) || 1), 0),
-    qtd_canceladas: cancelled.reduce((a, r) => a + (Number(r.quantity) || 1), 0),
-    pedidos_aprovados: approved.length,
-    pedidos_cancelados: cancelled.length,
-    ticket_medio: approved.length ? approved.reduce((a, r) => a + Number(r.faturamento), 0) / approved.length : 0,
+    vendas_aprovadas: vendasAprovadas,
+    vendas_canceladas: sumField(cancelledAgg, 'faturamento'),
+    custo_total: custoTotal,
+    imposto_total: impostoTotal,
+    tarifa_total: tarifaTotal,
+    frete_comprador_total: freteCompradorTotal,
+    frete_vendedor_total: freteVendedorTotal,
+    margem_total: vendasAprovadas - custoTotal - impostoTotal - tarifaTotal - freteCompradorTotal - freteVendedorTotal,
+    qtd_aprovadas: sumField(approvedAgg, 'qtd'),
+    qtd_canceladas: sumField(cancelledAgg, 'qtd'),
+    pedidos_aprovados: pedidosAprovados,
+    pedidos_cancelados: cancelledAgg.reduce((a, r) => a + Number(r.pedidos || 0), 0),
+    ticket_medio: pedidosAprovados > 0 ? vendasAprovadas / pedidosAprovados : 0,
   };
   summary.mc_pct = summary.vendas_aprovadas > 0 ? (summary.margem_total / summary.vendas_aprovadas) * 100 : 0;
 
@@ -337,7 +373,26 @@ router.get('/vendas/hoje', async (req, res) => {
       return a + (fat - custo - imp - tar - fc - fv);
     }, 0);
     const mc_pct = receita > 0 ? (lucro / receita) * 100 : 0;
-    res.json({ pedidos, itens, receita, lucro, mc_pct: Number(mc_pct.toFixed(2)) });
+
+    // Projeção de faturamento do mês — receita acumulada do mês ÷ dias decorridos × dias no mês
+    // (run-rate simples pela média diária real do mês, recalculado todo dia — "sempre por mês").
+    const { rows: mesRows } = await pool.query(
+      `SELECT COALESCE(SUM(o.total_amount), 0) AS receita_mes
+       FROM vw_ml_orders o
+       WHERE (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date >= date_trunc('month', (now() AT TIME ZONE 'America/Sao_Paulo'))::date
+         AND o.status != 'cancelled'`
+    );
+    const receitaMes = Number(mesRows[0]?.receita_mes || 0);
+    const agoraBRT = new Date(Date.now() - 3 * 3600 * 1000); // BRT = UTC-3
+    const diasDecorridos = agoraBRT.getUTCDate();
+    const diasNoMes = new Date(Date.UTC(agoraBRT.getUTCFullYear(), agoraBRT.getUTCMonth() + 1, 0)).getUTCDate();
+    const projecaoMes = diasDecorridos > 0 ? (receitaMes / diasDecorridos) * diasNoMes : 0;
+
+    res.json({
+      pedidos, itens, receita, lucro, mc_pct: Number(mc_pct.toFixed(2)),
+      receita_mes: receitaMes, dias_decorridos: diasDecorridos, dias_no_mes: diasNoMes,
+      projecao_mes: Number(projecaoMes.toFixed(2)),
+    });
   } catch (e) {
     console.error('[api] /vendas/hoje error:', e.message);
     res.status(500).json({ error: e.message });

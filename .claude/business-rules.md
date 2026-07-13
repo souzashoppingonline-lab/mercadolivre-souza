@@ -105,6 +105,10 @@ Cada tópico (`tg_vendas`, `tg_perguntas`, etc.) pode ser individualmente desati
 - **Notificações que ignoram tudo isso** (`tgNotifyForce`): resultado dos syncs agendados (`tg_infra`) e o resumo diário (`tg_resumo`) — são consideradas relatórios operacionais, não alertas em tempo real.
 - **Rate limit de alertas de rate limit**: `track429` só notifica `tg_429` depois de 3 cooldowns de 429 na mesma loja em uma janela de 10 min, e depois espera outros 10 min antes de notificar de novo — evita spam de alerta quando a API do ML está instável.
 
+## Projeção de faturamento do mês (`GET /api/vendas/hoje`)
+
+`projecao_mes` é um **run-rate simples**, não regressão linear (diferente da "projeção de fechamento" da página BI `analise-vendas-mes.html`, que usa reta de regressão — ver acima): `receita acumulada do mês corrente ÷ dias já decorridos × total de dias do mês`. Recalculado a cada carregamento, sempre para o mês corrente real (não aceita filtro de mês/ano) — por isso não tenta reaproveitar a query de `/api/analises/vendas-mes`, que é filtrável e mais pesada (múltiplas agregações de 12 meses). Não filtra por loja (mesmo comportamento do resto de `/vendas/hoje`, que sempre soma todas as lojas ML).
+
 ## Vendas ML Turbo é a fonte financeira "oficial"
 
 A tabela `orders` (webhook-driven) é usada para tudo que é operacional em tempo real (dashboard, pedidos, análises temporais). Mas o **cálculo financeiro definitivo** (margem, ROI, custos completos) é feito a partir da planilha importada em `ml_turbo_sales`, não a partir de `orders` — porque a planilha do Mercado Turbo já vem com tarifas, impostos e fretes exatos calculados pelo próprio ML, enquanto `orders` reconstrói esses valores a partir de campos parciais do payload do webhook (ver `finance.md` para as duas fórmulas lado a lado).

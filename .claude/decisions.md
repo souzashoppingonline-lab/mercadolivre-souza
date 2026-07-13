@@ -140,6 +140,22 @@
 
 Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, limiar do outlier) em `business-rules.md`.
 
+## Bug corrigido: totais de `GET /api/vendas/detalhado` truncados pelo `LIMIT 1000`
+
+**Sintoma**: com "Todas as lojas" + período personalizado de vários dias numa operação de alto volume, os cards de totais (Vendas Aprovadas, Custo, Frete, Margem) na página `pages/vendas.html` mostravam valores incompletos — "Qtd Vendas Aprovadas" batendo suspeitosamente igual ao limite de linhas da query (1000).
+
+**Causa**: a rota buscava as linhas de pedidos com `ORDER BY o.date_created DESC LIMIT 1000` (limite necessário para não estourar payload/render da tabela) e depois calculava os totais (`summary`) em JavaScript somando essa mesma lista já cortada — qualquer filtro que retornasse mais de 1000 pedidos tinha seus totais calculados só sobre os 1000 mais recentes, silenciosamente descartando o restante do período (sem erro, sem aviso).
+
+**Correção**: separada a query de exibição (linhas da tabela, continua limitada a 1000 por performance de render) da query de totais, que agora agrega (`SUM`/`COUNT`/`GROUP BY status`) direto no Postgres sobre **todo** o range filtrado, sem `LIMIT`. `pages/vendas.html` também passou a avisar quando a tabela está mostrando menos linhas que o total de pedidos do período ("mostrando X de Y pedidos").
+
+**Por quê agregar em SQL e não só aumentar o LIMIT**: a fórmula de margem por pedido é linear (soma de somas), então mover o cálculo pro banco é matematicamente equivalente ao que já era feito em JS — e escala pra qualquer volume de pedidos sem carregar payload gigante pro frontend só para somar números que o Postgres já sabe agregar.
+
+## Projeção de faturamento mensal em `GET /api/vendas/hoje` — run-rate simples, não regressão
+
+**Contexto**: pedido para mostrar, no hero "Vendas Hoje" de `pages/vendas.html`, uma projeção de faturamento do mês com base nas vendas médias do mês (recalculada "sempre por mês", ou seja, sempre relativa ao mês corrente real).
+
+**Decisão**: implementado como run-rate simples (`receita acumulada do mês ÷ dias decorridos × dias no mês`), não a regressão linear já usada na "projeção de fechamento" da página BI (`analise-vendas-mes.html`). **Por quê**: são dois contextos diferentes — o hero de `vendas.html` é um vislumbre rápido sem filtro de loja/mês (sempre "agora"), enquanto a página BI já é uma ferramenta de análise mais profunda com filtros; reaproveitar a rota/lógica da BI ali obrigaria ou duplicar toda sua query pesada (múltiplas agregações de 12 meses) só para extrair um campo, ou acoplar duas páginas com propósitos diferentes. Se no futuro fizer sentido usar a mesma metodologia de projeção nos dois lugares, extrair `linearRegression`/a lógica de projeção para uma função compartilhada é o caminho — não duplicá-la com fórmula diferente sem necessidade.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

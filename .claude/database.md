@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -230,6 +230,35 @@ sku TEXT PK, cost NUMERIC DEFAULT 0, updated_at TIMESTAMPTZ
 ```
 Ao salvar via `PATCH /api/custos/:sku`, o mesmo valor também é gravado em `items.cost` para o `ml_id` correspondente (join implícito por SKU == `ml_id` no uso atual — não há coluna `sku` em `items`).
 
+### `tasks` — v19: cartões da Agenda Trello (Kanban), módulo independente
+```
+id BIGSERIAL PK
+title TEXT NOT NULL, description TEXT
+board_column TEXT DEFAULT 'a_fazer'  -- a_fazer | em_andamento | finalizado | excluido
+priority TEXT DEFAULT 'media'        -- alta | media | baixa
+marketplace_id INT FK marketplaces
+store_id BIGINT FK stores
+item_id TEXT                  -- referência solta (sem FK) a items.ml_id/orders.item_id —
+                               -- a tarefa sobrevive mesmo se o anúncio for removido/alterado
+source TEXT DEFAULT 'sistema' -- mercado_livre | amazon | shopee | sistema | manual
+rule_key TEXT                 -- chave da regra automática que gerou o cartão (ex: 'estoque_critico',
+                               -- 'score_baixo'); NULL em tarefas manuais — usada pelo TaskEngine pra
+                               -- deduplicar (ver task-engine.md)
+status TEXT DEFAULT 'aberto'  -- aberto | concluido
+tags TEXT[] DEFAULT '{}'
+assigned_to TEXT, due_date TIMESTAMPTZ
+metadata JSONB DEFAULT '{}'   -- dados extras da regra automática (SKU, score, link do anúncio, etc.)
+created_at, updated_at, completed_at TIMESTAMPTZ
+```
+Índice parcial `(rule_key, item_id) WHERE board_column NOT IN ('finalizado','excluido')` — dedup rápido do TaskEngine. Não reaproveita nenhuma tabela existente (`orders`/`items`) — módulo 100% independente, ver `task-engine.md`.
+
+### `task_comments` — v19: comentários por cartão
+```
+id BIGSERIAL PK, task_id BIGINT FK tasks ON DELETE CASCADE
+author TEXT, text TEXT NOT NULL
+created_at TIMESTAMPTZ
+```
+
 ## Views ML-only (v17)
 
 ```sql
@@ -241,7 +270,7 @@ Toda leitura (`FROM`/`JOIN`) em `routes/api.js` usa essas views em vez das tabel
 
 ## Índices relevantes
 
-`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15), `stores(shopee_shop_id)` único parcial e `shopee_order_data(order_sn)` único (v18).
+`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15), `stores(shopee_shop_id)` único parcial e `shopee_order_data(order_sn)` único (v18), `tasks(board_column)`, `tasks(source)`, `tasks(priority)`, `tasks(store_id)`, `tasks(rule_key, item_id)` parcial (v19), `task_comments(task_id, created_at)` (v19).
 
 ## Relação `items.parent_item_id` (variações)
 

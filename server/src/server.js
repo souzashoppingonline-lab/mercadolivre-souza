@@ -6,6 +6,7 @@ const env = require('./config/env');
 const apiRoutes = require('./routes/api');
 const turboRoutes = require('./routes/turbo');
 const amazonRoutes = require('./routes/amazon');
+const tasksRoutes = require('./routes/tasks');
 const webhookGateway = require('./routes/webhookGateway');
 const authRoutes = require('./routes/auth');
 const shopeeAuthRoutes = require('./routes/shopeeAuth');
@@ -20,6 +21,8 @@ app.use('/api', apiRoutes);
 app.use('/api/turbo', turboRoutes);
 // Dashboard Amazon — isolado, não reutiliza nada do ML (ver routes/amazon.js).
 app.use('/api/amazon', amazonRoutes);
+// Agenda Trello — quadro Kanban independente (ver .claude/task-engine.md).
+app.use('/api/tasks', tasksRoutes);
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

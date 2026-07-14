@@ -13,6 +13,7 @@ const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem } = require('./reports');
+const taskEngine = require('./taskEngine');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -370,6 +371,11 @@ async function handleItem({ resource, storeId }) {
     await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity, loja: lojaNome });
     await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n🏪 Loja: <b>${lojaNome}</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
   }
+  const stockTask = await taskEngine.checkStock({
+    itemId: item.id, title: item.title, availableQuantity: item.available_quantity,
+    permalink: item.permalink, storeId, storeName: lojaNome,
+  });
+  if (stockTask?.created) await publish('task_created', { id: stockTask.id, rule_key: 'estoque_critico', title: 'Repor estoque urgente' });
 
   const changes = [];
   if (prev) {
@@ -1296,7 +1302,7 @@ async function syncScores() {
         try {
           await ensureTokenFresh(store);
           const { rows: items } = await pool.query(
-            `SELECT ml_id FROM items WHERE store_id=$1 AND status='active' ORDER BY ml_id LIMIT 100`,
+            `SELECT ml_id, title, permalink FROM items WHERE store_id=$1 AND status='active' ORDER BY ml_id LIMIT 100`,
             [store.id]
           );
           console.log(`[sync-scores] ${store.nickname}: ${items.length} itens ativos`);
@@ -1357,6 +1363,19 @@ async function syncScores() {
                 [store.id, item.ml_id, score, level, wording, pending, JSON.stringify(buckets), calcAt]
               );
               synced++;
+
+              if (score != null) {
+                const problems = Array.isArray(buckets)
+                  ? buckets.flatMap(g => Array.isArray(g.variables)
+                    ? g.variables.filter(v => v.status === 'PENDING').map(v => v.name || v.id)
+                    : [])
+                  : [];
+                const qualityTask = await taskEngine.checkQuality({
+                  itemId: item.ml_id, title: item.title, score, problems,
+                  permalink: item.permalink, storeId: store.id, storeName: store.nickname,
+                });
+                if (qualityTask?.created) await publish('task_created', { id: qualityTask.id, rule_key: 'score_baixo', title: 'Melhorar qualidade do anúncio' });
+              }
             } catch (e) {
               if (e.message?.includes('Rate limit persistente')) throw e; // propaga para abortar loja
               console.warn(`[sync-scores] erro em ${item.ml_id}: ${e.message}`);

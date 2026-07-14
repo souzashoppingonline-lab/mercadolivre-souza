@@ -1,0 +1,165 @@
+// Agenda Trello — API do quadro Kanban. Módulo 100% independente: só lê/
+// grava a tabela `tasks`/`task_comments` (migration v19), nunca toca em
+// orders/items. Geração automática de cartões fica em ../taskEngine.js —
+// esta rota só expõe CRUD + filtros pro frontend. Ver .claude/task-engine.md.
+const express = require('express');
+const pool = require('../db/pool');
+
+const router = express.Router();
+
+const VALID_COLUMNS = ['a_fazer', 'em_andamento', 'finalizado', 'excluido'];
+const VALID_PRIORITIES = ['alta', 'media', 'baixa'];
+
+router.get('/summary', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE board_column != 'excluido') AS total,
+         COUNT(*) FILTER (WHERE board_column = 'a_fazer') AS pendentes,
+         COUNT(*) FILTER (WHERE board_column = 'em_andamento') AS em_andamento,
+         COUNT(*) FILTER (WHERE board_column = 'finalizado' AND completed_at::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS finalizadas_hoje,
+         COUNT(*) FILTER (WHERE priority = 'alta' AND board_column NOT IN ('finalizado','excluido')) AS criticas
+       FROM tasks`
+    );
+    const r = rows[0];
+    res.json({
+      total: Number(r.total), pendentes: Number(r.pendentes),
+      em_andamento: Number(r.em_andamento), finalizadas_hoje: Number(r.finalizadas_hoje),
+      criticas: Number(r.criticas),
+    });
+  } catch (e) {
+    console.error('[api/tasks] /summary', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/', async (req, res) => {
+  try {
+    const { marketplace, store_id, assigned_to, priority, source, board_column, date_from, date_to } = req.query;
+    const where = [];
+    const params = [];
+    if (marketplace) { params.push(marketplace); where.push(`m.code = $${params.length}`); }
+    if (store_id) { params.push(store_id); where.push(`t.store_id = $${params.length}`); }
+    if (assigned_to) { params.push(assigned_to); where.push(`t.assigned_to = $${params.length}`); }
+    if (priority) { params.push(priority); where.push(`t.priority = $${params.length}`); }
+    if (source) { params.push(source); where.push(`t.source = $${params.length}`); }
+    if (board_column) { params.push(board_column); where.push(`t.board_column = $${params.length}`); }
+    if (date_from) { params.push(date_from); where.push(`t.created_at >= $${params.length}`); }
+    if (date_to) { params.push(date_to); where.push(`t.created_at <= $${params.length}`); }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const { rows } = await pool.query(
+      `SELECT t.id, t.title, t.description, t.board_column, t.priority, t.item_id,
+              t.source, t.rule_key, t.status, t.tags, t.assigned_to, t.due_date,
+              t.metadata, t.created_at, t.updated_at, t.completed_at,
+              t.store_id, s.nickname AS store_nickname,
+              t.marketplace_id, m.code AS marketplace_code, m.name AS marketplace_name
+       FROM tasks t
+       LEFT JOIN stores s ON s.id = t.store_id
+       LEFT JOIN marketplaces m ON m.id = t.marketplace_id
+       ${whereSql}
+       ORDER BY t.priority = 'alta' DESC, t.created_at DESC`,
+      params
+    );
+    res.json({ rows });
+  } catch (e) {
+    console.error('[api/tasks] GET /', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/', async (req, res) => {
+  try {
+    const { title, description, marketplace, store_id, priority, due_date, assigned_to, tags } = req.body || {};
+    if (!title || !String(title).trim()) return res.status(400).json({ error: 'title é obrigatório' });
+    const finalPriority = VALID_PRIORITIES.includes(priority) ? priority : 'media';
+
+    let marketplaceId = null;
+    if (marketplace) {
+      const { rows } = await pool.query(`SELECT id FROM marketplaces WHERE code = $1`, [marketplace]);
+      marketplaceId = rows[0]?.id ?? null;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO tasks (title, description, board_column, priority, marketplace_id, store_id, source, tags, assigned_to, due_date)
+       VALUES ($1,$2,'a_fazer',$3,$4,$5,'manual',$6,$7,$8) RETURNING id`,
+      [title, description || null, finalPriority, marketplaceId, store_id || null, tags || [], assigned_to || null, due_date || null]
+    );
+    res.status(201).json({ id: rows[0].id });
+  } catch (e) {
+    console.error('[api/tasks] POST /', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.patch('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { board_column, title, description, priority, assigned_to, due_date, tags } = req.body || {};
+
+    const sets = [];
+    const params = [];
+    if (board_column !== undefined) {
+      if (!VALID_COLUMNS.includes(board_column)) return res.status(400).json({ error: 'board_column inválido' });
+      params.push(board_column); sets.push(`board_column = $${params.length}`);
+      if (board_column === 'finalizado') {
+        sets.push(`status = 'concluido'`, `completed_at = now()`);
+      } else {
+        sets.push(`status = 'aberto'`, `completed_at = NULL`);
+      }
+    }
+    if (title !== undefined) { params.push(title); sets.push(`title = $${params.length}`); }
+    if (description !== undefined) { params.push(description); sets.push(`description = $${params.length}`); }
+    if (priority !== undefined) {
+      if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'priority inválida' });
+      params.push(priority); sets.push(`priority = $${params.length}`);
+    }
+    if (assigned_to !== undefined) { params.push(assigned_to); sets.push(`assigned_to = $${params.length}`); }
+    if (due_date !== undefined) { params.push(due_date); sets.push(`due_date = $${params.length}`); }
+    if (tags !== undefined) { params.push(tags); sets.push(`tags = $${params.length}`); }
+
+    if (!sets.length) return res.status(400).json({ error: 'nenhum campo para atualizar' });
+    sets.push(`updated_at = now()`);
+    params.push(id);
+
+    const { rowCount } = await pool.query(
+      `UPDATE tasks SET ${sets.join(', ')} WHERE id = $${params.length}`,
+      params
+    );
+    if (!rowCount) return res.status(404).json({ error: 'tarefa não encontrada' });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[api/tasks] PATCH /:id', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/:id/comments', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, author, text, created_at FROM task_comments WHERE task_id = $1 ORDER BY created_at ASC`,
+      [req.params.id]
+    );
+    res.json({ rows });
+  } catch (e) {
+    console.error('[api/tasks] GET /:id/comments', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/:id/comments', async (req, res) => {
+  try {
+    const { author, text } = req.body || {};
+    if (!text || !String(text).trim()) return res.status(400).json({ error: 'text é obrigatório' });
+    const { rows } = await pool.query(
+      `INSERT INTO task_comments (task_id, author, text) VALUES ($1,$2,$3) RETURNING id, author, text, created_at`,
+      [req.params.id, author || null, text]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    console.error('[api/tasks] POST /:id/comments', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+module.exports = router;

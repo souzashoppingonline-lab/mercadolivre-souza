@@ -177,6 +177,18 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 
 `GET /auth/config`, `GET /auth/login`, `GET /auth/callback` (+ alias `/ml/callback`).
 
+## Agenda Trello (`routes/tasks.js`, montado em `/api/tasks`)
+> Módulo independente — só lê/grava `tasks`/`task_comments` (v19), nunca `orders`/`items`. Geração automática de cartões fica em `taskEngine.js` (ver `task-engine.md`), esta rota é só CRUD + filtros. Consumido por `pages/agenda-trello.html`.
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/tasks/summary` | painel superior: `total` (exclui `excluido`), `pendentes` (`a_fazer`), `em_andamento`, `finalizadas_hoje` (`finalizado` com `completed_at` hoje), `criticas` (`priority='alta'`, fora de `finalizado`/`excluido`) |
+| `GET /api/tasks?marketplace&store_id&assigned_to&priority&source&board_column&date_from&date_to` | lista de cartões com todos os filtros da Agenda Trello, join com `stores`/`marketplaces` para nome/código |
+| `POST /api/tasks { title, description?, marketplace?, store_id?, priority?, due_date?, assigned_to?, tags? }` | cria cartão manual (`source='manual'`, `board_column='a_fazer'`) |
+| `PATCH /api/tasks/:id { board_column?, title?, description?, priority?, assigned_to?, due_date?, tags? }` | edição parcial; mover pra `board_column='finalizado'` seta `status='concluido'`+`completed_at=now()`, mover pra qualquer outra coluna limpa os dois (usado tanto pelo drag-and-drop quanto pelo modal de edição) |
+| `GET /api/tasks/:id/comments` | comentários do cartão, ordenados por data |
+| `POST /api/tasks/:id/comments { author?, text }` | adiciona comentário |
+
 ## `/auth/shopee/*` — ver `shopee.md`
 
 | Rota | Descrição |

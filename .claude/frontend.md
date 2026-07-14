@@ -29,7 +29,7 @@ js/
 
 Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`):
 
-- **Início**: top-vendas-online (dashboard matinal "morning digest" — consolida em cards/gráficos coloridos o que já vai por Telegram/e-mail: top vendas últimas 4h — mesmo dado do alerta Telegram, via `GET /api/schedule/runs?job=top-vendas`, auto-refresh 4h —, resumo do dia anterior, top vendas do dia 24h, relatório semanal; usa Chart.js, sem rota exclusiva além de `GET /api/dashboard/resumo-ontem`/`top-vendas-dia`/`resumo-semanal`, ver `api.md`)
+- **Início**: top-vendas-online (dashboard matinal "morning digest" — consolida em cards/gráficos coloridos o que já vai por Telegram/e-mail: top vendas últimas 4h — mesmo dado do alerta Telegram, via `GET /api/schedule/runs?job=top-vendas`, auto-refresh 4h —, resumo do dia anterior, top vendas do dia 24h, relatório semanal; usa Chart.js, sem rota exclusiva além de `GET /api/dashboard/resumo-ontem`/`top-vendas-dia`/`resumo-semanal`, ver `api.md`), agenda-trello (quadro Kanban de tarefas do Analista de E-commerce — ver seção dedicada abaixo e `task-engine.md`)
 - **Operação**: anuncios, pedidos, vendas, vendas-por-loja, promocoes, perguntas, mensagens, metricas, clientes, lojas
 - **Análises**: horarios, diasemana, produtos, performance, estoque-parado, publicidade, concorrentes
 - **Comparativos**: periodo, evolucao, curvaABC, analise-vendas-mes (BI — comparativo mensal, média histórica 12 meses, heatmap, rankings, insights automáticos e drill-down por dia; usa Chart.js, mesmo padrão do `dashboard.js`)
@@ -54,6 +54,8 @@ Sempre que uma página nova é criada seguindo este contrato, `frontend.md` deve
 Objeto `DB` com um método por endpoint (`DB.getDashboardKPIs()`, `DB.getPedidos(params)`, etc.), todos implementados sobre três helpers genéricos: `_get`, `_patch`, `_post`. Base URL configurável via `localStorage.ml_backend_url` (padrão `/api`). Nunca lança exceção para o chamador — em erro retorna `{ error: mensagem }` ou `null`, então toda página deve checar o retorno antes de usar.
 
 Ao adicionar um endpoint novo em `routes/api.js`, adicionar o método correspondente em `db.js` na mesma tarefa — a documentação em `api.md` deve ser atualizada junto.
+
+`DB.getTasks(params)`/`getTasksSummary()`/`createTask(body)`/`updateTask(id, body)`/`getTaskComments(id)`/`addTaskComment(id, body)` — Agenda Trello (`/api/tasks/*`, ver `api.md`/`task-engine.md`), seguem o padrão genérico `_get`/`_post`/`_patch` (sem exceção de tratamento de erro).
 
 **Exceção ao padrão `_post`/`_patch`**: esses dois helpers descartam o corpo da resposta em erro e retornam `null` (o chamador só sabe que falhou, não por quê). `DB.getLojasAmazon()`, `DB.addLojaAmazon(data)` e `DB.deleteLojaAmazon(id)` (endpoints em `api.md`, seção "Lojas") **não** usam `_post`/`_patch` — implementam o próprio `fetch` (mesmo padrão de `_get`) para preservar `{ error: "mensagem" }` do backend mesmo em resposta não-OK, porque `pages/lojas.html` precisa mostrar esse texto exato dentro do modal de cadastro em vez de um erro genérico. Qualquer método novo que precise repassar a mensagem de erro do backend ao usuário deve seguir esse mesmo padrão, não `_post`/`_patch`.
 
@@ -102,6 +104,19 @@ Todas 100% isoladas do ML: buscam dados só via `DB.getAmazonKpis()/getAmazonPed
 - Todas recarregam em tempo real escutando `WS.on('order_updated', ...)` filtrado por `payload.marketplace === 'AMAZON'` (evento publicado por `marketplaceEventWorker.js`), com fallback de polling a cada 60s e botão de refresh manual (`#btnRefresh`, no topbar do `layout-amazon.js`).
 - **`pages/dashboard-shopee.html`** — não usa `layout-amazon.js` (é de outro marketplace) nem `layout.js`; monta o próprio topbar mínimo inline (mesmo padrão descrito abaixo em "Alternador de marketplace"), sem sidebar — só o switcher + um card informativo, já que a Shopee ainda não tem nenhuma página funcional (ver `shopee.md`). Quando a integração Shopee sair do bloqueio, criar um `js/layout-shopee.js` seguindo o mesmo padrão de `layout-amazon.js`.
 - Quando `dashboard-ml.html` for criado no futuro, deve seguir esse mesmo padrão de independência (sidebar própria, sem misturar com a da Amazon/Shopee).
+
+## `pages/agenda-trello.html` — Kanban (Agenda Trello)
+
+Página independente do resto do sistema — usa a mesma `NAV_ITEMS`/sidebar/topbar ML (`js/layout.js`), mas não lê nenhuma tabela `orders`/`items` diretamente, só `DB.getTasks*`/`DB.*Task*` (`/api/tasks/*`, ver `api.md`). Regras de negócio (quando um cartão automático é criado) ficam inteiramente em `taskEngine.js`, não na página — ver `task-engine.md`.
+
+- **Painel superior**: 5 cards (Total, Pendentes, Em andamento, Finalizadas hoje, Críticas) via `DB.getTasksSummary()`.
+- **Filtros**: Marketplace, Loja (`DB.getLojas()` — só lista lojas ML, mesma limitação do restante do sistema hoje), Responsável, Prioridade, Origem, Período (data de/até) — todos viram query params de `DB.getTasks(params)`.
+- **Quadro**: 4 colunas fixas (`a_fazer`/`em_andamento`/`finalizado`/`excluido`), cada uma com contador e scroll independente. Cartões (`.at-card`) mostram título, badge de prioridade (cor por prioridade), loja, prazo (destaque vermelho se atrasado e ainda aberto), tags e responsável.
+- **Drag-and-drop**: API nativa HTML5 (`draggable`, `dragstart`/`dragover`/`drop`) — sem lib externa, mesmo padrão "vanilla JS sem bundler" do resto do frontend. Ao soltar um cartão em outra coluna, atualiza o estado local (otimista) e chama `DB.updateTask(id, { board_column })`.
+- **Modal "+ Nova tarefa"**: cria cartão manual (`DB.createTask`) — Título, Descrição, Marketplace, Loja, Prioridade, Prazo, Responsável, Tags.
+- **Modal de detalhe/edição**: abre ao clicar num cartão — mostra origem/loja/link do anúncio (se `metadata.link` existir, vindo de um cartão automático), permite editar todos os campos + mover de coluna, e lista/adiciona comentários (`DB.getTaskComments`/`DB.addTaskComment`).
+- **Notificação em tempo real**: `WS.on('task_created', ...)` (payload publicado por `worker.js` quando o TaskEngine cria — não só atualiza — um cartão automático) mostra um toast e recarrega o quadro/painel.
+- **Checklist por cartão**: não implementado (explicitamente adiado, ver `task-engine.md`).
 
 ## `js/layout.js` — sidebar, topbar e alertas globais
 

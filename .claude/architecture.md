@@ -36,6 +36,7 @@ Os dois processos se comunicam **apenas via Redis** (filas BullMQ + pub/sub), nu
 3. `routes/api.js` só lê Postgres/Redis — não faz chamadas HTTP externas para popular listagens.
 4. `routes/webhookGateway.js` responde `200` imediatamente e enfileira o processamento — nunca faz trabalho síncrono pesado na requisição do webhook.
 5. O pipeline de eventos de outros marketplaces (`marketplaceEventWorker.js`, fila `marketplace-events-*`) é desacoplado do dispatch table ML (`handlers`/`processJob` em `worker.js`) — um nunca chama o outro. Ver `workers.md` ("Eventos de outros marketplaces") e `decisions.md` ("Marketplace Engine — schema evolutivo").
+6. A Agenda Trello (`taskEngine.js`, `routes/tasks.js`, `pages/agenda-trello.html`) é um módulo independente: tabela própria (`tasks`/`task_comments`), sem FK para `orders`/`items`, sem alterar nenhuma rota/página ML existente. Toda regra de criação automática de cartão vive em `taskEngine.js` — nunca em `worker.js` diretamente nem nas páginas. Ver `task-engine.md`.
 
 ## Estrutura de diretórios
 
@@ -60,6 +61,7 @@ server/                ← Backend Node.js (dois processos — ver acima)
     marketplaceEventWorker.js  ← v15: entry point (chamado por worker.js) do worker de eventos
                                    de outros marketplaces — fila/dispatch separados do ML
     mlClient.js            ← cliente HTTP da API do ML — uso restrito (ver regra 2)
+    taskEngine.js            ← v19: Agenda Trello — regras de geração automática de cartões (ver task-engine.md)
     config/env.js           ← leitura de variáveis de ambiente
     db/
       pool.js               ← pool de conexões PostgreSQL (pg)
@@ -84,6 +86,7 @@ server/                ← Backend Node.js (dois processos — ver acima)
       auth.js                       ← OAuth (login, callback, refresh de token)
       turbo.js                       ← upload/consulta da planilha Vendas ML Turbo
       webhookGateway.js               ← POST /webhooks/ml e /webhooks/telegram
+      tasks.js                          ← v19: /api/tasks/* — Agenda Trello (ver task-engine.md)
     ws/
       hub.js                          ← WebSocket + Redis pub/sub
   nginx-websocket.conf              ← config de proxy para manter WS vivo

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agenda Trello — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Agenda Trello'; window.ACTIVE_NAV='agenda-trello.html';</script>
+  <style>
+    .at-subtitle { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
+
+    .at-top-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .at-top-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+    .at-top-card i { font-size: 20px; width: 26px; text-align: center; }
+    .at-top-card .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .at-top-card .val { font-size: 22px; font-weight: 800; }
+    .at-top-card.crit i, .at-top-card.crit .val { color: var(--red); }
+
+    .at-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+    .at-field { display: flex; flex-direction: column; gap: 4px; }
+    .at-field label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .at-field select, .at-field input { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 7px 10px; font-size: 12px; min-width: 130px; }
+    .at-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .at-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .at-btn.primary { background: var(--primary); color: #1a1a1a; border-color: var(--primary); font-weight: 700; margin-left: auto; }
+    .at-btn.primary:hover { filter: brightness(1.08); color: #1a1a1a; }
+
+    .at-board { display: grid; grid-template-columns: repeat(4, minmax(260px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+    @media (max-width: 1100px) { .at-board { grid-template-columns: repeat(4, 300px); } }
+    .at-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; min-height: 200px; max-height: calc(100vh - 340px); }
+    .at-col-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+    .at-col-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: center; gap: 8px; }
+    .at-col-count { background: var(--bg-card2); border-radius: 20px; font-size: 11px; font-weight: 700; padding: 2px 9px; color: var(--text-muted); }
+    .at-col[data-col="a_fazer"] .at-col-title i { color: var(--blue); }
+    .at-col[data-col="em_andamento"] .at-col-title i { color: var(--orange); }
+    .at-col[data-col="finalizado"] .at-col-title i { color: var(--green); }
+    .at-col[data-col="excluido"] .at-col-title i { color: var(--red); }
+    .at-col-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; transition: background .15s; }
+    .at-col-body.drag-over { background: rgba(255,230,0,.06); }
+    .at-col-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 20px 6px; }
+
+    .at-card { background: var(--bg-card2); border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 10px; padding: 11px 12px; cursor: grab; transition: transform .1s, box-shadow .1s; }
+    .at-card:hover { border-color: var(--primary); box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+    .at-card.dragging { opacity: .4; }
+    .at-card.prio-alta { border-left-color: var(--red); }
+    .at-card.prio-media { border-left-color: var(--orange); }
+    .at-card.prio-baixa { border-left-color: var(--green); }
+    .at-card-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; line-height: 1.35; }
+    .at-card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .at-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; display: inline-flex; align-items: center; gap: 4px; }
+    .at-badge.prio-alta { background: rgba(231,76,60,.15); color: var(--red); }
+    .at-badge.prio-media { background: rgba(230,126,34,.15); color: var(--orange); }
+    .at-badge.prio-baixa { background: rgba(39,174,96,.15); color: var(--green); }
+    .at-badge.store { background: rgba(255,230,0,.1); color: var(--primary); }
+    .at-badge.due { background: rgba(255,255,255,.06); color: var(--text-muted); }
+    .at-badge.due.late { background: rgba(231,76,60,.15); color: var(--red); }
+    .at-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .at-tag { font-size: 9px; background: rgba(255,255,255,.06); color: var(--text-muted); padding: 1px 6px; border-radius: 8px; }
+    .at-card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 10px; color: var(--text-muted); }
+    .at-card-assignee { display: flex; align-items: center; gap: 4px; }
+
+    .at-toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg-card); border: 1px solid var(--primary); border-radius: 10px; padding: 12px 16px; font-size: 12px; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,.4); display: flex; align-items: center; gap: 8px; animation: atToastIn .25s ease; }
+    @keyframes atToastIn { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .at-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .at-modal-backdrop.open { display: flex; }
+    .at-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 520px; max-height: 88vh; overflow-y: auto; padding: 22px; }
+    .at-modal h3 { font-size: 15px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .at-modal h3 .close { cursor: pointer; color: var(--text-muted); font-size: 14px; }
+    .at-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .at-form-grid .full { grid-column: 1 / -1; }
+    .at-form-grid label { font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+    .at-form-grid select, .at-form-grid input, .at-form-grid textarea { width: 100%; background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 10px; font-size: 12px; font-family: inherit; }
+    .at-form-grid textarea { resize: vertical; min-height: 60px; }
+    .at-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+    .at-detail-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .at-detail-link { font-size: 11px; color: var(--primary); }
+    .at-comments { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
+    .at-comments h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 10px; }
+    .at-comment { background: var(--bg-card2); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
+    .at-comment .author { font-weight: 700; color: var(--primary); font-size: 11px; }
+    .at-comment .when { color: var(--text-muted); font-size: 10px; float: right; }
+    .at-comment-form { display: flex; gap: 8px; margin-top: 10px; }
+    .at-comment-form input { flex: 1; }
+
+    .at-empty-board { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="at-subtitle">Quadro de tarefas do Analista de E-commerce — cartões automáticos (estoque crítico, qualidade do anúncio) e manuais, em um Kanban só.</p>
+
+      <!-- ═══ PAINEL SUPERIOR ═══ -->
+      <div class="at-top-grid" id="atTopGrid">
+        <div class="at-top-card"><i class="fas fa-list-check" style="color:var(--blue)"></i><div><div class="lbl">Total</div><div class="val" id="atTotal">—</div></div></div>
+        <div class="at-top-card"><i class="fas fa-inbox" style="color:var(--text-muted)"></i><div><div class="lbl">Pendentes</div><div class="val" id="atPendentes">—</div></div></div>
+        <div class="at-top-card"><i class="fas fa-spinner" style="color:var(--orange)"></i><div><div class="lbl">Em andamento</div><div class="val" id="atEmAndamento">—</div></div></div>
+        <div class="at-top-card"><i class="fas fa-circle-check" style="color:var(--green)"></i><div><div class="lbl">Finalizadas hoje</div><div class="val" id="atFinalizadasHoje">—</div></div></div>
+        <div class="at-top-card crit"><i class="fas fa-triangle-exclamation"></i><div><div class="lbl">Críticas</div><div class="val" id="atCriticas">—</div></div></div>
+      </div>
+
+      <!-- ═══ FILTROS ═══ -->
+      <div class="at-toolbar">
+        <div class="at-field"><label>Marketplace</label>
+          <select id="fMarketplace"><option value="">Todos</option><option value="ML">Mercado Livre</option><option value="AMAZON">Amazon</option><option value="SHOPEE">Shopee</option></select>
+        </div>
+        <div class="at-field"><label>Loja</label><select id="fLoja"><option value="">Todas</option></select></div>
+        <div class="at-field"><label>Responsável</label><input id="fResponsavel" placeholder="Nome"></div>
+        <div class="at-field"><label>Prioridade</label>
+          <select id="fPrioridade"><option value="">Todas</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select>
+        </div>
+        <div class="at-field"><label>Origem</label>
+          <select id="fOrigem"><option value="">Todas</option><option value="mercado_livre">Mercado Livre</option><option value="amazon">Amazon</option><option value="shopee">Shopee</option><option value="sistema">Sistema</option><option value="manual">Manual</option></select>
+        </div>
+        <div class="at-field"><label>De</label><input type="date" id="fDe"></div>
+        <div class="at-field"><label>Até</label><input type="date" id="fAte"></div>
+        <button class="at-btn" onclick="loadBoard()"><i class="fas fa-filter"></i> Filtrar</button>
+        <button class="at-btn" onclick="limparFiltros()"><i class="fas fa-eraser"></i> Limpar</button>
+        <button class="at-btn primary" onclick="openNewTaskModal()"><i class="fas fa-plus"></i> Nova tarefa</button>
+      </div>
+
+      <!-- ═══ QUADRO KANBAN ═══ -->
+      <div class="at-board" id="atBoard">
+        <div class="at-col" data-col="a_fazer">
+          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-inbox"></i> A Fazer</div><span class="at-col-count" id="cnt_a_fazer">0</span></div>
+          <div class="at-col-body" id="body_a_fazer"></div>
+        </div>
+        <div class="at-col" data-col="em_andamento">
+          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-spinner"></i> Em Andamento</div><span class="at-col-count" id="cnt_em_andamento">0</span></div>
+          <div class="at-col-body" id="body_em_andamento"></div>
+        </div>
+        <div class="at-col" data-col="finalizado">
+          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-circle-check"></i> Finalizado</div><span class="at-col-count" id="cnt_finalizado">0</span></div>
+          <div class="at-col-body" id="body_finalizado"></div>
+        </div>
+        <div class="at-col" data-col="excluido">
+          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-trash"></i> Excluído</div><span class="at-col-count" id="cnt_excluido">0</span></div>
+          <div class="at-col-body" id="body_excluido"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- ═══ MODAL: NOVA TAREFA ═══ -->
+<div class="at-modal-backdrop" id="newTaskBackdrop">
+  <div class="at-modal">
+    <h3>Nova tarefa <span class="close" onclick="closeNewTaskModal()"><i class="fas fa-times"></i></span></h3>
+    <div class="at-form-grid">
+      <div class="full"><label>Título *</label><input id="ntTitle" placeholder="Ex: Responder cliente sobre atraso"></div>
+      <div class="full"><label>Descrição</label><textarea id="ntDescription"></textarea></div>
+      <div><label>Marketplace</label>
+        <select id="ntMarketplace" onchange="loadLojasForModal()"><option value="">—</option><option value="ML">Mercado Livre</option><option value="AMAZON">Amazon</option><option value="SHOPEE">Shopee</option></select>
+      </div>
+      <div><label>Loja</label><select id="ntStore"><option value="">—</option></select></div>
+      <div><label>Prioridade</label>
+        <select id="ntPriority"><option value="media">Média</option><option value="alta">Alta</option><option value="baixa">Baixa</option></select>
+      </div>
+      <div><label>Prazo</label><input type="date" id="ntDueDate"></div>
+      <div><label>Responsável</label><input id="ntAssignedTo" placeholder="Nome"></div>
+      <div><label>Tags (separadas por vírgula)</label><input id="ntTags" placeholder="urgente, financeiro"></div>
+    </div>
+    <div class="at-modal-actions">
+      <button class="at-btn" onclick="closeNewTaskModal()">Cancelar</button>
+      <button class="at-btn primary" onclick="submitNewTask()"><i class="fas fa-check"></i> Criar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: DETALHE / EDIÇÃO ═══ -->
+<div class="at-modal-backdrop" id="detailBackdrop">
+  <div class="at-modal">
+    <h3><span id="dtTitleLabel">Tarefa</span> <span class="close" onclick="closeDetailModal()"><i class="fas fa-times"></i></span></h3>
+    <div class="at-detail-meta" id="dtMeta"></div>
+    <div class="at-form-grid">
+      <div class="full"><label>Título</label><input id="dtTitle"></div>
+      <div class="full"><label>Descrição</label><textarea id="dtDescription"></textarea></div>
+      <div><label>Prioridade</label>
+        <select id="dtPriority"><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select>
+      </div>
+      <div><label>Coluna</label>
+        <select id="dtColumn"><option value="a_fazer">A Fazer</option><option value="em_andamento">Em Andamento</option><option value="finalizado">Finalizado</option><option value="excluido">Excluído</option></select>
+      </div>
+      <div><label>Prazo</label><input type="date" id="dtDueDate"></div>
+      <div><label>Responsável</label><input id="dtAssignedTo"></div>
+      <div class="full"><label>Tags (separadas por vírgula)</label><input id="dtTags"></div>
+    </div>
+    <div class="at-modal-actions">
+      <button class="at-btn" onclick="closeDetailModal()">Fechar</button>
+      <button class="at-btn primary" onclick="saveDetail()"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+
+    <div class="at-comments">
+      <h4>Comentários</h4>
+      <div id="dtComments"><div class="at-col-empty">Carregando...</div></div>
+      <div class="at-comment-form">
+        <input id="dtCommentText" placeholder="Escrever um comentário...">
+        <button class="at-btn" onclick="submitComment()"><i class="fas fa-paper-plane"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const COLS = ['a_fazer', 'em_andamento', 'finalizado', 'excluido'];
+const PRIO_LABEL = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+const ORIGEM_LABEL = { mercado_livre: 'Mercado Livre', amazon: 'Amazon', shopee: 'Shopee', sistema: 'Sistema', manual: 'Manual' };
+let tasksCache = [];
+let currentDetailId = null;
+
+function fmtDate(v) { return v ? new Date(v).toLocaleDateString('pt-BR') : null; }
+function isLate(due, col) { return due && col !== 'finalizado' && col !== 'excluido' && new Date(due) < new Date(new Date().toDateString()); }
+
+function currentFilters() {
+  const f = {};
+  const marketplace = document.getElementById('fMarketplace').value; if (marketplace) f.marketplace = marketplace;
+  const store_id = document.getElementById('fLoja').value; if (store_id) f.store_id = store_id;
+  const assigned_to = document.getElementById('fResponsavel').value.trim(); if (assigned_to) f.assigned_to = assigned_to;
+  const priority = document.getElementById('fPrioridade').value; if (priority) f.priority = priority;
+  const source = document.getElementById('fOrigem').value; if (source) f.source = source;
+  const de = document.getElementById('fDe').value; if (de) f.date_from = de;
+  const ate = document.getElementById('fAte').value; if (ate) f.date_to = ate + 'T23:59:59';
+  return f;
+}
+
+function limparFiltros() {
+  ['fMarketplace','fLoja','fResponsavel','fPrioridade','fOrigem','fDe','fAte'].forEach(id => document.getElementById(id).value = '');
+  loadBoard();
+}
+
+async function loadLojasFilter() {
+  const data = await DB.getLojas();
+  const lojas = data?.stores || [];
+  const sel = document.getElementById('fLoja');
+  lojas.forEach(l => sel.insertAdjacentHTML('beforeend', `<option value="${l.id}">${l.nickname}</option>`));
+}
+
+async function loadSummary() {
+  const s = await DB.getTasksSummary();
+  if (!s || s.error) return;
+  document.getElementById('atTotal').textContent = s.total;
+  document.getElementById('atPendentes').textContent = s.pendentes;
+  document.getElementById('atEmAndamento').textContent = s.em_andamento;
+  document.getElementById('atFinalizadasHoje').textContent = s.finalizadas_hoje;
+  document.getElementById('atCriticas').textContent = s.criticas;
+}
+
+function cardHtml(t) {
+  const due = fmtDate(t.due_date);
+  const late = isLate(t.due_date, t.board_column);
+  const tags = Array.isArray(t.tags) ? t.tags : [];
+  return `
+    <div class="at-card prio-${t.priority}" draggable="true" data-id="${t.id}" ondragstart="onDragStart(event)" onclick="openDetail(${t.id})">
+      <div class="at-card-title">${t.title}</div>
+      <div class="at-card-meta">
+        <span class="at-badge prio-${t.priority}">${PRIO_LABEL[t.priority] || t.priority}</span>
+        ${t.store_nickname ? `<span class="at-badge store"><i class="fas fa-store"></i> ${t.store_nickname}</span>` : ''}
+        ${due ? `<span class="at-badge due ${late ? 'late' : ''}"><i class="fas fa-calendar"></i> ${due}</span>` : ''}
+      </div>
+      ${tags.length ? `<div class="at-card-tags">${tags.map(tg => `<span class="at-tag">${tg}</span>`).join('')}</div>` : ''}
+      <div class="at-card-foot">
+        <span>${ORIGEM_LABEL[t.source] || t.source}</span>
+        ${t.assigned_to ? `<span class="at-card-assignee"><i class="fas fa-user"></i> ${t.assigned_to}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderBoard() {
+  COLS.forEach(col => {
+    const items = tasksCache.filter(t => t.board_column === col);
+    document.getElementById(`cnt_${col}`).textContent = items.length;
+    const body = document.getElementById(`body_${col}`);
+    body.innerHTML = items.length ? items.map(cardHtml).join('') : '<div class="at-col-empty">Nenhuma tarefa</div>';
+  });
+}
+
+async function loadBoard() {
+  const data = await DB.getTasks(currentFilters());
+  tasksCache = data?.rows || [];
+  renderBoard();
+}
+
+// ── Drag and drop nativo (sem lib externa) ──────────────────
+let draggedId = null;
+function onDragStart(e) {
+  draggedId = e.currentTarget.dataset.id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.setData('text/plain', draggedId);
+  e.dataTransfer.effectAllowed = 'move';
+}
+document.addEventListener('dragend', e => { if (e.target.classList?.contains('at-card')) e.target.classList.remove('dragging'); });
+
+COLS.forEach(col => {
+  const body = document.getElementById(`body_${col}`);
+  body.addEventListener('dragover', e => { e.preventDefault(); body.classList.add('drag-over'); });
+  body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
+  body.addEventListener('drop', async e => {
+    e.preventDefault();
+    body.classList.remove('drag-over');
+    const id = e.dataTransfer.getData('text/plain') || draggedId;
+    if (!id) return;
+    const task = tasksCache.find(t => String(t.id) === String(id));
+    if (!task || task.board_column === col) return;
+    task.board_column = col;
+    renderBoard();
+    await DB.updateTask(id, { board_column: col });
+    loadSummary();
+  });
+});
+
+// ── Modal: Nova tarefa ────────────────────────────────────────
+async function loadLojasForModal() {
+  const sel = document.getElementById('ntStore');
+  sel.innerHTML = '<option value="">—</option>';
+  const mp = document.getElementById('ntMarketplace').value;
+  if (mp !== 'ML') return; // só temos listagem de lojas ML hoje
+  const data = await DB.getLojas();
+  const lojas = data?.stores || [];
+  lojas.forEach(l => sel.insertAdjacentHTML('beforeend', `<option value="${l.id}">${l.nickname}</option>`));
+}
+
+function openNewTaskModal() {
+  ['ntTitle','ntDescription','ntDueDate','ntAssignedTo','ntTags'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ntMarketplace').value = '';
+  document.getElementById('ntStore').innerHTML = '<option value="">—</option>';
+  document.getElementById('ntPriority').value = 'media';
+  document.getElementById('newTaskBackdrop').classList.add('open');
+}
+function closeNewTaskModal() { document.getElementById('newTaskBackdrop').classList.remove('open'); }
+
+async function submitNewTask() {
+  const title = document.getElementById('ntTitle').value.trim();
+  if (!title) { alert('Título é obrigatório'); return; }
+  const tags = document.getElementById('ntTags').value.split(',').map(s => s.trim()).filter(Boolean);
+  const body = {
+    title,
+    description: document.getElementById('ntDescription').value.trim() || null,
+    marketplace: document.getElementById('ntMarketplace').value || null,
+    store_id: document.getElementById('ntStore').value || null,
+    priority: document.getElementById('ntPriority').value,
+    due_date: document.getElementById('ntDueDate').value || null,
+    assigned_to: document.getElementById('ntAssignedTo').value.trim() || null,
+    tags,
+  };
+  const res = await DB.createTask(body);
+  if (!res || res.error) { alert('Erro ao criar tarefa: ' + (res?.error || '')); return; }
+  closeNewTaskModal();
+  loadBoard();
+  loadSummary();
+}
+
+// ── Modal: Detalhe / edição ───────────────────────────────────
+async function openDetail(id) {
+  const t = tasksCache.find(x => x.id === id);
+  if (!t) return;
+  currentDetailId = id;
+  document.getElementById('dtTitleLabel').textContent = `Tarefa #${t.id}`;
+  document.getElementById('dtTitle').value = t.title || '';
+  document.getElementById('dtDescription').value = t.description || '';
+  document.getElementById('dtPriority').value = t.priority;
+  document.getElementById('dtColumn').value = t.board_column;
+  document.getElementById('dtDueDate').value = t.due_date ? t.due_date.slice(0, 10) : '';
+  document.getElementById('dtAssignedTo').value = t.assigned_to || '';
+  document.getElementById('dtTags').value = (t.tags || []).join(', ');
+
+  const meta = [];
+  meta.push(`<span class="at-badge">${ORIGEM_LABEL[t.source] || t.source}</span>`);
+  if (t.store_nickname) meta.push(`<span class="at-badge store"><i class="fas fa-store"></i> ${t.store_nickname}</span>`);
+  if (t.marketplace_name) meta.push(`<span class="at-badge">${t.marketplace_name}</span>`);
+  if (t.metadata?.link) meta.push(`<a class="at-detail-link" href="${t.metadata.link}" target="_blank"><i class="fas fa-external-link-alt"></i> Ver anúncio</a>`);
+  document.getElementById('dtMeta').innerHTML = meta.join(' ');
+
+  document.getElementById('detailBackdrop').classList.add('open');
+  loadComments(id);
+}
+function closeDetailModal() { document.getElementById('detailBackdrop').classList.remove('open'); currentDetailId = null; }
+
+async function saveDetail() {
+  if (!currentDetailId) return;
+  const tags = document.getElementById('dtTags').value.split(',').map(s => s.trim()).filter(Boolean);
+  const body = {
+    title: document.getElementById('dtTitle').value.trim(),
+    description: document.getElementById('dtDescription').value.trim(),
+    priority: document.getElementById('dtPriority').value,
+    board_column: document.getElementById('dtColumn').value,
+    due_date: document.getElementById('dtDueDate').value || null,
+    assigned_to: document.getElementById('dtAssignedTo').value.trim() || null,
+    tags,
+  };
+  const res = await DB.updateTask(currentDetailId, body);
+  if (!res || res.error) { alert('Erro ao salvar: ' + (res?.error || '')); return; }
+  closeDetailModal();
+  loadBoard();
+  loadSummary();
+}
+
+async function loadComments(id) {
+  const box = document.getElementById('dtComments');
+  box.innerHTML = '<div class="at-col-empty">Carregando...</div>';
+  const data = await DB.getTaskComments(id);
+  const rows = data?.rows || [];
+  box.innerHTML = rows.length ? rows.map(c => `
+    <div class="at-comment"><span class="when">${new Date(c.created_at).toLocaleString('pt-BR')}</span><span class="author">${c.author || 'Anônimo'}</span><div>${c.text}</div></div>
+  `).join('') : '<div class="at-col-empty">Nenhum comentário ainda.</div>';
+}
+
+async function submitComment() {
+  if (!currentDetailId) return;
+  const input = document.getElementById('dtCommentText');
+  const text = input.value.trim();
+  if (!text) return;
+  await DB.addTaskComment(currentDetailId, { text });
+  input.value = '';
+  loadComments(currentDetailId);
+}
+
+// ── Notificação interna de cartão automático ─────────────────
+function showToast(msg) {
+  const el = document.createElement('div');
+  el.className = 'at-toast';
+  el.innerHTML = `<i class="fas fa-bell" style="color:var(--primary)"></i> ${msg}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+WS.on('task_created', (payload) => {
+  showToast(`Novo cartão automático: <b>${payload.title}</b>`);
+  loadBoard();
+  loadSummary();
+});
+
+// ── Init ────────────────────────────────────────────────────
+loadLojasFilter();
+loadBoard();
+loadSummary();
+</script>
+</body>
+</html>

@@ -28,6 +28,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `redis.md` | Cliente Redis, cache de leitura (`cached()`), canais pub/sub (`ml:ws:broadcast`, `worker:cmd`) |
 | `workers.md` | Processo BullMQ: filas por loja, handlers por tópico webhook, jobs agendados, bot Telegram |
 | `mercadolivre.md` | OAuth, `mlClient.js`, webhooks recebidos do ML, rate limiting — única integração de marketplace implementada |
+| `task-engine.md` | Agenda Trello: `TaskEngine` (geração automática de cartões), regras implementadas/futuras, escopo atual (só ML) |
 | `shopee.md` | Status (não implementado) e como uma integração Shopee deveria se encaixar na arquitetura |
 | `amazon.md` | Status (não implementado) e como uma integração Amazon (SP-API) deveria se encaixar na arquitetura |
 | `business-rules.md` | Regras de domínio não óbvias: thresholds de estoque, quando notificar, curva ABC, clientes novos/recorrentes, silêncio do Telegram |

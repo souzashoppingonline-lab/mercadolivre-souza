@@ -55,6 +55,14 @@ Card que consolida dois sinais já calculados em outro lugar (nenhuma fórmula n
 - **Estoque crítico entre os mais vendidos**: cruza os itens mais vendidos (unidades) nas últimas 24h com `available_quantity <= 15` — mesmo threshold "medium" já usado em `GET /api/alertas/reposicao` (ver seção "Estoque" acima), reaproveitado, não uma constante nova. Objetivo: destacar item que "vendeu bem e pode faltar", não estoque baixo em geral (isso já existe na página de Reposição).
 - Se nenhum dos dois disparar, mostra estado vazio positivo ("nenhum alerta hoje") — nunca mostra "sem dados" como se fosse erro.
 
+## Agenda Trello — regras de geração automática de cartão
+
+Ver `task-engine.md` para a arquitetura do `TaskEngine`. Regras de negócio das duas geradas hoje (só Mercado Livre):
+
+- **Estoque crítico** (`rule_key='estoque_critico'`): mesmo limiar `available_quantity <= 5` já usado no alerta Telegram `tg_reposicao` (`handleItem`, ver "Estoque — thresholds diferentes por contexto" acima) — não é um 4º threshold novo, é o mesmo sinal virando cartão. Prioridade `alta`.
+- **Score de qualidade baixo** (`rule_key='score_baixo'`): dispara quando `score < 50` no resultado de `/item/:id/performance` (mesmo dado gravado em `item_performance` pelo job `syncScores`, 01:00 diário — ver `workers.md`). Prioridade `media`.
+- **Dedup**: nenhuma das duas regras cria um 2º cartão aberto para o mesmo `item_id`+`rule_key` — só atualiza `updated_at` do cartão existente enquanto ele não for movido para `finalizado`/`excluido`.
+
 ## "Nova venda!" — quando notificar
 
 Uma notificação Telegram de nova venda só dispara na **transição real** de status para `paid` (`previousStatus !== 'paid' && order.status === 'paid'`). Um webhook tardio de `shipments`/`payments` que reprocessa um pedido já pago não gera notificação duplicada. Syncs agendados (`syncVendas`) chamam `handleOrder` com `silent: true` para nunca notificar em reconciliação retroativa.

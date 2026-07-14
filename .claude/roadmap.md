@@ -31,6 +31,10 @@ Status: não confirmado neste documento — verificar no ambiente de produção 
 
 Ver `known-bugs.md` item 4 — `migrate-v10.sql` (índice único `messages_pack_id_unique`) não está na lista aplicada por `db/migrate.js`. Antes de qualquer trabalho novo em `messages`/mensagens, isso precisa ser corrigido (é pré-requisito, não trabalho novo em si).
 
+## Agenda Trello — regras automáticas futuras
+
+Fase 1 (v19) implementou só 2 regras automáticas (estoque crítico, score baixo), escopo Mercado Livre. O `TaskEngine` foi desenhado para crescer sem refatoração — ver a lista completa de regras cogitadas (pedidos atrasados, ROI negativo, produto sem venda há 30 dias, Buy Box Amazon, etc.) em `task-engine.md` ("Extensibilidade — regras futuras"), nenhuma implementada ainda. Quando Amazon/Shopee amadurecerem o suficiente para gerar eventos próprios de negócio, o mesmo `TaskEngine` deve suportá-los sem trocar de arquitetura — mesma decisão de "uma camada comum, adapters por marketplace" já usada no restante do sistema (ver `decisions.md`, "Marketplace Engine").
+
 ## KPIs por loja com cache dedicado
 
 `redis.md`/`known-bugs.md` apontam que a chave `kpis:{storeId}` é invalidada pelo worker mas nunca lida por nenhuma rota — sugere uma feature de "resumo de KPIs por loja individual" que foi cogitada e não implementada. Se houver demanda por essa tela, o cache já está parcialmente preparado do lado da invalidação.

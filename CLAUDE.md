@@ -62,6 +62,7 @@ Variáveis de ambiente, dependências e configuração do processo HTTP: `.claud
 | Tópicos WebSocket emitidos/consumidos | `.claude/websocket.md` |
 | Uso do Redis (cache, pub/sub) | `.claude/redis.md` |
 | Filas BullMQ, handlers de webhook, jobs agendados, bot Telegram | `.claude/workers.md` |
+| Agenda Trello (Kanban), TaskEngine, geração automática de cartões | `.claude/task-engine.md` |
 | OAuth, `mlClient.js`, rate limiting do Mercado Livre | `.claude/mercadolivre.md` |
 | Status de integração Shopee/Amazon | `.claude/shopee.md`, `.claude/amazon.md` |
 | Regras de negócio (thresholds, quando notificar, curva ABC...) | `.claude/business-rules.md` |

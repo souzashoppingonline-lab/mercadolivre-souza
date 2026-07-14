@@ -354,3 +354,40 @@ CREATE OR REPLACE VIEW vw_ml_items AS
 CREATE OR REPLACE VIEW vw_ml_stores AS
   SELECT * FROM stores
   WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML') OR marketplace_id IS NULL;
+
+-- Agenda Trello (v19) — módulo de tarefas (Kanban), totalmente independente
+-- do resto do schema. Ver .claude/task-engine.md.
+CREATE TABLE IF NOT EXISTS tasks (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  board_column TEXT NOT NULL DEFAULT 'a_fazer', -- a_fazer | em_andamento | finalizado | excluido
+  priority TEXT NOT NULL DEFAULT 'media',        -- alta | media | baixa
+  marketplace_id INT REFERENCES marketplaces(id),
+  store_id BIGINT REFERENCES stores(id),
+  item_id TEXT,                                  -- referência solta (não FK) a items.ml_id
+  source TEXT NOT NULL DEFAULT 'sistema',        -- mercado_livre | amazon | shopee | sistema | manual
+  rule_key TEXT,                                 -- chave da regra automática (dedup); NULL em manuais
+  status TEXT NOT NULL DEFAULT 'aberto',         -- aberto | concluido
+  tags TEXT[] DEFAULT '{}',
+  assigned_to TEXT,
+  due_date TIMESTAMPTZ,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_board_column ON tasks(board_column);
+CREATE INDEX IF NOT EXISTS idx_tasks_source ON tasks(source);
+CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+CREATE INDEX IF NOT EXISTS idx_tasks_store ON tasks(store_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_rule_item_open ON tasks(rule_key, item_id) WHERE board_column NOT IN ('finalizado', 'excluido');
+
+CREATE TABLE IF NOT EXISTS task_comments (
+  id BIGSERIAL PRIMARY KEY,
+  task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author TEXT,
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);

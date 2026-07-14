@@ -217,4 +217,12 @@ const DB = {
   async triggerJob(name)               { return this._post(`/schedule/jobs/${name}/trigger`, {}); },
   async getScheduleLogs(limit=100)     { return this._get('/schedule/logs', { limit }); },
   async getScheduleRuns(params={})     { return this._get('/schedule/runs', params); },
+
+  // ── Agenda Trello ──────────────────────────────────────────
+  async getTasks(params={})            { return this._get('/tasks', params); },
+  async getTasksSummary()              { return this._get('/tasks/summary'); },
+  async createTask(body)               { return this._post('/tasks', body); },
+  async updateTask(id, body)           { return this._patch(`/tasks/${id}`, body); },
+  async getTaskComments(id)            { return this._get(`/tasks/${id}/comments`); },
+  async addTaskComment(id, body)       { return this._post(`/tasks/${id}/comments`, body); },
 };

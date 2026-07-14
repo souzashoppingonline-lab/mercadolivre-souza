@@ -372,6 +372,21 @@ async function submitNewTask() {
 }
 
 // ── Modal: Detalhe / edição ───────────────────────────────────
+function fmtDateTime(v) { return v ? new Date(v).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'; }
+
+function basicInfoHtml(t) {
+  const rows = [
+    `<div class="at-auto-info-row"><span class="k">Criado em</span><span class="v">${fmtDateTime(t.created_at)}</span></div>`,
+    `<div class="at-auto-info-row"><span class="k">Última atualização</span><span class="v">${fmtDateTime(t.updated_at)}</span></div>`,
+  ];
+  if (t.completed_at) rows.push(`<div class="at-auto-info-row"><span class="k">Concluído em</span><span class="v" style="color:var(--green)">${fmtDateTime(t.completed_at)}</span></div>`);
+  return `
+    <div class="at-auto-info">
+      <h4><i class="fas fa-clock"></i> Datas</h4>
+      ${rows.join('')}
+    </div>`;
+}
+
 function autoInfoHtml(t) {
   const m = t.metadata || {};
   if (t.rule_key === 'estoque_critico') {
@@ -416,7 +431,7 @@ async function openDetail(id) {
   if (t.metadata?.link) meta.push(`<a class="at-detail-link" href="${t.metadata.link}" target="_blank"><i class="fas fa-external-link-alt"></i> Ver anúncio</a>`);
   document.getElementById('dtMeta').innerHTML = meta.join(' ');
 
-  document.getElementById('dtAutoInfo').innerHTML = autoInfoHtml(t);
+  document.getElementById('dtAutoInfo').innerHTML = basicInfoHtml(t) + autoInfoHtml(t);
 
   document.getElementById('detailBackdrop').classList.add('open');
   loadComments(id);

@@ -91,13 +91,24 @@
     .at-auto-info-problems { list-style: none; margin: 0; padding: 0; }
     .at-auto-info-problems li { font-size: 12px; padding: 3px 0 3px 16px; position: relative; }
     .at-auto-info-problems li::before { content: '•'; position: absolute; left: 4px; color: var(--red); }
-    .at-comments { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
+    .at-comments { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; overflow: hidden; }
     .at-comments h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 10px; }
-    .at-comment { background: var(--bg-card2); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
-    .at-comment .author { font-weight: 700; color: var(--primary); font-size: 11px; }
-    .at-comment .when { color: var(--text-muted); font-size: 10px; float: right; }
-    .at-comment-form { display: flex; gap: 8px; margin-top: 10px; }
-    .at-comment-form input { flex: 1; }
+    .at-comment-list { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
+    .at-comment { display: flex; gap: 8px; background: var(--bg-card2); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; min-width: 0; }
+    .at-comment-avatar { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: #1a1a1a; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+    .at-comment-body { min-width: 0; flex: 1; }
+    .at-comment-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+    .at-comment .author { font-weight: 700; color: var(--primary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .at-comment .when { color: var(--text-muted); font-size: 10px; white-space: nowrap; flex-shrink: 0; }
+    .at-comment-text { font-size: 12px; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .at-comment-form { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+    .at-comment-form input { flex: 1; min-width: 0; }
+    .at-emoji-wrap { position: relative; flex-shrink: 0; }
+    .at-emoji-btn { padding: 8px 10px; }
+    .at-emoji-picker { display: none; position: absolute; bottom: 42px; left: 0; grid-template-columns: repeat(6, 1fr); gap: 2px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 8px; width: 208px; box-shadow: 0 6px 20px rgba(0,0,0,.4); z-index: 20; }
+    .at-emoji-picker.open { display: grid; }
+    .at-emoji-picker span { cursor: pointer; font-size: 18px; text-align: center; padding: 4px; border-radius: 6px; line-height: 1; }
+    .at-emoji-picker span:hover { background: var(--bg-card2); }
 
     .at-empty-board { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px; }
   </style>
@@ -215,9 +226,13 @@
 
     <div class="at-comments">
       <h4>Comentários</h4>
-      <div id="dtComments"><div class="at-col-empty">Carregando...</div></div>
+      <div class="at-comment-list" id="dtComments"><div class="at-col-empty">Carregando...</div></div>
       <div class="at-comment-form">
-        <input id="dtCommentText" placeholder="Escrever um comentário...">
+        <div class="at-emoji-wrap">
+          <button type="button" class="at-btn at-emoji-btn" onclick="toggleEmojiPicker(event)"><i class="fas fa-face-smile"></i></button>
+          <div class="at-emoji-picker" id="emojiPicker"></div>
+        </div>
+        <input id="dtCommentText" placeholder="Escrever um comentário..." onkeydown="if(event.key==='Enter') submitComment()">
         <button class="at-btn" onclick="submitComment()"><i class="fas fa-paper-plane"></i></button>
       </div>
     </div>
@@ -234,6 +249,10 @@ const PRIO_LABEL = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
 const ORIGEM_LABEL = { mercado_livre: 'Mercado Livre', amazon: 'Amazon', shopee: 'Shopee', sistema: 'Sistema', manual: 'Manual' };
 let tasksCache = [];
 let currentDetailId = null;
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
 
 function fmtDate(v) { return v ? new Date(v).toLocaleDateString('pt-BR') : null; }
 function isLate(due, col) { return due && col !== 'finalizado' && col !== 'excluido' && new Date(due) < new Date(new Date().toDateString()); }
@@ -278,20 +297,20 @@ function cardHtml(t) {
   const tags = Array.isArray(t.tags) ? t.tags : [];
   const link = t.metadata?.link;
   const titleHtml = link
-    ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="fas fa-external-link-alt" style="font-size:10px;margin-right:4px;color:var(--primary)"></i>${t.title}</a>`
-    : t.title;
+    ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="fas fa-external-link-alt" style="font-size:10px;margin-right:4px;color:var(--primary)"></i>${escapeHtml(t.title)}</a>`
+    : escapeHtml(t.title);
   return `
     <div class="at-card prio-${t.priority}" draggable="true" data-id="${t.id}" ondragstart="onDragStart(event)" onclick="openDetail(${t.id})">
       <div class="at-card-title">${titleHtml}</div>
       <div class="at-card-meta">
         <span class="at-badge prio-${t.priority}">${PRIO_LABEL[t.priority] || t.priority}</span>
-        ${t.store_nickname ? `<span class="at-badge store"><i class="fas fa-store"></i> ${t.store_nickname}</span>` : ''}
+        ${t.store_nickname ? `<span class="at-badge store"><i class="fas fa-store"></i> ${escapeHtml(t.store_nickname)}</span>` : ''}
         ${due ? `<span class="at-badge due ${late ? 'late' : ''}"><i class="fas fa-calendar"></i> ${due}</span>` : ''}
       </div>
-      ${tags.length ? `<div class="at-card-tags">${tags.map(tg => `<span class="at-tag">${tg}</span>`).join('')}</div>` : ''}
+      ${tags.length ? `<div class="at-card-tags">${tags.map(tg => `<span class="at-tag">${escapeHtml(tg)}</span>`).join('')}</div>` : ''}
       <div class="at-card-foot">
         <span>${ORIGEM_LABEL[t.source] || t.source}</span>
-        ${t.assigned_to ? `<span class="at-card-assignee"><i class="fas fa-user"></i> ${t.assigned_to}</span>` : ''}
+        ${t.assigned_to ? `<span class="at-card-assignee"><i class="fas fa-user"></i> ${escapeHtml(t.assigned_to)}</span>` : ''}
       </div>
     </div>`;
 }
@@ -402,8 +421,8 @@ function autoInfoHtml(t) {
     return `
       <div class="at-auto-info">
         <h4><i class="fas fa-box-open"></i> Detalhes — Estoque Crítico</h4>
-        <div class="at-auto-info-row"><span class="k">SKU</span><span class="v">${m.sku || t.item_id || '—'}</span></div>
-        <div class="at-auto-info-row"><span class="k">Anúncio</span><span class="v">${m.titulo || '—'}</span></div>
+        <div class="at-auto-info-row"><span class="k">SKU</span><span class="v">${escapeHtml(m.sku || t.item_id || '—')}</span></div>
+        <div class="at-auto-info-row"><span class="k">Anúncio</span><span class="v">${escapeHtml(m.titulo || '—')}</span></div>
         <div class="at-auto-info-row"><span class="k">Quantidade em estoque</span><span class="v" style="color:var(--red)">${m.quantidade ?? '—'} un.</span></div>
       </div>`;
   }
@@ -412,9 +431,9 @@ function autoInfoHtml(t) {
     return `
       <div class="at-auto-info">
         <h4><i class="fas fa-star-half-stroke"></i> Detalhes — Score de Qualidade</h4>
-        <div class="at-auto-info-row"><span class="k">Anúncio</span><span class="v">${m.titulo || '—'}</span></div>
+        <div class="at-auto-info-row"><span class="k">Anúncio</span><span class="v">${escapeHtml(m.titulo || '—')}</span></div>
         <div class="at-auto-info-row"><span class="k">Score atual</span><span class="v" style="color:var(--red)">${m.scoreAtual ?? '—'}</span></div>
-        ${problemas.length ? `<div class="at-auto-info-row"><span class="k">Problemas encontrados</span></div><ul class="at-auto-info-problems">${problemas.map(p => `<li>${p}</li>`).join('')}</ul>` : ''}
+        ${problemas.length ? `<div class="at-auto-info-row"><span class="k">Problemas encontrados</span></div><ul class="at-auto-info-problems">${problemas.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul>` : ''}
       </div>`;
   }
   return '';
@@ -435,9 +454,9 @@ async function openDetail(id) {
 
   const meta = [];
   meta.push(`<span class="at-badge">${ORIGEM_LABEL[t.source] || t.source}</span>`);
-  if (t.store_nickname) meta.push(`<span class="at-badge store"><i class="fas fa-store"></i> ${t.store_nickname}</span>`);
-  if (t.marketplace_name) meta.push(`<span class="at-badge">${t.marketplace_name}</span>`);
-  if (t.metadata?.link) meta.push(`<a class="at-detail-link" href="${t.metadata.link}" target="_blank"><i class="fas fa-external-link-alt"></i> Ver anúncio</a>`);
+  if (t.store_nickname) meta.push(`<span class="at-badge store"><i class="fas fa-store"></i> ${escapeHtml(t.store_nickname)}</span>`);
+  if (t.marketplace_name) meta.push(`<span class="at-badge">${escapeHtml(t.marketplace_name)}</span>`);
+  if (t.metadata?.link) meta.push(`<a class="at-detail-link" href="${escapeHtml(t.metadata.link)}" target="_blank"><i class="fas fa-external-link-alt"></i> Ver anúncio</a>`);
   document.getElementById('dtMeta').innerHTML = meta.join(' ');
 
   document.getElementById('dtAutoInfo').innerHTML = basicInfoHtml(t) + autoInfoHtml(t);
@@ -482,9 +501,21 @@ async function loadComments(id) {
   box.innerHTML = '<div class="at-col-empty">Carregando...</div>';
   const data = await DB.getTaskComments(id);
   const rows = data?.rows || [];
-  box.innerHTML = rows.length ? rows.map(c => `
-    <div class="at-comment"><span class="when">${new Date(c.created_at).toLocaleString('pt-BR')}</span><span class="author">${c.author || 'Anônimo'}</span><div>${c.text}</div></div>
-  `).join('') : '<div class="at-col-empty">Nenhum comentário ainda.</div>';
+  box.innerHTML = rows.length ? rows.map(c => {
+    const author = c.author || 'Anônimo';
+    return `
+    <div class="at-comment">
+      <div class="at-comment-avatar">${escapeHtml(author.trim().charAt(0).toUpperCase() || '?')}</div>
+      <div class="at-comment-body">
+        <div class="at-comment-head">
+          <span class="author">${escapeHtml(author)}</span>
+          <span class="when">${new Date(c.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+        </div>
+        <div class="at-comment-text">${escapeHtml(c.text)}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="at-col-empty">Nenhum comentário ainda.</div>';
+  box.scrollTop = box.scrollHeight;
 }
 
 async function submitComment() {
@@ -496,6 +527,27 @@ async function submitComment() {
   input.value = '';
   loadComments(currentDetailId);
 }
+
+// ── Emoji picker (nativo, sem lib externa) ────────────────────
+const EMOJI_LIST = ['😀','😂','🙂','👍','🙏','🔥','✅','❌','⚠️','📦','💬','🎉','😅','😢','💡','⏰','📌','🚀','👀','❤️'];
+function toggleEmojiPicker(ev) {
+  ev.stopPropagation();
+  const picker = document.getElementById('emojiPicker');
+  if (!picker.classList.contains('open')) {
+    picker.innerHTML = EMOJI_LIST.map(e => `<span onclick="insertEmoji('${e}')">${e}</span>`).join('');
+  }
+  picker.classList.toggle('open');
+}
+function insertEmoji(e) {
+  const input = document.getElementById('dtCommentText');
+  input.value += e;
+  input.focus();
+  document.getElementById('emojiPicker').classList.remove('open');
+}
+document.addEventListener('click', (ev) => {
+  const picker = document.getElementById('emojiPicker');
+  if (picker && !picker.contains(ev.target)) picker.classList.remove('open');
+});
 
 // ── Notificação interna de cartão automático ─────────────────
 function showToast(msg) {

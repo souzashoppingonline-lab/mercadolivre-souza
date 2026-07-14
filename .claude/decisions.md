@@ -212,6 +212,16 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 
 **Escopo desta fase, por pedido explícito do usuário ("POR ENQUANTO APENAS TAREFAS DO MERCADO LIVRE")**: as 2 regras automáticas só avaliam itens/lojas ML. O schema (`source`, `marketplace_id`) já suporta Amazon/Shopee/Sistema/Manual — só a criação manual de tarefa usa essas outras opções hoje. Ver `task-engine.md`.
 
+## Bug corrigido: Agenda Trello — comentário sem espaços quebrava o layout do modal + XSS armazenado
+
+**Sintoma reportado pelo usuário**: um comentário de teste sem espaços (string longa contínua) fazia o modal de detalhe crescer horizontalmente, gerando scroll lateral e sobrepondo outros elementos.
+
+**Causa 1 (layout)**: `.at-comment-text` não tinha `word-break`/`overflow-wrap`, e o cabeçalho autor/data usava `float: right` sem clearfix — combinação que deixava uma string sem espaços "empurrar" a largura do container em vez de quebrar linha.
+
+**Causa 2 (segurança, encontrada ao corrigir o layout)**: `loadComments`/`cardHtml`/`autoInfoHtml`/`openDetail` inseriam texto de entrada do usuário (comentário, autor, título/tags/responsável de tarefa manual) diretamente em `innerHTML`, sem escapar — um comentário com `<img src=x onerror=...>` executaria JS no navegador de qualquer pessoa que abrisse aquele cartão (stored XSS). Como é um módulo novo desta mesma sessão, corrigido na hora em vez de registrado como known-bug.
+
+**Correção**: layout dos comentários reescrito em flexbox (avatar + cabeçalho + corpo, sem `float`), `word-break: break-word`/`overflow-wrap: anywhere` no texto, lista de comentários com scroll próprio (`max-height` + `overflow-y`) independente do resto do modal. Adicionada `escapeHtml()` e aplicada em todo ponto do arquivo que interpola string de usuário em `innerHTML` (não nos campos que só vão para `.value` de input/textarea, que não executam HTML). Ver `frontend.md`.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

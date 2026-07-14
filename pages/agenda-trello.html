@@ -415,7 +415,7 @@ function autoInfoHtml(t) {
 }
 
 async function openDetail(id) {
-  const t = tasksCache.find(x => x.id === id);
+  const t = tasksCache.find(x => String(x.id) === String(id));
   if (!t) return;
   currentDetailId = id;
   document.getElementById('dtTitleLabel').textContent = `Tarefa #${t.id}`;

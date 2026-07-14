@@ -78,6 +78,15 @@
 
     .at-detail-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
     .at-detail-link { font-size: 11px; color: var(--primary); }
+    .at-auto-info { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+    .at-auto-info h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .at-auto-info-row { display: flex; gap: 8px; font-size: 12px; margin-bottom: 6px; }
+    .at-auto-info-row:last-child { margin-bottom: 0; }
+    .at-auto-info-row .k { color: var(--text-muted); min-width: 130px; flex-shrink: 0; }
+    .at-auto-info-row .v { font-weight: 600; }
+    .at-auto-info-problems { list-style: none; margin: 0; padding: 0; }
+    .at-auto-info-problems li { font-size: 12px; padding: 3px 0 3px 16px; position: relative; }
+    .at-auto-info-problems li::before { content: '•'; position: absolute; left: 4px; color: var(--red); }
     .at-comments { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
     .at-comments h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 10px; }
     .at-comment { background: var(--bg-card2); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
@@ -180,6 +189,7 @@
   <div class="at-modal">
     <h3><span id="dtTitleLabel">Tarefa</span> <span class="close" onclick="closeDetailModal()"><i class="fas fa-times"></i></span></h3>
     <div class="at-detail-meta" id="dtMeta"></div>
+    <div id="dtAutoInfo"></div>
     <div class="at-form-grid">
       <div class="full"><label>Título</label><input id="dtTitle"></div>
       <div class="full"><label>Descrição</label><textarea id="dtDescription"></textarea></div>
@@ -362,6 +372,30 @@ async function submitNewTask() {
 }
 
 // ── Modal: Detalhe / edição ───────────────────────────────────
+function autoInfoHtml(t) {
+  const m = t.metadata || {};
+  if (t.rule_key === 'estoque_critico') {
+    return `
+      <div class="at-auto-info">
+        <h4><i class="fas fa-box-open"></i> Detalhes — Estoque Crítico</h4>
+        <div class="at-auto-info-row"><span class="k">SKU</span><span class="v">${m.sku || t.item_id || '—'}</span></div>
+        <div class="at-auto-info-row"><span class="k">Anúncio</span><span class="v">${m.titulo || '—'}</span></div>
+        <div class="at-auto-info-row"><span class="k">Quantidade em estoque</span><span class="v" style="color:var(--red)">${m.quantidade ?? '—'} un.</span></div>
+      </div>`;
+  }
+  if (t.rule_key === 'score_baixo') {
+    const problemas = Array.isArray(m.problemas) ? m.problemas : [];
+    return `
+      <div class="at-auto-info">
+        <h4><i class="fas fa-star-half-stroke"></i> Detalhes — Score de Qualidade</h4>
+        <div class="at-auto-info-row"><span class="k">Anúncio</span><span class="v">${m.titulo || '—'}</span></div>
+        <div class="at-auto-info-row"><span class="k">Score atual</span><span class="v" style="color:var(--red)">${m.scoreAtual ?? '—'}</span></div>
+        ${problemas.length ? `<div class="at-auto-info-row"><span class="k">Problemas encontrados</span></div><ul class="at-auto-info-problems">${problemas.map(p => `<li>${p}</li>`).join('')}</ul>` : ''}
+      </div>`;
+  }
+  return '';
+}
+
 async function openDetail(id) {
   const t = tasksCache.find(x => x.id === id);
   if (!t) return;
@@ -381,6 +415,8 @@ async function openDetail(id) {
   if (t.marketplace_name) meta.push(`<span class="at-badge">${t.marketplace_name}</span>`);
   if (t.metadata?.link) meta.push(`<a class="at-detail-link" href="${t.metadata.link}" target="_blank"><i class="fas fa-external-link-alt"></i> Ver anúncio</a>`);
   document.getElementById('dtMeta').innerHTML = meta.join(' ');
+
+  document.getElementById('dtAutoInfo').innerHTML = autoInfoHtml(t);
 
   document.getElementById('detailBackdrop').classList.add('open');
   loadComments(id);

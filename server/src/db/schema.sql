@@ -381,7 +381,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_board_column ON tasks(board_column);
 CREATE INDEX IF NOT EXISTS idx_tasks_source ON tasks(source);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_tasks_store ON tasks(store_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_rule_item_open ON tasks(rule_key, item_id) WHERE board_column NOT IN ('finalizado', 'excluido');
+CREATE INDEX IF NOT EXISTS idx_tasks_rule_item_open ON tasks(rule_key, item_id) WHERE board_column != 'excluido';
 
 CREATE TABLE IF NOT EXISTS task_comments (
   id BIGSERIAL PRIMARY KEY,

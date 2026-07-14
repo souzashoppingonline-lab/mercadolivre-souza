@@ -222,6 +222,16 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 
 **Correção**: layout dos comentários reescrito em flexbox (avatar + cabeçalho + corpo, sem `float`), `word-break: break-word`/`overflow-wrap: anywhere` no texto, lista de comentários com scroll próprio (`max-height` + `overflow-y`) independente do resto do modal. Adicionada `escapeHtml()` e aplicada em todo ponto do arquivo que interpola string de usuário em `innerHTML` (não nos campos que só vão para `.value` de input/textarea, que não executam HTML). Ver `frontend.md`.
 
+## Agenda Trello (v20) — dedup do TaskEngine passa a valer também pra cartão Finalizado
+
+**Contexto**: a regra original (v19) só bloqueava recriação de cartão automático enquanto ele estava aberto (`board_column NOT IN ('finalizado','excluido')`) — um item que tivesse o problema resolvido (cartão movido pra Finalizado) e voltasse a ter o mesmo problema depois ganhava um cartão novo.
+
+**Decisão — pedido explícito do usuário**: mudar o predicado de dedup para `board_column != 'excluido'` — agora um cartão em **qualquer status, inclusive Finalizado**, impede a criação de um novo pra mesma regra+item; só Excluído libera. **Por quê**: o usuário quer que "existir" (em qualquer status) já seja suficiente pra não duplicar — só uma exclusão deliberada (não uma conclusão) deve reabrir espaço pra um cartão novo daquele problema.
+
+**Efeito colateral aceito, não implementado**: se um cartão Finalizado é "tocado" de novo pela mesma regra (ex: o mesmo item volta a ficar com estoque crítico), o `UPDATE` só atualiza `metadata`/`updated_at` — **não** move o cartão de volta pra "A Fazer" nem muda `status`. Ou seja, o cartão continua "escondido" em Finalizado mesmo que o problema tenha voltado, só com os dados internos atualizados. Reabrir automaticamente o cartão não foi pedido; se isso virar um problema na prática, é um ajuste futuro (mover pra `board_column='a_fazer'` também no `UPDATE` quando o cartão existente estiver em `finalizado`).
+
+**Migration**: v20 recria o índice parcial `idx_tasks_rule_item_open` com o novo predicado (`WHERE board_column != 'excluido'`) — sem isso, a query de dedup deixaria de usar o índice (o predicado antigo era mais restritivo que a nova consulta).
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

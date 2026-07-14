@@ -18,12 +18,14 @@ async function getMlMarketplaceId() {
   return mlMarketplaceIdCache;
 }
 
-// Dedup: se já existe cartão aberto (fora de finalizado/excluído) para essa
-// regra+item, só atualiza a data/metadata em vez de duplicar.
+// Dedup: se já existe cartão para essa regra+item em QUALQUER status que não
+// seja excluído (a_fazer, em_andamento ou até finalizado), só atualiza a
+// data/metadata em vez de duplicar. Só volta a criar um cartão novo depois
+// que o anterior for movido pra Excluído.
 async function createTaskIfNotExists({ ruleKey, itemId, title, description, priority, storeId, source = 'mercado_livre', metadata = {} }) {
   const marketplaceId = await getMlMarketplaceId();
   const { rows: existing } = await pool.query(
-    `SELECT id FROM tasks WHERE rule_key=$1 AND item_id=$2 AND board_column NOT IN ('finalizado','excluido') LIMIT 1`,
+    `SELECT id FROM tasks WHERE rule_key=$1 AND item_id=$2 AND board_column != 'excluido' LIMIT 1`,
     [ruleKey, itemId]
   );
   if (existing.length) {

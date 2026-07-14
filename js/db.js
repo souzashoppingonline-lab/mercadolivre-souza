@@ -58,6 +58,20 @@ const DB = {
     }
   },
 
+  async _delete(path) {
+    try {
+      const res = await fetch(`${this.BASE}${path}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('[DB] DELETE error', path, e);
+      return null;
+    }
+  },
+
   // ── Dashboard ──────────────────────────────────────────────
   async getDashboardKPIs()    { return this._get('/dashboard/kpis'); },
   async getDashboardChart(period = 7) { return this._get('/dashboard/chart', { period }); },
@@ -229,6 +243,7 @@ const DB = {
   async getTasksSummary()              { return this._get('/tasks/summary'); },
   async createTask(body)               { return this._post('/tasks', body); },
   async updateTask(id, body)           { return this._patch(`/tasks/${id}`, body); },
+  async deleteTask(id)                 { return this._delete(`/tasks/${id}`); },
   async getTaskComments(id)            { return this._get(`/tasks/${id}/comments`); },
   async addTaskComment(id, body)       { return this._post(`/tasks/${id}/comments`, body); },
 };

@@ -26,6 +26,8 @@
     .at-btn:hover { border-color: var(--primary); color: var(--primary); }
     .at-btn.primary { background: var(--primary); color: #1a1a1a; border-color: var(--primary); font-weight: 700; margin-left: auto; }
     .at-btn.primary:hover { filter: brightness(1.08); color: #1a1a1a; }
+    .at-btn.danger { border-color: var(--red); color: var(--red); margin-right: auto; }
+    .at-btn.danger:hover { background: rgba(231,76,60,.12); }
 
     .at-board { display: grid; grid-template-columns: repeat(4, minmax(260px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 8px; }
     @media (max-width: 1100px) { .at-board { grid-template-columns: repeat(4, 300px); } }
@@ -204,6 +206,7 @@
       <div class="full"><label>Tags (separadas por vírgula)</label><input id="dtTags"></div>
     </div>
     <div class="at-modal-actions">
+      <button class="at-btn danger" id="dtDeleteBtn" style="display:none" onclick="deleteTaskPermanently()"><i class="fas fa-trash"></i> Excluir permanentemente</button>
       <button class="at-btn" onclick="closeDetailModal()">Fechar</button>
       <button class="at-btn primary" onclick="saveDetail()"><i class="fas fa-save"></i> Salvar</button>
     </div>
@@ -432,11 +435,22 @@ async function openDetail(id) {
   document.getElementById('dtMeta').innerHTML = meta.join(' ');
 
   document.getElementById('dtAutoInfo').innerHTML = basicInfoHtml(t) + autoInfoHtml(t);
+  document.getElementById('dtDeleteBtn').style.display = t.board_column === 'excluido' ? '' : 'none';
 
   document.getElementById('detailBackdrop').classList.add('open');
   loadComments(id);
 }
 function closeDetailModal() { document.getElementById('detailBackdrop').classList.remove('open'); currentDetailId = null; }
+
+async function deleteTaskPermanently() {
+  if (!currentDetailId) return;
+  if (!confirm('Excluir esta tarefa definitivamente? Essa ação não pode ser desfeita.')) return;
+  const res = await DB.deleteTask(currentDetailId);
+  if (!res || res.error) { alert('Erro ao excluir: ' + (res?.error || '')); return; }
+  closeDetailModal();
+  loadBoard();
+  loadSummary();
+}
 
 async function saveDetail() {
   if (!currentDetailId) return;

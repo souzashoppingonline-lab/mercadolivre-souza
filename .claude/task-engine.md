@@ -22,6 +22,10 @@ checkQuality({ itemId, title, score, problems, permalink, storeId, storeName })
 - **Título do item no título do cartão, não recalculado na atualização**: quando um cartão automático já aberto é só "tocado" de novo pela mesma regra (dedup — ver abaixo), o `title` gravado na criação **não** é atualizado, só `metadata`/`updated_at`. Se o anúncio for renomeado depois, o título do cartão fica com o nome antigo até o cartão ser fechado e um novo ser criado — comportamento aceito, consistente com "não recriar, só atualizar a data" pedido na especificação original.
 - Ambas as funções engolem qualquer erro internamente (`try/catch` + `console.warn`) — uma falha do TaskEngine (ex.: tabela `tasks` indisponível) **nunca** deve derrubar `handleItem`/`syncScores`, que têm responsabilidades muito mais críticas (persistir o anúncio/score em si).
 
+## Ciclo de vida do cartão — soft delete (coluna) vs. hard delete (linha)
+
+Mover um cartão para a coluna "Excluído" é reversível (só muda `board_column`, a linha continua em `tasks`). A exclusão definitiva (`DELETE /api/tasks/:id`, ver `api.md`) só é aceita pela rota quando o cartão já está em `board_column='excluido'` — é uma segunda etapa deliberada, não um clique só. O botão correspondente no frontend (`pages/agenda-trello.html`) só aparece nesse estado.
+
 ## Onde é chamado (`server/src/worker.js`)
 
 - **`handleItem`** (handler do tópico webhook `items`): logo após o alerta de estoque existente (`if (item.available_quantity <= 5) { ... stock_alert ...}`), chama `taskEngine.checkStock(...)`. Roda a cada webhook de item — é o mesmo gatilho de tempo real que já existe para o alerta Telegram.

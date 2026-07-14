@@ -134,6 +134,25 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// Exclusão definitiva — só permitida quando o cartão já está na coluna
+// Excluído (soft-delete via board_column vem antes; isto aqui é o hard
+// delete, chamado só a partir dela). task_comments cai junto via
+// ON DELETE CASCADE.
+router.delete('/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT board_column FROM tasks WHERE id = $1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'tarefa não encontrada' });
+    if (rows[0].board_column !== 'excluido') {
+      return res.status(400).json({ error: 'só é possível excluir definitivamente um cartão que já está na coluna Excluído' });
+    }
+    await pool.query(`DELETE FROM tasks WHERE id = $1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[api/tasks] DELETE /:id', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/:id/comments', async (req, res) => {
   try {
     const { rows } = await pool.query(

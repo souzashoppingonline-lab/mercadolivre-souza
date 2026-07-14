@@ -55,7 +55,7 @@ Objeto `DB` com um método por endpoint (`DB.getDashboardKPIs()`, `DB.getPedidos
 
 Ao adicionar um endpoint novo em `routes/api.js`, adicionar o método correspondente em `db.js` na mesma tarefa — a documentação em `api.md` deve ser atualizada junto.
 
-`DB.getTasks(params)`/`getTasksSummary()`/`createTask(body)`/`updateTask(id, body)`/`getTaskComments(id)`/`addTaskComment(id, body)` — Agenda Trello (`/api/tasks/*`, ver `api.md`/`task-engine.md`), seguem o padrão genérico `_get`/`_post`/`_patch` (sem exceção de tratamento de erro).
+`DB.getTasks(params)`/`getTasksSummary()`/`createTask(body)`/`updateTask(id, body)`/`deleteTask(id)`/`getTaskComments(id)`/`addTaskComment(id, body)` — Agenda Trello (`/api/tasks/*`, ver `api.md`/`task-engine.md`), seguem o padrão genérico `_get`/`_post`/`_patch`/`_delete` (sem exceção de tratamento de erro).
 
 **Exceção ao padrão `_post`/`_patch`**: esses dois helpers descartam o corpo da resposta em erro e retornam `null` (o chamador só sabe que falhou, não por quê). `DB.getLojasAmazon()`, `DB.addLojaAmazon(data)` e `DB.deleteLojaAmazon(id)` (endpoints em `api.md`, seção "Lojas") **não** usam `_post`/`_patch` — implementam o próprio `fetch` (mesmo padrão de `_get`) para preservar `{ error: "mensagem" }` do backend mesmo em resposta não-OK, porque `pages/lojas.html` precisa mostrar esse texto exato dentro do modal de cadastro em vez de um erro genérico. Qualquer método novo que precise repassar a mensagem de erro do backend ao usuário deve seguir esse mesmo padrão, não `_post`/`_patch`.
 
@@ -116,6 +116,7 @@ Página independente do resto do sistema — usa a mesma `NAV_ITEMS`/sidebar/top
 - **Modal "+ Nova tarefa"**: cria cartão manual (`DB.createTask`) — Título, Descrição, Marketplace, Loja, Prioridade, Prazo, Responsável, Tags.
 - **Modal de detalhe/edição**: abre ao clicar num cartão — mostra origem/loja/link do anúncio (se `metadata.link` existir, vindo de um cartão automático), permite editar todos os campos + mover de coluna, e lista/adiciona comentários (`DB.getTaskComments`/`DB.addTaskComment`). Dois blocos informativos somam-se aos campos editáveis: `basicInfoHtml()` (Criado em/Última atualização/Concluído em — em **todo** cartão, manual ou automático) e `autoInfoHtml()` (SKU/quantidade ou score atual/lista de problemas — só em cartões automáticos, que têm esses campos em `metadata`; cartões manuais não mostram esse segundo bloco).
 - **Notificação em tempo real**: `WS.on('task_created', ...)` (payload publicado por `worker.js` quando o TaskEngine cria — não só atualiza — um cartão automático) mostra um toast e recarrega o quadro/painel.
+- **Exclusão definitiva**: botão "Excluir permanentemente" no modal de detalhe só fica visível quando o cartão já está na coluna Excluído (`t.board_column === 'excluido'`) — em qualquer outra coluna, mover pra "Excluído" é reversível (soft, via `board_column`); só de lá dá pra apagar de vez (`DB.deleteTask`, com confirmação via `confirm()`).
 - **Checklist por cartão**: não implementado (explicitamente adiado, ver `task-engine.md`).
 
 ## `js/layout.js` — sidebar, topbar e alertas globais

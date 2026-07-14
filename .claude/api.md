@@ -186,6 +186,7 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /api/tasks?marketplace&store_id&assigned_to&priority&source&board_column&date_from&date_to` | lista de cartões com todos os filtros da Agenda Trello, join com `stores`/`marketplaces` para nome/código |
 | `POST /api/tasks { title, description?, marketplace?, store_id?, priority?, due_date?, assigned_to?, tags? }` | cria cartão manual (`source='manual'`, `board_column='a_fazer'`) |
 | `PATCH /api/tasks/:id { board_column?, title?, description?, priority?, assigned_to?, due_date?, tags? }` | edição parcial; mover pra `board_column='finalizado'` seta `status='concluido'`+`completed_at=now()`, mover pra qualquer outra coluna limpa os dois (usado tanto pelo drag-and-drop quanto pelo modal de edição) |
+| `DELETE /api/tasks/:id` | exclusão definitiva (`DELETE FROM tasks`, `task_comments` cai junto via `ON DELETE CASCADE`) — só aceita se o cartão já está com `board_column='excluido'` (400 caso contrário); o botão correspondente no frontend só aparece nesse estado |
 | `GET /api/tasks/:id/comments` | comentários do cartão, ordenados por data |
 | `POST /api/tasks/:id/comments { author?, text }` | adiciona comentário |
 

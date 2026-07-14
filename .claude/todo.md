@@ -35,9 +35,24 @@
 - [ ] Renomear `orders.ml_id` para algo marketplace-neutro (ex: `external_order_id`) — mantido por ora para não tocar em todo `api.js`/`worker.js`/frontend que já referenciam esse nome.
 - [ ] Avaliar migrar `MercadoLivreEventSource`/`ShopeeEventSource` para o padrão `EventSource`/`Scheduler` — só depois que Amazon (e Shopee) provarem o padrão estável em produção (ver `decisions.md`).
 
-## Integração Shopee — bloqueado no app
+## Integração Shopee — v18 conectada (fase 1), falta autorizar loja de teste e validar em sandbox
 
-- [ ] Aguardando aprovação do app pela Shopee (`Partner ID`/`Partner Key`). Sem isso, `shopeeClient.js` permanece stub — não iniciar implementação real antes disso (ver `shopee.md`).
+- [x] Perfil de desenvolvedor aprovado pela Shopee Open Platform, ambiente sandbox liberado.
+- [x] IP de saída do servidor (`207.180.194.61`, fixo) cadastrado na Lista de IPs Permitidos da Shopee.
+- [x] Credenciais `SHOPEE_PARTNER_ID`/`SHOPEE_PARTNER_KEY`/`SHOPEE_REDIRECT_URI`/`SHOPEE_ENV` em `server/.env`.
+- [x] `shopeeClient.js` real: assinatura HMAC-SHA256, OAuth completo (`getAuthorizationUrl`/`exchangeCodeForToken`/`refreshAccessToken`), `getOrder`/`listRecentOrders`.
+- [x] Rotas OAuth `GET /auth/shopee/login`/`callback`/`config` (`routes/shopeeAuth.js`).
+- [x] Migration v18: `marketplaces.SHOPEE` habilitado, `stores.shopee_shop_id`, tabela `shopee_order_data`.
+- [x] `ShopeePollingEventSource` (polling 15min, mesmo padrão `AmazonPollingEventSource`) + segundo `Worker`/fila em `marketplaceEventWorker.js` (`handleShopeeOrderEvent`).
+- [x] Renovação de token com CAS (Shopee rotaciona `refresh_token` a cada renovação — Amazon não).
+- [ ] **Autorizar uma loja de teste** via `/auth/shopee/login` (passo manual do usuário no navegador — ver `shopee.md` "Como testar") e reiniciar `ml-worker-novo` para começar a sincronizar.
+- [ ] Validar em produção que `ShopeePollingEventSource` roda e um pedido de teste do sandbox chega até `orders`/`shopee_order_data` de ponta a ponta (mesmo tipo de validação já feita para a Amazon).
+- [ ] Confirmar no console se "Mecanismo de Empurra" pede uma `push_url` e o formato exato de assinatura do payload — decidir se/quando migrar de polling para webhook (fase 2, ver `shopee.md`).
+- [ ] Rota admin `GET/POST/DELETE /api/lojas/shopee` (listar/remover contas) — decisão consciente de não ter `POST` manual (a Shopee sempre exige OAuth completo, ver `decisions.md`), mas falta pelo menos `GET`/`DELETE` para gerência via UI, mesmo padrão de `/api/lojas/amazon`.
+- [ ] Dashboard dedicado Shopee (`pages/dashboard-shopee.html` ainda é placeholder "bloqueado") — trocar para o mesmo padrão da Amazon (`js/layout-shopee.js`, páginas `shopee-vendas.html`/`shopee-pedidos.html`/etc., rotas `/api/shopee/*`) depois que pedidos reais de sandbox começarem a chegar.
+- [ ] Sincronizar catálogo de produtos Shopee (Product API — `03-Products.md` da KB fornecida pelo usuário) — hoje só pedidos são sincronizados.
+- [ ] Notificação Telegram de vendas Shopee (fora de escopo até agora, mesma decisão já tomada pra Amazon).
+- [ ] Trocar `SHOPEE_ENV` para `production` só depois de aprovação de produção pela Shopee.
 
 ## Débito técnico registrado nesta tarefa
 

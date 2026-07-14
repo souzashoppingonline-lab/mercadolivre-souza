@@ -8,6 +8,7 @@ const turboRoutes = require('./routes/turbo');
 const amazonRoutes = require('./routes/amazon');
 const webhookGateway = require('./routes/webhookGateway');
 const authRoutes = require('./routes/auth');
+const shopeeAuthRoutes = require('./routes/shopeeAuth');
 const wsHub = require('./ws/hub');
 
 const app = express();
@@ -23,6 +24,10 @@ app.use('/api/amazon', amazonRoutes);
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);
 
+// Shopee OAuth — mesmo padrão do ML, fluxo de assinatura HMAC próprio (ver
+// .claude/shopee.md). Montada antes de '/auth' para não competir com as
+// rotas do ML nesse mesmo prefixo.
+app.use('/auth/shopee', shopeeAuthRoutes);
 // OAuth flow — store owners visit /auth/login once to authorize.
 app.use('/auth', authRoutes);
 // ML app has /ml/callback configured as redirect_uri

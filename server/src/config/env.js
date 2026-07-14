@@ -27,4 +27,14 @@ module.exports = {
     // 'sandbox' até o app ter acesso de produção aprovado pela Amazon (ver .claude/amazon.md)
     env: process.env.AMAZON_ENV || 'sandbox',
   },
+  // Shopee Open Platform v2 — usado por server/src/marketplaces/shopee/shopeeClient.js,
+  // consumido pelo ShopeePollingEventSource (ver .claude/shopee.md). partnerId/partnerKey
+  // identificam o app (não a loja) — o mesmo par vale para todas as contas Shopee.
+  shopee: {
+    partnerId: process.env.SHOPEE_PARTNER_ID,
+    partnerKey: process.env.SHOPEE_PARTNER_KEY,
+    redirectUri: process.env.SHOPEE_REDIRECT_URI,
+    // 'sandbox' (partner.uat.shopeemobile.com) até confirmar app de produção aprovado (ver .claude/shopee.md)
+    env: process.env.SHOPEE_ENV || 'sandbox',
+  },
 };

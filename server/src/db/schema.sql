@@ -14,10 +14,17 @@ CREATE TABLE IF NOT EXISTS marketplaces (
 INSERT INTO marketplaces (code, name, api_type, enabled) VALUES
   ('ML',     'Mercado Livre', 'webhook', true),
   ('AMAZON', 'Amazon',        'polling', true),
-  ('SHOPEE', 'Shopee',        'webhook', false),
+  ('SHOPEE', 'Shopee',        'polling', true),
   ('MAGALU', 'Magalu',        'polling', false),
   ('TIKTOK', 'TikTok',        'polling', false)
 ON CONFLICT (code) DO NOTHING;
+-- Shopee saiu do stub na v18 (credenciais reais de sandbox obtidas) — em
+-- bancos onde a linha já existia com enabled=false, o ON CONFLICT acima é
+-- no-op, então o UPDATE explícito é necessário. api_type continua 'polling'
+-- na fase 1 (mesmo padrão da Amazon) mesmo a Shopee suportando webhook
+-- ("Mecanismo de Empurra") — migrar para webhook fica para uma fase 2,
+-- depois de confirmar o contrato de push no console (ver .claude/shopee.md).
+UPDATE marketplaces SET enabled = true, api_type = 'polling' WHERE code = 'SHOPEE';
 
 CREATE TABLE IF NOT EXISTS item_changes (
   id SERIAL PRIMARY KEY,
@@ -44,6 +51,7 @@ CREATE TABLE IF NOT EXISTS stores (
   marketplace_id INT REFERENCES marketplaces(id),
   amazon_marketplace_id TEXT, -- override por conta Amazon; fallback AMAZON_MARKETPLACE_ID (.env) quando NULL
   amazon_region TEXT,         -- override por conta Amazon; fallback AMAZON_REGION (.env) quando NULL
+  shopee_shop_id BIGINT,      -- shop_id real da Shopee (numérico, único por conta) — access_token/refresh_token/token_expires_at reaproveitam as colunas acima
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 -- Em bancos existentes, o CREATE TABLE acima é no-op — a coluna precisa
@@ -51,6 +59,8 @@ CREATE TABLE IF NOT EXISTS stores (
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS amazon_marketplace_id TEXT;
 ALTER TABLE stores ADD COLUMN IF NOT EXISTS amazon_region TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS shopee_shop_id BIGINT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stores_shopee_shop_id ON stores(shopee_shop_id) WHERE shopee_shop_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS items (
   ml_id TEXT PRIMARY KEY,
@@ -172,7 +182,19 @@ CREATE TABLE IF NOT EXISTS amazon_order_data (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_amazon_order_data_amazon_id ON amazon_order_data(amazon_order_id);
 
--- Cursor de "última sincronização" para EventSources de polling (Amazon hoje).
+-- Campos exclusivos de pedidos Shopee — orders continua só com campos comuns.
+CREATE TABLE IF NOT EXISTS shopee_order_data (
+  order_id TEXT PRIMARY KEY REFERENCES orders(ml_id),
+  order_sn TEXT NOT NULL,
+  shop_id BIGINT,
+  buyer_username TEXT,
+  order_status TEXT,
+  raw_data JSONB,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shopee_order_data_order_sn ON shopee_order_data(order_sn);
+
+-- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (
   marketplace_id INT NOT NULL REFERENCES marketplaces(id),
   source_key TEXT NOT NULL,

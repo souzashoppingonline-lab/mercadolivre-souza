@@ -176,3 +176,11 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 ## `/auth/*` e `/ml/*` — ver `mercadolivre.md`
 
 `GET /auth/config`, `GET /auth/login`, `GET /auth/callback` (+ alias `/ml/callback`).
+
+## `/auth/shopee/*` — ver `shopee.md`
+
+| Rota | Descrição |
+|---|---|
+| `GET /auth/shopee/config` | diagnóstico — mostra `partner_id`/`redirect_uri`/ambiente configurados (`partner_key` só indica se está setada, nunca expõe o valor) |
+| `GET /auth/shopee/login` | monta a URL de autorização assinada (`shop/auth_partner`) e redireciona o seller para lá |
+| `GET /auth/shopee/callback` | recebe `?code&shop_id`, troca por `access_token`/`refresh_token` (`auth/token/get`) e cria/atualiza a linha em `stores` (`marketplace_id=SHOPEE`, id sintético `9100000001`+). Resposta avisa que o worker precisa ser reiniciado pra sincronizar a conta nova (mesma limitação hoje da Amazon) |

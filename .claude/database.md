@@ -33,14 +33,15 @@ Referenciada por `marketplace_id` em `stores`/`orders`/`items`/`messages` (colun
 
 ### `stores` — lojas/contas autorizadas por marketplace (suporta múltiplas contas por marketplace — v16)
 ```
-id BIGINT PK              -- user_id do Mercado Livre; para Amazon/Shopee, um id sintético por conta
-                           -- (convenção: sentinela original 9000000001, próximas contas 9000000002...)
+id BIGINT PK              -- user_id do Mercado Livre; para Amazon, id sintético 9000000001+;
+                           -- para Shopee, id sintético 9100000001+ (faixa própria, nunca colide com a da Amazon)
 nickname TEXT
 level_id TEXT
-access_token, refresh_token TEXT  -- refresh_token também usado pela Amazon (por conta)
+access_token, refresh_token TEXT  -- reaproveitado por Amazon (refresh_token fixo) e Shopee (ambos rotacionam via OAuth)
 amazon_marketplace_id TEXT  -- v16: override por conta (país/marketplace Amazon); NULL usa AMAZON_MARKETPLACE_ID global
 amazon_region TEXT          -- v16: override por conta (na|eu|fe); NULL usa AMAZON_REGION global
-token_expires_at TIMESTAMPTZ
+shopee_shop_id BIGINT       -- v18: shop_id real da Shopee (numérico, único) — índice único parcial (WHERE NOT NULL)
+token_expires_at TIMESTAMPTZ  -- Shopee: access_token expira em ~4h; refresh_token em ~30 dias (rotaciona a cada renovação)
 active_listings INT, monthly_revenue NUMERIC   -- não populados automaticamente hoje
 imposto_pct NUMERIC DEFAULT 0                  -- % de imposto usada no cálculo de margem
 ml_client_id, ml_client_secret TEXT            -- credenciais próprias por loja (opcional)
@@ -82,7 +83,7 @@ raw_data JSONB                    -- payload completo do pedido (só preenchido 
 marketplace_id INT FK marketplaces -- v15
 updated_at TIMESTAMPTZ
 ```
-Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data` hoje). `orders` só guarda os campos comuns entre marketplaces.
+Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data`, `shopee_order_data`). `orders` só guarda os campos comuns entre marketplaces.
 
 ### `questions` — perguntas de compradores
 ```
@@ -128,13 +129,25 @@ updated_at TIMESTAMPTZ
 ```
 Gravada por `server/src/marketplaceEventWorker.js`. Mesmo papel do `orders.raw_data` no pipeline ML, mas isolada — `orders` continua marketplace-agnóstica.
 
+### `shopee_order_data` — v18: campos exclusivos de pedidos Shopee
+```
+order_id TEXT PK FK orders(ml_id)
+order_sn TEXT NOT NULL         -- índice único; hoje é sempre igual a order_id
+shop_id BIGINT                 -- espelha stores.shopee_shop_id da conta dona do pedido
+buyer_username TEXT
+order_status TEXT              -- valor bruto da Shopee (UNPAID/READY_TO_SHIP/SHIPPED/COMPLETED/...), antes do mapeamento para orders.status
+raw_data JSONB                 -- resposta completa de order/get_order_detail
+updated_at TIMESTAMPTZ
+```
+Gravada por `server/src/marketplaceEventWorker.js` (`handleShopeeOrderEvent`), mesmo papel de `amazon_order_data`.
+
 ### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
 ```
 marketplace_id INT FK marketplaces, source_key TEXT   -- PK composta
 last_synced_at TIMESTAMPTZ
 updated_at TIMESTAMPTZ
 ```
-Usada por `AmazonPollingEventSource` (`source_key='default'`, única conta configurada hoje). **Não confundir** com `schedule_jobs`/`schedule_runs` — aquelas guardam status/histórico de execução de cron; esta guarda um cursor de dados (até quando já foi sincronizado).
+Usada por `AmazonPollingEventSource`/`ShopeePollingEventSource` — `source_key = stores.id` (uma linha por conta, não mais `'default'` desde o suporte a múltiplas contas na v16). **Não confundir** com `schedule_jobs`/`schedule_runs` — aquelas guardam status/histórico de execução de cron; esta guarda um cursor de dados (até quando já foi sincronizado).
 
 ### `webhook_logs` — auditoria de todo webhook recebido
 ```
@@ -228,7 +241,7 @@ Toda leitura (`FROM`/`JOIN`) em `routes/api.js` usa essas views em vez das tabel
 
 ## Índices relevantes
 
-`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15).
+`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15), `stores(shopee_shop_id)` único parcial e `shopee_order_data(order_sn)` único (v18).
 
 ## Relação `items.parent_item_id` (variações)
 

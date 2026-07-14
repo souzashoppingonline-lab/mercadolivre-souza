@@ -45,8 +45,8 @@ async function checkStock({ itemId, title, availableQuantity, permalink, storeId
     return await createTaskIfNotExists({
       ruleKey: 'estoque_critico',
       itemId,
-      title: 'Repor estoque urgente',
-      description: `O anúncio ${itemId} atingiu estoque crítico.`,
+      title: `Repor estoque urgente: ${title || itemId}`,
+      description: `O anúncio ${itemId} atingiu estoque crítico (restam ${availableQuantity} un.).`,
       priority: 'alta',
       storeId,
       metadata: {
@@ -67,8 +67,8 @@ async function checkQuality({ itemId, title, score, problems, permalink, storeId
     return await createTaskIfNotExists({
       ruleKey: 'score_baixo',
       itemId,
-      title: 'Melhorar qualidade do anúncio',
-      description: 'O anúncio possui qualidade abaixo de 50.',
+      title: `Melhorar qualidade: ${title || itemId}`,
+      description: `O anúncio possui qualidade abaixo de 50 (score atual: ${score}).`,
       priority: 'media',
       storeId,
       metadata: {

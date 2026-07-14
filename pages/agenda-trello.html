@@ -50,6 +50,8 @@
     .at-card.prio-media { border-left-color: var(--orange); }
     .at-card.prio-baixa { border-left-color: var(--green); }
     .at-card-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; line-height: 1.35; }
+    .at-card-title a { color: var(--text-main); text-decoration: none; }
+    .at-card-title a:hover { color: var(--primary); text-decoration: underline; }
     .at-card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .at-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; display: inline-flex; align-items: center; gap: 4px; }
     .at-badge.prio-alta { background: rgba(231,76,60,.15); color: var(--red); }
@@ -274,9 +276,13 @@ function cardHtml(t) {
   const due = fmtDate(t.due_date);
   const late = isLate(t.due_date, t.board_column);
   const tags = Array.isArray(t.tags) ? t.tags : [];
+  const link = t.metadata?.link;
+  const titleHtml = link
+    ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="fas fa-external-link-alt" style="font-size:10px;margin-right:4px;color:var(--primary)"></i>${t.title}</a>`
+    : t.title;
   return `
     <div class="at-card prio-${t.priority}" draggable="true" data-id="${t.id}" ondragstart="onDragStart(event)" onclick="openDetail(${t.id})">
-      <div class="at-card-title">${t.title}</div>
+      <div class="at-card-title">${titleHtml}</div>
       <div class="at-card-meta">
         <span class="at-badge prio-${t.priority}">${PRIO_LABEL[t.priority] || t.priority}</span>
         ${t.store_nickname ? `<span class="at-badge store"><i class="fas fa-store"></i> ${t.store_nickname}</span>` : ''}

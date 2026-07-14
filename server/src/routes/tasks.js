@@ -53,7 +53,10 @@ router.get('/', async (req, res) => {
               t.source, t.rule_key, t.status, t.tags, t.assigned_to, t.due_date,
               t.metadata, t.created_at, t.updated_at, t.completed_at,
               t.store_id, s.nickname AS store_nickname,
-              t.marketplace_id, m.code AS marketplace_code, m.name AS marketplace_name
+              t.marketplace_id, m.code AS marketplace_code, m.name AS marketplace_name,
+              (SELECT COUNT(*) FROM task_comments tc WHERE tc.task_id = t.id) AS comment_count,
+              (SELECT tc.text FROM task_comments tc WHERE tc.task_id = t.id ORDER BY tc.created_at DESC LIMIT 1) AS last_comment_text,
+              (SELECT tc.created_at FROM task_comments tc WHERE tc.task_id = t.id ORDER BY tc.created_at DESC LIMIT 1) AS last_comment_at
        FROM tasks t
        LEFT JOIN stores s ON s.id = t.store_id
        LEFT JOIN marketplaces m ON m.id = t.marketplace_id

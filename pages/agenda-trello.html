@@ -63,6 +63,10 @@
     .at-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .at-tag { font-size: 9px; background: rgba(255,255,255,.06); color: var(--text-muted); padding: 1px 6px; border-radius: 8px; }
     .at-card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 10px; color: var(--text-muted); }
+    .at-card-status { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 3px; }
+    .at-card-status-row { font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .at-card-status-row.resolved { color: var(--green); }
+    .at-card-status-row.comment i { color: var(--primary); }
     .at-card-assignee { display: flex; align-items: center; gap: 4px; }
 
     .at-toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg-card); border: 1px solid var(--primary); border-radius: 10px; padding: 12px 16px; font-size: 12px; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,.4); display: flex; align-items: center; gap: 8px; animation: atToastIn .25s ease; }
@@ -253,6 +257,7 @@ let currentDetailId = null;
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
+function truncate(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
 
 function fmtDate(v) { return v ? new Date(v).toLocaleDateString('pt-BR') : null; }
 function isLate(due, col) { return due && col !== 'finalizado' && col !== 'excluido' && new Date(due) < new Date(new Date().toDateString()); }
@@ -311,6 +316,11 @@ function cardHtml(t) {
       <div class="at-card-foot">
         <span>${ORIGEM_LABEL[t.source] || t.source}</span>
         ${t.assigned_to ? `<span class="at-card-assignee"><i class="fas fa-user"></i> ${escapeHtml(t.assigned_to)}</span>` : ''}
+      </div>
+      <div class="at-card-status">
+        <div class="at-card-status-row"><i class="fas fa-clock"></i> Atualizado ${fmtDateTime(t.updated_at)}</div>
+        ${t.completed_at ? `<div class="at-card-status-row resolved"><i class="fas fa-check-circle"></i> Concluído ${fmtDateTime(t.completed_at)}</div>` : ''}
+        ${Number(t.comment_count) > 0 ? `<div class="at-card-status-row comment"><i class="fas fa-comment"></i> ${t.comment_count}${t.last_comment_text ? ` · "${escapeHtml(truncate(t.last_comment_text, 46))}"` : ''}</div>` : ''}
       </div>
     </div>`;
 }

@@ -50,6 +50,8 @@ Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartil
 
 **Cards de resumo** (`renderConfKpis()`), acima da lista de vídeos: total bipado no dia/filtro selecionado, contagem por tipo de logística (Flex/Mercado Envios, mesma classificação de `logLabel()`) e um card por loja com pelo menos 1 vídeo no período. Tudo calculado **no frontend**, em cima da mesma resposta de `GET /api/embalagem/videos` que já popula a lista — nenhuma rota nova, nenhuma query extra. Único ajuste de backend: a rota `GET /videos` passou a devolver também `sample_shipping_type` (join `LATERAL` já existente com `orders`, só mais uma coluna no `SELECT`).
 
+**Cards são clicáveis** (`openConfDrill()`): clicar em qualquer um (Bipados/Flex/Mercado Envios/uma loja) abre um modal listando só os pedidos daquela fatia (`videoRowHtml()`, mesmo template da lista principal, com botão "Assistir" que abre o vídeo por cima). Filtro é feito em `confRows` (array já carregado em memória, guardado em `loadConferenciaDia()`) — nenhuma chamada nova ao backend por clique.
+
 **Gráfico de colunas "por hora"** (`renderConfHourChart()`, Chart.js — mesma lib já usada em `top-vendas-online.html`/`analise-vendas-mes.html`): compara a quantidade de bipagens por hora (0-23) do dia selecionado com o dia imediatamente anterior, mesmo filtro de loja se houver. Usa a rota dedicada `GET /api/embalagem/por-hora?date&store_id` (não dá pra calcular isso em cima de `GET /videos` porque ela tem `LIMIT 100` e só cobre 1 dia por chamada) — a rota devolve sempre as 24 horas (zero-fill via `generate_series(0,23)` + `LEFT JOIN`), pra o eixo do gráfico nunca ter buraco mesmo em horas sem nenhuma bipagem.
 
 ## Armazenamento

@@ -183,6 +183,13 @@
   </div>
 </div>
 
+<div class="emb-modal-backdrop" id="drillModalBackdrop">
+  <div class="emb-modal">
+    <h3><span id="drillModalTitle">Pedidos</span> <span class="close" onclick="closeDrillModal()"><i class="fas fa-times"></i></span></h3>
+    <div class="emb-video-list" id="drillModalList" style="max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
@@ -194,6 +201,7 @@ function escapeHtml(s) {
 
 let charts = {};
 function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
+let confRows = []; // última carga da aba Conferência do Dia — usado pelos cards clicáveis (drill-down)
 
 // ── Câmera ──────────────────────────────────────────────────
 let stream = null;
@@ -472,6 +480,7 @@ async function loadConferenciaDia() {
   list.innerHTML = '<div class="emb-placeholder">Carregando...</div>';
   const data = await DB.getVideosEmbalagem(params);
   const rows = data?.rows || [];
+  confRows = rows;
   document.getElementById('confCount').textContent = rows.length;
   renderConfKpis(rows);
   list.innerHTML = rows.length ? rows.map(v => videoRowHtml(v, { showStore: true })).join('') : '<div class="emb-placeholder">Nenhum pedido bipado hoje ainda.</div>';
@@ -534,13 +543,37 @@ function renderConfKpis(rows) {
   }
   const storeCards = [...byStore.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([nome, qtd]) => `<div class="stat-card"><div class="label">${escapeHtml(nome)}</div><div class="value">${qtd}</div></div>`)
+    .map(([nome, qtd]) => `<div class="stat-card" style="cursor:pointer" data-drill="loja" data-loja="${escapeHtml(nome)}"><div class="label">${escapeHtml(nome)}</div><div class="value">${qtd}</div></div>`)
     .join('');
   kpis.innerHTML = `
-    <div class="stat-card"><div class="label">Bipados hoje</div><div class="value">${rows.length}</div></div>
-    <div class="stat-card"><div class="label">Flex</div><div class="value" style="color:var(--orange)">${flex}</div></div>
-    <div class="stat-card"><div class="label">Mercado Envios</div><div class="value" style="color:var(--blue)">${me}</div></div>
+    <div class="stat-card" style="cursor:pointer" data-drill="bipados"><div class="label">Bipados hoje</div><div class="value">${rows.length}</div></div>
+    <div class="stat-card" style="cursor:pointer" data-drill="flex"><div class="label">Flex</div><div class="value" style="color:var(--orange)">${flex}</div></div>
+    <div class="stat-card" style="cursor:pointer" data-drill="me"><div class="label">Mercado Envios</div><div class="value" style="color:var(--blue)">${me}</div></div>
     ${storeCards}`;
+  kpis.querySelectorAll('.stat-card').forEach(card => {
+    card.addEventListener('click', () => openConfDrill(card.dataset.drill, card.dataset.loja));
+  });
+}
+
+// Clique num card de resumo abre o modal com os pedidos daquela fatia —
+// filtra em cima de confRows (já carregado), sem chamada nova ao backend.
+function openConfDrill(kind, lojaNome) {
+  let filtered, title;
+  if (kind === 'bipados') { filtered = confRows; title = 'Todos os pedidos bipados'; }
+  else if (kind === 'flex') { filtered = confRows.filter(v => logLabel(v.sample_shipping_type) === 'Flex'); title = 'Pedidos — Flex'; }
+  else if (kind === 'me') { filtered = confRows.filter(v => logLabel(v.sample_shipping_type) === 'Mercado Envios'); title = 'Pedidos — Mercado Envios'; }
+  else if (kind === 'loja') { filtered = confRows.filter(v => (v.store_nickname || 'Sem loja') === lojaNome); title = `Pedidos — ${lojaNome}`; }
+  else return;
+
+  document.getElementById('drillModalTitle').textContent = title;
+  const list = document.getElementById('drillModalList');
+  list.innerHTML = filtered.length
+    ? filtered.map(v => videoRowHtml(v, { showStore: true })).join('')
+    : '<div class="emb-placeholder">Nenhum pedido nessa categoria.</div>';
+  document.getElementById('drillModalBackdrop').classList.add('open');
+}
+function closeDrillModal() {
+  document.getElementById('drillModalBackdrop').classList.remove('open');
 }
 
 function playVideo(id, title) {

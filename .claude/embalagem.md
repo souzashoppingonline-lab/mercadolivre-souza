@@ -26,7 +26,7 @@ Não existia antes: o `shipping_id` (`order.shipping.id` na resposta `/orders/:i
 
 ## Fluxo da tela (`pages/embalagem.html`)
 
-Três abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre) e **Conferência do Dia** (consulta sempre travada em "hoje").
+Quatro abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre), **Conferência do Dia** (consulta sempre travada em "hoje") e **Histórico** (tendência ao longo de semanas/meses).
 
 ### Aba Bipar — máquina de estado
 
@@ -76,6 +76,15 @@ Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartil
 Coluna "Vídeo" na tabela de devoluções mostra um botão "Assistir" pros pedidos que têm gravação. `returns.order_id` é o vínculo — a mesma chave usada em `packing_videos.order_ids` (array). Implementação: `load()` (em `devolucoes.html`) coleta todos os `order_id` da página carregada e faz **uma única chamada em lote** (`GET /api/embalagem/videos-por-pedidos?order_ids=...`), preenchendo a coluna via `Object.entries(map)` — sem N+1 (1 request pra tabela inteira, não 1 por linha). Clicar em "Assistir" abre um modal simples (`<video controls>`, `dev-modal-backdrop`) reaproveitando o mesmo endpoint de streaming `GET /api/embalagem/videos/:id/file`.
 
 **Como saber se um pedido teve devolução, e quando**: a tabela `returns` já grava isso — `order_id` (vínculo com o pedido), `date` (o `date_created` do claim, ou seja, o momento exato em que o comprador abriu a reclamação/devolução no ML), `status`/`reason`. Populado em tempo real pelo webhook `post_purchase` (`handlePostPurchase` em `worker.js`) + sync retroativo (`syncReturns`, botão "Importar histórico ML" na própria página).
+
+### Aba Histórico
+
+Complementa a Conferência do Dia (que só compara "dia selecionado vs. dia anterior") com uma visão de tendência real ao longo do tempo — período configurável (7/30/90 dias) e filtro de loja (mesmo `loadLojasSelect()` reaproveitado da Conferência, generalizado a partir de `loadLojasConferencia()` pra aceitar qualquer `<select>`).
+
+- **Rota**: `GET /api/embalagem/historico?days&store_id` — série diária zero-fill (`generate_series` de dias, mesmo padrão de `/por-hora`), devolvendo por dia: `count` (bipagens), `duration_sum`/`duration_orders` (não uma média já pronta — o frontend calcula `SUM/SUM`, mesmo raciocínio do card "Tempo médio / pedido" da Conferência do Dia, pra não distorcer com média das médias).
+- **Cards**: total no período, média de bipagens por dia, tempo médio/pedido do período inteiro.
+- **Gráfico 1** (`histCountChart`, colunas): bipagens por dia.
+- **Gráfico 2** (`histTimeChart`, linha preenchida): tempo médio por pedido, dia a dia — é aqui que dá pra ver se o tempo de embalagem está melhorando ou piorando ao longo das semanas, não só num dia isolado.
 
 ## Alerta de gravação anormal (aba Bipar)
 

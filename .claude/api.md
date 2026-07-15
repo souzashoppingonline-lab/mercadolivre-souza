@@ -200,6 +200,7 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /api/embalagem/videos?order_id&buyer&date_from&date_to&store_id` | busca vídeos salvos (abas "Buscar vídeos" e "Conferência do Dia" — a segunda sempre fixa `date_from`/`date_to` no dia corrente); cada linha inclui `sample_shipping_type` (do 1º pedido do envio) — usado pelos cards de resumo Flex/Mercado Envios/por loja na aba Conferência do Dia |
 | `GET /api/embalagem/por-hora?date=YYYY-MM-DD&store_id` | quantidade de bipagens por hora (0-23, zero-fill) num dia — usado pelo gráfico de colunas "dia selecionado vs. dia anterior" da aba Conferência do Dia |
 | `GET /api/embalagem/videos-por-pedidos?order_ids=1,2,3` | lookup em lote (1 chamada, não N+1) — devolve `{order_id: {id, created_at}}` só pros pedidos que têm vídeo. Usado pelo botão "Assistir" na tela de Devoluções (`pages/devolucoes.html`) |
+| `GET /api/embalagem/historico?days=30&store_id` | série diária zero-fill (`days` entre 1-90, default 30) — `count` (bipagens no dia) e `duration_sum`/`duration_orders` (pra calcular tempo médio/pedido no frontend, mesmo padrão SUM/SUM do card da Conferência do Dia). Usado pela aba Histórico |
 | `GET /api/embalagem/videos/:id/file` | stream do arquivo de vídeo (`res.sendFile`, suporta `Range` — necessário pro player HTML5 avançar/voltar) |
 
 ## `/auth/staff/*` (`routes/staffAuth.js`) — ver `auth-staff.md`

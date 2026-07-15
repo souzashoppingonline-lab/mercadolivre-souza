@@ -187,6 +187,38 @@ router.get('/por-hora', async (req, res) => {
   }
 });
 
+// GET /api/embalagem/historico?days=30&store_id= — série diária (zero-fill)
+// pra enxergar tendência de produtividade ao longo do tempo, não só "hoje
+// vs. ontem" (ver /por-hora acima). duration_sum/duration_orders (em vez de
+// já devolver uma média pronta) seguem o mesmo padrão SUM/SUM do card
+// "Tempo médio / pedido" da Conferência do Dia — soma total, não média das
+// médias, calculado no frontend a partir desses dois números.
+router.get('/historico', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 90);
+    const { store_id } = req.query;
+
+    const { rows } = await pool.query(
+      `SELECT d.day::date AS date,
+              COUNT(pv.id)::int AS count,
+              COALESCE(SUM(pv.duration_seconds) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::numeric AS duration_sum,
+              COALESCE(SUM(cardinality(pv.order_ids)) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::int AS duration_orders
+       FROM generate_series((current_date - ($1::int - 1))::timestamp, current_date::timestamp, interval '1 day') AS d(day)
+       LEFT JOIN packing_videos pv
+         ON pv.created_at >= (d.day AT TIME ZONE 'America/Sao_Paulo')
+        AND pv.created_at <  ((d.day + interval '1 day') AT TIME ZONE 'America/Sao_Paulo')
+        AND ($2::bigint IS NULL OR pv.store_id = $2)
+       GROUP BY d.day
+       ORDER BY d.day`,
+      [days, store_id || null]
+    );
+    res.json({ days: rows });
+  } catch (e) {
+    console.error('[api/embalagem] GET /historico', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/embalagem/videos/:id/file — stream do arquivo. res.sendFile já
 // suporta Range requests nativamente (necessário pra dar play/scrub no
 // player HTML5 sem baixar o vídeo inteiro de uma vez).

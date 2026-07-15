@@ -7,6 +7,7 @@ const apiRoutes = require('./routes/api');
 const turboRoutes = require('./routes/turbo');
 const amazonRoutes = require('./routes/amazon');
 const tasksRoutes = require('./routes/tasks');
+const embalagemRoutes = require('./routes/embalagem');
 const webhookGateway = require('./routes/webhookGateway');
 const authRoutes = require('./routes/auth');
 const shopeeAuthRoutes = require('./routes/shopeeAuth');
@@ -23,6 +24,8 @@ app.use('/api/turbo', turboRoutes);
 app.use('/api/amazon', amazonRoutes);
 // Agenda Trello — quadro Kanban independente (ver .claude/task-engine.md).
 app.use('/api/tasks', tasksRoutes);
+// Embalagem — bipagem de etiqueta + vídeo de conferência (ver .claude/embalagem.md).
+app.use('/api/embalagem', embalagemRoutes);
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

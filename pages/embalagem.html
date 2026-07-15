@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Embalagem — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Embalagem'; window.ACTIVE_NAV='embalagem.html';</script>
+  <style>
+    .emb-subtitle { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
+
+    .emb-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+    .emb-tab-btn { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px; padding: 10px 18px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; position: relative; }
+    .emb-tab-btn.active { color: var(--primary); border-color: var(--primary); background: rgba(255,230,0,.06); }
+    .emb-tab-btn .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: embPulse 1s infinite; }
+    @keyframes embPulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+    .emb-panel { display: none; }
+    .emb-panel.active { display: block; }
+
+    .emb-grid { display: grid; grid-template-columns: 1.3fr .9fr; gap: 18px; align-items: start; }
+    @media (max-width: 980px) { .emb-grid { grid-template-columns: 1fr; } }
+
+    .emb-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
+
+    .emb-scan-row { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+    .emb-scan-row input { flex: 1; background: var(--bg-card2); border: 2px solid var(--border); color: var(--text-main); border-radius: 10px; padding: 14px 16px; font-size: 16px; }
+    .emb-scan-row input:focus { border-color: var(--primary); outline: none; }
+    .emb-status-badge { font-size: 11px; font-weight: 800; padding: 6px 12px; border-radius: 20px; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+    .emb-status-badge.idle { background: rgba(255,255,255,.06); color: var(--text-muted); }
+    .emb-status-badge.loading { background: rgba(41,128,185,.15); color: var(--blue); }
+    .emb-status-badge.recording { background: rgba(231,76,60,.15); color: var(--red); }
+    .emb-status-badge.saving { background: rgba(230,126,34,.15); color: var(--orange); }
+    .emb-status-badge.success { background: rgba(39,174,96,.15); color: var(--green); }
+
+    .emb-msg { font-size: 12px; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; }
+    .emb-msg.error { background: rgba(231,76,60,.12); color: var(--red); }
+    .emb-msg.warn { background: rgba(230,126,34,.12); color: var(--orange); }
+    .emb-msg.success { background: rgba(39,174,96,.12); color: var(--green); }
+
+    .emb-placeholder { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .emb-placeholder i { font-size: 40px; margin-bottom: 14px; display: block; opacity: .4; }
+    .emb-placeholder .big { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+
+    .emb-orders { display: flex; flex-direction: column; gap: 14px; }
+    .emb-order-card { display: flex; gap: 18px; background: var(--bg-card2); border-radius: 12px; padding: 16px; align-items: center; }
+    .emb-order-img { width: 100px; height: 100px; object-fit: cover; border-radius: 10px; background: var(--bg-dark); flex-shrink: 0; }
+    .emb-order-info { min-width: 0; flex: 1; }
+    .emb-order-title { font-size: 22px; font-weight: 800; line-height: 1.25; margin-bottom: 8px; }
+    .emb-order-qty { font-size: 40px; font-weight: 900; color: var(--primary); line-height: 1; margin-bottom: 8px; }
+    .emb-order-qty span { font-size: 15px; font-weight: 700; color: var(--text-muted); margin-left: 6px; }
+    .emb-order-buyer { font-size: 12px; color: var(--text-muted); }
+
+    .emb-camera-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 12px; }
+    .emb-camera-box video { width: 100%; height: 100%; object-fit: cover; }
+    .emb-camera-rec { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.6); color: var(--red); font-size: 11px; font-weight: 800; padding: 5px 10px; border-radius: 20px; display: none; align-items: center; gap: 6px; }
+    .emb-camera-rec.on { display: flex; }
+    .emb-camera-rec .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: embPulse 1s infinite; }
+    .emb-camera-off { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px; flex-direction: column; gap: 10px; }
+
+    .emb-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 16px; }
+    .emb-field { display: flex; flex-direction: column; gap: 4px; }
+    .emb-field label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .emb-field input { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 7px 10px; font-size: 12px; min-width: 140px; }
+    .emb-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .emb-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    .emb-video-list { display: flex; flex-direction: column; gap: 8px; }
+    .emb-video-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; background: var(--bg-card2); border-radius: 10px; padding: 12px 14px; }
+    .emb-video-row .title { font-size: 13px; font-weight: 700; }
+    .emb-video-row .meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .emb-video-row .dur { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+    .emb-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .emb-modal-backdrop.open { display: flex; }
+    .emb-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 720px; padding: 18px; }
+    .emb-modal h3 { font-size: 14px; font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+    .emb-modal h3 .close { cursor: pointer; color: var(--text-muted); }
+    .emb-modal video { width: 100%; border-radius: 10px; background: #000; max-height: 70vh; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="emb-subtitle">Bipe a etiqueta, confira o pedido na tela, e a gravação de conferência liga sozinha — bipe de novo pra encerrar.</p>
+
+      <div class="emb-tabs">
+        <button class="emb-tab-btn active" id="tabBtnBipar" onclick="switchTab('bipar')">
+          <i class="fas fa-barcode"></i> Bipar
+          <span class="rec-dot" id="tabRecDot" style="display:none"></span>
+        </button>
+        <button class="emb-tab-btn" id="tabBtnBuscar" onclick="switchTab('buscar')"><i class="fas fa-search"></i> Buscar vídeos</button>
+      </div>
+
+      <!-- ═══ ABA: BIPAR ═══ -->
+      <div class="emb-panel active" id="panelBipar">
+        <div class="emb-grid">
+          <div class="emb-card">
+            <div class="emb-scan-row">
+              <input id="scanInput" autocomplete="off" placeholder="Clique aqui e bipe a etiqueta...">
+              <span class="emb-status-badge idle" id="scanStatusBadge"><i class="fas fa-circle"></i> Aguardando</span>
+            </div>
+            <div id="scanMsg"></div>
+            <div id="ordersDisplay">
+              <div class="emb-placeholder">
+                <i class="fas fa-barcode"></i>
+                <div class="big">Bipe uma etiqueta para começar</div>
+                <div>O pedido, a quantidade e o comprador vão aparecer aqui.</div>
+              </div>
+            </div>
+          </div>
+          <div class="emb-card">
+            <div class="emb-camera-box">
+              <video id="cameraPreview" autoplay muted playsinline></video>
+              <div class="emb-camera-rec" id="cameraRecBadge"><span class="dot"></span> GRAVANDO</div>
+              <div class="emb-camera-off" id="cameraOffMsg" style="display:none">
+                <i class="fas fa-video-slash" style="font-size:26px"></i>
+                <span>Câmera indisponível — permita o acesso e clique em "Ativar câmera".</span>
+                <button class="emb-btn" onclick="initCamera()"><i class="fas fa-video"></i> Ativar câmera</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ ABA: BUSCAR VÍDEOS ═══ -->
+      <div class="emb-panel" id="panelBuscar">
+        <div class="emb-card">
+          <div class="emb-filters">
+            <div class="emb-field"><label>Nº do Pedido</label><input id="fVideoOrderId" placeholder="Ex: 2000123456"></div>
+            <div class="emb-field"><label>Comprador</label><input id="fVideoBuyer" placeholder="Nickname"></div>
+            <div class="emb-field"><label>De</label><input type="date" id="fVideoDe"></div>
+            <div class="emb-field"><label>Até</label><input type="date" id="fVideoAte"></div>
+            <button class="emb-btn" onclick="loadVideos()"><i class="fas fa-search"></i> Buscar</button>
+          </div>
+          <div class="emb-video-list" id="videoList"><div class="emb-placeholder">Use os filtros para buscar vídeos de embalagem.</div></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="emb-modal-backdrop" id="videoModalBackdrop">
+  <div class="emb-modal">
+    <h3><span id="videoModalTitle">Vídeo</span> <span class="close" onclick="closeVideoModal()"><i class="fas fa-times"></i></span></h3>
+    <video id="videoModalPlayer" controls></video>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// ── Câmera ──────────────────────────────────────────────────
+let stream = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+
+async function initCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('cameraPreview').srcObject = stream;
+    document.getElementById('cameraOffMsg').style.display = 'none';
+  } catch (e) {
+    console.error('[embalagem] câmera indisponível', e);
+    document.getElementById('cameraOffMsg').style.display = 'flex';
+  }
+}
+
+function startRecording() {
+  if (!stream) return;
+  recordedChunks = [];
+  const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm';
+  mediaRecorder = new MediaRecorder(stream, { mimeType });
+  mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.start();
+  document.getElementById('cameraRecBadge').classList.add('on');
+  document.getElementById('tabRecDot').style.display = '';
+}
+
+function stopRecordingAndGetBlob() {
+  return new Promise((resolve) => {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') { resolve(new Blob(recordedChunks, { type: 'video/webm' })); return; }
+    mediaRecorder.onstop = () => resolve(new Blob(recordedChunks, { type: 'video/webm' }));
+    mediaRecorder.stop();
+  });
+}
+
+// ── Máquina de estado da bipagem ──────────────────────────────
+let scanState = 'idle'; // idle | loading | recording | saving
+let currentSession = null; // { shippingId, orders, startedAt }
+
+function setScanState(s) {
+  scanState = s;
+  const badge = document.getElementById('scanStatusBadge');
+  const map = {
+    idle:      { cls: 'idle',      icon: 'fa-circle',   text: 'Aguardando' },
+    loading:   { cls: 'loading',   icon: 'fa-spinner fa-spin', text: 'Buscando pedido...' },
+    recording: { cls: 'recording', icon: 'fa-circle',   text: 'Gravando' },
+    saving:    { cls: 'saving',    icon: 'fa-spinner fa-spin', text: 'Salvando vídeo...' },
+    success:   { cls: 'success',   icon: 'fa-check',    text: 'Pedido embalado' },
+  };
+  const m = map[s] || map.idle;
+  badge.className = `emb-status-badge ${m.cls}`;
+  badge.innerHTML = `<i class="fas ${m.icon}"></i> ${m.text}`;
+  if (s !== 'recording') { document.getElementById('cameraRecBadge').classList.remove('on'); document.getElementById('tabRecDot').style.display = 'none'; }
+}
+
+function showScanMsg(text, type) {
+  document.getElementById('scanMsg').innerHTML = `<div class="emb-msg ${type}">${escapeHtml(text)}</div>`;
+  setTimeout(() => { document.getElementById('scanMsg').innerHTML = ''; }, 6000);
+}
+
+function parseShippingId(raw) {
+  raw = raw.trim();
+  try {
+    const obj = JSON.parse(raw);
+    if (obj && obj.id) return String(obj.id);
+  } catch (e) { /* não é JSON — código de barras linear puro */ }
+  return raw.replace(/[^0-9]/g, '') || raw;
+}
+
+function renderOrders(orders) {
+  document.getElementById('ordersDisplay').innerHTML = orders.map(o => `
+    <div class="emb-order-card">
+      ${o.thumbnail ? `<img class="emb-order-img" src="${escapeHtml(o.thumbnail)}" onerror="this.style.display='none'">` : ''}
+      <div class="emb-order-info">
+        <div class="emb-order-title">${escapeHtml(o.title || '(sem título)')}</div>
+        <div class="emb-order-qty">${o.quantity}<span>un.</span></div>
+        <div class="emb-order-buyer"><i class="fas fa-user"></i> ${escapeHtml(o.buyer_nickname || '—')} · <i class="fas fa-store"></i> ${escapeHtml(o.store_nickname || '')}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function resetOrdersDisplay() {
+  document.getElementById('ordersDisplay').innerHTML = `
+    <div class="emb-placeholder">
+      <i class="fas fa-barcode"></i>
+      <div class="big">Bipe uma etiqueta para começar</div>
+      <div>O pedido, a quantidade e o comprador vão aparecer aqui.</div>
+    </div>`;
+}
+
+async function startNew(shippingId) {
+  setScanState('loading');
+  const data = await DB.getPedidoPorEtiqueta(shippingId);
+  if (!data || data.error) {
+    showScanMsg(data?.error || 'Pedido não encontrado para essa etiqueta.', 'error');
+    setScanState('idle');
+    return;
+  }
+  currentSession = { shippingId, orders: data.orders, startedAt: Date.now() };
+  renderOrders(data.orders);
+  startRecording();
+  setScanState('recording');
+}
+
+async function finalizeCurrent() {
+  if (!currentSession) return;
+  const session = currentSession;
+  currentSession = null;
+  setScanState('saving');
+  const blob = await stopRecordingAndGetBlob();
+  const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);
+  const fd = new FormData();
+  fd.append('shipping_id', session.shippingId);
+  fd.append('order_ids', JSON.stringify(session.orders.map(o => o.order_id)));
+  fd.append('duration_seconds', String(durationSeconds));
+  fd.append('store_id', session.orders[0]?.store_id || '');
+  fd.append('video', blob, `${session.shippingId}.webm`);
+  const res = await DB.finalizarEmbalagem(fd);
+  if (!res || res.error) {
+    showScanMsg('Erro ao salvar o vídeo: ' + (res?.error || ''), 'error');
+    setScanState('idle');
+  } else {
+    setScanState('success');
+    showScanMsg('✅ Pedido embalado e vídeo salvo com sucesso.', 'success');
+    setTimeout(() => { setScanState('idle'); resetOrdersDisplay(); }, 2500);
+  }
+}
+
+async function handleScan(raw) {
+  const id = parseShippingId(raw);
+  if (!id) return;
+
+  if (scanState === 'recording' && currentSession) {
+    if (id === currentSession.shippingId) {
+      await finalizeCurrent();
+    } else {
+      const ok = confirm(`Você bipou uma etiqueta diferente da que está em gravação (pedido atual: ${currentSession.shippingId}).\n\nDeseja finalizar a gravação atual e começar uma nova?`);
+      if (ok) {
+        await finalizeCurrent();
+        await startNew(id);
+      } else {
+        showScanMsg('Bipagem ignorada — a gravação atual continua.', 'warn');
+      }
+    }
+    return;
+  }
+
+  if (scanState === 'loading' || scanState === 'saving') return; // ignora bipe no meio de uma operação
+  await startNew(id);
+}
+
+const scanInput = document.getElementById('scanInput');
+scanInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const raw = scanInput.value;
+  scanInput.value = '';
+  if (raw.trim()) handleScan(raw);
+});
+function refocusScan() {
+  if (document.getElementById('panelBipar').classList.contains('active')) scanInput.focus();
+}
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('panelBuscar').contains(e.target) && !document.getElementById('videoModalBackdrop').contains(e.target)) refocusScan();
+});
+scanInput.addEventListener('blur', () => setTimeout(refocusScan, 200));
+
+// ── Abas ────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('panelBipar').classList.toggle('active', tab === 'bipar');
+  document.getElementById('panelBuscar').classList.toggle('active', tab === 'buscar');
+  document.getElementById('tabBtnBipar').classList.toggle('active', tab === 'bipar');
+  document.getElementById('tabBtnBuscar').classList.toggle('active', tab === 'buscar');
+  if (tab === 'bipar') refocusScan();
+}
+
+// ── Aba: Buscar vídeos ─────────────────────────────────────
+async function loadVideos() {
+  const params = {};
+  const orderId = document.getElementById('fVideoOrderId').value.trim(); if (orderId) params.order_id = orderId;
+  const buyer = document.getElementById('fVideoBuyer').value.trim(); if (buyer) params.buyer = buyer;
+  const de = document.getElementById('fVideoDe').value; if (de) params.date_from = de;
+  const ate = document.getElementById('fVideoAte').value; if (ate) params.date_to = ate + 'T23:59:59';
+
+  const list = document.getElementById('videoList');
+  list.innerHTML = '<div class="emb-placeholder">Buscando...</div>';
+  const data = await DB.getVideosEmbalagem(params);
+  const rows = data?.rows || [];
+  list.innerHTML = rows.length ? rows.map(v => `
+    <div class="emb-video-row">
+      <div>
+        <div class="title">${escapeHtml(v.sample_title || v.shipping_id)}</div>
+        <div class="meta">${escapeHtml(v.sample_buyer || '—')} · Pedido(s): ${(v.order_ids || []).map(escapeHtml).join(', ')} · ${new Date(v.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div>
+      </div>
+      <div class="dur">${v.duration_seconds ? Math.round(v.duration_seconds / 60 * 10) / 10 + ' min' : '—'}</div>
+      <button class="emb-btn" onclick="playVideo(${v.id}, '${escapeHtml(v.sample_title || v.shipping_id).replace(/'/g,"\\'")}')"><i class="fas fa-play"></i> Assistir</button>
+    </div>
+  `).join('') : '<div class="emb-placeholder">Nenhum vídeo encontrado com esses filtros.</div>';
+}
+
+function playVideo(id, title) {
+  document.getElementById('videoModalTitle').textContent = title;
+  document.getElementById('videoModalPlayer').src = DB.videoEmbalagemUrl(id);
+  document.getElementById('videoModalBackdrop').classList.add('open');
+}
+function closeVideoModal() {
+  const player = document.getElementById('videoModalPlayer');
+  player.pause();
+  player.removeAttribute('src');
+  player.load();
+  document.getElementById('videoModalBackdrop').classList.remove('open');
+}
+
+// ── Init ────────────────────────────────────────────────────
+initCamera();
+refocusScan();
+</script>
+</body>
+</html>

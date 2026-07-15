@@ -30,7 +30,7 @@ js/
 Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`):
 
 - **Início**: top-vendas-online (dashboard matinal "morning digest" — consolida em cards/gráficos coloridos o que já vai por Telegram/e-mail: top vendas últimas 4h — mesmo dado do alerta Telegram, via `GET /api/schedule/runs?job=top-vendas`, auto-refresh 4h —, resumo do dia anterior, top vendas do dia 24h, relatório semanal; usa Chart.js, sem rota exclusiva além de `GET /api/dashboard/resumo-ontem`/`top-vendas-dia`/`resumo-semanal`, ver `api.md`), agenda-trello (quadro Kanban de tarefas do Analista de E-commerce — ver seção dedicada abaixo e `task-engine.md`)
-- **Operação**: anuncios, pedidos, vendas, vendas-por-loja, promocoes, perguntas, mensagens, metricas, clientes, lojas
+- **Operação**: anuncios, pedidos, embalagem (bipagem de etiqueta + vídeo de conferência — ver seção dedicada abaixo e `embalagem.md`), vendas, vendas-por-loja, promocoes, perguntas, mensagens, metricas, clientes, lojas
 - **Análises**: horarios, diasemana, produtos, performance, estoque-parado, publicidade, concorrentes
 - **Comparativos**: periodo, evolucao, curvaABC, analise-vendas-mes (BI — comparativo mensal, média histórica 12 meses, heatmap, rankings, insights automáticos e drill-down por dia; usa Chart.js, mesmo padrão do `dashboard.js`)
 - **Alertas**: reposicao, cancelamentos, devolucoes, anuncios-problema, alteracoes
@@ -121,6 +121,15 @@ Página independente do resto do sistema — usa a mesma `NAV_ITEMS`/sidebar/top
 - **Notificação em tempo real**: `WS.on('task_created', ...)` (payload publicado por `worker.js` quando o TaskEngine cria — não só atualiza — um cartão automático) mostra um toast e recarrega o quadro/painel.
 - **Exclusão definitiva**: botão "Excluir permanentemente" no modal de detalhe só fica visível quando o cartão já está na coluna Excluído (`t.board_column === 'excluido'`) — em qualquer outra coluna, mover pra "Excluído" é reversível (soft, via `board_column`); só de lá dá pra apagar de vez (`DB.deleteTask`, com confirmação via `confirm()`).
 - **Checklist por cartão**: não implementado (explicitamente adiado, ver `task-engine.md`).
+
+## `pages/embalagem.html` — bipagem de etiqueta + vídeo de conferência
+
+Página operacional (pensada pra rodar num PC/tablet fixo na bancada de embalagem, com leitor de código de barras 2D USB/Bluetooth conectado — ver `embalagem.md` pra detalhes do formato da etiqueta). Duas abas:
+
+- **Bipar**: campo de bipagem sempre em foco (reforçado automaticamente); máquina de estado `idle → loading → recording → saving → idle`. Ao identificar o pedido via `DB.getPedidoPorEtiqueta(shippingId)`, mostra imagem/título grandes e **quantidade em destaque** (maior que o resto — pedido explícito do usuário), comprador menor, e liga a câmera (`getUserMedia`+`MediaRecorder`, permissão pedida assim que a página carrega). Bipar de novo a mesma etiqueta finaliza e salva (`DB.finalizarEmbalagem`, multipart); bipar uma etiqueta diferente enquanto grava pede confirmação (`confirm()`) antes de trocar.
+- **Buscar vídeos**: filtro por pedido/comprador/data (`DB.getVideosEmbalagem`), player HTML5 num modal (`src` = `DB.videoEmbalagemUrl(id)`, que aponta pra `GET /api/embalagem/videos/:id/file` — suporta `Range`, então dá pra avançar/voltar sem baixar o vídeo inteiro).
+
+`DB.getPedidoPorEtiqueta(shippingId)`/`finalizarEmbalagem(formData)`/`getVideosEmbalagem(params)`/`videoEmbalagemUrl(id)` — `finalizarEmbalagem` usa `DB._postForm()` (novo helper, `fetch` com `FormData` cru, sem `Content-Type` manual — o navegador define o boundary do multipart sozinho; diferente do `_post` padrão, que sempre serializa `JSON.stringify`).
 
 ## `js/layout.js` — sidebar, topbar e alertas globais
 

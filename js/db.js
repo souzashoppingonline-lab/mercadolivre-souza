@@ -58,6 +58,22 @@ const DB = {
     }
   },
 
+  // Upload multipart (FormData) — sem Content-Type manual, o navegador
+  // define o boundary certo sozinho.
+  async _postForm(path, formData) {
+    try {
+      const res = await fetch(`${this.BASE}${path}`, { method: 'POST', body: formData });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e) {
+      console.error('[DB] POST(form) error', path, e);
+      return null;
+    }
+  },
+
   async _delete(path) {
     try {
       const res = await fetch(`${this.BASE}${path}`, { method: 'DELETE' });
@@ -246,4 +262,10 @@ const DB = {
   async deleteTask(id)                 { return this._delete(`/tasks/${id}`); },
   async getTaskComments(id)            { return this._get(`/tasks/${id}/comments`); },
   async addTaskComment(id, body)       { return this._post(`/tasks/${id}/comments`, body); },
+
+  // ── Embalagem ────────────────────────────────────────────────
+  async getPedidoPorEtiqueta(shippingId) { return this._get(`/embalagem/pedido/${encodeURIComponent(shippingId)}`); },
+  async finalizarEmbalagem(formData)     { return this._postForm('/embalagem/finalizar', formData); },
+  async getVideosEmbalagem(params={})    { return this._get('/embalagem/videos', params); },
+  videoEmbalagemUrl(id)                  { return `${this.BASE}/embalagem/videos/${id}/file`; },
 };

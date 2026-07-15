@@ -190,6 +190,16 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /api/tasks/:id/comments` | comentários do cartão, ordenados por data |
 | `POST /api/tasks/:id/comments { author?, text }` | adiciona comentário |
 
+## Embalagem (`routes/embalagem.js`, montado em `/api/embalagem`)
+> Módulo independente — só lê `orders`/`items` (leitura, nunca escreve nelas), escreve/lê `packing_videos`. Ver `embalagem.md`.
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/embalagem/pedido/:shippingId` | busca pedido(s) por `orders.shipping_id` — pode retornar mais de 1 (envio/pack com vários pedidos); inclui `thumbnail`/`title`/`quantity`/`buyer_nickname`/`store_nickname` |
+| `POST /api/embalagem/finalizar` (multipart: `video`, `shipping_id`, `order_ids` (JSON), `duration_seconds`, `store_id`) | salva o vídeo gravado em `server/storage/embalagem-videos/YYYY-MM-DD/` e grava a linha em `packing_videos` |
+| `GET /api/embalagem/videos?order_id&buyer&date_from&date_to` | busca vídeos salvos (aba "Buscar vídeos") |
+| `GET /api/embalagem/videos/:id/file` | stream do arquivo de vídeo (`res.sendFile`, suporta `Range` — necessário pro player HTML5 avançar/voltar) |
+
 ## `/auth/shopee/*` — ver `shopee.md`
 
 | Rota | Descrição |

@@ -41,6 +41,10 @@ sudo -u postgres psql -d ml_dashboard -c "SELECT 'ALTER TABLE '||tablename||' OW
 
 `redis://localhost:6379` (mesma instância para cache, pub/sub e filas BullMQ — ver `redis.md`/`workers.md`).
 
+## Armazenamento local — vídeos de Embalagem
+
+`server/storage/embalagem-videos/` (fora do git, criado automaticamente) guarda os vídeos de conferência de embalagem, retenção de 30 dias (job `cleanupPackingVideos`, ver `workers.md`/`embalagem.md`). É o único lugar do sistema hoje que grava arquivo binário em disco fora do Postgres/Redis — monitorar espaço em disco da VPS se o volume de embalagens crescer muito (`df -h` no diagnóstico rápido abaixo já cobre isso de forma geral).
+
 ## Nginx — WebSocket
 
 Sem os headers de upgrade e timeouts corretos, o nginx derruba conexões WS ociosas em 60s. Config de referência versionada em `server/nginx-websocket.conf` (aplicar dentro do `location /ws` do server block):

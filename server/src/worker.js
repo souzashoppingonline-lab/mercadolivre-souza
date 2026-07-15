@@ -4,6 +4,7 @@
 //
 // Run as its own process: `npm run worker`
 require('dotenv').config();
+const fsp = require('fs/promises');
 const { Worker } = require('bullmq');
 const IORedis = require('ioredis');
 const env = require('./config/env');
@@ -206,8 +207,8 @@ async function handleOrder({ resource, storeId, silent = false }) {
   }
 
   await pool.query(
-    `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, raw_data, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
+    `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, raw_data, shipping_id, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        buyer_nickname = EXCLUDED.buyer_nickname,
        item_id = EXCLUDED.item_id,
@@ -221,6 +222,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
        status = EXCLUDED.status,
        date_closed = EXCLUDED.date_closed,
        raw_data = EXCLUDED.raw_data,
+       shipping_id = COALESCE(EXCLUDED.shipping_id, orders.shipping_id),
        updated_at = now()`,
     [
       order.id, storeId, order.buyer?.nickname,
@@ -235,6 +237,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
       order.status,
       order.date_created, order.date_closed,
       JSON.stringify(order),
+      order.shipping?.id ? String(order.shipping.id) : null,
     ]
   );
 
@@ -1023,6 +1026,31 @@ async function syncPrecos() {
   } finally {
     isSyncingPrecos = false;
     scheduleAt(5, 0, syncPrecos, 'sync-precos');
+  }
+}
+
+// ── Limpeza de vídeos de embalagem — retenção de 30 dias ────────────────
+async function cleanupPackingVideos() {
+  try {
+    return await recordSync('cleanup-packing-videos', '30 3 * * *', async () => {
+      const { rows } = await pool.query(
+        `SELECT id, file_path FROM packing_videos WHERE created_at < now() - interval '30 days'`
+      );
+      let deleted = 0, errors = 0;
+      for (const r of rows) {
+        try {
+          await fsp.unlink(r.file_path);
+        } catch (e) {
+          if (e.code !== 'ENOENT') { console.warn(`[cleanup-packing-videos] erro ao apagar ${r.file_path}:`, e.message); errors++; }
+        }
+        await pool.query(`DELETE FROM packing_videos WHERE id=$1`, [r.id]);
+        deleted++;
+      }
+      console.log(`[cleanup-packing-videos] ${deleted} vídeo(s) removido(s), ${errors} erro(s)`);
+      return { deleted, errors };
+    });
+  } finally {
+    scheduleAt(3, 30, cleanupPackingVideos, 'cleanup-packing-videos');
   }
 }
 
@@ -1880,6 +1908,7 @@ scheduleAt(1,  0,  syncScores,   'sync-scores');
 scheduleAt(1, 30, syncParentItems, 'sync-parent-items');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
+scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');

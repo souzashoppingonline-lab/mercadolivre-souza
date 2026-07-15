@@ -105,9 +105,12 @@ CREATE TABLE IF NOT EXISTS orders (
   date_closed TIMESTAMPTZ,
   raw_data JSONB,
   marketplace_id INT REFERENCES marketplaces(id),
+  shipping_id TEXT,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_orders_shipping_id ON orders(shipping_id);
 
 CREATE TABLE IF NOT EXISTS questions (
   ml_id BIGINT PRIMARY KEY,
@@ -391,3 +394,18 @@ CREATE TABLE IF NOT EXISTS task_comments (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, created_at);
+
+-- v21 — Embalagem: gravação de vídeo de conferência ao bipar etiqueta.
+-- Ver .claude/embalagem.md.
+CREATE TABLE IF NOT EXISTS packing_videos (
+  id BIGSERIAL PRIMARY KEY,
+  shipping_id TEXT NOT NULL,
+  order_ids TEXT[] NOT NULL,
+  file_path TEXT NOT NULL,
+  duration_seconds INT,
+  store_id BIGINT REFERENCES stores(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_packing_videos_shipping ON packing_videos(shipping_id);
+CREATE INDEX IF NOT EXISTS idx_packing_videos_created ON packing_videos(created_at);
+CREATE INDEX IF NOT EXISTS idx_packing_videos_order_ids ON packing_videos USING GIN(order_ids);

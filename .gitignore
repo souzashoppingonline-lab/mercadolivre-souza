@@ -1,4 +1,5 @@
 server/node_modules/
 server/.env
+server/storage/
 .env
 .claude/worktrees/

@@ -232,6 +232,20 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 
 **Migration**: v20 recria o índice parcial `idx_tasks_rule_item_open` com o novo predicado (`WHERE board_column != 'excluido'`) — sem isso, a query de dedup deixaria de usar o índice (o predicado antigo era mais restritivo que a nova consulta).
 
+## Embalagem (v21) — armazenamento local em disco, não object storage
+
+**Contexto**: pedido para uma tela de bipagem de etiqueta + gravação de vídeo de conferência da embalagem, com retenção de 30 dias, pra ter prova em caso de devolução contestada.
+
+**Decisão — `shipping_id` como chave universal de busca, extraído no frontend**: testado com etiquetas reais (FLEX e Mercado Envios), o QR code dos dois tipos e o código de barras linear do Mercado Envios sempre resolvem pro mesmo dado — um `shipping_id` de 11 dígitos (`{"id":"...", ...}` no QR, dígitos puros no barcode linear). O parsing (tentar `JSON.parse`, cair pro texto cru se não for JSON) acontece **no frontend** (`pages/embalagem.html`), não no backend — a rota `GET /api/embalagem/pedido/:shippingId` já recebe o valor limpo. **Por quê**: mantém o backend simples (só sabe buscar por `shipping_id`), e o frontend é o lugar natural pra lidar com o formato variável de entrada do leitor de código de barras.
+
+**Decisão — vídeo em disco local (`server/storage/embalagem-videos/`), não S3/object storage**: dado o volume esperado (poucas dezenas de embalagens/dia, retenção de só 30 dias), armazenamento local via `multer.diskStorage` é suficiente e não introduz uma dependência de infra nova (credenciais de cloud storage, custo recorrente). **Trade-off aceito conscientemente**: sem backup/replicação — se o disco da VPS falhar, os vídeos dos últimos 30 dias somem. Documentado como aceitável dado o caso de uso (prova operacional de curto prazo, não arquivo permanente). Se o volume crescer ou a retenção precisar aumentar, migrar pra um storage S3-compatible é uma troca isolada (só o `storage` engine do multer + o handler de `GET /videos/:id/file` mudam, o resto do fluxo não).
+
+**Decisão — retenção 30 dias, apagada por job diário, não por TTL do Postgres**: usado o mesmo padrão de job agendado já existente no worker (`recordSync`/`scheduleAt`) em vez de uma extensão do Postgres (`pg_cron` não está instalado) — `cleanupPackingVideos` roda às 03:30 (mesma janela de baixo tráfego dos outros syncs noturnos), apaga arquivo + linha juntos, nunca deixa arquivo órfão sem registro (ou registro sem arquivo por muito tempo).
+
+**Decisão — coluna `orders.shipping_id` sem `UNIQUE`, `packing_videos.order_ids` como array**: um mesmo envio (etiqueta) pode agrupar mais de um pedido quando o comprador compra vários itens juntos no carrinho ("pack", visível como "Pack ID" na etiqueta) — a tela já foi desenhada pra mostrar todos os pedidos de uma bipagem, não só o primeiro. Ver `embalagem.md`.
+
+**Fora de escopo desta fase**: backfill de `shipping_id` pra pedidos já existentes no banco (só pedidos processados depois do deploy da v21 têm o campo); vínculo automático entre uma devolução e o vídeo correspondente (busca hoje é manual, por pedido/comprador/data); seleção de câmera (usa a padrão do navegador).
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

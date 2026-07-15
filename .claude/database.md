@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -81,6 +81,10 @@ status TEXT, cancelled_by TEXT, cancel_reason TEXT
 date_created, date_closed TIMESTAMPTZ
 raw_data JSONB                    -- payload completo do pedido (só preenchido pelo pipeline ML)
 marketplace_id INT FK marketplaces -- v15
+shipping_id TEXT                  -- v21: ID do envio do ML (order.shipping.id), indexado, NÃO único
+                                   -- (um envio/pack pode agrupar mais de um pedido). Chave de busca
+                                   -- da bipagem de etiqueta — ver embalagem.md. Só populado a partir
+                                   -- de pedidos processados depois da v21 (sem backfill retroativo).
 updated_at TIMESTAMPTZ
 ```
 Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data`, `shopee_order_data`). `orders` só guarda os campos comuns entre marketplaces.
@@ -259,6 +263,18 @@ author TEXT, text TEXT NOT NULL
 created_at TIMESTAMPTZ
 ```
 
+### `packing_videos` — v21: vídeos de conferência de embalagem
+```
+id BIGSERIAL PK
+shipping_id TEXT NOT NULL         -- mesma chave bipada da etiqueta (ver embalagem.md)
+order_ids TEXT[] NOT NULL         -- pode ter mais de 1 (pack — vários pedidos no mesmo envio)
+file_path TEXT NOT NULL           -- caminho absoluto em server/storage/embalagem-videos/ (fora do git)
+duration_seconds INT
+store_id BIGINT FK stores
+created_at TIMESTAMPTZ
+```
+Sem FK entre `order_ids` e `orders.ml_id` (é `TEXT[]`, não dá pra fazer FK de array em Postgres) — a integridade é só de convenção, resolvida via `= ANY(order_ids)` nas queries. Apagado automaticamente (arquivo + linha) 30 dias após `created_at` pelo job `cleanupPackingVideos` (ver `workers.md`).
+
 ## Views ML-only (v17)
 
 ```sql
@@ -270,7 +286,7 @@ Toda leitura (`FROM`/`JOIN`) em `routes/api.js` usa essas views em vez das tabel
 
 ## Índices relevantes
 
-`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15), `stores(shopee_shop_id)` único parcial e `shopee_order_data(order_sn)` único (v18), `tasks(board_column)`, `tasks(source)`, `tasks(priority)`, `tasks(store_id)`, `tasks(rule_key, item_id)` parcial (v19, predicado ajustado na v20), `task_comments(task_id, created_at)` (v19).
+`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15), `stores(shopee_shop_id)` único parcial e `shopee_order_data(order_sn)` único (v18), `tasks(board_column)`, `tasks(source)`, `tasks(priority)`, `tasks(store_id)`, `tasks(rule_key, item_id)` parcial (v19, predicado ajustado na v20), `task_comments(task_id, created_at)` (v19), `orders(shipping_id)`, `packing_videos(shipping_id)`, `packing_videos(created_at)`, `packing_videos(order_ids)` GIN (v21).
 
 ## Relação `items.parent_item_id` (variações)
 

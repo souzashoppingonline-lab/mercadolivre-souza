@@ -64,6 +64,7 @@ Não usa `node-cron`; cada job se reagenda no `finally` chamando `scheduleAt(hor
 | 01:30 | `syncParentItems` | preenche `items.parent_item_id` via multiget (lotes de 20, 30s entre lotes/lojas) |
 | 02:00 | `syncVisitas` | coleta visitas do dia anterior por item ativo (até 300/loja), **lojas sequenciais** (não paralelo — ver `decisions.md`), 20s entre itens, circuit breaker de 5 429 consecutivos aborta a loja |
 | 03:00 | `syncVendas` (alias `dailySync`) | reconcilia pedidos das últimas 72h via `/orders/search`, paginado, chama `handleOrder(..., silent: true)` para não gerar notificação "Nova venda!" duplicada. **Lojas sequenciais**, 20s entre pedidos processados, backoff 60s→120s e circuit breaker de 5 429 consecutivos por loja (mesmo padrão de `syncVisitas`/`syncScores` — ver `decisions.md`) |
+| 03:30 | `cleanupPackingVideos` | apaga arquivo (`fs/promises.unlink`) + linha de `packing_videos` com `created_at` mais velho que 30 dias — retenção do módulo Embalagem (ver `embalagem.md`). Não chama a API do ML |
 | 04:15 | `syncMetricas` | reputação (`store_metrics`) + devoluções recentes (`returns`) |
 | 05:00 | `syncPrecos` | atualiza `items.original_price` de itens não fechados; zera se não há promoção ativa |
 | 06:00 | `resumoDiario` | envia ao Telegram (`tg_resumo`, sempre — não respeita as flags de tópico) o resumo do dia anterior por loja e por modal de logística |

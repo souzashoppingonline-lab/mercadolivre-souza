@@ -428,6 +428,12 @@ function switchTab(tab) {
 }
 
 // ── Vídeo em lista (usado por "Buscar vídeos" e "Conferência do Dia") ──
+function fmtDuration(sec) {
+  if (sec == null) return '—';
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return `${m}min ${String(s).padStart(2, '0')}s`;
+}
 function videoRowHtml(v, { showStore = false } = {}) {
   const storeBit = showStore && v.store_nickname ? ` · <i class="fas fa-store"></i> ${escapeHtml(v.store_nickname)}` : '';
   return `
@@ -436,7 +442,7 @@ function videoRowHtml(v, { showStore = false } = {}) {
         <div class="title">${escapeHtml(v.sample_title || v.shipping_id)}</div>
         <div class="meta">${escapeHtml(v.sample_buyer || '—')}${storeBit} · Pedido(s): ${(v.order_ids || []).map(escapeHtml).join(', ')} · ${new Date(v.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div>
       </div>
-      <div class="dur">${v.duration_seconds ? Math.round(v.duration_seconds / 60 * 10) / 10 + ' min' : '—'}</div>
+      <div class="dur">${fmtDuration(v.duration_seconds)}</div>
       <button class="emb-btn" onclick="playVideo(${v.id}, '${escapeHtml(v.sample_title || v.shipping_id).replace(/'/g,"\\'")}')"><i class="fas fa-play"></i> Assistir</button>
     </div>`;
 }
@@ -580,13 +586,20 @@ function renderConfKpis(rows) {
   const kpis = document.getElementById('confKpis');
   const byStore = new Map();
   let flex = 0, me = 0;
+  let totalDuration = 0, totalOrders = 0; // tempo médio por PEDIDO: soma do tempo / soma de pedidos
+  // (não média das médias — um envio com 5 pedidos pesa mais que um com 1)
   for (const v of rows) {
     const store = v.store_nickname || 'Sem loja';
     byStore.set(store, (byStore.get(store) || 0) + 1);
     const tipo = logLabel(v.sample_shipping_type);
     if (tipo === 'Flex') flex++;
     else if (tipo === 'Mercado Envios') me++;
+    if (v.duration_seconds != null) {
+      totalDuration += v.duration_seconds;
+      totalOrders += (v.order_ids || []).length || 1; // 2 itens no mesmo pedido continuam sendo 1 pedido
+    }
   }
+  const avgPerOrder = totalOrders ? totalDuration / totalOrders : null;
   const storeCards = [...byStore.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([nome, qtd]) => `<div class="stat-card" style="cursor:pointer" data-drill="loja" data-loja="${escapeHtml(nome)}"><div class="label">${escapeHtml(nome)}</div><div class="value">${qtd}</div></div>`)
@@ -595,6 +608,7 @@ function renderConfKpis(rows) {
     <div class="stat-card" style="cursor:pointer" data-drill="bipados"><div class="label">Bipados hoje</div><div class="value">${rows.length}</div></div>
     <div class="stat-card" style="cursor:pointer" data-drill="flex"><div class="label">Flex</div><div class="value" style="color:var(--orange)">${flex}</div></div>
     <div class="stat-card" style="cursor:pointer" data-drill="me"><div class="label">Mercado Envios</div><div class="value" style="color:var(--blue)">${me}</div></div>
+    <div class="stat-card"><div class="label">Tempo médio / pedido</div><div class="value" style="color:var(--teal)">${fmtDuration(avgPerOrder)}</div></div>
     ${storeCards}`;
   kpis.querySelectorAll('.stat-card').forEach(card => {
     card.addEventListener('click', () => openConfDrill(card.dataset.drill, card.dataset.loja));

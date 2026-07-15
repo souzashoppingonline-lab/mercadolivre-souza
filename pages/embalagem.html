@@ -161,6 +161,10 @@
             <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Bipagens por hora — hoje vs. dia anterior</div>
             <canvas id="confHourChart" height="90"></canvas>
           </div>
+          <div style="margin-bottom:16px">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Bipagens por loja — dia selecionado</div>
+            <canvas id="confStoreChart" height="90"></canvas>
+          </div>
           <div class="emb-filters">
             <div class="emb-field"><label>Nº do Pedido</label><input id="fConfOrderId" placeholder="Ex: 2000123456"></div>
             <div class="emb-field"><label>Data</label><input type="date" id="fConfData"></div>
@@ -486,6 +490,47 @@ async function loadConferenciaDia() {
   list.innerHTML = rows.length ? rows.map(v => videoRowHtml(v, { showStore: true })).join('') : '<div class="emb-placeholder">Nenhum pedido bipado hoje ainda.</div>';
 
   renderConfHourChart(dia, storeId);
+  renderConfStoreChart(rows);
+}
+
+// Paleta com uma cor distinta por loja (cicla se tiver mais lojas que cores).
+const STORE_PALETTE = ['#FFE600', '#2980b9', '#27ae60', '#e67e22', '#8e44ad', '#1abc9c', '#e74c3c'];
+
+// Colunas por loja, no dia/filtro selecionado — mesmos dados já carregados
+// pelos cards de resumo (confRows), sem chamada nova ao backend.
+function renderConfStoreChart(rows) {
+  const byStore = new Map();
+  for (const v of rows) {
+    const store = v.store_nickname || 'Sem loja';
+    byStore.set(store, (byStore.get(store) || 0) + 1);
+  }
+  const entries = [...byStore.entries()].sort((a, b) => b[1] - a[1]);
+  const cores = entries.map((_, i) => STORE_PALETTE[i % STORE_PALETTE.length]);
+
+  destroyChart('confStore');
+  charts.confStore = new Chart(document.getElementById('confStoreChart'), {
+    type: 'bar',
+    data: {
+      labels: entries.map(([nome]) => nome),
+      datasets: [{
+        label: 'Bipagens',
+        data: entries.map(([, qtd]) => qtd),
+        backgroundColor: cores.map(c => c + 'cc'),
+        borderColor: cores,
+        borderWidth: 1.5,
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 700, easing: 'easeOutQuart' },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 11 } }, grid: { display: false } },
+        y: { ticks: { color: '#888', stepSize: 1 }, grid: { color: 'rgba(255,255,255,.04)' }, beginAtZero: true },
+      },
+    },
+  });
 }
 
 function diaAnterior(iso) {
@@ -519,6 +564,7 @@ async function renderConfHourChart(dia, storeId) {
     },
     options: {
       responsive: true,
+      animation: { duration: 700, easing: 'easeOutQuart' },
       plugins: { legend: { position: 'bottom', labels: { color: '#ccc', boxWidth: 10, font: { size: 11 } } } },
       scales: {
         x: { ticks: { color: '#888', font: { size: 10 } }, grid: { display: false } },

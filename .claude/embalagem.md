@@ -54,6 +54,8 @@ Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartil
 
 **Gráfico de colunas "por hora"** (`renderConfHourChart()`, Chart.js — mesma lib já usada em `top-vendas-online.html`/`analise-vendas-mes.html`): compara a quantidade de bipagens por hora (0-23) do dia selecionado com o dia imediatamente anterior, mesmo filtro de loja se houver. Usa a rota dedicada `GET /api/embalagem/por-hora?date&store_id` (não dá pra calcular isso em cima de `GET /videos` porque ela tem `LIMIT 100` e só cobre 1 dia por chamada) — a rota devolve sempre as 24 horas (zero-fill via `generate_series(0,23)` + `LEFT JOIN`), pra o eixo do gráfico nunca ter buraco mesmo em horas sem nenhuma bipagem.
 
+**Gráfico de colunas "por loja"** (`renderConfStoreChart()`), logo abaixo do gráfico por hora: uma coluna por loja com contagem de bipagens no dia/filtro selecionado, cada loja com uma cor distinta (`STORE_PALETTE`, cicla se houver mais lojas que cores) e um contorno (`borderColor`) mais forte que o preenchimento — mesma paleta de `--primary`/`--blue`/`--green`/`--orange`/`--purple`/`--teal`/`--red` do `style.css`. Calculado em cima de `confRows` (mesmo array dos cards e do drill-down), sem chamada nova ao backend. Ambos os gráficos da aba usam `animation: { duration: 700, easing: 'easeOutQuart' }` (Chart.js) em vez do padrão da lib, pra dar uma transição visível ao trocar de dia/loja no filtro.
+
 ## Armazenamento
 
 - Vídeos ficam em `server/storage/embalagem-videos/YYYY-MM-DD/<shipping_id>_<timestamp>.webm` (fora do controle de versão — `server/storage/` no `.gitignore`). A pasta do dia é criada automaticamente pelo `multer.diskStorage` na primeira gravação daquele dia.

@@ -127,6 +127,37 @@ router.get('/videos', async (req, res) => {
   }
 });
 
+// GET /api/embalagem/videos-por-pedidos?order_ids=1,2,3 — lookup em lote
+// (usado por pages/devolucoes.html pra saber, sem N+1, quais pedidos de uma
+// lista têm vídeo de embalagem gravado, e mostrar um botão "Assistir" direto
+// na tela de devoluções). Devolve só os que têm vídeo — {order_id: {id, created_at}}.
+// Quando um shipping_id agrupa mais de um vídeo (bipado 2x), fica o mais recente.
+router.get('/videos-por-pedidos', async (req, res) => {
+  try {
+    const orderIds = String(req.query.order_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!orderIds.length) return res.json({});
+
+    const { rows } = await pool.query(
+      `SELECT id, order_ids, created_at
+       FROM packing_videos
+       WHERE order_ids && $1::text[]
+       ORDER BY created_at DESC`,
+      [orderIds]
+    );
+
+    const map = {};
+    for (const row of rows) {
+      for (const oid of row.order_ids) {
+        if (orderIds.includes(oid) && !map[oid]) map[oid] = { id: row.id, created_at: row.created_at };
+      }
+    }
+    res.json(map);
+  } catch (e) {
+    console.error('[api/embalagem] GET /videos-por-pedidos', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/embalagem/por-hora?date=YYYY-MM-DD&store_id= — quantidade de
 // bipagens por hora (0-23) num dia, sempre 24 posições (zero-fill) pra dar
 // pra montar um gráfico de colunas comparando dois dias sem buraco no eixo.

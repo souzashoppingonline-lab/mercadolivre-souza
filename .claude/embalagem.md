@@ -71,9 +71,14 @@ Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartil
 
 **Correção de robustez feita em paralelo, no código**: `DB._postForm()` (`js/db.js`) ganhou um timeout próprio via `AbortController` (60s) — antes, se o upload travasse por qualquer motivo (nginx, rede, servidor), o `fetch()` nunca resolvia e a tela ficava presa pra sempre, exigindo recarregar a página pra continuar embalando. Agora, esgotado o timeout, cai no mesmo tratamento de erro de qualquer outra falha (mensagem de erro, volta pra idle, operador pode tentar de novo sem reload). Mensagem de sucesso ("✅ Pedido embalado") fica visível por 10s (era 2,5s) antes de voltar pra idle sozinho — pedido explícito do usuário.
 
+## Link Devoluções → vídeo (`pages/devolucoes.html`)
+
+Coluna "Vídeo" na tabela de devoluções mostra um botão "Assistir" pros pedidos que têm gravação. `returns.order_id` é o vínculo — a mesma chave usada em `packing_videos.order_ids` (array). Implementação: `load()` (em `devolucoes.html`) coleta todos os `order_id` da página carregada e faz **uma única chamada em lote** (`GET /api/embalagem/videos-por-pedidos?order_ids=...`), preenchendo a coluna via `Object.entries(map)` — sem N+1 (1 request pra tabela inteira, não 1 por linha). Clicar em "Assistir" abre um modal simples (`<video controls>`, `dev-modal-backdrop`) reaproveitando o mesmo endpoint de streaming `GET /api/embalagem/videos/:id/file`.
+
+**Como saber se um pedido teve devolução, e quando**: a tabela `returns` já grava isso — `order_id` (vínculo com o pedido), `date` (o `date_created` do claim, ou seja, o momento exato em que o comprador abriu a reclamação/devolução no ML), `status`/`reason`. Populado em tempo real pelo webhook `post_purchase` (`handlePostPurchase` em `worker.js`) + sync retroativo (`syncReturns`, botão "Importar histórico ML" na própria página).
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.
-- Vínculo automático entre uma devolução (`returns`) e o vídeo correspondente (hoje a busca é manual, por nº do pedido/comprador/data) — um botão "Ver vídeo da embalagem" direto em `pages/devolucoes.html` é uma extensão natural futura, não implementada agora.
 - Notificação/alerta quando uma gravação falha ou fica muito curta (ex: operador bipou e já bipou de novo em 2s por engano) — hoje só mostra o erro se o upload falhar, não valida duração mínima.
 - Suporte a múltiplas câmeras/seleção de dispositivo — usa a câmera padrão do navegador (`getUserMedia` sem `deviceId`).

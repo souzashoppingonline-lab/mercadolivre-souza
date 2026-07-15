@@ -154,8 +154,10 @@
       <!-- ═══ ABA: CONFERÊNCIA DO DIA ═══ -->
       <div class="emb-panel" id="panelConferencia">
         <div class="emb-card">
-          <p class="emb-subtitle" style="margin-top:0">Todos os pedidos bipados hoje (<span id="confCount">0</span>), pra conferir se algum ficou faltando.</p>
+          <p class="emb-subtitle" style="margin-top:0">Pedidos bipados na data selecionada (<span id="confCount">0</span>) — abre sempre em hoje, pra conferir se algum ficou faltando.</p>
           <div class="emb-filters">
+            <div class="emb-field"><label>Nº do Pedido</label><input id="fConfOrderId" placeholder="Ex: 2000123456"></div>
+            <div class="emb-field"><label>Data</label><input type="date" id="fConfData"></div>
             <div class="emb-field"><label>Loja</label><select id="fConfLoja"><option value="">Todas</option></select></div>
             <div class="emb-field"><label>Comprador</label><input id="fConfBuyer" placeholder="Nickname"></div>
             <button class="emb-btn" onclick="loadConferenciaDia()"><i class="fas fa-sync-alt"></i> Atualizar</button>
@@ -437,8 +439,11 @@ function todayISO() {
 
 async function loadConferenciaDia() {
   await loadLojasConferencia();
-  const today = todayISO();
-  const params = { date_from: today, date_to: today + 'T23:59:59' };
+  const dataInput = document.getElementById('fConfData');
+  if (!dataInput.value) dataInput.value = todayISO(); // abre sempre em hoje na 1ª carga
+  const dia = dataInput.value;
+  const params = { date_from: dia, date_to: dia + 'T23:59:59' };
+  const orderId = document.getElementById('fConfOrderId').value.trim(); if (orderId) params.order_id = orderId;
   const storeId = document.getElementById('fConfLoja').value; if (storeId) params.store_id = storeId;
   const buyer = document.getElementById('fConfBuyer').value.trim(); if (buyer) params.buyer = buyer;
 

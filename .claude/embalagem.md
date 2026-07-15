@@ -46,7 +46,7 @@ Filtros: nº do pedido, comprador, data de/até (`GET /api/embalagem/videos`). R
 
 ### Aba Conferência do Dia
 
-Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartilhada entre as duas — sem duplicar o template), mas **sempre filtrada pro dia de hoje** (`date_from`/`date_to` calculados no cliente, sem campo de data pro usuário escolher) — objetivo é servir de checklist rápido de fim de expediente: "o que já foi bipado hoje". Filtro adicional por loja (dropdown populado via `DB.getLojas()`, mesmo padrão da Agenda Trello) e por comprador. Recarrega automaticamente toda vez que a aba é aberta. **Não tem estado de "conferido"/"revisado" persistido** — é só listagem e filtro (decisão explícita do usuário, mantém o escopo simples sem coluna nova no banco).
+Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartilhada entre as duas — sem duplicar o template). **Sempre abre no dia de hoje** (o campo `Data` é preenchido com a data atual só na 1ª carga, via `todayISO()`) — objetivo é servir de checklist rápido de fim de expediente: "o que já foi bipado hoje" — mas o campo é editável, dá pra trocar pra outro dia se precisar. Filtros: nº do pedido, data, loja (dropdown populado via `DB.getLojas()`, mesmo padrão da Agenda Trello) e comprador. Recarrega automaticamente toda vez que a aba é aberta. **Não tem estado de "conferido"/"revisado" persistido** — é só listagem e filtro (decisão explícita do usuário, mantém o escopo simples sem coluna nova no banco).
 
 ## Armazenamento
 

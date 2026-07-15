@@ -287,7 +287,7 @@ async function finalizeCurrent() {
   } else {
     setScanState('success');
     showScanMsg('✅ Pedido embalado e vídeo salvo com sucesso.', 'success');
-    setTimeout(() => { setScanState('idle'); resetOrdersDisplay(); }, 2500);
+    setTimeout(() => { setScanState('idle'); resetOrdersDisplay(); }, 10000);
   }
 }
 

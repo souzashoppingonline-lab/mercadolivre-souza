@@ -51,6 +51,12 @@ Filtros: nº do pedido, comprador, data de/até (`GET /api/embalagem/videos`). R
 - **Retenção: 30 dias** (pedido explícito do usuário) — job `cleanupPackingVideos` (worker, 03:30 diário) apaga o arquivo em disco e a linha em `packing_videos` de tudo com `created_at` mais velho que 30 dias. Ver `workers.md`.
 - **Sem backup/replicação** — se o disco da VPS falhar, os vídeos somem (mesma característica de qualquer arquivo local não versionado). Não implementado por não ter sido pedido; se o volume de devoluções justificar, mover pra object storage (S3-compatible) é o caminho natural — trocar só o `multer.diskStorage` por um storage engine de S3 e o `res.sendFile` por um redirect/proxy pra URL assinada, sem mexer no resto do fluxo.
 
+## Requisito de infraestrutura — `client_max_body_size` no nginx
+
+**Bug real encontrado em produção**: o upload do vídeo travava na tela sem erro ("Salvando vídeo..." infinito) — causa raiz era o nginx, com o limite padrão de 1MB por corpo de requisição, rejeitando o upload do vídeo antes de chegar no Node. **Correção obrigatória de infra** (não é bug de código): adicionar `client_max_body_size 300m;` no bloco `server{}` do nginx — ver `server/nginx-websocket.conf` (template já atualizado) e `deployment.md`.
+
+**Correção de robustez feita em paralelo, no código**: `DB._postForm()` (`js/db.js`) ganhou um timeout próprio via `AbortController` (60s) — antes, se o upload travasse por qualquer motivo (nginx, rede, servidor), o `fetch()` nunca resolvia e a tela ficava presa pra sempre, exigindo recarregar a página pra continuar embalando. Agora, esgotado o timeout, cai no mesmo tratamento de erro de qualquer outra falha (mensagem de erro, volta pra idle, operador pode tentar de novo sem reload). Mensagem de sucesso ("✅ Pedido embalado") fica visível por 10s (era 2,5s) antes de voltar pra idle sozinho — pedido explícito do usuário.
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.

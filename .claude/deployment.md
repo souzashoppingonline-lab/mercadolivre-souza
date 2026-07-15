@@ -45,6 +45,12 @@ sudo -u postgres psql -d ml_dashboard -c "SELECT 'ALTER TABLE '||tablename||' OW
 
 `server/storage/embalagem-videos/` (fora do git, criado automaticamente) guarda os vídeos de conferência de embalagem, retenção de 30 dias (job `cleanupPackingVideos`, ver `workers.md`/`embalagem.md`). É o único lugar do sistema hoje que grava arquivo binário em disco fora do Postgres/Redis — monitorar espaço em disco da VPS se o volume de embalagens crescer muito (`df -h` no diagnóstico rápido abaixo já cobre isso de forma geral).
 
+**Requisito de nginx — `client_max_body_size`**: o nginx tem limite padrão de **1MB** por corpo de requisição. Um vídeo gravado pelo `MediaRecorder` (mesmo poucos segundos) já ultrapassa isso, e o upload trava na tela sem erro claro (nginx rejeita a conexão antes de completar, o `fetch()` do navegador fica esperando uma resposta que não vem do jeito certo). É **obrigatório** adicionar, dentro do `server {}` (ou específico do `location /api/embalagem`), no mesmo arquivo de config nginx já usado pra WebSocket:
+```nginx
+client_max_body_size 300m;
+```
+(300MB casa com o limite configurado no `multer` de `routes/embalagem.js` — é só uma trava de segurança, uma gravação de conferência normal fica bem abaixo disso.) Depois de editar, `sudo nginx -t && sudo systemctl reload nginx`.
+
 ## Nginx — WebSocket
 
 Sem os headers de upgrade e timeouts corretos, o nginx derruba conexões WS ociosas em 60s. Config de referência versionada em `server/nginx-websocket.conf` (aplicar dentro do `location /ws` do server block):

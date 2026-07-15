@@ -59,10 +59,15 @@ const DB = {
   },
 
   // Upload multipart (FormData) — sem Content-Type manual, o navegador
-  // define o boundary certo sozinho.
-  async _postForm(path, formData) {
+  // define o boundary certo sozinho. Timeout próprio (AbortController):
+  // sem isso, se a rede/servidor travar no meio do upload, o fetch nunca
+  // resolve e a tela fica presa pra sempre — com o timeout, cai no catch
+  // e devolve null como qualquer outra falha, liberando a UI.
+  async _postForm(path, formData, timeoutMs = 60000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(`${this.BASE}${path}`, { method: 'POST', body: formData });
+      const res = await fetch(`${this.BASE}${path}`, { method: 'POST', body: formData, signal: controller.signal });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody?.error || `HTTP ${res.status}`);
@@ -71,6 +76,8 @@ const DB = {
     } catch (e) {
       console.error('[DB] POST(form) error', path, e);
       return null;
+    } finally {
+      clearTimeout(timer);
     }
   },
 

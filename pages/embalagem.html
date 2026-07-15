@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>window.PAGE_TITLE='Embalagem'; window.ACTIVE_NAV='embalagem.html';</script>
   <style>
     .emb-subtitle { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
@@ -155,6 +156,11 @@
       <div class="emb-panel" id="panelConferencia">
         <div class="emb-card">
           <p class="emb-subtitle" style="margin-top:0">Pedidos bipados na data selecionada (<span id="confCount">0</span>) — abre sempre em hoje, pra conferir se algum ficou faltando.</p>
+          <div class="card-grid" id="confKpis" style="margin-bottom:16px"></div>
+          <div style="margin-bottom:16px">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Bipagens por hora — hoje vs. dia anterior</div>
+            <canvas id="confHourChart" height="90"></canvas>
+          </div>
           <div class="emb-filters">
             <div class="emb-field"><label>Nº do Pedido</label><input id="fConfOrderId" placeholder="Ex: 2000123456"></div>
             <div class="emb-field"><label>Data</label><input type="date" id="fConfData"></div>
@@ -185,6 +191,9 @@
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
+
+let charts = {};
+function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
 
 // ── Câmera ──────────────────────────────────────────────────
 let stream = null;
@@ -464,7 +473,74 @@ async function loadConferenciaDia() {
   const data = await DB.getVideosEmbalagem(params);
   const rows = data?.rows || [];
   document.getElementById('confCount').textContent = rows.length;
+  renderConfKpis(rows);
   list.innerHTML = rows.length ? rows.map(v => videoRowHtml(v, { showStore: true })).join('') : '<div class="emb-placeholder">Nenhum pedido bipado hoje ainda.</div>';
+
+  renderConfHourChart(dia, storeId);
+}
+
+function diaAnterior(iso) {
+  const d = new Date(iso + 'T12:00:00'); // meio-dia evita virada de fuso no cálculo do dia -1
+  d.setDate(d.getDate() - 1);
+  return todayISOFrom(d);
+}
+function todayISOFrom(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Colunas por hora (0-23), dia selecionado vs. dia anterior — GET /por-hora
+// já devolve as 24 posições zero-fill, então o eixo nunca fica com buraco.
+async function renderConfHourChart(dia, storeId) {
+  const anterior = diaAnterior(dia);
+  const [hoje, ontem] = await Promise.all([
+    DB.getEmbalagemPorHora({ date: dia, store_id: storeId || undefined }),
+    DB.getEmbalagemPorHora({ date: anterior, store_id: storeId || undefined }),
+  ]);
+  const horas = (hoje?.hours || []).map(h => `${String(h.hour).padStart(2, '0')}h`);
+
+  destroyChart('confHour');
+  charts.confHour = new Chart(document.getElementById('confHourChart'), {
+    type: 'bar',
+    data: {
+      labels: horas,
+      datasets: [
+        { label: `Selecionado (${dia})`, data: (hoje?.hours || []).map(h => h.qty), backgroundColor: '#FFE600', borderRadius: 4 },
+        { label: `Dia anterior (${anterior})`, data: (ontem?.hours || []).map(h => h.qty), backgroundColor: 'rgba(255,255,255,.18)', borderRadius: 4 },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { color: '#ccc', boxWidth: 10, font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#888', stepSize: 1 }, grid: { color: 'rgba(255,255,255,.04)' }, beginAtZero: true },
+      },
+    },
+  });
+}
+
+// Cards de resumo da aba Conferência do Dia — calculados em cima dos vídeos
+// já carregados (mesma chamada de loadConferenciaDia, sem rota nova).
+function renderConfKpis(rows) {
+  const kpis = document.getElementById('confKpis');
+  const byStore = new Map();
+  let flex = 0, me = 0;
+  for (const v of rows) {
+    const store = v.store_nickname || 'Sem loja';
+    byStore.set(store, (byStore.get(store) || 0) + 1);
+    const tipo = logLabel(v.sample_shipping_type);
+    if (tipo === 'Flex') flex++;
+    else if (tipo === 'Mercado Envios') me++;
+  }
+  const storeCards = [...byStore.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([nome, qtd]) => `<div class="stat-card"><div class="label">${escapeHtml(nome)}</div><div class="value">${qtd}</div></div>`)
+    .join('');
+  kpis.innerHTML = `
+    <div class="stat-card"><div class="label">Bipados hoje</div><div class="value">${rows.length}</div></div>
+    <div class="stat-card"><div class="label">Flex</div><div class="value" style="color:var(--orange)">${flex}</div></div>
+    <div class="stat-card"><div class="label">Mercado Envios</div><div class="value" style="color:var(--blue)">${me}</div></div>
+    ${storeCards}`;
 }
 
 function playVideo(id, title) {

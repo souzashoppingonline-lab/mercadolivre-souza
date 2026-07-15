@@ -275,4 +275,5 @@ const DB = {
   async finalizarEmbalagem(formData)     { return this._postForm('/embalagem/finalizar', formData); },
   async getVideosEmbalagem(params={})    { return this._get('/embalagem/videos', params); },
   videoEmbalagemUrl(id)                  { return `${this.BASE}/embalagem/videos/${id}/file`; },
+  async getEmbalagemPorHora(params={})   { return this._get('/embalagem/por-hora', params); },
 };

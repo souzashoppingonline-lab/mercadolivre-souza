@@ -108,11 +108,11 @@ router.get('/videos', async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT pv.id, pv.shipping_id, pv.order_ids, pv.created_at, pv.duration_seconds, pv.store_id,
-              ord.title AS sample_title, ord.buyer_nickname AS sample_buyer,
+              ord.title AS sample_title, ord.buyer_nickname AS sample_buyer, ord.shipping_type AS sample_shipping_type,
               s.nickname AS store_nickname
        FROM packing_videos pv
        LEFT JOIN LATERAL (
-         SELECT title, buyer_nickname FROM orders WHERE ml_id = pv.order_ids[1]
+         SELECT title, buyer_nickname, shipping_type FROM orders WHERE ml_id = pv.order_ids[1]
        ) ord ON true
        LEFT JOIN stores s ON s.id = pv.store_id
        ${whereSql}
@@ -123,6 +123,35 @@ router.get('/videos', async (req, res) => {
     res.json({ rows });
   } catch (e) {
     console.error('[api/embalagem] GET /videos', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/embalagem/por-hora?date=YYYY-MM-DD&store_id= — quantidade de
+// bipagens por hora (0-23) num dia, sempre 24 posições (zero-fill) pra dar
+// pra montar um gráfico de colunas comparando dois dias sem buraco no eixo.
+// Mesmo padrão de fuso já usado no resto do sistema pra colunas TIMESTAMPTZ
+// (AT TIME ZONE 'America/Sao_Paulo' antes de truncar — ver decisions.md).
+router.get('/por-hora', async (req, res) => {
+  try {
+    const { date, store_id } = req.query;
+    if (!date) return res.status(400).json({ error: 'date é obrigatório (YYYY-MM-DD)' });
+
+    const { rows } = await pool.query(
+      `SELECT h.hour, COALESCE(COUNT(pv.id), 0)::int AS qty
+       FROM generate_series(0, 23) AS h(hour)
+       LEFT JOIN packing_videos pv
+         ON EXTRACT(HOUR FROM pv.created_at AT TIME ZONE 'America/Sao_Paulo') = h.hour
+        AND pv.created_at >= ($1::date AT TIME ZONE 'America/Sao_Paulo')
+        AND pv.created_at <  (($1::date + 1) AT TIME ZONE 'America/Sao_Paulo')
+        AND ($2::bigint IS NULL OR pv.store_id = $2)
+       GROUP BY h.hour
+       ORDER BY h.hour`,
+      [date, store_id || null]
+    );
+    res.json({ date, hours: rows });
+  } catch (e) {
+    console.error('[api/embalagem] GET /por-hora', e.message);
     res.status(500).json({ error: e.message });
   }
 });

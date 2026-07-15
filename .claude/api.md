@@ -197,7 +197,8 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 |---|---|
 | `GET /api/embalagem/pedido/:shippingId` | busca pedido(s) por `orders.shipping_id` — pode retornar mais de 1 (envio/pack com vários pedidos); inclui `thumbnail`/`title`/`quantity`/`buyer_nickname`/`store_nickname`, mais `unit_price`/`status`/`shipping_type`/`date_created`/`available_quantity` (estoque atual) e `seller_sku`/`variation_attributes` extraídos de `orders.raw_data` — tudo sem chamar a API do ML. Também retorna `already_packed` (`{id, created_at}` do vídeo mais recente já salvo pra esse `shipping_id`, ou `null`) — usado pelo frontend pra avisar antes de gravar de novo |
 | `POST /api/embalagem/finalizar` (multipart: `video`, `shipping_id`, `order_ids` (JSON), `duration_seconds`, `store_id`) | salva o vídeo gravado em `server/storage/embalagem-videos/YYYY-MM-DD/` e grava a linha em `packing_videos` |
-| `GET /api/embalagem/videos?order_id&buyer&date_from&date_to&store_id` | busca vídeos salvos (abas "Buscar vídeos" e "Conferência do Dia" — a segunda sempre fixa `date_from`/`date_to` no dia corrente) |
+| `GET /api/embalagem/videos?order_id&buyer&date_from&date_to&store_id` | busca vídeos salvos (abas "Buscar vídeos" e "Conferência do Dia" — a segunda sempre fixa `date_from`/`date_to` no dia corrente); cada linha inclui `sample_shipping_type` (do 1º pedido do envio) — usado pelos cards de resumo Flex/Mercado Envios/por loja na aba Conferência do Dia |
+| `GET /api/embalagem/por-hora?date=YYYY-MM-DD&store_id` | quantidade de bipagens por hora (0-23, zero-fill) num dia — usado pelo gráfico de colunas "dia selecionado vs. dia anterior" da aba Conferência do Dia |
 | `GET /api/embalagem/videos/:id/file` | stream do arquivo de vídeo (`res.sendFile`, suporta `Range` — necessário pro player HTML5 avançar/voltar) |
 
 ## `/auth/staff/*` (`routes/staffAuth.js`) — ver `auth-staff.md`

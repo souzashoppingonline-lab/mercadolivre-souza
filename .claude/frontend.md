@@ -124,12 +124,13 @@ Página independente do resto do sistema — usa a mesma `NAV_ITEMS`/sidebar/top
 
 ## `pages/embalagem.html` — bipagem de etiqueta + vídeo de conferência
 
-Página operacional (pensada pra rodar num PC/tablet fixo na bancada de embalagem, com leitor de código de barras 2D USB/Bluetooth conectado — ver `embalagem.md` pra detalhes do formato da etiqueta). Duas abas:
+Página operacional (pensada pra rodar num PC/tablet fixo na bancada de embalagem, com leitor de código de barras 2D USB/Bluetooth conectado — ver `embalagem.md` pra detalhes do formato da etiqueta). Três abas:
 
 - **Bipar**: campo de bipagem sempre em foco (reforçado automaticamente); máquina de estado `idle → loading → recording → saving → idle`. Ao identificar o pedido via `DB.getPedidoPorEtiqueta(shippingId)`, mostra imagem/título grandes e **quantidade em destaque** (maior que o resto — pedido explícito do usuário), comprador menor, e liga a câmera (`getUserMedia`+`MediaRecorder`, permissão pedida assim que a página carrega). Bipar de novo a mesma etiqueta finaliza e salva (`DB.finalizarEmbalagem`, multipart); bipar uma etiqueta diferente enquanto grava pede confirmação (`confirm()`) antes de trocar.
 - **Buscar vídeos**: filtro por pedido/comprador/data (`DB.getVideosEmbalagem`), player HTML5 num modal (`src` = `DB.videoEmbalagemUrl(id)`, que aponta pra `GET /api/embalagem/videos/:id/file` — suporta `Range`, então dá pra avançar/voltar sem baixar o vídeo inteiro).
+- **Conferência do Dia**: mesma listagem/modal da aba anterior, sempre travada no dia corrente por padrão (campo de data editável). Cards de resumo (bipados no dia, Flex, Mercado Envios, por loja) calculados no frontend sobre a mesma resposta de `GET /videos`. Gráfico de colunas Chart.js (dia selecionado vs. dia anterior, por hora) via `DB.getEmbalagemPorHora`. Ver `embalagem.md`.
 
-`DB.getPedidoPorEtiqueta(shippingId)`/`finalizarEmbalagem(formData)`/`getVideosEmbalagem(params)`/`videoEmbalagemUrl(id)` — `finalizarEmbalagem` usa `DB._postForm()` (novo helper, `fetch` com `FormData` cru, sem `Content-Type` manual — o navegador define o boundary do multipart sozinho; diferente do `_post` padrão, que sempre serializa `JSON.stringify`).
+`DB.getPedidoPorEtiqueta(shippingId)`/`finalizarEmbalagem(formData)`/`getVideosEmbalagem(params)`/`videoEmbalagemUrl(id)`/`getEmbalagemPorHora(params)` — `finalizarEmbalagem` usa `DB._postForm()` (helper próprio, `fetch` com `FormData` cru, sem `Content-Type` manual — o navegador define o boundary do multipart sozinho; diferente do `_post` padrão, que sempre serializa `JSON.stringify`).
 
 ## `js/layout.js` — sidebar, topbar e alertas globais
 

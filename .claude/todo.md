@@ -54,6 +54,15 @@
 - [ ] Notificação Telegram de vendas Shopee (fora de escopo até agora, mesma decisão já tomada pra Amazon).
 - [ ] Trocar `SHOPEE_ENV` para `production` só depois de aprovação de produção pela Shopee.
 
+## Login de acesso restrito (staff) — código pronto, falta ativar em produção (ver `auth-staff.md`)
+
+- [x] Migration v22 (`staff_users`), deps (`bcryptjs`/`jsonwebtoken`/`cookie-parser`), `routes/staffAuth.js` (login/logout/me + `requireStaffAuth`), `server.js` (cookie-parser + gate + `express.static` + fallback SPA), `pages/login.html`, `js/layout.js` (nav por papel + botão Sair), `server/scripts/createStaffUser.js`.
+- [ ] **Trocar `location /` do nginx** de servir estático direto pra `proxy_pass http://127.0.0.1:3000;` — sem isso, o gate não protege carregamento de página (só `/api/*`). Procedimento e rollback em `deployment.md`.
+- [ ] Rodar `node scripts/createStaffUser.js <usuário> <senha> admin` em produção pra criar o 1º usuário.
+- [ ] Gerar `STAFF_JWT_SECRET` (`openssl rand -hex 32`), setar `STAFF_AUTH_ENABLED=true` no `.env` de produção, reiniciar `ml-dashboard-novo`.
+- [ ] Testar login end-to-end em produção antes de considerar concluído (admin navega tudo normalmente; usuário `embalagem` só consegue abrir a página de Embalagem).
+- [ ] Criar usuário(s) `embalagem` para os funcionários reais.
+
 ## Débito técnico registrado nesta tarefa
 
 - [ ] Avaliar migrar `mlClient.js`/`routes/auth.js` para `server/src/marketplaces/mercadolivre/` seguindo o padrão `MarketplaceClient` — só depois que a Amazon estiver de fato funcionando em produção com esse padrão (ver `decisions.md`, "Marketplace Engine").

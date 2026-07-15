@@ -64,6 +64,7 @@ Variáveis de ambiente, dependências e configuração do processo HTTP: `.claud
 | Filas BullMQ, handlers de webhook, jobs agendados, bot Telegram | `.claude/workers.md` |
 | Agenda Trello (Kanban), TaskEngine, geração automática de cartões | `.claude/task-engine.md` |
 | Embalagem (bipagem de etiqueta, vídeo de conferência) | `.claude/embalagem.md` |
+| Login de acesso restrito (funcionários, papéis admin/embalagem) | `.claude/auth-staff.md` |
 | OAuth, `mlClient.js`, rate limiting do Mercado Livre | `.claude/mercadolivre.md` |
 | Status de integração Shopee/Amazon | `.claude/shopee.md`, `.claude/amazon.md` |
 | Regras de negócio (thresholds, quando notificar, curva ABC...) | `.claude/business-rules.md` |

@@ -200,6 +200,15 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /api/embalagem/videos?order_id&buyer&date_from&date_to&store_id` | busca vídeos salvos (abas "Buscar vídeos" e "Conferência do Dia" — a segunda sempre fixa `date_from`/`date_to` no dia corrente) |
 | `GET /api/embalagem/videos/:id/file` | stream do arquivo de vídeo (`res.sendFile`, suporta `Range` — necessário pro player HTML5 avançar/voltar) |
 
+## `/auth/staff/*` (`routes/staffAuth.js`) — ver `auth-staff.md`
+> Rotas sempre públicas (fora do gate `requireStaffAuth`, senão login ficaria impossível). Demais rotas do sistema passam pelo gate quando `STAFF_AUTH_ENABLED=true`.
+
+| Rota | Descrição |
+|---|---|
+| `POST /auth/staff/login` (`{username, password}`) | valida bcrypt, assina JWT, grava cookie httpOnly `staff_session` (`STAFF_SESSION_DAYS`, default 180) |
+| `POST /auth/staff/logout` | limpa o cookie |
+| `GET /auth/staff/me` | `{username, role}` da sessão atual, ou `401` |
+
 ## `/auth/shopee/*` — ver `shopee.md`
 
 | Rota | Descrição |

@@ -54,8 +54,32 @@ const NAV_ITEMS = [
   ]},
 ];
 
-function buildSidebar(activeHref) {
-  const sections = NAV_ITEMS.map(({ section, items }) => `
+// Login de acesso restrito (staff) — ver .claude/auth-staff.md. Papel
+// 'embalagem' só enxerga a página de Embalagem na sidebar (o servidor já
+// bloqueia navegação direta às outras via requireStaffAuth; isto é só pra
+// não mostrar links que vão redirecionar de volta). Sem sessão (staffAuth
+// desligado, ou página pública) staffUser fica null e o menu é o de sempre.
+function navItemsForRole(role) {
+  if (role !== 'embalagem') return NAV_ITEMS;
+  return [
+    { section: 'Operação', items: [
+      { href: 'embalagem.html', icon: 'fa-barcode', label: 'Embalagem' },
+    ]},
+  ];
+}
+
+async function fetchStaffUser() {
+  try {
+    const res = await fetch('/auth/staff/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function buildSidebar(activeHref, staffUser) {
+  const sections = navItemsForRole(staffUser?.role).map(({ section, items }) => `
     <div class="nav-section">
       <span class="nav-section-title">${section}</span>
       ${items.map(({ href, icon, label, brand }) => {
@@ -92,7 +116,19 @@ function buildMarketplaceSwitcher() {
   `).join('')}</nav>`;
 }
 
-function buildTopbar(title) {
+function buildLogoutButton(staffUser) {
+  if (!staffUser) return '';
+  return `
+    <span style="font-size:12px;color:var(--text-muted)" title="Logado como ${staffUser.username}">
+      <i class="fas fa-user-circle"></i> ${staffUser.username}
+    </span>
+    <button class="btn-refresh" id="btnStaffLogout" title="Sair"><i class="fas fa-sign-out-alt"></i></button>`;
+}
+
+function buildTopbar(title, staffUser) {
+  // Papel 'embalagem' não precisa do switcher de marketplace (Amazon/Shopee
+  // ficam fora do escopo dele — ver navItemsForRole acima).
+  const showMktSwitcher = staffUser?.role !== 'embalagem';
   return `
     <header class="topbar">
       <div class="topbar-left">
@@ -100,7 +136,7 @@ function buildTopbar(title) {
         <h1 class="page-title">${title}</h1>
       </div>
       <div class="topbar-right">
-        ${buildMarketplaceSwitcher()}
+        ${showMktSwitcher ? buildMarketplaceSwitcher() : ''}
         <div class="store-switcher" id="storeSwitcher">
           <button class="store-switcher-btn" id="storeSwitcherBtn" title="Trocar loja">
             <span class="store-avatar" id="storeAvatar">?</span>
@@ -118,8 +154,16 @@ function buildTopbar(title) {
           <i class="fas fa-circle" style="color:var(--orange);font-size:8px"></i> conectando
         </span>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
+        ${buildLogoutButton(staffUser)}
       </div>
     </header>`;
+}
+
+function initLogout() {
+  document.getElementById('btnStaffLogout')?.addEventListener('click', async () => {
+    try { await fetch('/auth/staff/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+    window.location.href = '/pages/login.html';
+  });
 }
 
 function storeInitials(name) {
@@ -175,13 +219,17 @@ async function initStoreSwitcher() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const sidebarEl = document.getElementById('app-sidebar');
   const topbarEl  = document.getElementById('app-topbar');
-  if (sidebarEl) sidebarEl.outerHTML = buildSidebar(window.ACTIVE_NAV || '');
-  if (topbarEl)  topbarEl.outerHTML  = buildTopbar(window.PAGE_TITLE || 'Dashboard');
+  // Sem sessão staff (auth desligado, ou usuário anônimo em rota pública)
+  // fetchStaffUser resolve null e o layout fica exatamente como sempre foi.
+  const staffUser = await fetchStaffUser();
+  if (sidebarEl) sidebarEl.outerHTML = buildSidebar(window.ACTIVE_NAV || '', staffUser);
+  if (topbarEl)  topbarEl.outerHTML  = buildTopbar(window.PAGE_TITLE || 'Dashboard', staffUser);
   initStoreSwitcher();
   initAlerts();
+  initLogout();
 });
 
 // ── Alertas globais: som + notificação do browser ──────────

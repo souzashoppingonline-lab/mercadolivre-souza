@@ -409,3 +409,12 @@ CREATE TABLE IF NOT EXISTS packing_videos (
 CREATE INDEX IF NOT EXISTS idx_packing_videos_shipping ON packing_videos(shipping_id);
 CREATE INDEX IF NOT EXISTS idx_packing_videos_created ON packing_videos(created_at);
 CREATE INDEX IF NOT EXISTS idx_packing_videos_order_ids ON packing_videos USING GIN(order_ids);
+
+-- v22 — Login de acesso restrito (staff). Ver .claude/auth-staff.md.
+CREATE TABLE IF NOT EXISTS staff_users (
+  id SERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin', -- admin | embalagem
+  created_at TIMESTAMPTZ DEFAULT now()
+);

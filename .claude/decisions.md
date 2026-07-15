@@ -246,6 +246,20 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 
 **Fora de escopo desta fase**: backfill de `shipping_id` pra pedidos já existentes no banco (só pedidos processados depois do deploy da v21 têm o campo); vínculo automático entre uma devolução e o vídeo correspondente (busca hoje é manual, por pedido/comprador/data); seleção de câmera (usa a padrão do navegador).
 
+## Login de acesso restrito (v22) — proteção completa, não só a página de Embalagem
+
+**Contexto**: usuário pediu acesso de Embalagem pra funcionários, sem que eles vissem o resto do sistema (relatórios de vendas etc.), explicitamente "sem mexer em nada porque está tudo perfeito e funcionando".
+
+**Decisão — pedido explícito do usuário, opção "Completo" em vez de "Leve"**: duas abordagens foram apresentadas — (1) um gate leve só na página/rota de Embalagem, ou (2) login por usuário com papel (`admin`/`embalagem`) cobrindo o sistema inteiro, inclusive o próprio dono da conta. O usuário escolheu a (2) explicitamente ciente do trade-off ("mexe na forma como o sistema é acessado hoje"), com a justificativa de que uma proteção parcial não impede um funcionário de simplesmente digitar a URL de outra página — só um gate universal restringe de verdade. **Consequência aceita**: o admin (o próprio usuário) também precisa logar; mitigado com sessão de 180 dias (`STAFF_SESSION_DAYS`) pra não gerar fricção no dia a dia.
+
+**Decisão — estático passa a ser servido pelo Express, não mais pelo nginx**: pré-requisito técnico da opção "Completo" que só foi descoberto durante a implementação — hoje `pages/*.html`/`css/`/`js/` eram servidos direto do disco pelo nginx (`root` + `try_files`), nunca passavam pelo processo Node. Um middleware de auth em Express só protegeria `/api/*`, nunca o carregamento da página em si. Resolvido adicionando `express.static` + fallback SPA em `server.js`, com o nginx trocando `location /` pra `proxy_pass` (mesmo padrão já usado por `/api`/`/webhooks`/`/ws`). Ver `auth-staff.md`/`architecture.md`.
+
+**Decisão — kill switch (`STAFF_AUTH_ENABLED`, default `false`)**: proteção direta contra o "sem mexer em nada" — todo o código (migration, dependências, rotas, middleware) pode ser deployado com o gate desligado (sistema se comporta exatamente como antes), e só é ativado deliberadamente depois de criar o 1º usuário admin e testar. Se algo travar o acesso depois de ligado, desligar de novo é 1 variável de ambiente + restart, sem reverter nenhum deploy — decisão proativa minha, não pedida explicitamente, mas em linha direta com a preocupação repetida do usuário sobre não quebrar um sistema em produção.
+
+**Decisão — sessão longa (180 dias) em vez de expiração curta**: pedido explícito do usuário — login único deve durar, não pedir senha de novo com frequência, inclusive pro admin.
+
+**Fora de escopo**: UI de gerenciamento de usuários (só script `createStaffUser.js`), recuperação de senha, rate limiting/lockout de tentativas de login, notificação de login suspeito. Ver `auth-staff.md`.
+
 ## Gráfico semanal usa `TO_CHAR(DATE_TRUNC('week', sale_date), 'YYYY-MM-DD')`
 
 **Nota técnica preservada**: `sale_date` em `ml_turbo_sales` é tipo `DATE` (não `TIMESTAMPTZ`), então o agrupamento semanal usa `DATE_TRUNC` diretamente sem conversão de fuso horário — ao contrário de `orders.date_created`, que é `TIMESTAMPTZ` e por isso outras queries fazem `AT TIME ZONE 'America/Sao_Paulo'` antes de truncar. Misturar os dois padrões sem essa distinção gera resultados sutilmente errados perto da virada do dia/semana.

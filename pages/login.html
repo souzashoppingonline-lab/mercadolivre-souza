@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrar — ML Dashboard</title>
+<style>
+  :root {
+    --primary: #FFE600;
+    --bg-dark: #1a1d23;
+    --bg-card: #23272f;
+    --text-main: #f0f0f0;
+    --text-muted: #888;
+    --border: #333;
+    --red: #e74c3c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg-dark); color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  }
+  .login-box {
+    width: 100%; max-width: 340px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 32px 28px;
+  }
+  .login-box h1 { font-size: 18px; margin: 0 0 4px; text-align: center; }
+  .login-box .sub { font-size: 12px; color: var(--text-muted); text-align: center; margin: 0 0 24px; }
+  label { display: block; font-size: 12px; color: var(--text-muted); margin: 14px 0 6px; }
+  input {
+    width: 100%; background: var(--bg-dark); border: 2px solid var(--border); color: var(--text-main);
+    border-radius: 8px; padding: 11px 12px; font-size: 14px;
+  }
+  input:focus { border-color: var(--primary); outline: none; }
+  button {
+    width: 100%; margin-top: 22px; background: var(--primary); color: #1a1d23; border: none;
+    border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 800; cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  .err {
+    background: rgba(231,76,60,.12); color: var(--red); font-size: 12px; padding: 10px 12px;
+    border-radius: 8px; margin-top: 16px; display: none;
+  }
+</style>
+</head>
+<body>
+  <form class="login-box" id="loginForm" autocomplete="on">
+    <h1>ML Dashboard</h1>
+    <p class="sub">Acesso restrito</p>
+    <label for="username">Usuário</label>
+    <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+    <label for="password">Senha</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" required>
+    <button type="submit" id="btnSubmit">Entrar</button>
+    <div class="err" id="err"></div>
+  </form>
+
+  <script>
+    function redirectForRole(role) {
+      window.location.href = role === 'embalagem' ? 'embalagem.html' : '../index.html';
+    }
+
+    // Já logado? Não mostra o formulário de novo.
+    fetch('/auth/staff/me', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(user => { if (user) redirectForRole(user.role); })
+      .catch(() => {});
+
+    const form = document.getElementById('loginForm');
+    const err  = document.getElementById('err');
+    const btn  = document.getElementById('btnSubmit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+      try {
+        const res = await fetch('/auth/staff/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha ao entrar');
+        redirectForRole(data.role);
+      } catch (e2) {
+        err.textContent = e2.message;
+        err.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+      }
+    });
+  </script>
+</body>
+</html>

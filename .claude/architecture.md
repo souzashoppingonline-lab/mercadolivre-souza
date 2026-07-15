@@ -37,6 +37,7 @@ Os dois processos se comunicam **apenas via Redis** (filas BullMQ + pub/sub), nu
 4. `routes/webhookGateway.js` responde `200` imediatamente e enfileira o processamento — nunca faz trabalho síncrono pesado na requisição do webhook.
 5. O pipeline de eventos de outros marketplaces (`marketplaceEventWorker.js`, fila `marketplace-events-*`) é desacoplado do dispatch table ML (`handlers`/`processJob` em `worker.js`) — um nunca chama o outro. Ver `workers.md` ("Eventos de outros marketplaces") e `decisions.md` ("Marketplace Engine — schema evolutivo").
 6. A Agenda Trello (`taskEngine.js`, `routes/tasks.js`, `pages/agenda-trello.html`) é um módulo independente: tabela própria (`tasks`/`task_comments`), sem FK para `orders`/`items`, sem alterar nenhuma rota/página ML existente. Toda regra de criação automática de cartão vive em `taskEngine.js` — nunca em `worker.js` diretamente nem nas páginas. Ver `task-engine.md`.
+7. Estático (`index.html`, `css/`, `js/`, `pages/`, `assets/`) é servido pelo próprio Express (`express.static` em `server.js`), não mais diretamente pelo nginx — necessário pra que o gate de autenticação (`requireStaffAuth`) proteja o carregamento de página, não só `/api/*`. O nginx só faz `proxy_pass` para o Node em `location /` (mesmo padrão que já usava para `/api`, `/webhooks` etc.). Ver `auth-staff.md`.
 
 ## Estrutura de diretórios
 

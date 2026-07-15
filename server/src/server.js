@@ -1,7 +1,9 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const env = require('./config/env');
 const apiRoutes = require('./routes/api');
 const turboRoutes = require('./routes/turbo');
@@ -11,11 +13,20 @@ const embalagemRoutes = require('./routes/embalagem');
 const webhookGateway = require('./routes/webhookGateway');
 const authRoutes = require('./routes/auth');
 const shopeeAuthRoutes = require('./routes/shopeeAuth');
+const { router: staffAuthRoutes, requireStaffAuth } = require('./routes/staffAuth');
 const wsHub = require('./ws/hub');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
+
+// Login de acesso restrito (staff) — ver .claude/auth-staff.md. Desligado
+// por padrão (STAFF_AUTH_ENABLED=false); a própria função já ignora tudo
+// quando o gate está desligado, então isso é seguro mesmo antes de criar
+// o 1º usuário admin.
+app.use(requireStaffAuth);
+app.use('/auth/staff', staffAuthRoutes);
 
 // Frontend reads exclusively from here.
 app.use('/api', apiRoutes);
@@ -40,6 +51,26 @@ app.use('/auth', authRoutes);
 app.use('/ml', authRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+// Estático (index.html, css/, js/, pages/, assets/) — antes servido direto
+// pelo nginx (bypassando este processo); passou a ser servido pelo Express
+// pra que requireStaffAuth (montado acima) consiga proteger o CARREGAMENTO
+// das páginas, não só as chamadas /api. O nginx precisa trocar seu
+// `location /` de "root ..." para "proxy_pass http://127.0.0.1:PORT;" — ver
+// .claude/auth-staff.md e .claude/deployment.md.
+const staticRoot = path.join(__dirname, '..', '..');
+app.use(express.static(staticRoot));
+// SPA fallback (equivalente ao try_files $uri $uri/ /index.html; do nginx),
+// mas só pra navegação de página (não pra /api, /webhooks, /auth, /ml, /ws
+// que já têm suas próprias rotas e devem retornar 404 normalmente se não
+// existirem).
+app.get('*', (req, res, next) => {
+  const p = req.path;
+  if (p.startsWith('/api') || p.startsWith('/webhooks') || p.startsWith('/auth') || p.startsWith('/ml') || p.startsWith('/ws') || p === '/health') {
+    return next();
+  }
+  res.sendFile(path.join(staticRoot, 'index.html'));
+});
 
 const server = http.createServer(app);
 wsHub.attach(server);

@@ -73,6 +73,47 @@ location /ws {
 
 O `server.js` também ajusta `keepAliveTimeout`/`headersTimeout` para 1h do lado Node (ver `backend.md`), como segunda camada de proteção contra timeout no SSE de logs (`/api/schedule/worker-logs`) e no WS.
 
+## Nginx — estático via Node (login de acesso restrito)
+
+Até a v22, o nginx servia `index.html`/`css/`/`js/`/`pages/`/`assets/` **direto do disco** (`root /opt/ml-dashboard-novo; try_files $uri $uri/ /index.html;`), sem passar pelo Node — um gate de autenticação em Express sozinho não protegeria carregamento de página, só `/api/*`. Ver `auth-staff.md` pra arquitetura completa.
+
+**Passo obrigatório pra proteção de página funcionar de verdade**: trocar o `location /` do server block (`/etc/nginx/sites-available/ml-dashboard`) de servir arquivo estático pra proxy pro Node — mesmo padrão que `/api`/`/webhooks`/`/ws` já usam:
+
+```nginx
+# Antes:
+location / {
+    root /opt/ml-dashboard-novo;
+    try_files $uri $uri/ /index.html;
+}
+
+# Depois:
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Validar com `sudo nginx -t` antes de `sudo systemctl reload nginx` — se `nginx -t` falhar, o reload é abortado automaticamente e o site continua no ar com a config anterior (não precisa reverter nada às pressas). Rollback manual, se necessário: restaurar o `location /` antigo (`root` + `try_files`) e recarregar de novo.
+
+**Ordem segura de deploy** (feature já é kill-switched, ver abaixo): dá pra fazer o deploy do código (`git pull` + `npm install` + `npm run migrate` + restart) e só trocar o `location /` do nginx depois, com calma — enquanto o nginx não mudar, ele responde primeiro e o `express.static` novo no `server.js` fica sem efeito nenhum (nem quebra, nem protege).
+
+### Criar o 1º usuário admin e ligar o gate
+
+```bash
+cd /opt/ml-dashboard-novo/server
+node scripts/createStaffUser.js meuusuario minhasenha admin
+```
+
+Depois, no `.env`: gerar `STAFF_JWT_SECRET` (`openssl rand -hex 32`), setar `STAFF_AUTH_ENABLED=true`, e `sudo systemctl restart ml-dashboard-novo`. **Testar login antes de considerar concluído** — abrir `/pages/login.html`, logar, confirmar que navega normalmente. Criar usuários `embalagem` do mesmo jeito (`node scripts/createStaffUser.js fulano senha123 embalagem`) e testar que esse usuário só consegue abrir a página de Embalagem.
+
+### Botão de emergência
+
+Se o login travar o acesso de alguém (inclusive o admin) de um jeito inesperado: `STAFF_AUTH_ENABLED=false` no `.env` + `sudo systemctl restart ml-dashboard-novo` desliga a autenticação inteira na hora, sem precisar reverter deploy nem mexer no nginx — o sistema volta a ficar aberto como sempre foi até o problema ser investigado.
+
 ## Lojas conectadas (referência operacional)
 
 | Loja | ID ML | Imposto % |

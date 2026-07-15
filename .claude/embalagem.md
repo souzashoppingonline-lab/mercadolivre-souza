@@ -26,7 +26,7 @@ Não existia antes: o `shipping_id` (`order.shipping.id` na resposta `/orders/:i
 
 ## Fluxo da tela (`pages/embalagem.html`)
 
-Duas abas: **Bipar** (fluxo principal) e **Buscar vídeos** (consulta).
+Três abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre) e **Conferência do Dia** (consulta sempre travada em "hoje").
 
 ### Aba Bipar — máquina de estado
 
@@ -34,15 +34,19 @@ Duas abas: **Bipar** (fluxo principal) e **Buscar vídeos** (consulta).
 
 1. **Idle**: campo de bipagem sempre em foco (reforça foco automaticamente ao clicar fora de campos de texto). Câmera já ligada em preview (pedida a permissão assim que a página carrega, via `getUserMedia({video:true,audio:true})`) — assim quando o pedido for identificado, a gravação começa sem precisar de novo popup de permissão.
 2. **Bipa** → `parseShippingId()` extrai o `shipping_id` → `GET /api/embalagem/pedido/:shippingId`. Não achou → mensagem de erro, volta pra idle (não inicia gravação nenhuma).
-3. **Achou** → mostra na tela todos os pedidos daquele envio (pode ser mais de um — "pack"): imagem grande, título grande, **quantidade em destaque bem maior que o resto** (pedido explícito do usuário — é o dado mais importante pro embalador conferir), nome do comprador menor/discreto. `MediaRecorder` começa a gravar nesse instante.
+3. **Achou** → mostra na tela, num card grande, todos os pedidos daquele envio (pode ser mais de um — "pack"): imagem (180px), título grande, **quantidade em destaque bem maior que o resto** (pedido explícito do usuário — é o dado mais importante pro embalador conferir), variação (cor/tamanho, se houver) como tags, comprador, e uma grade de detalhes — SKU, valor (`unit_price × quantity`), logística (`shipping_type` formatado com a mesma função `logLabel()` de `top-vendas-online.html`), status do pedido, data/hora da venda, e estoque atual do item (`items.available_quantity`, destacado em vermelho se `≤ 5`). **Todos esses campos já vêm do Postgres** (`orders.raw_data` pra SKU/variação, sem nenhuma chamada nova à API do ML). `MediaRecorder` começa a gravar nesse instante.
 4. **Bipa de novo enquanto grava**:
    - Se for a **mesma** etiqueta → entende como "terminei", para a gravação, sobe o vídeo (`POST /api/embalagem/finalizar`, multipart) e mostra confirmação visual.
    - Se for uma etiqueta **diferente** → per pedido explícito do usuário, **pergunta antes** (`confirm()` nativo: "Você bipou uma etiqueta diferente da que está em gravação... Deseja finalizar a atual e começar uma nova?"). Confirmando, finaliza a gravação atual normalmente e já inicia a nova; cancelando, ignora o bipe novo e a gravação em andamento continua intacta.
-5. Vídeo salvo com sucesso → mensagem "✅ Pedido embalado", volta pra idle depois de ~2,5s.
+5. Vídeo salvo com sucesso → mensagem "✅ Pedido embalado", visível por 10s antes de voltar pra idle sozinho.
 
 ### Aba Buscar vídeos
 
-Filtros: nº do pedido, comprador, data de/até (`GET /api/embalagem/videos`). Resultado: lista com título/comprador/data/duração + botão "Assistir", que abre um modal com `<video controls>` apontando pra `GET /api/embalagem/videos/:id/file` (Express `res.sendFile` já suporta `Range`, então dá pra avançar/voltar no vídeo sem baixar ele inteiro).
+Filtros: nº do pedido, comprador, data de/até (`GET /api/embalagem/videos`). Resultado: lista com título/comprador/loja/data/duração + botão "Assistir", que abre um modal com `<video controls>` apontando pra `GET /api/embalagem/videos/:id/file` (Express `res.sendFile` já suporta `Range`, então dá pra avançar/voltar no vídeo sem baixar ele inteiro).
+
+### Aba Conferência do Dia
+
+Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartilhada entre as duas — sem duplicar o template), mas **sempre filtrada pro dia de hoje** (`date_from`/`date_to` calculados no cliente, sem campo de data pro usuário escolher) — objetivo é servir de checklist rápido de fim de expediente: "o que já foi bipado hoje". Filtro adicional por loja (dropdown populado via `DB.getLojas()`, mesmo padrão da Agenda Trello) e por comprador. Recarrega automaticamente toda vez que a aba é aberta. **Não tem estado de "conferido"/"revisado" persistido** — é só listagem e filtro (decisão explícita do usuário, mantém o escopo simples sem coluna nova no banco).
 
 ## Armazenamento
 

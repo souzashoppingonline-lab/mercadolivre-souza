@@ -20,7 +20,7 @@
     .emb-panel { display: none; }
     .emb-panel.active { display: block; }
 
-    .emb-grid { display: grid; grid-template-columns: 1.3fr .9fr; gap: 18px; align-items: start; }
+    .emb-grid { display: grid; grid-template-columns: 1.7fr .7fr; gap: 18px; align-items: start; }
     @media (max-width: 980px) { .emb-grid { grid-template-columns: 1fr; } }
 
     .emb-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
@@ -44,14 +44,22 @@
     .emb-placeholder i { font-size: 40px; margin-bottom: 14px; display: block; opacity: .4; }
     .emb-placeholder .big { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
 
-    .emb-orders { display: flex; flex-direction: column; gap: 14px; }
-    .emb-order-card { display: flex; gap: 18px; background: var(--bg-card2); border-radius: 12px; padding: 16px; align-items: center; }
-    .emb-order-img { width: 100px; height: 100px; object-fit: cover; border-radius: 10px; background: var(--bg-dark); flex-shrink: 0; }
+    .emb-orders { display: flex; flex-direction: column; gap: 16px; }
+    .emb-order-card { display: flex; gap: 24px; background: var(--bg-card2); border-radius: 14px; padding: 22px; align-items: flex-start; }
+    .emb-order-img { width: 180px; height: 180px; object-fit: cover; border-radius: 12px; background: var(--bg-dark); flex-shrink: 0; }
     .emb-order-info { min-width: 0; flex: 1; }
-    .emb-order-title { font-size: 22px; font-weight: 800; line-height: 1.25; margin-bottom: 8px; }
-    .emb-order-qty { font-size: 40px; font-weight: 900; color: var(--primary); line-height: 1; margin-bottom: 8px; }
-    .emb-order-qty span { font-size: 15px; font-weight: 700; color: var(--text-muted); margin-left: 6px; }
-    .emb-order-buyer { font-size: 12px; color: var(--text-muted); }
+    .emb-order-title { font-size: 28px; font-weight: 800; line-height: 1.25; margin-bottom: 10px; }
+    .emb-order-qty { font-size: 60px; font-weight: 900; color: var(--primary); line-height: 1; margin-bottom: 12px; }
+    .emb-order-qty span { font-size: 17px; font-weight: 700; color: var(--text-muted); margin-left: 8px; }
+    .emb-order-buyer { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+    .emb-order-buyer b { color: var(--text-main); }
+    .emb-order-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 20px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .emb-order-detail { font-size: 12px; }
+    .emb-order-detail .k { color: var(--text-muted); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; display: block; margin-bottom: 2px; }
+    .emb-order-detail .v { font-weight: 700; color: var(--text-main); }
+    .emb-order-detail .v.warn { color: var(--red); }
+    .emb-order-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .emb-order-tag { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 12px; background: rgba(255,230,0,.1); color: var(--primary); }
 
     .emb-camera-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 12px; }
     .emb-camera-box video { width: 100%; height: 100%; object-fit: cover; }
@@ -95,6 +103,7 @@
           <span class="rec-dot" id="tabRecDot" style="display:none"></span>
         </button>
         <button class="emb-tab-btn" id="tabBtnBuscar" onclick="switchTab('buscar')"><i class="fas fa-search"></i> Buscar vídeos</button>
+        <button class="emb-tab-btn" id="tabBtnConferencia" onclick="switchTab('conferencia')"><i class="fas fa-clipboard-check"></i> Conferência do Dia</button>
       </div>
 
       <!-- ═══ ABA: BIPAR ═══ -->
@@ -139,6 +148,19 @@
             <button class="emb-btn" onclick="loadVideos()"><i class="fas fa-search"></i> Buscar</button>
           </div>
           <div class="emb-video-list" id="videoList"><div class="emb-placeholder">Use os filtros para buscar vídeos de embalagem.</div></div>
+        </div>
+      </div>
+
+      <!-- ═══ ABA: CONFERÊNCIA DO DIA ═══ -->
+      <div class="emb-panel" id="panelConferencia">
+        <div class="emb-card">
+          <p class="emb-subtitle" style="margin-top:0">Todos os pedidos bipados hoje (<span id="confCount">0</span>), pra conferir se algum ficou faltando.</p>
+          <div class="emb-filters">
+            <div class="emb-field"><label>Loja</label><select id="fConfLoja"><option value="">Todas</option></select></div>
+            <div class="emb-field"><label>Comprador</label><input id="fConfBuyer" placeholder="Nickname"></div>
+            <button class="emb-btn" onclick="loadConferenciaDia()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+          </div>
+          <div class="emb-video-list" id="conferenciaList"><div class="emb-placeholder">Carregando...</div></div>
         </div>
       </div>
 
@@ -231,17 +253,45 @@ function parseShippingId(raw) {
   return raw.replace(/[^0-9]/g, '') || raw;
 }
 
+// Mesma classificação de logística usada em pages/top-vendas-online.html.
+function logLabel(tipo) {
+  const l = (tipo || '').toLowerCase();
+  if (l.includes('fulfillment')) return 'Full';
+  if (l.includes('self_service') || l.includes('flex')) return 'Flex';
+  if (l.includes('xd_drop_off') || l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return 'Mercado Envios';
+  if (l.includes('pickup')) return 'Coleta';
+  return tipo || 'Desconhecido';
+}
+
+const STATUS_LABEL = { paid: 'Pago', confirmed: 'Confirmado', cancelled: 'Cancelado', invalid: 'Inválido' };
+const R$ = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+
 function renderOrders(orders) {
-  document.getElementById('ordersDisplay').innerHTML = orders.map(o => `
+  document.getElementById('ordersDisplay').innerHTML = orders.map(o => {
+    const variacoes = Array.isArray(o.variation_attributes)
+      ? o.variation_attributes.map(v => `${v.name || v.id}: ${v.value_name}`)
+      : [];
+    const estoqueBaixo = o.available_quantity != null && Number(o.available_quantity) <= 5;
+    return `
     <div class="emb-order-card">
       ${o.thumbnail ? `<img class="emb-order-img" src="${escapeHtml(o.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div class="emb-order-info">
         <div class="emb-order-title">${escapeHtml(o.title || '(sem título)')}</div>
         <div class="emb-order-qty">${o.quantity}<span>un.</span></div>
-        <div class="emb-order-buyer"><i class="fas fa-user"></i> ${escapeHtml(o.buyer_nickname || '—')} · <i class="fas fa-store"></i> ${escapeHtml(o.store_nickname || '')}</div>
+        ${variacoes.length ? `<div class="emb-order-tags">${variacoes.map(v => `<span class="emb-order-tag">${escapeHtml(v)}</span>`).join('')}</div>` : ''}
+        <div class="emb-order-buyer"><i class="fas fa-user"></i> Comprador: <b>${escapeHtml(o.buyer_nickname || '—')}</b> · <i class="fas fa-store"></i> ${escapeHtml(o.store_nickname || '')}</div>
+        <div class="emb-order-details">
+          <div class="emb-order-detail"><span class="k">Pedido</span><span class="v">${escapeHtml(o.order_id)}</span></div>
+          ${o.seller_sku ? `<div class="emb-order-detail"><span class="k">SKU</span><span class="v">${escapeHtml(o.seller_sku)}</span></div>` : ''}
+          <div class="emb-order-detail"><span class="k">Valor</span><span class="v">${R$(Number(o.unit_price || 0) * Number(o.quantity || 1))}</span></div>
+          <div class="emb-order-detail"><span class="k">Logística</span><span class="v">${escapeHtml(logLabel(o.shipping_type))}</span></div>
+          <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
+          <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
+          ${o.available_quantity != null ? `<div class="emb-order-detail"><span class="k">Estoque atual</span><span class="v ${estoqueBaixo ? 'warn' : ''}">${o.available_quantity} un.</span></div>` : ''}
+        </div>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function resetOrdersDisplay() {
@@ -334,9 +384,26 @@ scanInput.addEventListener('blur', () => setTimeout(refocusScan, 200));
 function switchTab(tab) {
   document.getElementById('panelBipar').classList.toggle('active', tab === 'bipar');
   document.getElementById('panelBuscar').classList.toggle('active', tab === 'buscar');
+  document.getElementById('panelConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('tabBtnBipar').classList.toggle('active', tab === 'bipar');
   document.getElementById('tabBtnBuscar').classList.toggle('active', tab === 'buscar');
+  document.getElementById('tabBtnConferencia').classList.toggle('active', tab === 'conferencia');
   if (tab === 'bipar') refocusScan();
+  if (tab === 'conferencia') loadConferenciaDia();
+}
+
+// ── Vídeo em lista (usado por "Buscar vídeos" e "Conferência do Dia") ──
+function videoRowHtml(v, { showStore = false } = {}) {
+  const storeBit = showStore && v.store_nickname ? ` · <i class="fas fa-store"></i> ${escapeHtml(v.store_nickname)}` : '';
+  return `
+    <div class="emb-video-row">
+      <div>
+        <div class="title">${escapeHtml(v.sample_title || v.shipping_id)}</div>
+        <div class="meta">${escapeHtml(v.sample_buyer || '—')}${storeBit} · Pedido(s): ${(v.order_ids || []).map(escapeHtml).join(', ')} · ${new Date(v.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div>
+      </div>
+      <div class="dur">${v.duration_seconds ? Math.round(v.duration_seconds / 60 * 10) / 10 + ' min' : '—'}</div>
+      <button class="emb-btn" onclick="playVideo(${v.id}, '${escapeHtml(v.sample_title || v.shipping_id).replace(/'/g,"\\'")}')"><i class="fas fa-play"></i> Assistir</button>
+    </div>`;
 }
 
 // ── Aba: Buscar vídeos ─────────────────────────────────────
@@ -351,16 +418,36 @@ async function loadVideos() {
   list.innerHTML = '<div class="emb-placeholder">Buscando...</div>';
   const data = await DB.getVideosEmbalagem(params);
   const rows = data?.rows || [];
-  list.innerHTML = rows.length ? rows.map(v => `
-    <div class="emb-video-row">
-      <div>
-        <div class="title">${escapeHtml(v.sample_title || v.shipping_id)}</div>
-        <div class="meta">${escapeHtml(v.sample_buyer || '—')} · Pedido(s): ${(v.order_ids || []).map(escapeHtml).join(', ')} · ${new Date(v.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div>
-      </div>
-      <div class="dur">${v.duration_seconds ? Math.round(v.duration_seconds / 60 * 10) / 10 + ' min' : '—'}</div>
-      <button class="emb-btn" onclick="playVideo(${v.id}, '${escapeHtml(v.sample_title || v.shipping_id).replace(/'/g,"\\'")}')"><i class="fas fa-play"></i> Assistir</button>
-    </div>
-  `).join('') : '<div class="emb-placeholder">Nenhum vídeo encontrado com esses filtros.</div>';
+  list.innerHTML = rows.length ? rows.map(v => videoRowHtml(v, { showStore: true })).join('') : '<div class="emb-placeholder">Nenhum vídeo encontrado com esses filtros.</div>';
+}
+
+// ── Aba: Conferência do Dia — sempre os pedidos bipados hoje ──────────
+async function loadLojasConferencia() {
+  const sel = document.getElementById('fConfLoja');
+  if (sel.dataset.loaded) return;
+  const data = await DB.getLojas();
+  (data?.stores || []).forEach(l => sel.insertAdjacentHTML('beforeend', `<option value="${l.id}">${escapeHtml(l.nickname)}</option>`));
+  sel.dataset.loaded = '1';
+}
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function loadConferenciaDia() {
+  await loadLojasConferencia();
+  const today = todayISO();
+  const params = { date_from: today, date_to: today + 'T23:59:59' };
+  const storeId = document.getElementById('fConfLoja').value; if (storeId) params.store_id = storeId;
+  const buyer = document.getElementById('fConfBuyer').value.trim(); if (buyer) params.buyer = buyer;
+
+  const list = document.getElementById('conferenciaList');
+  list.innerHTML = '<div class="emb-placeholder">Carregando...</div>';
+  const data = await DB.getVideosEmbalagem(params);
+  const rows = data?.rows || [];
+  document.getElementById('confCount').textContent = rows.length;
+  list.innerHTML = rows.length ? rows.map(v => videoRowHtml(v, { showStore: true })).join('') : '<div class="emb-placeholder">Nenhum pedido bipado hoje ainda.</div>';
 }
 
 function playVideo(id, title) {

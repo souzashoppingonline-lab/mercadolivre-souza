@@ -39,7 +39,10 @@ router.get('/pedido/:shippingId', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT o.ml_id AS order_id, o.item_id, o.title, o.quantity, o.buyer_nickname, o.store_id,
-              i.thumbnail, i.permalink, s.nickname AS store_nickname
+              o.unit_price, o.status, o.shipping_type, o.date_created,
+              o.raw_data->'order_items'->0->'item'->>'seller_sku' AS seller_sku,
+              o.raw_data->'order_items'->0->'item'->'variation_attributes' AS variation_attributes,
+              i.thumbnail, i.permalink, i.available_quantity, s.nickname AS store_nickname
        FROM orders o
        LEFT JOIN items i ON i.ml_id = o.item_id
        LEFT JOIN stores s ON s.id = o.store_id
@@ -85,22 +88,25 @@ router.post('/finalizar', upload.single('video'), async (req, res) => {
 // pages/devolucoes.html).
 router.get('/videos', async (req, res) => {
   try {
-    const { order_id, buyer, date_from, date_to } = req.query;
+    const { order_id, buyer, date_from, date_to, store_id } = req.query;
     const where = [];
     const params = [];
     if (order_id) { params.push(order_id); where.push(`$${params.length} = ANY(pv.order_ids)`); }
+    if (store_id) { params.push(store_id); where.push(`pv.store_id = $${params.length}`); }
     if (date_from) { params.push(date_from); where.push(`pv.created_at >= $${params.length}`); }
     if (date_to) { params.push(date_to); where.push(`pv.created_at <= $${params.length}`); }
     if (buyer) { params.push(`%${buyer}%`); where.push(`ord.buyer_nickname ILIKE $${params.length}`); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const { rows } = await pool.query(
-      `SELECT pv.id, pv.shipping_id, pv.order_ids, pv.created_at, pv.duration_seconds,
-              ord.title AS sample_title, ord.buyer_nickname AS sample_buyer
+      `SELECT pv.id, pv.shipping_id, pv.order_ids, pv.created_at, pv.duration_seconds, pv.store_id,
+              ord.title AS sample_title, ord.buyer_nickname AS sample_buyer,
+              s.nickname AS store_nickname
        FROM packing_videos pv
        LEFT JOIN LATERAL (
          SELECT title, buyer_nickname FROM orders WHERE ml_id = pv.order_ids[1]
        ) ord ON true
+       LEFT JOIN stores s ON s.id = pv.store_id
        ${whereSql}
        ORDER BY pv.created_at DESC
        LIMIT 100`,

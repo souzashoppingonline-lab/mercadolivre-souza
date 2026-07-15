@@ -51,7 +51,15 @@ router.get('/pedido/:shippingId', async (req, res) => {
       [req.params.shippingId]
     );
     if (!rows.length) return res.status(404).json({ error: 'Nenhum pedido encontrado para essa etiqueta' });
-    res.json({ shipping_id: req.params.shippingId, orders: rows });
+
+    // Verificação se essa etiqueta já foi bipada/gravada antes — não bloqueia,
+    // só avisa o operador (ver pages/embalagem.html: confirm() antes de gravar de novo).
+    const { rows: existing } = await pool.query(
+      `SELECT id, created_at FROM packing_videos WHERE shipping_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [req.params.shippingId]
+    );
+
+    res.json({ shipping_id: req.params.shippingId, orders: rows, already_packed: existing[0] || null });
   } catch (e) {
     console.error('[api/embalagem] GET /pedido/:shippingId', e.message);
     res.status(500).json({ error: e.message });

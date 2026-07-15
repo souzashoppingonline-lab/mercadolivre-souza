@@ -268,8 +268,11 @@ function logLabel(tipo) {
 const STATUS_LABEL = { paid: 'Pago', confirmed: 'Confirmado', cancelled: 'Cancelado', invalid: 'Inválido' };
 const R$ = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 
-function renderOrders(orders) {
-  document.getElementById('ordersDisplay').innerHTML = orders.map(o => {
+function renderOrders(orders, alreadyPacked) {
+  const banner = alreadyPacked
+    ? `<div class="emb-msg warn"><i class="fas fa-triangle-exclamation"></i> Esse pedido já tinha sido embalado em ${new Date(alreadyPacked.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} — gravando de novo.</div>`
+    : '';
+  document.getElementById('ordersDisplay').innerHTML = banner + orders.map(o => {
     const variacoes = Array.isArray(o.variation_attributes)
       ? o.variation_attributes.map(v => `${v.name || v.id}: ${v.value_name}`)
       : [];
@@ -313,8 +316,17 @@ async function startNew(shippingId) {
     setScanState('idle');
     return;
   }
+  if (data.already_packed) {
+    const quando = new Date(data.already_packed.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    const ok = confirm(`⚠️ Esse pedido já foi embalado em ${quando}.\n\nDeseja gravar de novo mesmo assim?`);
+    if (!ok) {
+      setScanState('idle');
+      showScanMsg('Bipagem cancelada — esse pedido já tinha sido embalado.', 'warn');
+      return;
+    }
+  }
   currentSession = { shippingId, orders: data.orders, startedAt: Date.now() };
-  renderOrders(data.orders);
+  renderOrders(data.orders, data.already_packed);
   startRecording();
   setScanState('recording');
 }

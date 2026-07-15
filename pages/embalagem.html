@@ -114,8 +114,10 @@
             <div class="emb-scan-row">
               <input id="scanInput" autocomplete="off" placeholder="Clique aqui e bipe a etiqueta...">
               <span class="emb-status-badge idle" id="scanStatusBadge"><i class="fas fa-circle"></i> Aguardando</span>
+              <span id="scanTimer" style="font-size:12px;color:var(--text-muted);white-space:nowrap"></span>
             </div>
             <div id="scanMsg"></div>
+            <div id="durationWarn"></div>
             <div id="ordersDisplay">
               <div class="emb-placeholder">
                 <i class="fas fa-barcode"></i>
@@ -246,6 +248,40 @@ function stopRecordingAndGetBlob() {
 let scanState = 'idle'; // idle | loading | recording | saving
 let currentSession = null; // { shippingId, orders, startedAt }
 
+// Alerta de gravação anormal — curta demais (bipe duplo por engano) ou
+// longa demais (esqueceu de finalizar). Ver .claude/embalagem.md.
+const MIN_RECORDING_SECONDS = 5;
+const MAX_RECORDING_SECONDS = 600; // 10min
+let durationWatcherId = null;
+let longWarnShown = false;
+
+function fmtElapsed(sec) {
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function startDurationWatcher() {
+  longWarnShown = false;
+  document.getElementById('durationWarn').innerHTML = '';
+  durationWatcherId = setInterval(() => {
+    if (!currentSession) return;
+    const elapsed = (Date.now() - currentSession.startedAt) / 1000;
+    document.getElementById('scanTimer').textContent = `⏱ ${fmtElapsed(elapsed)}`;
+    if (elapsed > MAX_RECORDING_SECONDS && !longWarnShown) {
+      longWarnShown = true;
+      document.getElementById('durationWarn').innerHTML =
+        `<div class="emb-msg warn"><i class="fas fa-triangle-exclamation"></i> Gravação passou de ${Math.round(MAX_RECORDING_SECONDS / 60)} minutos — verifique se não esqueceu de bipar de novo pra finalizar.</div>`;
+    }
+  }, 1000);
+}
+
+function stopDurationWatcher() {
+  clearInterval(durationWatcherId);
+  durationWatcherId = null;
+  document.getElementById('scanTimer').textContent = '';
+  document.getElementById('durationWarn').innerHTML = '';
+}
+
 function setScanState(s) {
   scanState = s;
   const badge = document.getElementById('scanStatusBadge');
@@ -350,12 +386,28 @@ async function startNew(shippingId) {
   renderOrders(data.orders, data.already_packed);
   startRecording();
   setScanState('recording');
+  startDurationWatcher();
 }
 
+// Devolve true se de fato finalizou (upload disparado), false se o operador
+// cancelou o aviso de gravação curta — chamadores que encadeiam um startNew()
+// logo em seguida (troca de etiqueta em handleScan) precisam checar isso,
+// senão iniciam uma gravação nova por cima de uma que ainda está rodando.
 async function finalizeCurrent() {
-  if (!currentSession) return;
+  if (!currentSession) return false;
+
+  const elapsedSeconds = (Date.now() - currentSession.startedAt) / 1000;
+  if (elapsedSeconds < MIN_RECORDING_SECONDS) {
+    const ok = confirm(`⚠️ Gravação muito curta (${Math.round(elapsedSeconds)}s) — pode ter sido um bipe duplo sem querer.\n\nFinalizar e salvar mesmo assim?`);
+    if (!ok) {
+      showScanMsg('Ok, a gravação continua — bipe de novo quando terminar de embalar.', 'warn');
+      return false; // não mexe em nada — currentSession e a gravação seguem intactos
+    }
+  }
+
   const session = currentSession;
   currentSession = null;
+  stopDurationWatcher();
   setScanState('saving');
   const blob = await stopRecordingAndGetBlob();
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);
@@ -374,6 +426,7 @@ async function finalizeCurrent() {
     showScanMsg('✅ Pedido embalado e vídeo salvo com sucesso.', 'success');
     setTimeout(() => { setScanState('idle'); resetOrdersDisplay(); }, 10000);
   }
+  return true;
 }
 
 async function handleScan(raw) {
@@ -386,8 +439,10 @@ async function handleScan(raw) {
     } else {
       const ok = confirm(`Você bipou uma etiqueta diferente da que está em gravação (pedido atual: ${currentSession.shippingId}).\n\nDeseja finalizar a gravação atual e começar uma nova?`);
       if (ok) {
-        await finalizeCurrent();
-        await startNew(id);
+        const finalized = await finalizeCurrent();
+        if (finalized) await startNew(id);
+        // se não finalizou (operador cancelou o aviso de gravação curta), a
+        // gravação atual segue rodando — não inicia uma por cima dela.
       } else {
         showScanMsg('Bipagem ignorada — a gravação atual continua.', 'warn');
       }

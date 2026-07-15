@@ -77,8 +77,16 @@ Coluna "Vídeo" na tabela de devoluções mostra um botão "Assistir" pros pedid
 
 **Como saber se um pedido teve devolução, e quando**: a tabela `returns` já grava isso — `order_id` (vínculo com o pedido), `date` (o `date_created` do claim, ou seja, o momento exato em que o comprador abriu a reclamação/devolução no ML), `status`/`reason`. Populado em tempo real pelo webhook `post_purchase` (`handlePostPurchase` em `worker.js`) + sync retroativo (`syncReturns`, botão "Importar histórico ML" na própria página).
 
+## Alerta de gravação anormal (aba Bipar)
+
+Enquanto grava, um timer ao lado do badge de status (`#scanTimer`, atualizado a cada 1s via `setInterval` em `startDurationWatcher()`) mostra o tempo decorrido — feedback visual contínuo, não só no final.
+
+- **Curta demais** (`MIN_RECORDING_SECONDS = 5`): ao bipar de novo pra finalizar, se passou menos de 5s desde que a gravação começou, `finalizeCurrent()` mostra um `confirm()` perguntando se não foi um bipe duplo sem querer. Cancelando, **nada é interrompido** — a gravação atual continua rodando normalmente (`finalizeCurrent()` devolve `false` nesse caso; o chamador em `handleScan()`, no fluxo de trocar de etiqueta no meio de uma gravação, checa esse retorno antes de iniciar uma sessão nova — sem isso, um `MediaRecorder` antigo ficaria rodando escondido por trás de um novo).
+- **Longa demais** (`MAX_RECORDING_SECONDS = 600`, 10min): passado esse tempo, um aviso persistente aparece acima da lista de pedidos (`#durationWarn`, não é o `showScanMsg()` normal que some sozinho em 6s) — fica visível até a gravação ser finalizada, pra não deixar passar despercebido que a câmera pode ter ficado ligada à toa.
+
+Os dois limiares são constantes no topo do `<script>` de `pages/embalagem.html`, ajustáveis se a operação real mostrar que os valores (5s/10min) não fazem sentido.
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.
-- Notificação/alerta quando uma gravação falha ou fica muito curta (ex: operador bipou e já bipou de novo em 2s por engano) — hoje só mostra o erro se o upload falhar, não valida duração mínima.
 - Suporte a múltiplas câmeras/seleção de dispositivo — usa a câmera padrão do navegador (`getUserMedia` sem `deviceId`).

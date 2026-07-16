@@ -40,6 +40,9 @@
     .emb-msg.error { background: rgba(231,76,60,.12); color: var(--red); }
     .emb-msg.warn { background: rgba(230,126,34,.12); color: var(--orange); }
     .emb-msg.success { background: rgba(39,174,96,.12); color: var(--green); }
+    .emb-msg.success.big { padding: 20px 18px; text-align: center; }
+    .emb-msg.success.big .big-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .emb-msg.success.big .big-subtitle { font-size: 15px; font-weight: 600; opacity: .85; }
 
     .emb-placeholder { text-align: center; padding: 60px 20px; color: var(--text-muted); }
     .emb-placeholder i { font-size: 40px; margin-bottom: 14px; display: block; opacity: .4; }
@@ -331,6 +334,16 @@ function showScanMsg(text, type) {
   setTimeout(() => { document.getElementById('scanMsg').innerHTML = ''; }, 6000);
 }
 
+// Mensagem de sucesso maior, em 2 linhas — pedido explícito do usuário pra
+// destacar melhor a confirmação e o "já pode seguir" no ritmo da embalagem.
+function showBigSuccessMsg(title, subtitle) {
+  document.getElementById('scanMsg').innerHTML = `<div class="emb-msg success big">
+    <div class="big-title">${escapeHtml(title)}</div>
+    <div class="big-subtitle">${escapeHtml(subtitle)}</div>
+  </div>`;
+  setTimeout(() => { document.getElementById('scanMsg').innerHTML = ''; }, 6000);
+}
+
 // Alguns leitores QR USB emulam um layout de teclado diferente do esperado
 // e trocam os caracteres especiais do JSON da etiqueta por outros (varia
 // por leitor/layout — não dá pra fixar qual caractere vira qual). Em vez de
@@ -462,7 +475,7 @@ async function finalizeCurrent() {
   uploadPackingVideo(session, blob, durationSeconds);
 
   setScanState('success');
-  showScanMsg('✅ Pedido embalado — pode bipar o próximo.', 'success');
+  showBigSuccessMsg('✅ Pedido embalado com sucesso', 'Pode seguir para o próximo pedido');
   setTimeout(() => { setScanState('idle'); resetOrdersDisplay(); }, 2000);
   return true;
 }

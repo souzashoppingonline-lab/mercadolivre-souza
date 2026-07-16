@@ -141,12 +141,14 @@ CREATE TABLE IF NOT EXISTS returns (
   id BIGSERIAL PRIMARY KEY,
   store_id BIGINT REFERENCES stores(id),
   order_id TEXT REFERENCES orders(ml_id),
+  buyer_nickname TEXT,
   title TEXT,
   reason TEXT,
   amount NUMERIC,
   status TEXT,
   date TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  note TEXT
 );
 
 -- Em bancos existentes, os CREATE TABLE acima são no-op (orders/returns já

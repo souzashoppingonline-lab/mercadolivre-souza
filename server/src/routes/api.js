@@ -1851,6 +1851,118 @@ router.get('/alertas/anuncios-problema', async (req, res) => {
   }
 });
 
+// ── Qualidade de Anúncio (SEO Score próprio) — ver seoScore.js/decisions.md.
+// Score é dado calculado pelo sistema (fórmula, nunca IA); pictures_count/
+// has_gtin/etc. são dado oficial da API do ML — nunca sobrescritos pelo score.
+router.get('/qualidade-anuncio', async (req, res) => {
+  try {
+    const { store_id = '', category_id = '', brand = '', is_full = '', catalog_listing = '', shipping_type = '', sort = 'score_asc' } = req.query;
+    const where = [];
+    const params = [];
+    if (store_id)       { params.push(store_id); where.push(`q.store_id = $${params.length}::bigint`); }
+    if (category_id)    { params.push(category_id); where.push(`q.category_id = $${params.length}`); }
+    if (brand)          { params.push(`%${brand}%`); where.push(`q.brand ILIKE $${params.length}`); }
+    if (is_full === 'true' || is_full === 'false')                 { params.push(is_full === 'true'); where.push(`q.is_full = $${params.length}`); }
+    if (catalog_listing === 'true' || catalog_listing === 'false') { params.push(catalog_listing === 'true'); where.push(`q.catalog_listing = $${params.length}`); }
+    if (shipping_type)  { params.push(shipping_type); where.push(`q.shipping_type = $${params.length}`); }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const orderBy = sort === 'score_desc' ? 'q.score DESC NULLS LAST'
+      : sort === 'title' ? 'i.title ASC'
+      : 'q.score ASC NULLS LAST';
+
+    const { rows } = await pool.query(
+      `SELECT q.item_id, q.store_id, s.nickname AS store_name, i.title, i.thumbnail, i.permalink,
+              q.category_id, q.brand, q.pictures_count, q.has_video, q.title_length, q.description_word_count,
+              q.has_gtin, q.has_brand, q.has_model, q.is_full, q.shipping_type, q.catalog_listing,
+              q.required_attrs_total, q.required_attrs_missing, q.missing_required_attrs,
+              q.visits_30d, q.sales_30d, q.conversion_rate,
+              q.photos_score, q.video_score, q.title_score, q.description_score,
+              q.gtin_score, q.brand_score, q.model_score, q.full_score, q.catalog_score,
+              q.attributes_score, q.conversion_score, q.visits_score, q.score, q.calculated_at
+       FROM item_seo_score q
+       JOIN items i ON i.ml_id = q.item_id
+       LEFT JOIN stores s ON s.id = q.store_id
+       ${whereSql}
+       ORDER BY ${orderBy}
+       LIMIT 500`,
+      params
+    );
+
+    const withScore = rows.filter(r => r.score !== null);
+    const avgScore = withScore.length
+      ? Math.round((withScore.reduce((a, r) => a + Number(r.score), 0) / withScore.length) * 100) / 100
+      : null;
+    const summary = {
+      total: rows.length,
+      synced: withScore.length,
+      avg_score: avgScore,
+      sem_gtin: rows.filter(r => !r.has_gtin).length,
+      sem_video: rows.filter(r => !r.has_video).length,
+      sem_catalogo: rows.filter(r => !r.catalog_listing).length,
+      atributos_incompletos: rows.filter(r => (r.required_attrs_missing || 0) > 0).length,
+      full: rows.filter(r => r.is_full).length,
+      nao_full: rows.filter(r => !r.is_full).length,
+    };
+
+    res.json({ items: rows, summary });
+  } catch (e) {
+    console.error('[qualidade-anuncio]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Evolução do SEO Score médio da frota filtrada (dashboard, gráfico de linha) —
+// mesmos filtros da listagem principal + período. Junta com item_seo_score
+// pra aplicar loja/categoria/marca/etc ao histórico (atributos que raramente
+// mudam, então aplicar o filtro "de hoje" ao histórico é uma simplificação aceitável).
+router.get('/qualidade-anuncio/historico-medio', async (req, res) => {
+  try {
+    const { days = 30, store_id = '', category_id = '', brand = '', is_full = '', catalog_listing = '', shipping_type = '' } = req.query;
+    const where = [`h.captured_at >= CURRENT_DATE - $1::int`];
+    const params = [Math.min(Math.max(Number(days) || 30, 1), 180)];
+    if (store_id)       { params.push(store_id); where.push(`q.store_id = $${params.length}::bigint`); }
+    if (category_id)    { params.push(category_id); where.push(`q.category_id = $${params.length}`); }
+    if (brand)          { params.push(`%${brand}%`); where.push(`q.brand ILIKE $${params.length}`); }
+    if (is_full === 'true' || is_full === 'false')                 { params.push(is_full === 'true'); where.push(`q.is_full = $${params.length}`); }
+    if (catalog_listing === 'true' || catalog_listing === 'false') { params.push(catalog_listing === 'true'); where.push(`q.catalog_listing = $${params.length}`); }
+    if (shipping_type)  { params.push(shipping_type); where.push(`q.shipping_type = $${params.length}`); }
+
+    const { rows } = await pool.query(
+      `SELECT h.captured_at::date AS date, AVG(h.score)::numeric(5,2) AS avg_score, COUNT(DISTINCT h.item_id)::int AS items
+       FROM item_seo_score_history h
+       JOIN item_seo_score q ON q.item_id = h.item_id
+       WHERE ${where.join(' AND ')}
+       GROUP BY h.captured_at::date
+       ORDER BY h.captured_at::date`,
+      params
+    );
+    res.json({ days: rows });
+  } catch (e) {
+    console.error('[qualidade-anuncio/historico-medio]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Evolução do SEO Score de um item específico (gráfico de linha).
+router.get('/qualidade-anuncio/:itemId/historico', async (req, res) => {
+  try {
+    const { date_from = '', date_to = '' } = req.query;
+    const where = ['item_id = $1'];
+    const params = [req.params.itemId];
+    if (date_from) { params.push(date_from); where.push(`captured_at >= $${params.length}`); }
+    if (date_to)   { params.push(date_to);   where.push(`captured_at <= $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT score, captured_at FROM item_seo_score_history WHERE ${where.join(' AND ')} ORDER BY captured_at ASC`,
+      params
+    );
+    res.json({ history: rows });
+  } catch (e) {
+    console.error('[qualidade-anuncio/historico]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Sync performance scores — chama /item/{id}/performance no ML ──────────
 let perfSyncRunning = false;
 router.post('/alertas/anuncios-performance/sync', async (req, res) => {

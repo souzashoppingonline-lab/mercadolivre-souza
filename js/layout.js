@@ -41,6 +41,7 @@ const NAV_ITEMS = [
     { href: 'cancelamentos.html', icon: 'fa-times-circle', label: 'Cancelamentos' },
     { href: 'devolucoes.html', icon: 'fa-undo', label: 'Devoluções' },
     { href: 'anuncios-problema.html', icon: 'fa-exclamation-triangle', label: 'Anúncios Problema' },
+    { href: 'qualidade-anuncio.html', icon: 'fa-star-half-alt', label: 'Qualidade de Anúncio' },
     { href: 'alteracoes.html', icon: 'fa-history', label: 'Alterações' },
   ]},
   { section: 'Financeiro', items: [

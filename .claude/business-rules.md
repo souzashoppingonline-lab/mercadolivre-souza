@@ -63,6 +63,29 @@ Ver `task-engine.md` para a arquitetura do `TaskEngine`. Regras de negócio das 
 - **Score de qualidade baixo** (`rule_key='score_baixo'`): dispara quando `score < 50` no resultado de `/item/:id/performance` (mesmo dado gravado em `item_performance` pelo job `syncScores`, 01:00 diário — ver `workers.md`). Prioridade `media`.
 - **Dedup**: nenhuma das duas regras cria um 2º cartão aberto para o mesmo `item_id`+`rule_key` — só atualiza `updated_at` do cartão existente enquanto ele não for movido para `finalizado`/`excluido`.
 
+## SEO Score — pesos e thresholds (`server/src/seoScore.js`, tabela `item_seo_score`)
+
+**Não confundir com o score de `item_performance`** ("Score de qualidade baixo" acima) — são dois scores diferentes: `item_performance.score` vem pronto da API do ML (`/item/:id/performance`); o SEO Score é calculado inteiramente pelo sistema, fórmula própria, nunca chama esse endpoint. Calculado 1x/dia pelo job `sync-seo-score` (ver `workers.md`).
+
+**Pesos** (somam 100 — normalizados proporcionalmente a partir da lista original do usuário, que somava 115; ver `decisions.md`):
+
+| Indicador | Peso |
+|---|---|
+| Fotos | 13,04 |
+| Vídeo | 8,70 |
+| Título | 13,04 |
+| Descrição | 8,70 |
+| GTIN | 4,35 |
+| Marca | 4,35 |
+| Modelo | 4,35 |
+| FULL | 6,96 |
+| Catálogo | 8,70 |
+| Atributos | 10,43 |
+| Conversão | 13,04 |
+| Visitas | 4,35 |
+
+**Thresholds pra nota máxima em cada subscore** (constantes nomeadas em `THRESHOLDS`, ajustáveis sem precisar reler o código): `pictures_count >= 6` fotos, `title_length` até 60 caracteres (limite real do ML), `description_word_count >= 200` palavras, `conversion_rate >= 5%` (vendas/visitas 30d), `visits_30d >= 500`. GTIN/Marca/Modelo/FULL/Catálogo são binários (tem ou não tem, sem gradação). `attributes_score` é `1 − (required_attrs_missing / required_attrs_total)`, com nota máxima quando a categoria não tem nenhum atributo obrigatório (`required_attrs_total = 0`).
+
 ## "Nova venda!" — quando notificar
 
 Uma notificação Telegram de nova venda só dispara na **transição real** de status para `paid` (`previousStatus !== 'paid' && order.status === 'paid'`). Um webhook tardio de `shipments`/`payments` que reprocessa um pedido já pago não gera notificação duplicada. Syncs agendados (`syncVendas`) chamam `handleOrder` com `silent: true` para nunca notificar em reconciliação retroativa.

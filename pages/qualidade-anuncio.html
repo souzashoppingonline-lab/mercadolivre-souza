@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qualidade de Anúncio — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Qualidade de Anúncio'; window.ACTIVE_NAV='qualidade-anuncio.html';</script>
+  <style>
+    .filters-row { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center; }
+    .filters-row select, .filters-row input {
+      background:var(--bg-card2,var(--surface));border:1px solid var(--border);color:var(--text-main,var(--text-primary));
+      border-radius:8px;padding:8px 10px;font-size:.8rem;
+    }
+
+    .score-badge { display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:700; }
+    .score-badge.bad    { background:rgba(231,76,60,.15);  color:#e74c3c; }
+    .score-badge.medium { background:rgba(243,156,18,.15); color:#f39c12; }
+    .score-badge.good   { background:rgba(39,174,96,.15);  color:#27ae60; }
+    .score-badge.none   { background:rgba(255,255,255,.06);color:var(--text-muted); }
+
+    .score-bar-wrap { display:flex;align-items:center;gap:8px;min-width:120px; }
+    .score-bar      { flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden; }
+    .score-bar-fill { height:100%;border-radius:3px;transition:width .4s ease; }
+    .score-num      { font-size:.78rem;font-weight:700;min-width:34px;text-align:right; }
+
+    .item-title-cell { max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .aud-icons { display:flex;gap:6px;font-size:12px; }
+    .aud-icons i { opacity:.35; }
+    .aud-icons i.missing { opacity:1;color:var(--red); }
+
+    .rank-list { display:flex;flex-direction:column;gap:8px; }
+    .rank-row { display:flex;align-items:center;gap:10px;background:var(--bg-card2,var(--surface));border-radius:8px;padding:8px 12px; }
+    .rank-row .pos { font-weight:800;color:var(--text-muted);min-width:20px; }
+    .rank-row .title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.82rem; }
+    .rank-row .score { font-weight:800;font-size:.85rem; }
+
+    .rank-cols { display:grid;grid-template-columns:1fr 1fr;gap:16px; }
+    @media (max-width:900px) { .rank-cols { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="filters-row">
+        <select id="fLoja" onchange="load()"><option value="">Todas as lojas</option></select>
+        <select id="fCategoria" onchange="load()"><option value="">Todas as categorias</option></select>
+        <input id="fMarca" placeholder="Marca..." oninput="debounceLoad()">
+        <select id="fLogistica" onchange="load()">
+          <option value="">Toda logística</option>
+          <option value="fulfillment">Full</option>
+          <option value="self_service">Flex</option>
+          <option value="xd_drop_off">Mercado Envios</option>
+        </select>
+        <select id="fFull" onchange="load()">
+          <option value="">FULL — todos</option>
+          <option value="true">Só FULL</option>
+          <option value="false">Só não-FULL</option>
+        </select>
+        <select id="fCatalogo" onchange="load()">
+          <option value="">Catálogo — todos</option>
+          <option value="true">Só no catálogo</option>
+          <option value="false">Só fora do catálogo</option>
+        </select>
+        <select id="fOrdenar" onchange="load()">
+          <option value="score_asc">Pior score primeiro</option>
+          <option value="score_desc">Melhor score primeiro</option>
+          <option value="title">Título A-Z</option>
+        </select>
+        <button class="btn-save-note" style="padding:8px 16px;font-size:.8rem" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+      </div>
+
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">SEO Score médio</div><div class="value" id="kpiScoreMedio">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-barcode"></i> Sem GTIN</div><div class="value" style="color:var(--red)" id="kpiSemGtin">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-video"></i> Sem vídeo</div><div class="value" style="color:var(--orange)" id="kpiSemVideo">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-book"></i> Sem catálogo</div><div class="value" style="color:var(--orange)" id="kpiSemCatalogo">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-list-check"></i> Atributos incompletos</div><div class="value" style="color:var(--red)" id="kpiAtributos">—</div></div>
+        <div class="stat-card"><div class="label">FULL</div><div class="value" style="color:var(--green)" id="kpiFull">—</div></div>
+        <div class="stat-card"><div class="label">Não-FULL</div><div class="value" id="kpiNaoFull">—</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3>Evolução do SEO Score médio</h3>
+          <select id="fPeriodoEvolucao" onchange="loadEvolucao()" style="background:var(--bg-card2,var(--surface));border:1px solid var(--border);color:var(--text-main,var(--text-primary));border-radius:8px;padding:6px 10px;font-size:.78rem">
+            <option value="7">7 dias</option>
+            <option value="30" selected>30 dias</option>
+            <option value="90">90 dias</option>
+          </select>
+        </div>
+        <div style="padding:12px 16px"><canvas id="evolucaoChart" height="80"></canvas></div>
+      </div>
+
+      <div class="rank-cols" style="margin-bottom:16px">
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-trophy" style="color:var(--green)"></i> Top 10 anúncios</h3></div>
+          <div class="rank-list" id="rankTop" style="padding:12px 16px"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-triangle-exclamation" style="color:var(--red)"></i> Piores anúncios</h3></div>
+          <div class="rank-list" id="rankPiores" style="padding:12px 16px"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Todos os anúncios (<span id="totalCount">0</span>)</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr>
+              <th>Anúncio</th><th>Loja</th><th>Marca</th><th>Logística</th>
+              <th>Auditoria</th><th>Conversão</th><th>Visitas 30d</th><th>Vendas 30d</th><th>Score</th>
+            </tr></thead>
+            <tbody id="tbody"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
+const N = v => Number(v) || 0;
+const pct = v => `${(N(v) * 100).toFixed(1)}%`;
+
+function scoreClass(score) {
+  if (score == null) return 'none';
+  if (score < 50) return 'bad';
+  if (score < 75) return 'medium';
+  return 'good';
+}
+function scoreColor(score) {
+  const c = scoreClass(score);
+  return c === 'bad' ? '#e74c3c' : c === 'medium' ? '#f39c12' : c === 'good' ? '#27ae60' : 'var(--text-muted)';
+}
+// Mesma classificação usada em outras páginas (top-vendas-online.html/embalagem.html).
+function logLabel(tipo) {
+  const l = (tipo || '').toLowerCase();
+  if (l.includes('fulfillment')) return 'Full';
+  if (l.includes('self_service') || l.includes('flex')) return 'Flex';
+  if (l.includes('xd_drop_off') || l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return 'Mercado Envios';
+  if (l.includes('pickup')) return 'Coleta';
+  return tipo || '—';
+}
+
+let charts = {};
+function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
+let allItems = [];
+let debounceTimer = null;
+function debounceLoad() { clearTimeout(debounceTimer); debounceTimer = setTimeout(load, 500); }
+
+async function loadLojas() {
+  const sel = document.getElementById('fLoja');
+  if (sel.dataset.loaded) return;
+  const data = await DB.getLojas();
+  (data?.stores || []).forEach(l => sel.insertAdjacentHTML('beforeend', `<option value="${l.id}">${escapeHtml(l.nickname)}</option>`));
+  sel.dataset.loaded = '1';
+}
+
+function currentFilters() {
+  return {
+    store_id: document.getElementById('fLoja').value || undefined,
+    category_id: document.getElementById('fCategoria').value || undefined,
+    brand: document.getElementById('fMarca').value.trim() || undefined,
+    shipping_type: document.getElementById('fLogistica').value || undefined,
+    is_full: document.getElementById('fFull').value || undefined,
+    catalog_listing: document.getElementById('fCatalogo').value || undefined,
+    sort: document.getElementById('fOrdenar').value,
+  };
+}
+
+function auditIcons(r) {
+  const items = [
+    { ok: r.has_gtin, icon: 'fa-barcode', title: 'GTIN' },
+    { ok: r.has_video, icon: 'fa-video', title: 'Vídeo' },
+    { ok: r.catalog_listing, icon: 'fa-book', title: 'Catálogo' },
+    { ok: (r.required_attrs_missing || 0) === 0, icon: 'fa-list-check', title: 'Atributos obrigatórios' },
+  ];
+  return `<div class="aud-icons">${items.map(it =>
+    `<i class="fas ${it.icon} ${it.ok ? '' : 'missing'}" title="${it.title}${it.ok ? ' OK' : ' faltando'}"></i>`
+  ).join('')}</div>`;
+}
+
+function scoreCell(score) {
+  const s = score == null ? null : Number(score);
+  const c = scoreColor(s);
+  return `<div class="score-bar-wrap">
+    <div class="score-bar"><div class="score-bar-fill" style="width:${s ?? 0}%;background:${c}"></div></div>
+    <span class="score-num" style="color:${c}">${s == null ? '—' : s.toFixed(1)}</span>
+  </div>`;
+}
+
+function rankRowHtml(r, i) {
+  return `<div class="rank-row">
+    <span class="pos">#${i + 1}</span>
+    <span class="title" title="${escapeHtml(r.title || r.item_id)}">${escapeHtml(r.title || r.item_id)}</span>
+    <span class="score" style="color:${scoreColor(r.score)}">${r.score == null ? '—' : Number(r.score).toFixed(1)}</span>
+  </div>`;
+}
+
+async function load() {
+  await loadLojas();
+  const data = await DB.getQualidadeAnuncio(currentFilters());
+  const items = data?.items || [];
+  allItems = items;
+  const s = data?.summary || {};
+
+  document.getElementById('kpiScoreMedio').textContent = s.avg_score != null ? s.avg_score.toFixed(1) : '—';
+  document.getElementById('kpiSemGtin').textContent = s.sem_gtin ?? '—';
+  document.getElementById('kpiSemVideo').textContent = s.sem_video ?? '—';
+  document.getElementById('kpiSemCatalogo').textContent = s.sem_catalogo ?? '—';
+  document.getElementById('kpiAtributos').textContent = s.atributos_incompletos ?? '—';
+  document.getElementById('kpiFull').textContent = s.full ?? '—';
+  document.getElementById('kpiNaoFull').textContent = s.nao_full ?? '—';
+  document.getElementById('totalCount').textContent = s.total ?? items.length;
+
+  // Filtro de categoria populado a partir do que veio (categoria não tem nome
+  // sincronizado hoje, só o ID cru do ML — ver .claude/decisions.md).
+  const catSel = document.getElementById('fCategoria');
+  if (!catSel.dataset.loaded) {
+    const cats = [...new Set(items.map(r => r.category_id).filter(Boolean))].sort();
+    cats.forEach(c => catSel.insertAdjacentHTML('beforeend', `<option value="${c}">${c}</option>`));
+    catSel.dataset.loaded = '1';
+  }
+
+  const withScore = items.filter(r => r.score != null);
+  const top = [...withScore].sort((a, b) => b.score - a.score).slice(0, 10);
+  const piores = [...withScore].sort((a, b) => a.score - b.score).slice(0, 10);
+  document.getElementById('rankTop').innerHTML = top.length ? top.map(rankRowHtml).join('') : '<div class="empty-state">Nenhum score calculado ainda.</div>';
+  document.getElementById('rankPiores').innerHTML = piores.length ? piores.map(rankRowHtml).join('') : '<div class="empty-state">Nenhum score calculado ainda.</div>';
+
+  document.getElementById('tbody').innerHTML = items.length ? items.map(r => `
+    <tr>
+      <td class="item-title-cell"><a href="${escapeHtml(r.permalink || '#')}" target="_blank" title="${escapeHtml(r.title || '')}">${escapeHtml(r.title || r.item_id)}</a></td>
+      <td style="font-size:.75rem;color:var(--text-muted)">${escapeHtml(r.store_name || '—')}</td>
+      <td style="font-size:.78rem">${escapeHtml(r.brand || '—')}</td>
+      <td style="font-size:.78rem">${logLabel(r.shipping_type)}</td>
+      <td>${auditIcons(r)}</td>
+      <td style="font-size:.78rem">${pct(r.conversion_rate)}</td>
+      <td style="font-size:.78rem">${N(r.visits_30d)}</td>
+      <td style="font-size:.78rem">${N(r.sales_30d)}</td>
+      <td>${scoreCell(r.score)}</td>
+    </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum anúncio encontrado com esses filtros.</td></tr>';
+
+  loadEvolucao();
+}
+
+async function loadEvolucao() {
+  const days = document.getElementById('fPeriodoEvolucao').value;
+  const data = await DB.getQualidadeAnuncioHistoricoMedio({ ...currentFilters(), days, sort: undefined });
+  const rows = data?.days || [];
+  const labels = rows.map(r => new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }));
+
+  destroyChart('evolucao');
+  charts.evolucao = new Chart(document.getElementById('evolucaoChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Score médio', data: rows.map(r => r.avg_score),
+        borderColor: '#FFE600', backgroundColor: 'rgba(255,230,0,.12)', fill: true, tension: .3, spanGaps: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 700, easing: 'easeOutQuart' },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 10 }, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+        y: { min: 0, max: 100, ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,.04)' } },
+      },
+    },
+  });
+}
+
+load();
+</script>
+</body>
+</html>

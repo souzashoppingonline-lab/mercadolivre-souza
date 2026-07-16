@@ -31,6 +31,15 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/alertas/anuncios-problema?store_id&level&sort` | itens ativos + score de qualidade (`item_performance`) + pedidos/receita 30/15/7d |
 | `POST /api/alertas/anuncios-performance/sync { store_id, limit }` | dispara em background a chamada `/item/:id/performance` na API do ML para itens sem score ou desatualizados (>24h); roda com mutex `perfSyncRunning` |
 
+## Qualidade de Anúncio (SEO Score — `item_seo_score`, ver `database.md` e `business-rules.md`)
+| Rota | Descrição |
+|---|---|
+| `GET /api/qualidade-anuncio?store_id&category_id&brand&is_full&catalog_listing&shipping_type&sort` | lista itens com score + `summary` agregado (`total`, `synced`, `avg_score`, `sem_gtin`, `sem_video`, `sem_catalogo`, `atributos_incompletos`, `full`, `nao_full`); Top10/Piores10 **não** vêm do backend — o frontend ordena o mesmo array `items` recebido (mesma convenção de outras telas de ranking) |
+| `GET /api/qualidade-anuncio/:itemId/historico` | série histórica do score de um item (`item_seo_score_history`) |
+| `GET /api/qualidade-anuncio/historico-medio?days&store_id&category_id&brand&is_full&catalog_listing&shipping_type` | `AVG(score)` diário do conjunto filtrado — alimenta o gráfico "Evolução do SEO Score médio" (7/30/90 dias) |
+
+Score calculado 1x/dia pelo job `sync-seo-score` (ver `workers.md`), nunca em tempo real — estas 3 rotas são leitura pura da tabela `item_seo_score`/`item_seo_score_history`, sem chamar a API do ML.
+
 ## Pedidos / Vendas (webhook-driven — tabela `orders`)
 | Rota | Descrição |
 |---|---|

@@ -15,6 +15,7 @@ const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem } = require('./reports');
 const taskEngine = require('./taskEngine');
+const { computeSeoScore } = require('./seoScore');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -1018,6 +1019,215 @@ async function syncMetricas() {
   }
 }
 
+// ── Sync SEO Score (Qualidade de Anúncio) — 04:30 diário ──────────────────────
+// Fórmula determinística (server/src/seoScore.js) — nunca IA. 2 chamadas novas
+// por item (getItem já existia, description e atributos de categoria são
+// novas — a última cacheada, ver category_attributes_cache). Mesmo padrão de
+// throttling/circuit-breaker de syncScores. Ver .claude/decisions.md.
+let isSyncingSeoScore = false;
+const CATEGORY_ATTRS_CACHE_DAYS = 30;
+
+async function getRequiredAttrsForCategory(categoryId, storeId, localCache) {
+  if (!categoryId) return [];
+  if (localCache.has(categoryId)) return localCache.get(categoryId);
+
+  const { rows } = await pool.query(
+    `SELECT required_ids, updated_at FROM category_attributes_cache WHERE category_id=$1`,
+    [categoryId]
+  );
+  const cached = rows[0];
+  const isFresh = cached && (Date.now() - new Date(cached.updated_at).getTime()) < CATEGORY_ATTRS_CACHE_DAYS * 86400000;
+  if (isFresh) {
+    localCache.set(categoryId, cached.required_ids || []);
+    return cached.required_ids || [];
+  }
+
+  try {
+    const attrs = await ml.getCategoryAttributes(categoryId, storeId);
+    const requiredIds = (Array.isArray(attrs) ? attrs : []).filter(a => a.tags?.required).map(a => a.id);
+    await pool.query(
+      `INSERT INTO category_attributes_cache (category_id, required_ids, updated_at) VALUES ($1,$2,now())
+       ON CONFLICT (category_id) DO UPDATE SET required_ids=EXCLUDED.required_ids, updated_at=now()`,
+      [categoryId, requiredIds]
+    );
+    localCache.set(categoryId, requiredIds);
+    return requiredIds;
+  } catch (e) {
+    console.warn(`[sync-seo-score] atributos categoria ${categoryId}: ${e.message}`);
+    const fallback = cached?.required_ids || [];
+    localCache.set(categoryId, fallback);
+    return fallback;
+  }
+}
+
+async function syncSeoScore() {
+  if (isSyncingSeoScore) { console.warn('[sync-seo-score] já em execução — ignorando'); return; }
+  isSyncingSeoScore = true;
+  console.log('[sync-seo-score] iniciando sync de Qualidade de Anúncio...');
+  try {
+    return await recordSync('sync-seo-score', '30 4 * * *', async () => {
+      const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
+      let totalSynced = 0, totalErrors = 0;
+      const lojaReport = [];
+      const categoryAttrsCache = new Map();
+
+      for (const store of stores) {
+        try {
+          await ensureTokenFresh(store);
+          const { rows: items } = await pool.query(
+            `SELECT ml_id, title, category_id FROM items WHERE store_id=$1 AND status='active' ORDER BY ml_id LIMIT 100`,
+            [store.id]
+          );
+          console.log(`[sync-seo-score] ${store.nickname}: ${items.length} itens ativos`);
+
+          // Visitas e vendas dos últimos 30 dias — 1 query por loja, não por item (sem N+1).
+          const { rows: visitRows } = await pool.query(
+            `SELECT item_id, SUM(visits)::int AS visits_30d FROM item_visits WHERE store_id=$1 AND date >= CURRENT_DATE - 30 GROUP BY item_id`,
+            [store.id]
+          );
+          const visitsMap = new Map(visitRows.map(r => [r.item_id, r.visits_30d]));
+          const { rows: salesRows } = await pool.query(
+            `SELECT item_id, COUNT(*)::int AS sales_30d FROM orders WHERE store_id=$1 AND date_created >= CURRENT_DATE - 30 AND status != 'cancelled' GROUP BY item_id`,
+            [store.id]
+          );
+          const salesMap = new Map(salesRows.map(r => [r.item_id, r.sales_30d]));
+
+          let synced = 0, errors = 0;
+          let consecutiveRateLimit = 0;
+
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            try {
+              const full = await ml.getItem(item.ml_id, store.id);
+              consecutiveRateLimit = 0;
+
+              let descWords = 0;
+              try {
+                const desc = await ml.getItemDescription(item.ml_id, store.id);
+                const text = desc?.plain_text || desc?.text || '';
+                descWords = text.trim() ? text.trim().split(/\s+/).length : 0;
+              } catch (e) {
+                if (e.message?.includes('429') || e.message?.includes('rate limit')) throw e;
+                // item sem descrição própria (ex: variação) — ok, conta 0
+              }
+
+              const categoryId = full.category_id || item.category_id;
+              const requiredIds = await getRequiredAttrsForCategory(categoryId, store.id, categoryAttrsCache);
+              const presentIds = new Set((full.attributes || []).filter(a => a.value_name != null && a.value_name !== '').map(a => a.id));
+              const missingRequired = requiredIds.filter(id => !presentIds.has(id));
+
+              const findAttr = (id) => (full.attributes || []).find(a => a.id === id);
+              const gtinAttr = findAttr('GTIN');
+              const brandAttr = findAttr('BRAND');
+              const modelAttr = findAttr('MODEL');
+
+              const visits30d = visitsMap.get(item.ml_id) || 0;
+              const sales30d = salesMap.get(item.ml_id) || 0;
+              const conversionRate = visits30d > 0 ? sales30d / visits30d : 0;
+
+              const shippingType = full.shipping?.logistic_type || null;
+              const signals = {
+                picturesCount: full.pictures?.length || 0,
+                hasVideo: !!full.video_id,
+                titleLength: (full.title || '').length,
+                descriptionWordCount: descWords,
+                hasGtin: !!(gtinAttr && gtinAttr.value_name),
+                hasBrand: !!(brandAttr && brandAttr.value_name),
+                hasModel: !!(modelAttr && modelAttr.value_name),
+                isFull: shippingType === 'fulfillment',
+                catalogListing: !!full.catalog_listing,
+                requiredAttrsTotal: requiredIds.length,
+                requiredAttrsMissing: missingRequired.length,
+                conversionRate,
+                visits30d,
+              };
+              const { subscores, total } = computeSeoScore(signals);
+
+              await pool.query(
+                `INSERT INTO item_seo_score (
+                   store_id, item_id, category_id, brand,
+                   pictures_count, has_video, title_length, description_word_count,
+                   has_gtin, has_brand, has_model, is_full, shipping_type, catalog_listing,
+                   required_attrs_total, required_attrs_missing, missing_required_attrs,
+                   visits_30d, sales_30d, conversion_rate,
+                   photos_score, video_score, title_score, description_score,
+                   gtin_score, brand_score, model_score, full_score, catalog_score,
+                   attributes_score, conversion_score, visits_score, score, calculated_at
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,now())
+                 ON CONFLICT (item_id) DO UPDATE SET
+                   store_id=EXCLUDED.store_id, category_id=EXCLUDED.category_id, brand=EXCLUDED.brand,
+                   pictures_count=EXCLUDED.pictures_count, has_video=EXCLUDED.has_video,
+                   title_length=EXCLUDED.title_length, description_word_count=EXCLUDED.description_word_count,
+                   has_gtin=EXCLUDED.has_gtin, has_brand=EXCLUDED.has_brand, has_model=EXCLUDED.has_model,
+                   is_full=EXCLUDED.is_full, shipping_type=EXCLUDED.shipping_type, catalog_listing=EXCLUDED.catalog_listing,
+                   required_attrs_total=EXCLUDED.required_attrs_total, required_attrs_missing=EXCLUDED.required_attrs_missing,
+                   missing_required_attrs=EXCLUDED.missing_required_attrs,
+                   visits_30d=EXCLUDED.visits_30d, sales_30d=EXCLUDED.sales_30d, conversion_rate=EXCLUDED.conversion_rate,
+                   photos_score=EXCLUDED.photos_score, video_score=EXCLUDED.video_score,
+                   title_score=EXCLUDED.title_score, description_score=EXCLUDED.description_score,
+                   gtin_score=EXCLUDED.gtin_score, brand_score=EXCLUDED.brand_score, model_score=EXCLUDED.model_score,
+                   full_score=EXCLUDED.full_score, catalog_score=EXCLUDED.catalog_score,
+                   attributes_score=EXCLUDED.attributes_score, conversion_score=EXCLUDED.conversion_score,
+                   visits_score=EXCLUDED.visits_score, score=EXCLUDED.score, calculated_at=now()`,
+                [
+                  store.id, item.ml_id, categoryId, brandAttr?.value_name || null,
+                  signals.picturesCount, signals.hasVideo, signals.titleLength, signals.descriptionWordCount,
+                  signals.hasGtin, signals.hasBrand, signals.hasModel, signals.isFull, shippingType, signals.catalogListing,
+                  signals.requiredAttrsTotal, signals.requiredAttrsMissing, missingRequired,
+                  visits30d, sales30d, conversionRate,
+                  subscores.photos, subscores.video, subscores.title, subscores.description,
+                  subscores.gtin, subscores.brand, subscores.model, subscores.full, subscores.catalog,
+                  subscores.attributes, subscores.conversion, subscores.visits, total,
+                ]
+              );
+              await pool.query(
+                `INSERT INTO item_seo_score_history (item_id, store_id, score) VALUES ($1,$2,$3)`,
+                [item.ml_id, store.id, total]
+              );
+              synced++;
+            } catch (e) {
+              if (e.message?.includes('429') || e.message?.includes('rate limit')) {
+                consecutiveRateLimit++;
+                console.warn(`[sync-seo-score] 429 em ${item.ml_id} — aguardando 60s`);
+                await new Promise(r => setTimeout(r, 60000));
+                if (consecutiveRateLimit >= 5) {
+                  console.error(`[sync-seo-score] ${store.nickname}: 5 rate limits seguidos — abortando loja`);
+                  throw new Error('Rate limit persistente — abortado após 5 tentativas consecutivas');
+                }
+              } else {
+                console.warn(`[sync-seo-score] erro em ${item.ml_id}: ${e.message}`);
+                errors++;
+              }
+            }
+            // 10s entre itens
+            await new Promise(r => setTimeout(r, 10000));
+            // A cada 10 itens, pausa extra de 30s
+            if ((i + 1) % 10 === 0) {
+              console.log(`[sync-seo-score] ${store.nickname}: lote ${Math.ceil((i+1)/10)} concluído (${i+1}/${items.length}) — pausa 30s`);
+              await new Promise(r => setTimeout(r, 30000));
+            }
+          }
+
+          totalSynced += synced;
+          totalErrors += errors;
+          lojaReport.push({ loja: store.nickname, synced, errors });
+          console.log(`[sync-seo-score] ${store.nickname}: ${synced} ok, ${errors} erros`);
+          await new Promise(r => setTimeout(r, 3000)); // 3s entre lojas
+        } catch (e) {
+          console.error(`[sync-seo-score] erro na loja ${store.nickname}:`, e.message);
+          lojaReport.push({ loja: store.nickname, erro: e.message });
+        }
+      }
+
+      console.log(`[sync-seo-score] concluído: ${totalSynced} atualizados, ${totalErrors} erros`);
+      return { synced: totalSynced, errors: totalErrors, lojas: lojaReport };
+    });
+  } finally {
+    isSyncingSeoScore = false;
+    scheduleAt(4, 30, syncSeoScore, 'sync-seo-score');
+  }
+}
+
 // ── Sync Preços Promocionais — 05:00 diário ───────────────────────────────────
 let isSyncingPrecos = false;
 
@@ -1945,6 +2155,7 @@ scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
+scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');

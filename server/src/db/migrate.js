@@ -24,6 +24,7 @@ async function migrate() {
     'migrate-v22.sql',
     'migrate-v23.sql',
     'migrate-v24.sql',
+    'migrate-v25.sql',
   ];
   for (const f of files) {
     const filePath = path.join(__dirname, f);

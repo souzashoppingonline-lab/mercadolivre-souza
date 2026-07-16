@@ -118,4 +118,7 @@ module.exports = {
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
   searchOrders:        (storeId, dateFrom, offset=0) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50&offset=${offset}`, storeId),
   getItemVisits:       (id, dateFrom, storeId) => get(`/items/${id}/visits/time_window?last=1&unit=day&ending=${encodeURIComponent(dateFrom)}`, storeId),
+  // Qualidade de Anúncio (SEO Score) — ver seoScore.js e .claude/decisions.md.
+  getItemDescription:  (id, storeId) => get(`/items/${id}/description`, storeId),
+  getCategoryAttributes: (categoryId, storeId) => get(`/categories/${categoryId}/attributes`, storeId),
 };

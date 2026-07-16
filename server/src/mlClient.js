@@ -69,7 +69,10 @@ async function get(path, storeId, retries = 1) {
     return get(path, storeId, retries - 1);
   }
 
-  if (!res.ok) throw new Error(`ML API ${path} -> HTTP ${res.status}`);
+  // Corpo do erro incluído na mensagem (mesmo padrão do post() logo abaixo) —
+  // sem isso, um 400 de parâmetro inválido só mostra o código, não o motivo
+  // que o ML devolveu (ex: qual query param é inválido).
+  if (!res.ok) throw new Error(`ML API ${path} -> HTTP ${res.status}: ${await res.text()}`);
   return res.json();
 }
 

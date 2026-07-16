@@ -454,24 +454,34 @@ async function finalizeCurrent() {
   currentSession = null;
   stopDurationWatcher();
   setScanState('saving');
-  const blob = await stopRecordingAndGetBlob();
+  const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);
+
+  // Upload roda em segundo plano (sem await) — não trava o operador esperando
+  // a rede pra poder bipar a próxima etiqueta. Ver .claude/embalagem.md.
+  uploadPackingVideo(session, blob, durationSeconds);
+
+  setScanState('success');
+  showScanMsg('✅ Pedido embalado — pode bipar o próximo.', 'success');
+  setTimeout(() => { setScanState('idle'); resetOrdersDisplay(); }, 2000);
+  return true;
+}
+
+async function uploadPackingVideo(session, blob, durationSeconds) {
   const fd = new FormData();
   fd.append('shipping_id', session.shippingId);
   fd.append('order_ids', JSON.stringify(session.orders.map(o => o.order_id)));
   fd.append('duration_seconds', String(durationSeconds));
   fd.append('store_id', session.orders[0]?.store_id || '');
   fd.append('video', blob, `${session.shippingId}.webm`);
-  const res = await DB.finalizarEmbalagem(fd);
-  if (!res || res.error) {
-    showScanMsg('Erro ao salvar o vídeo: ' + (res?.error || ''), 'error');
-    setScanState('idle');
-  } else {
-    setScanState('success');
-    showScanMsg('✅ Pedido embalado e vídeo salvo com sucesso.', 'success');
-    setTimeout(() => { setScanState('idle'); resetOrdersDisplay(); }, 10000);
+  try {
+    const res = await DB.finalizarEmbalagem(fd);
+    if (!res || res.error) {
+      showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${res?.error || 'erro desconhecido'}`, 'error');
+    }
+  } catch (e) {
+    showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${e.message}`, 'error');
   }
-  return true;
 }
 
 async function handleScan(raw) {

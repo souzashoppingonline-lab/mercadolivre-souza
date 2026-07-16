@@ -15,6 +15,7 @@
     .btn-save-note { background:var(--primary); color:#000; border:none; border-radius:6px; padding:4px 10px; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; }
     .btn-save-note:hover { opacity:.85; }
     .saved-note { font-size:.78rem; color:var(--text-muted); font-style:italic; }
+    .periodo-btn.active { background:var(--primary) !important; color:#000 !important; border-color:var(--primary) !important; }
     .dev-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
     .dev-modal-backdrop.open { display: flex; }
     .dev-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 720px; padding: 18px; }
@@ -39,6 +40,20 @@
         <button class="btn-save-note" id="btnSync" style="padding:8px 18px;font-size:.85rem;background:var(--surface);color:var(--text-primary);border:1px solid var(--border)" onclick="syncRetroativo()">
           <i class="fas fa-sync-alt"></i> Importar histórico ML
         </button>
+      </div>
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select id="filtroLoja" class="btn-save-note" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);font-weight:400;padding:8px 12px" onchange="load()">
+          <option value="">Todas as lojas</option>
+        </select>
+        <div id="periodoBtns" style="display:flex;gap:6px">
+          <button class="btn-save-note periodo-btn" data-periodo="hoje" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('hoje')">Hoje</button>
+          <button class="btn-save-note periodo-btn" data-periodo="ontem" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('ontem')">Ontem</button>
+          <button class="btn-save-note periodo-btn" data-periodo="7" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(7)">7 dias</button>
+          <button class="btn-save-note periodo-btn" data-periodo="15" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(15)">15 dias</button>
+          <button class="btn-save-note periodo-btn" data-periodo="30" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(30)">30 dias</button>
+          <button class="btn-save-note periodo-btn" data-periodo="" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('')">Tudo</button>
+        </div>
       </div>
 
       <div class="card-grid" style="margin-bottom:16px">
@@ -102,9 +117,46 @@ async function saveNote(id, btn) {
   }
 }
 
+let periodoAtual = { date_from: '', date_to: '' };
+
+async function loadLojasFiltro() {
+  const sel = document.getElementById('filtroLoja');
+  if (sel.dataset.loaded) return;
+  const data = await DB.getLojas();
+  (data?.stores || []).forEach(l => sel.insertAdjacentHTML('beforeend', `<option value="${l.id}">${l.nickname}</option>`));
+  sel.dataset.loaded = '1';
+}
+
+function todayISO(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Hoje/Ontem/7/15/30 dias — botões de atalho pro filtro de data. "Tudo"
+// (dias === '') limpa o filtro de período sem mexer no resto (loja/busca).
+function setPeriodo(dias) {
+  const hoje = new Date();
+  if (dias === '') {
+    periodoAtual = { date_from: '', date_to: '' };
+  } else if (dias === 'hoje') {
+    periodoAtual = { date_from: todayISO(hoje), date_to: todayISO(hoje) };
+  } else if (dias === 'ontem') {
+    const d = new Date(hoje); d.setDate(d.getDate() - 1);
+    periodoAtual = { date_from: todayISO(d), date_to: todayISO(d) };
+  } else {
+    const d = new Date(hoje); d.setDate(d.getDate() - Number(dias));
+    periodoAtual = { date_from: todayISO(d), date_to: todayISO(hoje) };
+  }
+  document.querySelectorAll('.periodo-btn').forEach(b => b.classList.toggle('active', b.dataset.periodo === String(dias)));
+  load();
+}
+
 async function load() {
+  await loadLojasFiltro();
   const q = document.getElementById('searchInput').value.trim();
-  const data = await DB.getDevolucoes({ q }) || { items:[], summary:{} };
+  const storeId = document.getElementById('filtroLoja').value;
+  const params = { q, store_id: storeId || undefined };
+  if (periodoAtual.date_from) { params.date_from = periodoAtual.date_from; params.date_to = periodoAtual.date_to + 'T23:59:59'; }
+  const data = await DB.getDevolucoes(params) || { items:[], summary:{} };
   const s = data.summary || {};
 
   document.getElementById('kpi-total').textContent     = s.total ?? '—';

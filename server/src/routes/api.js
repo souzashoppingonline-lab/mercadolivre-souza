@@ -1726,16 +1726,18 @@ router.get('/clientes/:nickname', async (req, res) => {
 
 // ── Alertas faltando ───────────────────────────────────────
 router.get('/alertas/devolucoes', async (req, res) => {
-  const { store_id = '', q = '' } = req.query;
-  const searchFilter = q ? `AND (r.order_id::text ILIKE $2 OR r.buyer_nickname ILIKE $2 OR r.title ILIKE $2)` : '';
+  const { store_id = '', q = '', date_from = '', date_to = '' } = req.query;
+  const where = [`($1 = '' OR r.store_id = $1::bigint)`];
   const params = [store_id];
-  if (q) params.push(`%${q}%`);
+  if (q) { params.push(`%${q}%`); where.push(`(r.order_id::text ILIKE $${params.length} OR r.buyer_nickname ILIKE $${params.length} OR r.title ILIKE $${params.length})`); }
+  if (date_from) { params.push(date_from); where.push(`r.date >= $${params.length}`); }
+  if (date_to)   { params.push(date_to);   where.push(`r.date <= $${params.length}`); }
   const { rows } = await pool.query(
     `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
             r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note
      FROM returns r
      LEFT JOIN vw_ml_stores s ON s.id = r.store_id
-     WHERE ($1 = '' OR r.store_id = $1::bigint) ${searchFilter}
+     WHERE ${where.join(' AND ')}
      ORDER BY r.date DESC LIMIT 200`,
     params
   );

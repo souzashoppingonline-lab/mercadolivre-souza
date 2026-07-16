@@ -101,9 +101,13 @@ module.exports = {
   getShipment:         (shipmentId, storeId) => get(`/shipments/${shipmentId}`, storeId),
   // Endpoint correto tem o segmento /v1/ — a API antiga sem versão (/post-purchase/claims/...)
   // foi descontinuada pelo ML em 2024 e devolve 404 (confirmado em produção — ver decisions.md).
-  // players.role=respondent + players.user_id=storeId filtra claims onde o vendedor é quem
-  // precisa responder (o caso de uso desta tela).
-  searchClaims:        (storeId, offset=0) => get(`/post-purchase/v1/claims/search?players.role=respondent&players.user_id=${storeId}&limit=50&offset=${offset}`, storeId),
+  // Nomes de filtro exatos confirmados testando direto contra a API real
+  // (a doc pública sugeria "players.role"/"players.user_id", que devolve 400
+  // — o correto, confirmado pela própria mensagem de erro do ML, é
+  // player_role + player_user_id, singular e com underscore):
+  // player_role=respondent + player_user_id=storeId filtra claims onde o
+  // vendedor é quem precisa responder (o caso de uso desta tela).
+  searchClaims:        (storeId, offset=0) => get(`/post-purchase/v1/claims/search?player_role=respondent&player_user_id=${storeId}&limit=50&offset=${offset}`, storeId),
   getClaim:            (claimId, storeId) => get(`/post-purchase/v1/claims/${claimId}`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
   searchOrders:        (storeId, dateFrom, offset=0) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50&offset=${offset}`, storeId),

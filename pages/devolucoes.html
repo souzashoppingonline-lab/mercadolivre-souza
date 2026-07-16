@@ -91,6 +91,17 @@
 <script>
 const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+// Traduções de campos que vêm em inglês/código da API do ML — reason_detail
+// já vem traduzido pelo backend (endpoint /marketplace/v2/claims/reasons,
+// ver worker.js). stage/type são um conjunto pequeno e conhecido de valores,
+// traduzidos aqui direto; valor desconhecido cai no fallback (capitaliza o
+// texto cru) em vez de sumir ou quebrar.
+const TYPE_LABEL = { mediations: 'Mediação', returns: 'Devolução', cancel_purchase: 'Cancelamento de compra' };
+const STAGE_LABEL = { claim: 'Reclamação', dispute: 'Disputa', mediation: 'Mediação', recontact: 'Recontato', dispute_recontact: 'Disputa (recontato)' };
+function traduzido(mapa, valor) {
+  if (!valor) return null;
+  return mapa[valor] || (valor.charAt(0).toUpperCase() + valor.slice(1).replace(/_/g, ' '));
+}
 const statusMap = {
   opened:   { l:'Em Análise', c:'paused' },
   analysis: { l:'Em Análise', c:'paused' },
@@ -174,7 +185,10 @@ async function load() {
           <td style="font-size:.75rem;color:var(--text-muted)">${r.conta||'—'}</td>
           <td style="white-space:nowrap">${r.buyer_nickname||'—'}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title||''}">${r.title||'—'}</td>
-          <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reason||'—'}</td>
+          <td style="max-width:180px" title="${r.reason||''}">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reason_detail || r.reason || '—'}</div>
+            ${(r.type || r.stage) ? `<div style="font-size:10px;color:var(--text-muted)">${[traduzido(TYPE_LABEL, r.type), traduzido(STAGE_LABEL, r.stage)].filter(Boolean).join(' • ')}</div>` : ''}
+          </td>
           <td style="white-space:nowrap">${fmt(r.amount)}</td>
           <td><span class="badge ${st.c}">${st.l}</span></td>
           <td style="white-space:nowrap">${fmtD(r.date)}</td>

@@ -266,6 +266,16 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 
 **Segundo achado, menor**: `returns.buyer_nickname` e `returns.note` existiam de fato em produção (confirmado via `\d returns`), mas **fora de qualquer migration rastreada** — nenhum `ALTER TABLE returns ADD COLUMN` pra nenhuma das duas em `schema.sql`/`migrate-v*.sql`, apesar de `database.md` documentar as colunas como existentes. Não era a causa do bug reportado (a coluna funcionava normalmente em produção), mas um banco novo criado do zero a partir de `schema.sql`/`migrate.js` ficaria sem essas colunas e replicaria a mesma falha silenciosa por outro motivo. Corrigido na mesma tarefa: migration v23 (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, idempotente — no-op em produção, preenche o gap em qualquer banco novo) + `schema.sql` espelhado.
 
+## Devoluções (v24) — motivo traduzido + campos completos da claim
+
+**Contexto**: usuário pediu pra ver "todos os valores" da claim (stage/type/players/etc, mostrados numa investigação anterior) traduzidos na tela, em vez do código cru (`reason_id` tipo "PDD9942").
+
+**Decisão — `raw_data JSONB` em `returns`, em vez de uma coluna por campo**: mesmo padrão já usado em `orders.raw_data` — guardar a claim inteira e extrair `stage`/`type`/`last_updated` via `->>'campo'` na leitura, em vez de criar uma coluna nova pra cada informação que se queira mostrar depois. Mais flexível: se amanhã quiser mostrar mais um campo da claim, é só ler de `raw_data`, sem migration nova.
+
+**Decisão — tradução de `reason_id` via API real, com cache, não tabela estática escrita à mão**: existe um endpoint oficial (`GET /marketplace/v2/claims/reasons/:id`) que devolve a descrição em português no campo `detail` (testado ao vivo: "PNR9509" → "Me arrependi da compra", "PDD9942" → "Recebi outro tipo de produto") — usar isso em vez de eu tentar adivinhar/documentar manualmente o significado de cada prefixo (`PNR`/`PDD`/etc.), o que arriscaria mostrar uma tradução errada pro usuário. Como a API rate-limita rápido (confirmado ao vivo nesta mesma sessão, testando só 2 códigos em sequência), a tradução é **cacheada** na tabela `claim_reasons` (`id` = `reason_id`, `detail`) — só chama a API na primeira vez que um código aparece, nunca mais depois disso. `resolveClaimReason()` roda no worker (nunca na rota de leitura, regra 3 de `architecture.md`).
+
+**Decisão — `stage`/`type` traduzidos com mapa estático no frontend**: ao contrário do `reason_id` (universo grande, códigos arbitrários, arriscado adivinhar), `stage` (`dispute`/`claim`/`mediation`/...) e `type` (`mediations`/`returns`/`cancel_purchase`) são um conjunto pequeno e já confirmado pela própria API/docs — traduzido direto em `devolucoes.html` (`STAGE_LABEL`/`TYPE_LABEL`), com fallback pro texto capitalizado se aparecer um valor não mapeado (nunca esconde o dado, só não traduz).
+
 ## Login de acesso restrito (v22) — proteção completa, não só a página de Embalagem
 
 **Contexto**: usuário pediu acesso de Embalagem pra funcionários, sem que eles vissem o resto do sistema (relatórios de vendas etc.), explicitamente "sem mexer em nada porque está tudo perfeito e funcionando".

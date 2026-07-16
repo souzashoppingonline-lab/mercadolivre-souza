@@ -148,7 +148,15 @@ CREATE TABLE IF NOT EXISTS returns (
   status TEXT,
   date TIMESTAMPTZ,
   updated_at TIMESTAMPTZ DEFAULT now(),
-  note TEXT
+  note TEXT,
+  raw_data JSONB
+);
+
+CREATE TABLE IF NOT EXISTS claim_reasons (
+  id TEXT PRIMARY KEY,
+  detail TEXT,
+  flow TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- Em bancos existentes, os CREATE TABLE acima são no-op (orders/returns já

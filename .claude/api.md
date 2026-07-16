@@ -96,7 +96,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 |---|---|
 | `GET /api/alertas/reposicao?threshold&store_id` | itens com estoque ≤ threshold (padrão 15), com resumo por faixa (zero/critical≤3/low≤10/medium) |
 | `GET /api/alertas/cancelamentos` | últimos 100 pedidos cancelados |
-| `GET /api/alertas/devolucoes?store_id&q&date_from&date_to` | devoluções + summary por status. `date_from`/`date_to` filtram por `returns.date` — usados pelos botões de atalho Hoje/Ontem/7/15/30 dias em `pages/devolucoes.html` |
+| `GET /api/alertas/devolucoes?store_id&q&date_from&date_to` | devoluções + summary por status. `date_from`/`date_to` filtram por `returns.date` — usados pelos botões de atalho Hoje/Ontem/7/15/30 dias em `pages/devolucoes.html`. Cada linha inclui `reason_detail` (motivo traduzido, `claim_reasons` join com fallback pro código cru), `stage`/`type`/`last_updated` (extraídos de `returns.raw_data`) |
 | `PATCH /api/alertas/devolucoes/:id/note { note }` | anotação manual em uma devolução |
 | `GET /api/alteracoes?store_id&days&limit` | trilha de `item_changes` com título/thumbnail do item |
 

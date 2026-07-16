@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -120,7 +120,17 @@ title, reason, status TEXT
 amount NUMERIC
 date, updated_at TIMESTAMPTZ
 note  -- v23 (mesma correção): usado pelo endpoint PATCH /api/alertas/devolucoes/:id/note (anotação manual do time)
+raw_data JSONB  -- v24: claim completa da API do ML (stage/type/players/resolution/etc) — mesmo padrão de orders.raw_data
 ```
+
+### `claim_reasons` — v24: cache de tradução de reason_id
+```
+id TEXT PK         -- ex: "PNR9509"
+detail TEXT        -- descrição em português, ex: "Me arrependi da compra" (vem de GET /marketplace/v2/claims/reasons/:id)
+flow TEXT
+updated_at TIMESTAMPTZ
+```
+Populado sob demanda por `resolveClaimReason()` (`worker.js`) na primeira vez que um `reason_id` novo aparece — evita rechamar a API pro mesmo código toda vez (rate limit real observado). Sem FK pra `returns` — é join por `id = returns.reason` na leitura (`GET /api/alertas/devolucoes`).
 
 ### `amazon_order_data` — v15: campos exclusivos de pedidos Amazon
 ```

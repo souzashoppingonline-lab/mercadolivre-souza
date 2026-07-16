@@ -432,6 +432,29 @@ function claimOrderId(claim) {
   return claim.resource === 'order' && claim.resource_id != null ? String(claim.resource_id) : (claim.order_id || null);
 }
 
+// Traduz reason_id ("PNR9509") pra descrição em português ("Me arrependi da
+// compra") via /marketplace/v2/claims/reasons/:id — cacheado em
+// claim_reasons pra nunca rechamar a API pro mesmo código (rate limit real
+// observado testando isso ao vivo). Chamado só aqui, no worker — nunca em
+// rota de leitura (regra 3 de architecture.md).
+async function resolveClaimReason(reasonId, storeId) {
+  if (!reasonId) return null;
+  const { rows } = await pool.query('SELECT detail FROM claim_reasons WHERE id = $1', [reasonId]);
+  if (rows.length) return rows[0].detail;
+  try {
+    const data = await ml.getClaimReason(reasonId, storeId);
+    await pool.query(
+      `INSERT INTO claim_reasons (id, detail, flow, updated_at) VALUES ($1,$2,$3,now())
+       ON CONFLICT (id) DO UPDATE SET detail = EXCLUDED.detail, flow = EXCLUDED.flow, updated_at = now()`,
+      [reasonId, data.detail || null, data.flow || null]
+    );
+    return data.detail || null;
+  } catch (e) {
+    console.warn(`[worker] resolveClaimReason(${reasonId})`, e.message);
+    return null;
+  }
+}
+
 async function handlePostPurchase({ resource, storeId }) {
   const claimId = resource.split('/').pop();
   try {
@@ -439,12 +462,13 @@ async function handlePostPurchase({ resource, storeId }) {
     const orderId = claimOrderId(claim);
     const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
     const itemTitle = claim.resolution?.description || null;
+    await resolveClaimReason(claim.reason_id, storeId);
     await pool.query(
-      `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+      `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9)
        ON CONFLICT DO NOTHING`,
       [storeId, orderId, buyerNickname, itemTitle || claim.reason_id,
-       claim.reason_id || null, claim.total || 0, claim.status, claim.date_created]
+       claim.reason_id || null, claim.total || 0, claim.status, claim.date_created, JSON.stringify(claim)]
     );
     await publish('devolucao_recebida', { store_id: storeId, claim_id: claimId, status: claim.status });
     if (claim.status === 'opened') {
@@ -960,13 +984,14 @@ async function syncMetricas() {
               const claim = await ml.getClaim(c.id, store.id);
               const orderId = claimOrderId(claim);
               const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
+              await resolveClaimReason(claim.reason_id, store.id);
               const { rowCount } = await pool.query(
-                `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now()) ON CONFLICT DO NOTHING`,
+                `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9) ON CONFLICT DO NOTHING`,
                 [store.id, orderId, buyerNickname,
                  claim.resolution?.description || claim.reason_id || null,
                  claim.reason_id || null, claim.total || 0,
-                 claim.status, claim.date_created]
+                 claim.status, claim.date_created, JSON.stringify(claim)]
               );
               if (rowCount) claimsNew++;
             } catch (e) { console.warn(`[sync-metricas] claim=${c.id}: ${e.message}`); }
@@ -1161,14 +1186,15 @@ async function syncReturns() {
             const claim = await ml.getClaim(c.id, store.id);
             const orderId = claimOrderId(claim);
             const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
+            await resolveClaimReason(claim.reason_id, store.id);
             const { rowCount } = await pool.query(
-              `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+              `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9)
                ON CONFLICT DO NOTHING`,
               [store.id, orderId, buyerNickname,
                claim.resolution?.description || claim.reason_id || null,
                claim.reason_id || null, claim.total || 0,
-               claim.status, claim.date_created]
+               claim.status, claim.date_created, JSON.stringify(claim)]
             );
             if (rowCount) total++;
           } catch (e) {

@@ -109,6 +109,12 @@ module.exports = {
   // vendedor é quem precisa responder (o caso de uso desta tela).
   searchClaims:        (storeId, offset=0) => get(`/post-purchase/v1/claims/search?player_role=respondent&player_user_id=${storeId}&limit=50&offset=${offset}`, storeId),
   getClaim:            (claimId, storeId) => get(`/post-purchase/v1/claims/${claimId}`, storeId),
+  // Traduz um reason_id (ex: "PNR9509") pra descrição legível em português
+  // ("Me arrependi da compra") — testado ao vivo, campo `detail` já vem
+  // traduzido. Chamado só quando o código ainda não está cacheado em
+  // claim_reasons (ver worker.js resolveClaimReason) pra não estourar rate
+  // limit reprocessando o mesmo código toda vez.
+  getClaimReason:      (reasonId, storeId) => get(`/marketplace/v2/claims/reasons/${reasonId}`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
   searchOrders:        (storeId, dateFrom, offset=0) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50&offset=${offset}`, storeId),
   getItemVisits:       (id, dateFrom, storeId) => get(`/items/${id}/visits/time_window?last=1&unit=day&ending=${encodeURIComponent(dateFrom)}`, storeId),

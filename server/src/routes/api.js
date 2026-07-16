@@ -1734,9 +1734,14 @@ router.get('/alertas/devolucoes', async (req, res) => {
   if (date_to)   { params.push(date_to);   where.push(`r.date <= $${params.length}`); }
   const { rows } = await pool.query(
     `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
-            r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note
+            r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note,
+            COALESCE(cr.detail, r.reason) AS reason_detail,
+            r.raw_data->>'stage' AS stage,
+            r.raw_data->>'type' AS type,
+            r.raw_data->>'last_updated' AS last_updated
      FROM returns r
      LEFT JOIN vw_ml_stores s ON s.id = r.store_id
+     LEFT JOIN claim_reasons cr ON cr.id = r.reason
      WHERE ${where.join(' AND ')}
      ORDER BY r.date DESC LIMIT 200`,
     params

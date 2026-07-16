@@ -206,7 +206,7 @@ function scoreCell(score) {
 function rankRowHtml(r, i) {
   return `<div class="rank-row">
     <span class="pos">#${i + 1}</span>
-    <span class="title" title="${escapeHtml(r.title || r.item_id)}">${escapeHtml(r.title || r.item_id)}</span>
+    <a class="title" href="${escapeHtml(r.permalink || '#')}" target="_blank" rel="noopener" title="${escapeHtml(r.title || r.item_id)}">${escapeHtml(r.title || r.item_id)}</a>
     <span class="score" style="color:${scoreColor(r.score)}">${r.score == null ? '—' : Number(r.score).toFixed(1)}</span>
   </div>`;
 }

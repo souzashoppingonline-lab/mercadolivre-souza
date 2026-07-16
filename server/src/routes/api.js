@@ -1879,10 +1879,13 @@ router.get('/qualidade-anuncio', async (req, res) => {
               q.visits_30d, q.sales_30d, q.conversion_rate,
               q.photos_score, q.video_score, q.title_score, q.description_score,
               q.gtin_score, q.brand_score, q.model_score, q.full_score, q.catalog_score,
-              q.attributes_score, q.conversion_score, q.visits_score, q.score, q.calculated_at
+              q.attributes_score, q.conversion_score, q.visits_score, q.score, q.calculated_at,
+              cc.status AS buybox_status, cc.price_to_win, cc.winner_item_id, cc.winner_price,
+              cc.boosts_missing AS buybox_boosts_missing, cc.calculated_at AS buybox_calculated_at
        FROM item_seo_score q
        JOIN items i ON i.ml_id = q.item_id
        LEFT JOIN stores s ON s.id = q.store_id
+       LEFT JOIN catalog_competition cc ON cc.item_id = q.item_id
        ${whereSql}
        ORDER BY ${orderBy}
        LIMIT 500`,
@@ -1893,6 +1896,8 @@ router.get('/qualidade-anuncio', async (req, res) => {
     const avgScore = withScore.length
       ? Math.round((withScore.reduce((a, r) => a + Number(r.score), 0) / withScore.length) * 100) / 100
       : null;
+    // "Ganhando" é decidido comparando winner_item_id ao próprio item, não pela
+    // string de status (só um valor foi confirmado ao vivo — ver decisions.md).
     const summary = {
       total: rows.length,
       synced: withScore.length,
@@ -1903,6 +1908,7 @@ router.get('/qualidade-anuncio', async (req, res) => {
       atributos_incompletos: rows.filter(r => (r.required_attrs_missing || 0) > 0).length,
       full: rows.filter(r => r.is_full).length,
       nao_full: rows.filter(r => !r.is_full).length,
+      perdendo_buybox: rows.filter(r => r.catalog_listing && r.winner_item_id && r.winner_item_id !== r.item_id).length,
     };
 
     res.json({ items: rows, summary });
@@ -1959,6 +1965,42 @@ router.get('/qualidade-anuncio/:itemId/historico', async (req, res) => {
     res.json({ history: rows });
   } catch (e) {
     console.error('[qualidade-anuncio/historico]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Lista de concorrentes do mesmo produto de catálogo — SOB DEMANDA (chama a API
+// do ML em tempo real, exceção documentada à regra 3 de architecture.md, mesmo
+// padrão já usado em GET /api/items/:item_id/promotion). Não é buscada no job
+// diário pra não gastar 1 chamada extra/item/dia em itens que ninguém vai abrir.
+router.get('/qualidade-anuncio/:itemId/concorrentes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT store_id, catalog_product_id, winner_item_id FROM catalog_competition WHERE item_id = $1`,
+      [req.params.itemId]
+    );
+    if (!rows.length || !rows[0].catalog_product_id) {
+      return res.json({ competitors: [], message: 'Sem dado de concorrência sincronizado pra este item ainda.' });
+    }
+    const { store_id, catalog_product_id, winner_item_id } = rows[0];
+
+    const ml = require('../mlClient');
+    const result = await ml.getCatalogCompetitors(catalog_product_id, store_id);
+    const competitors = (result.results || [])
+      .map(r => ({
+        item_id: r.item_id,
+        seller_id: r.seller_id,
+        price: r.price,
+        logistic_type: r.shipping?.logistic_type || null,
+        free_shipping: !!r.shipping?.free_shipping,
+        is_you: r.item_id === req.params.itemId,
+        is_winner: r.item_id === winner_item_id,
+      }))
+      .sort((a, b) => a.price - b.price);
+
+    res.json({ competitors, total: result.paging?.total ?? competitors.length });
+  } catch (e) {
+    console.error('[qualidade-anuncio/concorrentes]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

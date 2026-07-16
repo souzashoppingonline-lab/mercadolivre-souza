@@ -1228,6 +1228,108 @@ async function syncSeoScore() {
   }
 }
 
+// ── Sync Monitor de Buy-Box (catálogo) — 04:50 diário ─────────────────────────
+// 1 chamada por item catalog_listing=true (já conhecido via item_seo_score, v25)
+// — price_to_win traz tudo num payload só (preço, vencedor, boosts faltando,
+// catalog_product_id), sem precisar de getItem extra. Lista de concorrentes
+// (products/:id/items) NÃO é buscada aqui — é sob demanda (rota da API,
+// ver .claude/decisions.md), pra não gastar 2 chamadas/item/dia à toa.
+let isSyncingCatalogCompetition = false;
+
+async function syncCatalogCompetition() {
+  if (isSyncingCatalogCompetition) { console.warn('[sync-catalog-competition] já em execução — ignorando'); return; }
+  isSyncingCatalogCompetition = true;
+  console.log('[sync-catalog-competition] iniciando sync de Buy-Box...');
+  try {
+    return await recordSync('sync-catalog-competition', '50 4 * * *', async () => {
+      const { rows: stores } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML')`);
+      let totalSynced = 0, totalErrors = 0;
+      const lojaReport = [];
+
+      for (const store of stores) {
+        try {
+          await ensureTokenFresh(store);
+          const { rows: items } = await pool.query(
+            `SELECT item_id FROM item_seo_score WHERE store_id=$1 AND catalog_listing=true ORDER BY item_id`,
+            [store.id]
+          );
+          console.log(`[sync-catalog-competition] ${store.nickname}: ${items.length} itens de catálogo`);
+
+          let synced = 0, errors = 0;
+          let consecutiveRateLimit = 0;
+
+          for (let i = 0; i < items.length; i++) {
+            const itemId = items[i].item_id;
+            try {
+              const ptw = await ml.getPriceToWin(itemId, store.id);
+              consecutiveRateLimit = 0;
+
+              const boostsMissing = (ptw.boosts || []).filter(b => b.status === 'opportunity').map(b => b.id);
+
+              await pool.query(
+                `INSERT INTO catalog_competition (
+                   store_id, item_id, catalog_product_id, status, current_price, price_to_win,
+                   winner_item_id, winner_price, boosts_missing, consistent, visit_share, calculated_at
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+                 ON CONFLICT (item_id) DO UPDATE SET
+                   store_id=EXCLUDED.store_id, catalog_product_id=EXCLUDED.catalog_product_id,
+                   status=EXCLUDED.status, current_price=EXCLUDED.current_price, price_to_win=EXCLUDED.price_to_win,
+                   winner_item_id=EXCLUDED.winner_item_id, winner_price=EXCLUDED.winner_price,
+                   boosts_missing=EXCLUDED.boosts_missing, consistent=EXCLUDED.consistent,
+                   visit_share=EXCLUDED.visit_share, calculated_at=now()`,
+                [
+                  store.id, itemId, ptw.catalog_product_id || null, ptw.status || null,
+                  ptw.current_price ?? null, ptw.price_to_win ?? null,
+                  ptw.winner?.item_id || null, ptw.winner?.price ?? null,
+                  boostsMissing, ptw.consistent ?? null, ptw.visit_share || null,
+                ]
+              );
+              await pool.query(
+                `INSERT INTO catalog_competition_history (item_id, store_id, status, current_price, price_to_win) VALUES ($1,$2,$3,$4,$5)`,
+                [itemId, store.id, ptw.status || null, ptw.current_price ?? null, ptw.price_to_win ?? null]
+              );
+              synced++;
+            } catch (e) {
+              if (e.message?.includes('429') || e.message?.includes('rate limit')) {
+                consecutiveRateLimit++;
+                console.warn(`[sync-catalog-competition] 429 em ${itemId} — aguardando 60s`);
+                await new Promise(r => setTimeout(r, 60000));
+                if (consecutiveRateLimit >= 5) {
+                  console.error(`[sync-catalog-competition] ${store.nickname}: 5 rate limits seguidos — abortando loja`);
+                  throw new Error('Rate limit persistente — abortado após 5 tentativas consecutivas');
+                }
+              } else {
+                console.warn(`[sync-catalog-competition] erro em ${itemId}: ${e.message}`);
+                errors++;
+              }
+            }
+            await new Promise(r => setTimeout(r, 10000));
+            if ((i + 1) % 10 === 0) {
+              console.log(`[sync-catalog-competition] ${store.nickname}: lote ${Math.ceil((i+1)/10)} concluído (${i+1}/${items.length}) — pausa 30s`);
+              await new Promise(r => setTimeout(r, 30000));
+            }
+          }
+
+          totalSynced += synced;
+          totalErrors += errors;
+          lojaReport.push({ loja: store.nickname, synced, errors });
+          console.log(`[sync-catalog-competition] ${store.nickname}: ${synced} ok, ${errors} erros`);
+          await new Promise(r => setTimeout(r, 3000));
+        } catch (e) {
+          console.error(`[sync-catalog-competition] erro na loja ${store.nickname}:`, e.message);
+          lojaReport.push({ loja: store.nickname, erro: e.message });
+        }
+      }
+
+      console.log(`[sync-catalog-competition] concluído: ${totalSynced} atualizados, ${totalErrors} erros`);
+      return { synced: totalSynced, errors: totalErrors, lojas: lojaReport };
+    });
+  } finally {
+    isSyncingCatalogCompetition = false;
+    scheduleAt(4, 50, syncCatalogCompetition, 'sync-catalog-competition');
+  }
+}
+
 // ── Sync Preços Promocionais — 05:00 diário ───────────────────────────────────
 let isSyncingPrecos = false;
 
@@ -2156,6 +2258,7 @@ scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
+scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
@@ -2226,6 +2329,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'sync-seo-score' || cmd === 'syncSeoScore') {
       console.log('[worker] syncSeoScore disparado manualmente');
       syncSeoScore().catch(e => console.error('[worker] syncSeoScore erro:', e.message));
+    }
+    if (cmd === 'sync-catalog-competition' || cmd === 'syncCatalogCompetition') {
+      console.log('[worker] syncCatalogCompetition disparado manualmente');
+      syncCatalogCompetition().catch(e => console.error('[worker] syncCatalogCompetition erro:', e.message));
     }
     if (cmd === 'syncNotionTarefas') {
       console.log('[worker] syncNotionTarefas disparado manualmente');

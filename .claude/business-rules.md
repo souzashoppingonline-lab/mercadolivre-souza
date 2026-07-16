@@ -86,6 +86,10 @@ Ver `task-engine.md` para a arquitetura do `TaskEngine`. Regras de negócio das 
 
 **Thresholds pra nota máxima em cada subscore** (constantes nomeadas em `THRESHOLDS`, ajustáveis sem precisar reler o código): `pictures_count >= 6` fotos, `title_length` até 60 caracteres (limite real do ML), `description_word_count >= 200` palavras, `conversion_rate >= 5%` (vendas/visitas 30d), `visits_30d >= 500`. GTIN/Marca/Modelo/FULL/Catálogo são binários (tem ou não tem, sem gradação). `attributes_score` é `1 − (required_attrs_missing / required_attrs_total)`, com nota máxima quando a categoria não tem nenhum atributo obrigatório (`required_attrs_total = 0`).
 
+## Monitor de Buy-Box — "ganhando"/"perdendo" (`catalog_competition`, ver `decisions.md`)
+
+Escopo: só itens com `item_seo_score.catalog_listing = true`. "Ganhando" é decidido comparando `catalog_competition.winner_item_id` ao próprio `item_id` — **não** pela string `catalog_competition.status` (só o valor `"competing"` foi confirmado ao vivo contra a API real; outros valores possíveis não foram documentados, então a UI/summary nunca dependem do texto exato). `summary.perdendo_buybox` (rota `GET /api/qualidade-anuncio`) conta itens `catalog_listing=true` com `winner_item_id` preenchido e diferente do próprio item — itens ainda sem sync (`winner_item_id IS NULL`) não entram nem como "ganhando" nem como "perdendo".
+
 ## "Nova venda!" — quando notificar
 
 Uma notificação Telegram de nova venda só dispara na **transição real** de status para `paid` (`previousStatus !== 'paid' && order.status === 'paid'`). Um webhook tardio de `shipments`/`payments` que reprocessa um pedido já pago não gera notificação duplicada. Syncs agendados (`syncVendas`) chamam `handleOrder` com `silent: true` para nunca notificar em reconciliação retroativa.

@@ -40,6 +40,22 @@
 
     .rank-cols { display:grid;grid-template-columns:1fr 1fr;gap:16px; }
     @media (max-width:900px) { .rank-cols { grid-template-columns:1fr; } }
+
+    .bb-badge { display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:.72rem;font-weight:700;cursor:pointer;border:none; }
+    .bb-badge.win  { background:rgba(39,174,96,.15); color:#27ae60; }
+    .bb-badge.lose { background:rgba(231,76,60,.15); color:#e74c3c; }
+    .bb-badge.none { background:rgba(255,255,255,.06); color:var(--text-muted); cursor:default; }
+
+    .qa-modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px; }
+    .qa-modal-backdrop.open { display:flex; }
+    .qa-modal { background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:640px;max-height:80vh;overflow-y:auto;padding:18px; }
+    .qa-modal h3 { font-size:14px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between; }
+    .qa-modal h3 .close { cursor:pointer;color:var(--text-muted); }
+    .qa-comp-row { display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;font-size:.8rem;margin-bottom:6px; }
+    .qa-comp-row.you    { background:rgba(255,230,0,.08);border:1px solid rgba(255,230,0,.3); }
+    .qa-comp-row.winner { background:rgba(39,174,96,.08); }
+    .qa-comp-row .pos { font-weight:800;color:var(--text-muted);min-width:22px; }
+    .qa-comp-row .price { font-weight:800;margin-left:auto; }
   </style>
 </head>
 <body>
@@ -85,6 +101,7 @@
         <div class="stat-card"><div class="label"><i class="fas fa-list-check"></i> Atributos incompletos</div><div class="value" style="color:var(--red)" id="kpiAtributos">—</div></div>
         <div class="stat-card"><div class="label">FULL</div><div class="value" style="color:var(--green)" id="kpiFull">—</div></div>
         <div class="stat-card"><div class="label">Não-FULL</div><div class="value" id="kpiNaoFull">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-cart-arrow-down"></i> Perdendo Buy-Box</div><div class="value" style="color:var(--red)" id="kpiPerdendoBuybox">—</div></div>
       </div>
 
       <div class="card" style="margin-bottom:16px">
@@ -116,15 +133,22 @@
           <table class="data-table">
             <thead><tr>
               <th>Anúncio</th><th>Loja</th><th>Marca</th><th>Logística</th>
-              <th>Auditoria</th><th>Conversão</th><th>Visitas 30d</th><th>Vendas 30d</th><th>Score</th>
+              <th>Auditoria</th><th>Buy-Box</th><th>Conversão</th><th>Visitas 30d</th><th>Vendas 30d</th><th>Score</th>
             </tr></thead>
-            <tbody id="tbody"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="tbody"><tr><td colspan="10" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
 
     </div>
   </main>
+</div>
+
+<div class="qa-modal-backdrop" id="qaCompBackdrop">
+  <div class="qa-modal">
+    <h3 id="qaCompTitle">Concorrentes de catálogo <span class="close" onclick="closeConcorrentes()"><i class="fas fa-times"></i></span></h3>
+    <div id="qaCompBody"><div class="empty-state">Carregando...</div></div>
+  </div>
 </div>
 
 <script src="../js/db.js"></script>
@@ -194,6 +218,46 @@ function auditIcons(r) {
   ).join('')}</div>`;
 }
 
+// "Ganhando" é decidido comparando winner_item_id ao próprio item, não pela
+// string de status (só um valor foi confirmado ao vivo — ver .claude/decisions.md).
+function buyboxBadge(r) {
+  if (!r.catalog_listing) return '<span class="bb-badge none">—</span>';
+  if (!r.winner_item_id) return '<span class="bb-badge none" title="Ainda não sincronizado">Sem dado</span>';
+  if (r.winner_item_id === r.item_id) {
+    return `<button class="bb-badge win" onclick="openConcorrentes('${r.item_id}')"><i class="fas fa-crown"></i> Ganhando</button>`;
+  }
+  const preco = r.winner_price != null ? `R$${Number(r.winner_price).toFixed(2)}` : '?';
+  return `<button class="bb-badge lose" onclick="openConcorrentes('${r.item_id}')" title="Ver concorrentes">Perdendo (${preco})</button>`;
+}
+
+async function openConcorrentes(itemId) {
+  const backdrop = document.getElementById('qaCompBackdrop');
+  const body = document.getElementById('qaCompBody');
+  const item = allItems.find(r => r.item_id === itemId);
+  document.getElementById('qaCompTitle').innerHTML = `Concorrentes — ${escapeHtml(item?.title || itemId)} <span class="close" onclick="closeConcorrentes()"><i class="fas fa-times"></i></span>`;
+  body.innerHTML = '<div class="empty-state">Carregando...</div>';
+  backdrop.classList.add('open');
+
+  const data = await DB.getQualidadeAnuncioConcorrentes(itemId);
+  const comps = data?.competitors || [];
+  if (!comps.length) {
+    body.innerHTML = `<div class="empty-state">${escapeHtml(data?.message || 'Nenhum concorrente encontrado.')}</div>`;
+    return;
+  }
+  const boosts = (item?.buybox_boosts_missing || []);
+  const boostsHtml = boosts.length
+    ? `<div style="margin-bottom:12px;font-size:.78rem;color:var(--text-muted)">Oportunidades pra ganhar o buy-box: <b style="color:var(--orange)">${boosts.map(escapeHtml).join(', ')}</b></div>`
+    : '';
+  body.innerHTML = boostsHtml + comps.map((c, i) => `
+    <div class="qa-comp-row ${c.is_you ? 'you' : ''} ${c.is_winner ? 'winner' : ''}">
+      <span class="pos">#${i + 1}</span>
+      <span>${c.is_winner ? '<i class="fas fa-crown" style="color:#27ae60"></i> ' : ''}${escapeHtml(c.item_id)}${c.is_you ? ' (você)' : ''}</span>
+      <span style="font-size:.72rem;color:var(--text-muted)">${logLabel(c.logistic_type)}${c.free_shipping ? ' · Frete grátis' : ''}</span>
+      <span class="price">R$${Number(c.price).toFixed(2)}</span>
+    </div>`).join('');
+}
+function closeConcorrentes() { document.getElementById('qaCompBackdrop').classList.remove('open'); }
+
 function scoreCell(score) {
   const s = score == null ? null : Number(score);
   const c = scoreColor(s);
@@ -225,6 +289,7 @@ async function load() {
   document.getElementById('kpiAtributos').textContent = s.atributos_incompletos ?? '—';
   document.getElementById('kpiFull').textContent = s.full ?? '—';
   document.getElementById('kpiNaoFull').textContent = s.nao_full ?? '—';
+  document.getElementById('kpiPerdendoBuybox').textContent = s.perdendo_buybox ?? '—';
   document.getElementById('totalCount').textContent = s.total ?? items.length;
 
   // Filtro de categoria populado a partir do que veio (categoria não tem nome
@@ -249,11 +314,12 @@ async function load() {
       <td style="font-size:.78rem">${escapeHtml(r.brand || '—')}</td>
       <td style="font-size:.78rem">${logLabel(r.shipping_type)}</td>
       <td>${auditIcons(r)}</td>
+      <td>${buyboxBadge(r)}</td>
       <td style="font-size:.78rem">${pct(r.conversion_rate)}</td>
       <td style="font-size:.78rem">${N(r.visits_30d)}</td>
       <td style="font-size:.78rem">${N(r.sales_30d)}</td>
       <td>${scoreCell(r.score)}</td>
-    </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum anúncio encontrado com esses filtros.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="10" class="empty-state">Nenhum anúncio encontrado com esses filtros.</td></tr>';
 
   loadEvolucao();
 }

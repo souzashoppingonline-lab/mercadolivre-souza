@@ -121,4 +121,10 @@ module.exports = {
   // Qualidade de Anúncio (SEO Score) — ver seoScore.js e .claude/decisions.md.
   getItemDescription:  (id, storeId) => get(`/items/${id}/description`, storeId),
   getCategoryAttributes: (categoryId, storeId) => get(`/categories/${categoryId}/attributes`, storeId),
+  // Monitor de Buy-Box (catálogo) — ver .claude/decisions.md. GET /sites/MLB/search
+  // (busca livre) devolve 403 "forbidden" pra este app (confirmado ao vivo, não é rate
+  // limit); estes dois endpoints são diferentes (dado do próprio vendedor participando
+  // de catálogo, não busca pública) e foram confirmados acessíveis ao vivo.
+  getPriceToWin:       (id, storeId) => get(`/items/${id}/price_to_win?version=v2`, storeId),
+  getCatalogCompetitors: (catalogProductId, storeId) => get(`/products/${catalogProductId}/items`, storeId),
 };

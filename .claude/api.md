@@ -37,8 +37,9 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | `GET /api/qualidade-anuncio?store_id&category_id&brand&is_full&catalog_listing&shipping_type&sort` | lista itens com score + `summary` agregado (`total`, `synced`, `avg_score`, `sem_gtin`, `sem_video`, `sem_catalogo`, `atributos_incompletos`, `full`, `nao_full`); Top10/Piores10 **não** vêm do backend — o frontend ordena o mesmo array `items` recebido (mesma convenção de outras telas de ranking) |
 | `GET /api/qualidade-anuncio/:itemId/historico` | série histórica do score de um item (`item_seo_score_history`) |
 | `GET /api/qualidade-anuncio/historico-medio?days&store_id&category_id&brand&is_full&catalog_listing&shipping_type` | `AVG(score)` diário do conjunto filtrado — alimenta o gráfico "Evolução do SEO Score médio" (7/30/90 dias) |
+| `GET /api/qualidade-anuncio/:itemId/concorrentes` | **Chama a API do ML em tempo real** (`ml.getCatalogCompetitors`) — lista os concorrentes do mesmo `catalog_product_id` (preço, logística, frete grátis, quem é o vencedor/você). Sob demanda (modal), não no job diário — mesmo padrão de `GET /api/items/:item_id/promotion`. Retorna `{competitors: [], message}` se o item ainda não tem `catalog_competition` sincronizado |
 
-Score calculado 1x/dia pelo job `sync-seo-score` (ver `workers.md`), nunca em tempo real — estas 3 rotas são leitura pura da tabela `item_seo_score`/`item_seo_score_history`, sem chamar a API do ML.
+Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-competition` (ver `workers.md`), nunca em tempo real — as rotas de listagem/histórico são leitura pura de `item_seo_score`/`catalog_competition`, sem chamar a API do ML (exceto a rota de concorrentes acima, sob demanda). A listagem principal (`GET /api/qualidade-anuncio`) também traz `buybox_status`/`price_to_win`/`winner_item_id`/`winner_price`/`buybox_boosts_missing` via `LEFT JOIN catalog_competition` e `summary.perdendo_buybox` — só preenchido pra itens `catalog_listing=true`. Ver `database.md`/`decisions.md`.
 
 ## Pedidos / Vendas (webhook-driven — tabela `orders`)
 | Rota | Descrição |

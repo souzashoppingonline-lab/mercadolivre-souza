@@ -231,6 +231,7 @@ const DB = {
   async getQualidadeAnuncio(p={})  { return this._get('/qualidade-anuncio', p); },
   async getQualidadeAnuncioHistorico(itemId, p={}) { return this._get(`/qualidade-anuncio/${itemId}/historico`, p); },
   async getQualidadeAnuncioHistoricoMedio(p={}) { return this._get('/qualidade-anuncio/historico-medio', p); },
+  async getQualidadeAnuncioConcorrentes(itemId) { return this._get(`/qualidade-anuncio/${itemId}/concorrentes`); },
   async getItemPromotion(item_id, store_id) { return this._get(`/items/${item_id}/promotion`, { store_id }); },
   async syncAnunciosPerformance(body={}) {
     return fetch(`${this.BASE}/alertas/anuncios-performance/sync`, {

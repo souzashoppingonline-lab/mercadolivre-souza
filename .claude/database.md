@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -253,6 +253,29 @@ category_id TEXT PK, required_ids TEXT[], updated_at TIMESTAMPTZ DEFAULT now()
 ```
 Populado sob demanda por `getRequiredAttrsForCategory()` (`worker.js`) a partir de `GET /categories/:id/attributes`, com TTL de 30 dias (`CATEGORY_ATTRS_CACHE_DAYS`) — evita rechamar a API pra mesma categoria em todo item durante o `sync-seo-score`. Mesmo padrão de cache-por-categoria já usado em `claim_reasons` (cache por código).
 
+### `catalog_competition` — v26: Monitor de Buy-Box (concorrência de catálogo), 1 linha por item
+```
+id SERIAL PK, store_id BIGINT FK stores, item_id TEXT UNIQUE FK items(ml_id)
+catalog_product_id TEXT
+status TEXT               -- valor cru de price_to_win.status (ex: "competing"); "ganhando" é decidido
+                           -- comparando winner_item_id = item_id, não por esta string (só um valor
+                           -- confirmado ao vivo — ver decisions.md)
+current_price, price_to_win NUMERIC
+winner_item_id TEXT, winner_price NUMERIC
+boosts_missing TEXT[]     -- ids dos boosts com status='opportunity' na resposta (ex: fulfillment, free_shipping)
+consistent BOOLEAN, visit_share TEXT
+calculated_at TIMESTAMPTZ
+```
+Escopo: só itens com `item_seo_score.catalog_listing = true` (v25) — subconjunto dos itens ativos. Populada 1x/dia pelo job `sync-catalog-competition` (`worker.js`, 04:50 — ver `workers.md`), 1 chamada por item (`GET /items/:id/price_to_win?version=v2`). **Não** guarda a lista de concorrentes (isso é buscado sob demanda, ver `api.md` — `GET /qualidade-anuncio/:itemId/concorrentes`). Ver `decisions.md` pro porquê deste módulo não usa busca por palavra-chave (API `/sites/MLB/search` bloqueada — 403 confirmado ao vivo).
+
+### `catalog_competition_history` — v26: série histórica do status/preço de buy-box
+```
+id BIGSERIAL PK, item_id TEXT, store_id BIGINT
+status TEXT, current_price, price_to_win NUMERIC
+captured_at TIMESTAMPTZ DEFAULT now()
+```
+Um insert por item a cada execução do job `sync-catalog-competition` (append-only, mesmo padrão de `item_seo_score_history`).
+
 ### `promotions` — histórico de status de promoções por oferta
 ```
 id SERIAL PK, store_id BIGINT, offer_id TEXT, item_id, item_title TEXT
@@ -338,7 +361,7 @@ Toda leitura (`FROM`/`JOIN`) em `routes/api.js` usa essas views em vez das tabel
 
 ## Índices relevantes
 
-`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15), `stores(shopee_shop_id)` único parcial e `shopee_order_data(order_sn)` único (v18), `tasks(board_column)`, `tasks(source)`, `tasks(priority)`, `tasks(store_id)`, `tasks(rule_key, item_id)` parcial (v19, predicado ajustado na v20), `task_comments(task_id, created_at)` (v19), `orders(shipping_id)`, `packing_videos(shipping_id)`, `packing_videos(created_at)`, `packing_videos(order_ids)` GIN (v21), `staff_users(username)` único (v22), `item_seo_score(store_id)`, `item_seo_score(score)`, `item_seo_score(category_id)`, `item_seo_score_history(item_id, captured_at)` (v25).
+`orders(store_id, status)`, `orders(date_created)`, `items(store_id, status)`, `webhook_logs(topic)`, `webhook_logs(status)`, `item_changes(item_id, changed_at DESC)`, `item_changes(store_id, changed_at DESC)`, `store_metrics(store_id, collected_at DESC)`, `price_history(item_id, changed_at DESC)`, `item_visits(item_id, date DESC)`, `item_visits(store_id, date DESC)`, `ml_turbo_sales(sale_date DESC / account / sku / item_code / state / order_status)`, `promotions(store_id, changed_at DESC)`, `promotions(offer_id, changed_at DESC)`, `schedule_runs(job_name, started_at DESC)`, `item_performance(store_id)`, `item_performance(score)`, `orders(marketplace_id)`, `items(marketplace_id)`, `stores(marketplace_id)` (v15), `amazon_order_data(amazon_order_id)` único (v15), `stores(shopee_shop_id)` único parcial e `shopee_order_data(order_sn)` único (v18), `tasks(board_column)`, `tasks(source)`, `tasks(priority)`, `tasks(store_id)`, `tasks(rule_key, item_id)` parcial (v19, predicado ajustado na v20), `task_comments(task_id, created_at)` (v19), `orders(shipping_id)`, `packing_videos(shipping_id)`, `packing_videos(created_at)`, `packing_videos(order_ids)` GIN (v21), `staff_users(username)` único (v22), `item_seo_score(store_id)`, `item_seo_score(score)`, `item_seo_score(category_id)`, `item_seo_score_history(item_id, captured_at)` (v25), `catalog_competition(store_id)`, `catalog_competition(status)`, `catalog_competition_history(item_id, captured_at)` (v26).
 
 ## Relação `items.parent_item_id` (variações)
 

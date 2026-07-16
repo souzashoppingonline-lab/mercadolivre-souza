@@ -37,3 +37,9 @@ Mesma classe de bug do `var(--card-bg)` (já corrigido em todo o projeto — ver
 **Arquivos afetados**: `var(--text-primary)` em `anuncios.html`, `vendas-por-loja.html`, `devolucoes.html`, `produtos.html`, `lojas.html`, `vendas.html`, `monitor.html`, `anuncios-problema.html`, `mcp.html`, `vendas-turbo.html`, `performance.html`, `schedule.html`, `css/style.css` (`.store-switcher-btn`), `js/dashboard.js` (gerado dinamicamente). `var(--text)` em `diasemana.html`, `reposicao.html`, `curvaABC.html`, `performance.html`, `schedule.html`.
 
 **Correção esperada**: trocar ambos por `var(--text-main)` nesses arquivos, mesmo padrão da correção já aplicada para `--card-bg` → `--bg-card`.
+
+## 8. `returns` não tem chave de dedup — "Importar histórico ML" duplica a cada execução
+
+`INSERT INTO returns (...) ON CONFLICT DO NOTHING` (`worker.js`: `handlePostPurchase`, `syncReturns`) não tem nenhum `UNIQUE`/constraint alvo pra realmente conflitar — a claúsula `ON CONFLICT DO NOTHING` sem alvo só previne violação de constraint existente, e como não existe nenhuma em `returns`, toda chamada de "Importar histórico ML" (botão em `pages/devolucoes.html`) insere linhas novas por cima das já existentes em vez de atualizar, mesmo pra devoluções já importadas antes. O `claim.id` original do ML (que seria a chave natural de dedup) também não é persistido em nenhuma coluna hoje.
+
+**Correção esperada**: adicionar coluna `claim_id BIGINT` em `returns` (migration nova), preenchida a partir de `claim.id` nos 3 pontos que já chamam `ml.getClaim()`, com `UNIQUE(store_id, claim_id)` e `ON CONFLICT (store_id, claim_id) DO UPDATE SET ...` (upsert de verdade, não `DO NOTHING`) — mesmo padrão já usado em `packing_videos`/`orders` pra idempotência.

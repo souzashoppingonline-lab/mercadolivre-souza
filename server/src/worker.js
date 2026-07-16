@@ -423,11 +423,20 @@ async function handleItem({ resource, storeId }) {
   await publish('anuncio_updated', { id: item.id, status: item.status });
 }
 
+// Claim detail (GET /post-purchase/v1/claims/:id) não tem campo order_id —
+// confirmado testando ao vivo contra a API real. O pedido é claim.resource_id
+// quando claim.resource === 'order' (o caso de praticamente toda devolução;
+// outros valores de resource, ex. envio, não têm pedido associado, orderId
+// fica null mesmo). Ver .claude/decisions.md.
+function claimOrderId(claim) {
+  return claim.resource === 'order' && claim.resource_id != null ? String(claim.resource_id) : (claim.order_id || null);
+}
+
 async function handlePostPurchase({ resource, storeId }) {
   const claimId = resource.split('/').pop();
   try {
     const claim = await ml.getClaim(claimId, storeId);
-    const orderId = claim.order_id || null;
+    const orderId = claimOrderId(claim);
     const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
     const itemTitle = claim.resolution?.description || null;
     await pool.query(
@@ -949,7 +958,7 @@ async function syncMetricas() {
             try {
               await new Promise(r => setTimeout(r, 1500));
               const claim = await ml.getClaim(c.id, store.id);
-              const orderId = claim.order_id || null;
+              const orderId = claimOrderId(claim);
               const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
               const { rowCount } = await pool.query(
                 `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)
@@ -1150,7 +1159,7 @@ async function syncReturns() {
           try {
             await new Promise(r => setTimeout(r, 2000));
             const claim = await ml.getClaim(c.id, store.id);
-            const orderId = claim.order_id || null;
+            const orderId = claimOrderId(claim);
             const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
             const { rowCount } = await pool.query(
               `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at)

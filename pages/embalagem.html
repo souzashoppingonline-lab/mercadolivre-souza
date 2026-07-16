@@ -414,7 +414,10 @@ async function startNew(shippingId) {
   setScanState('loading');
   const data = await DB.getPedidoPorEtiqueta(shippingId);
   if (!data || data.error) {
-    showScanMsg(data?.error || 'Pedido não encontrado para essa etiqueta.', 'error');
+    // Mostra o shipping_id pesquisado na própria mensagem — sem isso não dava
+    // pra saber, direto na tela, se o parse extraiu o valor certo ou não
+    // (ver .claude/embalagem.md, correção do leitor USB com layout trocado).
+    showScanMsg(`${data?.error || 'Pedido não encontrado para essa etiqueta.'} (buscado: ${shippingId})`, 'error');
     setScanState('idle');
     return;
   }

@@ -331,12 +331,29 @@ function showScanMsg(text, type) {
   setTimeout(() => { document.getElementById('scanMsg').innerHTML = ''; }, 6000);
 }
 
+// Alguns leitores QR USB emulam um layout de teclado diferente do
+// esperado e trocam os caracteres especiais do JSON da etiqueta:
+// " -> ^, : -> ç, o { de abertura some e o } de fechamento vira {.
+// Ex. real: ^id^ç^47538810049^,^sender_id^ç1662123376,... ^0^{
+// Desfaz essa troca antes do JSON.parse — sem isso, o parse falhava e
+// caía no fallback de dígitos, que concatenava TODOS os números da
+// string (id + sender_id + dígitos do hash_code), não só o id real.
+function repairScannerGarbling(raw) {
+  if (!raw.includes('^') && !raw.includes('ç')) return raw;
+  let fixed = raw.replace(/\^/g, '"').replace(/ç/g, ':');
+  if (!fixed.startsWith('{')) fixed = '{' + fixed;
+  if (!fixed.endsWith('}')) fixed = fixed.endsWith('{') ? fixed.slice(0, -1) + '}' : fixed + '}';
+  return fixed;
+}
+
 function parseShippingId(raw) {
   raw = raw.trim();
-  try {
-    const obj = JSON.parse(raw);
-    if (obj && obj.id) return String(obj.id);
-  } catch (e) { /* não é JSON — código de barras linear puro */ }
+  for (const candidate of [raw, repairScannerGarbling(raw)]) {
+    try {
+      const obj = JSON.parse(candidate);
+      if (obj && obj.id) return String(obj.id);
+    } catch (e) { /* não é JSON válido — tenta o próximo candidato */ }
+  }
   return raw.replace(/[^0-9]/g, '') || raw;
 }
 

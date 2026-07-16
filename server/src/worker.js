@@ -426,7 +426,7 @@ async function handleItem({ resource, storeId }) {
 async function handlePostPurchase({ resource, storeId }) {
   const claimId = resource.split('/').pop();
   try {
-    const claim = await ml.get(`/post-purchase/claims/${claimId}`, storeId);
+    const claim = await ml.getClaim(claimId, storeId);
     const orderId = claim.order_id || null;
     const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
     const itemTitle = claim.resolution?.description || null;

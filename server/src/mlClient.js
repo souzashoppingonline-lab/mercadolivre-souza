@@ -96,8 +96,12 @@ module.exports = {
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}?tag=post_sale&seller_id=${storeId}`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
   getShipment:         (shipmentId, storeId) => get(`/shipments/${shipmentId}`, storeId),
-  searchClaims:        (storeId, offset=0) => get(`/post-purchase/claims/search?seller_id=${storeId}&limit=50&offset=${offset}`, storeId),
-  getClaim:            (claimId, storeId) => get(`/post-purchase/claims/${claimId}`, storeId),
+  // Endpoint correto tem o segmento /v1/ — a API antiga sem versão (/post-purchase/claims/...)
+  // foi descontinuada pelo ML em 2024 e devolve 404 (confirmado em produção — ver decisions.md).
+  // players.role=respondent + players.user_id=storeId filtra claims onde o vendedor é quem
+  // precisa responder (o caso de uso desta tela).
+  searchClaims:        (storeId, offset=0) => get(`/post-purchase/v1/claims/search?players.role=respondent&players.user_id=${storeId}&limit=50&offset=${offset}`, storeId),
+  getClaim:            (claimId, storeId) => get(`/post-purchase/v1/claims/${claimId}`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
   searchOrders:        (storeId, dateFrom, offset=0) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50&offset=${offset}`, storeId),
   getItemVisits:       (id, dateFrom, storeId) => get(`/items/${id}/visits/time_window?last=1&unit=day&ending=${encodeURIComponent(dateFrom)}`, storeId),

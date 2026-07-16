@@ -246,6 +246,16 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 
 **Fora de escopo desta fase**: backfill de `shipping_id` pra pedidos já existentes no banco (só pedidos processados depois do deploy da v21 têm o campo); vínculo automático entre uma devolução e o vídeo correspondente (busca hoje é manual, por pedido/comprador/data); seleção de câmera (usa a padrão do navegador).
 
+## Bug corrigido — endpoint de Claims do ML estava com path errado (`returns` sempre vazia)
+
+**Sintoma reportado pelo usuário**: tela de Devoluções sempre com 0 registros, mesmo com devoluções reais existindo no Mercado Livre, mesmo depois de clicar "Importar histórico ML".
+
+**Causa raiz confirmada** (testado ao vivo em produção via `node -e` chamando `ml.searchClaims` direto): `mlClient.js` chamava `/post-purchase/claims/search` e `/post-purchase/claims/:id` — a API antiga do ML sem o segmento `/v1/`, descontinuada pelo Mercado Livre em maio de 2024 (confirmado via busca na documentação oficial). O ML devolvia `404` pra toda chamada, então nem o sync retroativo (`syncReturns`) nem o handler do webhook em tempo real (`handlePostPurchase`) nunca conseguiam buscar o detalhe de uma claim — a tabela `returns` ficava vazia desde sempre, não é uma regressão desta sessão.
+
+**Correção**: `searchClaims`/`getClaim` em `mlClient.js` passaram a usar `/post-purchase/v1/claims/search` (com `players.role=respondent&players.user_id={storeId}` em vez do `seller_id` que não existe nessa API) e `/post-purchase/v1/claims/:id`. `handlePostPurchase` (`worker.js`) foi ajustado pra reusar `ml.getClaim()` em vez de duplicar o path errado direto com `ml.get()`.
+
+**Verificação em aberto**: também suspeita-se que `returns.buyer_nickname`, referenciada em `INSERT`s (`worker.js`) e no `SELECT` de `GET /api/alertas/devolucoes` (`routes/api.js`), pode nunca ter sido criada via migration — nenhum `ALTER TABLE returns ADD COLUMN buyer_nickname` foi encontrado em `schema.sql`/`migrate-v*.sql`, apesar de `database.md` documentar a coluna como existente. Se confirmado, isso faria todo `INSERT INTO returns` falhar silenciosamente (capturado pelo `catch` do handler) e o próprio `GET /api/alertas/devolucoes` devolver erro 500 — que o frontend (`devolucoes.html`) não checa (`data.error` ignorado), renderizando como "0 devoluções" em vez de mostrar o erro real. Diagnóstico em andamento; ver `known-bugs.md` se não for resolvido na mesma tarefa.
+
 ## Login de acesso restrito (v22) — proteção completa, não só a página de Embalagem
 
 **Contexto**: usuário pediu acesso de Embalagem pra funcionários, sem que eles vissem o resto do sistema (relatórios de vendas etc.), explicitamente "sem mexer em nada porque está tudo perfeito e funcionando".

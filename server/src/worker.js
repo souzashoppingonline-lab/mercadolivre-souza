@@ -2223,6 +2223,10 @@ cmdSub.on('message', (channel, msg) => {
       console.log('[worker] syncScores disparado manualmente');
       syncScores().catch(e => console.error('[worker] syncScores erro:', e.message));
     }
+    if (cmd === 'sync-seo-score' || cmd === 'syncSeoScore') {
+      console.log('[worker] syncSeoScore disparado manualmente');
+      syncSeoScore().catch(e => console.error('[worker] syncSeoScore erro:', e.message));
+    }
     if (cmd === 'syncNotionTarefas') {
       console.log('[worker] syncNotionTarefas disparado manualmente');
       syncNotionTarefas().catch(e => console.error('[worker] syncNotionTarefas erro:', e.message));

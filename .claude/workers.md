@@ -98,7 +98,9 @@ Desde v15, `worker.js` também sobe (2 linhas aditivas no final do arquivo, nenh
 
 ## Comandos manuais (canal Redis `worker:cmd`)
 
-Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (busca retroativa completa, não agendada), `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `checkOutlierEstatistico`, `reprocessSkipped`. Disparado por `POST /api/schedule/jobs/:name/trigger` ou `server/sync-now.sh`.
+Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (busca retroativa completa, não agendada), `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `sync-seo-score`/`syncSeoScore`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `checkOutlierEstatistico`, `reprocessSkipped`. Disparado por `POST /api/schedule/jobs/:name/trigger` ou `server/sync-now.sh`.
+
+> **Nota**: o botão "▶ Executar" de `schedule.html` chama `triggerJob(j.name)` com o nome kebab-case gravado em `schedule_jobs` (ex: `sync-vendas`), mas a maioria dos handlers acima só reconhece o nome camelCase da função (`syncVendas`). Esse descasamento é pré-existente e não foi corrigido nesta tarefa (fora de escopo) — só `sync-seo-score` foi registrado no formato kebab-case (além do camelCase) porque era o caso imediato em uso. Ver `known-bugs.md`.
 
 ## Bot do Telegram (long polling)
 

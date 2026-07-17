@@ -132,9 +132,6 @@ const DB = {
   // ── Mensagens ──────────────────────────────────────────────
   async getMensagens(params = {}) { return this._get('/mensagens', params); },
 
-  // ── Métricas ───────────────────────────────────────────────
-  async getMetricas()             { return this._get('/metricas'); },
-
   // ── Clientes ───────────────────────────────────────────────
   async getClientes(params = {})  { return this._get('/clientes', params); },
   async getCliente(id)            { return this._get(`/clientes/${id}`); },

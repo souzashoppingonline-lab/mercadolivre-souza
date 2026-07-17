@@ -120,11 +120,6 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `PATCH /api/alertas/devolucoes/:id/note { note }` | anotação manual em uma devolução |
 | `GET /api/alteracoes?store_id&days&limit` | trilha de `item_changes` com título/thumbnail do item |
 
-## Métricas (reputação)
-| Rota | Descrição |
-|---|---|
-| `GET /api/metricas` | última linha de `store_metrics` por loja (`DISTINCT ON`) |
-
 ## Publicidade (exploratório)
 | Rota | Descrição |
 |---|---|

@@ -17,7 +17,6 @@ const NAV_ITEMS = [
     { href: 'promocoes.html', icon: 'fa-tags', label: 'Promoções' },
     { href: 'perguntas.html', icon: 'fa-question-circle', label: 'Perguntas' },
     { href: 'mensagens.html', icon: 'fa-envelope', label: 'Mensagens' },
-    { href: 'metricas.html', icon: 'fa-tachometer-alt', label: 'Métricas' },
     { href: 'clientes.html', icon: 'fa-users', label: 'Clientes' },
     { href: 'lojas.html', icon: 'fa-store', label: 'Lojas' },
   ]},

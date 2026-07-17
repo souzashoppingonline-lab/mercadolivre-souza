@@ -2065,25 +2065,6 @@ router.post('/alertas/anuncios-performance/sync', async (req, res) => {
   })().catch(() => { perfSyncRunning = false; });
 });
 
-// ── Métricas do vendedor (reputação) ──────────────────────
-router.get('/metricas', async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT DISTINCT ON (store_id)
-              sm.store_id, s.nickname, sm.level_id, sm.power_seller_status,
-              sm.transactions_completed, sm.positive_ratings_pct,
-              sm.negative_ratings_pct, sm.neutral_ratings_pct, sm.collected_at
-       FROM store_metrics sm
-       JOIN vw_ml_stores s ON s.id = sm.store_id
-       ORDER BY store_id, collected_at DESC`
-    );
-    res.json({ metricas: rows });
-  } catch(e) {
-    console.error('[/metricas]', e.message);
-    res.status(500).json({ error: e.message, metricas: [] });
-  }
-});
-
 // ── Produtos performance ───────────────────────────────────
 router.get('/produtos/performance', async (req, res) => {
   try {

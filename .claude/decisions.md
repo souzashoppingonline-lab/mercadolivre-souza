@@ -371,3 +371,11 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 **Decisão — usar `orders.total_amount`, não uma nova chamada à API**: toda devolução tem um `order_id` correspondente, e o pedido já foi sincronizado via webhook (`orders.total_amount` sempre disponível, sem custo de rate-limit adicional). `resolveReturnAmount(orderId)` faz um `SELECT total_amount FROM orders WHERE ml_id = $1` e substitui `claim.total || 0` nos **3 pontos** onde uma linha de `returns` é inserida (`handlePostPurchase`, o loop de claims dentro de `syncMetricas`, e `syncReturns`) — corrigido na raiz (escrita), não só na leitura (`GET /alertas/devolucoes`), pra que agregados existentes como `summary.total_value` também fiquem corretos automaticamente, sem precisar de um 2º fix depois.
 
 **Linhas antigas com `amount=0` não são corrigidas automaticamente** — precisam de um backfill manual (`UPDATE returns r SET amount = o.total_amount FROM orders o WHERE o.ml_id = r.order_id AND r.amount = 0 AND r.order_id IS NOT NULL;`), não incluído nesta tarefa por ser uma operação de dados em produção que o usuário deve rodar conscientemente, não automatizada silenciosamente numa migration.
+
+## Página "Métricas" (reputação) removida — pedido explícito do usuário
+
+**Contexto**: `pages/metricas.html` mostrava só o nível de reputação (`level_id`, `power_seller_status`, % positivo/negativo) por loja, vindo de `store_metrics`. Usuário considerou que a página não fazia sentido e pediu pra remover.
+
+**Removido**: a página, o item de menu em `js/layout.js` (`NAV_ITEMS`) e no sidebar hardcoded de `index.html`, a rota `GET /api/metricas` (`routes/api.js`) e `DB.getMetricas()` (`js/db.js`) — sem consumidor restante depois da página sair, viravam código morto.
+
+**Não removido, de propósito**: a tabela `store_metrics` e a coleta de reputação dentro do job `syncMetricas` (04:15 diário) continuam existindo — esse mesmo job também sincroniza `returns` (devoluções), que a página `devolucoes.html` ainda usa; separar as duas responsabilidades do job não foi pedido e está fora do escopo desta tarefa. `store_metrics` fica sendo escrita sem nenhum consumidor de leitura por ora — se isso incomodar futuramente, a decisão de parar de coletar reputação (ou reaproveitar o dado noutra página) é uma tarefa separada, não uma consequência automática de remover a página.

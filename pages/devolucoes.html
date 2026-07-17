@@ -22,6 +22,22 @@
     .dev-modal h3 { font-size: 14px; font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
     .dev-modal h3 .close { cursor: pointer; color: var(--text-muted); }
     .dev-modal video { width: 100%; border-radius: 10px; background: #000; max-height: 70vh; }
+    .dev-modal.detail { max-width: 640px; max-height: 85vh; overflow-y: auto; }
+    .dev-detail-head { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .dev-detail-head img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: var(--surface); flex-shrink: 0; }
+    .dev-detail-head .prod-title { font-size: .95rem; font-weight: 700; }
+    .dev-detail-head .prod-sub { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
+    .dev-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin-bottom: 16px; }
+    .dev-detail-item .lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 2px; }
+    .dev-detail-item .val { font-size: .85rem; font-weight: 600; }
+    .dev-detail-item .val.big { font-size: 1.1rem; color: var(--primary); }
+    .dev-detail-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .dev-detail-section h4 { font-size: .8rem; margin-bottom: 8px; color: var(--text-muted); }
+    .dev-raw-toggle { cursor: pointer; font-size: .75rem; color: var(--primary); margin-top: 14px; display: inline-block; }
+    .dev-raw-json { display: none; background: var(--surface); border-radius: 8px; padding: 10px; font-size: .68rem; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto; margin-top: 8px; }
+    .dev-raw-json.open { display: block; }
+    .dev-player-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; padding: 4px 0; }
+    .dev-player-row .role-tag { background: var(--surface); border-radius: 6px; padding: 2px 8px; font-size: .68rem; font-weight: 700; text-transform: uppercase; }
   </style>
 </head>
 <body>
@@ -84,6 +100,13 @@
   </div>
 </div>
 
+<div class="dev-modal-backdrop" id="devDetailBackdrop" onclick="if(event.target===this) closeDevDetail()">
+  <div class="dev-modal detail">
+    <h3>Detalhes da devolução <span class="close" onclick="closeDevDetail()"><i class="fas fa-times"></i></span></h3>
+    <div id="devDetailBody"></div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
@@ -129,6 +152,7 @@ async function saveNote(id, btn) {
 }
 
 let periodoAtual = { date_from: '', date_to: '' };
+let allDevRows = [];
 
 async function loadLojasFiltro() {
   const sel = document.getElementById('filtroLoja');
@@ -177,23 +201,25 @@ async function load() {
   document.getElementById('kpi-valor').textContent     = fmt(s.total_value);
 
   const rows = data.items || [];
+  allDevRows = rows;
   document.getElementById('devTable').innerHTML = rows.length
     ? rows.map(r => {
         const st = statusMap[r.status] || { l: r.status, c: '' };
-        return `<tr>
+        const produto = r.item_title || r.title || '—';
+        return `<tr onclick="openDevDetail(${r.id})" style="cursor:pointer">
           <td style="font-size:11px;white-space:nowrap">#${r.order_id||'—'}</td>
           <td style="font-size:.75rem;color:var(--text-muted)">${r.conta||'—'}</td>
           <td style="white-space:nowrap">${r.buyer_nickname||'—'}</td>
-          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title||''}">${r.title||'—'}</td>
+          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${produto}">${produto}</td>
           <td style="max-width:180px" title="${r.reason||''}">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reason_detail || r.reason || '—'}</div>
             ${(r.type || r.stage) ? `<div style="font-size:10px;color:var(--text-muted)">${[traduzido(TYPE_LABEL, r.type), traduzido(STAGE_LABEL, r.stage)].filter(Boolean).join(' • ')}</div>` : ''}
           </td>
-          <td style="white-space:nowrap">${fmt(r.amount)}</td>
+          <td style="white-space:nowrap">${fmt(r.order_amount ?? r.amount)}</td>
           <td><span class="badge ${st.c}">${st.l}</span></td>
           <td style="white-space:nowrap">${fmtD(r.date)}</td>
-          <td id="video-cell-${r.order_id}" style="white-space:nowrap">—</td>
-          <td>
+          <td id="video-cell-${r.order_id}" style="white-space:nowrap" onclick="event.stopPropagation()">—</td>
+          <td onclick="event.stopPropagation()">
             <div class="note-cell">
               <input class="note-input" id="note-${r.id}" value="${(r.note||'').replace(/"/g,'&quot;')}" placeholder="Adicionar observação...">
               <button class="btn-save-note" onclick="saveNote(${r.id}, this)">Salvar</button>
@@ -229,6 +255,92 @@ function closeDevVideo() {
   player.removeAttribute('src');
   document.getElementById('devVideoBackdrop').classList.remove('open');
 }
+
+// Mesma classificação usada em pages/embalagem.html/top-vendas-online.html.
+function logLabel(tipo) {
+  const l = (tipo || '').toLowerCase();
+  if (l.includes('fulfillment')) return 'Full';
+  if (l.includes('self_service') || l.includes('flex')) return 'Flex';
+  if (l.includes('xd_drop_off') || l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return 'Mercado Envios';
+  return tipo || '—';
+}
+const fmtDT = d => d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+const PLAYER_ROLE_LABEL = { complainant: 'Comprador', respondent: 'Vendedor', mediator: 'Mercado Livre' };
+
+// Modal de detalhe — abre com o que já veio na listagem (sem chamada nova),
+// mostra todo campo estruturado que a claim traz + o pedido/produto
+// associado (via JOIN orders/items no backend, ver .claude/decisions.md) +
+// um "ver dados brutos" com o JSON completo da claim, pra nenhum detalhe
+// ficar de fora mesmo que não tenha um campo dedicado na UI.
+function openDevDetail(id) {
+  const r = allDevRows.find(x => x.id === id);
+  if (!r) return;
+  const st = statusMap[r.status] || { l: r.status, c: '' };
+  const raw = r.raw_data || {};
+  const players = Array.isArray(raw.players) ? raw.players : [];
+  const resolution = raw.resolution;
+
+  const produtoHtml = r.item_permalink
+    ? `<a href="${r.item_permalink}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escapeHtmlDev(r.item_title || r.title || 'Produto')} <i class="fas fa-external-link-alt" style="font-size:10px;color:var(--primary)"></i></a>`
+    : escapeHtmlDev(r.item_title || r.title || 'Produto não identificado');
+
+  let html = `
+    <div class="dev-detail-head">
+      ${r.item_thumbnail ? `<img src="${r.item_thumbnail}" onerror="this.style.display='none'">` : ''}
+      <div>
+        <div class="prod-title">${produtoHtml}</div>
+        <div class="prod-sub">${r.item_id ? `SKU/ID: ${r.item_id}` : 'Sem anúncio associado a este pedido'}${r.order_quantity ? ` · Qtd: ${r.order_quantity}` : ''}</div>
+      </div>
+    </div>
+    <div class="dev-detail-grid">
+      <div class="dev-detail-item"><div class="lbl">Valor do pedido</div><div class="val big">${fmt(r.order_amount ?? r.amount)}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Status</div><div class="val"><span class="badge ${st.c}">${st.l}</span></div></div>
+      <div class="dev-detail-item"><div class="lbl">Pedido</div><div class="val">#${r.order_id || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Comprador</div><div class="val">${r.buyer_nickname || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Loja</div><div class="val">${r.conta || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Logística</div><div class="val">${logLabel(r.shipping_type)}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Motivo</div><div class="val">${r.reason_detail || r.reason || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Estágio</div><div class="val">${traduzido(STAGE_LABEL, r.stage) || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Tipo</div><div class="val">${traduzido(TYPE_LABEL, r.type) || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Aberta em</div><div class="val">${fmtDT(r.date)}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Última atualização</div><div class="val">${fmtDT(r.last_updated)}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Data da venda</div><div class="val">${fmtDT(r.order_date)}</div></div>
+    </div>`;
+
+  if (resolution) {
+    html += `
+    <div class="dev-detail-section">
+      <h4>Resolução</h4>
+      <div class="dev-detail-item"><div class="val">${resolution.description || resolution.reason || 'Sem descrição'}</div></div>
+      ${resolution.date ? `<div class="dev-detail-item" style="margin-top:6px"><div class="lbl">Data da resolução</div><div class="val">${fmtDT(resolution.date)}</div></div>` : ''}
+    </div>`;
+  }
+
+  if (players.length) {
+    html += `
+    <div class="dev-detail-section">
+      <h4>Envolvidos</h4>
+      ${players.map(p => `<div class="dev-player-row"><span class="role-tag">${PLAYER_ROLE_LABEL[p.role] || p.role || '—'}</span> ID: ${p.user_id ?? '—'}</div>`).join('')}
+    </div>`;
+  }
+
+  if (r.note) {
+    html += `
+    <div class="dev-detail-section">
+      <h4>Observação interna</h4>
+      <div class="dev-detail-item"><div class="val">${escapeHtmlDev(r.note)}</div></div>
+    </div>`;
+  }
+
+  html += `
+    <span class="dev-raw-toggle" onclick="document.getElementById('devRawJson').classList.toggle('open')"><i class="fas fa-code"></i> Ver dados brutos da claim</span>
+    <pre class="dev-raw-json" id="devRawJson">${escapeHtmlDev(JSON.stringify(raw, null, 2))}</pre>`;
+
+  document.getElementById('devDetailBody').innerHTML = html;
+  document.getElementById('devDetailBackdrop').classList.add('open');
+}
+function closeDevDetail() { document.getElementById('devDetailBackdrop').classList.remove('open'); }
+function escapeHtmlDev(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
 
 document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 

@@ -70,6 +70,12 @@
           <button class="btn-save-note periodo-btn" data-periodo="30" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(30)">30 dias</button>
           <button class="btn-save-note periodo-btn" data-periodo="" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('')">Tudo</button>
         </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:.75rem;color:var(--text-muted)">De</span>
+          <input type="date" id="dataDe" class="note-input" style="max-width:150px" onchange="setPeriodoCustom()">
+          <span style="font-size:.75rem;color:var(--text-muted)">Até</span>
+          <input type="date" id="dataAte" class="note-input" style="max-width:150px" onchange="setPeriodoCustom()">
+        </div>
       </div>
 
       <div class="card-grid" style="margin-bottom:16px">
@@ -205,6 +211,21 @@ function setPeriodo(dias) {
     periodoAtual = { date_from: todayISO(d), date_to: todayISO(hoje) };
   }
   document.querySelectorAll('.periodo-btn').forEach(b => b.classList.toggle('active', b.dataset.periodo === String(dias)));
+  document.getElementById('dataDe').value = '';
+  document.getElementById('dataAte').value = '';
+  load();
+}
+
+// Filtro de data livre (ex: "01/07/2026 até 31/07/2026") — complementa os
+// botões de atalho pra períodos que eles não cobrem (um mês específico,
+// uma faixa arbitrária). Desativa os botões de atalho enquanto ativo, pra
+// não dar a entender que os dois filtros estão combinados.
+function setPeriodoCustom() {
+  const de = document.getElementById('dataDe').value;
+  const ate = document.getElementById('dataAte').value;
+  if (!de && !ate) return;
+  periodoAtual = { date_from: de || '', date_to: ate || de };
+  document.querySelectorAll('.periodo-btn').forEach(b => b.classList.remove('active'));
   load();
 }
 

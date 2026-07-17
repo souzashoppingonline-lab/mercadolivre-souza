@@ -1806,67 +1806,82 @@ router.get('/clientes/:nickname', async (req, res) => {
 
 // ── Alertas faltando ───────────────────────────────────────
 router.get('/alertas/devolucoes', async (req, res) => {
-  const { store_id = '', q = '', date_from = '', date_to = '' } = req.query;
-  const where = [`($1 = '' OR r.store_id = $1::bigint)`];
-  const params = [store_id];
-  if (q) { params.push(`%${q}%`); where.push(`(r.order_id::text ILIKE $${params.length} OR r.buyer_nickname ILIKE $${params.length} OR r.title ILIKE $${params.length} OR i.title ILIKE $${params.length})`); }
-  if (date_from) { params.push(date_from); where.push(`r.date >= $${params.length}`); }
-  if (date_to)   { params.push(date_to);   where.push(`r.date <= $${params.length}`); }
-  const { rows } = await pool.query(
-    `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
-            r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo,
-            COALESCE(cr.detail, r.reason) AS reason_detail,
-            r.raw_data,
-            r.raw_data->>'stage' AS stage,
-            r.raw_data->>'type' AS type,
-            r.raw_data->>'last_updated' AS last_updated,
-            o.item_id, o.quantity AS order_quantity, o.unit_price, o.total_amount AS order_amount,
-            o.shipping_type, o.date_created AS order_date,
-            COALESCE(i.title, r.title) AS item_title, i.thumbnail AS item_thumbnail, i.permalink AS item_permalink
-     FROM returns r
-     LEFT JOIN vw_ml_stores s ON s.id = r.store_id
-     LEFT JOIN claim_reasons cr ON cr.id = r.reason
-     LEFT JOIN vw_ml_orders o ON o.ml_id = r.order_id
-     LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-     WHERE ${where.join(' AND ')}
-     ORDER BY r.date DESC LIMIT 200`,
-    params
-  );
-  const comPrejuizo = rows.filter(r => r.prejuizo != null);
-  const summary = {
-    in_analysis: rows.filter(r => r.status === 'analysis' || r.status === 'opened').length,
-    approved:    rows.filter(r => r.status === 'approved' || r.status === 'resolved').length,
-    rejected:    rows.filter(r => r.status === 'rejected' || r.status === 'closed').length,
-    total_value: rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0),
-    total:       rows.length,
-    prejuizo_total: comPrejuizo.reduce((s, r) => s + parseFloat(r.prejuizo || 0), 0),
-    prejuizo_qtd:   comPrejuizo.length,
-  };
-  res.json({ items: rows, summary });
+  try {
+    const { store_id = '', q = '', date_from = '', date_to = '' } = req.query;
+    const where = [`($1 = '' OR r.store_id = $1::bigint)`];
+    const params = [store_id];
+    if (q) { params.push(`%${q}%`); where.push(`(r.order_id::text ILIKE $${params.length} OR r.buyer_nickname ILIKE $${params.length} OR r.title ILIKE $${params.length} OR i.title ILIKE $${params.length})`); }
+    if (date_from) { params.push(date_from); where.push(`r.date >= $${params.length}`); }
+    if (date_to)   { params.push(date_to);   where.push(`r.date <= $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
+              r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo,
+              COALESCE(cr.detail, r.reason) AS reason_detail,
+              r.raw_data,
+              r.raw_data->>'stage' AS stage,
+              r.raw_data->>'type' AS type,
+              r.raw_data->>'last_updated' AS last_updated,
+              o.item_id, o.quantity AS order_quantity, o.unit_price, o.total_amount AS order_amount,
+              o.shipping_type, o.date_created AS order_date,
+              COALESCE(i.title, r.title) AS item_title, i.thumbnail AS item_thumbnail, i.permalink AS item_permalink
+       FROM returns r
+       LEFT JOIN vw_ml_stores s ON s.id = r.store_id
+       LEFT JOIN claim_reasons cr ON cr.id = r.reason
+       LEFT JOIN vw_ml_orders o ON o.ml_id = r.order_id
+       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY r.date DESC LIMIT 200`,
+      params
+    );
+    const comPrejuizo = rows.filter(r => r.prejuizo != null);
+    const summary = {
+      in_analysis: rows.filter(r => r.status === 'analysis' || r.status === 'opened').length,
+      approved:    rows.filter(r => r.status === 'approved' || r.status === 'resolved').length,
+      rejected:    rows.filter(r => r.status === 'rejected' || r.status === 'closed').length,
+      total_value: rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0),
+      total:       rows.length,
+      prejuizo_total: comPrejuizo.reduce((s, r) => s + parseFloat(r.prejuizo || 0), 0),
+      prejuizo_qtd:   comPrejuizo.length,
+    };
+    res.json({ items: rows, summary });
+  } catch (e) {
+    console.error('[/alertas/devolucoes]', e.message);
+    res.status(500).json({ error: e.message, items: [], summary: {} });
+  }
 });
 
 router.patch('/alertas/devolucoes/:id/note', async (req, res) => {
-  const { note } = req.body;
-  const { rows } = await pool.query(
-    `UPDATE returns SET note = $1, updated_at = now() WHERE id = $2 RETURNING id, note`,
-    [note, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
-  res.json(rows[0]);
+  try {
+    const { note } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE returns SET note = $1, updated_at = now() WHERE id = $2 RETURNING id, note`,
+      [note, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[/alertas/devolucoes/:id/note]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.patch('/alertas/devolucoes/:id/prejuizo', async (req, res) => {
   // Prejuízo é digitado manualmente pelo usuário (não vem da API do ML) —
   // string vazia ou não numérica grava NULL, não zero, pra distinguir
   // "não avaliado ainda" de "prejuízo de fato zero". Ver business-rules.md.
-  const valor = req.body.prejuizo;
-  const prejuizo = valor === '' || valor === null || valor === undefined || Number.isNaN(Number(valor)) ? null : Number(valor);
-  const { rows } = await pool.query(
-    `UPDATE returns SET prejuizo = $1, updated_at = now() WHERE id = $2 RETURNING id, prejuizo`,
-    [prejuizo, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
-  res.json(rows[0]);
+  try {
+    const valor = req.body.prejuizo;
+    const prejuizo = valor === '' || valor === null || valor === undefined || Number.isNaN(Number(valor)) ? null : Number(valor);
+    const { rows } = await pool.query(
+      `UPDATE returns SET prejuizo = $1, updated_at = now() WHERE id = $2 RETURNING id, prejuizo`,
+      [prejuizo, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[/alertas/devolucoes/:id/prejuizo]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.get('/alteracoes', async (req, res) => {

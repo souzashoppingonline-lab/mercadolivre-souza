@@ -56,6 +56,9 @@
         <button class="btn-save-note" id="btnSync" style="padding:8px 18px;font-size:.85rem;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border)" onclick="syncRetroativo()">
           <i class="fas fa-sync-alt"></i> Importar histórico ML
         </button>
+        <button class="btn-save-note" id="btnExportCsv" style="padding:8px 18px;font-size:.85rem;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border)" onclick="exportDevolucoesCsv()">
+          <i class="fas fa-file-csv"></i> Exportar CSV
+        </button>
       </div>
 
       <div class="filters-row" style="margin-bottom:16px">
@@ -403,6 +406,39 @@ function openDevDetail(id) {
 }
 function closeDevDetail() { document.getElementById('devDetailBackdrop').classList.remove('open'); }
 function escapeHtmlDev(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
+
+// Exporta as devoluções atualmente carregadas (mesmo filtro de período/loja/
+// busca ativo na tela) — pensado pra análise externa (ex: colar numa IA e
+// perguntar "o que dá pra melhorar"), por isso valores numéricos crus (sem
+// "R$") e datas em ISO, não formatados pra leitura humana. Mesmo padrão de
+// exportCsv() em analise-vendas-mes.html (separador ";", BOM UTF-8 pro Excel
+// abrir acentuação certa, gerado 100% no cliente, sem rota nova).
+function exportDevolucoesCsv() {
+  if (!allDevRows.length) return;
+  const rows = [[
+    'Pedido', 'Loja', 'Comprador', 'Produto', 'Item ID', 'Motivo (código)', 'Motivo (detalhado)',
+    'Estágio', 'Tipo', 'Valor do Pedido', 'Prejuízo', 'Status', 'Logística',
+    'Data Abertura', 'Última Atualização', 'Data da Venda', 'Observação',
+  ]];
+  allDevRows.forEach(r => {
+    const st = statusMap[r.status] || { l: r.status };
+    rows.push([
+      r.order_id ?? '', r.conta ?? '', r.buyer_nickname ?? '', r.item_title || r.title || '', r.item_id ?? '',
+      r.reason ?? '', r.reason_detail ?? '',
+      traduzido(STAGE_LABEL, r.stage) ?? '', traduzido(TYPE_LABEL, r.type) ?? '',
+      r.order_amount ?? r.amount ?? '', r.prejuizo ?? '', st.l ?? r.status ?? '', logLabel(r.shipping_type),
+      r.date ?? '', r.last_updated ?? '', r.order_date ?? '', r.note ?? '',
+    ]);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `devolucoes-${todayISO()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
 

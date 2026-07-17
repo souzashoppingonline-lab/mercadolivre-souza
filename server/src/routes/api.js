@@ -2363,6 +2363,37 @@ router.get('/produtos/performance', async (req, res) => {
 
 router.get('/vendas/por-loja', async (req, res) => {
   try {
+    const { date_from, date_to } = req.query;
+    // Range explícito (De/Até) tem prioridade sobre `days` — quando informado,
+    // a comparação "vs Mês Anterior" desloca a mesma janela 30 dias pra trás
+    // (mesma semântica já usada no modo `days`, generalizada pra qualquer
+    // range: não é período-sobre-período de tamanho igual, é sempre "mesma
+    // data(s), 1 mês antes" — ver business-rules.md).
+    if (date_from && date_to) {
+      const dateToEnd = `${date_to} 23:59:59`;
+      const [{ rows: current }, { rows: previous }] = await Promise.all([
+        pool.query(`
+          SELECT o.store_id, s.nickname as loja, (o.date_created - INTERVAL '3 hours')::date AS dia,
+                 COUNT(*) as pedidos, SUM(o.total_amount) as receita
+          FROM vw_ml_orders o
+          JOIN vw_ml_stores s ON s.id = o.store_id
+          WHERE o.date_created >= $1::timestamptz AND o.date_created <= $2::timestamptz
+            AND o.status != 'cancelled'
+          GROUP BY 1, 2, 3
+          ORDER BY 3, 2
+        `, [date_from, dateToEnd]),
+        pool.query(`
+          SELECT o.store_id, (o.date_created - INTERVAL '3 hours')::date AS dia, SUM(o.total_amount) as receita
+          FROM vw_ml_orders o
+          WHERE o.date_created >= ($1::timestamptz - interval '30 days')
+            AND o.date_created <= ($2::timestamptz - interval '30 days')
+            AND o.status != 'cancelled'
+          GROUP BY 1, 2
+        `, [date_from, dateToEnd]),
+      ]);
+      return res.json({ current, previous });
+    }
+
     const days = Math.min(parseInt(req.query.days) || 30, 90);
 
     const { rows: current } = await pool.query(`

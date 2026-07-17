@@ -48,6 +48,11 @@
           <option value="15">Últimos 15 dias</option>
           <option value="30" selected>Últimos 30 dias</option>
         </select>
+        <span style="font-size:12px;color:var(--text-muted)">ou</span>
+        <span style="font-size:12px;color:var(--text-muted)">De</span>
+        <input type="date" id="filterDateFrom">
+        <span style="font-size:12px;color:var(--text-muted)">Até</span>
+        <input type="date" id="filterDateTo">
         <button class="btn-primary" id="btnLoad"><i class="fas fa-sync-alt"></i> Atualizar</button>
       </div>
 
@@ -135,6 +140,9 @@ function buildPrevMap(previous) {
 
 async function load() {
   const days = parseInt(document.getElementById('filterDays').value) || 30;
+  const dateFrom = document.getElementById('filterDateFrom').value;
+  const dateTo = document.getElementById('filterDateTo').value;
+  const usaRange = dateFrom && dateTo;
   const tbody = document.getElementById('lojaTbody');
   tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
 
@@ -144,7 +152,7 @@ async function load() {
     if (el) el.innerHTML = '<div class="skeleton"></div>';
   });
 
-  const data = await DB.getVendasPorLoja({ days });
+  const data = await DB.getVendasPorLoja(usaRange ? { date_from: dateFrom, date_to: dateTo } : { days });
   if (!data || data.error) {
     tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color:var(--red)">${data?.error || 'Erro ao carregar dados'}</td></tr>`;
     return;
@@ -175,8 +183,11 @@ async function load() {
   const ticketMedio  = totalPedidos > 0 ? totalReceita / totalPedidos : 0;
   const bestStore    = stores[0];
 
+  const fmtDataBR = d => { const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };
+  const periodoTexto = usaRange ? `de ${fmtDataBR(dateFrom)} a ${fmtDataBR(dateTo)}` : `em ${days} dias`;
+
   set('kpiReceita', R(totalReceita));
-  set('kpiReceitaSub', `em ${days} dias`);
+  set('kpiReceitaSub', periodoTexto);
   set('kpiPedidos', totalPedidos);
   set('kpiBestLoja', bestStore ? bestStore[1].loja : '—');
   set('kpiBestReceita', bestStore ? R(bestStore[1].receita) : '');
@@ -276,7 +287,7 @@ async function load() {
   });
 
   // --- Table ---
-  set('tableSubtitle', `${stores.length} lojas · últimos ${days} dias`);
+  set('tableSubtitle', `${stores.length} lojas · ${periodoTexto}`);
   tbody.innerHTML = stores.length ? stores.map(([sid, v], idx) => {
     const prevReceita = prevStoreMap[sid] || 0;
     let varHtml = '<span class="var-neu">—</span>';
@@ -300,7 +311,13 @@ async function load() {
 }
 
 document.getElementById('btnLoad').addEventListener('click', load);
-document.getElementById('filterDays').addEventListener('change', load);
+document.getElementById('filterDays').addEventListener('change', () => {
+  document.getElementById('filterDateFrom').value = '';
+  document.getElementById('filterDateTo').value = '';
+  load();
+});
+document.getElementById('filterDateFrom').addEventListener('change', load);
+document.getElementById('filterDateTo').addEventListener('change', load);
 WS.on('order_updated', load);
 
 load();

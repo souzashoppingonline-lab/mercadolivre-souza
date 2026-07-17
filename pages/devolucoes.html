@@ -85,6 +85,7 @@
         <div class="stat-card"><div class="label"><i class="fas fa-times" style="color:var(--red)"></i> Rejeitadas</div><div class="value" id="kpi-rejeitadas" style="color:var(--red)">—</div></div>
         <div class="stat-card"><div class="label">Valor Total</div><div class="value" id="kpi-valor">—</div></div>
         <div class="stat-card" style="border-color:var(--red)"><div class="label"><i class="fas fa-hand-holding-usd" style="color:var(--red)"></i> Prejuízo Total <span style="font-weight:400">(no período filtrado)</span></div><div class="value" id="kpi-prejuizo" style="color:var(--red)">—</div><div class="sub" id="kpi-prejuizo-qtd">—</div></div>
+        <div class="stat-card" style="border-color:var(--orange)"><div class="label"><i class="fas fa-percentage" style="color:var(--orange)"></i> Taxa de Devolução</div><div class="value" id="kpi-taxa" style="color:var(--orange)">—</div><div class="sub" id="kpi-taxa-sub">—</div></div>
       </div>
 
       <div class="card">
@@ -245,6 +246,14 @@ async function load() {
   document.getElementById('kpi-valor').textContent     = fmt(s.total_value);
   document.getElementById('kpi-prejuizo').textContent  = fmt(s.prejuizo_total);
   document.getElementById('kpi-prejuizo-qtd').textContent = `${s.prejuizo_qtd ?? 0} devolução(ões) com prejuízo lançado`;
+  // Taxa de Devolução = devoluções ÷ pedidos do mesmo período/loja filtrado
+  // (ver business-rules.md) — não é a mesma coisa que "% de status X", é
+  // volume de devolução sobre volume de venda.
+  document.getElementById('kpi-taxa').textContent = s.taxa_devolucao_pct != null
+    ? s.taxa_devolucao_pct.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%'
+    : '—';
+  document.getElementById('kpi-taxa-sub').textContent =
+    `${(s.total ?? 0).toLocaleString('pt-BR')} devolução(ões) de ${(s.pedidos_total ?? 0).toLocaleString('pt-BR')} pedido(s)`;
 
   const rows = data.items || [];
   allDevRows = rows;

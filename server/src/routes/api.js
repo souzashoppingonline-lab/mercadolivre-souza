@@ -1813,27 +1813,43 @@ router.get('/alertas/devolucoes', async (req, res) => {
     if (q) { params.push(`%${q}%`); where.push(`(r.order_id::text ILIKE $${params.length} OR r.buyer_nickname ILIKE $${params.length} OR r.title ILIKE $${params.length} OR i.title ILIKE $${params.length})`); }
     if (date_from) { params.push(date_from); where.push(`r.date >= $${params.length}`); }
     if (date_to)   { params.push(date_to);   where.push(`r.date <= $${params.length}`); }
-    const { rows } = await pool.query(
-      `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
-              r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo,
-              COALESCE(cr.detail, r.reason) AS reason_detail,
-              r.raw_data,
-              r.raw_data->>'stage' AS stage,
-              r.raw_data->>'type' AS type,
-              r.raw_data->>'last_updated' AS last_updated,
-              o.item_id, o.quantity AS order_quantity, o.unit_price, o.total_amount AS order_amount,
-              o.shipping_type, o.date_created AS order_date,
-              COALESCE(i.title, r.title) AS item_title, i.thumbnail AS item_thumbnail, i.permalink AS item_permalink
-       FROM returns r
-       LEFT JOIN vw_ml_stores s ON s.id = r.store_id
-       LEFT JOIN claim_reasons cr ON cr.id = r.reason
-       LEFT JOIN vw_ml_orders o ON o.ml_id = r.order_id
-       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-       WHERE ${where.join(' AND ')}
-       ORDER BY r.date DESC LIMIT 200`,
-      params
-    );
+
+    // Pedidos do mesmo período/loja (não a mesma busca livre `q` — "taxa de
+    // devolução" é sobre o volume total de pedidos, não sobre pedidos que
+    // batem com um termo de busca de devolução) — usado pra Taxa de
+    // Devolução = devoluções ÷ pedidos, ver business-rules.md.
+    const pedidosWhere = [`o.status != 'cancelled'`, `($1 = '' OR o.store_id = $1::bigint)`];
+    const pedidosParams = [store_id];
+    if (date_from) { pedidosParams.push(date_from); pedidosWhere.push(`o.date_created >= $${pedidosParams.length}`); }
+    if (date_to)   { pedidosParams.push(date_to);   pedidosWhere.push(`o.date_created <= $${pedidosParams.length}`); }
+
+    const [{ rows }, { rows: pedidosRows }] = await Promise.all([
+      pool.query(
+        `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
+                r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo,
+                COALESCE(cr.detail, r.reason) AS reason_detail,
+                r.raw_data,
+                r.raw_data->>'stage' AS stage,
+                r.raw_data->>'type' AS type,
+                r.raw_data->>'last_updated' AS last_updated,
+                o.item_id, o.quantity AS order_quantity, o.unit_price, o.total_amount AS order_amount,
+                o.shipping_type, o.date_created AS order_date,
+                COALESCE(i.title, r.title) AS item_title, i.thumbnail AS item_thumbnail, i.permalink AS item_permalink
+         FROM returns r
+         LEFT JOIN vw_ml_stores s ON s.id = r.store_id
+         LEFT JOIN claim_reasons cr ON cr.id = r.reason
+         LEFT JOIN vw_ml_orders o ON o.ml_id = r.order_id
+         LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+         WHERE ${where.join(' AND ')}
+         ORDER BY r.date DESC LIMIT 200`,
+        params
+      ),
+      pool.query(`SELECT COUNT(*) AS total FROM vw_ml_orders o WHERE ${pedidosWhere.join(' AND ')}`, pedidosParams),
+    ]);
+
     const comPrejuizo = rows.filter(r => r.prejuizo != null);
+    const pedidosTotal = Number(pedidosRows[0]?.total || 0);
+    const taxaDevolucaoPct = pedidosTotal > 0 ? (rows.length / pedidosTotal) * 100 : (rows.length > 0 ? 100 : 0);
     const summary = {
       in_analysis: rows.filter(r => r.status === 'analysis' || r.status === 'opened').length,
       approved:    rows.filter(r => r.status === 'approved' || r.status === 'resolved').length,
@@ -1842,6 +1858,8 @@ router.get('/alertas/devolucoes', async (req, res) => {
       total:       rows.length,
       prejuizo_total: comPrejuizo.reduce((s, r) => s + parseFloat(r.prejuizo || 0), 0),
       prejuizo_qtd:   comPrejuizo.length,
+      pedidos_total:      pedidosTotal,
+      taxa_devolucao_pct: Number(taxaDevolucaoPct.toFixed(2)),
     };
     res.json({ items: rows, summary });
   } catch (e) {

@@ -26,6 +26,10 @@ checkQuality({ itemId, title, score, problems, permalink, storeId, storeName })
 
 Mover um cartão para a coluna "Excluído" é reversível (só muda `board_column`, a linha continua em `tasks`). A exclusão definitiva (`DELETE /api/tasks/:id`, ver `api.md`) só é aceita pela rota quando o cartão já está em `board_column='excluido'` — é uma segunda etapa deliberada, não um clique só. O botão correspondente no frontend (`pages/agenda-trello.html`) só aparece nesse estado.
 
+## Prazo (`due_date`) e alerta de atraso
+
+Todo cartão pode ter um `due_date` opcional (editável em `pages/agenda-trello.html`). Um cartão com `due_date` vencido mostra badge vermelho no próprio card — isso já existia antes de qualquer regra sobre atraso ter sido documentada aqui (gap de documentação, não de código). O que foi adicionado depois: KPI "Atrasadas" no topo do quadro e alerta agregado no Telegram uma vez por dia (job `checkTarefasAtrasadas`) — regra completa em `business-rules.md`, schedule em `workers.md`.
+
 ## Onde é chamado (`server/src/worker.js`)
 
 - **`handleItem`** (handler do tópico webhook `items`): logo após o alerta de estoque existente (`if (item.available_quantity <= 5) { ... stock_alert ...}`), chama `taskEngine.checkStock(...)`. Roda a cada webhook de item — é o mesmo gatilho de tempo real que já existe para o alerta Telegram.

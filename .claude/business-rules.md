@@ -63,6 +63,10 @@ Ver `task-engine.md` para a arquitetura do `TaskEngine`. Regras de negócio das 
 - **Score de qualidade baixo** (`rule_key='score_baixo'`): dispara quando `score < 50` no resultado de `/item/:id/performance` (mesmo dado gravado em `item_performance` pelo job `syncScores`, 01:00 diário — ver `workers.md`). Prioridade `media`.
 - **Dedup**: nenhuma das duas regras cria um 2º cartão aberto para o mesmo `item_id`+`rule_key` — só atualiza `updated_at` do cartão existente enquanto ele não for movido para `finalizado`/`excluido`.
 
+**Cartão atrasado** (`due_date` vencido): um cartão com `due_date < now()` fora das colunas `finalizado`/`excluido` é considerado atrasado — mostra badge vermelho no próprio card (já existia antes desta regra ser documentada) e conta no KPI "Atrasadas" no topo do quadro (`GET /api/tasks/summary`). Uma vez por dia (job `checkTarefasAtrasadas`, 08:15 — ver `workers.md`), todo cartão atrasado ainda não notificado (`overdue_notified_at IS NULL`) dispara um alerta agregado único no Telegram (`tg_tarefas`, não um por cartão) e é marcado como notificado — não repete o alerta todo dia pro mesmo cartão. Editar o `due_date` do cartão (`PATCH /api/tasks/:id`) reseta `overdue_notified_at` pra `NULL`, permitindo notificar de novo se ele voltar a vencer.
+
+**Exclusão permanente de cartão**: `DELETE /api/tasks/:id` (hard delete — sem soft-delete/lixeira) envia ao Telegram (`tg_tarefas`) todos os detalhes do cartão (título, descrição, prioridade, tags, responsável, loja/marketplace de origem, coluna, datas) **antes** de apagar a linha — única forma de auditoria depois da exclusão, já que o registro deixa de existir no banco.
+
 ## SEO Score — pesos e thresholds (`server/src/seoScore.js`, tabela `item_seo_score`)
 
 **Não confundir com o score de `item_performance`** ("Score de qualidade baixo" acima) — são dois scores diferentes: `item_performance.score` vem pronto da API do ML (`/item/:id/performance`); o SEO Score é calculado inteiramente pelo sistema, fórmula própria, nunca chama esse endpoint. Calculado 1x/dia pelo job `sync-seo-score` (ver `workers.md`).

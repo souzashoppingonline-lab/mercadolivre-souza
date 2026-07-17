@@ -2168,6 +2168,54 @@ async function checkOutlierEstatistico() {
   scheduleAt(6, 20, checkOutlierEstatistico, 'outlier-check');
 }
 
+// ── Taxa de devolução alta — 06:30 diário ─────────────────────────────────
+// Mesma fórmula do card "Taxa de Devolução" de pages/devolucoes.html
+// (devoluções ÷ pedidos × 100), mas em janela fixa de últimas 24h por loja
+// ML, não o filtro livre da tela. TAXA_DEVOLUCAO_ALERTA_PCT e
+// TAXA_DEVOLUCAO_AMOSTRA_MIN são limiares fixos (ver business-rules.md) —
+// lojas com poucos pedidos no dia (< amostra mínima) são ignoradas pra não
+// gerar alerta de "100% de devolução" com 1 pedido e 1 devolução.
+const TAXA_DEVOLUCAO_ALERTA_PCT = 5;
+const TAXA_DEVOLUCAO_AMOSTRA_MIN = 10;
+async function checkTaxaDevolucaoAlta() {
+  console.log('[taxa-devolucao] verificando taxa de devolução por loja...');
+  try {
+    const { rows } = await pool.query(
+      `WITH pedidos AS (
+         SELECT store_id, COUNT(*) AS n
+         FROM orders
+         WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML')
+           AND status != 'cancelled' AND date_created >= now() - interval '1 day'
+         GROUP BY store_id
+       ), devol AS (
+         SELECT store_id, COUNT(*) AS n
+         FROM returns
+         WHERE date >= now() - interval '1 day'
+         GROUP BY store_id
+       )
+       SELECT s.id AS store_id, s.nickname, COALESCE(d.n, 0) AS devolucoes, p.n AS pedidos
+       FROM stores s
+       JOIN pedidos p ON p.store_id = s.id
+       LEFT JOIN devol d ON d.store_id = s.id
+       WHERE s.marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML')`
+    );
+    for (const r of rows) {
+      const pedidos = Number(r.pedidos), devolucoes = Number(r.devolucoes);
+      if (pedidos < TAXA_DEVOLUCAO_AMOSTRA_MIN) continue;
+      const taxaPct = (devolucoes / pedidos) * 100;
+      if (taxaPct < TAXA_DEVOLUCAO_ALERTA_PCT) continue;
+      await tgNotify('tg_devolucoes',
+        `📉 <b>Taxa de devolução alta — ${r.nickname}</b>\n` +
+        `↩️ ${devolucoes} devolução(ões) em ${pedidos} pedido(s) (últimas 24h)\n` +
+        `📊 Taxa: ${taxaPct.toFixed(2)}% (limite: ${TAXA_DEVOLUCAO_ALERTA_PCT}%)`
+      );
+    }
+  } catch (e) {
+    console.error('[taxa-devolucao] erro:', e.message);
+  }
+  scheduleAt(6, 30, checkTaxaDevolucaoAlta, 'taxa-devolucao');
+}
+
 // ── Tarefas atrasadas (Agenda Trello) — 08:15 diário ──────────────────────
 // Notifica 1x por vencimento (overdue_notified_at, v27) — não repete o
 // mesmo alerta todo dia enquanto o cartão continuar atrasado. Reseta quando
@@ -2307,6 +2355,7 @@ scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
+scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');
 scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
 scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
@@ -2402,6 +2451,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkOutlierEstatistico') {
       console.log('[worker] checkOutlierEstatistico disparado manualmente');
       checkOutlierEstatistico().catch(e => console.error('[worker] checkOutlierEstatistico erro:', e.message));
+    }
+    if (cmd === 'checkTaxaDevolucaoAlta') {
+      console.log('[worker] checkTaxaDevolucaoAlta disparado manualmente');
+      checkTaxaDevolucaoAlta().catch(e => console.error('[worker] checkTaxaDevolucaoAlta erro:', e.message));
     }
     if (cmd === 'checkTarefasAtrasadas') {
       console.log('[worker] checkTarefasAtrasadas disparado manualmente');

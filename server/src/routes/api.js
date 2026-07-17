@@ -995,7 +995,7 @@ router.get('/schedule/jobs', async (req, res) => {
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   const { name } = req.params;
-  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal','checkOutlierEstatistico'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
+  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal','checkOutlierEstatistico','checkTaxaDevolucaoAlta'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
   await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });
@@ -1823,7 +1823,7 @@ router.get('/alertas/devolucoes', async (req, res) => {
     if (date_from) { pedidosParams.push(date_from); pedidosWhere.push(`o.date_created >= $${pedidosParams.length}`); }
     if (date_to)   { pedidosParams.push(date_to);   pedidosWhere.push(`o.date_created <= $${pedidosParams.length}`); }
 
-    const [{ rows }, { rows: pedidosRows }] = await Promise.all([
+    const [{ rows }, { rows: pedidosPorLojaRows }, { rows: pedidosPorLogisticaRows }] = await Promise.all([
       pool.query(
         `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
                 r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo,
@@ -1844,12 +1844,75 @@ router.get('/alertas/devolucoes', async (req, res) => {
          ORDER BY r.date DESC LIMIT 200`,
         params
       ),
-      pool.query(`SELECT COUNT(*) AS total FROM vw_ml_orders o WHERE ${pedidosWhere.join(' AND ')}`, pedidosParams),
+      // Pedidos agrupados por loja — alimenta pedidos_total (soma) e Taxa por
+      // Loja (comparação lado a lado quando "Todas as lojas" está selecionado).
+      pool.query(
+        `SELECT o.store_id, s.nickname AS conta, COUNT(*) AS pedidos
+         FROM vw_ml_orders o
+         LEFT JOIN vw_ml_stores s ON s.id = o.store_id
+         WHERE ${pedidosWhere.join(' AND ')}
+         GROUP BY o.store_id, s.nickname`,
+        pedidosParams
+      ),
+      // Pedidos agrupados por tipo de envio cru — o bucket
+      // Flex/Mercado Envios/Full é feito no frontend (logLabel()), mesma
+      // classificação já usada na tabela, pra não duplicar a lógica aqui.
+      pool.query(
+        `SELECT COALESCE(o.shipping_type, '') AS shipping_type, COUNT(*) AS pedidos
+         FROM vw_ml_orders o
+         WHERE ${pedidosWhere.join(' AND ')}
+         GROUP BY o.shipping_type`,
+        pedidosParams
+      ),
     ]);
 
     const comPrejuizo = rows.filter(r => r.prejuizo != null);
-    const pedidosTotal = Number(pedidosRows[0]?.total || 0);
+    const pedidosTotal = pedidosPorLojaRows.reduce((s, p) => s + Number(p.pedidos), 0);
     const taxaDevolucaoPct = pedidosTotal > 0 ? (rows.length / pedidosTotal) * 100 : (rows.length > 0 ? 100 : 0);
+
+    // Ranking de produtos — só busca pedidos dos itens que efetivamente
+    // aparecem nas devoluções do período (não o catálogo inteiro), item por
+    // item seria N+1; um IN/ANY só com os item_ids relevantes.
+    const itemIds = [...new Set(rows.map(r => r.item_id).filter(Boolean))];
+    let pedidosPorItemRows = [];
+    if (itemIds.length) {
+      const { rows: r2 } = await pool.query(
+        `SELECT o.item_id, COUNT(*) AS pedidos
+         FROM vw_ml_orders o
+         WHERE o.item_id = ANY($1) AND ${pedidosWhere.map((w, i) => w.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + 1}`)).join(' AND ')}
+         GROUP BY o.item_id`,
+        [itemIds, ...pedidosParams]
+      );
+      pedidosPorItemRows = r2;
+    }
+    const pedidosPorItem = new Map(pedidosPorItemRows.map(r => [r.item_id, Number(r.pedidos)]));
+    const devPorItem = new Map();
+    rows.forEach(r => {
+      if (!r.item_id) return;
+      const cur = devPorItem.get(r.item_id) || { item_id: r.item_id, item_title: r.item_title, devolucoes: 0 };
+      cur.devolucoes += 1;
+      devPorItem.set(r.item_id, cur);
+    });
+    const rankingProdutos = [...devPorItem.values()].map(p => {
+      const pedidos = pedidosPorItem.get(p.item_id) || 0;
+      return { ...p, pedidos, taxa_pct: pedidos > 0 ? Number(((p.devolucoes / pedidos) * 100).toFixed(2)) : null };
+    }).sort((a, b) => b.devolucoes - a.devolucoes).slice(0, 10);
+
+    // Taxa por Loja — devoluções vêm de `rows` (já carregadas), pedidos da
+    // query agrupada acima. Só faz sentido mostrar quando não há um único
+    // store_id já filtrado (aí seria uma linha só, redundante com o KPI).
+    const devPorLoja = new Map();
+    rows.forEach(r => {
+      const cur = devPorLoja.get(r.store_id) || { store_id: r.store_id, conta: r.conta, devolucoes: 0 };
+      cur.devolucoes += 1;
+      devPorLoja.set(r.store_id, cur);
+    });
+    const taxaPorLoja = pedidosPorLojaRows.map(p => {
+      const devolucoes = devPorLoja.get(p.store_id)?.devolucoes || 0;
+      const pedidos = Number(p.pedidos);
+      return { store_id: p.store_id, conta: p.conta, devolucoes, pedidos, taxa_pct: pedidos > 0 ? Number(((devolucoes / pedidos) * 100).toFixed(2)) : null };
+    }).sort((a, b) => b.taxa_pct - a.taxa_pct);
+
     const summary = {
       in_analysis: rows.filter(r => r.status === 'analysis' || r.status === 'opened').length,
       approved:    rows.filter(r => r.status === 'approved' || r.status === 'resolved').length,
@@ -1860,11 +1923,54 @@ router.get('/alertas/devolucoes', async (req, res) => {
       prejuizo_qtd:   comPrejuizo.length,
       pedidos_total:      pedidosTotal,
       taxa_devolucao_pct: Number(taxaDevolucaoPct.toFixed(2)),
+      ranking_produtos:   rankingProdutos,
+      taxa_por_loja:      taxaPorLoja,
+      pedidos_por_logistica: pedidosPorLogisticaRows.map(r => ({ shipping_type: r.shipping_type, pedidos: Number(r.pedidos) })),
     };
     res.json({ items: rows, summary });
   } catch (e) {
     console.error('[/alertas/devolucoes]', e.message);
     res.status(500).json({ error: e.message, items: [], summary: {} });
+  }
+});
+
+// Série diária zero-fill (devoluções abertas no dia + pedidos do dia + taxa)
+// — pra ver se a taxa está piorando/melhorando, não só a foto do período
+// filtrado. `days` é independente do filtro de data da tabela principal
+// (mesmo padrão de /api/embalagem/historico), só respeita store_id.
+router.get('/alertas/devolucoes/evolucao', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 90);
+    const { store_id = '' } = req.query;
+    const { rows } = await pool.query(
+      `WITH dias AS (
+         SELECT generate_series((current_date - ($1::int - 1)), current_date, interval '1 day')::date AS d
+       ), devol AS (
+         SELECT r.date::date AS d, COUNT(*) AS n
+         FROM returns r
+         WHERE r.date >= (current_date - ($1::int - 1)) AND ($2 = '' OR r.store_id = $2::bigint)
+         GROUP BY 1
+       ), pedidos AS (
+         SELECT o.date_created::date AS d, COUNT(*) AS n
+         FROM vw_ml_orders o
+         WHERE o.status != 'cancelled' AND o.date_created >= (current_date - ($1::int - 1)) AND ($2 = '' OR o.store_id = $2::bigint)
+         GROUP BY 1
+       )
+       SELECT dias.d AS date, COALESCE(devol.n, 0)::int AS devolucoes, COALESCE(pedidos.n, 0)::int AS pedidos
+       FROM dias
+       LEFT JOIN devol ON devol.d = dias.d
+       LEFT JOIN pedidos ON pedidos.d = dias.d
+       ORDER BY dias.d`,
+      [days, store_id]
+    );
+    const dias = rows.map(r => ({
+      date: r.date, devolucoes: r.devolucoes, pedidos: r.pedidos,
+      taxa_pct: r.pedidos > 0 ? Number(((r.devolucoes / r.pedidos) * 100).toFixed(2)) : null,
+    }));
+    res.json({ dias });
+  } catch (e) {
+    console.error('[/alertas/devolucoes/evolucao]', e.message);
+    res.status(500).json({ error: e.message, dias: [] });
   }
 });
 

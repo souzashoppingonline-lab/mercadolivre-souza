@@ -231,6 +231,7 @@ const DB = {
   async getDevolucoes(params)          { return this._get('/alertas/devolucoes', params); },
   async saveDevolucaoNote(id, note)    { return this._patch(`/alertas/devolucoes/${id}/note`, { note }); },
   async saveDevolucaoPrejuizo(id, prejuizo) { return this._patch(`/alertas/devolucoes/${id}/prejuizo`, { prejuizo }); },
+  async getDevolucoesEvolucao(params = {}) { return this._get('/alertas/devolucoes/evolucao', params); },
   async getAnunciosProblema(p={})  { return this._get('/alertas/anuncios-problema', p); },
   async getQualidadeAnuncio(p={})  { return this._get('/qualidade-anuncio', p); },
   async getQualidadeAnuncioHistorico(itemId, p={}) { return this._get(`/qualidade-anuncio/${itemId}/historico`, p); },

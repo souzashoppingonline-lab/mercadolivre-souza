@@ -38,6 +38,22 @@
     .dev-raw-json.open { display: block; }
     .dev-player-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; padding: 4px 0; }
     .dev-player-row .role-tag { background: var(--bg-card2); border-radius: 6px; padding: 2px 8px; font-size: .68rem; font-weight: 700; text-transform: uppercase; }
+
+    /* Análises de Devolução */
+    .dev-analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media(max-width: 900px) { .dev-analytics-grid { grid-template-columns: 1fr; } }
+    .dev-rank-list { display: flex; flex-direction: column; gap: 10px; }
+    .dev-rank-row { display: flex; align-items: center; gap: 10px; font-size: .8rem; }
+    .dev-rank-row .lbl { min-width: 130px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); }
+    .dev-rank-row .bar-wrap { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden; }
+    .dev-rank-row .bar-fill { height: 100%; background: var(--primary); border-radius: 4px; }
+    .dev-rank-row .val { min-width: 30px; text-align: right; font-weight: 700; color: var(--text-muted); }
+    .dev-mini-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    .dev-mini-table th { text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .dev-mini-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); }
+    .dev-mini-table tr:last-child td { border-bottom: none; }
+    .dev-mini-table .taxa-alta { color: var(--red); font-weight: 700; }
+    .dev-mini-table .taxa-baixa { color: var(--green); }
   </style>
 </head>
 <body>
@@ -89,6 +105,56 @@
         <div class="stat-card"><div class="label">Valor Total</div><div class="value" id="kpi-valor">—</div></div>
         <div class="stat-card" style="border-color:var(--red)"><div class="label"><i class="fas fa-hand-holding-usd" style="color:var(--red)"></i> Prejuízo Total <span style="font-weight:400">(no período filtrado)</span></div><div class="value" id="kpi-prejuizo" style="color:var(--red)">—</div><div class="sub" id="kpi-prejuizo-qtd">—</div></div>
         <div class="stat-card" style="border-color:var(--orange)"><div class="label"><i class="fas fa-percentage" style="color:var(--orange)"></i> Taxa de Devolução</div><div class="value" id="kpi-taxa" style="color:var(--orange)">—</div><div class="sub" id="kpi-taxa-sub">—</div></div>
+        <div class="stat-card"><div class="label"><i class="fas fa-hourglass-half" style="color:var(--blue)"></i> Tempo Médio de Resolução</div><div class="value" id="kpi-tempo-resolucao">—</div><div class="sub" id="kpi-tempo-resolucao-sub">—</div></div>
+      </div>
+
+      <div class="dev-analytics-grid">
+        <div class="card">
+          <div class="card-header"><h3>Ranking de Motivos</h3></div>
+          <div class="dev-rank-list" id="rankMotivos"><div class="empty-state">Sem dados</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Ranking de Produtos <span style="font-weight:400;font-size:.75rem;color:var(--text-muted)">(mais devoluções)</span></h3></div>
+          <div class="table-responsive">
+            <table class="dev-mini-table">
+              <thead><tr><th>Produto</th><th>Devoluções</th><th>Pedidos</th><th>Taxa</th></tr></thead>
+              <tbody id="rankProdutos"><tr><td colspan="4" class="empty-state">Sem dados</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="dev-analytics-grid">
+        <div class="card" id="cardTaxaLoja" style="display:none">
+          <div class="card-header"><h3>Taxa de Devolução por Loja</h3></div>
+          <div class="table-responsive">
+            <table class="dev-mini-table">
+              <thead><tr><th>Loja</th><th>Devoluções</th><th>Pedidos</th><th>Taxa</th></tr></thead>
+              <tbody id="rankLojas"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Correlação com Logística</h3></div>
+          <div class="table-responsive">
+            <table class="dev-mini-table">
+              <thead><tr><th>Logística</th><th>Devoluções</th><th>Pedidos</th><th>Taxa</th></tr></thead>
+              <tbody id="rankLogistica"><tr><td colspan="4" class="empty-state">Sem dados</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <h3>Evolução da Taxa de Devolução</h3>
+          <div style="display:flex;gap:6px">
+            <button class="chart-btn active" data-days="30" onclick="loadEvolucao(30)">30D</button>
+            <button class="chart-btn" data-days="60" onclick="loadEvolucao(60)">60D</button>
+            <button class="chart-btn" data-days="90" onclick="loadEvolucao(90)">90D</button>
+          </div>
+        </div>
+        <canvas id="devEvolucaoChart" height="70"></canvas>
       </div>
 
       <div class="card">
@@ -118,6 +184,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
@@ -294,6 +361,150 @@ async function load() {
     : '<tr><td colspan="11" class="empty-state">Nenhuma devolução encontrada</td></tr>';
 
   loadVideoLinks(rows.map(r => r.order_id).filter(Boolean));
+
+  renderRankMotivos(rows);
+  renderRankProdutos(s);
+  renderTaxaPorLoja(s, storeId);
+  renderCorrelacaoLogistica(rows, s);
+  renderTempoResolucao(rows);
+
+  const diasAtivo = Number(document.querySelector('.chart-btn[data-days].active')?.dataset.days) || 30;
+  loadEvolucao(diasAtivo);
+}
+
+// ── Análises de Devolução ────────────────────────────────────
+// Ranking de motivos, produtos, loja e logística — a tabela principal
+// já carrega tudo que essas análises precisam (mesmo filtro de
+// período/loja/busca), sem chamada nova ao backend, exceto onde a conta
+// depende de `pedidos` (produtos/loja/logística), que vêm em `summary`
+// (GET /api/alertas/devolucoes já embute essas contagens, ver decisions.md).
+
+function renderRankMotivos(rows) {
+  const porMotivo = new Map();
+  rows.forEach(r => {
+    const m = r.reason_detail || r.reason || 'Não informado';
+    porMotivo.set(m, (porMotivo.get(m) || 0) + 1);
+  });
+  const total = rows.length;
+  const top = [...porMotivo.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const el = document.getElementById('rankMotivos');
+  el.innerHTML = top.length ? top.map(([motivo, qtd]) => {
+    const pct = total > 0 ? (qtd / total) * 100 : 0;
+    return `<div class="dev-rank-row">
+      <span class="lbl" title="${escapeHtmlDev(motivo)}">${escapeHtmlDev(motivo)}</span>
+      <span class="bar-wrap"><span class="bar-fill" style="width:${pct}%"></span></span>
+      <span class="val">${qtd}</span>
+    </div>`;
+  }).join('') : '<div class="empty-state">Sem dados</div>';
+}
+
+function renderRankProdutos(s) {
+  const rank = s.ranking_produtos || [];
+  document.getElementById('rankProdutos').innerHTML = rank.length
+    ? rank.map(p => `<tr>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtmlDev(p.item_title || p.item_id)}">${escapeHtmlDev(p.item_title || p.item_id)}</td>
+        <td>${p.devolucoes}</td>
+        <td>${p.pedidos || '—'}</td>
+        <td class="${p.taxa_pct != null && p.taxa_pct >= 5 ? 'taxa-alta' : ''}">${p.taxa_pct != null ? p.taxa_pct.toFixed(2) + '%' : '—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
+}
+
+function renderTaxaPorLoja(s, storeIdFiltro) {
+  const card = document.getElementById('cardTaxaLoja');
+  const rank = s.taxa_por_loja || [];
+  // Só faz sentido comparar lojas quando "Todas as lojas" está selecionado
+  // e há mais de uma loja com pedidos no período — com 1 loja só seria uma
+  // linha redundante com o KPI "Taxa de Devolução" já mostrado acima.
+  if (storeIdFiltro || rank.length < 2) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  document.getElementById('rankLojas').innerHTML = rank.map(l => `<tr>
+      <td>${escapeHtmlDev(l.conta || '—')}</td>
+      <td>${l.devolucoes}</td>
+      <td>${l.pedidos}</td>
+      <td class="${l.taxa_pct != null && l.taxa_pct >= 5 ? 'taxa-alta' : l.taxa_pct != null ? 'taxa-baixa' : ''}">${l.taxa_pct != null ? l.taxa_pct.toFixed(2) + '%' : '—'}</td>
+    </tr>`).join('');
+}
+
+function renderCorrelacaoLogistica(rows, s) {
+  const devPorLog = new Map();
+  rows.forEach(r => {
+    const l = logLabel(r.shipping_type);
+    devPorLog.set(l, (devPorLog.get(l) || 0) + 1);
+  });
+  const pedPorLog = new Map();
+  (s.pedidos_por_logistica || []).forEach(p => {
+    const l = logLabel(p.shipping_type);
+    pedPorLog.set(l, (pedPorLog.get(l) || 0) + p.pedidos);
+  });
+  const logisticas = new Set([...devPorLog.keys(), ...pedPorLog.keys()]);
+  const linhas = [...logisticas].map(l => {
+    const devolucoes = devPorLog.get(l) || 0;
+    const pedidos = pedPorLog.get(l) || 0;
+    const taxaPct = pedidos > 0 ? (devolucoes / pedidos) * 100 : null;
+    return { logistica: l, devolucoes, pedidos, taxa_pct: taxaPct };
+  }).sort((a, b) => (b.taxa_pct ?? -1) - (a.taxa_pct ?? -1));
+  document.getElementById('rankLogistica').innerHTML = linhas.length
+    ? linhas.map(l => `<tr>
+        <td>${escapeHtmlDev(l.logistica)}</td>
+        <td>${l.devolucoes}</td>
+        <td>${l.pedidos || '—'}</td>
+        <td class="${l.taxa_pct != null && l.taxa_pct >= 5 ? 'taxa-alta' : l.taxa_pct != null ? 'taxa-baixa' : ''}">${l.taxa_pct != null ? l.taxa_pct.toFixed(2) + '%' : '—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
+}
+
+// Tempo médio de resolução — só considera devoluções com status final
+// (aprovada/resolvida/rejeitada/encerrada) e ambas as datas presentes;
+// SUM/SUM (não média das médias), mesmo raciocínio já usado em
+// embalagem.md pro "Tempo médio / pedido".
+function renderTempoResolucao(rows) {
+  const finais = rows.filter(r => ['approved','resolved','rejected','closed'].includes(r.status) && r.date && r.last_updated);
+  if (!finais.length) {
+    document.getElementById('kpi-tempo-resolucao').textContent = '—';
+    document.getElementById('kpi-tempo-resolucao-sub').textContent = 'sem devoluções encerradas no período';
+    return;
+  }
+  const totalHoras = finais.reduce((s, r) => s + Math.max(0, (new Date(r.last_updated) - new Date(r.date)) / 3600000), 0);
+  const mediaHoras = totalHoras / finais.length;
+  const texto = mediaHoras >= 24 ? `${(mediaHoras / 24).toFixed(1)} dia(s)` : `${mediaHoras.toFixed(1)}h`;
+  document.getElementById('kpi-tempo-resolucao').textContent = texto;
+  document.getElementById('kpi-tempo-resolucao-sub').textContent = `${finais.length} devolução(ões) encerrada(s) no período`;
+}
+
+// ── Evolução da Taxa de Devolução (série diária, independente do
+// filtro de período da tabela — respeita só a loja selecionada) ────
+let devEvolucaoChart = null;
+async function loadEvolucao(days) {
+  document.querySelectorAll('.chart-btn[data-days]').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.days) === days);
+  });
+  const storeId = document.getElementById('filtroLoja').value;
+  const data = await DB.getDevolucoesEvolucao({ days, store_id: storeId || undefined }) || { dias: [] };
+  const dias = data.dias || [];
+  if (devEvolucaoChart) devEvolucaoChart.destroy();
+  devEvolucaoChart = new Chart(document.getElementById('devEvolucaoChart'), {
+    type: 'line',
+    data: {
+      labels: dias.map(d => new Date(d.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })),
+      datasets: [{
+        label: 'Taxa de Devolução (%)',
+        data: dias.map(d => d.taxa_pct),
+        borderColor: '#e67e22', backgroundColor: 'rgba(230,126,34,0.08)', fill: true, tension: 0.3, spanGaps: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#f0f0f0' } },
+        tooltip: { callbacks: { afterLabel: c => { const d = dias[c.dataIndex]; return `${d.devolucoes} devolução(ões) / ${d.pedidos} pedido(s)`; } } },
+      },
+      scales: {
+        x: { ticks: { color: '#888', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: '#888', callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      },
+    },
+  });
 }
 
 // Lookup em lote (1 chamada, não N+1) de quais pedidos têm vídeo de

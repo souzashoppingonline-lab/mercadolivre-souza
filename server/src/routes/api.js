@@ -1814,7 +1814,7 @@ router.get('/alertas/devolucoes', async (req, res) => {
   if (date_to)   { params.push(date_to);   where.push(`r.date <= $${params.length}`); }
   const { rows } = await pool.query(
     `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
-            r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note,
+            r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo,
             COALESCE(cr.detail, r.reason) AS reason_detail,
             r.raw_data,
             r.raw_data->>'stage' AS stage,
@@ -1832,12 +1832,15 @@ router.get('/alertas/devolucoes', async (req, res) => {
      ORDER BY r.date DESC LIMIT 200`,
     params
   );
+  const comPrejuizo = rows.filter(r => r.prejuizo != null);
   const summary = {
     in_analysis: rows.filter(r => r.status === 'analysis' || r.status === 'opened').length,
     approved:    rows.filter(r => r.status === 'approved' || r.status === 'resolved').length,
     rejected:    rows.filter(r => r.status === 'rejected' || r.status === 'closed').length,
     total_value: rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0),
     total:       rows.length,
+    prejuizo_total: comPrejuizo.reduce((s, r) => s + parseFloat(r.prejuizo || 0), 0),
+    prejuizo_qtd:   comPrejuizo.length,
   };
   res.json({ items: rows, summary });
 });
@@ -1847,6 +1850,20 @@ router.patch('/alertas/devolucoes/:id/note', async (req, res) => {
   const { rows } = await pool.query(
     `UPDATE returns SET note = $1, updated_at = now() WHERE id = $2 RETURNING id, note`,
     [note, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  res.json(rows[0]);
+});
+
+router.patch('/alertas/devolucoes/:id/prejuizo', async (req, res) => {
+  // Prejuízo é digitado manualmente pelo usuário (não vem da API do ML) —
+  // string vazia ou não numérica grava NULL, não zero, pra distinguir
+  // "não avaliado ainda" de "prejuízo de fato zero". Ver business-rules.md.
+  const valor = req.body.prejuizo;
+  const prejuizo = valor === '' || valor === null || valor === undefined || Number.isNaN(Number(valor)) ? null : Number(valor);
+  const { rows } = await pool.query(
+    `UPDATE returns SET prejuizo = $1, updated_at = now() WHERE id = $2 RETURNING id, prejuizo`,
+    [prejuizo, req.params.id]
   );
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json(rows[0]);

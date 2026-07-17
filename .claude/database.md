@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -121,6 +121,7 @@ amount NUMERIC
 date, updated_at TIMESTAMPTZ
 note  -- v23 (mesma correção): usado pelo endpoint PATCH /api/alertas/devolucoes/:id/note (anotação manual do time)
 raw_data JSONB  -- v24: claim completa da API do ML (stage/type/players/resolution/etc) — mesmo padrão de orders.raw_data
+prejuizo NUMERIC  -- v28: valor de prejuízo digitado manualmente pelo usuário (R$ perdido com a devolução) — NÃO vem da API do ML, PATCH /api/alertas/devolucoes/:id/prejuizo. NULL = ainda não avaliado (distinto de prejuízo zero)
 ```
 
 ### `claim_reasons` — v24: cache de tradução de reason_id

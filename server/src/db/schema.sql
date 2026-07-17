@@ -149,7 +149,8 @@ CREATE TABLE IF NOT EXISTS returns (
   date TIMESTAMPTZ,
   updated_at TIMESTAMPTZ DEFAULT now(),
   note TEXT,
-  raw_data JSONB
+  raw_data JSONB,
+  prejuizo NUMERIC -- v28: valor de prejuízo digitado manualmente pelo usuário (não vem da API do ML)
 );
 
 CREATE TABLE IF NOT EXISTS claim_reasons (

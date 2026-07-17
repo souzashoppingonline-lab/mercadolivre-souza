@@ -395,3 +395,13 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 **Frontend — `renderGaugeArc()` extraída**: o desenho do semicírculo vermelho→verde com ponteiro (SVG, zonas fixas, ângulo do ponteiro clampado a ±50%) também virou função compartilhada em `analise-vendas-mes.html`, chamada 3x (Dia Ideal + 2 gauges do Termômetro) em vez de copiar o bloco de ~15 linhas de novo — mesmo raciocínio de DRY do backend.
 
 **Textos de status não são genéricos**: em vez de reaproveitar o `STATUS_LABEL` do Dia Ideal (que diz "...da média histórica") com um `.replace()` de string, cada comparação do Termômetro tem seu próprio mapa de texto ("...da média de 30 dias" / "...de ontem") — `.replace()` sobre texto com contração portuguesa ("da" = "de"+"a") gerava texto errado tipo "Acima dontem" quando a referência não continha artigo. Dois mapas pequenos e explícitos (5 linhas cada) evitam esse bug de concatenação, mais importante que a duplicação mínima entre eles.
+
+## Devoluções — prejuízo é campo manual (`returns.prejuizo`), não derivado de nenhuma API
+
+**Contexto**: pedido do usuário — poder registrar quanto efetivamente perdeu (R$) em cada devolução, pra ter um total de prejuízo somado, filtrável por data.
+
+**Decisão — campo livre, não calculado**: diferente de `amount`/`order_amount` (que vêm de `orders.total_amount`, sincronizado via webhook), o prejuízo real de uma devolução depende de fatores que a API do ML não expõe (frete de retorno pago pelo vendedor, se o produto voltou danificado/vendável, taxa do ML estornada ou não, etc.) — não dá pra calcular de forma confiável a partir de dados já sincronizados. Por isso é um input numérico simples, mesmo padrão já usado pela coluna "Observação" (`note`): `PATCH /:id/prejuizo`, salva, recarrega a lista.
+
+**Decisão — `NULL` como "não avaliado", nunca `0` implícito**: a rota converte string vazia/valor inválido em `NULL`, não em `0` — importante pro agregado (`prejuizo_total`) não subestimar silenciosamente o prejuízo real só porque a maioria das devoluções ainda não foi revisada uma a uma. `prejuizo_qtd` (quantas linhas têm valor lançado) acompanha o total no card, deixando explícito que é uma soma parcial enquanto o time não passar por todas.
+
+**Decisão — reaproveita o filtro de data já existente, não cria um novo**: a página já tinha botões Hoje/Ontem/7/15/30 dias/Tudo (mais loja/busca) que filtram a query principal; o card de prejuízo é só mais um campo do mesmo `summary` já filtrado — nenhum filtro/rota nova precisou ser criado pra "trazer valores e quantidades conforme o período".

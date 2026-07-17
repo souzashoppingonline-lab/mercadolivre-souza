@@ -105,6 +105,14 @@ Ver `task-engine.md` para a arquitetura do `TaskEngine`. Regras de negócio das 
 
 Escopo: só itens com `item_seo_score.catalog_listing = true`. "Ganhando" é decidido comparando `catalog_competition.winner_item_id` ao próprio `item_id` — **não** pela string `catalog_competition.status` (só o valor `"competing"` foi confirmado ao vivo contra a API real; outros valores possíveis não foram documentados, então a UI/summary nunca dependem do texto exato). `summary.perdendo_buybox` (rota `GET /api/qualidade-anuncio`) conta itens `catalog_listing=true` com `winner_item_id` preenchido e diferente do próprio item — itens ainda sem sync (`winner_item_id IS NULL`) não entram nem como "ganhando" nem como "perdendo".
 
+## Devoluções — prejuízo lançado manualmente (`returns.prejuizo`)
+
+`returns.amount`/`order_amount` é o **valor do pedido** (quanto o comprador pagou), não necessariamente o que o vendedor efetivamente perdeu com a devolução — frete de volta, produto danificado, taxa não estornada etc. variam caso a caso e a API do ML não devolve esse número. Por isso o prejuízo é um campo **livre, digitado manualmente** pelo usuário por devolução (`pages/devolucoes.html`, coluna "Prejuízo (R$)", input numérico + botão Salvar, mesmo padrão da coluna "Observação").
+
+- **`NULL` ≠ zero**: uma devolução sem prejuízo lançado ainda não foi avaliada — não conta como "prejuízo zero" em nenhum agregado. O card "Prejuízo Total" mostra também a quantidade de devoluções **com** prejuízo lançado (`prejuizo_qtd`), pra deixar claro que a soma é parcial enquanto nem toda linha foi preenchida.
+- **Respeita o filtro de data já existente na página** (botões Hoje/Ontem/7/15/30 dias/Tudo, mais loja/busca) — não é um filtro novo: o card de prejuízo é calculado em cima do mesmo `summary` que já respeita `date_from`/`date_to`, então trocar o período já atualiza o card automaticamente.
+- Salvar um prejuízo recarrega a listagem (`load()`) pra o card de KPI refletir o novo total na hora — diferente da Observação, que não afeta nenhum agregado e por isso não precisa recarregar.
+
 ## "Nova venda!" — quando notificar
 
 Uma notificação Telegram de nova venda só dispara na **transição real** de status para `paid` (`previousStatus !== 'paid' && order.status === 'paid'`). Um webhook tardio de `shipments`/`payments` que reprocessa um pedido já pago não gera notificação duplicada. Syncs agendados (`syncVendas`) chamam `handleOrder` com `silent: true` para nunca notificar em reconciliação retroativa.

@@ -78,14 +78,15 @@
         <div class="stat-card"><div class="label"><i class="fas fa-check" style="color:var(--green)"></i> Aprovadas</div><div class="value" id="kpi-aprovadas" style="color:var(--green)">—</div></div>
         <div class="stat-card"><div class="label"><i class="fas fa-times" style="color:var(--red)"></i> Rejeitadas</div><div class="value" id="kpi-rejeitadas" style="color:var(--red)">—</div></div>
         <div class="stat-card"><div class="label">Valor Total</div><div class="value" id="kpi-valor">—</div></div>
+        <div class="stat-card" style="border-color:var(--red)"><div class="label"><i class="fas fa-hand-holding-usd" style="color:var(--red)"></i> Prejuízo Total <span style="font-weight:400">(no período filtrado)</span></div><div class="value" id="kpi-prejuizo" style="color:var(--red)">—</div><div class="sub" id="kpi-prejuizo-qtd">—</div></div>
       </div>
 
       <div class="card">
         <div class="card-header"><h3>Solicitações de Devolução</h3></div>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Observação</th></tr></thead>
-            <tbody id="devTable"><tr><td colspan="10" class="empty-state">Carregando...</td></tr></tbody>
+            <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Prejuízo (R$)</th><th>Observação</th></tr></thead>
+            <tbody id="devTable"><tr><td colspan="11" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -151,6 +152,28 @@ async function saveNote(id, btn) {
   }
 }
 
+// Prejuízo é digitado manualmente pelo usuário (não vem da API do ML) — ver
+// business-rules.md. Salva, depois recarrega a listagem pra atualizar o
+// card "Prejuízo Total" com o novo valor, mesmo padrão de saveNote() mas
+// com esse passo extra (a observação não afeta nenhum KPI, o prejuízo sim).
+async function savePrejuizo(id, btn) {
+  const input = document.getElementById(`prejuizo-${id}`);
+  const valor = input.value.trim();
+  btn.disabled = true;
+  btn.textContent = '...';
+  const r = await DB.saveDevolucaoPrejuizo(id, valor);
+  if (r) {
+    btn.textContent = '✓';
+    btn.style.background = 'var(--green)';
+    setTimeout(() => { btn.textContent = 'Salvar'; btn.style.background = ''; btn.disabled = false; }, 1500);
+    load();
+  } else {
+    btn.textContent = 'Erro';
+    btn.style.background = 'var(--red)';
+    setTimeout(() => { btn.textContent = 'Salvar'; btn.style.background = ''; btn.disabled = false; }, 2000);
+  }
+}
+
 let periodoAtual = { date_from: '', date_to: '' };
 let allDevRows = [];
 
@@ -199,6 +222,8 @@ async function load() {
   document.getElementById('kpi-aprovadas').textContent = s.approved ?? '—';
   document.getElementById('kpi-rejeitadas').textContent= s.rejected ?? '—';
   document.getElementById('kpi-valor').textContent     = fmt(s.total_value);
+  document.getElementById('kpi-prejuizo').textContent  = fmt(s.prejuizo_total);
+  document.getElementById('kpi-prejuizo-qtd').textContent = `${s.prejuizo_qtd ?? 0} devolução(ões) com prejuízo lançado`;
 
   const rows = data.items || [];
   allDevRows = rows;
@@ -221,13 +246,19 @@ async function load() {
           <td id="video-cell-${r.order_id}" style="white-space:nowrap" onclick="event.stopPropagation()">—</td>
           <td onclick="event.stopPropagation()">
             <div class="note-cell">
+              <input class="note-input prejuizo-input" id="prejuizo-${r.id}" type="number" step="0.01" min="0" inputmode="decimal" value="${r.prejuizo ?? ''}" placeholder="0,00" style="max-width:90px">
+              <button class="btn-save-note" onclick="savePrejuizo(${r.id}, this)">Salvar</button>
+            </div>
+          </td>
+          <td onclick="event.stopPropagation()">
+            <div class="note-cell">
               <input class="note-input" id="note-${r.id}" value="${(r.note||'').replace(/"/g,'&quot;')}" placeholder="Adicionar observação...">
               <button class="btn-save-note" onclick="saveNote(${r.id}, this)">Salvar</button>
             </div>
           </td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="10" class="empty-state">Nenhuma devolução encontrada</td></tr>';
+    : '<tr><td colspan="11" class="empty-state">Nenhuma devolução encontrada</td></tr>';
 
   loadVideoLinks(rows.map(r => r.order_id).filter(Boolean));
 }
@@ -294,6 +325,7 @@ function openDevDetail(id) {
     </div>
     <div class="dev-detail-grid">
       <div class="dev-detail-item"><div class="lbl">Valor do pedido</div><div class="val big">${fmt(r.order_amount ?? r.amount)}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Prejuízo lançado</div><div class="val big" style="color:var(--red)">${r.prejuizo != null ? fmt(r.prejuizo) : 'Não lançado'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Status</div><div class="val"><span class="badge ${st.c}">${st.l}</span></div></div>
       <div class="dev-detail-item"><div class="lbl">Pedido</div><div class="val">#${r.order_id || '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Comprador</div><div class="val">${r.buyer_nickname || '—'}</div></div>

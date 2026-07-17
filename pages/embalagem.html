@@ -23,6 +23,9 @@
     @keyframes embTagBlink { 0%,100% { background: rgba(255,230,0,.12); color: var(--primary); box-shadow: none; } 50% { background: #FFE600; color: #000; box-shadow: 0 0 10px 2px rgba(255,230,0,.65); } }
     .emb-order-qty.attention { display: inline-block; animation: embQtyBlink .9s infinite; }
     .emb-order-tag.attention { animation: embTagBlink .9s infinite; }
+    .emb-qty-row { display: flex; align-items: center; gap: 8px; }
+    .emb-qty-arrow { color: var(--red); font-size: 30px; animation: embArrowBlink .8s infinite; }
+    @keyframes embArrowBlink { 0%,100% { opacity: 1; transform: translateX(0); } 50% { opacity: .15; transform: translateX(-10px); } }
 
     .emb-panel { display: none; }
     .emb-panel.active { display: block; }
@@ -400,7 +403,10 @@ function renderOrders(orders, alreadyPacked) {
       ${o.thumbnail ? `<img class="emb-order-img" src="${escapeHtml(o.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div class="emb-order-info">
         <div class="emb-order-title">${escapeHtml(o.title || '(sem título)')}</div>
-        <div class="emb-order-qty attention">${o.quantity}<span>un.</span></div>
+        <div class="emb-qty-row">
+          <div class="emb-order-qty attention">${o.quantity}<span>un.</span></div>
+          <i class="fas fa-arrow-left emb-qty-arrow" aria-hidden="true"></i>
+        </div>
         ${variacoes.length ? `<div class="emb-order-tags">${variacoes.map(v => `<span class="emb-order-tag attention">${escapeHtml(v)}</span>`).join('')}</div>` : ''}
         <div class="emb-order-buyer"><i class="fas fa-user"></i> Comprador: <b>${escapeHtml(o.buyer_nickname || '—')}</b> · <i class="fas fa-store"></i> ${escapeHtml(o.store_nickname || '')}</div>
         <div class="emb-order-details">

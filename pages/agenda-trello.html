@@ -132,6 +132,7 @@
         <div class="at-top-card"><i class="fas fa-spinner" style="color:var(--orange)"></i><div><div class="lbl">Em andamento</div><div class="val" id="atEmAndamento">—</div></div></div>
         <div class="at-top-card"><i class="fas fa-circle-check" style="color:var(--green)"></i><div><div class="lbl">Finalizadas hoje</div><div class="val" id="atFinalizadasHoje">—</div></div></div>
         <div class="at-top-card crit"><i class="fas fa-triangle-exclamation"></i><div><div class="lbl">Críticas</div><div class="val" id="atCriticas">—</div></div></div>
+        <div class="at-top-card crit"><i class="fas fa-clock"></i><div><div class="lbl">Atrasadas</div><div class="val" id="atAtrasadas">—</div></div></div>
       </div>
 
       <!-- ═══ FILTROS ═══ -->
@@ -294,6 +295,7 @@ async function loadSummary() {
   document.getElementById('atEmAndamento').textContent = s.em_andamento;
   document.getElementById('atFinalizadasHoje').textContent = s.finalizadas_hoje;
   document.getElementById('atCriticas').textContent = s.criticas;
+  document.getElementById('atAtrasadas').textContent = s.atrasadas;
 }
 
 function cardHtml(t) {

@@ -385,6 +385,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   tags TEXT[] DEFAULT '{}',
   assigned_to TEXT,
   due_date TIMESTAMPTZ,
+  overdue_notified_at TIMESTAMPTZ, -- v27: dedup do alerta Telegram de atraso — notifica 1x por vencimento
   metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),

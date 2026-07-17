@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -315,7 +315,11 @@ rule_key TEXT                 -- chave da regra automática que gerou o cartão 
                                -- deduplicar (ver task-engine.md)
 status TEXT DEFAULT 'aberto'  -- aberto | concluido
 tags TEXT[] DEFAULT '{}'
-assigned_to TEXT, due_date TIMESTAMPTZ
+assigned_to TEXT, due_date TIMESTAMPTZ  -- "Prazo" no frontend (pages/agenda-trello.html) — badge do card fica
+                                        -- vermelho quando due_date < now() e board_column ainda aberto
+overdue_notified_at TIMESTAMPTZ  -- v27: dedup do alerta Telegram de atraso (job checkTarefasAtrasadas,
+                                  -- 08:15) — notifica 1x por vencimento, não repete todo dia. Resetado
+                                  -- pra NULL sempre que due_date é alterado via PATCH (prazo adiado)
 metadata JSONB DEFAULT '{}'   -- dados extras da regra automática (SKU, score, link do anúncio, etc.)
 created_at, updated_at, completed_at TIMESTAMPTZ
 ```

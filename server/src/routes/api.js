@@ -896,7 +896,7 @@ router.get('/webhooks/config', async (req, res) => {
   });
 });
 
-const TG_NOTIF_KEYS = ['tg_vendas','tg_topvendas','tg_outlier','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_token','tg_fila','tg_429','tg_infra','tg_interval','silence_start','silence_end'];
+const TG_NOTIF_KEYS = ['tg_vendas','tg_topvendas','tg_outlier','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_tarefas','tg_token','tg_fila','tg_429','tg_infra','tg_interval','silence_start','silence_end'];
 const ALL_TG_KEYS   = ['telegram_bot_token','telegram_chat_id', ...TG_NOTIF_KEYS];
 
 router.get('/config/telegram', async (req, res) => {
@@ -1729,19 +1729,25 @@ router.get('/alertas/devolucoes', async (req, res) => {
   const { store_id = '', q = '', date_from = '', date_to = '' } = req.query;
   const where = [`($1 = '' OR r.store_id = $1::bigint)`];
   const params = [store_id];
-  if (q) { params.push(`%${q}%`); where.push(`(r.order_id::text ILIKE $${params.length} OR r.buyer_nickname ILIKE $${params.length} OR r.title ILIKE $${params.length})`); }
+  if (q) { params.push(`%${q}%`); where.push(`(r.order_id::text ILIKE $${params.length} OR r.buyer_nickname ILIKE $${params.length} OR r.title ILIKE $${params.length} OR i.title ILIKE $${params.length})`); }
   if (date_from) { params.push(date_from); where.push(`r.date >= $${params.length}`); }
   if (date_to)   { params.push(date_to);   where.push(`r.date <= $${params.length}`); }
   const { rows } = await pool.query(
     `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
             r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note,
             COALESCE(cr.detail, r.reason) AS reason_detail,
+            r.raw_data,
             r.raw_data->>'stage' AS stage,
             r.raw_data->>'type' AS type,
-            r.raw_data->>'last_updated' AS last_updated
+            r.raw_data->>'last_updated' AS last_updated,
+            o.item_id, o.quantity AS order_quantity, o.unit_price, o.total_amount AS order_amount,
+            o.shipping_type, o.date_created AS order_date,
+            COALESCE(i.title, r.title) AS item_title, i.thumbnail AS item_thumbnail, i.permalink AS item_permalink
      FROM returns r
      LEFT JOIN vw_ml_stores s ON s.id = r.store_id
      LEFT JOIN claim_reasons cr ON cr.id = r.reason
+     LEFT JOIN vw_ml_orders o ON o.ml_id = r.order_id
+     LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
      WHERE ${where.join(' AND ')}
      ORDER BY r.date DESC LIMIT 200`,
     params

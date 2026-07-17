@@ -433,6 +433,16 @@ function claimOrderId(claim) {
   return claim.resource === 'order' && claim.resource_id != null ? String(claim.resource_id) : (claim.order_id || null);
 }
 
+// A claim de detalhe do ML não tem campo de valor monetário (claim.total não
+// existe — testado ao vivo, ver decisions.md), então "valor da devolução" usa
+// o total_amount do pedido associado, já sincronizado via webhook orders_v2 —
+// consulta só o Postgres, nenhuma chamada extra à API do ML.
+async function resolveReturnAmount(orderId) {
+  if (!orderId) return 0;
+  const { rows } = await pool.query('SELECT total_amount FROM orders WHERE ml_id = $1', [orderId]);
+  return Number(rows[0]?.total_amount) || 0;
+}
+
 // Traduz reason_id ("PNR9509") pra descrição em português ("Me arrependi da
 // compra") via /marketplace/v2/claims/reasons/:id — cacheado em
 // claim_reasons pra nunca rechamar a API pro mesmo código (rate limit real
@@ -464,12 +474,13 @@ async function handlePostPurchase({ resource, storeId }) {
     const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
     const itemTitle = claim.resolution?.description || null;
     await resolveClaimReason(claim.reason_id, storeId);
+    const amount = await resolveReturnAmount(orderId);
     await pool.query(
       `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9)
        ON CONFLICT DO NOTHING`,
       [storeId, orderId, buyerNickname, itemTitle || claim.reason_id,
-       claim.reason_id || null, claim.total || 0, claim.status, claim.date_created, JSON.stringify(claim)]
+       claim.reason_id || null, amount, claim.status, claim.date_created, JSON.stringify(claim)]
     );
     await publish('devolucao_recebida', { store_id: storeId, claim_id: claimId, status: claim.status });
     if (claim.status === 'opened') {
@@ -986,12 +997,13 @@ async function syncMetricas() {
               const orderId = claimOrderId(claim);
               const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
               await resolveClaimReason(claim.reason_id, store.id);
+              const amount = await resolveReturnAmount(orderId);
               const { rowCount } = await pool.query(
                 `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9) ON CONFLICT DO NOTHING`,
                 [store.id, orderId, buyerNickname,
                  claim.resolution?.description || claim.reason_id || null,
-                 claim.reason_id || null, claim.total || 0,
+                 claim.reason_id || null, amount,
                  claim.status, claim.date_created, JSON.stringify(claim)]
               );
               if (rowCount) claimsNew++;
@@ -1499,13 +1511,14 @@ async function syncReturns() {
             const orderId = claimOrderId(claim);
             const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
             await resolveClaimReason(claim.reason_id, store.id);
+            const amount = await resolveReturnAmount(orderId);
             const { rowCount } = await pool.query(
               `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9)
                ON CONFLICT DO NOTHING`,
               [store.id, orderId, buyerNickname,
                claim.resolution?.description || claim.reason_id || null,
-               claim.reason_id || null, claim.total || 0,
+               claim.reason_id || null, amount,
                claim.status, claim.date_created, JSON.stringify(claim)]
             );
             if (rowCount) total++;
@@ -2155,6 +2168,37 @@ async function checkOutlierEstatistico() {
   scheduleAt(6, 20, checkOutlierEstatistico, 'outlier-check');
 }
 
+// ── Tarefas atrasadas (Agenda Trello) — 08:15 diário ──────────────────────
+// Notifica 1x por vencimento (overdue_notified_at, v27) — não repete o
+// mesmo alerta todo dia enquanto o cartão continuar atrasado. Reseta quando
+// o prazo é adiado (ver PATCH /api/tasks/:id). 1 mensagem consolidada, não
+// 1 por tarefa, pra não gerar spam se várias vencerem no mesmo dia.
+async function checkTarefasAtrasadas() {
+  console.log('[tarefas-atrasadas] verificando prazos vencidos...');
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, title, due_date, priority, assigned_to
+       FROM tasks
+       WHERE due_date < now() AND board_column NOT IN ('finalizado','excluido') AND overdue_notified_at IS NULL
+       ORDER BY due_date ASC LIMIT 50`
+    );
+    if (rows.length) {
+      const linhas = rows.map(t => {
+        const dias = Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86400000);
+        const prio = t.priority === 'alta' ? '🔴' : t.priority === 'media' ? '🟡' : '⚪';
+        return `${prio} ${t.title}${t.assigned_to ? ` (${t.assigned_to})` : ''} — ${dias}d atrasado`;
+      });
+      await tgNotify('tg_tarefas',
+        `⏰ <b>${rows.length} tarefa(s) atrasada(s) na Agenda Trello</b>\n\n${linhas.join('\n')}`
+      );
+      await pool.query(`UPDATE tasks SET overdue_notified_at = now() WHERE id = ANY($1)`, [rows.map(t => t.id)]);
+    }
+  } catch (e) {
+    console.error('[tarefas-atrasadas] erro:', e.message);
+  }
+  scheduleAt(8, 15, checkTarefasAtrasadas, 'tarefas-atrasadas');
+}
+
 // ── Top Vendas — a cada 4h, ranking de itens mais vendidos por loja ──────
 // Objetivo: dar visibilidade rápida do que está vendendo bem "agora" (janela
 // de 4h, não acumulado do dia) para decisão de reposição de estoque — ver
@@ -2263,6 +2307,7 @@ scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
+scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
 scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
 
@@ -2357,6 +2402,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkOutlierEstatistico') {
       console.log('[worker] checkOutlierEstatistico disparado manualmente');
       checkOutlierEstatistico().catch(e => console.error('[worker] checkOutlierEstatistico erro:', e.message));
+    }
+    if (cmd === 'checkTarefasAtrasadas') {
+      console.log('[worker] checkTarefasAtrasadas disparado manualmente');
+      checkTarefasAtrasadas().catch(e => console.error('[worker] checkTarefasAtrasadas erro:', e.message));
     }
   } catch {}
 });

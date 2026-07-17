@@ -10,6 +10,31 @@ const router = express.Router();
 const VALID_COLUMNS = ['a_fazer', 'em_andamento', 'finalizado', 'excluido'];
 const VALID_PRIORITIES = ['alta', 'media', 'baixa'];
 
+// Envia direto (mesmo padrão de POST /api/config/telegram/test em routes/api.js
+// — rota HTTP não tem acesso ao tgNotify() de worker.js). Não respeita janela
+// de silêncio/intervalo (mesmo espírito de tgNotifyForce): é uma ação humana
+// deliberada e rara, não um alerta automático que possa virar spam. Só respeita
+// o toggle liga/desliga (tg_tarefas), reaproveitado do alerta de atraso — ambos
+// são notificações da Agenda Trello.
+async function tgNotifyTaskDeleted(text) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT key, value FROM app_config WHERE key = ANY($1)`,
+      [['telegram_bot_token', 'telegram_chat_id', 'tg_tarefas']]
+    );
+    const cfg = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const token = cfg.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = cfg.telegram_chat_id || process.env.TELEGRAM_CHAT_ID;
+    if (!token || !chatId) return;
+    if (cfg.tg_tarefas === 'false') return;
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+  } catch (e) { console.error('[api/tasks] tgNotifyTaskDeleted erro:', e.message); }
+}
+
 router.get('/summary', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -18,14 +43,15 @@ router.get('/summary', async (req, res) => {
          COUNT(*) FILTER (WHERE board_column = 'a_fazer') AS pendentes,
          COUNT(*) FILTER (WHERE board_column = 'em_andamento') AS em_andamento,
          COUNT(*) FILTER (WHERE board_column = 'finalizado' AND completed_at::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS finalizadas_hoje,
-         COUNT(*) FILTER (WHERE priority = 'alta' AND board_column NOT IN ('finalizado','excluido')) AS criticas
+         COUNT(*) FILTER (WHERE priority = 'alta' AND board_column NOT IN ('finalizado','excluido')) AS criticas,
+         COUNT(*) FILTER (WHERE due_date < now() AND board_column NOT IN ('finalizado','excluido')) AS atrasadas
        FROM tasks`
     );
     const r = rows[0];
     res.json({
       total: Number(r.total), pendentes: Number(r.pendentes),
       em_andamento: Number(r.em_andamento), finalizadas_hoje: Number(r.finalizadas_hoje),
-      criticas: Number(r.criticas),
+      criticas: Number(r.criticas), atrasadas: Number(r.atrasadas),
     });
   } catch (e) {
     console.error('[api/tasks] /summary', e.message);
@@ -118,7 +144,9 @@ router.patch('/:id', async (req, res) => {
       params.push(priority); sets.push(`priority = $${params.length}`);
     }
     if (assigned_to !== undefined) { params.push(assigned_to); sets.push(`assigned_to = $${params.length}`); }
-    if (due_date !== undefined) { params.push(due_date); sets.push(`due_date = $${params.length}`); }
+    // Prazo mudou (adiado ou removido) — reseta o "já notificado" pra poder
+    // alertar de novo se a nova data também passar (ver checkTarefasAtrasadas).
+    if (due_date !== undefined) { params.push(due_date); sets.push(`due_date = $${params.length}`, `overdue_notified_at = NULL`); }
     if (tags !== undefined) { params.push(tags); sets.push(`tags = $${params.length}`); }
 
     if (!sets.length) return res.status(400).json({ error: 'nenhum campo para atualizar' });
@@ -140,14 +168,43 @@ router.patch('/:id', async (req, res) => {
 // Exclusão definitiva — só permitida quando o cartão já está na coluna
 // Excluído (soft-delete via board_column vem antes; isto aqui é o hard
 // delete, chamado só a partir dela). task_comments cai junto via
-// ON DELETE CASCADE.
+// ON DELETE CASCADE. Antes de apagar, manda os detalhes completos pro
+// Telegram — depois do DELETE não sobra rastro nenhum no banco.
 router.delete('/:id', async (req, res) => {
   try {
-    const { rows } = await pool.query(`SELECT board_column FROM tasks WHERE id = $1`, [req.params.id]);
+    const { rows } = await pool.query(
+      `SELECT t.id, t.title, t.description, t.priority, t.tags, t.assigned_to,
+              t.source, t.created_at, t.board_column, s.nickname AS store_nickname,
+              m.name AS marketplace_name
+       FROM tasks t
+       LEFT JOIN stores s ON s.id = t.store_id
+       LEFT JOIN marketplaces m ON m.id = t.marketplace_id
+       WHERE t.id = $1`,
+      [req.params.id]
+    );
     if (!rows.length) return res.status(404).json({ error: 'tarefa não encontrada' });
-    if (rows[0].board_column !== 'excluido') {
+    const t = rows[0];
+    if (t.board_column !== 'excluido') {
       return res.status(400).json({ error: 'só é possível excluir definitivamente um cartão que já está na coluna Excluído' });
     }
+
+    // Notifica antes de apagar — se o Telegram falhar, não bloqueia a exclusão
+    // (mesmo princípio de "notificação nunca trava operação principal" já
+    // usado no resto do sistema, ver decisions.md).
+    const criado = new Date(t.created_at).toLocaleDateString('pt-BR');
+    await tgNotifyTaskDeleted(
+      `🗑️ <b>Cartão excluído definitivamente</b>\n\n` +
+      `<b>${t.title}</b>\n` +
+      (t.description ? `${t.description}\n\n` : '\n') +
+      `Prioridade: ${t.priority}\n` +
+      (t.store_nickname ? `Loja: ${t.store_nickname}\n` : '') +
+      (t.marketplace_name ? `Marketplace: ${t.marketplace_name}\n` : '') +
+      (t.assigned_to ? `Responsável: ${t.assigned_to}\n` : '') +
+      (t.tags?.length ? `Tags: ${t.tags.join(', ')}\n` : '') +
+      `Origem: ${t.source}\n` +
+      `Criado em: ${criado}`
+    );
+
     await pool.query(`DELETE FROM tasks WHERE id = $1`, [req.params.id]);
     res.json({ ok: true });
   } catch (e) {

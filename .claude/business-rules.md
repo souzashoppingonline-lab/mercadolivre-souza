@@ -29,6 +29,16 @@
 - **Status por `diferenca_pct`**: `≥ 20%` → `muito_acima`; `≥ 5%` → `acima`; `≥ -5%` → `dentro_da_media`; `≥ -20%` → `abaixo`; `< -20%` → `muito_abaixo`. Os mesmos limiares alimentam as 5 zonas coloridas do gauge no frontend.
 - **Insight automático**: além do texto de "X% acima/abaixo da média", quando o dia atual está entre os top/bottom 20% históricos (`ranking` em `media_historica`), acrescenta contexto — "este é um dos dias mais fortes/fracos do mês historicamente".
 
+## Termômetro por Horário — duas comparações complementares ao Dia Ideal
+
+`termometro_horario` (mesmo payload de `GET /api/analises/vendas-mes`, mesma condição de só existir no mês corrente real) responde uma pergunta diferente do Dia Ideal: não "como fechou o dia comparado à média histórica" (só sabido no fim do dia), mas "como estou indo **agora**, neste exato horário, comparado ao mesmo ponto do dia em outras referências". Pedido explícito do usuário — duas comparações lado a lado, mesmo padrão visual de gauge/termômetro do Dia Ideal:
+
+- **Média dos últimos 30 dias, até o mesmo horário**: para cada um dos últimos 30 dias (hoje excluído), soma a receita daquele dia até o mesmo horário:minuto de agora, depois tira a média dessas 30 somas. Não é "vendas feitas *dentro* desta hora" (métrica muito ruidosa, hora a hora varia demais) — é receita **acumulada desde 00:00** até o horário atual, a mesma lógica de "pacing" do dia.
+- **Ontem, até o mesmo horário**: mesma soma acumulada de 00:00 até o horário atual, só que o dia de referência é ontem (1 dia), não uma média de 30.
+- **Corte por horário:minuto exato** (`EXTRACT(HOUR...)*60 + EXTRACT(MINUTE...)`), não por hora cheia arredondada — comparação apples-to-apples com o instante exato de "agora", sem viés de arredondar pra cima ou pra baixo.
+- **Status e limiares idênticos ao Dia Ideal** (`≥20%`→`muito_acima`, `≥5%`→`acima`, `≥-5%`→`dentro_da_media`, `≥-20%`→`abaixo`, `<-20%`→`muito_abaixo` — função `statusDeDiferenca()` compartilhada entre as duas features, ver `decisions.md`).
+- Diferente do Dia Ideal, não exige histórico de 12 meses — só 30 dias corridos, então fica disponível bem antes do Dia Ideal ter dado histórico suficiente pra um dia-do-mês específico.
+
 ## Calendário de Sazonalidade — estrelas, ranking e participação
 
 Calculado em cima da mesma `media_historica` (12 meses anteriores, por dia-do-mês) já usada pelo resto da página — não é uma nova consulta, é uma segunda leitura dos mesmos dados agregados.

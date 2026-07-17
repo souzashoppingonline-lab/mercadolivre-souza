@@ -1321,6 +1321,16 @@ router.get('/comparativos/curva-abc', async (req, res) => {
 // e a lógica testável. Ver .claude/business-rules.md para as fórmulas.
 function daysInMonth(year, month) { return new Date(year, month, 0).getDate(); } // month 1-indexed
 
+// Escada de status reaproveitada pelo Dia Ideal e pelo Termômetro por Horário
+// — mesmos limiares (±5%/±20%), um único lugar pra manter em sincronia.
+function statusDeDiferenca(pct) {
+  return pct >= 20 ? 'muito_acima'
+    : pct >= 5 ? 'acima'
+    : pct >= -5 ? 'dentro_da_media'
+    : pct >= -20 ? 'abaixo'
+    : 'muito_abaixo';
+}
+
 function linearRegression(points) {
   // points: [{x, y}] — mínimos quadrados simples
   const n = points.length;
@@ -1566,21 +1576,82 @@ router.get('/analises/vendas-mes', async (req, res) => {
       if (h && h.meses_analisados > 0) {
         const diferenca = atualReceita - h.media;
         const diferencaPct = h.media > 0 ? (diferenca / h.media) * 100 : (atualReceita > 0 ? 100 : 0);
-        const status = diferencaPct >= 20 ? 'muito_acima'
-          : diferencaPct >= 5 ? 'acima'
-          : diferencaPct >= -5 ? 'dentro_da_media'
-          : diferencaPct >= -20 ? 'abaixo'
-          : 'muito_abaixo';
         diaIdeal = {
           dia: diaAtualNum,
           esperado: Number(h.media.toFixed(2)),
           atual: Number(atualReceita.toFixed(2)),
           diferenca: Number(diferenca.toFixed(2)),
           diferenca_pct: Number(diferencaPct.toFixed(1)),
-          status,
+          status: statusDeDiferenca(diferencaPct),
           historico: { media: h.media, maior: h.maior, menor: h.menor, desvio: h.desvio, meses_analisados: h.meses_analisados },
         };
       }
+    }
+
+    // ── Termômetro por horário — complementa o Dia Ideal (que só fecha ao fim
+    // do dia) com um sinal de "estou pacing bem AGORA": compara a receita de
+    // hoje até este exato horário (minutoAtual) contra (1) a média dos
+    // últimos 30 dias até o mesmo horário e (2) ontem até o mesmo horário.
+    // Filtro por hora:minuto (não por hora cheia) pra ser comparável ao
+    // corte exato de "agora", não arredondado pra baixo/cima.
+    let termometroHorario = null;
+    if (ano === hoje.getFullYear() && mes === hoje.getMonth() + 1) {
+      const diaAtualNum = hoje.getDate();
+      const atualReceita = mesAtual.dias.find(d => d.dia === diaAtualNum)?.receita ?? 0;
+      const minutoAtual = hoje.getHours() * 60 + hoje.getMinutes();
+      const filtroHorarioLojaItem = `AND (EXTRACT(HOUR FROM o.date_created)*60 + EXTRACT(MINUTE FROM o.date_created)) <= $1
+             AND ($2 = '' OR o.store_id = $2::bigint) AND ($3 = '' OR o.item_id = $3)`;
+      const [{ rows: media30dRows }, { rows: ontemRows }] = await Promise.all([
+        pool.query(
+          `SELECT AVG(receita) AS media, COUNT(*) AS dias_analisados
+           FROM (
+             SELECT o.date_created::date AS d, SUM(o.total_amount) AS receita
+             FROM vw_ml_orders o
+             WHERE o.status != 'cancelled'
+               AND o.date_created >= (now() - interval '30 days')
+               AND o.date_created <  date_trunc('day', now())
+               ${filtroHorarioLojaItem}
+             GROUP BY 1
+           ) diario`,
+          [minutoAtual, store_id, item_id]
+        ),
+        pool.query(
+          `SELECT COALESCE(SUM(o.total_amount), 0) AS receita
+           FROM vw_ml_orders o
+           WHERE o.status != 'cancelled'
+             AND o.date_created >= (date_trunc('day', now()) - interval '1 day')
+             AND o.date_created <  date_trunc('day', now())
+             ${filtroHorarioLojaItem}`,
+          [minutoAtual, store_id, item_id]
+        ),
+      ]);
+
+      const media30d = Number(media30dRows[0]?.media || 0);
+      const diasAnalisados30d = Number(media30dRows[0]?.dias_analisados || 0);
+      const ontem = Number(ontemRows[0]?.receita || 0);
+
+      const diferenca30d = atualReceita - media30d;
+      const diferenca30dPct = media30d > 0 ? (diferenca30d / media30d) * 100 : (atualReceita > 0 ? 100 : 0);
+      const diferencaOntem = atualReceita - ontem;
+      const diferencaOntemPct = ontem > 0 ? (diferencaOntem / ontem) * 100 : (atualReceita > 0 ? 100 : 0);
+
+      termometroHorario = {
+        hora_atual: `${String(hoje.getHours()).padStart(2, '0')}:${String(hoje.getMinutes()).padStart(2, '0')}`,
+        atual: Number(atualReceita.toFixed(2)),
+        media_30d: {
+          valor: Number(media30d.toFixed(2)),
+          dias_analisados: diasAnalisados30d,
+          diferenca: Number(diferenca30d.toFixed(2)),
+          diferenca_pct: Number(diferenca30dPct.toFixed(1)),
+          status: statusDeDiferenca(diferenca30dPct),
+        },
+        ontem: {
+          valor: Number(ontem.toFixed(2)),
+          diferenca: Number(diferencaOntem.toFixed(2)),
+          diferenca_pct: Number(diferencaOntemPct.toFixed(1)),
+          status: statusDeDiferenca(diferencaOntemPct),
+        },
+      };
     }
 
     res.json({
@@ -1597,6 +1668,7 @@ router.get('/analises/vendas-mes', async (req, res) => {
       ranking_top10: top10,
       ranking_bottom10: bottom10,
       dia_ideal: diaIdeal,
+      termometro_horario: termometroHorario,
       sazonalidade: { top10: sazonalidadeTop10, bottom10: sazonalidadeBottom10 },
       insights: {
         tendencia, aceleracao, melhor_semana: melhorSemana, pior_semana: piorSemana,

@@ -379,3 +379,19 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 **Removido**: a página, o item de menu em `js/layout.js` (`NAV_ITEMS`) e no sidebar hardcoded de `index.html`, a rota `GET /api/metricas` (`routes/api.js`) e `DB.getMetricas()` (`js/db.js`) — sem consumidor restante depois da página sair, viravam código morto.
 
 **Não removido, de propósito**: a tabela `store_metrics` e a coleta de reputação dentro do job `syncMetricas` (04:15 diário) continuam existindo — esse mesmo job também sincroniza `returns` (devoluções), que a página `devolucoes.html` ainda usa; separar as duas responsabilidades do job não foi pedido e está fora do escopo desta tarefa. `store_metrics` fica sendo escrita sem nenhum consumidor de leitura por ora — se isso incomodar futuramente, a decisão de parar de coletar reputação (ou reaproveitar o dado noutra página) é uma tarefa separada, não uma consequência automática de remover a página.
+
+## Termômetro por Horário — reaproveita `atualReceita` e extrai `statusDeDiferenca()`
+
+**Contexto**: pedido do usuário na página `analise-vendas-mes.html` — duas comparações novas complementares ao "Dia Ideal": receita de hoje até agora vs. média dos últimos 30 dias até o mesmo horário, e vs. ontem até o mesmo horário, mesmo padrão visual de gauge/termômetro.
+
+**Decisão — reaproveitar `atualReceita` já calculada para o Dia Ideal**: o valor "hoje até agora" que o Dia Ideal usa (`mesAtual.dias.find(d => d.dia === diaAtualNum)?.receita`) já é, por construção, a receita acumulada de hoje desde 00:00 até o momento da consulta (pedidos de hoje só existem até agora, o dia não terminou) — exatamente o número que a comparação por horário também precisa. Evita uma 3ª query redundante só pra recalcular o mesmo total.
+
+**Decisão — corte por minuto exato, não por hora cheia**: as duas queries novas filtram `EXTRACT(HOUR...)*60 + EXTRACT(MINUTE...) <= minutoAtual`, não `EXTRACT(HOUR...) <= horaAtual`. Truncar pra hora cheia sub-contaria a comparação de referência sempre que "agora" não caísse exatamente em HH:00 (ex.: às 14:47, comparar só até 14:00 dos outros dias ignoraria 47 minutos de vendas que hoje já teve) — precisão de minuto elimina esse viés sistemático.
+
+**Decisão — não depende do histórico de 12 meses do Dia Ideal**: só usa 30 dias corridos (2 queries simples com `Promise.all` em paralelo), então fica disponível desde a primeira semana de uso do sistema, sem esperar 1+ ano de histórico como o Dia Ideal exige pra ter `meses_analisados > 0`.
+
+**Extração de `statusDeDiferenca(pct)`**: a escada de status (`muito_acima`/`acima`/`dentro_da_media`/`abaixo`/`muito_abaixo`, limiares ±5%/±20%) que já existia inline dentro do bloco do Dia Ideal virou função de módulo (`server/src/routes/api.js`, perto de `daysInMonth`/`buildDiasArray`) — evita divergência dos limiares entre as duas features agora que existem 3 comparações usando a mesma escada (Dia Ideal + 2 do Termômetro).
+
+**Frontend — `renderGaugeArc()` extraída**: o desenho do semicírculo vermelho→verde com ponteiro (SVG, zonas fixas, ângulo do ponteiro clampado a ±50%) também virou função compartilhada em `analise-vendas-mes.html`, chamada 3x (Dia Ideal + 2 gauges do Termômetro) em vez de copiar o bloco de ~15 linhas de novo — mesmo raciocínio de DRY do backend.
+
+**Textos de status não são genéricos**: em vez de reaproveitar o `STATUS_LABEL` do Dia Ideal (que diz "...da média histórica") com um `.replace()` de string, cada comparação do Termômetro tem seu próprio mapa de texto ("...da média de 30 dias" / "...de ontem") — `.replace()` sobre texto com contração portuguesa ("da" = "de"+"a") gerava texto errado tipo "Acima dontem" quando a referência não continha artigo. Dois mapas pequenos e explícitos (5 linhas cada) evitam esse bug de concatenação, mais importante que a duplicação mínima entre eles.

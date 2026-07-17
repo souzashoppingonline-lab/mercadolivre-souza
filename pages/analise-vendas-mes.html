@@ -71,6 +71,18 @@
     .ideal-progress-fill { height: 100%; border-radius: 6px; transition: width 1s cubic-bezier(.22,1,.36,1); }
     .ideal-progress-marker { position: absolute; top: -4px; width: 2px; height: 20px; background: #fff; opacity: .6; }
 
+    /* Termômetro por Horário */
+    .thermo-hour-sub { font-size: 12px; color: var(--text-muted); margin: -8px 0 16px; }
+    .thermo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media(max-width: 800px) { .thermo-grid { grid-template-columns: 1fr; } }
+    .thermo-block { background: var(--bg-card2); border-radius: 12px; padding: 16px; text-align: center; }
+    .thermo-block-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+    .thermo-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 4px; }
+    .thermo-field .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .thermo-field .val { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .thermo-block .gauge-wrap { max-width: 190px; }
+    .thermo-block .gauge-needle-label { font-size: 21px; }
+
     .gauge-wrap { position: relative; width: 100%; max-width: 260px; margin: 0 auto; }
     .gauge-zones { width: 100%; }
     .gauge-needle-label { text-align: center; font-size: 26px; font-weight: 800; margin-top: -38px; }
@@ -160,6 +172,40 @@
             <svg id="idealGauge" class="gauge-zones" viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"></svg>
             <div class="gauge-needle-label" id="idealGaugeLabel">—</div>
             <div class="gauge-needle-sub">vs. média histórica</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Termômetro por Horário -->
+      <div class="card" id="hourThermoCard" style="margin-bottom:16px;display:none">
+        <div class="card-header"><h3><i class="fas fa-thermometer-half" style="color:var(--primary)"></i> Termômetro de Vendas por Horário</h3></div>
+        <div class="thermo-hour-sub">Faturamento de hoje até <b id="thermoHora">—</b>: <b id="thermoAtual">—</b></div>
+        <div class="thermo-grid">
+          <div class="thermo-block">
+            <div class="thermo-block-title">Média dos últimos 30 dias, até o mesmo horário</div>
+            <div class="ideal-status" id="thermo30Status"></div>
+            <div class="thermo-fields">
+              <div class="thermo-field"><div class="lbl">Média 30 dias</div><div class="val" id="thermo30Media">—</div></div>
+              <div class="thermo-field"><div class="lbl">Diferença</div><div class="val" id="thermo30Diferenca">—</div></div>
+            </div>
+            <div class="gauge-wrap">
+              <svg id="thermo30Gauge" class="gauge-zones" viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"></svg>
+              <div class="gauge-needle-label" id="thermo30GaugeLabel">—</div>
+              <div class="gauge-needle-sub">vs. média 30 dias</div>
+            </div>
+          </div>
+          <div class="thermo-block">
+            <div class="thermo-block-title">Ontem, até o mesmo horário</div>
+            <div class="ideal-status" id="thermoOntemStatus"></div>
+            <div class="thermo-fields">
+              <div class="thermo-field"><div class="lbl">Ontem</div><div class="val" id="thermoOntemValor">—</div></div>
+              <div class="thermo-field"><div class="lbl">Diferença</div><div class="val" id="thermoOntemDiferenca">—</div></div>
+            </div>
+            <div class="gauge-wrap">
+              <svg id="thermoOntemGauge" class="gauge-zones" viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg"></svg>
+              <div class="gauge-needle-label" id="thermoOntemGaugeLabel">—</div>
+              <div class="gauge-needle-sub">vs. ontem</div>
+            </div>
           </div>
         </div>
       </div>
@@ -339,6 +385,7 @@ async function load() {
   renderRankings(data);
   renderInsights(data);
   renderDiaIdeal(data);
+  renderTermometroHorario(data);
   renderSeason(data);
   renderSeasonRankings(data);
   renderSeasonInsights(data);
@@ -636,6 +683,16 @@ function renderDiaIdeal(data) {
   }
   set('idealInsight', `As vendas de hoje estão <b>${Math.abs(di.diferenca_pct)}%</b> ${dirTxt} da média histórica para este período.${extra}`);
 
+  renderGaugeArc('idealGauge', 'idealGaugeLabel', di.diferenca_pct);
+
+  document.querySelector('#idealDayCard .gauge-wrap').title =
+    `Histórico (${di.historico.meses_analisados} mês(es) analisados): média ${R(di.historico.media)} · maior ${R(di.historico.maior)} · menor ${R(di.historico.menor)} · desvio-padrão ${R(di.historico.desvio)}`;
+}
+
+// Desenha o semicírculo vermelho→verde + ponteiro, reaproveitado pelo
+// gauge do Dia Ideal e pelos dois gauges do Termômetro por Horário —
+// mesma escala (-50%..+50% clampado) e paleta de zonas nos três.
+function renderGaugeArc(svgId, labelId, diferencaPct) {
   const cx = 100, cy = 95, r = 75, sw = 16;
   const zonas = [
     { de: 180, ate: 144, cor: '#e74c3c' },
@@ -645,16 +702,52 @@ function renderDiaIdeal(data) {
     { de: 36,  ate: 0,   cor: '#27ae60' },
   ];
   const arcos = zonas.map(z => `<path d="${describeArc(cx,cy,r,z.de,z.ate)}" stroke="${z.cor}" stroke-width="${sw}" fill="none"/>`).join('');
-  const pctClamped = Math.max(-50, Math.min(50, di.diferenca_pct));
+  const pctClamped = Math.max(-50, Math.min(50, diferencaPct));
   const needleAngle = 180 - ((pctClamped + 50) / 100) * 180;
   const tip = polarToCartesian(cx, cy, r - sw / 2 - 4, needleAngle);
   const needle = `<line x1="${cx}" y1="${cy}" x2="${tip.x}" y2="${tip.y}" stroke="#fff" stroke-width="3" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="6" fill="#fff"/>`;
-  document.getElementById('idealGauge').innerHTML = arcos + needle;
-  set('idealGaugeLabel', `${di.diferenca_pct >= 0 ? '+' : ''}${di.diferenca_pct}%`);
-  document.getElementById('idealGaugeLabel').style.color = di.diferenca_pct >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById(svgId).innerHTML = arcos + needle;
+  set(labelId, `${diferencaPct >= 0 ? '+' : ''}${diferencaPct}%`);
+  document.getElementById(labelId).style.color = diferencaPct >= 0 ? 'var(--green)' : 'var(--red)';
+}
 
-  document.querySelector('.gauge-wrap').title =
-    `Histórico (${di.historico.meses_analisados} mês(es) analisados): média ${R(di.historico.media)} · maior ${R(di.historico.maior)} · menor ${R(di.historico.menor)} · desvio-padrão ${R(di.historico.desvio)}`;
+function renderTermometroHorario(data) {
+  const card = document.getElementById('hourThermoCard');
+  const t = data.termometro_horario;
+  if (!t) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  set('thermoHora', t.hora_atual);
+  set('thermoAtual', R(t.atual));
+
+  const preenche = (prefixo, comparacao, labels) => {
+    const statusEl = document.getElementById(`${prefixo}Status`);
+    statusEl.className = `ideal-status ${comparacao.status}`;
+    statusEl.textContent = labels[comparacao.status] || comparacao.status;
+    set(`${prefixo}Diferenca`, `${comparacao.diferenca >= 0 ? '+' : ''}${R(comparacao.diferenca)} (${comparacao.diferenca_pct >= 0 ? '+' : ''}${comparacao.diferenca_pct}%)`);
+    document.getElementById(`${prefixo}Diferenca`).style.color = comparacao.diferenca >= 0 ? 'var(--green)' : 'var(--red)';
+    renderGaugeArc(`${prefixo}Gauge`, `${prefixo}GaugeLabel`, comparacao.diferenca_pct);
+  };
+
+  set('thermo30Media', R(t.media_30d.valor));
+  document.querySelector('#hourThermoCard .thermo-block:nth-child(1) .thermo-block-title').textContent =
+    `Média dos últimos ${t.media_30d.dias_analisados} dia(s), até o mesmo horário`;
+  preenche('thermo30', t.media_30d, {
+    muito_acima: '🟢 Muito acima da média de 30 dias',
+    acima: '🟢 Acima da média de 30 dias',
+    dentro_da_media: '🟡 Na média dos últimos 30 dias',
+    abaixo: '🔴 Abaixo da média de 30 dias',
+    muito_abaixo: '🔴 Muito abaixo da média de 30 dias',
+  });
+
+  set('thermoOntemValor', R(t.ontem.valor));
+  preenche('thermoOntem', t.ontem, {
+    muito_acima: '🟢 Muito acima de ontem',
+    acima: '🟢 Acima de ontem',
+    dentro_da_media: '🟡 Praticamente igual a ontem',
+    abaixo: '🔴 Abaixo de ontem',
+    muito_abaixo: '🔴 Muito abaixo de ontem',
+  });
 }
 
 // ── Calendário de Sazonalidade ──────────────────────────────

@@ -273,7 +273,7 @@ const PLAYER_ROLE_LABEL = { complainant: 'Comprador', respondent: 'Vendedor', me
 // um "ver dados brutos" com o JSON completo da claim, pra nenhum detalhe
 // ficar de fora mesmo que não tenha um campo dedicado na UI.
 function openDevDetail(id) {
-  const r = allDevRows.find(x => x.id === id);
+  const r = allDevRows.find(x => String(x.id) === String(id));
   if (!r) return;
   const st = statusMap[r.status] || { l: r.status, c: '' };
   const raw = r.raw_data || {};

@@ -117,8 +117,8 @@
           <div class="card-header"><h3>Ranking de Produtos <span style="font-weight:400;font-size:.75rem;color:var(--text-muted)">(mais devoluções)</span></h3></div>
           <div class="table-responsive">
             <table class="dev-mini-table">
-              <thead><tr><th>Produto</th><th>Devoluções</th><th>Pedidos</th><th>Taxa</th></tr></thead>
-              <tbody id="rankProdutos"><tr><td colspan="4" class="empty-state">Sem dados</td></tr></tbody>
+              <thead><tr><th>Produto</th><th>Anúncio</th><th>Loja</th><th>Devoluções</th><th>Pedidos</th><th>Taxa</th></tr></thead>
+              <tbody id="rankProdutos"><tr><td colspan="6" class="empty-state">Sem dados</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -403,11 +403,13 @@ function renderRankProdutos(s) {
   document.getElementById('rankProdutos').innerHTML = rank.length
     ? rank.map(p => `<tr>
         <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtmlDev(p.item_title || p.item_id)}">${escapeHtmlDev(p.item_title || p.item_id)}</td>
+        <td style="font-size:.72rem;color:var(--text-muted);white-space:nowrap">${escapeHtmlDev(p.item_id || '—')}</td>
+        <td style="font-size:.75rem;color:var(--text-muted)">${escapeHtmlDev(p.conta || '—')}</td>
         <td>${p.devolucoes}</td>
         <td>${p.pedidos || '—'}</td>
         <td class="${p.taxa_pct != null && p.taxa_pct >= 5 ? 'taxa-alta' : ''}">${p.taxa_pct != null ? p.taxa_pct.toFixed(2) + '%' : '—'}</td>
       </tr>`).join('')
-    : '<tr><td colspan="4" class="empty-state">Sem dados</td></tr>';
+    : '<tr><td colspan="6" class="empty-state">Sem dados</td></tr>';
 }
 
 function renderTaxaPorLoja(s, storeIdFiltro) {

@@ -1889,7 +1889,7 @@ router.get('/alertas/devolucoes', async (req, res) => {
     const devPorItem = new Map();
     rows.forEach(r => {
       if (!r.item_id) return;
-      const cur = devPorItem.get(r.item_id) || { item_id: r.item_id, item_title: r.item_title, devolucoes: 0 };
+      const cur = devPorItem.get(r.item_id) || { item_id: r.item_id, item_title: r.item_title, conta: r.conta, devolucoes: 0 };
       cur.devolucoes += 1;
       devPorItem.set(r.item_id, cur);
     });

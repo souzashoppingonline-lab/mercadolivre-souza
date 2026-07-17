@@ -10,7 +10,7 @@
   <script>window.PAGE_TITLE='Devoluções'; window.ACTIVE_NAV='devolucoes.html';</script>
   <style>
     .note-cell { display:flex; align-items:center; gap:6px; min-width:180px; }
-    .note-input { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); padding:4px 8px; font-size:.8rem; }
+    .note-input { flex:1; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; color:var(--text-main); padding:4px 8px; font-size:.8rem; }
     .note-input:focus { outline:none; border-color:var(--primary); }
     .btn-save-note { background:var(--primary); color:#000; border:none; border-radius:6px; padding:4px 10px; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; }
     .btn-save-note:hover { opacity:.85; }
@@ -18,13 +18,13 @@
     .periodo-btn.active { background:var(--primary) !important; color:#000 !important; border-color:var(--primary) !important; }
     .dev-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
     .dev-modal-backdrop.open { display: flex; }
-    .dev-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 720px; padding: 18px; }
+    .dev-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 720px; padding: 18px; }
     .dev-modal h3 { font-size: 14px; font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
     .dev-modal h3 .close { cursor: pointer; color: var(--text-muted); }
     .dev-modal video { width: 100%; border-radius: 10px; background: #000; max-height: 70vh; }
     .dev-modal.detail { max-width: 640px; max-height: 85vh; overflow-y: auto; }
     .dev-detail-head { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-    .dev-detail-head img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: var(--surface); flex-shrink: 0; }
+    .dev-detail-head img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: var(--bg-card2); flex-shrink: 0; }
     .dev-detail-head .prod-title { font-size: .95rem; font-weight: 700; }
     .dev-detail-head .prod-sub { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
     .dev-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin-bottom: 16px; }
@@ -34,10 +34,10 @@
     .dev-detail-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
     .dev-detail-section h4 { font-size: .8rem; margin-bottom: 8px; color: var(--text-muted); }
     .dev-raw-toggle { cursor: pointer; font-size: .75rem; color: var(--primary); margin-top: 14px; display: inline-block; }
-    .dev-raw-json { display: none; background: var(--surface); border-radius: 8px; padding: 10px; font-size: .68rem; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto; margin-top: 8px; }
+    .dev-raw-json { display: none; background: var(--bg-card2); border-radius: 8px; padding: 10px; font-size: .68rem; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto; margin-top: 8px; }
     .dev-raw-json.open { display: block; }
     .dev-player-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; padding: 4px 0; }
-    .dev-player-row .role-tag { background: var(--surface); border-radius: 6px; padding: 2px 8px; font-size: .68rem; font-weight: 700; text-transform: uppercase; }
+    .dev-player-row .role-tag { background: var(--bg-card2); border-radius: 6px; padding: 2px 8px; font-size: .68rem; font-weight: 700; text-transform: uppercase; }
   </style>
 </head>
 <body>
@@ -53,22 +53,22 @@
           <input type="text" id="searchInput" placeholder="Buscar por ID do pedido, comprador ou produto...">
         </div>
         <button class="btn-save-note" style="padding:8px 18px;font-size:.85rem" onclick="load()">Buscar</button>
-        <button class="btn-save-note" id="btnSync" style="padding:8px 18px;font-size:.85rem;background:var(--surface);color:var(--text-primary);border:1px solid var(--border)" onclick="syncRetroativo()">
+        <button class="btn-save-note" id="btnSync" style="padding:8px 18px;font-size:.85rem;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border)" onclick="syncRetroativo()">
           <i class="fas fa-sync-alt"></i> Importar histórico ML
         </button>
       </div>
 
       <div class="filters-row" style="margin-bottom:16px">
-        <select id="filtroLoja" class="btn-save-note" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);font-weight:400;padding:8px 12px" onchange="load()">
+        <select id="filtroLoja" class="btn-save-note" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);font-weight:400;padding:8px 12px" onchange="load()">
           <option value="">Todas as lojas</option>
         </select>
         <div id="periodoBtns" style="display:flex;gap:6px">
-          <button class="btn-save-note periodo-btn" data-periodo="hoje" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('hoje')">Hoje</button>
-          <button class="btn-save-note periodo-btn" data-periodo="ontem" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('ontem')">Ontem</button>
-          <button class="btn-save-note periodo-btn" data-periodo="7" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(7)">7 dias</button>
-          <button class="btn-save-note periodo-btn" data-periodo="15" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(15)">15 dias</button>
-          <button class="btn-save-note periodo-btn" data-periodo="30" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(30)">30 dias</button>
-          <button class="btn-save-note periodo-btn" data-periodo="" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('')">Tudo</button>
+          <button class="btn-save-note periodo-btn" data-periodo="hoje" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('hoje')">Hoje</button>
+          <button class="btn-save-note periodo-btn" data-periodo="ontem" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('ontem')">Ontem</button>
+          <button class="btn-save-note periodo-btn" data-periodo="7" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(7)">7 dias</button>
+          <button class="btn-save-note periodo-btn" data-periodo="15" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(15)">15 dias</button>
+          <button class="btn-save-note periodo-btn" data-periodo="30" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo(30)">30 dias</button>
+          <button class="btn-save-note periodo-btn" data-periodo="" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;font-size:.8rem" onclick="setPeriodo('')">Tudo</button>
         </div>
       </div>
 
@@ -241,7 +241,7 @@ async function loadVideoLinks(orderIds) {
   if (!map || map.error) return;
   Object.entries(map).forEach(([orderId, v]) => {
     const cell = document.getElementById(`video-cell-${orderId}`);
-    if (cell) cell.innerHTML = `<button class="btn-save-note" style="background:var(--surface);color:var(--text-primary);border:1px solid var(--border)" onclick="playDevVideo(${v.id})"><i class="fas fa-play"></i> Assistir</button>`;
+    if (cell) cell.innerHTML = `<button class="btn-save-note" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border)" onclick="playDevVideo(${v.id})"><i class="fas fa-play"></i> Assistir</button>`;
   });
 }
 

@@ -123,6 +123,10 @@
       <div class="tvo-card">
         <div class="tvo-card-header">
           <div class="tvo-card-title"><i class="fas fa-trophy" style="color:var(--orange)"></i> Top Vendas do Dia</div>
+          <div style="display:flex;gap:8px">
+            <button class="tvo-refresh-btn" onclick="dlTopDiaCSV()"><i class="fas fa-file-csv"></i> CSV</button>
+            <button class="tvo-refresh-btn" onclick="dlTopDiaPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
+          </div>
         </div>
         <div class="tvo-card-desc">Top 10 itens mais vendidos (por unidades) nas últimas 24h — mesmo conteúdo do e-mail diário, com nome do anúncio e loja.</div>
         <div class="tvo-table-wrap">
@@ -286,10 +290,12 @@ async function loadResumoOntem() {
 }
 
 // ── Top Vendas do Dia (24h) ──────────────────────────────────
+let lastTopDia = [];
 async function loadTopVendasDia() {
   const data = await DB.getTopVendasDia();
   const tbody = document.getElementById('topDiaTbody');
   const itens = data?.itens || [];
+  lastTopDia = itens;
   tbody.innerHTML = itens.length ? itens.map((r, i) => `
     <tr>
       <td>${medal(i)}</td>
@@ -298,6 +304,98 @@ async function loadTopVendasDia() {
       <td><strong>${N(r.unidades)}</strong></td>
       <td style="color:var(--green);font-weight:600">${R(r.receita)}</td>
     </tr>`).join('') : '<tr><td colspan="5" class="tvo-empty">Nenhuma venda nas últimas 24h</td></tr>';
+}
+
+// ── Exportar Top Vendas do Dia — CSV/PDF (client-side, sem rota nova) ──
+function dlTopDiaCSV() {
+  if (!lastTopDia.length) return alert('Sem dados para exportar.');
+  const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+  const header = ['#', 'Loja', 'Anúncio', 'Unidades', 'Receita'];
+  const lines = [header.map(escape).join(','), ...lastTopDia.map((r, i) => [
+    i + 1, r.loja || '', r.title || r.item_id || '', r.unidades ?? 0, r.receita ?? 0,
+  ].map(escape).join(','))];
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `top-vendas-dia_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+}
+
+// jsPDF carregado sob demanda (CDN), mesmo padrão de pages/vendas-turbo.html
+// (dlRankPDF/_genPDF) — aqui simplificado pra 1 tabela só, sem o sistema de
+// múltiplos rankings/colunas configuráveis daquela página.
+function dlTopDiaPDF() {
+  if (!lastTopDia.length) return alert('Sem dados para exportar.');
+  if (!window.jspdf) {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = () => { window.jspdf = window.jspdf || jspdf; _genTopDiaPDF(); };
+    document.head.appendChild(s);
+  } else {
+    _genTopDiaPDF();
+  }
+}
+
+function _genTopDiaPDF() {
+  const { jsPDF } = window.jspdf || window;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const PW = doc.internal.pageSize.getWidth();
+  const PH = doc.internal.pageSize.getHeight();
+  const MX = 12, MY = 12, ROW_H = 8;
+  const C = { bg: [18,18,18], panel: [28,28,30], stripe: [34,34,38], accent: [255,230,0], green: [39,174,96], head: [22,22,26], border: [50,50,55], muted: [130,130,140] };
+
+  doc.setFillColor(...C.bg); doc.rect(0, 0, PW, PH, 'F');
+  doc.setFillColor(...C.panel); doc.rect(0, 0, PW, MY + 10, 'F');
+  doc.setFillColor(...C.accent); doc.rect(0, 0, 3, MY + 10, 'F');
+  doc.setTextColor(...C.accent); doc.setFontSize(13); doc.setFont(undefined, 'bold');
+  doc.text('Top Vendas do Dia', MX + 4, MY + 4);
+  doc.setTextColor(...C.muted); doc.setFontSize(7.5); doc.setFont(undefined, 'normal');
+  doc.text(`Últimas 24h · ${lastTopDia.length} itens · ${new Date().toLocaleDateString('pt-BR')}`, PW - MX, MY + 4, { align: 'right' });
+  doc.setDrawColor(...C.border); doc.setLineWidth(0.3);
+  doc.line(MX, MY + 10.5, PW - MX, MY + 10.5);
+
+  let y = MY + 16;
+  const specs = [['#', 10, 'r'], ['Loja', 45, 'l'], ['Anúncio', 150, 'l'], ['Unidades', 35, 'r'], ['Receita', 33, 'r']];
+  const totalW = specs.reduce((a, s) => a + s[1], 0);
+  const scaleX = (PW - MX * 2) / totalW;
+
+  doc.setFillColor(...C.head); doc.rect(MX, y - 5, PW - MX * 2, ROW_H, 'F');
+  doc.setDrawColor(...C.accent); doc.setLineWidth(0.5); doc.line(MX, y - 5, PW - MX, y - 5);
+  doc.setTextColor(...C.accent); doc.setFontSize(7); doc.setFont(undefined, 'bold');
+  let cx = MX;
+  specs.forEach(([label, w, align]) => {
+    const sw = w * scaleX;
+    doc.text(label, align === 'r' ? cx + sw - 1 : cx + 1, y, { align: align === 'r' ? 'right' : 'left', maxWidth: sw - 2 });
+    cx += sw;
+  });
+  doc.setLineWidth(0.2); doc.setDrawColor(...C.border); doc.line(MX, y + 2, PW - MX, y + 2);
+  y += ROW_H;
+
+  const truncate = (s, maxW, fontSize) => {
+    let str = String(s);
+    while (str.length > 3 && doc.getStringUnitWidth(str) * fontSize / doc.internal.scaleFactor > maxW - 2) {
+      str = str.slice(0, -4) + '…';
+    }
+    return str;
+  };
+
+  lastTopDia.forEach((r, idx) => {
+    if (idx % 2 === 0) { doc.setFillColor(...C.stripe); doc.rect(MX, y - 5, PW - MX * 2, ROW_H, 'F'); }
+    const cells = [String(idx + 1), r.loja || '—', r.title || r.item_id || '—', N(r.unidades), R(r.receita)];
+    doc.setFont(undefined, 'normal'); doc.setFontSize(7.5);
+    cx = MX;
+    specs.forEach(([, w, align], ci) => {
+      const sw = w * scaleX;
+      const color = ci === 4 ? C.green : ci === 0 ? C.muted : [230, 230, 230];
+      doc.setTextColor(...color);
+      const text = ci === 2 ? truncate(cells[ci], sw, 7.5) : cells[ci];
+      doc.text(text, align === 'r' ? cx + sw - 1 : cx + 1, y, { align: align === 'r' ? 'right' : 'left' });
+      cx += sw;
+    });
+    y += ROW_H;
+  });
+
+  doc.save(`top-vendas-dia_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 // ── Relatório Semanal ─────────────────────────────────────────

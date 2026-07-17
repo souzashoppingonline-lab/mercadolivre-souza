@@ -40,7 +40,11 @@ Quatro abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre), *
 4. **Bipa de novo enquanto grava**:
    - Se for a **mesma** etiqueta → entende como "terminei", para a gravação (rápido, `MediaRecorder.stop()`, não depende de rede) e sobe o vídeo em segundo plano (`uploadPackingVideo()`, `POST /api/embalagem/finalizar` multipart, **sem `await`**) — o operador já pode bipar a próxima etiqueta imediatamente, não espera o upload terminar. Se o upload falhar, uma mensagem de erro aparece depois (mesma `showScanMsg`), mesmo que o operador já tenha ido pra outro pedido. Tela de "Pedido embalado" fica visível só 2s antes de voltar pro estado pronto pra bipar (era 10s — atrapalhava o ritmo do embalador). Ver `decisions.md`.
    - Se for uma etiqueta **diferente** → per pedido explícito do usuário, **pergunta antes** (`confirm()` nativo: "Você bipou uma etiqueta diferente da que está em gravação... Deseja finalizar a atual e começar uma nova?"). Confirmando, finaliza a gravação atual normalmente e já inicia a nova; cancelando, ignora o bipe novo e a gravação em andamento continua intacta.
-5. Vídeo salvo com sucesso → mensagem "✅ Pedido embalado", visível por 10s antes de voltar pra idle sozinho.
+5. Vídeo salvo com sucesso → mensagem grande de 2 linhas ("✅ Pedido embalado com sucesso" / "Pode seguir para o próximo pedido", `showBigSuccessMsg()`), visível por 2s antes de voltar pra idle sozinho (texto exato pedido pelo usuário).
+
+### Destaque piscante em quantidade e variação (card do pedido)
+
+Pedido explícito do usuário, com print mostrando o card real: quantidade ("1 un.") e a tag de variação ("TIPO: PEIXE") passavam despercebidas pro embalador numa olhada rápida, mesmo já sendo os dados mais importantes pra conferir (quantidade já tinha destaque de tamanho de fonte antes — ver passo 3 do fluxo acima — mas não bastava). Solução: animação CSS de piscar (`@keyframes embQtyBlink`/`embTagBlink`, mesmo padrão do `@keyframes embPulse` já usado no indicador de gravação), aplicada via classe `.attention` em `.emb-order-qty` e em cada `.emb-order-tag` — puro CSS, sem lógica condicional nem novo dado do backend, sempre piscando enquanto o card está na tela. `embQtyBlink` pulsa um glow amarelo (`drop-shadow`) + leve zoom (`scale`); `embTagBlink` inverte fundo/texto da tag (de discreta pra amarelo sólido com sombra) — ambos ciclo de 0.9s.
 
 ### Aba Buscar vídeos
 
@@ -71,7 +75,9 @@ Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartil
 
 **Bug real encontrado em produção**: o upload do vídeo travava na tela sem erro ("Salvando vídeo..." infinito) — causa raiz era o nginx, com o limite padrão de 1MB por corpo de requisição, rejeitando o upload do vídeo antes de chegar no Node. **Correção obrigatória de infra** (não é bug de código): adicionar `client_max_body_size 300m;` no bloco `server{}` do nginx — ver `server/nginx-websocket.conf` (template já atualizado) e `deployment.md`.
 
-**Correção de robustez feita em paralelo, no código**: `DB._postForm()` (`js/db.js`) ganhou um timeout próprio via `AbortController` (60s) — antes, se o upload travasse por qualquer motivo (nginx, rede, servidor), o `fetch()` nunca resolvia e a tela ficava presa pra sempre, exigindo recarregar a página pra continuar embalando. Agora, esgotado o timeout, cai no mesmo tratamento de erro de qualquer outra falha (mensagem de erro, volta pra idle, operador pode tentar de novo sem reload). Mensagem de sucesso ("✅ Pedido embalado") fica visível por 10s (era 2,5s) antes de voltar pra idle sozinho — pedido explícito do usuário.
+**Correção de robustez feita em paralelo, no código**: `DB._postForm()` (`js/db.js`) ganhou um timeout próprio via `AbortController` (60s) — antes, se o upload travasse por qualquer motivo (nginx, rede, servidor), o `fetch()` nunca resolvia e a tela ficava presa pra sempre, exigindo recarregar a página pra continuar embalando. Agora, esgotado o timeout, cai no mesmo tratamento de erro de qualquer outra falha (mensagem de erro, volta pra idle, operador pode tentar de novo sem reload).
+
+**Upload não-bloqueante (pedido explícito do usuário, revertendo a decisão acima de "esperar o upload")**: o upload demorado estava impedindo o embalador de já bipar o próximo pedido. `finalizeCurrent()` não dá mais `await` em `uploadPackingVideo()` — a gravação para (`MediaRecorder.stop()`, não depende de rede) e o upload roda em segundo plano, com seu próprio try/catch; se falhar, o erro aparece depois via `showScanMsg()`, mesmo que o operador já tenha ido pra outro pedido. Tela de sucesso reduzida de 10s pra **2s** (ver "Fluxo da tela" acima) — outro pedido explícito do usuário, pra não atrapalhar o ritmo. Ver `decisions.md`.
 
 ## Link Devoluções → vídeo (`pages/devolucoes.html`)
 

@@ -45,6 +45,11 @@
 <script src="../js/sidebar.js"></script>
 <script>
 const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+// Data crua vem em ISO (ex: "2026-07-17T03:00:00.000Z") — formata como
+// dd/mm/aaaa + dia da semana por extenso, em destaque (pedido do usuário).
+const fmtDataCurta = d => new Date(d).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', timeZone:'UTC' });
+const fmtDiaSemana = d => new Date(d).toLocaleDateString('pt-BR', { weekday:'long', timeZone:'UTC' }).toUpperCase();
+const fmtDataEvol = d => `${fmtDataCurta(d)}<br><strong style="color:var(--primary)">${fmtDiaSemana(d)}</strong>`;
 let chart;
 async function load(days=30) {
   const data = await DB.getEvolucaoDiaria(days) || { rows:[] };
@@ -52,7 +57,7 @@ async function load(days=30) {
   if (chart) chart.destroy();
   chart = new Chart(document.getElementById('evolucaoChart'), {
     type:'line',
-    data:{ labels:rows.map(r=>r.date), datasets:[
+    data:{ labels:rows.map(r=>fmtDataCurta(r.date)), datasets:[
       { label:'Receita', data:rows.map(r=>r.revenue||0), borderColor:'#FFE600', backgroundColor:'rgba(255,230,0,0.07)', fill:true, tension:0.4 }
     ]},
     options:{
@@ -65,7 +70,7 @@ async function load(days=30) {
     ? rows.slice().reverse().map((r,i,arr)=>{
         const prev = arr[i+1];
         const diff = prev && prev.revenue ? ((r.revenue-prev.revenue)/prev.revenue*100).toFixed(1) : null;
-        return `<tr><td>${r.date}</td><td>${r.orders||0}</td><td>${fmt(r.revenue)}</td>
+        return `<tr><td>${fmtDataEvol(r.date)}</td><td>${r.orders||0}</td><td>${fmt(r.revenue)}</td>
           <td style="color:${diff==null?'inherit':diff>=0?'var(--green)':'var(--red)'}">${diff==null?'—':(diff>=0?'▲':'▼')+Math.abs(diff)+'%'}</td></tr>`;
       }).join('')
     : '<tr><td colspan="5" class="empty-state">Sem dados</td></tr>';

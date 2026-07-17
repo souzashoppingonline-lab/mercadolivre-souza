@@ -4,39 +4,213 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard Shopee — ML Dashboard</title>
   <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Independente do ML: usa js/layout-shopee.js (sidebar/topbar próprios
+       da Shopee), nunca js/layout.js (sidebar ML) — ver .claude/frontend.md. -->
+  <script>window.PAGE_TITLE='Dashboard'; window.ACTIVE_NAV='dashboard-shopee.html';</script>
   <style>
-    /* Página independente: mesmo padrão de dashboard-amazon.html — sem
-       .app-container/.sidebar/.main-content nem js/layout.js, para o menu
-       lateral do ML nunca aparecer aqui (ver frontend.md). */
-    body { min-height: 100vh; }
-    .blocked-card { text-align: center; padding: 60px 24px; }
-    .blocked-card i { font-size: 40px; color: var(--text-muted); margin-bottom: 16px; }
-    .blocked-card h2 { font-size: 18px; margin-bottom: 8px; }
-    .blocked-card p { font-size: 13px; color: var(--text-muted); max-width: 460px; margin: 0 auto; line-height: 1.6; }
+    .shp-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .shp-kpi { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid #ee4d2d; border-radius: 12px; padding: 18px 20px; }
+    .shp-kpi .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .shp-kpi .val { font-size: 28px; font-weight: 800; line-height: 1.1; }
+    .shp-kpi .sub { font-size: 12px; color: var(--green); margin-top: 6px; }
+    .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; height: 26px; width: 70%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+    .status-item .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .status-item .value { font-size: 15px; font-weight: 700; }
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .status-badge.ok  { background: rgba(39,174,96,.15); color: var(--green); }
+    .status-badge.bad { background: rgba(231,76,60,.15); color: var(--red); }
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-left">
-      <h1 class="page-title"><i class="fas fa-store"></i> Shopee</h1>
-    </div>
-    <div class="topbar-right">
-      <nav class="mkt-switcher-compact">
-        <a href="../index.html"><i class="fas fa-shopping-bag"></i> Mercado Livre</a>
-        <a href="dashboard-amazon.html"><i class="fab fa-amazon"></i> Amazon</a>
-        <a href="dashboard-shopee.html" class="active"><i class="fas fa-store"></i> Shopee</a>
-      </nav>
-    </div>
-  </header>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
 
-  <div class="content-area">
-    <div class="card blocked-card">
-      <i class="fas fa-hourglass-half"></i>
-      <h2>Integração Shopee — aguardando aprovação</h2>
-      <p>O app da Shopee ainda está em análise pela plataforma (Partner ID / Partner Key). Assim que for aprovado, este dashboard passa a exibir vendas, pedidos e produtos da Shopee, seguindo o mesmo padrão já usado na integração Amazon.</p>
+      <div class="shp-kpis">
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-dollar-sign"></i> Vendas Totais</div>
+          <div class="val" id="shpVendas"><div class="skeleton"></div></div>
+          <div class="sub">▲ Hoje</div>
+        </div>
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-box"></i> Pedidos</div>
+          <div class="val" id="shpPedidos"><div class="skeleton"></div></div>
+          <div class="sub">▲ Hoje</div>
+        </div>
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-cubes"></i> Produtos</div>
+          <div class="val" id="shpProdutos"><div class="skeleton"></div></div>
+          <div class="sub" style="color:var(--text-muted)">Ativos</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Últimos pedidos Shopee</h3>
+          <span id="shpPedidosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Cliente</th>
+                <th>SKU</th>
+                <th class="tbl-num">Valor</th>
+                <th>Status</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="shpPedidosTbody">
+              <tr><td colspan="6" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Produtos Shopee</h3>
+          <span id="shpProdutosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Título</th>
+                <th class="tbl-num">Estoque</th>
+                <th class="tbl-num">Preço</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="shpProdutosTbody">
+              <tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Status da Integração</h3></div>
+        <div class="status-grid">
+          <div class="status-item">
+            <div class="label">Última sincronização</div>
+            <div class="value" id="shpUltimaSync">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Último polling</div>
+            <div class="value" id="shpUltimoPolling">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Último erro</div>
+            <div class="value" id="shpUltimoErro">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Token</div>
+            <div class="value" id="shpToken">—</div>
+          </div>
+        </div>
+      </div>
+
     </div>
-  </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+const STATUS_LABEL = { paid:'Pago', pending:'Pendente', cancelled:'Cancelado', shipped:'Enviado' };
+
+async function loadKpis() {
+  const d = await DB.getShopeeKpis();
+  if (!d || d.error) { set('shpVendas','—'); set('shpPedidos','—'); set('shpProdutos','—'); return; }
+  set('shpVendas', R(d.vendas_hoje));
+  set('shpPedidos', d.pedidos_hoje ?? 0);
+  set('shpProdutos', d.produtos_ativos ?? 0);
+}
+
+async function loadPedidos() {
+  const tbody = document.getElementById('shpPedidosTbody');
+  const d = await DB.getShopeePedidos();
+  if (!d || d.error) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Erro ao carregar pedidos${d?.error ? ': '+d.error : ''}</td></tr>`;
+    return;
+  }
+  const rows = d.rows || [];
+  set('shpPedidosCount', `${rows.length} pedido(s)`);
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${r.id || '—'}</td>
+      <td>${r.cliente || '—'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${r.sku || '—'}</td>
+      <td class="tbl-num">${R(r.valor)}</td>
+      <td>${STATUS_LABEL[r.status] || r.status || '—'}</td>
+      <td style="white-space:nowrap;font-size:12px">${fmtDt(r.data)}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Nenhum pedido Shopee ainda</td></tr>';
+}
+
+async function loadProdutos() {
+  const tbody = document.getElementById('shpProdutosTbody');
+  const d = await DB.getShopeeProdutos();
+  if (!d || d.error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color:var(--red)">Erro ao carregar produtos${d?.error ? ': '+d.error : ''}</td></tr>`;
+    return;
+  }
+  const rows = d.rows || [];
+  set('shpProdutosCount', `${rows.length} produto(s)`);
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td style="font-size:11px;color:var(--text-muted)">${r.sku || '—'}</td>
+      <td>${r.title || '—'}</td>
+      <td class="tbl-num">${r.estoque ?? 0}</td>
+      <td class="tbl-num">${R(r.price)}</td>
+      <td>${r.status || '—'}</td>
+    </tr>`).join('') : `<tr><td colspan="5" class="empty-state">${d.note || 'Nenhum produto Shopee sincronizado ainda'}</td></tr>`;
+}
+
+async function loadStatus() {
+  const d = await DB.getShopeeStatus();
+  if (!d || d.error) return;
+  const syncLabel = d.ultima_sincronizacao ? fmtDt(d.ultima_sincronizacao) : 'Nunca';
+  set('shpUltimaSync', syncLabel);
+  set('shpUltimoPolling', syncLabel);
+  set('shpUltimoErro', d.ultimo_erro || 'Nenhum');
+
+  const tokenEl = document.getElementById('shpToken');
+  const conectadas = d.contas_conectadas ?? 0;
+  const total = d.contas_total ?? 0;
+  if (conectadas > 0) {
+    tokenEl.innerHTML = `<span class="status-badge ok"><i class="fas fa-check-circle"></i> Conectado</span> <span style="color:var(--text-muted);font-size:12px;margin-left:6px">${conectadas}/${total} conta(s)</span>`;
+  } else {
+    tokenEl.innerHTML = `<span class="status-badge bad"><i class="fas fa-times-circle"></i> Desconectado</span>`;
+  }
+}
+
+function loadAll() { loadKpis(); loadPedidos(); loadProdutos(); loadStatus(); }
+
+WS.on('order_updated', payload => { if (payload?.marketplace === 'SHOPEE') loadAll(); });
+WS.on('_connected', loadAll);
+setInterval(loadAll, 60000);
+
+// Espera o layout-shopee.js montar #app-sidebar/#app-topbar (DOMContentLoaded
+// registrado antes deste script) antes de tocar em elementos que ele cria.
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadAll);
+  loadAll();
+});
+</script>
 </body>
 </html>

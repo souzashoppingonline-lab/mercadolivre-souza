@@ -1,6 +1,6 @@
 # Integração — Shopee
 
-> Status atual (v18, 14/07/2026): **implementação real da fase 1 concluída — autenticação (assinatura HMAC + OAuth completo) e sincronização de pedidos via polling.** Credenciais (`SHOPEE_PARTNER_ID`/`SHOPEE_PARTNER_KEY`) já estão em `server/.env`, ambiente **sandbox** (não produção — a Shopee avisa que sandbox "é funcional mas não replica 100% o comportamento de produção"). `shopeeClient.js` deixou de ser stub. Falta o usuário autorizar de fato uma loja de teste via `/auth/shopee/login` para o pipeline começar a processar pedidos reais de sandbox — ver "Como testar" abaixo. Ver a decisão de arquitetura completa em `decisions.md` ("Shopee sai do stub").
+> Status atual (17/07/2026): **fase 1 concluída — autenticação (assinatura HMAC + OAuth completo), sincronização de pedidos via polling e dashboard dedicado (`pages/dashboard-shopee.html`, antes placeholder).** Credenciais (`SHOPEE_PARTNER_ID`/`SHOPEE_PARTNER_KEY`) já estão em `server/.env`, ambiente **sandbox** (não produção — a Shopee avisa que sandbox "é funcional mas não replica 100% o comportamento de produção"). `shopeeClient.js` deixou de ser stub. Usuário está em processo de solicitar produção no console da Shopee Open Platform ("Transmissão ao vivo"), que exige uma URL ativa do produto — resolvido apontando pro dashboard, com uma conta de login restrita (`shopee-demo`, ver seção abaixo) pro revisor. Falta o usuário autorizar de fato uma loja de teste via `/auth/shopee/login` para o pipeline começar a processar pedidos reais de sandbox — ver "Como testar" abaixo. Ver a decisão de arquitetura completa em `decisions.md` ("Shopee sai do stub").
 
 ## O que já existe
 
@@ -32,6 +32,14 @@ A Shopee expõe push de pedido de verdade (confirmado pela KB de referência do 
 1. Confirmar no console se "Mecanismo de Empurra" pede uma `push_url` e qual o formato exato de assinatura do payload (a Shopee costuma assinar `url + "|" + body` com a mesma `partner_key`, mas **não deve ser assumido sem checar** — validar contra o portal do parceiro).
 2. Implementar o receptor seguindo o mesmo padrão do Gateway ML (`webhookGateway.js`): responder `200` imediato, validar assinatura, enfileirar, processar assíncrono.
 3. Manter o polling como rede de segurança mesmo depois de ligar o webhook (webhooks podem falhar/se perder) — não desligar `ShopeePollingEventSource`, só reduzir a frequência se fizer sentido.
+
+## Dashboard dedicado (`pages/dashboard-shopee.html`)
+
+Deixou de ser placeholder — mesmo padrão da Amazon (`dashboard-amazon.html`): página independente (`js/layout-shopee.js`, sidebar/topbar próprios, nunca `js/layout.js`), KPIs (vendas/pedidos hoje, produtos ativos), tabela de últimos pedidos, tabela de produtos (vazia até a Product API ser integrada), card de status da integração. Backend em `server/src/routes/shopee.js` (montado em `/api/shopee`), lê `orders`/`items` filtrando `marketplace_id=SHOPEE` direto — não usa as views `vw_ml_*` nem nenhuma rota do ML. `js/layout-shopee.js` hoje só tem 1 item de menu (Dashboard); páginas de detalhe (`shopee-vendas.html`/`shopee-pedidos.html`/`shopee-produtos.html`, mesmo padrão das páginas Amazon) ficam pra quando pedidos reais de sandbox começarem a chegar — ver `todo.md`.
+
+## Papel de login `shopee-demo` — acesso de revisor externo
+
+Criado especificamente para o processo de aprovação de produção da Shopee Open Platform ("Transmissão ao vivo"), que pede uma URL ativa do produto + credencial de teste. Como `STAFF_AUTH_ENABLED` está ligado em produção, qualquer acesso (inclusive páginas estáticas) exige login — dar uma conta `admin` ao revisor exporia todo o sistema (vendas ML, financeiro, vídeos de embalagem). O papel `shopee-demo` (mesmo padrão de restrição do papel `embalagem`, ver `auth-staff.md`) só enxerga `/pages/dashboard-shopee.html` + `/api/shopee/*` — nada mais. Criado via `node server/scripts/createStaffUser.js <usuario> <senha> shopee-demo`.
 
 ## O que NÃO fazer
 

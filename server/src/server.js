@@ -8,6 +8,7 @@ const env = require('./config/env');
 const apiRoutes = require('./routes/api');
 const turboRoutes = require('./routes/turbo');
 const amazonRoutes = require('./routes/amazon');
+const shopeeRoutes = require('./routes/shopee');
 const tasksRoutes = require('./routes/tasks');
 const embalagemRoutes = require('./routes/embalagem');
 const webhookGateway = require('./routes/webhookGateway');
@@ -33,6 +34,8 @@ app.use('/api', apiRoutes);
 app.use('/api/turbo', turboRoutes);
 // Dashboard Amazon — isolado, não reutiliza nada do ML (ver routes/amazon.js).
 app.use('/api/amazon', amazonRoutes);
+// Dashboard Shopee — mesmo padrão isolado da Amazon (ver routes/shopee.js).
+app.use('/api/shopee', shopeeRoutes);
 // Agenda Trello — quadro Kanban independente (ver .claude/task-engine.md).
 app.use('/api/tasks', tasksRoutes);
 // Embalagem — bipagem de etiqueta + vídeo de conferência (ver .claude/embalagem.md).

@@ -37,7 +37,7 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 - **Financeiro**: vendas-turbo (dashboard da planilha Vendas ML Turbo — ver `finance.md`)
 - **Sistema**: mcp (chat com IA), monitor (métricas de servidor + config Telegram), schedule (jobs agendados), webhook (logs de webhooks recebidos)
 
-Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee` (placeholder — integração bloqueada aguardando aprovação do app, ver `shopee.md`).
+Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js`/`js/layout-shopee.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee` (dashboard dedicado da Shopee, mesmo padrão — ver `shopee.md`).
 
 ## Padrão de nova página (contrato)
 
@@ -92,9 +92,13 @@ Igual em espírito a `js/layout.js`, mas **exclusivo das páginas Amazon** — n
 - Injeta em `<div id="app-sidebar">`/`<div id="app-topbar">` dentro de um `document.addEventListener('DOMContentLoaded', ...)` — **qualquer script inline da página que dependa desses elementos (ex.: `#btnRefresh`) também precisa rodar dentro de um `DOMContentLoaded` próprio**, registrado depois da tag `<script src="../js/layout-amazon.js">`, para garantir que o elemento já exista (scripts síncronos executam antes do evento `DOMContentLoaded` disparar).
 - Páginas que usam este layout incluem só `css/style.css` + `css/sidebar.css` + `css/cards.css` e, no JS, `js/db.js` + `js/websocket.js` + `js/layout-amazon.js` + `js/sidebar.js` (o `sidebar.js` de toggle mobile é genérico, reaproveitado sem alteração).
 
+## `js/layout-shopee.js` — sidebar e topbar exclusivos da Shopee
+
+Mesmo molde exato de `js/layout-amazon.js` (mesma função `document.addEventListener('DOMContentLoaded', ...)`, mesmas classes CSS reaproveitadas, cor de destaque própria — laranja Shopee `#ee4d2d`). `SHOPEE_NAV_ITEMS` hoje só tem **Dashboard** (`dashboard-shopee.html`) — páginas de detalhe (`shopee-vendas.html`/`shopee-pedidos.html`/`shopee-produtos.html`, mesmo padrão da Amazon) ficam pra quando pedidos reais de sandbox começarem a chegar (ver `todo.md`).
+
 ## `pages/dashboard-amazon.html`, `amazon-vendas.html`, `amazon-pedidos.html`, `amazon-produtos.html`, `amazon-anuncios.html` e `pages/dashboard-shopee.html`
 
-Todas 100% isoladas do ML: buscam dados só via `DB.getAmazonKpis()/getAmazonPedidos()/getAmazonProdutos()/getAmazonStatus()` (rotas `/api/amazon/*`, ver `api.md`), nunca reutilizam `DB.getDashboardKPIs()`/`DB.getPedidos()`/etc. do ML.
+Todas 100% isoladas do ML: Amazon busca dados só via `DB.getAmazonKpis()/getAmazonPedidos()/getAmazonProdutos()/getAmazonStatus()` (rotas `/api/amazon/*`), Shopee via `DB.getShopeeKpis()/getShopeePedidos()/getShopeeProdutos()/getShopeeStatus()` (rotas `/api/shopee/*`) — ver `api.md`. Nenhuma reutiliza `DB.getDashboardKPIs()`/`DB.getPedidos()`/etc. do ML.
 
 - **`dashboard-amazon.html`** — visão geral: 3 cards de KPI (Vendas Totais/Pedidos — valores de hoje, já que `/api/amazon/kpis` só calcula o dia; Produtos ativos), tabela "Últimos pedidos Amazon", tabela "Produtos Amazon" (mostra a `note` do backend quando vazia), e card "Status da Integração" (última sincronização, último polling — mesmo valor de `marketplace_sync_state`, sem tracking granular separado ainda —, último erro, token conectado/desconectado por conta).
 - **`amazon-vendas.html`** — card "Vendas Totais" (hoje) + card "Vendas Pagas" (contagem) + tabela de pedidos com `status='paid'` (filtro feito no cliente sobre `DB.getAmazonPedidos()` — não há endpoint de vendas agregadas por período para Amazon ainda, diferente do `vendas.html` do ML que tem margem calculada por venda; a Amazon não tem custo/imposto por pedido implementado).
@@ -102,7 +106,7 @@ Todas 100% isoladas do ML: buscam dados só via `DB.getAmazonKpis()/getAmazonPed
 - **`amazon-produtos.html`** — catálogo completo (`DB.getAmazonProdutos()`, sem filtro).
 - **`amazon-anuncios.html`** — só anúncios ativos (`DB.getAmazonProdutos({status:'active'})`). **Importante**: como a sincronização de catálogo Amazon ainda não existe (ver `todo.md`), hoje `amazon-produtos.html` e `amazon-anuncios.html` mostram o mesmo vazio — a distinção fica pronta para quando a Listings Items API da Amazon for integrada.
 - Todas recarregam em tempo real escutando `WS.on('order_updated', ...)` filtrado por `payload.marketplace === 'AMAZON'` (evento publicado por `marketplaceEventWorker.js`), com fallback de polling a cada 60s e botão de refresh manual (`#btnRefresh`, no topbar do `layout-amazon.js`).
-- **`pages/dashboard-shopee.html`** — não usa `layout-amazon.js` (é de outro marketplace) nem `layout.js`; monta o próprio topbar mínimo inline (mesmo padrão descrito abaixo em "Alternador de marketplace"), sem sidebar — só o switcher + um card informativo, já que a Shopee ainda não tem nenhuma página funcional (ver `shopee.md`). Quando a integração Shopee sair do bloqueio, criar um `js/layout-shopee.js` seguindo o mesmo padrão de `layout-amazon.js`.
+- **`pages/dashboard-shopee.html`** — mesma estrutura exata de `dashboard-amazon.html` (deixou de ser placeholder), usando `js/layout-shopee.js`: 3 KPIs, tabela "Últimos pedidos Shopee", tabela "Produtos Shopee" (nota explicando que o catálogo Shopee ainda não é sincronizado, ver `todo.md`), card "Status da Integração". Recarrega em tempo real via `WS.on('order_updated', ...)` filtrado por `payload.marketplace === 'SHOPEE'`.
 - Quando `dashboard-ml.html` for criado no futuro, deve seguir esse mesmo padrão de independência (sidebar própria, sem misturar com a da Amazon/Shopee).
 
 ## `pages/agenda-trello.html` — Kanban (Agenda Trello)

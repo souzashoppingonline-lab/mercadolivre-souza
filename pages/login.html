@@ -56,7 +56,9 @@
 
   <script>
     function redirectForRole(role) {
-      window.location.href = role === 'embalagem' ? 'embalagem.html' : '../index.html';
+      if (role === 'embalagem') { window.location.href = 'embalagem.html'; return; }
+      if (role === 'shopee-demo') { window.location.href = 'dashboard-shopee.html'; return; }
+      window.location.href = '../index.html';
     }
 
     // Já logado? Não mostra o formulário de novo.

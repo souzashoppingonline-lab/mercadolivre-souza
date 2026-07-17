@@ -49,10 +49,12 @@
 - [ ] Validar em produção que `ShopeePollingEventSource` roda e um pedido de teste do sandbox chega até `orders`/`shopee_order_data` de ponta a ponta (mesmo tipo de validação já feita para a Amazon).
 - [ ] Confirmar no console se "Mecanismo de Empurra" pede uma `push_url` e o formato exato de assinatura do payload — decidir se/quando migrar de polling para webhook (fase 2, ver `shopee.md`).
 - [ ] Rota admin `GET/POST/DELETE /api/lojas/shopee` (listar/remover contas) — decisão consciente de não ter `POST` manual (a Shopee sempre exige OAuth completo, ver `decisions.md`), mas falta pelo menos `GET`/`DELETE` para gerência via UI, mesmo padrão de `/api/lojas/amazon`.
-- [ ] Dashboard dedicado Shopee (`pages/dashboard-shopee.html` ainda é placeholder "bloqueado") — trocar para o mesmo padrão da Amazon (`js/layout-shopee.js`, páginas `shopee-vendas.html`/`shopee-pedidos.html`/etc., rotas `/api/shopee/*`) depois que pedidos reais de sandbox começarem a chegar.
+- [x] **Dashboard dedicado Shopee** (`pages/dashboard-shopee.html`) — mesmo padrão da Amazon (`js/layout-shopee.js`, rotas `/api/shopee/*`). Feito antes de ter pedido real de sandbox (a solicitação de produção da Shopee exigia uma URL ativa do produto) — tabelas ficam vazias até a loja de teste ser autorizada.
+- [ ] Páginas de detalhe Shopee (`shopee-vendas.html`/`shopee-pedidos.html`/`shopee-produtos.html`, mesmo padrão de `amazon-vendas.html`/etc.) — fica pra quando pedidos reais de sandbox começarem a chegar e a tabela única do dashboard já não for suficiente.
+- [x] **Papel de login `shopee-demo`** (restrito a `dashboard-shopee.html` + `/api/shopee/*`) — pra dar acesso ao revisor da Shopee Open Platform sem expor dado do Mercado Livre/financeiro/embalagem. Ver `auth-staff.md`/`decisions.md`. Falta só criar a conta de fato via `createStaffUser.js` (passo manual do usuário, credenciais não ficam no repositório).
 - [ ] Sincronizar catálogo de produtos Shopee (Product API — `03-Products.md` da KB fornecida pelo usuário) — hoje só pedidos são sincronizados.
 - [ ] Notificação Telegram de vendas Shopee (fora de escopo até agora, mesma decisão já tomada pra Amazon).
-- [ ] Trocar `SHOPEE_ENV` para `production` só depois de aprovação de produção pela Shopee.
+- [ ] Trocar `SHOPEE_ENV` para `production` só depois de aprovação de produção pela Shopee (em andamento — usuário preenchendo o formulário "Transmissão ao vivo" no console).
 
 ## Login de acesso restrito (staff) — código pronto, falta ativar em produção (ver `auth-staff.md`)
 

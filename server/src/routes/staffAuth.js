@@ -1,7 +1,9 @@
-// Login de acesso restrito (staff) — dois papéis: 'admin' (acesso total,
-// mesmo comportamento que o sistema sempre teve) e 'embalagem' (só bipagem
-// + vídeo de conferência). Ver .claude/auth-staff.md para a arquitetura
-// completa e o botão de emergência (STAFF_AUTH_ENABLED=false).
+// Login de acesso restrito (staff) — três papéis: 'admin' (acesso total,
+// mesmo comportamento que o sistema sempre teve), 'embalagem' (só bipagem
+// + vídeo de conferência) e 'shopee-demo' (só dashboard-shopee.html + API
+// Shopee — conta pra revisor externo, ex. Shopee Open Platform, nunca vê
+// dado do Mercado Livre/financeiro/embalagem). Ver .claude/auth-staff.md
+// para a arquitetura completa e o botão de emergência (STAFF_AUTH_ENABLED=false).
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -70,6 +72,12 @@ const EMBALAGEM_EXTRA_API = ['/api/lojas']; // dropdown de loja na aba Conferên
 const EMBALAGEM_EXTRA_PAGES = ['/pages/embalagem.html'];
 const EMBALAGEM_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 
+// Papel 'shopee-demo' — só a página/API do dashboard Shopee (ver
+// pages/dashboard-shopee.html, routes/shopee.js). Usado por um revisor
+// externo (ex. Shopee Open Platform) que não deve ver nenhum outro dado.
+const SHOPEE_DEMO_PAGES = ['/pages/dashboard-shopee.html'];
+const SHOPEE_DEMO_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
+
 function isPublicPath(p) {
   return PUBLIC_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix + '/'));
 }
@@ -79,6 +87,13 @@ function isEmbalagemAllowed(p) {
   if (EMBALAGEM_EXTRA_API.includes(p)) return true;
   if (EMBALAGEM_EXTRA_PAGES.includes(p)) return true;
   if (EMBALAGEM_ASSET_PREFIXES.some(prefix => p.startsWith(prefix))) return true;
+  return false;
+}
+
+function isShopeeDemoAllowed(p) {
+  if (p.startsWith('/api/shopee')) return true;
+  if (SHOPEE_DEMO_PAGES.includes(p)) return true;
+  if (SHOPEE_DEMO_ASSET_PREFIXES.some(prefix => p.startsWith(prefix))) return true;
   return false;
 }
 
@@ -101,6 +116,11 @@ function requireStaffAuth(req, res, next) {
   if (payload.role === 'embalagem' && !isEmbalagemAllowed(req.path)) {
     if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — esse usuário só tem permissão pra Embalagem' });
     return res.redirect('/pages/embalagem.html');
+  }
+
+  if (payload.role === 'shopee-demo' && !isShopeeDemoAllowed(req.path)) {
+    if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — esse usuário só tem permissão pro dashboard Shopee' });
+    return res.redirect('/pages/dashboard-shopee.html');
   }
 
   req.staffUser = payload;

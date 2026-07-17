@@ -184,6 +184,12 @@ const DB = {
   async getAmazonProdutos(params = {}) { return this._get('/amazon/produtos', params); },
   async getAmazonStatus()   { return this._get('/amazon/status'); },
 
+  // ── Dashboard Shopee (isolado — não reutiliza rotas do ML) ──
+  async getShopeeKpis()     { return this._get('/shopee/kpis'); },
+  async getShopeePedidos()  { return this._get('/shopee/pedidos'); },
+  async getShopeeProdutos(params = {}) { return this._get('/shopee/produtos', params); },
+  async getShopeeStatus()   { return this._get('/shopee/status'); },
+
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },
   async getDiasSemana(days=90)    { return this._get(`/analises/dias-semana?days=${days}`); },

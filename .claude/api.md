@@ -101,6 +101,16 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/amazon/produtos?status` | até 200 itens Amazon (`sku`, `title`, `estoque`, `price`, `status`); `status=active` filtra só anúncios ativos (usado por `pages/amazon-anuncios.html`), sem o parâmetro retorna o catálogo completo (`pages/amazon-produtos.html`). Campo `note` explica quando vazio — catálogo de produtos Amazon ainda não é sincronizado, só pedidos (ver `todo.md`) |
 | `GET /api/amazon/status` | `ultima_sincronizacao` (`MAX(last_synced_at)` de `marketplace_sync_state`), `contas_conectadas`/`contas_total` (`stores` com `refresh_token`), `ultimo_erro` (sempre `null` hoje — sem tracking estruturado de erro de polling ainda) |
 
+## Dashboard Shopee (`routes/shopee.js`, montado em `/api/shopee`)
+> 100% isolado do pipeline ML: mesmo padrão exato do Dashboard Amazon acima, filtrando `marketplace_id = (SELECT id FROM marketplaces WHERE code='SHOPEE')`. Consumido só por `pages/dashboard-shopee.html`. Acessível também pelo papel de login restrito `shopee-demo` (ver `auth-staff.md`).
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/shopee/kpis` | mesmos campos do Amazon (`vendas_hoje`, `pedidos_hoje`, `produtos_ativos`) |
+| `GET /api/shopee/pedidos` | até 200 pedidos Shopee mais recentes (`id`, `cliente`, `sku`, `valor`, `status`, `data`, `conta`) |
+| `GET /api/shopee/produtos?status` | até 200 itens Shopee (`sku`, `title`, `estoque`, `price`, `status`). Campo `note` explica quando vazio — catálogo de produtos Shopee (Product API) ainda não é sincronizado, só pedidos (ver `todo.md`) |
+| `GET /api/shopee/status` | mesmos campos do Amazon (`ultima_sincronizacao`, `contas_conectadas`/`contas_total`, `ultimo_erro`) |
+
 ## Alertas
 | Rota | Descrição |
 |---|---|

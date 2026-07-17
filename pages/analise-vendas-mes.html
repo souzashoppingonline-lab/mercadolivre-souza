@@ -59,7 +59,11 @@
     @media(max-width: 800px) { .ideal-day-grid { grid-template-columns: 1fr; } }
     .ideal-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 16px; }
     .ideal-field .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .ideal-field .lbl .sub { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: .8; }
     .ideal-field .val { font-size: 19px; font-weight: 700; margin-top: 3px; }
+    .ideal-day-progress-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--text-muted); background: var(--bg-card2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; margin-bottom: 16px; }
+    .ideal-day-progress-badge .bar { width: 90px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .ideal-day-progress-badge .bar-fill { height: 100%; background: var(--primary); border-radius: 3px; }
     .ideal-status { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 8px 16px; border-radius: 20px; margin-bottom: 14px; }
     .ideal-status.muito_acima, .ideal-status.acima { background: rgba(39,174,96,.15); color: var(--green); }
     .ideal-status.dentro_da_media { background: rgba(255,230,0,.12); color: var(--primary); }
@@ -150,17 +154,18 @@
       <!-- Dia Ideal -->
       <div class="card" id="idealDayCard" style="margin-bottom:16px;display:none">
         <div class="card-header"><h3><i class="fas fa-bullseye" style="color:var(--primary)"></i> Hoje deveria vender</h3></div>
+        <div class="ideal-day-progress-badge" id="idealDayProgressBadge"></div>
         <div class="ideal-day-grid">
           <div>
             <div class="ideal-status" id="idealStatus"></div>
             <div class="ideal-fields">
-              <div class="ideal-field"><div class="lbl">Faturamento Esperado</div><div class="val" id="idealEsperado">—</div></div>
-              <div class="ideal-field"><div class="lbl">Faturamento Atual</div><div class="val" id="idealAtual">—</div></div>
+              <div class="ideal-field"><div class="lbl">Faturamento Esperado <span class="sub">(dia inteiro, média histórica)</span></div><div class="val" id="idealEsperado">—</div></div>
+              <div class="ideal-field"><div class="lbl">Faturamento Atual <span class="sub" id="idealAtualSub">(parcial, até agora)</span></div><div class="val" id="idealAtual">—</div></div>
               <div class="ideal-field"><div class="lbl">Diferença</div><div class="val" id="idealDiferenca">—</div></div>
               <div class="ideal-field"><div class="lbl">Resultado</div><div class="val" id="idealDiferencaPct">—</div></div>
             </div>
             <div class="ideal-progress-wrap">
-              <div class="ideal-progress-labels"><span>Esperado</span><span>Realizado</span></div>
+              <div class="ideal-progress-labels"><span>Esperado (dia inteiro)</span><span>Atual (parcial)</span></div>
               <div class="ideal-progress-bg">
                 <div class="ideal-progress-fill" id="idealProgressFill" style="width:0%"></div>
                 <div class="ideal-progress-marker" id="idealProgressMarker" style="left:50%"></div>
@@ -654,6 +659,18 @@ function renderDiaIdeal(data) {
   if (!di) { card.style.display = 'none'; return; }
   card.style.display = 'block';
 
+  // O dia ainda não terminou quando esse card está visível (só existe pro
+  // mês/ano corrente) — "esperado" é o total do dia INTEIRO histórico,
+  // "atual" é só o parcial de agora. Badge deixa isso explícito antes de
+  // qualquer número, pra não passar a impressão errada de "abaixo da meta".
+  const minutosRestantes = Math.max(0, Math.round((100 - di.pct_dia_decorrido) / 100 * 1440));
+  const hRestantes = Math.floor(minutosRestantes / 60);
+  const mRestantes = minutosRestantes % 60;
+  const faltamTxt = hRestantes > 0 ? `${hRestantes}h${mRestantes > 0 ? ' ' + mRestantes + 'min' : ''}` : `${mRestantes}min`;
+  set('idealDayProgressBadge', `<i class="fas fa-hourglass-half"></i> Dia em andamento — ${di.pct_dia_decorrido}% decorrido (até ${di.hora_atual}) · faltam ${faltamTxt} pro dia fechar
+    <span class="bar"><span class="bar-fill" style="width:${di.pct_dia_decorrido}%"></span></span>`);
+  set('idealAtualSub', `(parcial, até ${di.hora_atual})`);
+
   set('idealEsperado', R(di.esperado));
   set('idealAtual', R(di.atual));
   set('idealDiferenca', `${di.diferenca >= 0 ? '+' : ''}${R(di.diferenca)}`);
@@ -681,7 +698,7 @@ function renderDiaIdeal(data) {
     if (rankDia.ranking <= 5) extra = ' Historicamente este é um dos dias mais fortes do mês.';
     else if (rankDia.ranking > data.media_historica.length - 5) extra = ' Historicamente este é um dos dias mais fracos do mês.';
   }
-  set('idealInsight', `As vendas de hoje estão <b>${Math.abs(di.diferenca_pct)}%</b> ${dirTxt} da média histórica para este período.${extra}`);
+  set('idealInsight', `O faturamento parcial de hoje (até ${di.hora_atual}) está <b>${Math.abs(di.diferenca_pct)}%</b> ${dirTxt} da média histórica do <b>dia inteiro</b>.${extra} Isso não quer dizer que o dia vai fechar assim — ainda faltam ${faltamTxt} pra ele terminar. Pra uma comparação mais justa de "como estou indo agora", veja o Termômetro por Horário logo abaixo.`);
 
   renderGaugeArc('idealGauge', 'idealGaugeLabel', di.diferenca_pct);
 

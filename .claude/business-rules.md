@@ -28,6 +28,7 @@
 - Só calcula se houver pelo menos 1 mês de histórico para aquele dia (`meses_analisados > 0`) — evita mostrar "esperado: R$ 0" para dia 29/30/31 em meses com pouco histórico.
 - **Status por `diferenca_pct`**: `≥ 20%` → `muito_acima`; `≥ 5%` → `acima`; `≥ -5%` → `dentro_da_media`; `≥ -20%` → `abaixo`; `< -20%` → `muito_abaixo`. Os mesmos limiares alimentam as 5 zonas coloridas do gauge no frontend.
 - **Insight automático**: além do texto de "X% acima/abaixo da média", quando o dia atual está entre os top/bottom 20% históricos (`ranking` em `media_historica`), acrescenta contexto — "este é um dos dias mais fortes/fracos do mês historicamente".
+- **`esperado` é o dia INTEIRO, `atual` é só o PARCIAL de hoje até agora** — comparação estruturalmente desbalanceada (um total fechado contra um total ainda em andamento), então o card deixa isso explícito em vez de deixar parecer "abaixo da meta": badge no topo com `pct_dia_decorrido`/`hora_atual` ("Dia em andamento — X% decorrido, faltam Yh"), labels dos campos anotados ("dia inteiro" vs. "parcial, até HH:MM") e o texto do insight menciona que o dia ainda não fechou, apontando pro Termômetro por Horário (comparação já normalizada pelo mesmo ponto do dia) logo abaixo como leitura mais justa de "como estou indo agora". Pedido explícito do usuário, depois de ver o card e achar que dava a entender que já estava perdendo a meta do dia.
 
 ## Termômetro por Horário — duas comparações complementares ao Dia Ideal
 

@@ -1576,6 +1576,12 @@ router.get('/analises/vendas-mes', async (req, res) => {
       if (h && h.meses_analisados > 0) {
         const diferenca = atualReceita - h.media;
         const diferencaPct = h.media > 0 ? (diferenca / h.media) * 100 : (atualReceita > 0 ? 100 : 0);
+        // "Esperado" é o total do dia INTEIRO (média histórica de dias já fechados);
+        // "atual" é só o parcial de hoje até agora — o dia ainda não terminou.
+        // pct_dia_decorrido deixa o frontend deixar isso explícito (não é "abaixo
+        // da meta", é "ainda faltam Y% do dia" — ver decisions.md).
+        const minutosDoDia = hoje.getHours() * 60 + hoje.getMinutes();
+        const pctDiaDecorrido = Number(((minutosDoDia / 1440) * 100).toFixed(1));
         diaIdeal = {
           dia: diaAtualNum,
           esperado: Number(h.media.toFixed(2)),
@@ -1584,6 +1590,8 @@ router.get('/analises/vendas-mes', async (req, res) => {
           diferenca_pct: Number(diferencaPct.toFixed(1)),
           status: statusDeDiferenca(diferencaPct),
           historico: { media: h.media, maior: h.maior, menor: h.menor, desvio: h.desvio, meses_analisados: h.meses_analisados },
+          hora_atual: `${String(hoje.getHours()).padStart(2, '0')}:${String(hoje.getMinutes()).padStart(2, '0')}`,
+          pct_dia_decorrido: pctDiaDecorrido,
         };
       }
     }

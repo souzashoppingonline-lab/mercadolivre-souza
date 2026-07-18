@@ -133,7 +133,7 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/webhooks/logs?topic&limit` | últimos logs de `webhook_logs` |
 | `GET /api/webhooks/config` | contadores do dia + status da config do Telegram |
 | `GET /api/schedule/jobs` | estado atual de cada sync (`schedule_jobs`) |
-| `POST /api/schedule/jobs/:name/trigger` | publica comando no canal Redis `worker:cmd` para disparar um sync manualmente — nomes aceitos: `dailySync`, `syncVendas`, `syncMetricas`, `syncReturns`, `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `checkOutlierEstatistico` |
+| `POST /api/schedule/jobs/:name/trigger` | publica comando no canal Redis `worker:cmd` para disparar um sync manualmente — nomes aceitos: `dailySync`, `syncVendas`, `syncMetricas`, `syncReturns`, `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `checkOutlierEstatistico`, `syncShippingStatus` (v33, botão "Sincronizar Entregas" em `conciliacao-bancaria.html`) |
 | `GET /api/schedule/worker-logs` | **SSE** — stream de `journalctl -u ml-worker-novo -f` (produção; depende do ambiente ter systemd/journalctl) |
 | `GET /api/schedule/runs?job&limit` | histórico de execuções (`schedule_runs`) |
 | `GET /api/schedule/logs?limit` | alias de leitura crua de `webhook_logs` |

@@ -106,7 +106,12 @@
         <div class="card-header">
           <h3>Pagamentos</h3>
           <span id="pagCount" style="font-size:12px;color:var(--text-muted)"></span>
+          <button class="action-btn" id="btnSyncEntregas" onclick="syncEntregas()"><i class="fas fa-truck-loading"></i> Sincronizar Entregas</button>
           <button class="action-btn" onclick="exportTableCSV(document.getElementById('pagTable').closest('table'), 'pagamentos.csv')"><i class="fas fa-file-csv"></i> CSV (página atual)</button>
+        </div>
+        <div style="background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.4);border-radius:8px;padding:8px 14px;margin:0 16px 14px;font-size:11px;color:var(--text-muted);display:flex;align-items:flex-start;gap:8px">
+          <i class="fas fa-exclamation-triangle" style="color:#ff9f0a;margin-top:1px"></i>
+          <div>Já roda sozinho a cada 4h — use este botão só se precisar forçar agora. Consulta a API do Mercado Livre pedido a pedido (até 200 por execução, ~1s de intervalo, pode levar minutos); evite clicar repetidamente ou rodar em horário de pico (08h–22h) pra não gerar <b>erro 429 (rate limit)</b>. <span id="syncEntregasLastRun"></span></div>
         </div>
         <div class="table-responsive">
           <table class="data-table">
@@ -523,12 +528,39 @@ async function openDetalhe(paymentId, scrollToJson) {
   if (scrollToJson) document.getElementById('cbJsonSection').scrollIntoView({ block: 'start' });
 }
 
+async function loadSyncEntregasStatus() {
+  const el = document.getElementById('syncEntregasLastRun');
+  const data = await DB.getScheduleJobs().catch(() => null);
+  const job = data?.jobs?.find(j => j.name === 'sync-shipping-status');
+  if (!job || !job.last_run) { el.textContent = 'Ainda não rodou.'; return; }
+  const hora = new Date(job.last_run).toLocaleString('pt-BR');
+  el.textContent = `Última execução: ${hora}${job.status === 'error' ? ' (com erro)' : ''}.`;
+}
+
+let syncEntregasCooldown = false;
+async function syncEntregas() {
+  if (syncEntregasCooldown) return;
+  const btn = document.getElementById('btnSyncEntregas');
+  syncEntregasCooldown = true;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Comando enviado...';
+  const r = await DB.triggerJob('syncShippingStatus').catch(e => ({ error: e.message }));
+  if (r?.error) alert('Erro ao disparar sincronização: ' + r.error);
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-truck-loading"></i> Sincronizar Entregas';
+    syncEntregasCooldown = false;
+    loadSyncEntregasStatus();
+  }, 30000); // evita clique repetido — o job real ainda roda em segundo plano por mais tempo
+}
+
 WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 
 loadLojas().then(() => { load(); loadPagamentos(); loadResumoLojas(); });
+loadSyncEntregasStatus();
 </script>
 </body>
 </html>

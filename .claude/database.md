@@ -302,6 +302,7 @@ money_release_date TIMESTAMPTZ -- v30: quando o Mercado Pago libera o dinheiro
 released TEXT                  -- v30: valor cru da API ("no"/"yes")
 marketplace_fee, mercadopago_fee, discount_fee, coupon_fee, finance_fee NUMERIC  -- v30
 amount_refunded NUMERIC        -- v30
+alert_notified_at TIMESTAMPTZ  -- v32: dedup do alerta Telegram de divergência (tg_conciliacao), mesmo padrão de tasks.overdue_notified_at
 raw_data JSONB           -- resposta completa de /collections/:id
 created_at, updated_at TIMESTAMPTZ
 ```
@@ -328,7 +329,7 @@ Populada pelo job `syncBillingCharges` (`worker.js`, a cada 30min) via `GET /bil
 ```
 key TEXT PK, value TEXT DEFAULT '', updated_at TIMESTAMPTZ
 ```
-Chaves usadas hoje: `telegram_bot_token`, `telegram_chat_id`, `tg_vendas`, `tg_servicos`, `tg_recursos`, `tg_reposicao`, `tg_perguntas`, `tg_mensagens`, `tg_promocoes`, `tg_devolucoes`, `tg_anuncios`, `tg_token`, `tg_fila`, `tg_429`, `tg_infra`, `tg_resumo`, `tg_interval`, `silence_start`, `silence_end`.
+Chaves usadas hoje: `telegram_bot_token`, `telegram_chat_id`, `tg_vendas`, `tg_servicos`, `tg_recursos`, `tg_reposicao`, `tg_perguntas`, `tg_mensagens`, `tg_promocoes`, `tg_devolucoes`, `tg_anuncios`, `tg_tarefas`, `tg_conciliacao`, `tg_token`, `tg_fila`, `tg_429`, `tg_infra`, `tg_resumo`, `tg_outlier`, `tg_topvendas`, `tg_interval`, `silence_start`, `silence_end`.
 
 ### `sku_costs` — custo por SKU (compartilhado entre lojas)
 ```

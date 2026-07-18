@@ -2343,6 +2343,64 @@ async function checkTaxaDevolucaoAlta() {
   scheduleAt(6, 30, checkTaxaDevolucaoAlta, 'taxa-devolucao');
 }
 
+// ── Conciliação Bancária: divergências — 05:25 diário ─────────────────────
+// Dois tipos de alerta, numa única mensagem consolidada (mesmo padrão de
+// checkTarefasAtrasadas): (1) diferença bruto/líquido anormalmente alta —
+// limiar fixo inicial (ver business-rules.md), sem base histórica ainda pra
+// calcular um limiar estatístico como o outlier de vendas; (2) pagamento
+// passou da money_release_date esperada (+ margem de folga) e continua
+// released='no' — sinal de que a liberação não aconteceu como previsto.
+// Dedup via alert_notified_at (v32) — notifica 1x por pagamento, nunca repete.
+const CONCILIACAO_DIFERENCA_ALERTA_PCT = 50;   // diferença > 50% do valor bruto
+const CONCILIACAO_LIBERACAO_ATRASO_DIAS = 2;   // dias de folga após money_release_date
+
+async function checkConciliacaoDivergencias() {
+  console.log('[conciliacao-divergencias] verificando pagamentos...');
+  const fmtMoeda = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+  try {
+    const { rows: divergentes } = await pool.query(
+      `SELECT payment_id, order_id, transaction_amount, net_received_amount,
+              (transaction_amount - COALESCE(net_received_amount, transaction_amount)) AS diferenca
+       FROM ml_payments
+       WHERE alert_notified_at IS NULL
+         AND net_received_amount IS NOT NULL
+         AND transaction_amount > 0
+         AND (transaction_amount - net_received_amount) / transaction_amount * 100 >= $1
+       ORDER BY date_approved DESC LIMIT 30`,
+      [CONCILIACAO_DIFERENCA_ALERTA_PCT]
+    );
+    const { rows: atrasados } = await pool.query(
+      `SELECT payment_id, order_id, money_release_date
+       FROM ml_payments
+       WHERE alert_notified_at IS NULL
+         AND released IS DISTINCT FROM 'yes'
+         AND money_release_date IS NOT NULL
+         AND money_release_date < now() - ($1 || ' days')::interval
+       ORDER BY money_release_date ASC LIMIT 30`,
+      [CONCILIACAO_LIBERACAO_ATRASO_DIAS]
+    );
+
+    if (divergentes.length || atrasados.length) {
+      let msg = `⚠️ <b>Conciliação Bancária — divergências encontradas</b>\n`;
+      if (divergentes.length) {
+        msg += `\n💸 <b>Diferença alta (≥${CONCILIACAO_DIFERENCA_ALERTA_PCT}% do bruto)</b>\n`;
+        msg += divergentes.map(d => `• Pedido ${d.order_id}: ${fmtMoeda(d.transaction_amount)} → ${fmtMoeda(d.net_received_amount)} (dif. ${fmtMoeda(d.diferenca)})`).join('\n') + '\n';
+      }
+      if (atrasados.length) {
+        msg += `\n⏳ <b>Liberação atrasada (+${CONCILIACAO_LIBERACAO_ATRASO_DIAS}d)</b>\n`;
+        msg += atrasados.map(a => `• Pedido ${a.order_id}: esperado ${new Date(a.money_release_date).toLocaleDateString('pt-BR')}`).join('\n') + '\n';
+      }
+      await tgNotify('tg_conciliacao', msg);
+
+      const ids = [...divergentes.map(d => d.payment_id), ...atrasados.map(a => a.payment_id)];
+      await pool.query(`UPDATE ml_payments SET alert_notified_at = now() WHERE payment_id = ANY($1)`, [ids]);
+    }
+  } catch (e) {
+    console.error('[conciliacao-divergencias] erro:', e.message);
+  }
+  scheduleAt(5, 25, checkConciliacaoDivergencias, 'conciliacao-divergencias');
+}
+
 // ── Tarefas atrasadas (Agenda Trello) — 08:15 diário ──────────────────────
 // Notifica 1x por vencimento (overdue_notified_at, v27) — não repete o
 // mesmo alerta todo dia enquanto o cartão continuar atrasado. Reseta quando
@@ -2523,6 +2581,7 @@ scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
 scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
+scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
@@ -2614,6 +2673,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'sync-payment-releases' || cmd === 'syncPaymentReleases') {
       console.log('[worker] syncPaymentReleases disparado manualmente');
       syncPaymentReleases().catch(e => console.error('[worker] syncPaymentReleases erro:', e.message));
+    }
+    if (cmd === 'conciliacao-divergencias' || cmd === 'checkConciliacaoDivergencias') {
+      console.log('[worker] checkConciliacaoDivergencias disparado manualmente');
+      checkConciliacaoDivergencias().catch(e => console.error('[worker] checkConciliacaoDivergencias erro:', e.message));
     }
     if (cmd === 'syncTopVendas') {
       console.log('[worker] syncTopVendas disparado manualmente');

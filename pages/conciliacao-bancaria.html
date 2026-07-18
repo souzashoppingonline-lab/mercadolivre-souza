@@ -12,6 +12,9 @@
     .cb-note { font-size:12px; color:var(--text-muted); margin:-8px 0 16px; }
     #pagTable tr { cursor:pointer; }
     #pagTable tr:hover { background:rgba(255,255,255,.03); }
+    th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+    th.sortable:hover { color:var(--primary); }
+    th.sortable span { font-size:10px; margin-left:3px; color:var(--primary); }
     .cb-modal-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; }
     .cb-modal-stat { background:var(--surface,#1a1a1a); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
     .cb-modal-stat .lbl { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
@@ -76,9 +79,13 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr>
-              <th>Loja</th><th>Pedido</th><th>Comprador</th><th>Status</th>
-              <th>Data da Venda</th><th>Data Liberação</th>
-              <th>Valor da Venda</th><th>Valor Liberado</th><th>Diferença</th>
+              <th>Loja</th><th>Pedido</th><th>Comprador</th>
+              <th class="sortable" onclick="setSort('status')">Status<span id="arrow-status"></span></th>
+              <th class="sortable" onclick="setSort('data')">Data da Venda<span id="arrow-data"></span></th>
+              <th class="sortable" onclick="setSort('liberacao')">Data Liberação<span id="arrow-liberacao"></span></th>
+              <th class="sortable" onclick="setSort('valor')">Valor da Venda<span id="arrow-valor"></span></th>
+              <th class="sortable" onclick="setSort('liquido')">Valor Liberado<span id="arrow-liquido"></span></th>
+              <th class="sortable" onclick="setSort('diferenca')">Diferença<span id="arrow-diferenca"></span></th>
             </tr></thead>
             <tbody id="pagTable"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
           </table>
@@ -199,7 +206,24 @@ function liberacaoCell(r) {
     ? `${dataFmt} <span class="tag green">Liberado</span>`
     : `${dataFmt} <span class="tag yellow">Pendente</span>`;
 }
-let pagState = { page: 1, limit: 50, total: 0 };
+let pagState = { page: 1, limit: 50, total: 0, sort: 'data', dir: 'desc' };
+
+function setSort(col) {
+  if (pagState.sort === col) {
+    pagState.dir = pagState.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    pagState.sort = col;
+    pagState.dir = 'desc';
+  }
+  pagState.page = 1;
+  loadPagamentos();
+}
+
+function renderSortArrows() {
+  document.querySelectorAll('th.sortable span').forEach(el => el.textContent = '');
+  const el = document.getElementById('arrow-' + pagState.sort);
+  if (el) el.textContent = pagState.dir === 'asc' ? '▲' : '▼';
+}
 
 async function loadPagamentos() {
   const store_id = document.getElementById('lojaFilter').value;
@@ -209,9 +233,11 @@ async function loadPagamentos() {
   const q = document.getElementById('searchPag').value.trim();
 
   document.getElementById('pagTable').innerHTML = '<tr><td colspan="9" class="empty-state">Carregando...</td></tr>';
+  renderSortArrows();
 
   const data = await DB.getConciliacaoPagamentos({
     store_id, released, date_from, date_to, q,
+    sort: pagState.sort, dir: pagState.dir,
     page: pagState.page, limit: pagState.limit,
   }) || { payments: [], total: 0 };
   if (data.error) {

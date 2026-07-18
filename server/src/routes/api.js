@@ -2865,6 +2865,8 @@ const CONCILIACAO_SORT_COLS = {
   valor: 'p.transaction_amount',
   liquido: 'p.net_received_amount',
   status: 'p.status',
+  diferenca: '(p.transaction_amount - COALESCE(p.net_received_amount, p.transaction_amount))',
+  liberacao: 'p.money_release_date',
 };
 router.get('/conciliacao/pagamentos', async (req, res) => {
   try {

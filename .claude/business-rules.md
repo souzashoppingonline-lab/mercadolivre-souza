@@ -195,3 +195,11 @@ A tabela `orders` (webhook-driven) é usada para tudo que é operacional em temp
 ## Detecção de coluna "conta" (loja) na planilha Turbo
 
 O campo `account` no upload da planilha (`ml_turbo_sales.account`) é texto livre, sem chave estrangeira para `stores.id` — é o nome da conta como aparece na coluna "Conta"/"Loja"/"Vendedor" da planilha exportada pelo Mercado Turbo. Isso significa que corrigir o nome de uma loja depois de importar não atualiza vendas já importadas — é preciso reimportar a planilha. Mapeamento de aliases de coluna documentado em `finance.md`.
+
+## Conciliação Bancária — limiares do alerta de divergência (`checkConciliacaoDivergencias`, 05:25)
+
+Dois limiares fixos, sem base estatística histórica ainda (feature recém-lançada, sem volume suficiente pra calcular algo como o desvio-padrão usado no outlier de vendas):
+- **Diferença bruto/líquido ≥ 50%** (`CONCILIACAO_DIFERENCA_ALERTA_PCT`, `worker.js`) — diferenças normais observadas ao vivo ficam na faixa de 20–31% (comissão + parcelamento); 50% é uma margem de segurança generosa pra não gerar alerta em toda venda parcelada, só em casos realmente fora do padrão.
+- **Liberação atrasada em +2 dias** (`CONCILIACAO_LIBERACAO_ATRASO_DIAS`) — pagamento passou de `money_release_date` e continua `released != 'yes'`; 2 dias de folga absorve variação normal de horário/fuso sem gerar alerta prematuro.
+
+Ambos ajustáveis por constante no topo da função — revisar quando houver volume/histórico suficiente pra um limiar estatístico de verdade. Dedup 1x por pagamento via `ml_payments.alert_notified_at` (v32), tópico Telegram `tg_conciliacao`. Ver `conciliacao-bancaria.md`.

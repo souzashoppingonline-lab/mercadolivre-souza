@@ -37,6 +37,11 @@ Orders API → order.payments[].id → GET /collections/:id → money_release_da
 - **Chargebacks/estornos por pagamento** — `amount_refunded`/`refunds[]` existem no payload (`refunds` veio vazio em toda amostra observada), campo já capturado (`amount_refunded`), mas nenhum chargeback real foi observado ainda pra confirmar o formato completo de disputa.
 - **Conciliação automática** (bater valor esperado × recebido × data, com veredito Conciliado/Pendente/Diferença/Parcial) — lógica ainda não escrita; agora que `ml_payments.net_received_amount`/`released` existem, é viável construir sem depender de mais nenhuma API nova.
 
+## Ordenação clicável e alerta de divergência — implementados
+
+- **Ordenação**: cabeçalhos de Status/Data da Venda/Data Liberação/Valor da Venda/Valor Liberado/Diferença são clicáveis (seta ▲/▼ indica coluna e direção ativa); clique de novo no mesmo cabeçalho inverte a direção. `CONCILIACAO_SORT_COLS` (`routes/api.js`) ganhou `diferenca`/`liberacao` além de `data`/`valor`/`liquido`/`status`.
+- **Alerta Telegram de divergência** (`checkConciliacaoDivergencias`, `worker.js`, 05:25 diário, tópico `tg_conciliacao`) — 2 tipos numa mensagem consolidada: diferença bruto/líquido anormal e liberação atrasada. Limiares em `business-rules.md`. Dedup via `ml_payments.alert_notified_at` (v32).
+
 ## `pages/conciliacao-bancaria.html` — implementada (Agenda + grid de pagamentos)
 
 Página única (seção Financeiro do menu) com duas partes:

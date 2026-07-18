@@ -110,8 +110,8 @@ async function syncMpAccountReports() {
       if (!Array.isArray(list) || !list.length) {
         // Conta sem relatório agendado (ex: RICOPI/TOP_MIX) — gera 1 sob demanda
         // pros últimos 60 dias; nas próximas execuções ele já é baixado.
-        const end = new Date().toISOString();
-        const begin = new Date(Date.now() - 60 * 864e5).toISOString();
+        const end = new Date().toISOString().slice(0, 19) + 'Z';
+        const begin = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 19) + 'Z';
         await ml.createMpReport(REPORT_TYPE, store.id, begin, end)
           .then(() => console.log(`[mp-reports] ${store.nickname}: sem relatório — gerado 1 sob demanda`))
           .catch((e) => console.warn(`[mp-reports] ${store.nickname}: create falhou: ${e.message}`));

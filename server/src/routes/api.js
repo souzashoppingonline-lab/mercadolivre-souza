@@ -3010,16 +3010,25 @@ router.get('/conciliacao/pagamentos/:paymentId', async (req, res) => {
 
 // Reprocessar sob demanda — ação pontual explícita (botão "🔄 Reprocessar" no
 // modal), não leitura de listagem, mesmo padrão já usado por "responder
-// pergunta" nesta rota (ver architecture.md regra 2). Refaz a mesma consulta
-// e o mesmo UPDATE que syncPaymentReleases faz em lote, só que sob demanda
-// pra 1 pagamento — útil quando o usuário não quer esperar o job das 05:15.
+// pergunta" nesta rota (ver architecture.md regra 2). Refaz o mesmo UPDATE que
+// syncPaymentReleases faz em lote (pagamento) E o de syncShippingStatus
+// (entrega), só que sob demanda pra 1 pedido — útil quando o usuário não quer
+// esperar os jobs agendados, e como é 1 pedido só (não 200) não esbarra no
+// rate limit em lote que o "Sincronizar Entregas" pode encontrar em horário
+// de pico.
 router.post('/conciliacao/pagamentos/:paymentId/reprocessar', async (req, res) => {
   try {
-    const { rows: existing } = await pool.query(`SELECT store_id FROM ml_payments WHERE payment_id=$1`, [req.params.paymentId]);
+    const { rows: existing } = await pool.query(
+      `SELECT p.store_id, p.order_id, o.shipping_id
+       FROM ml_payments p LEFT JOIN orders o ON o.ml_id = p.order_id
+       WHERE p.payment_id=$1`,
+      [req.params.paymentId]
+    );
     if (!existing.length) return res.status(404).json({ error: 'pagamento não encontrado' });
+    const { store_id, order_id, shipping_id } = existing[0];
 
     const ml = require('../mlClient');
-    const payment = await ml.getPayment(req.params.paymentId, existing[0].store_id);
+    const payment = await ml.getPayment(req.params.paymentId, store_id);
     const c = payment?.collection || payment;
     await pool.query(
       `UPDATE ml_payments SET
@@ -3037,7 +3046,32 @@ router.post('/conciliacao/pagamentos/:paymentId/reprocessar', async (req, res) =
         c?.installments ?? null, JSON.stringify(payment),
       ]
     );
-    res.json({ ok: true });
+
+    // Também atualiza o status de entrega desse pedido (se tiver shipping_id).
+    // Em try/catch isolado: se o shipment falhar (ex: 429), o reprocesso do
+    // pagamento acima já foi persistido — devolve `shipping_error` pro modal.
+    let shippingError = null;
+    if (order_id && shipping_id) {
+      try {
+        const ship = await ml.getShipment(shipping_id, store_id);
+        const sh = ship?.status_history || {};
+        await pool.query(
+          `UPDATE orders SET
+             shipping_status=$2, shipping_substatus=$3, date_ready_to_ship=$4,
+             date_shipped=$5, date_delivered=$6, shipping_last_updated=$7, updated_at=now()
+           WHERE ml_id=$1`,
+          [
+            order_id, ship?.status || null, ship?.substatus || null,
+            sh.date_ready_to_ship || null, sh.date_shipped || null, sh.date_delivered || null,
+            ship?.last_updated || null,
+          ]
+        );
+      } catch (e) {
+        shippingError = e.message;
+        console.warn(`[conciliacao/reprocessar] shipment ${shipping_id} falhou: ${e.message}`);
+      }
+    }
+    res.json({ ok: true, shipping_error: shippingError });
   } catch (e) {
     console.error('[conciliacao/pagamentos/:id/reprocessar] erro:', e.message);
     res.status(500).json({ error: e.message });

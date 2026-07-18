@@ -478,6 +478,10 @@ async function reprocessarAtual() {
   btn.disabled = false;
   btn.innerHTML = '<i class="fas fa-sync"></i> Reprocessar';
   if (r?.error) { alert('Erro ao reprocessar: ' + r.error); return; }
+  if (r?.shipping_error) {
+    // Pagamento reprocessou, mas a consulta de entrega falhou (ex: rate limit).
+    alert('Pagamento atualizado, mas o status de entrega não pôde ser consultado agora (' + r.shipping_error + '). Tente novamente em alguns minutos.');
+  }
   await openDetalhe(currentPaymentId);
   loadPagamentos();
 }

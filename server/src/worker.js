@@ -1551,8 +1551,19 @@ async function syncShippingStatus() {
          ORDER BY shipping_last_updated ASC NULLS FIRST
          LIMIT 200`
       );
+      // Circuit breaker por loja (não global) — os 200 pedidos pendentes
+      // costumam vir de lojas diferentes, cada uma com token/rate limit
+      // independente (mesmo racional de `workers.md`: "isolar por loja
+      // garante que o rate limit de uma não trava o processamento das
+      // demais"). Um 429 isolado de 1 loja não pode abortar as outras 199
+      // ordens só porque a 1ª da fila calhou de ser dessa loja — corrigido
+      // depois de observar em produção que isso travava a fila inteira
+      // indefinidamente no mesmo pedido a cada execução (ver decisions.md).
       let updated = 0, errors = 0;
+      const blockedStores = new Set();
+      const storeErrorStreak = new Map();
       for (const o of pending) {
+        if (blockedStores.has(o.store_id)) continue;
         try {
           const ship = await ml.getShipment(o.shipping_id, o.store_id);
           const sh = ship?.status_history || {};
@@ -1568,10 +1579,18 @@ async function syncShippingStatus() {
             ]
           );
           updated++;
+          storeErrorStreak.set(o.store_id, 0);
         } catch (e) {
           console.warn(`[sync-shipping-status] erro order=${o.ml_id} shipping_id=${o.shipping_id}: ${e.message}`);
           errors++;
-          if (e.message?.includes('429')) break;
+          if (e.message?.includes('429')) {
+            const streak = (storeErrorStreak.get(o.store_id) || 0) + 1;
+            storeErrorStreak.set(o.store_id, streak);
+            if (streak >= 3) {
+              blockedStores.add(o.store_id);
+              console.warn(`[sync-shipping-status] loja ${o.store_id} — 3 erros 429 seguidos, pausando o resto desta loja nesta execução`);
+            }
+          }
         }
         await new Promise(r => setTimeout(r, 1000));
       }

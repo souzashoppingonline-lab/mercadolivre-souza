@@ -121,7 +121,9 @@ async function getStoreName(storeId) {
 // handleOrder (não por raw_data->>'shipment_id' — mecanismo antigo e
 // inconsistente, ver decisions.md). Se o pedido ainda não existe localmente
 // (orders_v2 chegou depois), a UPDATE não afeta linhas e é ignorada — o
-// próximo webhook de shipment ou o sync diário resolve.
+// próximo webhook de shipment ou o job `sync-shipping-status` (a cada 4h)
+// resolve. Esse job também é o que garante que o status avança quando o ML
+// não reenvia um webhook novo a cada transição (ver decisions.md).
 async function handleShipment({ resource, storeId }) {
   const shipmentId = resource.split('/').pop();
   const ship = await ml.getShipment(shipmentId, storeId);
@@ -1524,6 +1526,64 @@ async function syncPaymentReleases() {
   }
 }
 
+// Reconsulta status de entrega — o webhook `shipments` só é reprocessado se
+// chegar um webhook novo do ML pra aquele shipment, mas o ML não garante um
+// webhook a cada transição (mesmo racional de `sync-payment-releases`: sem
+// reconciliação periódica, `shipping_status` fica travado no último status
+// recebido, mesmo que o pedido já tenha avançado — ver `decisions.md`).
+// Roda a cada 4h (mesma cadência de `top-vendas`) — status de entrega muda
+// dentro de dias, não semanas, então precisa de mais frequência que a
+// liberação de pagamento (que é 1x/dia).
+let isSyncingShippingStatus = false;
+
+async function syncShippingStatus() {
+  if (isSyncingShippingStatus) { console.warn('[sync-shipping-status] já em execução — ignorando'); return; }
+  isSyncingShippingStatus = true;
+  console.log('[sync-shipping-status] iniciando reconsulta de status de entrega...');
+  try {
+    return await recordSync('sync-shipping-status', '0 */4 * * *', async () => {
+      const { rows: pending } = await pool.query(
+        `SELECT ml_id, store_id, shipping_id FROM orders
+         WHERE shipping_id IS NOT NULL
+           AND shipping_status IS DISTINCT FROM 'delivered'
+           AND shipping_status IS DISTINCT FROM 'cancelled'
+           AND date_created > now() - interval '45 days'
+         ORDER BY shipping_last_updated ASC NULLS FIRST
+         LIMIT 200`
+      );
+      let updated = 0, errors = 0;
+      for (const o of pending) {
+        try {
+          const ship = await ml.getShipment(o.shipping_id, o.store_id);
+          const sh = ship?.status_history || {};
+          await pool.query(
+            `UPDATE orders SET
+               shipping_status=$2, shipping_substatus=$3, date_ready_to_ship=$4,
+               date_shipped=$5, date_delivered=$6, shipping_last_updated=$7, updated_at=now()
+             WHERE ml_id=$1`,
+            [
+              o.ml_id, ship?.status || null, ship?.substatus || null,
+              sh.date_ready_to_ship || null, sh.date_shipped || null, sh.date_delivered || null,
+              ship?.last_updated || null,
+            ]
+          );
+          updated++;
+        } catch (e) {
+          console.warn(`[sync-shipping-status] erro order=${o.ml_id} shipping_id=${o.shipping_id}: ${e.message}`);
+          errors++;
+          if (e.message?.includes('429')) break;
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      console.log(`[sync-shipping-status] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length} pendentes)`);
+      return { updated, errors, total: pending.length };
+    });
+  } finally {
+    isSyncingShippingStatus = false;
+    scheduleEvery(4, syncShippingStatus, 'sync-shipping-status');
+  }
+}
+
 // ── Limpeza de vídeos de embalagem — retenção de 30 dias ────────────────
 async function cleanupPackingVideos() {
   try {
@@ -2592,6 +2652,7 @@ scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
+scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
@@ -2687,6 +2748,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'conciliacao-divergencias' || cmd === 'checkConciliacaoDivergencias') {
       console.log('[worker] checkConciliacaoDivergencias disparado manualmente');
       checkConciliacaoDivergencias().catch(e => console.error('[worker] checkConciliacaoDivergencias erro:', e.message));
+    }
+    if (cmd === 'sync-shipping-status' || cmd === 'syncShippingStatus') {
+      console.log('[worker] syncShippingStatus disparado manualmente');
+      syncShippingStatus().catch(e => console.error('[worker] syncShippingStatus erro:', e.message));
     }
     if (cmd === 'syncTopVendas') {
       console.log('[worker] syncTopVendas disparado manualmente');

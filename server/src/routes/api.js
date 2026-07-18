@@ -2895,6 +2895,7 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
          p.date_approved, p.money_release_date, p.released,
          p.transaction_amount, p.net_received_amount, p.shipping_cost,
          (COALESCE(p.marketplace_fee,0) + COALESCE(p.mercadopago_fee,0) + COALESCE(p.discount_fee,0) + COALESCE(p.coupon_fee,0) + COALESCE(p.finance_fee,0)) AS taxas,
+         (p.transaction_amount - COALESCE(p.net_received_amount, p.transaction_amount)) AS diferenca,
          p.payment_method_id, p.payment_type, p.installments, p.amount_refunded
        FROM ml_payments p
        LEFT JOIN orders o ON o.ml_id = p.order_id

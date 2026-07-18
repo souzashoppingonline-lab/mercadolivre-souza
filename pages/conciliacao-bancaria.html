@@ -68,9 +68,9 @@
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr>
-              <th>Loja</th><th>Pedido</th><th>Comprador</th>
-              <th>Data Aprovação</th><th>Data Liberação</th>
-              <th>Valor Bruto</th><th>Taxas</th><th>Valor Líquido</th><th>Status</th>
+              <th>Loja</th><th>Pedido</th><th>Comprador</th><th>Status</th>
+              <th>Data da Venda</th><th>Data Liberação</th>
+              <th>Valor da Venda</th><th>Valor Liberado</th><th>Diferença</th>
             </tr></thead>
             <tbody id="pagTable"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
           </table>
@@ -155,7 +155,25 @@ async function load() {
     : '<tr><td colspan="4" class="empty-state">Nenhum pagamento pendente de liberação</td></tr>';
 }
 
-const BADGE = { yes: '<span class="tag green">Liberado</span>', no: '<span class="tag yellow">Pendente</span>' };
+const STATUS_LABEL = {
+  approved:    { txt: 'Aprovado',        cls: 'green' },
+  pending:     { txt: 'Pendente',        cls: 'yellow' },
+  in_process:  { txt: 'Em processamento', cls: 'yellow' },
+  rejected:    { txt: 'Rejeitado',       cls: 'red' },
+  refunded:    { txt: 'Estornado',       cls: 'red' },
+  cancelled:   { txt: 'Cancelado',       cls: 'red' },
+  charged_back:{ txt: 'Chargeback',      cls: 'red' },
+};
+function statusBadge(status) {
+  const s = STATUS_LABEL[status] || { txt: status || '—', cls: '' };
+  return s.cls ? `<span class="tag ${s.cls}">${s.txt}</span>` : s.txt;
+}
+function liberacaoCell(r) {
+  const dataFmt = r.money_release_date ? new Date(r.money_release_date).toLocaleDateString('pt-BR') : '—';
+  return r.released === 'yes'
+    ? `${dataFmt} <span class="tag green">Liberado</span>`
+    : `${dataFmt} <span class="tag yellow">Pendente</span>`;
+}
 let pagState = { page: 1, limit: 50, total: 0 };
 
 async function loadPagamentos() {
@@ -185,12 +203,12 @@ async function loadPagamentos() {
         <td>${r.store_nickname || '—'}</td>
         <td>${r.order_id || '—'}</td>
         <td>${r.buyer_nickname || '—'}</td>
+        <td>${statusBadge(r.status)}</td>
         <td>${r.date_approved ? new Date(r.date_approved).toLocaleString('pt-BR') : '—'}</td>
-        <td>${r.money_release_date ? new Date(r.money_release_date).toLocaleDateString('pt-BR') : '—'}</td>
+        <td>${liberacaoCell(r)}</td>
         <td>${fmt(r.transaction_amount)}</td>
-        <td>${fmt(r.taxas)}</td>
         <td>${fmt(r.net_received_amount)}</td>
-        <td>${BADGE[r.released] || (r.status || '—')}</td>
+        <td style="color:var(--red)">${fmt(r.diferenca)}</td>
       </tr>`).join('')
     : '<tr><td colspan="9" class="empty-state">Nenhum pagamento encontrado</td></tr>';
 

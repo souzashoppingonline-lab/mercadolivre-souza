@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conciliação Bancária — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Conciliação Bancária'; window.ACTIVE_NAV='conciliacao-bancaria.html';</script>
+  <style>
+    .cb-note { font-size:12px; color:var(--text-muted); margin:-8px 0 16px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select class="filter-select" id="lojaFilter">
+          <option value="">Todas as lojas</option>
+        </select>
+      </div>
+      <p class="cb-note">Só pagamentos ainda não liberados pelo Mercado Pago (<code>released ≠ 'yes'</code>). Fase 1 — Pedido/Pagamento/Liberação já sincronizados a partir de agora (sem histórico anterior ao deploy). Ver <code>.claude/conciliacao-bancaria.md</code>.</p>
+
+      <div class="card-grid" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Recebo Hoje</div><div class="value" id="kpiHoje" style="color:var(--green)">—</div></div>
+        <div class="stat-card"><div class="label">Recebo Amanhã</div><div class="value" id="kpiAmanha">—</div></div>
+        <div class="stat-card"><div class="label">Próximos 7 dias</div><div class="value" id="kpiSemana">—</div></div>
+        <div class="stat-card"><div class="label">Próximos 30 dias</div><div class="value" id="kpiMes">—</div></div>
+        <div class="stat-card"><div class="label">Total Pendente (líquido)</div><div class="value" id="kpiTotalLiquido" style="color:var(--primary)">—</div></div>
+        <div class="stat-card"><div class="label">Total Pendente (bruto)</div><div class="value" id="kpiTotalBruto">—</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Agenda de Recebimentos</h3>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('agendaTable').closest('table'), 'agenda-recebimentos.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Data</th><th>Qtd. Pagamentos</th><th>Valor Líquido</th><th>Valor Bruto</th></tr></thead>
+            <tbody id="agendaTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const fmtN = v => new Intl.NumberFormat('pt-BR').format(v||0);
+
+function spDateStr(d) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year:'numeric', month:'2-digit', day:'2-digit' }).format(d);
+}
+function addDaysStr(baseStr, days) {
+  const d = new Date(baseStr + 'T12:00:00Z'); // meio-dia UTC evita virar de dia por causa de fuso na soma
+  d.setUTCDate(d.getUTCDate() + days);
+  return spDateStr(d);
+}
+function fmtDataBr(dataStr) {
+  const [y,m,d] = dataStr.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+async function loadLojas() {
+  const data = await DB.getLojas();
+  const stores = data?.stores || [];
+  const sel = document.getElementById('lojaFilter');
+  stores.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id;
+    o.textContent = s.nickname;
+    sel.appendChild(o);
+  });
+}
+
+async function load() {
+  const store_id = document.getElementById('lojaFilter').value;
+  document.getElementById('agendaTable').innerHTML = '<tr><td colspan="4" class="empty-state">Carregando...</td></tr>';
+
+  const data = await DB.getAgendaRecebimentos({ store_id }) || { dias: [] };
+  if (data.error) {
+    document.getElementById('agendaTable').innerHTML = `<tr><td colspan="4" style="color:var(--red)">${data.error}</td></tr>`;
+    return;
+  }
+
+  const dias = (data.dias || []).map(d => ({ ...d, dataStr: String(d.data).slice(0, 10) }));
+
+  const hoje = spDateStr(new Date());
+  const amanha = addDaysStr(hoje, 1);
+  const fim7 = addDaysStr(hoje, 6);
+  const fim30 = addDaysStr(hoje, 29);
+
+  const sum = (pred) => dias.filter(pred).reduce((s, d) => s + Number(d.valor_liquido || 0), 0);
+
+  document.getElementById('kpiHoje').textContent   = fmt(sum(d => d.dataStr === hoje));
+  document.getElementById('kpiAmanha').textContent = fmt(sum(d => d.dataStr === amanha));
+  document.getElementById('kpiSemana').textContent = fmt(sum(d => d.dataStr >= hoje && d.dataStr <= fim7));
+  document.getElementById('kpiMes').textContent    = fmt(sum(d => d.dataStr >= hoje && d.dataStr <= fim30));
+  document.getElementById('kpiTotalLiquido').textContent = fmt(dias.reduce((s,d) => s + Number(d.valor_liquido||0), 0));
+  document.getElementById('kpiTotalBruto').textContent   = fmt(dias.reduce((s,d) => s + Number(d.valor_bruto||0), 0));
+
+  document.getElementById('agendaTable').innerHTML = dias.length
+    ? dias.map(d => `<tr>
+        <td>${fmtDataBr(d.dataStr)}${d.dataStr === hoje ? ' <span class="tag green">Hoje</span>' : d.dataStr === amanha ? ' <span class="tag yellow">Amanhã</span>' : ''}</td>
+        <td>${fmtN(d.qtd_pagamentos)}</td>
+        <td>${fmt(d.valor_liquido)}</td>
+        <td>${fmt(d.valor_bruto)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Nenhum pagamento pendente de liberação</td></tr>';
+}
+
+document.getElementById('lojaFilter').addEventListener('change', load);
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+
+loadLojas().then(load);
+</script>
+</body>
+</html>

@@ -45,6 +45,7 @@ const NAV_ITEMS = [
   ]},
   { section: 'Financeiro', items: [
     { href: 'vendas-turbo.html', icon: 'fa-file-excel', label: 'Vendas ML Turbo' },
+    { href: 'conciliacao-bancaria.html', icon: 'fa-money-check-alt', label: 'Conciliação Bancária' },
   ]},
   { section: 'Sistema', items: [
     { href: 'mcp.html', icon: 'fa-robot', label: 'MCP Mercado Livre' },

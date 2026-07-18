@@ -301,9 +301,20 @@ function shippingRelevantDate(r, bucket) {
   }[bucket];
   return d ? new Date(d).toLocaleString('pt-BR') : '';
 }
+// Mesma classificação de logística usada em pages/embalagem.html/top-vendas-online.html
+// (mesmo mapeamento de server/src/worker.js:fmtLogistica, sem runtime compartilhado).
+function logLabel(tipo) {
+  const l = (tipo || '').toLowerCase();
+  if (l.includes('fulfillment')) return '📦 Full';
+  if (l.includes('self_service') || l.includes('flex')) return '🏃 Flex';
+  if (l.includes('xd_drop_off') || l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return '📮 Mercado Envios';
+  if (l.includes('pickup')) return '🏠 Coleta';
+  return tipo || '—';
+}
 function shippingCell(r) {
   const info = shippingInfo(r.shipping_status);
   const tipData = [
+    r.shipping_type ? `Logística: ${logLabel(r.shipping_type)}` : '',
     r.shipping_substatus ? `Substatus: ${r.shipping_substatus}` : '',
     r.date_ready_to_ship ? `Pronto para envio: ${new Date(r.date_ready_to_ship).toLocaleString('pt-BR')}` : '',
     r.date_shipped ? `Enviado: ${new Date(r.date_shipped).toLocaleString('pt-BR')}` : '',
@@ -311,7 +322,8 @@ function shippingCell(r) {
   ].filter(Boolean).join(' · ') || 'Sem detalhes de rastreio ainda';
   const badge = info.cls ? `<span class="tag ${info.cls}">${info.emoji} ${info.label}</span>` : `${info.emoji} ${info.label}`;
   const sub = shippingRelevantDate(r, info.bucket);
-  return `<span title="${escapeHtml(tipData)}">${badge}${sub ? `<div class="cb-entrega-sub">${sub}</div>` : ''}</span>`;
+  const logSub = r.shipping_type ? logLabel(r.shipping_type) : '';
+  return `<span title="${escapeHtml(tipData)}">${badge}<div class="cb-entrega-sub">${[sub, logSub].filter(Boolean).join(' · ')}</div></span>`;
 }
 let pagState = { page: 1, limit: 50, total: 0, sort: 'data', dir: 'desc' };
 
@@ -516,6 +528,7 @@ async function openDetalhe(paymentId, scrollToJson) {
     <div class="cb-modal-section-title">Entrega</div>
     <div class="cb-modal-grid">
       <div class="cb-modal-stat"><div class="lbl">Status</div><div class="val">${shippingCell(r)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Logística</div><div class="val">${r.shipping_type ? logLabel(r.shipping_type) : '—'}</div></div>
       <div class="cb-modal-stat"><div class="lbl">Pronto para envio</div><div class="val">${dataHora(r.date_ready_to_ship)}</div></div>
       <div class="cb-modal-stat"><div class="lbl">Enviado</div><div class="val">${dataHora(r.date_shipped)}</div></div>
       <div class="cb-modal-stat"><div class="lbl">Entregue</div><div class="val">${dataHora(r.date_delivered)}</div></div>

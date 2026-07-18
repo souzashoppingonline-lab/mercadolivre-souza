@@ -268,14 +268,24 @@ function statusBadge(status) {
   const s = STATUS_LABEL[status] || { txt: status || '—', cls: '' };
   return s.cls ? `<span class="tag ${s.cls}">${s.txt}</span>` : s.txt;
 }
+// Data + hora exata da liberação — money_release_date é timestamp completo e a
+// hora é real (confirmado ao vivo: horários variados tipo 15:42, 14:58, não é
+// meia-noite nominal), então mostramos a hora que o dinheiro cai.
+function liberacaoHora(r) {
+  return r.money_release_date
+    ? new Date(r.money_release_date).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '';
+}
 function liberacaoCell(r) {
-  const dataFmt = r.money_release_date ? new Date(r.money_release_date).toLocaleDateString('pt-BR') : '—';
+  const dataFmt = r.money_release_date ? new Date(r.money_release_date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
   return r.released === 'yes'
     ? `${dataFmt} <span class="tag green">Liberado</span>`
     : `${dataFmt} <span class="tag yellow">Pendente</span>`;
 }
 function liberacaoDateOnly(r) {
-  return r.money_release_date ? new Date(r.money_release_date).toLocaleDateString('pt-BR') : '—';
+  if (!r.money_release_date) return '—';
+  const d = new Date(r.money_release_date);
+  return `${d.toLocaleDateString('pt-BR')}<div class="cb-entrega-sub">${liberacaoHora(r)}</div>`;
 }
 const STATUS_PAGAMENTO_CANCELADO = ['rejected', 'refunded', 'cancelled', 'charged_back'];
 function statusFinanceiroBadge(r) {

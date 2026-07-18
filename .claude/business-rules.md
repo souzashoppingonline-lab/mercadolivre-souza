@@ -203,3 +203,18 @@ Dois limiares fixos, sem base estatística histórica ainda (feature recém-lan�
 - **Liberação atrasada em +2 dias** (`CONCILIACAO_LIBERACAO_ATRASO_DIAS`) — pagamento passou de `money_release_date` e continua `released != 'yes'`; 2 dias de folga absorve variação normal de horário/fuso sem gerar alerta prematuro.
 
 Ambos ajustáveis por constante no topo da função — revisar quando houver volume/histórico suficiente pra um limiar estatístico de verdade. Dedup 1x por pagamento via `ml_payments.alert_notified_at` (v32), tópico Telegram `tg_conciliacao`. Ver `conciliacao-bancaria.md`.
+
+## Conciliação Bancária — mapeamento de Status de Entrega (v33)
+
+Status cru de `/shipments/:id` (campo `status` — confirmado ao vivo pra `pending`/`ready_to_ship`; os demais vêm do vocabulário documentado da API, ainda não observados em produção) → bucket de UI exibido na coluna "Entrega":
+
+| Status cru ML | Bucket | Label | Emoji/cor |
+|---|---|---|---|
+| `pending` | `aguardando` | Aguardando envio | ⚪ (sem cor) |
+| `handling`, `ready_to_ship` | `preparando` | Preparando | 🔵 azul |
+| `shipped` | `transito` | Em trânsito | 🟡 amarelo |
+| `delivered` | `entregue` | Entregue | 🟢 verde |
+| `cancelled` | `cancelado` | Cancelado | 🔴 vermelho |
+| `not_delivered` | `nao_entregue` | Não entregue | 🟠 (tag amarela) |
+
+`not_delivered` é um bucket extra, não fazia parte do pedido original — adicionado porque é um status real do vocabulário da API do ML que não se encaixava nos outros 5 (tentativa de entrega falhou, sem ser necessariamente cancelamento). Tabela replicada em dois lugares por não haver runtime compartilhado entre a página estática e o Node: `SHIPPING_STATUS_MAP` (`pages/conciliacao-bancaria.html`, pra badge/tooltip) e `SHIPPING_STATUS_BUCKETS` (`routes/api.js`, pra traduzir o filtro `entrega` em lista de status crus no `WHERE`). Ver `conciliacao-bancaria.md`.

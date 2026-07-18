@@ -2896,11 +2896,23 @@ const CONCILIACAO_SORT_COLS = {
   status: 'p.status',
   diferenca: '(p.transaction_amount - COALESCE(p.net_received_amount, p.transaction_amount))',
   liberacao: 'p.money_release_date',
+  entrega: 'o.shipping_status',
+};
+// Bucket de UI → status crus retornados por /shipments/:id (ver business-rules.md
+// pro mapeamento completo com emoji/cor — mesma tabela é replicada no frontend,
+// já que não há runtime compartilhado entre página estática e Node aqui).
+const SHIPPING_STATUS_BUCKETS = {
+  aguardando: ['pending'],
+  preparando: ['handling', 'ready_to_ship'],
+  transito: ['shipped'],
+  entregue: ['delivered'],
+  cancelado: ['cancelled'],
+  nao_entregue: ['not_delivered'],
 };
 router.get('/conciliacao/pagamentos', async (req, res) => {
   try {
     const {
-      store_id = '', released = '', date_from = '', date_to = '', q = '',
+      store_id = '', released = '', date_from = '', date_to = '', q = '', entrega = '',
       sort = 'data', dir = 'desc', page = '1', limit = '50',
     } = req.query;
 
@@ -2910,13 +2922,15 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
     const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
     const offset = (pageNum - 1) * limitNum;
 
-    const params = [store_id, released, date_from || null, date_to || null, q];
+    const entregaStatuses = SHIPPING_STATUS_BUCKETS[entrega] || null;
+    const params = [store_id, released, date_from || null, date_to || null, q, entregaStatuses];
     const where = `
       WHERE ($1 = '' OR p.store_id = $1::bigint)
         AND ($2 = '' OR p.released = $2)
         AND ($3::date IS NULL OR p.date_approved::date >= $3::date)
         AND ($4::date IS NULL OR p.date_approved::date <= $4::date)
-        AND ($5 = '' OR p.order_id ILIKE '%'||$5||'%' OR p.payment_id::text ILIKE '%'||$5||'%' OR o.buyer_nickname ILIKE '%'||$5||'%')`;
+        AND ($5 = '' OR p.order_id ILIKE '%'||$5||'%' OR p.payment_id::text ILIKE '%'||$5||'%' OR o.buyer_nickname ILIKE '%'||$5||'%')
+        AND ($6::text[] IS NULL OR o.shipping_status = ANY($6::text[]))`;
 
     const { rows } = await pool.query(
       `SELECT
@@ -2927,13 +2941,14 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
          p.transaction_amount, p.net_received_amount, p.shipping_cost,
          (COALESCE(p.marketplace_fee,0) + COALESCE(p.mercadopago_fee,0) + COALESCE(p.discount_fee,0) + COALESCE(p.coupon_fee,0) + COALESCE(p.finance_fee,0)) AS taxas,
          (p.transaction_amount - COALESCE(p.net_received_amount, p.transaction_amount)) AS diferenca,
-         p.payment_method_id, p.payment_type, p.installments, p.amount_refunded
+         p.payment_method_id, p.payment_type, p.installments, p.amount_refunded,
+         o.shipping_status, o.shipping_substatus, o.date_ready_to_ship, o.date_shipped, o.date_delivered, o.shipping_last_updated
        FROM ml_payments p
        LEFT JOIN orders o ON o.ml_id = p.order_id
        LEFT JOIN stores s ON s.id = p.store_id
        ${where}
        ORDER BY ${sortCol} ${sortDir}
-       LIMIT $6 OFFSET $7`,
+       LIMIT $7 OFFSET $8`,
       [...params, limitNum, offset]
     );
 
@@ -2964,6 +2979,8 @@ router.get('/conciliacao/pagamentos/:paymentId', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT p.*, o.buyer_nickname, o.title, o.total_amount AS order_total_amount, o.item_id,
               o.date_created AS order_date_created, o.status AS order_status, o.shipping_type,
+              o.shipping_status, o.shipping_substatus, o.date_ready_to_ship, o.date_shipped,
+              o.date_delivered, o.shipping_last_updated,
               s.nickname AS store_nickname
        FROM ml_payments p
        LEFT JOIN orders o ON o.ml_id = p.order_id

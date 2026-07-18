@@ -85,6 +85,15 @@ shipping_id TEXT                  -- v21: ID do envio do ML (order.shipping.id),
                                    -- (um envio/pack pode agrupar mais de um pedido). Chave de busca
                                    -- da bipagem de etiqueta — ver embalagem.md. Só populado a partir
                                    -- de pedidos processados depois da v21 (sem backfill retroativo).
+shipping_status, shipping_substatus TEXT       -- v33: status cru de /shipments/:id (pending/handling/
+                                   -- ready_to_ship/shipped/delivered/cancelled/not_delivered),
+                                   -- persistidos por handleShipment (worker.js), casando por
+                                   -- shipping_id (não raw_data->>'shipment_id' — mecanismo antigo,
+                                   -- ver decisions.md). Usado na coluna "Entrega" da Conciliação
+                                   -- Bancária — ver conciliacao-bancaria.md e business-rules.md
+                                   -- (mapeamento status→emoji/cor).
+date_ready_to_ship, date_shipped, date_delivered TIMESTAMPTZ  -- v33: de status_history do shipment
+shipping_last_updated TIMESTAMPTZ -- v33: last_updated do shipment
 updated_at TIMESTAMPTZ
 ```
 Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data`, `shopee_order_data`). `orders` só guarda os campos comuns entre marketplaces.

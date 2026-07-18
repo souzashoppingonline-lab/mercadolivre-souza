@@ -87,6 +87,15 @@
         </select>
         <input type="date" class="filter-input" id="dateFrom" title="Data de aprovação — de">
         <input type="date" class="filter-input" id="dateTo" title="Data de aprovação — até">
+        <select class="filter-select" id="entregaFilter">
+          <option value="">Todas as entregas</option>
+          <option value="aguardando">⚪ Aguardando envio</option>
+          <option value="preparando">🔵 Preparando</option>
+          <option value="transito">🟡 Em trânsito</option>
+          <option value="entregue">🟢 Entregue</option>
+          <option value="nao_entregue">🟠 Não entregue</option>
+          <option value="cancelado">🔴 Cancelado</option>
+        </select>
         <div class="search-box" style="max-width:260px"><i class="fas fa-search"></i><input type="text" id="searchPag" placeholder="Pedido, payment ID ou comprador..."></div>
       </div>
 
@@ -101,13 +110,14 @@
             <thead><tr>
               <th>Loja</th><th>Pedido</th><th>Comprador</th>
               <th class="sortable" onclick="setSort('status')">Status<span id="arrow-status"></span></th>
+              <th class="sortable" onclick="setSort('entrega')">Entrega<span id="arrow-entrega"></span></th>
               <th class="sortable" onclick="setSort('data')">Data da Venda<span id="arrow-data"></span></th>
               <th class="sortable" onclick="setSort('liberacao')">Data Liberação<span id="arrow-liberacao"></span></th>
               <th class="sortable" onclick="setSort('valor')">Valor da Venda<span id="arrow-valor"></span></th>
               <th class="sortable" onclick="setSort('liquido')">Valor Liberado<span id="arrow-liquido"></span></th>
               <th class="sortable" onclick="setSort('diferenca')">Diferença<span id="arrow-diferenca"></span></th>
             </tr></thead>
-            <tbody id="pagTable"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="pagTable"><tr><td colspan="10" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px">
@@ -242,6 +252,33 @@ function liberacaoCell(r) {
     ? `${dataFmt} <span class="tag green">Liberado</span>`
     : `${dataFmt} <span class="tag yellow">Pendente</span>`;
 }
+
+// Status crus vindos de /shipments/:id (persistidos em orders.shipping_status
+// pelo worker) → bucket de UI. Mesma tabela replicada no filtro server-side
+// (SHIPPING_STATUS_BUCKETS em routes/api.js) — ver business-rules.md.
+const SHIPPING_STATUS_MAP = {
+  pending:       { bucket: 'aguardando',   label: 'Aguardando envio', emoji: '⚪', cls: '' },
+  handling:      { bucket: 'preparando',   label: 'Preparando',       emoji: '🔵', cls: 'blue' },
+  ready_to_ship: { bucket: 'preparando',   label: 'Preparando',       emoji: '🔵', cls: 'blue' },
+  shipped:       { bucket: 'transito',     label: 'Em trânsito',      emoji: '🟡', cls: 'yellow' },
+  delivered:     { bucket: 'entregue',     label: 'Entregue',         emoji: '🟢', cls: 'green' },
+  cancelled:     { bucket: 'cancelado',    label: 'Cancelado',        emoji: '🔴', cls: 'red' },
+  not_delivered: { bucket: 'nao_entregue', label: 'Não entregue',     emoji: '🟠', cls: 'yellow' },
+};
+function shippingInfo(status) {
+  return SHIPPING_STATUS_MAP[status] || { bucket: '', label: status || 'Sem envio', emoji: '⚪', cls: '' };
+}
+function shippingCell(r) {
+  const info = shippingInfo(r.shipping_status);
+  const tipData = [
+    r.shipping_substatus ? `Substatus: ${r.shipping_substatus}` : '',
+    r.date_ready_to_ship ? `Pronto para envio: ${new Date(r.date_ready_to_ship).toLocaleString('pt-BR')}` : '',
+    r.date_shipped ? `Enviado: ${new Date(r.date_shipped).toLocaleString('pt-BR')}` : '',
+    r.date_delivered ? `Entregue: ${new Date(r.date_delivered).toLocaleString('pt-BR')}` : '',
+  ].filter(Boolean).join(' · ') || 'Sem detalhes de rastreio ainda';
+  const badge = info.cls ? `<span class="tag ${info.cls}">${info.emoji} ${info.label}</span>` : `${info.emoji} ${info.label}`;
+  return `<span title="${escapeHtml(tipData)}">${badge}</span>`;
+}
 let pagState = { page: 1, limit: 50, total: 0, sort: 'data', dir: 'desc' };
 
 function setSort(col) {
@@ -267,17 +304,18 @@ async function loadPagamentos() {
   const date_from = document.getElementById('dateFrom').value;
   const date_to = document.getElementById('dateTo').value;
   const q = document.getElementById('searchPag').value.trim();
+  const entrega = document.getElementById('entregaFilter').value;
 
-  document.getElementById('pagTable').innerHTML = '<tr><td colspan="9" class="empty-state">Carregando...</td></tr>';
+  document.getElementById('pagTable').innerHTML = '<tr><td colspan="10" class="empty-state">Carregando...</td></tr>';
   renderSortArrows();
 
   const data = await DB.getConciliacaoPagamentos({
-    store_id, released, date_from, date_to, q,
+    store_id, released, date_from, date_to, q, entrega,
     sort: pagState.sort, dir: pagState.dir,
     page: pagState.page, limit: pagState.limit,
   }) || { payments: [], total: 0 };
   if (data.error) {
-    document.getElementById('pagTable').innerHTML = `<tr><td colspan="9" style="color:var(--red)">${data.error}</td></tr>`;
+    document.getElementById('pagTable').innerHTML = `<tr><td colspan="10" style="color:var(--red)">${data.error}</td></tr>`;
     return;
   }
 
@@ -291,13 +329,14 @@ async function loadPagamentos() {
         <td>${escapeHtml(r.order_id) || '—'}</td>
         <td>${escapeHtml(r.buyer_nickname) || '—'}</td>
         <td>${statusBadge(r.status)}</td>
+        <td>${shippingCell(r)}</td>
         <td>${r.date_approved ? new Date(r.date_approved).toLocaleString('pt-BR') : '—'}</td>
         <td>${liberacaoCell(r)}</td>
         <td>${fmt(r.transaction_amount)}</td>
         <td>${fmt(r.net_received_amount)}</td>
         <td style="color:var(--red)">${fmt(r.diferenca)}</td>
       </tr>`).join('')
-    : '<tr><td colspan="9" class="empty-state">Nenhum pagamento encontrado</td></tr>';
+    : '<tr><td colspan="10" class="empty-state">Nenhum pagamento encontrado</td></tr>';
 
   const totalPages = Math.max(1, Math.ceil(pagState.total / pagState.limit));
   document.getElementById('pagInfo').textContent = `Página ${pagState.page} de ${totalPages}`;
@@ -320,6 +359,7 @@ document.getElementById('lojaFilter').addEventListener('change', resetAndReload)
 document.getElementById('releasedFilter').addEventListener('change', resetAndReload);
 document.getElementById('dateFrom').addEventListener('change', resetAndReload);
 document.getElementById('dateTo').addEventListener('change', resetAndReload);
+document.getElementById('entregaFilter').addEventListener('change', resetAndReload);
 let searchTimer;
 document.getElementById('searchPag').addEventListener('input', () => {
   clearTimeout(searchTimer);
@@ -431,6 +471,14 @@ async function openDetalhe(paymentId) {
       <div class="cb-modal-stat"><div class="lbl">Forma de Pagamento</div><div class="val">${escapeHtml(r.payment_method_id) || '—'} ${r.installments > 1 ? `(${r.installments}x)` : ''}</div></div>
       <div class="cb-modal-stat"><div class="lbl">Data da Venda</div><div class="val">${dataHora(r.date_approved)}</div></div>
       <div class="cb-modal-stat"><div class="lbl">Data de Liberação</div><div class="val">${liberacaoCell(r)}</div></div>
+    </div>
+
+    <div class="cb-modal-section-title">Entrega</div>
+    <div class="cb-modal-grid">
+      <div class="cb-modal-stat"><div class="lbl">Status</div><div class="val">${shippingCell(r)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Pronto para envio</div><div class="val">${dataHora(r.date_ready_to_ship)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Enviado</div><div class="val">${dataHora(r.date_shipped)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Entregue</div><div class="val">${dataHora(r.date_delivered)}</div></div>
     </div>
 
     <div class="cb-modal-section-title">JSON completo (auditoria)</div>

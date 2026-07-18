@@ -116,30 +116,40 @@ async function getStoreName(storeId) {
   return name;
 }
 
+// Status de Entrega (Conciliação Bancária) — busca o shipment real e persiste
+// status/substatus/datas em `orders`. Casa pelo shipping_id já persistido por
+// handleOrder (não por raw_data->>'shipment_id' — mecanismo antigo e
+// inconsistente, ver decisions.md). Se o pedido ainda não existe localmente
+// (orders_v2 chegou depois), a UPDATE não afeta linhas e é ignorada — o
+// próximo webhook de shipment ou o sync diário resolve.
 async function handleShipment({ resource, storeId }) {
   const shipmentId = resource.split('/').pop();
-
-  // Busca o pedido vinculado a este shipment no banco local
+  const ship = await ml.getShipment(shipmentId, storeId);
+  const sh = ship?.status_history || {};
   const { rows } = await pool.query(
-    `SELECT ml_id FROM orders
-     WHERE store_id = $1 AND raw_data->>'shipment_id' = $2
-       AND updated_at < now() - interval '30 minutes'
-     LIMIT 1`,
-    [storeId, String(shipmentId)]
+    `UPDATE orders SET
+       shipping_status = $1,
+       shipping_substatus = $2,
+       date_ready_to_ship = $3,
+       date_shipped = $4,
+       date_delivered = $5,
+       shipping_last_updated = $6,
+       updated_at = now()
+     WHERE store_id = $7 AND shipping_id = $8
+     RETURNING ml_id`,
+    [
+      ship?.status || null,
+      ship?.substatus || null,
+      sh.date_ready_to_ship || null,
+      sh.date_shipped || null,
+      sh.date_delivered || null,
+      ship?.last_updated || null,
+      storeId,
+      String(shipmentId),
+    ]
   );
-  if (!rows.length) {
-    // Pedido não existe ou foi atualizado nos últimos 30 min — apenas toca updated_at
-    await pool.query(
-      `UPDATE orders SET updated_at = now() WHERE store_id = $1 AND raw_data->>'shipment_id' = $2`,
-      [storeId, String(shipmentId)]
-    );
-    await publish('order_updated', { shipment_id: shipmentId });
-    return;
-  }
-
-  // Pedido existe e não foi atualizado recentemente — busca status atual
-  const orderId = rows[0].ml_id;
-  await handleOrder({ resource: `/orders/${orderId}`, storeId });
+  if (!rows.length) return;
+  await publish('order_updated', { order_id: rows[0].ml_id, shipping_status: ship?.status });
 }
 
 const handlers = {

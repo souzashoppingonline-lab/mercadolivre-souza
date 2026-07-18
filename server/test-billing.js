@@ -9,8 +9,15 @@ const pool = require('./src/db/pool');
     for (const group of ['MP', 'ML']) {
       const url = `https://api.mercadolibre.com/billing/integration/monthly/periods?group=${group}&document_type=BILL&limit=3`;
       const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
-      const text = await res.text();
-      console.log(res.status, `group=${group}`, '->', text.slice(0, 800));
+      const json = await res.json().catch(() => null);
+      console.log(res.status, `group=${group} periods`, '->', JSON.stringify(json)?.slice(0, 800));
+
+      const closed = json?.results?.find(r => r.period_status === 'CLOSED');
+      if (!closed) { console.log('  (sem período CLOSED pra testar /details)'); continue; }
+      const detailsUrl = `https://api.mercadolibre.com/billing/integration/periods/key/${closed.key}/group/${group}/details?document_type=BILL&limit=5`;
+      const detRes = await fetch(detailsUrl, { headers: { Authorization: 'Bearer ' + token } });
+      const detText = await detRes.text();
+      console.log(detRes.status, `group=${group} details (key=${closed.key})`, '->', detText.slice(0, 1000));
     }
   }
   process.exit(0);

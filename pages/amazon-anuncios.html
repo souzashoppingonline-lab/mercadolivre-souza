@@ -20,6 +20,7 @@
         <div class="card-header">
           <h3>Anúncios Ativos Amazon</h3>
           <span id="azAnunciosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('azAnunciosTbody').closest('table'), 'amazon-anuncios.csv')"><i class="fas fa-file-csv"></i> CSV</button>
         </div>
         <div class="table-responsive">
           <table class="data-table">
@@ -43,6 +44,7 @@
   </main>
 </div>
 <script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout-amazon.js"></script>
 <script src="../js/sidebar.js"></script>

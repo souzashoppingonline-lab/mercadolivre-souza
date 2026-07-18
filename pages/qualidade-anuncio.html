@@ -128,7 +128,7 @@
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Todos os anúncios (<span id="totalCount">0</span>)</h3></div>
+        <div class="card-header"><h3>Todos os anúncios (<span id="totalCount">0</span>)</h3><button class="action-btn" onclick="exportTableCSV(document.getElementById('tbody').closest('table'), 'qualidade-anuncio.csv')"><i class="fas fa-file-csv"></i> CSV</button></div>
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr>
@@ -152,6 +152,7 @@
 </div>
 
 <script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>

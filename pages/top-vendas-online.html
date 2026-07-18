@@ -154,7 +154,10 @@
             <canvas id="semanalLojaChart" height="140"></canvas>
           </div>
           <div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Curva ABC — top 10 por faturamento</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Curva ABC — top 10 por faturamento</span>
+              <button class="tvo-refresh-btn" onclick="exportTableCSV(document.getElementById('abcTbody').closest('table'), 'curva-abc.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+            </div>
             <div class="tvo-table-wrap">
               <table class="tvo-table">
                 <thead><tr><th>Item</th><th>Faturamento</th><th>Curva</th></tr></thead>
@@ -182,6 +185,7 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>

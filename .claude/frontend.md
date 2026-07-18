@@ -22,8 +22,13 @@ js/
   sidebar.js                   ← toggle mobile/desktop
   dashboard.js                   ← lógica específica do index.html
   webhook.js                       ← lógica específica de pages/webhook.html
+  tableExport.js                     ← `exportTableCSV(table, filename)` genérico — lê qualquer <table> do DOM (thead/tbody) e baixa CSV, sem depender da forma dos dados de cada página
   api.js                             ← LEGADO — cliente direto da API do ML, não usar
 ```
+
+## Exportação CSV das tabelas
+
+Toda página de relatório/listagem cuja tabela principal seja um `<table class="data-table">` real (não card/list) tem um botão `.action-btn` no `card-header` chamando `exportTableCSV(document.getElementById('<tbodyId>').closest('table'), '<nome>.csv')` — inclui `js/tableExport.js` logo após `db.js`. Páginas com exportador dedicado (`analise-vendas-mes`, `devolucoes`, `vendas-turbo`, `top-vendas-online` — CSV/PDF via jsPDF) mantêm sua própria função em vez do utilitário genérico. Páginas card/list-based (`alteracoes`, `estoque-parado`, `lojas`, `mensagens`, `perguntas`, `periodo`, `performance` — lista de produtos, não tabela) e páginas de config/monitor (`monitor`, `schedule`, `login`) ficam fora deste padrão.
 
 ## Páginas (`pages/`)
 

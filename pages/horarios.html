@@ -44,7 +44,7 @@
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Horários de Pico</h3></div>
+        <div class="card-header"><h3>Horários de Pico</h3><button class="action-btn" onclick="exportTableCSV(document.getElementById('horariosTable').closest('table'), 'horarios-pico.csv')"><i class="fas fa-file-csv"></i> CSV</button></div>
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Hora</th><th>Pedidos</th><th>Receita</th><th>% do Total</th></tr></thead>
@@ -58,6 +58,7 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>

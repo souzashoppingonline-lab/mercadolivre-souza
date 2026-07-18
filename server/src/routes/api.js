@@ -2909,10 +2909,19 @@ const SHIPPING_STATUS_BUCKETS = {
   cancelado: ['cancelled'],
   nao_entregue: ['not_delivered'],
 };
+// Bucket de UI → padrões ILIKE de orders.shipping_type (mesmo mapeamento por
+// substring de fmtLogistica em worker.js — shipping_type não tem um conjunto
+// fechado de valores exatos, então filtra por trecho, não igualdade).
+const LOGISTICA_BUCKETS = {
+  full: ['%fulfillment%'],
+  flex: ['%self_service%', '%flex%'],
+  me: ['%xd_drop_off%', '%me2%', '%me1%', '%cross_docking%'],
+  coleta: ['%pickup%'],
+};
 router.get('/conciliacao/pagamentos', async (req, res) => {
   try {
     const {
-      store_id = '', released = '', date_from = '', date_to = '', q = '', entrega = '',
+      store_id = '', released = '', date_from = '', date_to = '', q = '', entrega = '', logistica = '',
       sort = 'data', dir = 'desc', page = '1', limit = '50',
     } = req.query;
 
@@ -2923,14 +2932,16 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
 
     const entregaStatuses = SHIPPING_STATUS_BUCKETS[entrega] || null;
-    const params = [store_id, released, date_from || null, date_to || null, q, entregaStatuses];
+    const logisticaPatterns = LOGISTICA_BUCKETS[logistica] || null;
+    const params = [store_id, released, date_from || null, date_to || null, q, entregaStatuses, logisticaPatterns];
     const where = `
       WHERE ($1 = '' OR p.store_id = $1::bigint)
         AND ($2 = '' OR p.released = $2)
         AND ($3::date IS NULL OR p.date_approved::date >= $3::date)
         AND ($4::date IS NULL OR p.date_approved::date <= $4::date)
         AND ($5 = '' OR p.order_id ILIKE '%'||$5||'%' OR p.payment_id::text ILIKE '%'||$5||'%' OR o.buyer_nickname ILIKE '%'||$5||'%')
-        AND ($6::text[] IS NULL OR o.shipping_status = ANY($6::text[]))`;
+        AND ($6::text[] IS NULL OR o.shipping_status = ANY($6::text[]))
+        AND ($7::text[] IS NULL OR o.shipping_type ILIKE ANY($7::text[]))`;
 
     const { rows } = await pool.query(
       `SELECT
@@ -2949,7 +2960,7 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
        LEFT JOIN stores s ON s.id = p.store_id
        ${where}
        ORDER BY ${sortCol} ${sortDir}
-       LIMIT $7 OFFSET $8`,
+       LIMIT $8 OFFSET $9`,
       [...params, limitNum, offset]
     );
 

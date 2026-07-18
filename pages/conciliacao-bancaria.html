@@ -99,6 +99,13 @@
           <option value="nao_entregue">🟠 Não entregue</option>
           <option value="cancelado">🔴 Cancelado</option>
         </select>
+        <select class="filter-select" id="logisticaFilter">
+          <option value="">Toda logística</option>
+          <option value="full">📦 Full</option>
+          <option value="flex">🏃 Flex</option>
+          <option value="me">📮 Mercado Envios</option>
+          <option value="coleta">🏠 Coleta</option>
+        </select>
         <div class="search-box" style="max-width:260px"><i class="fas fa-search"></i><input type="text" id="searchPag" placeholder="Pedido, payment ID ou comprador..."></div>
       </div>
 
@@ -351,12 +358,13 @@ async function loadPagamentos() {
   const date_to = document.getElementById('dateTo').value;
   const q = document.getElementById('searchPag').value.trim();
   const entrega = document.getElementById('entregaFilter').value;
+  const logistica = document.getElementById('logisticaFilter').value;
 
   document.getElementById('pagTable').innerHTML = '<tr><td colspan="13" class="empty-state">Carregando...</td></tr>';
   renderSortArrows();
 
   const data = await DB.getConciliacaoPagamentos({
-    store_id, released, date_from, date_to, q, entrega,
+    store_id, released, date_from, date_to, q, entrega, logistica,
     sort: pagState.sort, dir: pagState.dir,
     page: pagState.page, limit: pagState.limit,
   }) || { payments: [], total: 0 };
@@ -412,6 +420,7 @@ document.getElementById('releasedFilter').addEventListener('change', resetAndRel
 document.getElementById('dateFrom').addEventListener('change', resetAndReload);
 document.getElementById('dateTo').addEventListener('change', resetAndReload);
 document.getElementById('entregaFilter').addEventListener('change', resetAndReload);
+document.getElementById('logisticaFilter').addEventListener('change', resetAndReload);
 let searchTimer;
 document.getElementById('searchPag').addEventListener('input', () => {
   clearTimeout(searchTimer);

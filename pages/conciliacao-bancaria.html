@@ -21,6 +21,17 @@
     .cb-modal-stat .val { font-size:16px; font-weight:700; }
     .cb-modal-section-title { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin:18px 0 8px; }
     .cb-modal-json { background:#111; border:1px solid var(--border); border-radius:8px; padding:12px; font-family:monospace; font-size:11px; white-space:pre-wrap; word-break:break-all; max-height:260px; overflow-y:auto; color:#9cdcfe; }
+    .cb-timeline { display:flex; align-items:flex-start; margin-bottom:18px; overflow-x:auto; padding-bottom:4px; }
+    .cb-tl-step { flex:0 0 92px; text-align:center; }
+    .cb-tl-dot { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 6px; font-size:12px; font-weight:700; }
+    .cb-tl-dot.done { background:rgba(39,174,96,.2); color:var(--green); }
+    .cb-tl-dot.pending { background:rgba(255,159,10,.2); color:#ff9f0a; }
+    .cb-tl-dot.disabled { background:rgba(255,255,255,.05); color:var(--text-muted); }
+    .cb-tl-label { font-size:9px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.3px; }
+    .cb-tl-sub { font-size:10px; margin-top:2px; color:var(--text-main); }
+    .cb-tl-line { flex:0 0 16px; height:2px; background:var(--border); margin-top:12px; }
+    .cb-tl-line.done { background:var(--green); }
+    .cb-tl-legend { font-size:10px; color:var(--text-muted); display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
   </style>
 </head>
 <body>
@@ -46,6 +57,8 @@
         <div class="stat-card"><div class="label">Total Pendente (bruto)</div><div class="value" id="kpiTotalBruto">—</div></div>
       </div>
 
+      <div class="card-grid" id="lojaCards" style="margin-bottom:16px"></div>
+
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
           <h3>Agenda de Recebimentos</h3>
@@ -59,6 +72,13 @@
         </div>
       </div>
 
+      <div class="filters-row" style="margin-bottom:8px">
+        <button class="action-btn" onclick="setQuickRange(0,0)">Hoje</button>
+        <button class="action-btn" onclick="setQuickRange(1,1)">Ontem</button>
+        <button class="action-btn" onclick="setQuickRange(6,0)">7 dias</button>
+        <button class="action-btn" onclick="setQuickRange(29,0)">30 dias</button>
+        <button class="action-btn" onclick="setQuickRange(89,0)">90 dias</button>
+      </div>
       <div class="filters-row" style="margin-bottom:16px">
         <select class="filter-select" id="releasedFilter">
           <option value="">Todos os status</option>
@@ -105,7 +125,10 @@
   <div style="max-width:640px;margin:40px auto;background:#1a1a1a;border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.8)">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)">
       <h3 id="pagModalTitle" style="margin:0;font-size:16px">Detalhe do Pagamento</h3>
-      <button onclick="closeDetalhe()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:2px 6px">✕</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="action-btn" id="pagReprocessarBtn" onclick="reprocessarAtual()"><i class="fas fa-sync"></i> Reprocessar</button>
+        <button onclick="closeDetalhe()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:2px 6px">✕</button>
+      </div>
     </div>
     <div id="pagModalBody" style="padding:20px 22px">
       <div class="empty-state" style="padding:40px"><div class="spinner" style="margin:auto"></div></div>
@@ -149,6 +172,19 @@ async function loadLojas() {
     o.textContent = s.nickname;
     sel.appendChild(o);
   });
+}
+
+async function loadResumoLojas() {
+  const el = document.getElementById('lojaCards');
+  const data = await DB.getResumoLojasConciliacao() || { lojas: [] };
+  const lojas = data.lojas || [];
+  if (lojas.length < 2) { el.innerHTML = ''; return; } // 1 loja só = redundante com o card "Total Pendente"
+  el.innerHTML = lojas.map(l => `
+    <div class="stat-card">
+      <div class="label">${escapeHtml(l.nickname)}</div>
+      <div class="value" style="color:var(--primary)">${fmt(l.valor_liquido)}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${fmtN(l.qtd_pagamentos)} pagamento(s) a receber</div>
+    </div>`).join('');
 }
 
 async function load() {
@@ -294,7 +330,59 @@ function closeDetalhe() {
   document.getElementById('pagModal').style.display = 'none';
 }
 
+function setQuickRange(daysBackFrom, daysBackTo) {
+  const hoje = spDateStr(new Date());
+  document.getElementById('dateFrom').value = addDaysStr(hoje, -daysBackFrom);
+  document.getElementById('dateTo').value = addDaysStr(hoje, -daysBackTo);
+  resetAndReload();
+}
+
+function buildTimeline(r) {
+  const dataCurta = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+  const aprovado = r.status === 'approved';
+  const liberado = r.released === 'yes';
+  const steps = [
+    { label: 'Pedido', state: 'done', sub: dataCurta(r.order_date_created) },
+    { label: 'Pagamento', state: 'done', sub: dataCurta(r.date_created) },
+    { label: 'Aprovado', state: aprovado ? 'done' : 'pending', sub: statusBadge(r.status) },
+    { label: 'Money Release', state: liberado ? 'done' : 'pending', sub: dataCurta(r.money_release_date) },
+    { label: 'Transferência', state: 'disabled', sub: 'Não implementado' },
+    { label: 'Conciliado', state: 'disabled', sub: 'Não implementado' },
+  ];
+  const icon = s => s === 'done' ? '✔' : s === 'pending' ? '🟡' : '—';
+  return `
+    <div class="cb-timeline">
+      ${steps.map((s, i) => `
+        ${i > 0 ? `<div class="cb-tl-line ${steps[i-1].state === 'done' ? 'done' : ''}"></div>` : ''}
+        <div class="cb-tl-step">
+          <div class="cb-tl-dot ${s.state}">${icon(s.state)}</div>
+          <div class="cb-tl-label">${s.label}</div>
+          <div class="cb-tl-sub">${s.sub}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="cb-tl-legend">
+      <span>🟡 Aguardando Liberação</span><span>🟢 Liberado</span><span>🔵 Transferido (não implementado)</span><span>✔ Conciliado (não implementado)</span>
+    </div>`;
+}
+
+let currentPaymentId = null;
+
+async function reprocessarAtual() {
+  if (!currentPaymentId) return;
+  const btn = document.getElementById('pagReprocessarBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reprocessando...';
+  const r = await DB.reprocessarPagamento(currentPaymentId);
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-sync"></i> Reprocessar';
+  if (r?.error) { alert('Erro ao reprocessar: ' + r.error); return; }
+  await openDetalhe(currentPaymentId);
+  loadPagamentos();
+}
+
 async function openDetalhe(paymentId) {
+  currentPaymentId = paymentId;
   const modal = document.getElementById('pagModal');
   const body = document.getElementById('pagModalBody');
   document.getElementById('pagModalTitle').textContent = `Pagamento ${paymentId}`;
@@ -311,6 +399,7 @@ async function openDetalhe(paymentId) {
   const dataHora = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
 
   body.innerHTML = `
+    ${buildTimeline(r)}
     <div style="margin-bottom:14px;font-size:13px;color:var(--text-muted)">
       <strong style="color:var(--text-main)">${escapeHtml(r.store_nickname) || '—'}</strong> ·
       Pedido <strong style="color:var(--text-main)">${escapeHtml(r.order_id) || '—'}</strong> ·
@@ -354,7 +443,7 @@ WS.on('_connected', () => {
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 
-loadLojas().then(() => { load(); loadPagamentos(); });
+loadLojas().then(() => { load(); loadPagamentos(); loadResumoLojas(); });
 </script>
 </body>
 </html>

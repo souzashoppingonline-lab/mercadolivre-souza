@@ -2825,6 +2825,35 @@ router.get('/items/:item_id/promotion', async (req, res) => {
 // Devolve granularidade diária; "hoje/amanhã/7 dias/30 dias" é agregação
 // no cliente sobre essa lista, não pré-calculado aqui — evita fixar um
 // formato de bucket antes de existir página consumindo isso de verdade.
+// Resumo por loja — total a receber (não liberado), pra não misturar tudo
+// numa conta só quando há mais de uma loja (pedido explícito do usuário).
+router.get('/conciliacao/resumo-lojas', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.id AS store_id, s.nickname,
+              COALESCE(SUM(p.net_received_amount), 0) AS valor_liquido,
+              COUNT(p.payment_id) AS qtd_pagamentos
+       FROM stores s
+       LEFT JOIN ml_payments p ON p.store_id = s.id AND p.released IS DISTINCT FROM 'yes'
+       WHERE s.marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR s.marketplace_id IS NULL
+       GROUP BY s.id, s.nickname
+       HAVING COUNT(p.payment_id) > 0
+       ORDER BY valor_liquido DESC`
+    );
+    res.json({
+      lojas: rows.map(r => ({
+        store_id: r.store_id,
+        nickname: r.nickname,
+        valor_liquido: Number(r.valor_liquido),
+        qtd_pagamentos: Number(r.qtd_pagamentos),
+      })),
+    });
+  } catch (e) {
+    console.error('[conciliacao/resumo-lojas] erro:', e.message);
+    res.status(500).json({ error: e.message, lojas: [] });
+  }
+});
+
 router.get('/conciliacao/agenda-recebimentos', async (req, res) => {
   try {
     const { store_id = '' } = req.query;
@@ -2933,7 +2962,9 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
 router.get('/conciliacao/pagamentos/:paymentId', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT p.*, o.buyer_nickname, o.title, o.total_amount AS order_total_amount, o.item_id, s.nickname AS store_nickname
+      `SELECT p.*, o.buyer_nickname, o.title, o.total_amount AS order_total_amount, o.item_id,
+              o.date_created AS order_date_created, o.status AS order_status, o.shipping_type,
+              s.nickname AS store_nickname
        FROM ml_payments p
        LEFT JOIN orders o ON o.ml_id = p.order_id
        LEFT JOIN stores s ON s.id = p.store_id
@@ -2944,6 +2975,42 @@ router.get('/conciliacao/pagamentos/:paymentId', async (req, res) => {
     res.json(rows[0]);
   } catch (e) {
     console.error('[conciliacao/pagamentos/:id] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reprocessar sob demanda — ação pontual explícita (botão "🔄 Reprocessar" no
+// modal), não leitura de listagem, mesmo padrão já usado por "responder
+// pergunta" nesta rota (ver architecture.md regra 2). Refaz a mesma consulta
+// e o mesmo UPDATE que syncPaymentReleases faz em lote, só que sob demanda
+// pra 1 pagamento — útil quando o usuário não quer esperar o job das 05:15.
+router.post('/conciliacao/pagamentos/:paymentId/reprocessar', async (req, res) => {
+  try {
+    const { rows: existing } = await pool.query(`SELECT store_id FROM ml_payments WHERE payment_id=$1`, [req.params.paymentId]);
+    if (!existing.length) return res.status(404).json({ error: 'pagamento não encontrado' });
+
+    const ml = require('../mlClient');
+    const payment = await ml.getPayment(req.params.paymentId, existing[0].store_id);
+    const c = payment?.collection || payment;
+    await pool.query(
+      `UPDATE ml_payments SET
+         status=$2, status_detail=$3, net_received_amount=$4, money_release_date=$5,
+         released=$6, marketplace_fee=$7, mercadopago_fee=$8, discount_fee=$9,
+         coupon_fee=$10, finance_fee=$11, amount_refunded=$12, shipping_cost=$13,
+         payment_method_id=$14, payment_type=$15, installments=$16, raw_data=$17, updated_at=now()
+       WHERE payment_id=$1`,
+      [
+        req.params.paymentId, c?.status || null, c?.status_detail || null,
+        c?.net_received_amount ?? null, c?.money_release_date || null, c?.released ?? null,
+        c?.marketplace_fee ?? null, c?.mercadopago_fee ?? null, c?.discount_fee ?? null,
+        c?.coupon_fee ?? null, c?.finance_fee ?? null, c?.amount_refunded ?? null,
+        c?.shipping_cost ?? null, c?.payment_method_id || null, c?.payment_type || null,
+        c?.installments ?? null, JSON.stringify(payment),
+      ]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[conciliacao/pagamentos/:id/reprocessar] erro:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

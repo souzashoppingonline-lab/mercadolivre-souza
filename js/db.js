@@ -292,4 +292,6 @@ const DB = {
   async getAgendaRecebimentos(params={}) { return this._get('/conciliacao/agenda-recebimentos', params); },
   async getConciliacaoPagamentos(params={}) { return this._get('/conciliacao/pagamentos', params); },
   async getConciliacaoPagamentoDetalhe(paymentId) { return this._get(`/conciliacao/pagamentos/${paymentId}`); },
+  async reprocessarPagamento(paymentId) { return this._post(`/conciliacao/pagamentos/${paymentId}/reprocessar`, {}); },
+  async getResumoLojasConciliacao() { return this._get('/conciliacao/resumo-lojas'); },
 };

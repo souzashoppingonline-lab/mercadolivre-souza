@@ -42,6 +42,13 @@ Orders API → order.payments[].id → GET /collections/:id → money_release_da
 - **Ordenação**: cabeçalhos de Status/Data da Venda/Data Liberação/Valor da Venda/Valor Liberado/Diferença são clicáveis (seta ▲/▼ indica coluna e direção ativa); clique de novo no mesmo cabeçalho inverte a direção. `CONCILIACAO_SORT_COLS` (`routes/api.js`) ganhou `diferenca`/`liberacao` além de `data`/`valor`/`liquido`/`status`.
 - **Alerta Telegram de divergência** (`checkConciliacaoDivergencias`, `worker.js`, 05:25 diário, tópico `tg_conciliacao`) — 2 tipos numa mensagem consolidada: diferença bruto/líquido anormal e liberação atrasada. Limiares em `business-rules.md`. Dedup via `ml_payments.alert_notified_at` (v32).
 
+## Timeline, Reprocessar, Cards por loja, filtros rápidos — implementados
+
+- **Timeline no modal**: 6 etapas (Pedido → Pagamento → Aprovado → Money Release → Transferência → Conciliado). As 4 primeiras usam dado real (`order_date_created`, `date_created` do pagamento, `status`, `released`/`money_release_date`); **Transferência e Conciliado ficam desabilitadas** ("Não implementado") — mesmos 2 gaps já documentados acima (sem fonte de dado de transferência bancária, sem lógica de conciliação automática ainda). Não fabricamos dado pra preencher essas etapas.
+- **Botão "Reprocessar"** no modal — `POST /conciliacao/pagamentos/:paymentId/reprocessar`, refaz a consulta a `/collections/:id` sob demanda (mesma lógica do job diário, mas para 1 pagamento, na hora) e recarrega o modal + a grid.
+- **Cards por loja** (`GET /conciliacao/resumo-lojas`) — só aparecem quando há 2+ lojas com pendência (evita redundância com o card "Total Pendente" quando só há 1 loja ativa).
+- **Filtros rápidos de data** (Hoje/Ontem/7 dias/30 dias/90 dias) — botões que preenchem `dateFrom`/`dateTo` e recarregam a grid, complementam os inputs de data manuais que já existiam.
+
 ## `pages/conciliacao-bancaria.html` — implementada (Agenda + grid de pagamentos)
 
 Página única (seção Financeiro do menu) com duas partes:

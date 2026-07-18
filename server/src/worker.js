@@ -1592,7 +1592,7 @@ async function syncShippingStatus() {
             }
           }
         }
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 4000));
       }
       console.log(`[sync-shipping-status] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length} pendentes)`);
       return { updated, errors, total: pending.length };

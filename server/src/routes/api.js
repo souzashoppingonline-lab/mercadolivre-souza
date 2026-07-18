@@ -3147,8 +3147,8 @@ router.get('/conciliacao/auto', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT p.payment_id, p.order_id, p.store_id, s.nickname AS store_nickname,
               o.title, p.net_received_amount AS esperado, p.released, p.money_release_date,
-              COALESCE(SUM(m.net_credit_amount), 0) AS recebido,
-              COALESCE(SUM(m.net_debit_amount), 0) AS debitado
+              COALESCE(SUM(m.net_credit_amount) FILTER (WHERE m.description = 'Payment'), 0) AS recebido,
+              COALESCE(SUM(m.net_debit_amount) FILTER (WHERE m.description IN ('Refund','Mediation','reserve_for_dispute','Cancel of mediation')), 0) AS debitado
        FROM ml_payments p
        LEFT JOIN mp_account_movements m
          ON m.source_id = p.payment_id::text AND m.store_id = p.store_id

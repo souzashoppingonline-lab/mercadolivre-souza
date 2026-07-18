@@ -207,6 +207,7 @@
       <!-- ABA: Conciliação automática -->
       <div class="cb-tab-panel" id="tab-auto">
         <p class="cb-note">Bate o <b>líquido previsto</b> (Mercado Livre) contra o que <b>realmente entrou na conta</b> (extrato MP). Tolerância de R$ 0,50.</p>
+        <div id="autoHint" style="display:none;background:rgba(74,144,255,.1);border:1px solid rgba(74,144,255,.35);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text-muted)"></div>
         <div class="cb-vsum" id="autoResumo"></div>
         <div class="filters-row" style="margin-bottom:12px">
           <select class="filter-select" id="autoVerdict" onchange="loadAuto()">
@@ -882,6 +883,15 @@ async function loadAuto() {
   const data = await DB.getConciliacaoAuto({ store_id, verdict }) || { pagamentos: [], resumo: {} };
   if (data.error) { document.getElementById('autoTable').innerHTML = `<tr><td colspan="6" style="color:var(--red)">${data.error}</td></tr>`; return; }
   const R = data.resumo || {};
+  const hint = document.getElementById('autoHint');
+  const conciliados = Number(R.conciliado || 0);
+  const total = Number(data.total || 0);
+  if (total > 0 && conciliados === 0) {
+    hint.style.display = 'block';
+    hint.innerHTML = '💡 Tudo pendente é esperado no começo: o Mercado Livre libera o dinheiro <b>~28 dias após a venda</b>, e os Relatórios de Liberação só listam o que <b>já caiu</b>. Conforme as vendas atingem a data de liberação e os relatórios novos são importados, os "Conciliado" aparecem sozinhos. Nada aqui está quebrado.';
+  } else {
+    hint.style.display = 'none';
+  }
   document.getElementById('autoResumo').innerHTML = `
     <div class="cb-vcard"><div class="n" style="color:var(--green)">${fmtN(R.conciliado||0)}</div><div class="l">✓ Conciliado</div></div>
     <div class="cb-vcard"><div class="n" style="color:var(--red)">${fmtN(R.diferenca||0)}</div><div class="l">≠ Diferença</div></div>

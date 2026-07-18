@@ -3156,7 +3156,7 @@ router.get('/conciliacao/auto', async (req, res) => {
        LEFT JOIN stores s ON s.id = p.store_id
        WHERE ($1 = '' OR p.store_id = $1::bigint)
        GROUP BY p.payment_id, p.order_id, p.store_id, s.nickname, o.title,
-                p.net_received_amount, p.released, p.money_release_date
+                p.net_received_amount, p.released, p.money_release_date, p.date_approved
        ORDER BY p.date_approved DESC NULLS LAST
        LIMIT 2000`,
       [store_id]

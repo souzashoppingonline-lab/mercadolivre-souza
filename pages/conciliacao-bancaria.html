@@ -10,6 +10,14 @@
   <script>window.PAGE_TITLE='Conciliação Bancária'; window.ACTIVE_NAV='conciliacao-bancaria.html';</script>
   <style>
     .cb-note { font-size:12px; color:var(--text-muted); margin:-8px 0 16px; }
+    #pagTable tr { cursor:pointer; }
+    #pagTable tr:hover { background:rgba(255,255,255,.03); }
+    .cb-modal-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; }
+    .cb-modal-stat { background:var(--surface,#1a1a1a); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+    .cb-modal-stat .lbl { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+    .cb-modal-stat .val { font-size:16px; font-weight:700; }
+    .cb-modal-section-title { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin:18px 0 8px; }
+    .cb-modal-json { background:#111; border:1px solid var(--border); border-radius:8px; padding:12px; font-family:monospace; font-size:11px; white-space:pre-wrap; word-break:break-all; max-height:260px; overflow-y:auto; color:#9cdcfe; }
   </style>
 </head>
 <body>
@@ -85,6 +93,19 @@
     </div>
   </main>
 </div>
+
+<div id="pagModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.7);backdrop-filter:blur(3px);overflow-y:auto" onclick="if(event.target===this)closeDetalhe()">
+  <div style="max-width:640px;margin:40px auto;background:#1a1a1a;border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.8)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)">
+      <h3 id="pagModalTitle" style="margin:0;font-size:16px">Detalhe do Pagamento</h3>
+      <button onclick="closeDetalhe()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:2px 6px">✕</button>
+    </div>
+    <div id="pagModalBody" style="padding:20px 22px">
+      <div class="empty-state" style="padding:40px"><div class="spinner" style="margin:auto"></div></div>
+    </div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/tableExport.js"></script>
 <script src="../js/websocket.js"></script>
@@ -105,6 +126,10 @@ function addDaysStr(baseStr, days) {
 function fmtDataBr(dataStr) {
   const [y,m,d] = dataStr.split('-');
   return `${d}/${m}/${y}`;
+}
+function escapeHtml(v) {
+  if (v == null) return '';
+  return String(v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 
 async function loadLojas() {
@@ -199,10 +224,10 @@ async function loadPagamentos() {
 
   document.getElementById('pagCount').textContent = `${fmtN(pagState.total)} pagamento(s)`;
   document.getElementById('pagTable').innerHTML = rows.length
-    ? rows.map(r => `<tr>
-        <td>${r.store_nickname || '—'}</td>
-        <td>${r.order_id || '—'}</td>
-        <td>${r.buyer_nickname || '—'}</td>
+    ? rows.map(r => `<tr onclick="openDetalhe('${r.payment_id}')">
+        <td>${escapeHtml(r.store_nickname) || '—'}</td>
+        <td>${escapeHtml(r.order_id) || '—'}</td>
+        <td>${escapeHtml(r.buyer_nickname) || '—'}</td>
         <td>${statusBadge(r.status)}</td>
         <td>${r.date_approved ? new Date(r.date_approved).toLocaleString('pt-BR') : '—'}</td>
         <td>${liberacaoCell(r)}</td>
@@ -238,6 +263,65 @@ document.getElementById('searchPag').addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(resetAndReload, 400);
 });
+
+function closeDetalhe() {
+  document.getElementById('pagModal').style.display = 'none';
+}
+
+async function openDetalhe(paymentId) {
+  const modal = document.getElementById('pagModal');
+  const body = document.getElementById('pagModalBody');
+  document.getElementById('pagModalTitle').textContent = `Pagamento ${paymentId}`;
+  body.innerHTML = '<div class="empty-state" style="padding:40px"><div class="spinner" style="margin:auto"></div></div>';
+  modal.style.display = 'flex';
+
+  const r = await DB.getConciliacaoPagamentoDetalhe(paymentId);
+  if (!r || r.error) {
+    body.innerHTML = `<div style="color:var(--red);text-align:center;padding:24px">${r?.error || 'Erro ao carregar'}</div>`;
+    return;
+  }
+
+  const diferenca = Number(r.transaction_amount || 0) - Number(r.net_received_amount ?? r.transaction_amount ?? 0);
+  const dataHora = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
+
+  body.innerHTML = `
+    <div style="margin-bottom:14px;font-size:13px;color:var(--text-muted)">
+      <strong style="color:var(--text-main)">${escapeHtml(r.store_nickname) || '—'}</strong> ·
+      Pedido <strong style="color:var(--text-main)">${escapeHtml(r.order_id) || '—'}</strong> ·
+      Comprador <strong style="color:var(--text-main)">${escapeHtml(r.buyer_nickname) || '—'}</strong><br>
+      ${escapeHtml(r.title) || ''}
+    </div>
+
+    <div class="cb-modal-section-title">Resumo Financeiro</div>
+    <div class="cb-modal-grid">
+      <div class="cb-modal-stat"><div class="lbl">Valor da Venda</div><div class="val">${fmt(r.transaction_amount)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Valor Liberado</div><div class="val" style="color:var(--primary)">${fmt(r.net_received_amount)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Diferença (taxa da venda)</div><div class="val" style="color:var(--red)">${fmt(diferenca)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Frete</div><div class="val">${fmt(r.shipping_cost)}</div></div>
+    </div>
+
+    <div class="cb-modal-section-title">Detalhamento de Taxas (campos MP)</div>
+    <div class="cb-modal-grid">
+      <div class="cb-modal-stat"><div class="lbl">Tarifa Mercado Pago</div><div class="val">${fmt(r.mercadopago_fee)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Tarifa Marketplace</div><div class="val">${fmt(r.marketplace_fee)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Desconto</div><div class="val">${fmt(r.discount_fee)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Cupom</div><div class="val">${fmt(r.coupon_fee)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Financiamento</div><div class="val">${fmt(r.finance_fee)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Estornado</div><div class="val">${fmt(r.amount_refunded)}</div></div>
+    </div>
+
+    <div class="cb-modal-section-title">Pagamento</div>
+    <div class="cb-modal-grid">
+      <div class="cb-modal-stat"><div class="lbl">Status</div><div class="val">${statusBadge(r.status)} <span style="font-size:11px;color:var(--text-muted)">${escapeHtml(r.status_detail) || ''}</span></div></div>
+      <div class="cb-modal-stat"><div class="lbl">Forma de Pagamento</div><div class="val">${escapeHtml(r.payment_method_id) || '—'} ${r.installments > 1 ? `(${r.installments}x)` : ''}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Data da Venda</div><div class="val">${dataHora(r.date_approved)}</div></div>
+      <div class="cb-modal-stat"><div class="lbl">Data de Liberação</div><div class="val">${liberacaoCell(r)}</div></div>
+    </div>
+
+    <div class="cb-modal-section-title">JSON completo (auditoria)</div>
+    <div class="cb-modal-json">${escapeHtml(JSON.stringify(r.raw_data, null, 2))}</div>
+  `;
+}
 
 WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');

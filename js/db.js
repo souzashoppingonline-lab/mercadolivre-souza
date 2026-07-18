@@ -291,4 +291,5 @@ const DB = {
   // ── Conciliação Bancária ──
   async getAgendaRecebimentos(params={}) { return this._get('/conciliacao/agenda-recebimentos', params); },
   async getConciliacaoPagamentos(params={}) { return this._get('/conciliacao/pagamentos', params); },
+  async getConciliacaoPagamentoDetalhe(paymentId) { return this._get(`/conciliacao/pagamentos/${paymentId}`); },
 };

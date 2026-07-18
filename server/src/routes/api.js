@@ -2926,4 +2926,24 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
   }
 });
 
+// Detalhe de 1 pagamento (modal da grid) — todo campo já sincronizado,
+// incluindo raw_data (payload bruto de /collections/:id) pra auditoria.
+router.get('/conciliacao/pagamentos/:paymentId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.*, o.buyer_nickname, o.title, o.total_amount AS order_total_amount, o.item_id, s.nickname AS store_nickname
+       FROM ml_payments p
+       LEFT JOIN orders o ON o.ml_id = p.order_id
+       LEFT JOIN stores s ON s.id = p.store_id
+       WHERE p.payment_id = $1`,
+      [req.params.paymentId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'pagamento não encontrado' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[conciliacao/pagamentos/:id] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

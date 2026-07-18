@@ -175,6 +175,7 @@
       <div class="cb-tab-panel" id="tab-extrato">
         <p class="cb-note">Cada crédito e débito da conta Mercado Pago (liberações, saques, estornos, disputas), do Relatório de Liberações. Fonte: <code>mp_account_movements</code>.</p>
         <div class="filters-row" style="margin-bottom:12px">
+          <select class="filter-select cb-loja-filter" id="extLoja"><option value="">Todas as lojas</option></select>
           <select class="filter-select" id="extTipo">
             <option value="">Todos os movimentos</option>
             <option value="Payment">Liberação de venda</option>
@@ -187,8 +188,8 @@
         </div>
         <div class="card"><div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Data / hora</th><th>Movimento</th><th>Pedido</th><th>Origem</th><th style="text-align:right">Crédito</th><th style="text-align:right">Débito</th><th style="text-align:right">Saldo</th></tr></thead>
-            <tbody id="extTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+            <thead><tr><th>Loja</th><th>Data / hora</th><th>Movimento</th><th>Pedido</th><th>Origem</th><th style="text-align:right">Crédito</th><th style="text-align:right">Débito</th><th style="text-align:right">Saldo</th></tr></thead>
+            <tbody id="extTable"><tr><td colspan="8" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px">
@@ -201,6 +202,9 @@
       <!-- ABA: Saques bancários -->
       <div class="cb-tab-panel" id="tab-saques">
         <p class="cb-note">Cada transferência do saldo Mercado Pago pra conta bancária (movimento <code>Cash withdrawal</code>). É a etapa "Transferência" da timeline.</p>
+        <div class="filters-row" style="margin-bottom:12px">
+          <select class="filter-select cb-loja-filter" id="saquesLoja" onchange="loadSaques()"><option value="">Todas as lojas</option></select>
+        </div>
         <div id="saquesList"><div class="empty-state" style="padding:30px">Carregando...</div></div>
       </div>
 
@@ -210,6 +214,7 @@
         <div id="autoHint" style="display:none;background:rgba(74,144,255,.1);border:1px solid rgba(74,144,255,.35);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text-muted)"></div>
         <div class="cb-vsum" id="autoResumo"></div>
         <div class="filters-row" style="margin-bottom:12px">
+          <select class="filter-select cb-loja-filter" id="autoLoja" onchange="loadAuto()"><option value="">Todas as lojas</option></select>
           <select class="filter-select" id="autoVerdict" onchange="loadAuto()">
             <option value="">Todos os veredictos</option>
             <option value="conciliado">✓ Conciliado</option>
@@ -274,12 +279,16 @@ function escapeHtml(v) {
 async function loadLojas() {
   const data = await DB.getLojas();
   const stores = data?.stores || [];
-  const sel = document.getElementById('lojaFilter');
-  stores.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.id;
-    o.textContent = s.nickname;
-    sel.appendChild(o);
+  // Preenche o filtro do topo (grid/agenda) e os filtros por-aba (fase 2)
+  const selects = [document.getElementById('lojaFilter'), ...document.querySelectorAll('.cb-loja-filter')];
+  selects.forEach(sel => {
+    if (!sel) return;
+    stores.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = s.nickname;
+      sel.appendChild(o);
+    });
   });
 }
 
@@ -833,15 +842,16 @@ function setTab(tab) {
 }
 
 async function loadExtrato() {
-  const store_id = document.getElementById('lojaFilter').value;
+  const store_id = document.getElementById('extLoja').value;
   const tipo = document.getElementById('extTipo').value;
   const q = document.getElementById('extSearch').value.trim();
-  document.getElementById('extTable').innerHTML = '<tr><td colspan="7" class="empty-state">Carregando...</td></tr>';
+  document.getElementById('extTable').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando...</td></tr>';
   const data = await DB.getConciliacaoExtrato({ store_id, tipo, q, page: extState.page, limit: extState.limit }) || { movimentos: [], total: 0 };
-  if (data.error) { document.getElementById('extTable').innerHTML = `<tr><td colspan="7" style="color:var(--red)">${data.error}</td></tr>`; return; }
+  if (data.error) { document.getElementById('extTable').innerHTML = `<tr><td colspan="8" style="color:var(--red)">${data.error}</td></tr>`; return; }
   extState.total = data.total || 0;
   const rows = data.movimentos || [];
   document.getElementById('extTable').innerHTML = rows.length ? rows.map(m => `<tr>
+      <td style="font-weight:650">${escapeHtml(m.store_nickname) || '—'}</td>
       <td>${m.release_date ? new Date(m.release_date).toLocaleString('pt-BR') : '—'}</td>
       <td>${extTipoBadge(m.description)}</td>
       <td>${escapeHtml(m.order_id) || '—'}</td>
@@ -849,7 +859,7 @@ async function loadExtrato() {
       <td style="text-align:right;color:${Number(m.net_credit_amount)>0?'var(--green)':'inherit'}">${Number(m.net_credit_amount)>0?fmt(m.net_credit_amount):'—'}</td>
       <td style="text-align:right;color:${Number(m.net_debit_amount)>0?'var(--red)':'inherit'}">${Number(m.net_debit_amount)>0?fmt(m.net_debit_amount):'—'}</td>
       <td style="text-align:right">${m.balance!=null?fmt(m.balance):'—'}</td>
-    </tr>`).join('') : '<tr><td colspan="7" class="empty-state">Nenhum movimento (o relatório do Mercado Pago ainda não foi importado — ver Sincronizar)</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="8" class="empty-state">Nenhum movimento (o relatório do Mercado Pago ainda não foi importado — ver Sincronizar)</td></tr>';
   const totalPages = Math.max(1, Math.ceil(extState.total / extState.limit));
   document.getElementById('extInfo').textContent = `${fmtN(extState.total)} movimento(s) · Pág ${extState.page}/${totalPages}`;
   document.getElementById('extPrev').disabled = extState.page <= 1;
@@ -857,10 +867,11 @@ async function loadExtrato() {
 }
 function changeExtPage(d) { extState.page = Math.max(1, extState.page + d); loadExtrato(); }
 document.getElementById('extTipo').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
+document.getElementById('extLoja').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
 let extTimer; document.getElementById('extSearch').addEventListener('input', () => { clearTimeout(extTimer); extTimer = setTimeout(() => { extState.page = 1; loadExtrato(); }, 400); });
 
 async function loadSaques() {
-  const store_id = document.getElementById('lojaFilter').value;
+  const store_id = document.getElementById('saquesLoja').value;
   const el = document.getElementById('saquesList');
   el.innerHTML = '<div class="empty-state" style="padding:30px">Carregando...</div>';
   const data = await DB.getConciliacaoSaques({ store_id }) || { saques: [] };
@@ -877,7 +888,7 @@ async function loadSaques() {
 }
 
 async function loadAuto() {
-  const store_id = document.getElementById('lojaFilter').value;
+  const store_id = document.getElementById('autoLoja').value;
   const verdict = document.getElementById('autoVerdict').value;
   document.getElementById('autoTable').innerHTML = '<tr><td colspan="6" class="empty-state">Carregando...</td></tr>';
   const data = await DB.getConciliacaoAuto({ store_id, verdict }) || { pagamentos: [], resumo: {} };

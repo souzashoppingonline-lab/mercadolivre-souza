@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -287,6 +287,42 @@ changed_at TIMESTAMPTZ, raw_data JSONB
 
 ### `ml_turbo_sales` — fonte financeira oficial (planilha, não webhook)
 25 colunas — ver `finance.md` para o significado de cada campo e o mapeamento de aliases da planilha. `sale_id` é `UNIQUE` (chave de upsert).
+
+### `ml_payments` — v29/v30: pagamento por pedido (Conciliação Bancária, Fase 1)
+```
+id BIGSERIAL PK
+payment_id BIGINT UNIQUE NOT NULL
+order_id TEXT FK orders(ml_id)
+store_id BIGINT FK stores
+status, status_detail TEXT
+transaction_amount NUMERIC
+date_created, date_approved TIMESTAMPTZ
+net_received_amount NUMERIC    -- v30: valor líquido (já com taxas descontadas)
+money_release_date TIMESTAMPTZ -- v30: quando o Mercado Pago libera o dinheiro
+released TEXT                  -- v30: valor cru da API ("no"/"yes")
+marketplace_fee, mercadopago_fee, discount_fee, coupon_fee, finance_fee NUMERIC  -- v30
+amount_refunded NUMERIC        -- v30
+raw_data JSONB           -- resposta completa de /collections/:id
+created_at, updated_at TIMESTAMPTZ
+```
+Gravada por `handlePayment` (`worker.js`) a cada webhook `payments` — antes esse handler só usava `/collections/:id` pra achar o `order_id` e descartava o resto. **Só dados novos a partir do deploy da v29, sem backfill de pagamentos antigos** (pedido explícito do usuário). **Os campos de liberação/taxa (v30) foram adicionados depois de confirmar ao vivo que `/collections/:id` já retorna `money_release_date`/`net_received_amount`/`released` — sem precisar de credencial Mercado Pago separada**, correção de uma suposição inicial errada (ver `decisions.md`). Job diário `sync-payment-releases` (`workers.md`) reconsulta pagamentos com `released != 'yes'`, já que essa transição não necessariamente gera um novo webhook do ML. Ver `conciliacao-bancaria.md`.
+
+### `ml_billing_charges` — v29: cobrança oficial de tarifa ML/MP (Conciliação Bancária, Fase 1)
+```
+id BIGSERIAL PK
+detail_id BIGINT UNIQUE NOT NULL
+store_id BIGINT FK stores
+billing_group TEXT       -- 'ML' | 'MP'
+period_key TEXT           -- ex: '2026-07-01'
+transaction_detail TEXT    -- descrição em português da API (ex: "Tarifa por campanha de publicidade")
+detail_type TEXT            -- ex: 'CHARGE'
+detail_sub_type TEXT         -- código curto (ex: 'PADS', 'CFWA')
+detail_amount NUMERIC
+creation_date_time TIMESTAMPTZ
+raw_data JSONB
+created_at TIMESTAMPTZ
+```
+Populada pelo job `syncBillingCharges` (`worker.js`, a cada 30min) via `GET /billing/integration/periods/key/{key}/group/{group}/details` — só o período em aberto atual, nunca período fechado/histórico. Sem tabela de cursor: relê a 1ª página a cada execução e usa `ON CONFLICT (detail_id) DO NOTHING` (idempotente) — decisão consciente de não depender da semântica não confirmada do cursor `last_id` dessa API. Sem coluna `order_id`: os campos `sales_info`/`shipping_info` que ligariam uma cobrança a uma venda específica vieram `null` em toda amostra observada até agora. Ver `conciliacao-bancaria.md`/`decisions.md`.
 
 ### `app_config` — configuração key/value (Telegram, etc.)
 ```

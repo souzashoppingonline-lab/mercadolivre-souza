@@ -164,7 +164,75 @@ async function handlePayment({ resource, storeId }) {
     const payment = await ml.getPayment(paymentId, storeId);
     const orderId = payment?.collection?.order?.id || payment?.order?.id || payment?.order_id;
     if (!orderId) { console.warn(`[payments] payment=${paymentId} sem order_id`); return; }
+    // handleOrder primeiro — garante que orders.ml_id já existe antes do INSERT
+    // abaixo (ml_payments.order_id tem FK pra orders.ml_id).
     await handleOrder({ resource: `/orders/${orderId}`, storeId });
+
+    // Conciliação Bancária (Fase 1, só dados novos a partir de agora — ver
+    // decisions.md): persiste o retorno de /collections/:id, que antes era
+    // descartado depois de extrair o order_id. Confirmado ao vivo (18/07/2026)
+    // que esse endpoint já traz money_release_date/net_received_amount/released
+    // e detalhamento de taxas, sem precisar de credencial Mercado Pago separada
+    // — ver decisions.md. Extração defensiva (múltiplos caminhos possíveis)
+    // porque o formato exato de /collections/:id não é documentado publicamente.
+    // raw_data grava a resposta completa, então nada se perde mesmo se algum
+    // campo vier de um caminho diferente do esperado.
+    const c = payment?.collection || payment;
+    await pool.query(
+      `INSERT INTO ml_payments (
+         payment_id, order_id, store_id, status, status_detail, transaction_amount,
+         date_created, date_approved, net_received_amount, money_release_date, released,
+         marketplace_fee, mercadopago_fee, discount_fee, coupon_fee, finance_fee,
+         amount_refunded, shipping_cost, payment_method_id, payment_type, installments,
+         raw_data, updated_at
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now())
+       ON CONFLICT (payment_id) DO UPDATE SET
+         order_id = EXCLUDED.order_id,
+         status = EXCLUDED.status,
+         status_detail = EXCLUDED.status_detail,
+         transaction_amount = EXCLUDED.transaction_amount,
+         date_approved = EXCLUDED.date_approved,
+         net_received_amount = EXCLUDED.net_received_amount,
+         money_release_date = EXCLUDED.money_release_date,
+         released = EXCLUDED.released,
+         marketplace_fee = EXCLUDED.marketplace_fee,
+         mercadopago_fee = EXCLUDED.mercadopago_fee,
+         discount_fee = EXCLUDED.discount_fee,
+         coupon_fee = EXCLUDED.coupon_fee,
+         finance_fee = EXCLUDED.finance_fee,
+         amount_refunded = EXCLUDED.amount_refunded,
+         shipping_cost = EXCLUDED.shipping_cost,
+         payment_method_id = EXCLUDED.payment_method_id,
+         payment_type = EXCLUDED.payment_type,
+         installments = EXCLUDED.installments,
+         raw_data = EXCLUDED.raw_data,
+         updated_at = now()`,
+      [
+        c?.id || paymentId,
+        String(orderId),
+        storeId,
+        c?.status || null,
+        c?.status_detail || null,
+        c?.transaction_amount || null,
+        c?.date_created || null,
+        c?.date_approved || null,
+        c?.net_received_amount ?? null,
+        c?.money_release_date || null,
+        c?.released ?? null,
+        c?.marketplace_fee ?? null,
+        c?.mercadopago_fee ?? null,
+        c?.discount_fee ?? null,
+        c?.coupon_fee ?? null,
+        c?.finance_fee ?? null,
+        c?.amount_refunded ?? null,
+        c?.shipping_cost ?? null,
+        c?.payment_method_id || null,
+        c?.payment_type || null,
+        c?.installments ?? null,
+        JSON.stringify(payment),
+      ]
+    ).catch(e => console.warn(`[payments] ml_payments insert falhou payment=${paymentId}: ${e.message}`));
   } catch(e) {
     console.warn(`[payments] payment=${paymentId}: ${e.message}`);
   }
@@ -1387,6 +1455,65 @@ async function syncPrecos() {
   }
 }
 
+// ── Conciliação Bancária: reconsulta pagamentos ainda não liberados ────────
+// O webhook `payments` só dispara em eventos de pagamento (aprovação, etc.) —
+// a liberação (`money_release_date`) acontece semanas depois (~28 dias
+// observado ao vivo) dentro do Mercado Pago, sem gerar necessariamente um
+// novo webhook do Mercado Livre. Sem isso, `ml_payments.released` ficaria
+// travado em 'no' pra sempre mesmo depois do dinheiro ser liberado de
+// verdade. Roda 1x/dia (cadência baixa é suficiente — não é evento de
+// minutos) e reconsulta só os pagamentos ainda não liberados, priorizando
+// os com `money_release_date` mais próxima. Ver .claude/decisions.md.
+let isSyncingPaymentReleases = false;
+
+async function syncPaymentReleases() {
+  if (isSyncingPaymentReleases) { console.warn('[sync-payment-releases] já em execução — ignorando'); return; }
+  isSyncingPaymentReleases = true;
+  console.log('[sync-payment-releases] iniciando reconsulta de pagamentos não liberados...');
+  try {
+    return await recordSync('sync-payment-releases', '15 5 * * *', async () => {
+      const { rows: pending } = await pool.query(
+        `SELECT payment_id, store_id FROM ml_payments
+         WHERE released IS DISTINCT FROM 'yes'
+         ORDER BY money_release_date ASC NULLS LAST
+         LIMIT 200`
+      );
+      let updated = 0, errors = 0;
+      for (const p of pending) {
+        try {
+          const payment = await ml.getPayment(p.payment_id, p.store_id);
+          const c = payment?.collection || payment;
+          await pool.query(
+            `UPDATE ml_payments SET
+               status=$2, status_detail=$3, net_received_amount=$4, money_release_date=$5,
+               released=$6, marketplace_fee=$7, mercadopago_fee=$8, discount_fee=$9,
+               coupon_fee=$10, finance_fee=$11, amount_refunded=$12, raw_data=$13, updated_at=now()
+             WHERE payment_id=$1`,
+            [
+              p.payment_id, c?.status || null, c?.status_detail || null,
+              c?.net_received_amount ?? null, c?.money_release_date || null, c?.released ?? null,
+              c?.marketplace_fee ?? null, c?.mercadopago_fee ?? null, c?.discount_fee ?? null,
+              c?.coupon_fee ?? null, c?.finance_fee ?? null, c?.amount_refunded ?? null,
+              JSON.stringify(payment),
+            ]
+          );
+          updated++;
+        } catch (e) {
+          console.warn(`[sync-payment-releases] erro payment=${p.payment_id}: ${e.message}`);
+          errors++;
+          if (e.message?.includes('429')) break; // para a loja/lote se entrou em rate limit
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      console.log(`[sync-payment-releases] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length} pendentes)`);
+      return { updated, errors, total: pending.length };
+    });
+  } finally {
+    isSyncingPaymentReleases = false;
+    scheduleAt(5, 15, syncPaymentReleases, 'sync-payment-releases');
+  }
+}
+
 // ── Limpeza de vídeos de embalagem — retenção de 30 dias ────────────────
 async function cleanupPackingVideos() {
   try {
@@ -2343,6 +2470,49 @@ setInterval(() => reprocessSkipped().catch(e => console.error('[reprocess] inter
 // Primeira execução após 5 minutos do start
 setTimeout(() => reprocessSkipped().catch(e => console.error('[reprocess] initial erro:', e.message)), 5 * 60 * 1000);
 
+// Conciliação Bancária (Fase 1) — cobranças oficiais de tarifa (grupos ML e MP),
+// só do período em aberto atual, nunca varre período fechado/histórico (pedido
+// explícito do usuário de só sincronizar dado novo a partir de agora). Sempre
+// relê a 1ª página do período aberto e usa ON CONFLICT (detail_id) DO NOTHING —
+// idempotente, então não depende de nenhuma premissa sobre ordenação/semântica
+// do cursor last_id da API (não confirmada em nenhum teste ao vivo até agora).
+// Ver .claude/decisions.md e server/test-billing.js (script exploratório que
+// descobriu o endpoint/parâmetros).
+async function syncBillingCharges() {
+  const { rows: stores } = await pool.query(
+    `SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL`
+  );
+  for (const store of stores) {
+    for (const group of ['ML', 'MP']) {
+      try {
+        const periods = await ml.getBillingPeriods(group, store.id, 1);
+        const open = periods?.results?.find(p => p.period_status === 'OPEN') || periods?.results?.[0];
+        if (!open) continue;
+
+        const details = await ml.getBillingDetails(open.key, group, store.id, { limit: 150 });
+        let inserted = 0;
+        for (const row of details?.results || []) {
+          const ci = row.charge_info || {};
+          if (!ci.detail_id) continue;
+          const { rowCount } = await pool.query(
+            `INSERT INTO ml_billing_charges (detail_id, store_id, billing_group, period_key, transaction_detail, detail_type, detail_sub_type, detail_amount, creation_date_time, raw_data)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+             ON CONFLICT (detail_id) DO NOTHING`,
+            [ci.detail_id, store.id, group, open.key, ci.transaction_detail || null, ci.detail_type || null, ci.detail_sub_type || null, ci.detail_amount || null, ci.creation_date_time || null, JSON.stringify(row)]
+          );
+          if (rowCount) inserted++;
+        }
+        if (inserted) console.log(`[billing] ${store.nickname} group=${group} período=${open.key}: ${inserted} cobrança(s) nova(s)`);
+      } catch (e) {
+        console.warn(`[billing] ${store.nickname} group=${group}: ${e.message}`);
+      }
+      await new Promise(r => setTimeout(r, 2000)); // respiro entre chamadas
+    }
+  }
+}
+setInterval(() => syncBillingCharges().catch(e => console.error('[billing] interval erro:', e.message)), 30 * 60 * 1000);
+setTimeout(() => syncBillingCharges().catch(e => console.error('[billing] initial erro:', e.message)), 6 * 60 * 1000);
+
 scheduleAt(1,  0,  syncScores,   'sync-scores');
 scheduleAt(1, 30, syncParentItems, 'sync-parent-items');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
@@ -2352,6 +2522,7 @@ scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
 scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
+scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
@@ -2435,6 +2606,14 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'reprocessSkipped') {
       console.log('[worker] reprocessSkipped disparado manualmente');
       reprocessSkipped().catch(e => console.error('[worker] reprocessSkipped erro:', e.message));
+    }
+    if (cmd === 'syncBillingCharges') {
+      console.log('[worker] syncBillingCharges disparado manualmente');
+      syncBillingCharges().catch(e => console.error('[worker] syncBillingCharges erro:', e.message));
+    }
+    if (cmd === 'sync-payment-releases' || cmd === 'syncPaymentReleases') {
+      console.log('[worker] syncPaymentReleases disparado manualmente');
+      syncPaymentReleases().catch(e => console.error('[worker] syncPaymentReleases erro:', e.message));
     }
     if (cmd === 'syncTopVendas') {
       console.log('[worker] syncTopVendas disparado manualmente');

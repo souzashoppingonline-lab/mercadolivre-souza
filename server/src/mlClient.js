@@ -127,4 +127,11 @@ module.exports = {
   // de catálogo, não busca pública) e foram confirmados acessíveis ao vivo.
   getPriceToWin:       (id, storeId) => get(`/items/${id}/price_to_win?version=v2`, storeId),
   getCatalogCompetitors: (catalogProductId, storeId) => get(`/products/${catalogProductId}/items`, storeId),
+  // Conciliação Bancária — API de Faturamento (Relatórios de Faturamento).
+  // group: 'ML' | 'MP'. document_type é obrigatório em /monthly/periods
+  // (confirmado ao vivo: 422 MISSING_PARAMETER_ERROR sem ele) — só 'BILL'
+  // (fatura) interessa aqui, 'CREDIT_NOTE' não é usado. Ver .claude/decisions.md.
+  getBillingPeriods:   (group, storeId, limit = 12) => get(`/billing/integration/monthly/periods?group=${group}&document_type=BILL&limit=${limit}`, storeId),
+  getBillingDetails:   (periodKey, group, storeId, { lastId = 0, limit = 150 } = {}) =>
+    get(`/billing/integration/periods/key/${periodKey}/group/${group}/details?document_type=BILL&limit=${limit}${lastId ? `&last_id=${lastId}` : ''}`, storeId),
 };

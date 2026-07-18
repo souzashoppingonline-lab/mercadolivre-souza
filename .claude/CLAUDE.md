@@ -29,6 +29,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `workers.md` | Processo BullMQ: filas por loja, handlers por tópico webhook, jobs agendados, bot Telegram |
 | `mercadolivre.md` | OAuth, `mlClient.js`, webhooks recebidos do ML, rate limiting — única integração de marketplace implementada |
 | `task-engine.md` | Agenda Trello: `TaskEngine` (geração automática de cartões), regras implementadas/futuras, escopo atual (só ML) |
+| `conciliacao-bancaria.md` | Módulo financeiro Pedido→Pagamento→Liberação→Transferência→Conciliação, status por fase, API de Faturamento ML, o que depende do app Mercado Pago |
 | `embalagem.md` | Bipagem de etiqueta (FLEX/Mercado Envios), gravação de vídeo de conferência, retenção de 30 dias |
 | `auth-staff.md` | Login de acesso restrito para funcionários (papéis admin/embalagem), JWT em cookie, kill switch, mudança de infraestrutura no nginx |
 | `shopee.md` | Status (não implementado) e como uma integração Shopee deveria se encaixar na arquitetura |

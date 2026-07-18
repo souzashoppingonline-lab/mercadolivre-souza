@@ -16,7 +16,7 @@ const { refreshToken } = require('./routes/auth');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem } = require('./reports');
 const taskEngine = require('./taskEngine');
 const { computeSeoScore } = require('./seoScore');
-const { syncMpAccountReports } = require('./mpReports');
+const { syncMpAccountReports, backfillMpReports } = require('./mpReports');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -2785,6 +2785,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'mp-reports' || cmd === 'syncMpAccountReports') {
       console.log('[worker] syncMpAccountReports disparado manualmente');
       syncMpAccountReports().catch(e => console.error('[worker] syncMpAccountReports erro:', e.message));
+    }
+    if (cmd === 'mp-reports-backfill' || cmd === 'backfillMpReports') {
+      console.log('[worker] backfillMpReports (6 meses) disparado manualmente');
+      backfillMpReports(6).catch(e => console.error('[worker] backfillMpReports erro:', e.message));
     }
     if (cmd === 'syncTopVendas') {
       console.log('[worker] syncTopVendas disparado manualmente');

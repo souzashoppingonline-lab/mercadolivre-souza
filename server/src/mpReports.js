@@ -140,4 +140,46 @@ async function syncMpAccountReports() {
   return { inserted: totalInserted };
 }
 
-module.exports = { syncMpAccountReports, parseRow };
+// Backfill de histórico — gera janelas retroativas de ~58 dias (o release_report
+// aceita ranges grandes, confirmado ao vivo com 60 dias) pras contas que ainda
+// não têm histórico longo (ex: RICOPI/TOP_MIX, que não têm relatório agendado).
+// Pula quem já tem histórico até o período pedido (ex: a UNIFULL, que tem
+// relatório semanal agendado desde 2025). Cada janela é 1 POST de geração; o
+// download acontece nas execuções seguintes de syncMpAccountReports (o MP
+// processa async). Manual: `mp-reports-backfill` no worker:cmd.
+async function backfillMpReports(months = 6) {
+  const WINDOW_DAYS = 58;
+  const cutoff = new Date(Date.now() - months * 30 * 864e5);
+  const { rows: stores } = await pool.query(
+    `SELECT id, nickname FROM stores
+     WHERE (marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL)
+       AND access_token IS NOT NULL`
+  );
+  let solicitadas = 0;
+  for (const store of stores) {
+    const { rows } = await pool.query(
+      `SELECT MIN(release_date) AS oldest FROM mp_account_movements WHERE store_id = $1`, [store.id]
+    );
+    if (rows[0].oldest && new Date(rows[0].oldest) <= cutoff) {
+      console.log(`[mp-backfill] ${store.nickname}: já tem histórico até ${new Date(rows[0].oldest).toISOString().slice(0,10)} — pulando`);
+      continue;
+    }
+    const janelas = Math.ceil((months * 30) / WINDOW_DAYS);
+    for (let i = 0; i < janelas; i++) {
+      const end = new Date(Date.now() - i * WINDOW_DAYS * 864e5).toISOString().slice(0, 19) + 'Z';
+      const begin = new Date(Date.now() - (i + 1) * WINDOW_DAYS * 864e5).toISOString().slice(0, 19) + 'Z';
+      try {
+        await ml.createMpReport(REPORT_TYPE, store.id, begin, end);
+        solicitadas++;
+        console.log(`[mp-backfill] ${store.nickname}: janela ${begin.slice(0,10)}→${end.slice(0,10)} solicitada`);
+      } catch (e) {
+        console.warn(`[mp-backfill] ${store.nickname}: janela ${begin.slice(0,10)} falhou: ${e.message}`);
+      }
+      await new Promise((r) => setTimeout(r, 3000)); // espaça as gerações
+    }
+  }
+  console.log(`[mp-backfill] concluído: ${solicitadas} janela(s) solicitada(s). O download acontece nas próximas execuções de mp-reports.`);
+  return { solicitadas };
+}
+
+module.exports = { syncMpAccountReports, backfillMpReports, parseRow };

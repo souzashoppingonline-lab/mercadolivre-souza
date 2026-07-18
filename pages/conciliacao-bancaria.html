@@ -514,6 +514,58 @@ function buildTimeline(r) {
     </div>`;
 }
 
+// Painel de confirmações — cruza os sinais que provam que o dinheiro daquela
+// venda entrou/permaneceu na conta. Cada linha é 1 checagem independente.
+function confRow(icon, label, detail) {
+  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+    <span style="font-size:15px;flex-shrink:0;line-height:1.4">${icon}</span>
+    <div><div style="font-weight:600;font-size:13px">${label}</div>${detail ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px">${detail}</div>` : ''}</div>
+  </div>`;
+}
+function buildConfirmacoes(r) {
+  const raw = r.raw_data || {};
+  const rows = [];
+
+  // 1. Pagamento creditado (status_detail = accredited)
+  if (r.status === 'approved' && r.status_detail === 'accredited') {
+    rows.push(confRow('✅', 'Pagamento creditado', '<code>status_detail = accredited</code> — confirmado/creditado pelo Mercado Pago, não só aprovado.'));
+  } else if (r.status === 'approved') {
+    rows.push(confRow('⚠️', 'Aprovado, mas não confirmado como creditado', '<code>status_detail = ' + (escapeHtml(r.status_detail) || '—') + '</code>'));
+  } else {
+    rows.push(confRow('❌', 'Pagamento não aprovado', statusBadge(r.status) + ' ' + (escapeHtml(r.status_detail) || '')));
+  }
+
+  // 2. Dinheiro liberado (released) + net_received_amount + money_release_status
+  const mrs = raw.money_release_status ? ` · <code>money_release_status: ${escapeHtml(raw.money_release_status)}</code>` : '';
+  if (r.released === 'yes') {
+    rows.push(confRow('✅', 'Dinheiro liberado (virou saldo)', `${fmt(r.net_received_amount)} líquido${mrs}`));
+  } else {
+    const prev = r.money_release_date ? `Previsto: ${new Date(r.money_release_date).toLocaleString('pt-BR')}` : 'Sem data prevista';
+    const venceu = r.money_release_date && new Date(r.money_release_date) < new Date();
+    rows.push(confRow(venceu ? '⚠️' : '⏳', 'A liberar' + (venceu ? ' (previsão já passou)' : ''), `${prev}${venceu ? ' — reprocessar pra confirmar se já caiu' : ''}${mrs}`));
+  }
+
+  // 7. Estorno / chargeback — garante que o que caiu não voltou atrás
+  const refunded = Number(r.amount_refunded || 0);
+  const temRefunds = Array.isArray(raw.refunds) && raw.refunds.length > 0;
+  const chargeback = r.status === 'charged_back' || r.status === 'refunded';
+  if (refunded > 0 || temRefunds || chargeback) {
+    const det = [
+      refunded > 0 ? `${fmt(refunded)} estornado` : '',
+      temRefunds ? `${raw.refunds.length} refund(s) no payload` : '',
+      chargeback ? `status <code>${escapeHtml(r.status)}</code>` : '',
+    ].filter(Boolean).join(' · ');
+    rows.push(confRow('⚠️', 'Estorno / chargeback detectado', det + ' — o valor pode ter voltado atrás.'));
+  } else {
+    rows.push(confRow('✅', 'Sem estorno / chargeback', 'Nenhum estorno registrado neste pagamento.'));
+  }
+
+  // 6. Transferência bancária (saque pro banco) — sem fonte de dado hoje
+  rows.push(confRow('—', 'Transferência bancária (saque pro banco)', 'Sem fonte de dados ainda — depende da API do Mercado Pago (extrato/saques da carteira). Ver <code>.claude/conciliacao-bancaria.md</code>.'));
+
+  return `<div class="cb-modal-section-title">Confirmações de recebimento</div><div style="margin-bottom:8px">${rows.join('')}</div>`;
+}
+
 // Reprocessa uma venda direto da linha da grid (botão da coluna Ações), sem
 // abrir o modal. Mesma rota do botão do modal — atualiza pagamento + entrega
 // só dessa venda.
@@ -578,6 +630,8 @@ async function openDetalhe(paymentId, scrollToJson) {
       Comprador <strong style="color:var(--text-main)">${escapeHtml(r.buyer_nickname) || '—'}</strong><br>
       ${escapeHtml(r.title) || ''}
     </div>
+
+    ${buildConfirmacoes(r)}
 
     <div class="cb-modal-section-title">Resumo Financeiro</div>
     <div class="cb-modal-grid">

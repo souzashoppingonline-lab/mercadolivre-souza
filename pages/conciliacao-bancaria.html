@@ -32,6 +32,9 @@
     .cb-tl-line { flex:0 0 16px; height:2px; background:var(--border); margin-top:12px; }
     .cb-tl-line.done { background:var(--green); }
     .cb-tl-legend { font-size:10px; color:var(--text-muted); display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+    .cb-row-icon-btn { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:4px 6px; }
+    .cb-row-icon-btn:hover { color:var(--primary); }
+    .cb-entrega-sub { font-size:10px; color:var(--text-muted); margin-top:2px; }
   </style>
 </head>
 <body>
@@ -109,15 +112,18 @@
           <table class="data-table">
             <thead><tr>
               <th>Loja</th><th>Pedido</th><th>Comprador</th>
-              <th class="sortable" onclick="setSort('status')">Status<span id="arrow-status"></span></th>
-              <th class="sortable" onclick="setSort('entrega')">Entrega<span id="arrow-entrega"></span></th>
               <th class="sortable" onclick="setSort('data')">Data da Venda<span id="arrow-data"></span></th>
+              <th class="sortable" onclick="setSort('entrega')">Entrega<span id="arrow-entrega"></span></th>
               <th class="sortable" onclick="setSort('liberacao')">Data Liberação<span id="arrow-liberacao"></span></th>
-              <th class="sortable" onclick="setSort('valor')">Valor da Venda<span id="arrow-valor"></span></th>
-              <th class="sortable" onclick="setSort('liquido')">Valor Liberado<span id="arrow-liquido"></span></th>
+              <th class="sortable" onclick="setSort('valor')">Valor Venda<span id="arrow-valor"></span></th>
+              <th class="sortable" onclick="setSort('liquido')">Valor Líquido Previsto<span id="arrow-liquido"></span></th>
+              <th class="sortable" onclick="setSort('status')">Status Pagamento<span id="arrow-status"></span></th>
+              <th>Status Financeiro</th>
+              <th>Valor Recebido</th>
               <th class="sortable" onclick="setSort('diferenca')">Diferença<span id="arrow-diferenca"></span></th>
+              <th>Ações</th>
             </tr></thead>
-            <tbody id="pagTable"><tr><td colspan="10" class="empty-state">Carregando...</td></tr></tbody>
+            <tbody id="pagTable"><tr><td colspan="13" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px">
@@ -252,6 +258,17 @@ function liberacaoCell(r) {
     ? `${dataFmt} <span class="tag green">Liberado</span>`
     : `${dataFmt} <span class="tag yellow">Pendente</span>`;
 }
+function liberacaoDateOnly(r) {
+  return r.money_release_date ? new Date(r.money_release_date).toLocaleDateString('pt-BR') : '—';
+}
+const STATUS_PAGAMENTO_CANCELADO = ['rejected', 'refunded', 'cancelled', 'charged_back'];
+function statusFinanceiroBadge(r) {
+  if (STATUS_PAGAMENTO_CANCELADO.includes(r.status)) return '<span class="tag red">Cancelado</span>';
+  return r.released === 'yes' ? '<span class="tag green">Liberado</span>' : '<span class="tag yellow">Pendente</span>';
+}
+function valorRecebidoCell(r) {
+  return r.released === 'yes' ? fmt(r.net_received_amount) : '—';
+}
 
 // Status crus vindos de /shipments/:id (persistidos em orders.shipping_status
 // pelo worker) → bucket de UI. Mesma tabela replicada no filtro server-side
@@ -268,6 +285,17 @@ const SHIPPING_STATUS_MAP = {
 function shippingInfo(status) {
   return SHIPPING_STATUS_MAP[status] || { bucket: '', label: status || 'Sem envio', emoji: '⚪', cls: '' };
 }
+// Data mais relevante pra mostrar embaixo do badge, conforme o bucket atual
+function shippingRelevantDate(r, bucket) {
+  const d = {
+    preparando: r.date_ready_to_ship,
+    transito: r.date_shipped,
+    entregue: r.date_delivered,
+    cancelado: r.shipping_last_updated,
+    nao_entregue: r.shipping_last_updated,
+  }[bucket];
+  return d ? new Date(d).toLocaleString('pt-BR') : '';
+}
 function shippingCell(r) {
   const info = shippingInfo(r.shipping_status);
   const tipData = [
@@ -277,7 +305,8 @@ function shippingCell(r) {
     r.date_delivered ? `Entregue: ${new Date(r.date_delivered).toLocaleString('pt-BR')}` : '',
   ].filter(Boolean).join(' · ') || 'Sem detalhes de rastreio ainda';
   const badge = info.cls ? `<span class="tag ${info.cls}">${info.emoji} ${info.label}</span>` : `${info.emoji} ${info.label}`;
-  return `<span title="${escapeHtml(tipData)}">${badge}</span>`;
+  const sub = shippingRelevantDate(r, info.bucket);
+  return `<span title="${escapeHtml(tipData)}">${badge}${sub ? `<div class="cb-entrega-sub">${sub}</div>` : ''}</span>`;
 }
 let pagState = { page: 1, limit: 50, total: 0, sort: 'data', dir: 'desc' };
 
@@ -306,7 +335,7 @@ async function loadPagamentos() {
   const q = document.getElementById('searchPag').value.trim();
   const entrega = document.getElementById('entregaFilter').value;
 
-  document.getElementById('pagTable').innerHTML = '<tr><td colspan="10" class="empty-state">Carregando...</td></tr>';
+  document.getElementById('pagTable').innerHTML = '<tr><td colspan="13" class="empty-state">Carregando...</td></tr>';
   renderSortArrows();
 
   const data = await DB.getConciliacaoPagamentos({
@@ -315,7 +344,7 @@ async function loadPagamentos() {
     page: pagState.page, limit: pagState.limit,
   }) || { payments: [], total: 0 };
   if (data.error) {
-    document.getElementById('pagTable').innerHTML = `<tr><td colspan="10" style="color:var(--red)">${data.error}</td></tr>`;
+    document.getElementById('pagTable').innerHTML = `<tr><td colspan="13" style="color:var(--red)">${data.error}</td></tr>`;
     return;
   }
 
@@ -328,15 +357,21 @@ async function loadPagamentos() {
         <td>${escapeHtml(r.store_nickname) || '—'}</td>
         <td>${escapeHtml(r.order_id) || '—'}</td>
         <td>${escapeHtml(r.buyer_nickname) || '—'}</td>
-        <td>${statusBadge(r.status)}</td>
-        <td>${shippingCell(r)}</td>
         <td>${r.date_approved ? new Date(r.date_approved).toLocaleString('pt-BR') : '—'}</td>
-        <td>${liberacaoCell(r)}</td>
+        <td>${shippingCell(r)}</td>
+        <td>${liberacaoDateOnly(r)}</td>
         <td>${fmt(r.transaction_amount)}</td>
         <td>${fmt(r.net_received_amount)}</td>
+        <td>${statusBadge(r.status)}</td>
+        <td>${statusFinanceiroBadge(r)}</td>
+        <td>${valorRecebidoCell(r)}</td>
         <td style="color:var(--red)">${fmt(r.diferenca)}</td>
+        <td onclick="event.stopPropagation()">
+          <button class="cb-row-icon-btn" onclick="openDetalhe('${r.payment_id}')" title="Ver detalhe"><i class="fas fa-eye"></i></button>
+          <button class="cb-row-icon-btn" onclick="openDetalhe('${r.payment_id}', true)" title="Ver JSON"><i class="fas fa-file-alt"></i></button>
+        </td>
       </tr>`).join('')
-    : '<tr><td colspan="10" class="empty-state">Nenhum pagamento encontrado</td></tr>';
+    : '<tr><td colspan="13" class="empty-state">Nenhum pagamento encontrado</td></tr>';
 
   const totalPages = Math.max(1, Math.ceil(pagState.total / pagState.limit));
   document.getElementById('pagInfo').textContent = `Página ${pagState.page} de ${totalPages}`;
@@ -421,7 +456,7 @@ async function reprocessarAtual() {
   loadPagamentos();
 }
 
-async function openDetalhe(paymentId) {
+async function openDetalhe(paymentId, scrollToJson) {
   currentPaymentId = paymentId;
   const modal = document.getElementById('pagModal');
   const body = document.getElementById('pagModalBody');
@@ -481,9 +516,11 @@ async function openDetalhe(paymentId) {
       <div class="cb-modal-stat"><div class="lbl">Entregue</div><div class="val">${dataHora(r.date_delivered)}</div></div>
     </div>
 
-    <div class="cb-modal-section-title">JSON completo (auditoria)</div>
+    <div class="cb-modal-section-title" id="cbJsonSection">JSON completo (auditoria)</div>
     <div class="cb-modal-json">${escapeHtml(JSON.stringify(r.raw_data, null, 2))}</div>
   `;
+
+  if (scrollToJson) document.getElementById('cbJsonSection').scrollIntoView({ block: 'start' });
 }
 
 WS.on('_connected', () => {

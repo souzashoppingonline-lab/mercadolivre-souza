@@ -225,6 +225,7 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | Rota | Descrição |
 |---|---|
 | `GET /api/conciliacao/agenda-recebimentos?store_id` | agrupa `ml_payments` com `released != 'yes'` por dia de `money_release_date` (fuso São Paulo) — `{dias: [{data, qtd_pagamentos, valor_liquido, valor_bruto}]}`. Granularidade diária; agregação "hoje/amanhã/7 dias/30 dias" é feita no cliente, não pré-calculada aqui |
+| `GET /api/conciliacao/pagamentos?store_id&released&date_from&date_to&q&sort&dir&page&limit` | grid paginada (`LIMIT`/`OFFSET` reais, `COUNT(*)` separado sobre todo o range filtrado — mesmo padrão do fix de `vendas/detalhado`) — `JOIN orders`/`stores` pra trazer `buyer_nickname`/`title`/`store_nickname`. `date_from`/`date_to` filtram por `date_approved::date`. `q` busca em `order_id`/`payment_id`/`buyer_nickname` (ILIKE). `sort` ∈ `data`\|`valor`\|`liquido`\|`status` (whitelist, nunca interpola direto). `taxas` = soma de `marketplace_fee+mercadopago_fee+discount_fee+coupon_fee+finance_fee`. `{payments: [...], total, page, limit}` |
 
 ## `/auth/staff/*` (`routes/staffAuth.js`) — ver `auth-staff.md`
 > Rotas sempre públicas (fora do gate `requireStaffAuth`, senão login ficaria impossível). Demais rotas do sistema passam pelo gate quando `STAFF_AUTH_ENABLED=true`.

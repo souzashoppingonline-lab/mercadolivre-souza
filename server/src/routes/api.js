@@ -2856,4 +2856,73 @@ router.get('/conciliacao/agenda-recebimentos', async (req, res) => {
   }
 });
 
+// Grid principal — listagem paginada de pagamentos individuais. `orders`/`stores`
+// direto (não `vw_ml_*`) porque `ml_payments` só é populada pelo pipeline ML
+// hoje (handlePayment), então o JOIN já é implicitamente ML-only — mas os
+// filtros abaixo funcionam do mesmo jeito se isso mudar no futuro.
+const CONCILIACAO_SORT_COLS = {
+  data: 'p.date_approved',
+  valor: 'p.transaction_amount',
+  liquido: 'p.net_received_amount',
+  status: 'p.status',
+};
+router.get('/conciliacao/pagamentos', async (req, res) => {
+  try {
+    const {
+      store_id = '', released = '', date_from = '', date_to = '', q = '',
+      sort = 'data', dir = 'desc', page = '1', limit = '50',
+    } = req.query;
+
+    const sortCol = CONCILIACAO_SORT_COLS[sort] || CONCILIACAO_SORT_COLS.data;
+    const sortDir = dir.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+
+    const params = [store_id, released, date_from || null, date_to || null, q];
+    const where = `
+      WHERE ($1 = '' OR p.store_id = $1::bigint)
+        AND ($2 = '' OR p.released = $2)
+        AND ($3::date IS NULL OR p.date_approved::date >= $3::date)
+        AND ($4::date IS NULL OR p.date_approved::date <= $4::date)
+        AND ($5 = '' OR p.order_id ILIKE '%'||$5||'%' OR p.payment_id::text ILIKE '%'||$5||'%' OR o.buyer_nickname ILIKE '%'||$5||'%')`;
+
+    const { rows } = await pool.query(
+      `SELECT
+         p.payment_id, p.order_id, p.store_id, s.nickname AS store_nickname,
+         o.buyer_nickname, o.title,
+         p.status, p.status_detail,
+         p.date_approved, p.money_release_date, p.released,
+         p.transaction_amount, p.net_received_amount, p.shipping_cost,
+         (COALESCE(p.marketplace_fee,0) + COALESCE(p.mercadopago_fee,0) + COALESCE(p.discount_fee,0) + COALESCE(p.coupon_fee,0) + COALESCE(p.finance_fee,0)) AS taxas,
+         p.payment_method_id, p.payment_type, p.installments, p.amount_refunded
+       FROM ml_payments p
+       LEFT JOIN orders o ON o.ml_id = p.order_id
+       LEFT JOIN stores s ON s.id = p.store_id
+       ${where}
+       ORDER BY ${sortCol} ${sortDir}
+       LIMIT $6 OFFSET $7`,
+      [...params, limitNum, offset]
+    );
+
+    const { rows: countRows } = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM ml_payments p
+       LEFT JOIN orders o ON o.ml_id = p.order_id
+       ${where}`,
+      params
+    );
+
+    res.json({
+      payments: rows,
+      total: Number(countRows[0].total),
+      page: pageNum,
+      limit: limitNum,
+    });
+  } catch (e) {
+    console.error('[conciliacao/pagamentos] erro:', e.message);
+    res.status(500).json({ error: e.message, payments: [], total: 0 });
+  }
+});
+
 module.exports = router;

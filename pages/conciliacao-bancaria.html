@@ -35,7 +35,7 @@
         <div class="stat-card"><div class="label">Total Pendente (bruto)</div><div class="value" id="kpiTotalBruto">—</div></div>
       </div>
 
-      <div class="card">
+      <div class="card" style="margin-bottom:16px">
         <div class="card-header">
           <h3>Agenda de Recebimentos</h3>
           <button class="action-btn" onclick="exportTableCSV(document.getElementById('agendaTable').closest('table'), 'agenda-recebimentos.csv')"><i class="fas fa-file-csv"></i> CSV</button>
@@ -45,6 +45,40 @@
             <thead><tr><th>Data</th><th>Qtd. Pagamentos</th><th>Valor Líquido</th><th>Valor Bruto</th></tr></thead>
             <tbody id="agendaTable"><tr><td colspan="4" class="empty-state">Carregando...</td></tr></tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="filters-row" style="margin-bottom:16px">
+        <select class="filter-select" id="releasedFilter">
+          <option value="">Todos os status</option>
+          <option value="no">Pendente</option>
+          <option value="yes">Liberado</option>
+        </select>
+        <input type="date" class="filter-input" id="dateFrom" title="Data de aprovação — de">
+        <input type="date" class="filter-input" id="dateTo" title="Data de aprovação — até">
+        <div class="search-box" style="max-width:260px"><i class="fas fa-search"></i><input type="text" id="searchPag" placeholder="Pedido, payment ID ou comprador..."></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Pagamentos</h3>
+          <span id="pagCount" style="font-size:12px;color:var(--text-muted)"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('pagTable').closest('table'), 'pagamentos.csv')"><i class="fas fa-file-csv"></i> CSV (página atual)</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr>
+              <th>Loja</th><th>Pedido</th><th>Comprador</th>
+              <th>Data Aprovação</th><th>Data Liberação</th>
+              <th>Valor Bruto</th><th>Taxas</th><th>Valor Líquido</th><th>Status</th>
+            </tr></thead>
+            <tbody id="pagTable"><tr><td colspan="9" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px">
+          <span id="pagInfo" style="font-size:12px;color:var(--text-muted)"></span>
+          <button class="action-btn" id="pagPrev" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i> Anterior</button>
+          <button class="action-btn" id="pagNext" onclick="changePage(1)">Próxima <i class="fas fa-chevron-right"></i></button>
         </div>
       </div>
 
@@ -121,13 +155,78 @@ async function load() {
     : '<tr><td colspan="4" class="empty-state">Nenhum pagamento pendente de liberação</td></tr>';
 }
 
-document.getElementById('lojaFilter').addEventListener('change', load);
+const BADGE = { yes: '<span class="tag green">Liberado</span>', no: '<span class="tag yellow">Pendente</span>' };
+let pagState = { page: 1, limit: 50, total: 0 };
+
+async function loadPagamentos() {
+  const store_id = document.getElementById('lojaFilter').value;
+  const released = document.getElementById('releasedFilter').value;
+  const date_from = document.getElementById('dateFrom').value;
+  const date_to = document.getElementById('dateTo').value;
+  const q = document.getElementById('searchPag').value.trim();
+
+  document.getElementById('pagTable').innerHTML = '<tr><td colspan="9" class="empty-state">Carregando...</td></tr>';
+
+  const data = await DB.getConciliacaoPagamentos({
+    store_id, released, date_from, date_to, q,
+    page: pagState.page, limit: pagState.limit,
+  }) || { payments: [], total: 0 };
+  if (data.error) {
+    document.getElementById('pagTable').innerHTML = `<tr><td colspan="9" style="color:var(--red)">${data.error}</td></tr>`;
+    return;
+  }
+
+  pagState.total = data.total || 0;
+  const rows = data.payments || [];
+
+  document.getElementById('pagCount').textContent = `${fmtN(pagState.total)} pagamento(s)`;
+  document.getElementById('pagTable').innerHTML = rows.length
+    ? rows.map(r => `<tr>
+        <td>${r.store_nickname || '—'}</td>
+        <td>${r.order_id || '—'}</td>
+        <td>${r.buyer_nickname || '—'}</td>
+        <td>${r.date_approved ? new Date(r.date_approved).toLocaleString('pt-BR') : '—'}</td>
+        <td>${r.money_release_date ? new Date(r.money_release_date).toLocaleDateString('pt-BR') : '—'}</td>
+        <td>${fmt(r.transaction_amount)}</td>
+        <td>${fmt(r.taxas)}</td>
+        <td>${fmt(r.net_received_amount)}</td>
+        <td>${BADGE[r.released] || (r.status || '—')}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="9" class="empty-state">Nenhum pagamento encontrado</td></tr>';
+
+  const totalPages = Math.max(1, Math.ceil(pagState.total / pagState.limit));
+  document.getElementById('pagInfo').textContent = `Página ${pagState.page} de ${totalPages}`;
+  document.getElementById('pagPrev').disabled = pagState.page <= 1;
+  document.getElementById('pagNext').disabled = pagState.page >= totalPages;
+}
+
+function changePage(delta) {
+  pagState.page = Math.max(1, pagState.page + delta);
+  loadPagamentos();
+}
+
+function resetAndReload() {
+  pagState.page = 1;
+  load();
+  loadPagamentos();
+}
+
+document.getElementById('lojaFilter').addEventListener('change', resetAndReload);
+document.getElementById('releasedFilter').addEventListener('change', resetAndReload);
+document.getElementById('dateFrom').addEventListener('change', resetAndReload);
+document.getElementById('dateTo').addEventListener('change', resetAndReload);
+let searchTimer;
+document.getElementById('searchPag').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(resetAndReload, 400);
+});
+
 WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 
-loadLojas().then(load);
+loadLojas().then(() => { load(); loadPagamentos(); });
 </script>
 </body>
 </html>

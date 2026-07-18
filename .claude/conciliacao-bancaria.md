@@ -35,8 +35,15 @@ Orders API → order.payments[].id → GET /collections/:id → money_release_da
 - **Transferência bancária** (repasse do saldo Mercado Pago pra conta bancária, agrupando N pagamentos numa única transferência) — nenhum campo observado até agora (nem em `/collections/:id`, nem na API de Faturamento) cobre isso. Pode exigir mesmo um endpoint específico do Mercado Pago (extrato/saque da carteira) — ainda não testado, porque não é bloqueante pra mostrar "liberado" (já temos `released`/`money_release_date`), só pra saber em qual lote bancário específico o valor saiu.
 - **Webhooks Mercado Pago dedicados** (`payment`/`merchant_order`/chargebacks, com assinatura HMAC) — não configurados. Hoje a atualização depende do webhook `payments` do Mercado Livre (evento) + do job diário de reconsulta (para o caso `released` mudar sem novo webhook). Se isso se mostrar insuficiente em produção (ex: liberação não refletida a tempo), webhook MP dedicado vira alternativa — mas não é pré-requisito pro que já está no ar.
 - **Chargebacks/estornos por pagamento** — `amount_refunded`/`refunds[]` existem no payload (`refunds` veio vazio em toda amostra observada), campo já capturado (`amount_refunded`), mas nenhum chargeback real foi observado ainda pra confirmar o formato completo de disputa.
-- **Página frontend** (`pages/conciliacao-bancaria.html`) — ainda não criada; decisão do usuário foi backend/pipeline primeiro. Com `ml_payments` já rico o suficiente, a grid principal (Pedido/Payment/Liberação/Líquido/Taxas/Status) já pode ser construída sem esperar mais nada.
-- **Conciliação automática** (bater valor esperado × recebido × data) — lógica ainda não escrita; agora que `ml_payments.net_received_amount`/`released` existem, é viável construir sem depender de mais nenhuma API nova.
+- **Conciliação automática** (bater valor esperado × recebido × data, com veredito Conciliado/Pendente/Diferença/Parcial) — lógica ainda não escrita; agora que `ml_payments.net_received_amount`/`released` existem, é viável construir sem depender de mais nenhuma API nova.
+
+## `pages/conciliacao-bancaria.html` — implementada (Agenda + grid de pagamentos)
+
+Página única (seção Financeiro do menu) com duas partes:
+1. **Agenda de Recebimentos** — cards Hoje/Amanhã/7 dias/30 dias/Total (líquido e bruto), calculados no cliente a partir da lista diária; tabela com export CSV.
+2. **Grid de pagamentos** — filtros (loja, `released`, período de `date_approved`, busca livre com debounce 400ms), paginação server-side real (`Anterior`/`Próxima`, 50/página), colunas Loja/Pedido/Comprador/Data Aprovação/Data Liberação/Bruto/Taxas/Líquido/Status. CSV exporta só a página atual (rotulado assim no botão) — diferente da maioria das outras telas do projeto, que exportam a lista inteira já carregada, porque esta é a primeira grid do projeto com paginação real no servidor.
+
+Colunas do pedido original ainda **fora da grid** por falta de dado: `Transferido`/`Conciliado` (dependem da Conciliação automática e da Transferência bancária, ver seções acima) — não incluídas como colunas vazias, mesmo racional de não criar UI sem dado real por trás.
 
 ## Agenda de Recebimentos — implementada
 

@@ -2922,6 +2922,7 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
   try {
     const {
       store_id = '', released = '', date_from = '', date_to = '', q = '', entrega = '', logistica = '',
+      release_from = '', release_to = '',
       sort = 'data', dir = 'desc', page = '1', limit = '50',
     } = req.query;
 
@@ -2933,7 +2934,10 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
 
     const entregaStatuses = SHIPPING_STATUS_BUCKETS[entrega] || null;
     const logisticaPatterns = LOGISTICA_BUCKETS[logistica] || null;
-    const params = [store_id, released, date_from || null, date_to || null, q, entregaStatuses, logisticaPatterns];
+    // release_from/release_to filtram por money_release_date no fuso São Paulo
+    // (mesmo cast da Agenda de Recebimentos) — usado pelo drill-down dos cards
+    // "Recebo Hoje/Amanhã/..." pra listar as vendas que caem naquele dia.
+    const params = [store_id, released, date_from || null, date_to || null, q, entregaStatuses, logisticaPatterns, release_from || null, release_to || null];
     const where = `
       WHERE ($1 = '' OR p.store_id = $1::bigint)
         AND ($2 = '' OR p.released = $2)
@@ -2941,7 +2945,9 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
         AND ($4::date IS NULL OR p.date_approved::date <= $4::date)
         AND ($5 = '' OR p.order_id ILIKE '%'||$5||'%' OR p.payment_id::text ILIKE '%'||$5||'%' OR o.buyer_nickname ILIKE '%'||$5||'%')
         AND ($6::text[] IS NULL OR o.shipping_status = ANY($6::text[]))
-        AND ($7::text[] IS NULL OR o.shipping_type ILIKE ANY($7::text[]))`;
+        AND ($7::text[] IS NULL OR o.shipping_type ILIKE ANY($7::text[]))
+        AND ($8::date IS NULL OR (p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date >= $8::date)
+        AND ($9::date IS NULL OR (p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date <= $9::date)`;
 
     const { rows } = await pool.query(
       `SELECT
@@ -2960,7 +2966,7 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
        LEFT JOIN stores s ON s.id = p.store_id
        ${where}
        ORDER BY ${sortCol} ${sortDir}
-       LIMIT $8 OFFSET $9`,
+       LIMIT $10 OFFSET $11`,
       [...params, limitNum, offset]
     );
 

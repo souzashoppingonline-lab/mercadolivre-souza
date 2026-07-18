@@ -52,10 +52,10 @@
       <p class="cb-note">Só pagamentos ainda não liberados pelo Mercado Pago (<code>released ≠ 'yes'</code>). Fase 1 — Pedido/Pagamento/Liberação já sincronizados a partir de agora (sem histórico anterior ao deploy). Ver <code>.claude/conciliacao-bancaria.md</code>.</p>
 
       <div class="card-grid" style="margin-bottom:16px">
-        <div class="stat-card"><div class="label">Recebo Hoje</div><div class="value" id="kpiHoje" style="color:var(--green)">—</div></div>
-        <div class="stat-card"><div class="label">Recebo Amanhã</div><div class="value" id="kpiAmanha">—</div></div>
-        <div class="stat-card"><div class="label">Próximos 7 dias</div><div class="value" id="kpiSemana">—</div></div>
-        <div class="stat-card"><div class="label">Próximos 30 dias</div><div class="value" id="kpiMes">—</div></div>
+        <div class="stat-card" style="cursor:pointer" onclick="filtrarRecebimento(0, 0, 'Recebo hoje')" title="Ver as vendas que caem hoje"><div class="label">Recebo Hoje</div><div class="value" id="kpiHoje" style="color:var(--green)">—</div></div>
+        <div class="stat-card" style="cursor:pointer" onclick="filtrarRecebimento(1, 1, 'Recebo amanhã')" title="Ver as vendas que caem amanhã"><div class="label">Recebo Amanhã</div><div class="value" id="kpiAmanha">—</div></div>
+        <div class="stat-card" style="cursor:pointer" onclick="filtrarRecebimento(0, 6, 'Recebo nos próximos 7 dias')" title="Ver as vendas que caem nos próximos 7 dias"><div class="label">Próximos 7 dias</div><div class="value" id="kpiSemana">—</div></div>
+        <div class="stat-card" style="cursor:pointer" onclick="filtrarRecebimento(0, 29, 'Recebo nos próximos 30 dias')" title="Ver as vendas que caem nos próximos 30 dias"><div class="label">Próximos 30 dias</div><div class="value" id="kpiMes">—</div></div>
         <div class="stat-card"><div class="label">Total Pendente (líquido)</div><div class="value" id="kpiTotalLiquido" style="color:var(--primary)">—</div></div>
         <div class="stat-card"><div class="label">Total Pendente (bruto)</div><div class="value" id="kpiTotalBruto">—</div></div>
       </div>
@@ -113,6 +113,10 @@
         <div class="card-header">
           <h3>Pagamentos</h3>
           <span id="pagCount" style="font-size:12px;color:var(--text-muted)"></span>
+          <span id="recebimentoChip" style="display:none;align-items:center;gap:6px;background:rgba(39,174,96,.15);color:var(--green);border-radius:14px;padding:3px 10px;font-size:12px;font-weight:600">
+            <span id="recebimentoChipLabel"></span>
+            <span onclick="limparRecebimento()" style="cursor:pointer;font-weight:700" title="Limpar filtro">✕</span>
+          </span>
           <button class="action-btn" id="btnSyncEntregas" onclick="syncEntregas()"><i class="fas fa-truck-loading"></i> Sincronizar Entregas</button>
           <button class="action-btn" onclick="exportTableCSV(document.getElementById('pagTable').closest('table'), 'pagamentos.csv')"><i class="fas fa-file-csv"></i> CSV (página atual)</button>
         </div>
@@ -332,7 +336,7 @@ function shippingCell(r) {
   const logSub = r.shipping_type ? logLabel(r.shipping_type) : '';
   return `<span title="${escapeHtml(tipData)}">${badge}<div class="cb-entrega-sub">${[sub, logSub].filter(Boolean).join(' · ')}</div></span>`;
 }
-let pagState = { page: 1, limit: 50, total: 0, sort: 'data', dir: 'desc' };
+let pagState = { page: 1, limit: 50, total: 0, sort: 'data', dir: 'desc', releaseFrom: '', releaseTo: '' };
 
 function setSort(col) {
   if (pagState.sort === col) {
@@ -365,6 +369,7 @@ async function loadPagamentos() {
 
   const data = await DB.getConciliacaoPagamentos({
     store_id, released, date_from, date_to, q, entrega, logistica,
+    release_from: pagState.releaseFrom, release_to: pagState.releaseTo,
     sort: pagState.sort, dir: pagState.dir,
     page: pagState.page, limit: pagState.limit,
   }) || { payments: [], total: 0 };
@@ -435,6 +440,31 @@ function setQuickRange(daysBackFrom, daysBackTo) {
   document.getElementById('dateFrom').value = addDaysStr(hoje, -daysBackFrom);
   document.getElementById('dateTo').value = addDaysStr(hoje, -daysBackTo);
   resetAndReload();
+}
+
+// Drill-down dos cards "Recebo Hoje/Amanhã/..." — filtra a grid por
+// money_release_date (fuso São Paulo), mostrando as vendas que caem naquele
+// intervalo. Só pendentes (released=no), pra bater com o número do card
+// (a Agenda de Recebimentos também é só released != 'yes').
+function filtrarRecebimento(diasDe, diasAte, label) {
+  const hoje = spDateStr(new Date());
+  pagState.releaseFrom = addDaysStr(hoje, diasDe);
+  pagState.releaseTo = addDaysStr(hoje, diasAte);
+  document.getElementById('releasedFilter').value = 'no';
+  const chip = document.getElementById('recebimentoChip');
+  document.getElementById('recebimentoChipLabel').textContent = label;
+  chip.style.display = 'inline-flex';
+  pagState.page = 1;
+  loadPagamentos();
+  document.querySelector('#pagTable').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function limparRecebimento() {
+  pagState.releaseFrom = '';
+  pagState.releaseTo = '';
+  document.getElementById('recebimentoChip').style.display = 'none';
+  pagState.page = 1;
+  loadPagamentos();
 }
 
 function buildTimeline(r) {

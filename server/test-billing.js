@@ -7,10 +7,10 @@ const pool = require('./src/db/pool');
     if (!token) { console.log(store.nickname, '— sem token'); continue; }
     console.log('=== ' + store.nickname + ' (' + store.id + ') ===');
     for (const group of ['MP', 'ML']) {
-      const url = `https://api.mercadolibre.com/billing/integration/periods?group=${group}&limit=3`;
+      const url = `https://api.mercadolibre.com/billing/integration/monthly/periods?group=${group}&document_type=BILL&limit=3`;
       const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
       const text = await res.text();
-      console.log(res.status, `group=${group}`, '->', text.slice(0, 500));
+      console.log(res.status, `group=${group}`, '->', text.slice(0, 800));
     }
   }
   process.exit(0);

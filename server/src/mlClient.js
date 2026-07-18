@@ -124,10 +124,11 @@ module.exports = {
   // Relatórios de Conciliação MP — type ∈ 'release_report' | 'settlement_report'
   getMpReportList:  (type, storeId)            => mpGet(`/v1/account/${type}/list`, storeId),
   downloadMpReport: (type, fileName, storeId)  => mpDownload(`/v1/account/${type}/${fileName}`, storeId),
-  // begin_date/end_date vão no QUERY STRING (não no corpo) — o release_report
-  // devolve 400 "Must specify begin_date parameter" se mandar só no body
-  // (confirmado ao vivo). ISO sem milissegundos.
-  createMpReport:   (type, storeId, begin, end) => mpPost(`/v1/account/${type}?begin_date=${encodeURIComponent(begin)}&end_date=${encodeURIComponent(end)}`, storeId, {}),
+  // begin_date/end_date vão no CORPO JSON, formato datetime ISO **sem
+  // milissegundos** (confirmado ao vivo via test-mp-create.js: com `.000Z` ou
+  // só a data devolve 400 "Must specify begin_date"; `2026-06-18T22:44:49Z`
+  // no body → 202). mpReports.js já manda com .slice(0,19)+'Z'.
+  createMpReport:   (type, storeId, begin, end) => mpPost(`/v1/account/${type}`, storeId, { begin_date: begin, end_date: end }),
   getItem:             (id, storeId)     => get(`/items/${id}`, storeId),
   getOrder:            (id, storeId)     => get(`/orders/${id}`, storeId),
   getPayment:          (id, storeId)     => get(`/collections/${id}`, storeId),

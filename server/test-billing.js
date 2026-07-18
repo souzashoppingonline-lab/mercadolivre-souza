@@ -19,6 +19,30 @@ const pool = require('./src/db/pool');
       const detText = await detRes.text();
       console.log(detRes.status, `group=${group} details (key=${closed.key})`, '->', detText.slice(0, 1000));
     }
+
+    // Verificação pedida: será que order.payments[] (Orders API) ou o objeto
+    // completo de /collections/:id já trazem dado de liberação/repasse que
+    // ainda não olhamos por inteiro (até agora só extraímos order_id dele)?
+    const { rows: recentOrders } = await pool.query(
+      'SELECT ml_id FROM orders WHERE store_id=$1 ORDER BY date_created DESC LIMIT 1', [store.id]
+    );
+    if (recentOrders.length) {
+      const orderId = recentOrders[0].ml_id;
+      const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, { headers: { Authorization: 'Bearer ' + token } });
+      const orderJson = await orderRes.json().catch(() => null);
+      console.log(orderRes.status, `order ${orderId} payments[] completo`, '->', JSON.stringify(orderJson?.payments));
+
+      const paymentId = orderJson?.payments?.[0]?.id;
+      if (paymentId) {
+        const colRes = await fetch(`https://api.mercadolibre.com/collections/${paymentId}`, { headers: { Authorization: 'Bearer ' + token } });
+        const colText = await colRes.text();
+        console.log(colRes.status, `/collections/${paymentId} completo`, '->', colText);
+      } else {
+        console.log('  (pedido sem payments[] no payload da Orders API)');
+      }
+    } else {
+      console.log('  (sem pedido no banco pra essa loja ainda)');
+    }
   }
   process.exit(0);
 })().catch(e => { console.error(e.message); process.exit(1); });

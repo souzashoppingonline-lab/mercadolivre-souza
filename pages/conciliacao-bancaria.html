@@ -545,6 +545,18 @@ function buildConfirmacoes(r) {
     rows.push(confRow(venceu ? '⚠️' : '⏳', 'A liberar' + (venceu ? ' (previsão já passou)' : ''), `${prev}${venceu ? ' — reprocessar pra confirmar se já caiu' : ''}${mrs}`));
   }
 
+  // Entrega — data/hora exata em que o pedido foi entregue (date_delivered do
+  // status_history do shipment é timestamp completo). Confirma a entrega.
+  if (r.shipping_status === 'delivered') {
+    rows.push(confRow('✅', 'Pedido entregue', r.date_delivered ? `Entregue em ${new Date(r.date_delivered).toLocaleString('pt-BR')}` : 'Entregue (sem data/hora registrada)'));
+  } else if (r.shipping_status === 'cancelled') {
+    rows.push(confRow('❌', 'Envio cancelado', r.shipping_last_updated ? `Atualizado em ${new Date(r.shipping_last_updated).toLocaleString('pt-BR')}` : ''));
+  } else if (r.shipping_status) {
+    rows.push(confRow('⏳', 'Ainda não entregue', `Status atual: ${shippingInfo(r.shipping_status).label}`));
+  } else {
+    rows.push(confRow('—', 'Entrega sem informação ainda', 'Status de entrega não sincronizado — clique Reprocessar ou "Sincronizar Entregas".'));
+  }
+
   // 7. Estorno / chargeback — garante que o que caiu não voltou atrás
   const refunded = Number(r.amount_refunded || 0);
   const temRefunds = Array.isArray(raw.refunds) && raw.refunds.length > 0;

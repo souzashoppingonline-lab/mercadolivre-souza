@@ -1550,7 +1550,7 @@ async function syncShippingStatus() {
            AND shipping_status IS DISTINCT FROM 'cancelled'
            AND date_created > now() - interval '45 days'
          ORDER BY shipping_last_updated ASC NULLS FIRST
-         LIMIT 200`
+         LIMIT 120`
       );
       // Circuit breaker por loja (não global) — os 200 pedidos pendentes
       // costumam vir de lojas diferentes, cada uma com token/rate limit
@@ -1565,6 +1565,7 @@ async function syncShippingStatus() {
       const storeErrorStreak = new Map();
       for (const o of pending) {
         if (blockedStores.has(o.store_id)) continue;
+        let waitMs = 8000; // intervalo base entre chamadas (conservador — a API do ML já está ocupada com webhooks)
         try {
           const ship = await ml.getShipment(o.shipping_id, o.store_id);
           const sh = ship?.status_history || {};
@@ -1585,6 +1586,7 @@ async function syncShippingStatus() {
           console.warn(`[sync-shipping-status] erro order=${o.ml_id} shipping_id=${o.shipping_id}: ${e.message}`);
           errors++;
           if (e.message?.includes('429')) {
+            waitMs = 20000; // tomou 429 → espera bem mais antes da próxima, pra dar tempo do limite resetar
             const streak = (storeErrorStreak.get(o.store_id) || 0) + 1;
             storeErrorStreak.set(o.store_id, streak);
             if (streak >= 3) {
@@ -1593,7 +1595,7 @@ async function syncShippingStatus() {
             }
           }
         }
-        await new Promise(r => setTimeout(r, 4000));
+        await new Promise(r => setTimeout(r, waitMs));
       }
       console.log(`[sync-shipping-status] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length} pendentes)`);
       return { updated, errors, total: pending.length };

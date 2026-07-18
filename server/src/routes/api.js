@@ -3183,4 +3183,62 @@ router.get('/conciliacao/auto', async (req, res) => {
   }
 });
 
+// Classifica shipping_type num bucket de logística (mesmo mapeamento por
+// substring de fmtLogistica em worker.js / LOGISTICA_BUCKETS).
+function logisticaBucket(tipo) {
+  const l = (tipo || '').toLowerCase();
+  if (l.includes('fulfillment')) return 'full';
+  if (l.includes('self_service') || l.includes('flex')) return 'flex';
+  if (l.includes('xd_drop_off') || l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return 'me';
+  if (l.includes('pickup')) return 'coleta';
+  return 'outros';
+}
+
+// Prazo de recebimento — data da venda × data do recebimento (só pagamentos já
+// liberados), pra medir a média de dias entre vender e o dinheiro cair. Traz
+// logística e calcula a média de dias por logística (Full/Flex/ME/Coleta).
+router.get('/conciliacao/prazo', async (req, res) => {
+  try {
+    const { store_id = '' } = req.query;
+    const { rows } = await pool.query(
+      `SELECT p.order_id, s.nickname AS store_nickname, o.shipping_type,
+              p.date_approved AS data_venda,
+              p.money_release_date AS data_recebimento,
+              p.transaction_amount AS valor_venda,
+              p.net_received_amount AS valor_recebido,
+              EXTRACT(EPOCH FROM (p.money_release_date - p.date_approved)) / 86400.0 AS dias
+       FROM ml_payments p
+       LEFT JOIN stores s ON s.id = p.store_id
+       LEFT JOIN orders o ON o.ml_id = p.order_id
+       WHERE p.released = 'yes'
+         AND p.date_approved IS NOT NULL AND p.money_release_date IS NOT NULL
+         AND ($1 = '' OR p.store_id = $1::bigint)
+       ORDER BY p.money_release_date DESC
+       LIMIT 2000`,
+      [store_id]
+    );
+    const n = rows.length;
+    // média de dias por logística (Full/Flex/ME/Coleta)
+    const buckets = {};
+    for (const r of rows) {
+      const b = logisticaBucket(r.shipping_type);
+      (buckets[b] = buckets[b] || { qtd: 0, soma: 0 });
+      buckets[b].qtd++; buckets[b].soma += Number(r.dias || 0);
+    }
+    const por_logistica = {};
+    for (const [b, v] of Object.entries(buckets)) por_logistica[b] = { qtd: v.qtd, media_dias: v.qtd ? v.soma / v.qtd : 0 };
+    const resumo = {
+      qtd: n,
+      media_dias: n ? rows.reduce((s, r) => s + Number(r.dias || 0), 0) / n : 0,
+      total_venda: rows.reduce((s, r) => s + Number(r.valor_venda || 0), 0),
+      total_recebido: rows.reduce((s, r) => s + Number(r.valor_recebido || 0), 0),
+      por_logistica,
+    };
+    res.json({ prazos: rows.slice(0, 500), resumo });
+  } catch (e) {
+    console.error('[conciliacao/prazo] erro:', e.message);
+    res.status(500).json({ error: e.message, prazos: [], resumo: {} });
+  }
+});
+
 module.exports = router;

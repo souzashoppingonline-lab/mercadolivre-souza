@@ -93,6 +93,7 @@
         <button class="cb-tab" data-tab="extrato" onclick="setTab('extrato')">Extrato da conta</button>
         <button class="cb-tab" data-tab="saques" onclick="setTab('saques')">Saques bancários</button>
         <button class="cb-tab" data-tab="auto" onclick="setTab('auto')">Conciliação automática</button>
+        <button class="cb-tab" data-tab="prazo" onclick="setTab('prazo')">Prazo de recebimento</button>
       </div>
 
       <div class="cb-tab-panel on" id="tab-pagamentos">
@@ -229,6 +230,27 @@
             <tbody id="autoTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div></div>
+      </div>
+
+      <!-- ABA: Prazo de recebimento -->
+      <div class="cb-tab-panel" id="tab-prazo">
+        <p class="cb-note">Tempo entre a <b>venda</b> e o <b>dinheiro cair na conta</b> (pagamentos já liberados). Média geral e por logística.</p>
+        <div class="filters-row" style="margin-bottom:12px">
+          <select class="filter-select cb-loja-filter" id="prazoLoja" onchange="loadPrazo()"><option value="">Todas as lojas</option></select>
+        </div>
+        <div class="cb-vsum" id="prazoResumo"></div>
+        <div class="card">
+          <div class="card-header"><h3>Vendas × Recebimentos</h3><span class="count" id="prazoCount"></span>
+            <div class="spacer"></div>
+            <button class="action-btn" onclick="exportTableCSV(document.getElementById('prazoTable').closest('table'), 'prazo-recebimento.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead><tr><th>Loja</th><th>Pedido</th><th>Logística</th><th>Data da Venda</th><th>Data do Recebimento</th><th style="text-align:right">Valor da Venda</th><th style="text-align:right">Valor Recebido</th><th style="text-align:right">Dias</th></tr></thead>
+              <tbody id="prazoTable"><tr><td colspan="8" class="empty-state">Carregando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -831,6 +853,7 @@ const VERDICT_LABEL = {
 const autoLoaded = { done: false };
 const extLoaded = { done: false };
 const saquesLoaded = { done: false };
+const prazoLoaded = { done: false };
 let extState = { page: 1, limit: 50, total: 0 };
 
 function setTab(tab) {
@@ -839,6 +862,7 @@ function setTab(tab) {
   if (tab === 'extrato' && !extLoaded.done) { extLoaded.done = true; loadExtrato(); }
   if (tab === 'saques' && !saquesLoaded.done) { saquesLoaded.done = true; loadSaques(); }
   if (tab === 'auto' && !autoLoaded.done) { autoLoaded.done = true; loadAuto(); }
+  if (tab === 'prazo' && !prazoLoaded.done) { prazoLoaded.done = true; loadPrazo(); }
 }
 
 async function loadExtrato() {
@@ -919,6 +943,48 @@ async function loadAuto() {
       <td style="text-align:right;color:${Math.abs(r.delta)>0.5?'var(--red)':'var(--text-muted)'}">${r.delta>=0?'':'−'}${fmt(Math.abs(r.delta))}</td>
       <td><span class="tag ${v.cls}">${v.txt}</span></td>
     </tr>`; }).join('') : '<tr><td colspan="6" class="empty-state">Sem dados — o relatório do Mercado Pago ainda não foi importado</td></tr>';
+}
+
+// Ordem/rótulo dos cards de média por logística (as chaves vêm de logisticaBucket() no backend)
+const PRAZO_LOG_ORDER = [
+  ['full', '📦 Full'],
+  ['flex', '🏃 Flex'],
+  ['me', '📮 Mercado Envios'],
+  ['coleta', '🏠 Coleta'],
+  ['outros', '❓ Outros'],
+];
+const fmtDias = d => `${(Number(d) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} dias`;
+
+async function loadPrazo() {
+  const store_id = document.getElementById('prazoLoja').value;
+  document.getElementById('prazoTable').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando...</td></tr>';
+  document.getElementById('prazoResumo').innerHTML = '';
+  const data = await DB.getConciliacaoPrazo({ store_id }) || { prazos: [], resumo: {} };
+  if (data.error) { document.getElementById('prazoTable').innerHTML = `<tr><td colspan="8" style="color:var(--red)">${data.error}</td></tr>`; return; }
+  const R = data.resumo || {};
+  const por = R.por_logistica || {};
+  const logCards = PRAZO_LOG_ORDER
+    .filter(([k]) => por[k] && por[k].qtd)
+    .map(([k, lbl]) => `<div class="cb-vcard"><div class="n" style="color:var(--accent)">${fmtDias(por[k].media_dias)}</div><div class="l">${lbl} · ${fmtN(por[k].qtd)} venda(s)</div></div>`)
+    .join('');
+  document.getElementById('prazoResumo').innerHTML = `
+    <div class="cb-vcard"><div class="n" style="color:var(--green)">${fmtDias(R.media_dias || 0)}</div><div class="l">⏱️ Média geral (venda → recebimento)</div></div>
+    <div class="cb-vcard"><div class="n">${fmtN(R.qtd || 0)}</div><div class="l">Vendas já liberadas</div></div>
+    <div class="cb-vcard"><div class="n">${fmt(R.total_venda || 0)}</div><div class="l">Total vendido</div></div>
+    <div class="cb-vcard"><div class="n" style="color:var(--green)">${fmt(R.total_recebido || 0)}</div><div class="l">Total recebido</div></div>
+    ${logCards}`;
+  const rows = data.prazos || [];
+  document.getElementById('prazoCount').textContent = rows.length ? `${fmtN(R.qtd || rows.length)} venda(s)` : '';
+  document.getElementById('prazoTable').innerHTML = rows.length ? rows.map(r => `<tr>
+      <td style="font-weight:650">${escapeHtml(r.store_nickname) || '—'}</td>
+      <td>${escapeHtml(r.order_id) || '—'}</td>
+      <td>${logLabel(r.shipping_type)}</td>
+      <td>${r.data_venda ? new Date(r.data_venda).toLocaleString('pt-BR') : '—'}</td>
+      <td>${r.data_recebimento ? new Date(r.data_recebimento).toLocaleString('pt-BR') : '—'}</td>
+      <td style="text-align:right">${fmt(r.valor_venda)}</td>
+      <td style="text-align:right;color:var(--green)">${fmt(r.valor_recebido)}</td>
+      <td style="text-align:right;font-weight:650">${fmtDias(r.dias)}</td>
+    </tr>`).join('') : '<tr><td colspan="8" class="empty-state">Nenhuma venda liberada ainda (o dinheiro só entra na média depois de cair na conta)</td></tr>';
 }
 
 loadLojas().then(() => { load(); loadPagamentos(); loadResumoLojas(); });

@@ -298,4 +298,5 @@ const DB = {
   async getConciliacaoExtrato(params={}) { return this._get('/conciliacao/extrato', params); },
   async getConciliacaoSaques(params={}) { return this._get('/conciliacao/saques', params); },
   async getConciliacaoAuto(params={}) { return this._get('/conciliacao/auto', params); },
+  async getConciliacaoPrazo(params={}) { return this._get('/conciliacao/prazo', params); },
 };

@@ -220,6 +220,12 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /api/embalagem/historico?days=30&store_id` | série diária zero-fill (`days` entre 1-90, default 30) — `count` (bipagens no dia) e `duration_sum`/`duration_orders` (pra calcular tempo médio/pedido no frontend, mesmo padrão SUM/SUM do card da Conferência do Dia). Usado pela aba Histórico |
 | `GET /api/embalagem/videos/:id/file` | stream do arquivo de vídeo (`res.sendFile`, suporta `Range` — necessário pro player HTML5 avançar/voltar) |
 
+## Conciliação Bancária (`routes/api.js`, ver `conciliacao-bancaria.md`)
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/conciliacao/agenda-recebimentos?store_id` | agrupa `ml_payments` com `released != 'yes'` por dia de `money_release_date` (fuso São Paulo) — `{dias: [{data, qtd_pagamentos, valor_liquido, valor_bruto}]}`. Granularidade diária; agregação "hoje/amanhã/7 dias/30 dias" é feita no cliente, não pré-calculada aqui |
+
 ## `/auth/staff/*` (`routes/staffAuth.js`) — ver `auth-staff.md`
 > Rotas sempre públicas (fora do gate `requireStaffAuth`, senão login ficaria impossível). Demais rotas do sistema passam pelo gate quando `STAFF_AUTH_ENABLED=true`.
 

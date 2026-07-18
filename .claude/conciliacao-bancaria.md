@@ -36,8 +36,19 @@ Orders API → order.payments[].id → GET /collections/:id → money_release_da
 - **Webhooks Mercado Pago dedicados** (`payment`/`merchant_order`/chargebacks, com assinatura HMAC) — não configurados. Hoje a atualização depende do webhook `payments` do Mercado Livre (evento) + do job diário de reconsulta (para o caso `released` mudar sem novo webhook). Se isso se mostrar insuficiente em produção (ex: liberação não refletida a tempo), webhook MP dedicado vira alternativa — mas não é pré-requisito pro que já está no ar.
 - **Chargebacks/estornos por pagamento** — `amount_refunded`/`refunds[]` existem no payload (`refunds` veio vazio em toda amostra observada), campo já capturado (`amount_refunded`), mas nenhum chargeback real foi observado ainda pra confirmar o formato completo de disputa.
 - **Página frontend** (`pages/conciliacao-bancaria.html`) — ainda não criada; decisão do usuário foi backend/pipeline primeiro. Com `ml_payments` já rico o suficiente, a grid principal (Pedido/Payment/Liberação/Líquido/Taxas/Status) já pode ser construída sem esperar mais nada.
-- **Agenda de Recebimentos** (agrupamento hoje/amanhã/7 dias/30 dias por `money_release_date`) — vira uma query de agregação simples sobre `ml_payments`, ainda não implementada.
 - **Conciliação automática** (bater valor esperado × recebido × data) — lógica ainda não escrita; agora que `ml_payments.net_received_amount`/`released` existem, é viável construir sem depender de mais nenhuma API nova.
+
+## Agenda de Recebimentos — implementada
+
+`GET /api/conciliacao/agenda-recebimentos?store_id` (ver `api.md`) agrupa `ml_payments` com `released != 'yes'` por dia de `money_release_date` (cast pra `::date` no fuso São Paulo — agrupar pela timestamp completa nunca juntaria pagamentos diferentes no mesmo dia, já que cada um tem hora exata diferente). Devolve granularidade diária (`{data, qtd_pagamentos, valor_liquido, valor_bruto}`); o agrupamento "hoje/amanhã/7 dias/30 dias" pedido originalmente é agregação client-side sobre essa lista — decisão deliberada de não fixar um formato de bucket no backend antes de existir página consumindo isso de verdade. `DB.getAgendaRecebimentos(params)` em `js/db.js`.
+
+## Colunas sugeridas e descartadas (avaliação registrada)
+
+Sugestão externa (via usuário) de acrescentar `release_checked_at`, `last_sync`, `sync_attempts`, `release_status`, `conciliation_status`, `bank_transfer_id`, `received_at` em `ml_payments`. Avaliadas e **nenhuma adicionada**:
+- `release_checked_at`/`last_sync`/`release_status` — redundantes com `updated_at` (já tocado pelo webhook e pelo job diário) e `released` (já é o status binário real da API).
+- `sync_attempts` — só teria efeito se houvesse lógica de circuit-breaker por pagamento em cima dela; hoje o job já é limitado (200/execução) e loga erro — coluna sem leitor.
+- `conciliation_status` — legítimo, mas é a lógica da própria Conciliação automática (ainda não escrita) — adicionar a coluna antes da lógica que a preenche seria campo morto.
+- `bank_transfer_id`/`received_at` — dependem de uma fonte de dado (Transferência bancária) que ainda não foi encontrada/confirmada (ver seção acima) — mesmo racional de não criar coluna sem fonte real, já aplicado à remoção de `ml_billing_sync_state` antes da v29 ser aplicada.
 
 ## API de Relatórios de Faturamento — resumo (detalhe completo já estava aqui antes desta correção)
 

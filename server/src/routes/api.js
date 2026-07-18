@@ -2818,4 +2818,42 @@ router.get('/items/:item_id/promotion', async (req, res) => {
   }
 });
 
+// ── Conciliação Bancária ───────────────────────────────────
+// Agenda de Recebimentos: agrupa pagamentos ainda não liberados por dia de
+// money_release_date (cast pra date — o valor cru tem hora, agrupar pela
+// timestamp completa nunca juntaria pagamentos diferentes no mesmo dia).
+// Devolve granularidade diária; "hoje/amanhã/7 dias/30 dias" é agregação
+// no cliente sobre essa lista, não pré-calculado aqui — evita fixar um
+// formato de bucket antes de existir página consumindo isso de verdade.
+router.get('/conciliacao/agenda-recebimentos', async (req, res) => {
+  try {
+    const { store_id = '' } = req.query;
+    const { rows } = await pool.query(
+      `SELECT
+         (money_release_date AT TIME ZONE 'America/Sao_Paulo')::date AS data,
+         COUNT(*) AS qtd_pagamentos,
+         COALESCE(SUM(net_received_amount), 0) AS valor_liquido,
+         COALESCE(SUM(transaction_amount), 0) AS valor_bruto
+       FROM ml_payments
+       WHERE released IS DISTINCT FROM 'yes'
+         AND money_release_date IS NOT NULL
+         AND ($1 = '' OR store_id = $1::bigint)
+       GROUP BY 1
+       ORDER BY 1`,
+      [store_id]
+    );
+    res.json({
+      dias: rows.map(r => ({
+        data: r.data,
+        qtd_pagamentos: Number(r.qtd_pagamentos),
+        valor_liquido: Number(r.valor_liquido),
+        valor_bruto: Number(r.valor_bruto),
+      })),
+    });
+  } catch (e) {
+    console.error('[conciliacao/agenda-recebimentos] erro:', e.message);
+    res.status(500).json({ error: e.message, dias: [] });
+  }
+});
+
 module.exports = router;

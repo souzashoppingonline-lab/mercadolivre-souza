@@ -290,7 +290,15 @@ function liberacaoDateOnly(r) {
 const STATUS_PAGAMENTO_CANCELADO = ['rejected', 'refunded', 'cancelled', 'charged_back'];
 function statusFinanceiroBadge(r) {
   if (STATUS_PAGAMENTO_CANCELADO.includes(r.status)) return '<span class="tag red">Cancelado</span>';
-  return r.released === 'yes' ? '<span class="tag green">Liberado</span>' : '<span class="tag yellow">Pendente</span>';
+  if (r.released === 'yes') return '<span class="tag green">Liberado</span>';
+  // Ainda "Pendente", mas se a liberação prevista já passou, o dinheiro
+  // provavelmente já caiu — só falta reconsultar o MP (released só atualiza no
+  // re-poll do job das 05:15 ou no botão Reprocessar). Avisa com ⚠️.
+  const atrasado = r.money_release_date && new Date(r.money_release_date) < new Date();
+  const aviso = atrasado
+    ? ' <span title="Liberação prevista já passou — clique Reprocessar pra confirmar se o dinheiro já caiu" style="cursor:help">⚠️</span>'
+    : '';
+  return '<span class="tag yellow">Pendente</span>' + aviso;
 }
 function valorRecebidoCell(r) {
   return r.released === 'yes' ? fmt(r.net_received_amount) : '—';

@@ -16,6 +16,7 @@ const { refreshToken } = require('./routes/auth');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem } = require('./reports');
 const taskEngine = require('./taskEngine');
 const { computeSeoScore } = require('./seoScore');
+const { syncMpAccountReports } = require('./mpReports');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -2660,6 +2661,14 @@ async function syncBillingCharges() {
 setInterval(() => syncBillingCharges().catch(e => console.error('[billing] interval erro:', e.message)), 30 * 60 * 1000);
 setTimeout(() => syncBillingCharges().catch(e => console.error('[billing] initial erro:', e.message)), 6 * 60 * 1000);
 
+// Conciliação fase 2: baixa/parseia os Relatórios de Liberação do Mercado Pago
+// (mp_account_movements). 1x/dia, auto-reagendado. Ver mpReports.js.
+async function runMpReports() {
+  try { await recordSync('mp-reports', '40 5 * * *', () => syncMpAccountReports()); }
+  catch (e) { console.error('[mp-reports] erro:', e.message); }
+  finally { scheduleAt(5, 40, runMpReports, 'mp-reports'); }
+}
+
 scheduleAt(1,  0,  syncScores,   'sync-scores');
 scheduleAt(1, 30, syncParentItems, 'sync-parent-items');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
@@ -2671,6 +2680,7 @@ scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
+scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
@@ -2771,6 +2781,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'sync-shipping-status' || cmd === 'syncShippingStatus') {
       console.log('[worker] syncShippingStatus disparado manualmente');
       syncShippingStatus().catch(e => console.error('[worker] syncShippingStatus erro:', e.message));
+    }
+    if (cmd === 'mp-reports' || cmd === 'syncMpAccountReports') {
+      console.log('[worker] syncMpAccountReports disparado manualmente');
+      syncMpAccountReports().catch(e => console.error('[worker] syncMpAccountReports erro:', e.message));
     }
     if (cmd === 'syncTopVendas') {
       console.log('[worker] syncTopVendas disparado manualmente');

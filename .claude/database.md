@@ -401,6 +401,33 @@ created_at TIMESTAMPTZ
 ```
 Sem FK pra nenhuma outra tabela — módulo de autenticação totalmente isolado do domínio ML/Amazon/Shopee. Sem UI de gerenciamento; criar/atualizar usuário é via `server/scripts/createStaffUser.js`.
 
+### `mp_account_movements` — movimentos da conta Mercado Pago (v34, Conciliação fase 2)
+```
+id BIGSERIAL PK
+store_id BIGINT FK stores
+movement_hash TEXT UNIQUE       -- md5(store|source_id|description|release_date|credit|debit|balance) — dedup entre relatórios com range sobreposto
+release_date TIMESTAMPTZ
+source_id TEXT                  -- payment_id/collection id (casa com ml_payments.payment_id)
+order_id TEXT                   -- EXTERNAL_REFERENCE/ORDER_ID (casa com orders.ml_id)
+pack_id, shipping_id TEXT
+record_type TEXT               -- Release | Initial available balance | Total (grosso)
+description TEXT               -- fino: Payment | Cash withdrawal (saque) | Refund | Mediation | reserve_for_dispute | Shipping fee | Reserve for payout | ...
+net_credit_amount, net_debit_amount, gross_amount, mp_fee_amount, shipping_fee_amount, coupon_amount NUMERIC
+balance NUMERIC               -- saldo acumulado após o movimento
+payment_method, sale_detail TEXT
+report_file TEXT              -- arquivo de origem (auditoria)
+raw_line JSONB
+created_at TIMESTAMPTZ
+```
+Cada linha do `release_report` do Mercado Pago (o extrato da conta). Populada pelo job `mp-reports` (`mpReports.js`, ver `workers.md`). Fonte das abas Extrato/Saques/Conciliação automática e da confirmação "transferido pro banco" — o saque é `description='Cash withdrawal'`. Só dados a partir do que os relatórios cobrem (a UNIFULL tem 67 relatórios semanais; contas novas geram sob demanda).
+
+### `mp_reports_imported` — controle de idempotência dos relatórios (v34)
+```
+store_id BIGINT, report_type TEXT, file_name TEXT, row_count INT, imported_at TIMESTAMPTZ
+PRIMARY KEY (store_id, file_name)
+```
+Garante que cada arquivo de relatório é baixado/parseado 1x só. Complementa o `movement_hash` (que dedupa movimento a movimento entre relatórios sobrepostos).
+
 ## Views ML-only (v17)
 
 ```sql

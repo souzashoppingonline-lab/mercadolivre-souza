@@ -87,9 +87,44 @@ async function post(path, storeId, body) {
   return res.json();
 }
 
+// ── Mercado Pago (api.mercadopago.com) — mesmo token OAuth do ML autentica
+// aqui (confirmado ao vivo, ver decisions.md). Usado só pelos Relatórios de
+// Conciliação. `mpDownload` devolve Buffer (o arquivo é XLSX binário).
+const MP_BASE = 'https://api.mercadopago.com';
+async function mpGet(path, storeId) {
+  const token = await getAccessToken(storeId);
+  const res = await fetch(`${MP_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 429) throw new Error(`MP API ${path} -> HTTP 429 (rate limited)`);
+  if (!res.ok) throw new Error(`MP API ${path} -> HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  return res.json();
+}
+async function mpDownload(path, storeId) {
+  const token = await getAccessToken(storeId);
+  const res = await fetch(`${MP_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`MP download ${path} -> HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+async function mpPost(path, storeId, body) {
+  const token = await getAccessToken(storeId);
+  const res = await fetch(`${MP_BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  // 202 = aceito (relatório gerando async); o corpo pode vir vazio
+  if (res.status !== 200 && res.status !== 201 && res.status !== 202) {
+    throw new Error(`MP POST ${path} -> HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  }
+  return { status: res.status };
+}
+
 module.exports = {
   get,
   post,
+  // Relatórios de Conciliação MP — type ∈ 'release_report' | 'settlement_report'
+  getMpReportList:  (type, storeId)            => mpGet(`/v1/account/${type}/list`, storeId),
+  downloadMpReport: (type, fileName, storeId)  => mpDownload(`/v1/account/${type}/${fileName}`, storeId),
+  createMpReport:   (type, storeId, begin, end) => mpPost(`/v1/account/${type}`, storeId, { begin_date: begin, end_date: end }),
   getItem:             (id, storeId)     => get(`/items/${id}`, storeId),
   getOrder:            (id, storeId)     => get(`/orders/${id}`, storeId),
   getPayment:          (id, storeId)     => get(`/collections/${id}`, storeId),

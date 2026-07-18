@@ -35,6 +35,19 @@
     .cb-row-icon-btn { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:4px 6px; }
     .cb-row-icon-btn:hover { color:var(--primary); }
     .cb-entrega-sub { font-size:10px; color:var(--text-muted); margin-top:2px; }
+    .cb-tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:16px; overflow-x:auto; }
+    .cb-tab { background:none; border:none; color:var(--text-muted); font-family:inherit; font-size:13.5px; font-weight:650; padding:11px 15px; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+    .cb-tab:hover { color:var(--text-main); }
+    .cb-tab.on { color:var(--text-main); border-bottom-color:var(--primary); }
+    .cb-tab-panel { display:none; }
+    .cb-tab-panel.on { display:block; }
+    .cb-vsum { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+    @media (max-width:640px){ .cb-vsum { grid-template-columns:repeat(2,1fr); } }
+    .cb-vcard { border:1px solid var(--border); border-radius:12px; padding:14px; }
+    .cb-vcard .n { font-size:22px; font-weight:800; } .cb-vcard .l { font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+    .cb-saque { border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:12px; }
+    .cb-saque-h { display:flex; align-items:center; gap:12px; padding:13px 15px; background:rgba(255,255,255,.02); flex-wrap:wrap; }
+    .cb-saque-h .amt { font-size:16px; font-weight:750; color:var(--green); }
   </style>
 </head>
 <body>
@@ -75,6 +88,14 @@
         </div>
       </div>
 
+      <div class="cb-tabs">
+        <button class="cb-tab on" data-tab="pagamentos" onclick="setTab('pagamentos')">Pagamentos</button>
+        <button class="cb-tab" data-tab="extrato" onclick="setTab('extrato')">Extrato da conta</button>
+        <button class="cb-tab" data-tab="saques" onclick="setTab('saques')">Saques bancários</button>
+        <button class="cb-tab" data-tab="auto" onclick="setTab('auto')">Conciliação automática</button>
+      </div>
+
+      <div class="cb-tab-panel on" id="tab-pagamentos">
       <div class="filters-row" style="margin-bottom:8px">
         <button class="action-btn" onclick="setQuickRange(0,0)">Hoje</button>
         <button class="action-btn" onclick="setQuickRange(1,1)">Ontem</button>
@@ -147,6 +168,61 @@
           <button class="action-btn" id="pagPrev" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i> Anterior</button>
           <button class="action-btn" id="pagNext" onclick="changePage(1)">Próxima <i class="fas fa-chevron-right"></i></button>
         </div>
+      </div>
+      </div><!-- /tab-pagamentos -->
+
+      <!-- ABA: Extrato da conta -->
+      <div class="cb-tab-panel" id="tab-extrato">
+        <p class="cb-note">Cada crédito e débito da conta Mercado Pago (liberações, saques, estornos, disputas), do Relatório de Liberações. Fonte: <code>mp_account_movements</code>.</p>
+        <div class="filters-row" style="margin-bottom:12px">
+          <select class="filter-select" id="extTipo">
+            <option value="">Todos os movimentos</option>
+            <option value="Payment">Liberação de venda</option>
+            <option value="Cash withdrawal">Saque pro banco</option>
+            <option value="Refund">Estorno</option>
+            <option value="Mediation">Mediação/disputa</option>
+            <option value="Shipping fee">Frete</option>
+          </select>
+          <div class="search-box" style="max-width:260px"><i class="fas fa-search"></i><input type="text" id="extSearch" placeholder="Pedido ou payment ID..."></div>
+        </div>
+        <div class="card"><div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Data / hora</th><th>Movimento</th><th>Pedido</th><th>Origem</th><th style="text-align:right">Crédito</th><th style="text-align:right">Débito</th><th style="text-align:right">Saldo</th></tr></thead>
+            <tbody id="extTable"><tr><td colspan="7" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px">
+          <span id="extInfo" style="font-size:12px;color:var(--text-muted)"></span>
+          <button class="action-btn" id="extPrev" onclick="changeExtPage(-1)"><i class="fas fa-chevron-left"></i> Anterior</button>
+          <button class="action-btn" id="extNext" onclick="changeExtPage(1)">Próxima <i class="fas fa-chevron-right"></i></button>
+        </div></div>
+      </div>
+
+      <!-- ABA: Saques bancários -->
+      <div class="cb-tab-panel" id="tab-saques">
+        <p class="cb-note">Cada transferência do saldo Mercado Pago pra conta bancária (movimento <code>Cash withdrawal</code>). É a etapa "Transferência" da timeline.</p>
+        <div id="saquesList"><div class="empty-state" style="padding:30px">Carregando...</div></div>
+      </div>
+
+      <!-- ABA: Conciliação automática -->
+      <div class="cb-tab-panel" id="tab-auto">
+        <p class="cb-note">Bate o <b>líquido previsto</b> (Mercado Livre) contra o que <b>realmente entrou na conta</b> (extrato MP). Tolerância de R$ 0,50.</p>
+        <div class="cb-vsum" id="autoResumo"></div>
+        <div class="filters-row" style="margin-bottom:12px">
+          <select class="filter-select" id="autoVerdict" onchange="loadAuto()">
+            <option value="">Todos os veredictos</option>
+            <option value="conciliado">✓ Conciliado</option>
+            <option value="diferenca">≠ Diferença</option>
+            <option value="pendente">⏳ Pendente</option>
+            <option value="estornado">↩ Estornado</option>
+          </select>
+        </div>
+        <div class="card"><div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Pedido</th><th>Loja</th><th style="text-align:right">Esperado (líq.)</th><th style="text-align:right">Recebido (extrato)</th><th style="text-align:right">Δ</th><th>Veredito</th></tr></thead>
+            <tbody id="autoTable"><tr><td colspan="6" class="empty-state">Carregando...</td></tr></tbody>
+          </table>
+        </div></div>
       </div>
 
     </div>
@@ -435,6 +511,10 @@ function resetAndReload() {
   pagState.page = 1;
   load();
   loadPagamentos();
+  // Recarrega a aba fase 2 ativa (se já foi aberta) ao trocar de loja
+  if (typeof extLoaded !== 'undefined' && extLoaded.done) { extState.page = 1; loadExtrato(); }
+  if (typeof saquesLoaded !== 'undefined' && saquesLoaded.done) loadSaques();
+  if (typeof autoLoaded !== 'undefined' && autoLoaded.done) loadAuto();
 }
 
 document.getElementById('lojaFilter').addEventListener('change', resetAndReload);
@@ -717,6 +797,108 @@ WS.on('_connected', () => {
   const el = document.getElementById('wsStatus');
   if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
+
+// ── Abas fase 2 (Extrato / Saques / Conciliação automática) ──
+const EXT_TIPO_LABEL = {
+  'Payment': { txt: 'Liberação', cls: 'green' },
+  'Cash withdrawal': { txt: 'Saque', cls: 'blue' },
+  'Refund': { txt: 'Estorno', cls: 'red' },
+  'Mediation': { txt: 'Mediação', cls: 'yellow' },
+  'reserve_for_dispute': { txt: 'Reserva disputa', cls: 'yellow' },
+  'Shipping fee': { txt: 'Frete', cls: '' },
+  'Reserve for payout': { txt: 'Reserva saque', cls: 'blue' },
+};
+function extTipoBadge(d) {
+  const t = EXT_TIPO_LABEL[d] || { txt: d || '—', cls: '' };
+  return t.cls ? `<span class="tag ${t.cls}">${t.txt}</span>` : (d || '—');
+}
+const VERDICT_LABEL = {
+  conciliado: { txt: '✓ Conciliado', cls: 'green' },
+  diferenca:  { txt: '≠ Diferença', cls: 'red' },
+  pendente:   { txt: '⏳ Pendente', cls: 'yellow' },
+  estornado:  { txt: '↩ Estornado', cls: 'red' },
+};
+const autoLoaded = { done: false };
+const extLoaded = { done: false };
+const saquesLoaded = { done: false };
+let extState = { page: 1, limit: 50, total: 0 };
+
+function setTab(tab) {
+  document.querySelectorAll('.cb-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  document.querySelectorAll('.cb-tab-panel').forEach(p => p.classList.toggle('on', p.id === 'tab-' + tab));
+  if (tab === 'extrato' && !extLoaded.done) { extLoaded.done = true; loadExtrato(); }
+  if (tab === 'saques' && !saquesLoaded.done) { saquesLoaded.done = true; loadSaques(); }
+  if (tab === 'auto' && !autoLoaded.done) { autoLoaded.done = true; loadAuto(); }
+}
+
+async function loadExtrato() {
+  const store_id = document.getElementById('lojaFilter').value;
+  const tipo = document.getElementById('extTipo').value;
+  const q = document.getElementById('extSearch').value.trim();
+  document.getElementById('extTable').innerHTML = '<tr><td colspan="7" class="empty-state">Carregando...</td></tr>';
+  const data = await DB.getConciliacaoExtrato({ store_id, tipo, q, page: extState.page, limit: extState.limit }) || { movimentos: [], total: 0 };
+  if (data.error) { document.getElementById('extTable').innerHTML = `<tr><td colspan="7" style="color:var(--red)">${data.error}</td></tr>`; return; }
+  extState.total = data.total || 0;
+  const rows = data.movimentos || [];
+  document.getElementById('extTable').innerHTML = rows.length ? rows.map(m => `<tr>
+      <td>${m.release_date ? new Date(m.release_date).toLocaleString('pt-BR') : '—'}</td>
+      <td>${extTipoBadge(m.description)}</td>
+      <td>${escapeHtml(m.order_id) || '—'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${escapeHtml(m.sale_detail || m.source_id || '')}</td>
+      <td style="text-align:right;color:${Number(m.net_credit_amount)>0?'var(--green)':'inherit'}">${Number(m.net_credit_amount)>0?fmt(m.net_credit_amount):'—'}</td>
+      <td style="text-align:right;color:${Number(m.net_debit_amount)>0?'var(--red)':'inherit'}">${Number(m.net_debit_amount)>0?fmt(m.net_debit_amount):'—'}</td>
+      <td style="text-align:right">${m.balance!=null?fmt(m.balance):'—'}</td>
+    </tr>`).join('') : '<tr><td colspan="7" class="empty-state">Nenhum movimento (o relatório do Mercado Pago ainda não foi importado — ver Sincronizar)</td></tr>';
+  const totalPages = Math.max(1, Math.ceil(extState.total / extState.limit));
+  document.getElementById('extInfo').textContent = `${fmtN(extState.total)} movimento(s) · Pág ${extState.page}/${totalPages}`;
+  document.getElementById('extPrev').disabled = extState.page <= 1;
+  document.getElementById('extNext').disabled = extState.page >= totalPages;
+}
+function changeExtPage(d) { extState.page = Math.max(1, extState.page + d); loadExtrato(); }
+document.getElementById('extTipo').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
+let extTimer; document.getElementById('extSearch').addEventListener('input', () => { clearTimeout(extTimer); extTimer = setTimeout(() => { extState.page = 1; loadExtrato(); }, 400); });
+
+async function loadSaques() {
+  const store_id = document.getElementById('lojaFilter').value;
+  const el = document.getElementById('saquesList');
+  el.innerHTML = '<div class="empty-state" style="padding:30px">Carregando...</div>';
+  const data = await DB.getConciliacaoSaques({ store_id }) || { saques: [] };
+  const saques = data.saques || [];
+  el.innerHTML = saques.length ? saques.map(s => `
+    <div class="cb-saque"><div class="cb-saque-h">
+      <span class="amt">${fmt(s.valor)}</span>
+      <span class="tag blue">Saque</span>
+      <span style="font-size:11.5px;color:var(--text-muted)">${s.release_date ? new Date(s.release_date).toLocaleString('pt-BR') : ''} ${s.store_nickname ? '· '+escapeHtml(s.store_nickname) : ''}</span>
+      <div style="flex:1"></div>
+      <span style="font-size:11.5px;color:var(--text-muted)">saldo após: ${fmt(s.balance)}</span>
+    </div></div>`).join('')
+    : '<div class="empty-state" style="padding:30px">Nenhum saque no relatório importado ainda.</div>';
+}
+
+async function loadAuto() {
+  const store_id = document.getElementById('lojaFilter').value;
+  const verdict = document.getElementById('autoVerdict').value;
+  document.getElementById('autoTable').innerHTML = '<tr><td colspan="6" class="empty-state">Carregando...</td></tr>';
+  const data = await DB.getConciliacaoAuto({ store_id, verdict }) || { pagamentos: [], resumo: {} };
+  if (data.error) { document.getElementById('autoTable').innerHTML = `<tr><td colspan="6" style="color:var(--red)">${data.error}</td></tr>`; return; }
+  const R = data.resumo || {};
+  document.getElementById('autoResumo').innerHTML = `
+    <div class="cb-vcard"><div class="n" style="color:var(--green)">${fmtN(R.conciliado||0)}</div><div class="l">✓ Conciliado</div></div>
+    <div class="cb-vcard"><div class="n" style="color:var(--red)">${fmtN(R.diferenca||0)}</div><div class="l">≠ Diferença</div></div>
+    <div class="cb-vcard"><div class="n" style="color:#ff9f0a">${fmtN(R.pendente||0)}</div><div class="l">⏳ Pendente</div></div>
+    <div class="cb-vcard"><div class="n" style="color:var(--red)">${fmtN(R.estornado||0)}</div><div class="l">↩ Estornado</div></div>`;
+  const rows = data.pagamentos || [];
+  document.getElementById('autoTable').innerHTML = rows.length ? rows.map(r => {
+    const v = VERDICT_LABEL[r.verdict] || { txt: r.verdict, cls: '' };
+    return `<tr onclick="openDetalhe('${r.payment_id}')">
+      <td>${escapeHtml(r.order_id) || '—'}</td>
+      <td>${escapeHtml(r.store_nickname) || '—'}</td>
+      <td style="text-align:right">${fmt(r.esperado)}</td>
+      <td style="text-align:right">${fmt(r.recebido)}</td>
+      <td style="text-align:right;color:${Math.abs(r.delta)>0.5?'var(--red)':'var(--text-muted)'}">${r.delta>=0?'':'−'}${fmt(Math.abs(r.delta))}</td>
+      <td><span class="tag ${v.cls}">${v.txt}</span></td>
+    </tr>`; }).join('') : '<tr><td colspan="6" class="empty-state">Sem dados — o relatório do Mercado Pago ainda não foi importado</td></tr>';
+}
 
 loadLojas().then(() => { load(); loadPagamentos(); loadResumoLojas(); });
 loadSyncEntregasStatus();

@@ -294,4 +294,8 @@ const DB = {
   async getConciliacaoPagamentoDetalhe(paymentId) { return this._get(`/conciliacao/pagamentos/${paymentId}`); },
   async reprocessarPagamento(paymentId) { return this._post(`/conciliacao/pagamentos/${paymentId}/reprocessar`, {}); },
   async getResumoLojasConciliacao() { return this._get('/conciliacao/resumo-lojas'); },
+  // Fase 2 — Relatórios de Liberação do Mercado Pago
+  async getConciliacaoExtrato(params={}) { return this._get('/conciliacao/extrato', params); },
+  async getConciliacaoSaques(params={}) { return this._get('/conciliacao/saques', params); },
+  async getConciliacaoAuto(params={}) { return this._get('/conciliacao/auto', params); },
 };

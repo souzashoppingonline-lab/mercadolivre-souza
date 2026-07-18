@@ -49,6 +49,15 @@ Orders API → order.payments[].id → GET /collections/:id → money_release_da
 - **Cards por loja** (`GET /conciliacao/resumo-lojas`) — só aparecem quando há 2+ lojas com pendência (evita redundância com o card "Total Pendente" quando só há 1 loja ativa).
 - **Filtros rápidos de data** (Hoje/Ontem/7 dias/30 dias/90 dias) — botões que preenchem `dateFrom`/`dateTo` e recarregam a grid, complementam os inputs de data manuais que já existiam.
 
+## Abas fase 2 (Extrato / Saques / Conciliação automática) — implementadas
+
+A página ganhou uma barra de abas (`.cb-tab`) abaixo da Agenda; a 1ª aba é a grid de Pagamentos já existente, as 3 novas leem `mp_account_movements` (lazy-load: só busca ao abrir a aba 1ª vez; `resetAndReload` recarrega a aba ativa ao trocar de loja). Todas via `js/db.js` (`getConciliacaoExtrato`/`getConciliacaoSaques`/`getConciliacaoAuto`):
+- **Extrato da conta** — cada crédito/débito do MP (liberações, saques, estornos, disputas) paginado, com filtro por tipo de movimento + busca por pedido/payment. Badge colorido por `description` (`EXT_TIPO_LABEL`).
+- **Saques bancários** — cards de cada `Cash withdrawal` (valor, data, saldo após). É a etapa "Transferência". Obs: o relatório não linka explicitamente quais pagamentos entraram em cada saque (o saque não tem `source_id`), então por ora lista os saques em si — agrupar por pagamento seria inferência (liberações desde o saque anterior), fica como melhoria.
+- **Conciliação automática** — cards de resumo (Conciliado/Diferença/Pendente/Estornado) + tabela por venda com veredito e Δ (esperado − recebido). Clicar numa linha abre o modal de detalhe. Veredito calculado no backend (`/conciliacao/auto`).
+
+**Pendências desta fase** (não bloqueiam): a etapa 4 no painel "Confirmações de recebimento" do modal ainda mostra "sem fonte de dados" — falta o detail route (`/conciliacao/pagamentos/:id`) cruzar `mp_account_movements` pra saber se aquele pagamento já foi sacado; e os cards da grid dependem do relatório já ter sido importado (só a UNIFULL tem relatórios; RICOPI/TOP_MIX geram sob demanda no 1º run do job).
+
 ## `pages/conciliacao-bancaria.html` — implementada (Agenda + grid de pagamentos)
 
 Página única (seção Financeiro do menu) com duas partes:

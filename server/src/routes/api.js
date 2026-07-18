@@ -3084,4 +3084,103 @@ router.post('/conciliacao/pagamentos/:paymentId/reprocessar', async (req, res) =
   }
 });
 
+// ── Conciliação fase 2 — Relatórios de Liberação do Mercado Pago ──
+// Todas leem só mp_account_movements (populada pelo job mp-reports). Ver
+// conciliacao-bancaria.md / workers.md.
+
+// Extrato da conta — cada crédito/débito, paginado.
+router.get('/conciliacao/extrato', async (req, res) => {
+  try {
+    const { store_id = '', date_from = '', date_to = '', tipo = '', q = '', page = '1', limit = '50' } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = (pageNum - 1) * limitNum;
+    const params = [store_id, date_from || null, date_to || null, tipo, q];
+    const where = `
+      WHERE ($1 = '' OR m.store_id = $1::bigint)
+        AND ($2::date IS NULL OR (m.release_date AT TIME ZONE 'America/Sao_Paulo')::date >= $2::date)
+        AND ($3::date IS NULL OR (m.release_date AT TIME ZONE 'America/Sao_Paulo')::date <= $3::date)
+        AND ($4 = '' OR m.description = $4)
+        AND ($5 = '' OR m.source_id ILIKE '%'||$5||'%' OR m.order_id ILIKE '%'||$5||'%')
+        AND m.record_type IS DISTINCT FROM 'Total'`;
+    const { rows } = await pool.query(
+      `SELECT m.release_date, m.source_id, m.order_id, m.record_type, m.description,
+              m.net_credit_amount, m.net_debit_amount, m.balance, m.payment_method,
+              m.sale_detail, s.nickname AS store_nickname
+       FROM mp_account_movements m LEFT JOIN stores s ON s.id = m.store_id
+       ${where} ORDER BY m.release_date DESC LIMIT $6 OFFSET $7`,
+      [...params, limitNum, offset]
+    );
+    const { rows: cnt } = await pool.query(
+      `SELECT COUNT(*) total FROM mp_account_movements m ${where}`, params);
+    res.json({ movimentos: rows, total: Number(cnt[0].total), page: pageNum, limit: limitNum });
+  } catch (e) {
+    console.error('[conciliacao/extrato] erro:', e.message);
+    res.status(500).json({ error: e.message, movimentos: [], total: 0 });
+  }
+});
+
+// Saques bancários — cada 'Cash withdrawal' (transferência pro banco).
+router.get('/conciliacao/saques', async (req, res) => {
+  try {
+    const { store_id = '' } = req.query;
+    const { rows } = await pool.query(
+      `SELECT m.release_date, m.net_debit_amount AS valor, m.balance, m.store_id, s.nickname AS store_nickname
+       FROM mp_account_movements m LEFT JOIN stores s ON s.id = m.store_id
+       WHERE m.description = 'Cash withdrawal' AND ($1 = '' OR m.store_id = $1::bigint)
+       ORDER BY m.release_date DESC LIMIT 200`,
+      [store_id]
+    );
+    res.json({ saques: rows });
+  } catch (e) {
+    console.error('[conciliacao/saques] erro:', e.message);
+    res.status(500).json({ error: e.message, saques: [] });
+  }
+});
+
+// Conciliação automática — bate o líquido previsto (ml_payments) contra o que
+// realmente foi creditado no extrato (soma dos movimentos 'Payment' daquele
+// pagamento). Veredito: Conciliado / Diferença / Pendente.
+router.get('/conciliacao/auto', async (req, res) => {
+  try {
+    const { store_id = '', verdict = '' } = req.query;
+    const { rows } = await pool.query(
+      `SELECT p.payment_id, p.order_id, p.store_id, s.nickname AS store_nickname,
+              o.title, p.net_received_amount AS esperado, p.released, p.money_release_date,
+              COALESCE(SUM(m.net_credit_amount), 0) AS recebido,
+              COALESCE(SUM(m.net_debit_amount), 0) AS debitado
+       FROM ml_payments p
+       LEFT JOIN mp_account_movements m
+         ON m.source_id = p.payment_id::text AND m.store_id = p.store_id
+       LEFT JOIN orders o ON o.ml_id = p.order_id
+       LEFT JOIN stores s ON s.id = p.store_id
+       WHERE ($1 = '' OR p.store_id = $1::bigint)
+       GROUP BY p.payment_id, p.order_id, p.store_id, s.nickname, o.title,
+                p.net_received_amount, p.released, p.money_release_date
+       ORDER BY p.date_approved DESC NULLS LAST
+       LIMIT 2000`,
+      [store_id]
+    );
+    // Veredito calculado em JS (mais legível que num CASE gigante)
+    const TOL = 0.5;
+    const enriched = rows.map(r => {
+      const esperado = Number(r.esperado || 0);
+      const recebido = Number(r.recebido || 0);
+      const debitado = Number(r.debitado || 0);
+      let v;
+      if (recebido === 0 && debitado === 0) v = 'pendente';
+      else if (debitado > recebido) v = 'estornado';
+      else if (Math.abs(recebido - esperado) <= TOL) v = 'conciliado';
+      else v = 'diferenca';
+      return { ...r, esperado, recebido, debitado, delta: recebido - esperado, verdict: v };
+    });
+    const filtered = verdict ? enriched.filter(r => r.verdict === verdict) : enriched;
+    const resumo = enriched.reduce((a, r) => (a[r.verdict] = (a[r.verdict] || 0) + 1, a), {});
+    res.json({ pagamentos: filtered.slice(0, 500), resumo, total: enriched.length });
+  } catch (e) {
+    console.error('[conciliacao/auto] erro:', e.message);
+    res.status(500).json({ error: e.message, pagamentos: [], resumo: {} });
+  }
+});
+
 module.exports = router;

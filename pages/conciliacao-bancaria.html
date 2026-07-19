@@ -222,6 +222,21 @@
         <p class="cb-note">Cada transferência do saldo Mercado Pago pra conta bancária (movimento <code>Cash withdrawal</code>). É a etapa "Transferência" da timeline.</p>
         <div class="filters-row" style="margin-bottom:12px">
           <select class="filter-select cb-loja-filter" id="saquesLoja" onchange="loadSaques()"><option value="">Todas as lojas</option></select>
+          <select class="filter-select" id="saquesPeriodo" onchange="onSaquesPeriodo()" title="Período (data do saque)">
+            <option value="">Todo o período</option>
+            <option value="hoje">Hoje</option>
+            <option value="ontem">Ontem</option>
+            <option value="3">Últimos 3 dias</option>
+            <option value="5">Últimos 5 dias</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="21">Últimos 21 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+          <input type="date" class="filter-input" id="saquesFrom" title="De" style="display:none" onchange="loadSaques()">
+          <input type="date" class="filter-input" id="saquesTo" title="Até" style="display:none" onchange="loadSaques()">
+          <button class="action-btn" id="saquesClear" onclick="limparSaquesPeriodo()" style="display:none" title="Limpar período"><i class="fas fa-times"></i></button>
         </div>
         <div id="saquesList"><div class="empty-state" style="padding:30px">Carregando...</div></div>
       </div>
@@ -999,11 +1014,40 @@ async function exportExtratoCSV() {
   }
 }
 
+function onSaquesPeriodo() {
+  const v = document.getElementById('saquesPeriodo').value;
+  const fromEl = document.getElementById('saquesFrom');
+  const toEl = document.getElementById('saquesTo');
+  const clearEl = document.getElementById('saquesClear');
+  fromEl.style.display = v ? '' : 'none';
+  toEl.style.display = v ? '' : 'none';
+  clearEl.style.display = v ? '' : 'none';
+  if (v && v !== 'custom') {
+    const r = prazoPeriodoRange(v);
+    fromEl.value = r.from; toEl.value = r.to;
+    loadSaques();
+  } else if (v === 'custom') {
+    if (!fromEl.value && !toEl.value) return;
+    loadSaques();
+  }
+}
+function limparSaquesPeriodo() {
+  document.getElementById('saquesPeriodo').value = '';
+  document.getElementById('saquesFrom').value = '';
+  document.getElementById('saquesTo').value = '';
+  document.getElementById('saquesFrom').style.display = 'none';
+  document.getElementById('saquesTo').style.display = 'none';
+  document.getElementById('saquesClear').style.display = 'none';
+  loadSaques();
+}
+
 async function loadSaques() {
   const store_id = document.getElementById('saquesLoja').value;
+  const date_from = document.getElementById('saquesFrom').value;
+  const date_to = document.getElementById('saquesTo').value;
   const el = document.getElementById('saquesList');
   el.innerHTML = '<div class="empty-state" style="padding:30px">Carregando...</div>';
-  const data = await DB.getConciliacaoSaques({ store_id }) || { saques: [] };
+  const data = await DB.getConciliacaoSaques({ store_id, date_from, date_to }) || { saques: [] };
   const saques = data.saques || [];
   el.innerHTML = saques.length ? saques.map(s => `
     <div class="cb-saque"><div class="cb-saque-h">

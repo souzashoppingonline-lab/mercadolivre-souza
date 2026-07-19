@@ -3126,13 +3126,16 @@ router.get('/conciliacao/extrato', async (req, res) => {
 // Saques bancários — cada 'Cash withdrawal' (transferência pro banco).
 router.get('/conciliacao/saques', async (req, res) => {
   try {
-    const { store_id = '' } = req.query;
+    const { store_id = '', date_from = '', date_to = '' } = req.query;
     const { rows } = await pool.query(
       `SELECT m.release_date, m.net_debit_amount AS valor, m.balance, m.store_id, s.nickname AS store_nickname
        FROM mp_account_movements m LEFT JOIN stores s ON s.id = m.store_id
-       WHERE m.description = 'Cash withdrawal' AND ($1 = '' OR m.store_id = $1::bigint)
+       WHERE m.description = 'Cash withdrawal'
+         AND ($1 = '' OR m.store_id = $1::bigint)
+         AND ($2::date IS NULL OR (m.release_date AT TIME ZONE 'America/Sao_Paulo')::date >= $2::date)
+         AND ($3::date IS NULL OR (m.release_date AT TIME ZONE 'America/Sao_Paulo')::date <= $3::date)
        ORDER BY m.release_date DESC LIMIT 200`,
-      [store_id]
+      [store_id, date_from || null, date_to || null]
     );
     res.json({ saques: rows });
   } catch (e) {

@@ -13,7 +13,15 @@ function exportTableCSV(table, filename) {
   if (headRow) rows.push([...headRow.children].map(cellText));
   bodyRows.forEach(tr => rows.push([...tr.children].map(cellText)));
 
-  const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+  downloadCSVRows(rows, filename);
+}
+
+// Baixa CSV a partir de uma matriz de linhas (array de arrays) já em memória —
+// pra quem tem os dados fora do DOM (ex.: export do dataset inteiro quando a
+// tabela é paginada no servidor e o DOM só tem a página atual).
+function downloadCSVRows(rows, filename) {
+  if (!rows || !rows.length) { alert('Sem dados para exportar.'); return; }
+  const escape = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
   const csv = rows.map(r => r.map(escape).join(',')).join('\r\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');

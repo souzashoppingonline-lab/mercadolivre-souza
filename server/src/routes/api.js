@@ -3091,10 +3091,13 @@ router.post('/conciliacao/pagamentos/:paymentId/reprocessar', async (req, res) =
 // Extrato da conta — cada crédito/débito, paginado.
 router.get('/conciliacao/extrato', async (req, res) => {
   try {
-    const { store_id = '', date_from = '', date_to = '', tipo = '', q = '', page = '1', limit = '50' } = req.query;
+    const { store_id = '', date_from = '', date_to = '', tipo = '', q = '', page = '1', limit = '50', all = '' } = req.query;
+    // all=1 → devolve o conjunto filtrado inteiro (usado pelo export CSV), com
+    // teto de segurança; caso contrário, paginação normal (máx 200/página).
+    const wantAll = all === '1';
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
-    const offset = (pageNum - 1) * limitNum;
+    const limitNum = wantAll ? 100000 : Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const offset = wantAll ? 0 : (pageNum - 1) * limitNum;
     const params = [store_id, date_from || null, date_to || null, tipo, q];
     const where = `
       WHERE ($1 = '' OR m.store_id = $1::bigint)

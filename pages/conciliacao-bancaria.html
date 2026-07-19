@@ -194,6 +194,8 @@
           </table>
         </div>
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px">
+          <button class="action-btn" id="extCsv" onclick="exportExtratoCSV()" title="Exporta TODOS os movimentos do filtro atual (não só a página)"><i class="fas fa-file-csv"></i> CSV (filtro)</button>
+          <div style="flex:1"></div>
           <span id="extInfo" style="font-size:12px;color:var(--text-muted)"></span>
           <button class="action-btn" id="extPrev" onclick="changeExtPage(-1)"><i class="fas fa-chevron-left"></i> Anterior</button>
           <button class="action-btn" id="extNext" onclick="changeExtPage(1)">Próxima <i class="fas fa-chevron-right"></i></button>
@@ -912,6 +914,40 @@ function changeExtPage(d) { extState.page = Math.max(1, extState.page + d); load
 document.getElementById('extTipo').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
 document.getElementById('extLoja').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
 let extTimer; document.getElementById('extSearch').addEventListener('input', () => { clearTimeout(extTimer); extTimer = setTimeout(() => { extState.page = 1; loadExtrato(); }, 400); });
+
+// Export CSV do Extrato — o dataset é paginado no servidor (o DOM só tem a
+// página atual), então busca TODAS as linhas do filtro atual (all=1) e monta o
+// CSV a partir dos dados, não do DOM.
+async function exportExtratoCSV() {
+  const store_id = document.getElementById('extLoja').value;
+  const tipo = document.getElementById('extTipo').value;
+  const q = document.getElementById('extSearch').value.trim();
+  const btn = document.getElementById('extCsv');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+  try {
+    const data = await DB.getConciliacaoExtrato({ store_id, tipo, q, all: 1 }) || { movimentos: [] };
+    if (data.error) { alert('Erro ao exportar: ' + data.error); return; }
+    const rows = data.movimentos || [];
+    if (!rows.length) { alert('Sem dados para exportar neste filtro.'); return; }
+    const header = ['Loja', 'Data / hora', 'Movimento', 'Pedido', 'Origem', 'Crédito', 'Débito', 'Saldo'];
+    const body = rows.map(m => [
+      m.store_nickname || '',
+      m.release_date ? new Date(m.release_date).toLocaleString('pt-BR') : '',
+      (EXT_TIPO_LABEL[m.description] && EXT_TIPO_LABEL[m.description].txt) || m.description || '',
+      m.order_id || '',
+      m.sale_detail || m.source_id || '',
+      Number(m.net_credit_amount) > 0 ? Number(m.net_credit_amount).toFixed(2) : '',
+      Number(m.net_debit_amount) > 0 ? Number(m.net_debit_amount).toFixed(2) : '',
+      m.balance != null ? Number(m.balance).toFixed(2) : '',
+    ]);
+    const loja = store_id ? '-loja' + store_id : '';
+    const tp = tipo ? '-' + tipo.replace(/\s+/g, '_') : '';
+    downloadCSVRows([header, ...body], `extrato-conta${loja}${tp}.csv`);
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
 
 async function loadSaques() {
   const store_id = document.getElementById('saquesLoja').value;

@@ -22,7 +22,7 @@ js/
   sidebar.js                   ← toggle mobile/desktop
   dashboard.js                   ← lógica específica do index.html
   webhook.js                       ← lógica específica de pages/webhook.html
-  tableExport.js                     ← `exportTableCSV(table, filename)` genérico — lê qualquer <table> do DOM (thead/tbody) e baixa CSV, sem depender da forma dos dados de cada página
+  tableExport.js                     ← `exportTableCSV(table, filename)` genérico — lê qualquer <table> do DOM (thead/tbody) e baixa CSV; e `downloadCSVRows(rows, filename)` data-driven (matriz de linhas já em memória) pra grids paginadas no servidor, onde o DOM só tem a página atual (ex.: Extrato da conta com `all=1`)
   api.js                             ← LEGADO — cliente direto da API do ML, não usar
 ```
 

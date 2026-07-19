@@ -237,6 +237,25 @@
         <p class="cb-note">Tempo entre a <b>venda</b> e o <b>dinheiro cair na conta</b> (pagamentos já liberados). Média geral e por logística.</p>
         <div class="filters-row" style="margin-bottom:12px">
           <select class="filter-select cb-loja-filter" id="prazoLoja" onchange="loadPrazo()"><option value="">Todas as lojas</option></select>
+          <select class="filter-select" id="prazoBase" onchange="loadPrazo()" title="Filtrar sobre qual data">
+            <option value="venda">Filtrar por: Data da Venda</option>
+            <option value="recebimento">Filtrar por: Data do Recebimento</option>
+          </select>
+          <select class="filter-select" id="prazoPeriodo" onchange="onPrazoPeriodo()" title="Período">
+            <option value="">Todo o período</option>
+            <option value="hoje">Hoje</option>
+            <option value="ontem">Ontem</option>
+            <option value="3">Últimos 3 dias</option>
+            <option value="5">Últimos 5 dias</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="21">Últimos 21 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+          <input type="date" class="filter-input" id="prazoFrom" title="De" style="display:none" onchange="loadPrazo()">
+          <input type="date" class="filter-input" id="prazoTo" title="Até" style="display:none" onchange="loadPrazo()">
+          <button class="action-btn" id="prazoClear" onclick="limparPrazoPeriodo()" style="display:none" title="Limpar período"><i class="fas fa-times"></i></button>
         </div>
         <div class="cb-vsum" id="prazoResumo"></div>
         <div class="card">
@@ -955,11 +974,53 @@ const PRAZO_LOG_ORDER = [
 ];
 const fmtDias = d => `${(Number(d) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} dias`;
 
+// Presets de período → intervalo de datas (fuso São Paulo, reusa spDateStr/addDaysStr).
+// "N dias" = últimos N dias incluindo hoje (de hoje-(N-1) até hoje).
+function prazoPeriodoRange(v) {
+  const hoje = spDateStr(new Date());
+  if (v === 'hoje') return { from: hoje, to: hoje };
+  if (v === 'ontem') { const o = addDaysStr(hoje, -1); return { from: o, to: o }; }
+  const n = parseInt(v, 10);
+  if (n > 0) return { from: addDaysStr(hoje, -(n - 1)), to: hoje };
+  return { from: '', to: '' };
+}
+function onPrazoPeriodo() {
+  const v = document.getElementById('prazoPeriodo').value;
+  const fromEl = document.getElementById('prazoFrom');
+  const toEl = document.getElementById('prazoTo');
+  const clearEl = document.getElementById('prazoClear');
+  const custom = v === 'custom';
+  fromEl.style.display = (custom || v) ? '' : 'none';
+  toEl.style.display = (custom || v) ? '' : 'none';
+  clearEl.style.display = v ? '' : 'none';
+  if (v && v !== 'custom') {
+    const r = prazoPeriodoRange(v);
+    fromEl.value = r.from; toEl.value = r.to;
+    loadPrazo();
+  } else if (custom) {
+    // espera o usuário escolher as datas (os inputs disparam loadPrazo no change)
+    if (!fromEl.value && !toEl.value) return;
+    loadPrazo();
+  }
+}
+function limparPrazoPeriodo() {
+  document.getElementById('prazoPeriodo').value = '';
+  document.getElementById('prazoFrom').value = '';
+  document.getElementById('prazoTo').value = '';
+  document.getElementById('prazoFrom').style.display = 'none';
+  document.getElementById('prazoTo').style.display = 'none';
+  document.getElementById('prazoClear').style.display = 'none';
+  loadPrazo();
+}
+
 async function loadPrazo() {
   const store_id = document.getElementById('prazoLoja').value;
+  const base = document.getElementById('prazoBase').value;
+  const date_from = document.getElementById('prazoFrom').value;
+  const date_to = document.getElementById('prazoTo').value;
   document.getElementById('prazoTable').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando...</td></tr>';
   document.getElementById('prazoResumo').innerHTML = '';
-  const data = await DB.getConciliacaoPrazo({ store_id }) || { prazos: [], resumo: {} };
+  const data = await DB.getConciliacaoPrazo({ store_id, base, date_from, date_to }) || { prazos: [], resumo: {} };
   if (data.error) { document.getElementById('prazoTable').innerHTML = `<tr><td colspan="8" style="color:var(--red)">${data.error}</td></tr>`; return; }
   const R = data.resumo || {};
   const por = R.por_logistica || {};

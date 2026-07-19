@@ -3199,7 +3199,13 @@ function logisticaBucket(tipo) {
 // logística e calcula a média de dias por logística (Full/Flex/ME/Coleta).
 router.get('/conciliacao/prazo', async (req, res) => {
   try {
-    const { store_id = '' } = req.query;
+    const { store_id = '', base = 'recebimento', date_from = '', date_to = '' } = req.query;
+    // Sobre qual data o filtro age: 'recebimento' (money_release_date, no fuso
+    // SP — igual aos cards "Recebo Hoje") ou 'venda' (date_approved). Whitelist:
+    // nunca interpola a coluna direto sem passar por aqui.
+    const baseCol = base === 'venda'
+      ? 'p.date_approved::date'
+      : `(p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date`;
     const { rows } = await pool.query(
       `SELECT p.order_id, s.nickname AS store_nickname, o.shipping_type,
               p.date_approved AS data_venda,
@@ -3213,9 +3219,11 @@ router.get('/conciliacao/prazo', async (req, res) => {
        WHERE p.released = 'yes'
          AND p.date_approved IS NOT NULL AND p.money_release_date IS NOT NULL
          AND ($1 = '' OR p.store_id = $1::bigint)
+         AND ($2::date IS NULL OR ${baseCol} >= $2::date)
+         AND ($3::date IS NULL OR ${baseCol} <= $3::date)
        ORDER BY p.money_release_date DESC
        LIMIT 2000`,
-      [store_id]
+      [store_id, date_from || null, date_to || null]
     );
     const n = rows.length;
     // média de dias por logística (Full/Flex/ME/Coleta)

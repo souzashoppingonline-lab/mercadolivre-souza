@@ -185,6 +185,21 @@
             <option value="Mediation">Mediação/disputa</option>
             <option value="Shipping fee">Frete</option>
           </select>
+          <select class="filter-select" id="extPeriodo" onchange="onExtPeriodo()" title="Período (data do movimento)">
+            <option value="">Todo o período</option>
+            <option value="hoje">Hoje</option>
+            <option value="ontem">Ontem</option>
+            <option value="3">Últimos 3 dias</option>
+            <option value="5">Últimos 5 dias</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="21">Últimos 21 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+          <input type="date" class="filter-input" id="extFrom" title="De" style="display:none">
+          <input type="date" class="filter-input" id="extTo" title="Até" style="display:none">
+          <button class="action-btn" id="extClear" onclick="limparExtPeriodo()" style="display:none" title="Limpar período"><i class="fas fa-times"></i></button>
           <div class="search-box" style="max-width:260px"><i class="fas fa-search"></i><input type="text" id="extSearch" placeholder="Pedido ou payment ID..."></div>
         </div>
         <div class="card"><div class="table-responsive">
@@ -886,12 +901,43 @@ function setTab(tab) {
   if (tab === 'prazo' && !prazoLoaded.done) { prazoLoaded.done = true; loadPrazo(); }
 }
 
+// Presets de período do Extrato (filtra release_date). Reusa prazoPeriodoRange
+// (mesmo cálculo de janela no fuso SP).
+function onExtPeriodo() {
+  const v = document.getElementById('extPeriodo').value;
+  const fromEl = document.getElementById('extFrom');
+  const toEl = document.getElementById('extTo');
+  const clearEl = document.getElementById('extClear');
+  fromEl.style.display = v ? '' : 'none';
+  toEl.style.display = v ? '' : 'none';
+  clearEl.style.display = v ? '' : 'none';
+  if (v && v !== 'custom') {
+    const r = prazoPeriodoRange(v);
+    fromEl.value = r.from; toEl.value = r.to;
+    extState.page = 1; loadExtrato();
+  } else if (v === 'custom') {
+    if (!fromEl.value && !toEl.value) return;
+    extState.page = 1; loadExtrato();
+  }
+}
+function limparExtPeriodo() {
+  document.getElementById('extPeriodo').value = '';
+  document.getElementById('extFrom').value = '';
+  document.getElementById('extTo').value = '';
+  document.getElementById('extFrom').style.display = 'none';
+  document.getElementById('extTo').style.display = 'none';
+  document.getElementById('extClear').style.display = 'none';
+  extState.page = 1; loadExtrato();
+}
+
 async function loadExtrato() {
   const store_id = document.getElementById('extLoja').value;
   const tipo = document.getElementById('extTipo').value;
   const q = document.getElementById('extSearch').value.trim();
+  const date_from = document.getElementById('extFrom').value;
+  const date_to = document.getElementById('extTo').value;
   document.getElementById('extTable').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando...</td></tr>';
-  const data = await DB.getConciliacaoExtrato({ store_id, tipo, q, page: extState.page, limit: extState.limit }) || { movimentos: [], total: 0 };
+  const data = await DB.getConciliacaoExtrato({ store_id, tipo, q, date_from, date_to, page: extState.page, limit: extState.limit }) || { movimentos: [], total: 0 };
   if (data.error) { document.getElementById('extTable').innerHTML = `<tr><td colspan="8" style="color:var(--red)">${data.error}</td></tr>`; return; }
   extState.total = data.total || 0;
   const rows = data.movimentos || [];
@@ -914,6 +960,8 @@ function changeExtPage(d) { extState.page = Math.max(1, extState.page + d); load
 document.getElementById('extTipo').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
 document.getElementById('extLoja').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
 let extTimer; document.getElementById('extSearch').addEventListener('input', () => { clearTimeout(extTimer); extTimer = setTimeout(() => { extState.page = 1; loadExtrato(); }, 400); });
+document.getElementById('extFrom').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
+document.getElementById('extTo').addEventListener('change', () => { extState.page = 1; loadExtrato(); });
 
 // Export CSV do Extrato — o dataset é paginado no servidor (o DOM só tem a
 // página atual), então busca TODAS as linhas do filtro atual (all=1) e monta o
@@ -922,11 +970,13 @@ async function exportExtratoCSV() {
   const store_id = document.getElementById('extLoja').value;
   const tipo = document.getElementById('extTipo').value;
   const q = document.getElementById('extSearch').value.trim();
+  const date_from = document.getElementById('extFrom').value;
+  const date_to = document.getElementById('extTo').value;
   const btn = document.getElementById('extCsv');
   const orig = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
   try {
-    const data = await DB.getConciliacaoExtrato({ store_id, tipo, q, all: 1 }) || { movimentos: [] };
+    const data = await DB.getConciliacaoExtrato({ store_id, tipo, q, date_from, date_to, all: 1 }) || { movimentos: [] };
     if (data.error) { alert('Erro ao exportar: ' + data.error); return; }
     const rows = data.movimentos || [];
     if (!rows.length) { alert('Sem dados para exportar neste filtro.'); return; }

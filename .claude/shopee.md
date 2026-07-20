@@ -114,6 +114,15 @@ Página **Estoque & Preço** (`pages/shopee-precos-estoque.html`, `SHOPEE_NAV_IT
 - **Rotas**: `GET /api/shopee/estoque-preco` (itens + variações do espelho local `shopee_item_data`, filtro loja/busca) e `POST /api/shopee/anuncios/aplicar` (`{changes:[{item_id,model_id,price?,stock?}]}` — agrupa por item, grava na Shopee, atualiza o espelho local na hora via `updateLocalItemAfterWrite` pra não esperar o sync de 30min).
 - ⚠️ **Escrita real** — altera preço/estoque da loja. Verificação empírica do contrato sem alterar nada: `server/test-shopee-update.js` (regrava o estoque com o mesmo valor = no-op). Roda uma vez antes de confiar na tela.
 
+## Precificador — implementado (tela própria)
+
+Página **Precificador** (`pages/shopee-precificador.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): calcula o **preço ideal por variação** a partir de custo + margem + taxa, e aplica com 1 clique (reusa o `/anuncios/aplicar`).
+
+- **Fórmula**: `preço_sugerido = (custo + taxa_fixa) / (1 − taxa% − margem%)` (margem sobre o preço de venda). Mostra também a **margem atual** no preço vigente (verde/vermelho).
+- **Custo** (decisão do usuário): **digitado na tela**, salvo em `shopee_item_cost` (v40) **por variação** (`item_id`+`model_id`) — tabela separada de propósito, porque o sync de catálogo reescreve `shopee_item_data.models` a cada 30min. Rota `POST /api/shopee/custo`.
+- **Taxa Shopee** (decisão do usuário): **automática do escrow** — `escrowFeePct()` calcula a taxa efetiva real (`SUM(commission_fee)/SUM(buyer_total)` de `shopee_order_data`), pré-preenchida e editável; cai pra 14% se ainda não há escrow. Rota `GET /api/shopee/precificador` (margem/taxa/taxa_fixa por query).
+- Tabela `shopee_item_cost` (v40) — ver `database.md`.
+
 ## Lojas — implementado (tela própria)
 
 Página **Lojas** (`pages/shopee-lojas.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`) — identifica as lojas Shopee registradas, no mesmo padrão visual da página de Lojas do ML (`pages/lojas.html`), mas isolada e com a identidade Shopee (laranja `#ee4d2d`, ícone de sacola). Grid de cards, um por loja, mostrando: `shop_id` real + id interno, status **Autorizada/Sem autorização** (`refresh_token IS NOT NULL`), validade do token de acesso (`token_valid`/`token_expires_at` — o polling renova sozinho pelo refresh_token), última atualização, e métricas por loja (**pedidos total/mês**, **faturamento do mês**, **produtos ativos**). Loja sem autorização mostra botão **Autorizar loja** → `/auth/shopee/login` (mesmo OAuth do console). Backend: `GET /api/shopee/lojas` (enriquecida — ver `api.md`), consumida por `DB.getShopeeLojas()`. Multi-loja de fábrica: cada linha de `stores` com `marketplace_id=SHOPEE` vira um card.

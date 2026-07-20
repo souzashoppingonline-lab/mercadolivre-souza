@@ -39,6 +39,7 @@ async function migrate() {
     'migrate-v37.sql',
     'migrate-v38.sql',
     'migrate-v39.sql',
+    'migrate-v40.sql',
   ];
   for (const f of files) {
     const filePath = path.join(__dirname, f);

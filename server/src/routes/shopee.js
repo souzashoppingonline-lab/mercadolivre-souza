@@ -160,6 +160,112 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// Taxa efetiva REAL da Shopee, derivada do escrow dos pedidos (comissão que a
+// Shopee já cobrou ÷ total pago pelo comprador). É a "taxa automática" do
+// Precificador. Filtro opcional por loja. Retorna null se ainda não há escrow.
+async function escrowFeePct(mpId, storeId) {
+  const params = [mpId, storeId];
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(sod.commission_fee),0) AS com, COALESCE(SUM(sod.buyer_total),0) AS bt
+     FROM shopee_order_data sod
+     JOIN orders o ON o.ml_id = sod.order_id AND o.marketplace_id = $1
+     WHERE ($2 = '' OR o.store_id = $2::bigint) AND sod.buyer_total > 0`,
+    params
+  );
+  const com = Number(rows[0]?.com || 0);
+  const bt = Number(rows[0]?.bt || 0);
+  return bt > 0 ? (com / bt) * 100 : null;
+}
+
+// Precificador — itens+variações com custo (shopee_item_cost), preço atual e
+// preço SUGERIDO por margem/taxa. Preço sugerido = (custo + taxa_fixa) /
+// (1 - taxa% - margem%). Taxa% default = taxa efetiva do escrow (ou 14% se
+// ainda não houver histórico). Só leitura (não grava — aplicar reusa /aplicar).
+router.get('/precificador', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const q = (req.query.q || '').trim();
+    const margem = Number(req.query.margem);            // % desejada sobre o preço
+    const taxaFixa = Number(req.query.taxa_fixa) || 0;  // R$ por venda
+    const feeEscrow = await escrowFeePct(mpId, storeId);
+    const taxaPct = req.query.taxa_pct != null && req.query.taxa_pct !== ''
+      ? Number(req.query.taxa_pct)
+      : (feeEscrow != null ? Number(feeEscrow.toFixed(2)) : 14);
+
+    const params = [mpId, storeId];
+    let qFilter = '';
+    if (q) { params.push(`%${q}%`); qFilter = `AND (i.title ILIKE $${params.length} OR sid.item_sku ILIKE $${params.length})`; }
+    const { rows } = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title, i.thumbnail, s.nickname AS conta,
+              sid.item_sku, sid.has_model, sid.variation_count, sid.models
+       FROM items i
+       LEFT JOIN stores s ON s.id = i.store_id
+       LEFT JOIN shopee_item_data sid ON sid.item_id = i.ml_id
+       WHERE i.marketplace_id = $1 AND ($2 = '' OR i.store_id = $2::bigint) ${qFilter}
+       ORDER BY i.title LIMIT 500`,
+      params
+    );
+    const { rows: costRows } = await pool.query(
+      `SELECT sc.item_id, sc.model_id, sc.cost FROM shopee_item_cost sc
+       JOIN items i ON i.ml_id = sc.item_id AND i.marketplace_id = $1`, [mpId]
+    );
+    const costMap = new Map(costRows.map((c) => [`${c.item_id}::${Number(c.model_id)}`, Number(c.cost)]));
+
+    const denom = 1 - (taxaPct / 100) - (margem / 100);
+    const calcSuggested = (cost) => (denom > 0 && cost != null) ? (Number(cost) + taxaFixa) / denom : null;
+    const calcMargin = (price, cost) => {
+      const p = Number(price);
+      if (!p || cost == null) return null;
+      const lucro = p - Number(cost) - (p * taxaPct / 100 + taxaFixa);
+      return (lucro / p) * 100;
+    };
+
+    const out = rows.map((it) => {
+      const models = (it.models && it.models.length) ? it.models : [{ model_id: 0, model_name: '—', current_price: null }];
+      return {
+        item_id: it.item_id, title: it.title, thumbnail: it.thumbnail, conta: it.conta,
+        item_sku: it.item_sku, has_model: it.has_model, variation_count: it.variation_count,
+        variacoes: models.map((m) => {
+          const cost = costMap.has(`${it.item_id}::${Number(m.model_id || 0)}`) ? costMap.get(`${it.item_id}::${Number(m.model_id || 0)}`) : null;
+          return {
+            model_id: m.model_id || 0, model_name: m.model_name, model_sku: m.model_sku,
+            cost, current_price: m.current_price ?? null,
+            suggested_price: calcSuggested(cost),
+            current_margin: calcMargin(m.current_price, cost),
+          };
+        }),
+      };
+    });
+    res.json({ rows: out, taxa_pct: taxaPct, taxa_fixa: taxaFixa, margem, fee_escrow: feeEscrow });
+  } catch (e) {
+    console.error('[api/shopee] /precificador', e.message);
+    res.status(500).json({ error: e.message, rows: [] });
+  }
+});
+
+// Salvar o custo de uma variação (digitado no Precificador). Upsert por
+// (item_id, model_id). Só aceita item de loja Shopee.
+router.post('/custo', express.json(), async (req, res) => {
+  try {
+    const { item_id, model_id, cost } = req.body || {};
+    if (!item_id) return res.status(400).json({ error: 'item_id é obrigatório' });
+    const mpId = await shopeeMarketplaceId();
+    const { rows } = await pool.query(`SELECT 1 FROM items WHERE ml_id = $1 AND marketplace_id = $2`, [String(item_id), mpId]);
+    if (!rows.length) return res.status(404).json({ error: 'item Shopee não encontrado' });
+    await pool.query(
+      `INSERT INTO shopee_item_cost (item_id, model_id, cost, updated_at)
+       VALUES ($1,$2,$3, now())
+       ON CONFLICT (item_id, model_id) DO UPDATE SET cost = EXCLUDED.cost, updated_at = now()`,
+      [String(item_id), Number(model_id || 0), Number(cost) || 0]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[api/shopee] /custo', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Itens Shopee com as variações (models) pra grade editável de Estoque & Preço.
 // Lê do espelho local (shopee_item_data) — sem bater na Shopee (rápido). Filtro
 // por loja e busca por título/SKU.

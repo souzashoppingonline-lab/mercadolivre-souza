@@ -207,6 +207,15 @@ updated_at TIMESTAMPTZ
 ```
 Campos COMUNS do item ficam em `items` (title/price/available_quantity/status/category_id/thumbnail, `marketplace_id=SHOPEE`). Preenchida pelo job `syncShopeeCatalog` (`marketplaceEventWorker`, 30min) via Product API. Fundação de anúncios/precificador/estoque/SEO/tarefas/promoções. Ver `shopee.md`.
 
+### `shopee_item_cost` — v40: custo por variação Shopee (Precificador)
+```
+item_id TEXT      -- = items.ml_id           ┐ PK
+model_id BIGINT   -- 0 = item sem variação   ┘ (item_id, model_id)
+cost NUMERIC
+updated_at TIMESTAMPTZ
+```
+Custo digitado na tela do Precificador (a Shopee não fornece custo). **Separada** de `shopee_item_data` de propósito: o sync de catálogo reescreve `shopee_item_data.models` a cada 30min, então o custo morreria junto. Por variação porque custos diferem (ex: 1/2/3/4 peças). Ver `shopee.md`.
+
 ### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
 ```
 marketplace_id INT FK marketplaces, source_key TEXT   -- PK composta

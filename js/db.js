@@ -191,6 +191,8 @@ const DB = {
   async renomearShopeeLoja(id, nickname) { return this._patch(`/shopee/lojas/${id}`, { nickname }); },
   async getShopeeEstoquePreco(params = {}) { return this._get('/shopee/estoque-preco', params); },
   async aplicarShopeeEstoquePreco(changes) { return this._post('/shopee/anuncios/aplicar', { changes }); },
+  async getShopeePrecificador(params = {}) { return this._get('/shopee/precificador', params); },
+  async salvarShopeeCusto(item_id, model_id, cost) { return this._post('/shopee/custo', { item_id, model_id, cost }); },
   async getShopeeVendas(params = {})   { return this._get('/shopee/vendas', params); },
   async getShopeeAnuncios(params = {}) { return this._get('/shopee/anuncios', params); },
   async getShopeeFinanceiro(params = {}) { return this._get('/shopee/financeiro', params); },

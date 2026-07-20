@@ -267,6 +267,16 @@ CREATE TABLE IF NOT EXISTS shopee_item_data (
 );
 CREATE INDEX IF NOT EXISTS idx_shopee_item_data_store ON shopee_item_data(store_id);
 
+-- v40: custo por variação Shopee (digitado no Precificador; separado do sync). Ver .claude/shopee.md.
+CREATE TABLE IF NOT EXISTS shopee_item_cost (
+  item_id TEXT NOT NULL,
+  model_id BIGINT NOT NULL DEFAULT 0,
+  cost NUMERIC NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (item_id, model_id)
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_item ON shopee_item_cost(item_id);
+
 -- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (
   marketplace_id INT NOT NULL REFERENCES marketplaces(id),

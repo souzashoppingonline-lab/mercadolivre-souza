@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Precificador Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Precificador'; window.ACTIVE_NAV='shopee-precificador.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .params { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+    .param { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+    .param label { display:block; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .param input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:8px 10px; color:var(--text); font-size:15px; font-weight:700; box-sizing:border-box; }
+    .param input:focus { outline:none; border-color:var(--shopee); }
+    .param .hint { font-size:10px; color:var(--text-muted); margin-top:4px; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
+    .shp-filters select, .shp-filters input { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .pr-table { width:100%; border-collapse:collapse; }
+    .pr-table th { text-align:left; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:1px solid var(--border); }
+    .pr-table th.num { text-align:right; }
+    .item-head td { background:var(--surface); padding:10px 12px; border-top:1px solid var(--border); }
+    .item-head .ttl { display:flex; align-items:center; gap:10px; font-weight:700; font-size:13px; }
+    .item-head img { width:34px; height:34px; border-radius:6px; object-fit:cover; }
+    .var-row td { padding:8px 12px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:middle; }
+    .var-row td.num { text-align:right; }
+    .cost-input { width:95px; background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:6px 8px; color:var(--text); font-size:13px; text-align:right; }
+    .cost-input:focus { outline:none; border-color:var(--shopee); }
+    .sug { font-weight:800; color:var(--shopee); }
+    .mg-pos { color:var(--green); font-weight:700; }
+    .mg-neg { color:var(--red); font-weight:700; }
+    .btn-aplicar-1 { background:rgba(238,77,45,.12); border:1px solid var(--shopee); color:var(--shopee); border-radius:7px; padding:5px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+    .btn-aplicar-1:hover { background:var(--shopee); color:#fff; }
+    .btn-aplicar-1:disabled { opacity:.4; cursor:not-allowed; }
+    .topbar-actions { display:flex; gap:10px; align-items:center; margin-bottom:14px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="params">
+        <div class="param"><label>Margem desejada (%)</label><input type="number" id="pMargem" value="20" step="0.5" min="0" max="90" oninput="recarregar()"><div class="hint">lucro sobre o preço de venda</div></div>
+        <div class="param"><label>Taxa Shopee (%)</label><input type="number" id="pTaxa" step="0.1" min="0" max="90" oninput="recarregar()"><div class="hint" id="taxaHint">taxa real do escrow</div></div>
+        <div class="param"><label>Taxa fixa (R$)</label><input type="number" id="pFixa" value="0" step="0.5" min="0" oninput="recarregar()"><div class="hint">por venda (ex: frete fixo)</div></div>
+      </div>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="pLoja" onchange="recarregar()"><option value="">Todas as lojas</option></select>
+        <input type="text" id="pBusca" placeholder="Buscar título ou SKU..." style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')recarregar()">
+        <button class="action-btn" onclick="recarregar()"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="action-btn" id="btnAplicarTodos" onclick="aplicarTodos()" style="background:var(--shopee);color:#fff;border:none"><i class="fas fa-wand-magic-sparkles"></i> Aplicar todos os sugeridos</button>
+        <span id="prMsg" style="font-size:13px;color:var(--text-muted)"></span>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-responsive">
+          <table class="pr-table">
+            <thead><tr>
+              <th style="width:32%">Produto / Variação</th>
+              <th class="num">Custo (R$)</th>
+              <th class="num">Preço atual</th>
+              <th class="num">Margem atual</th>
+              <th class="num">Preço sugerido</th>
+              <th class="num"></th>
+            </tr></thead>
+            <tbody id="prBody"><tr><td colspan="6" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => v==null||v===''?'—':'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v));
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let taxaPreenchida = false;
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('pLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+function params() {
+  return {
+    store_id: document.getElementById('pLoja').value,
+    q: document.getElementById('pBusca').value.trim(),
+    margem: document.getElementById('pMargem').value,
+    taxa_pct: document.getElementById('pTaxa').value,
+    taxa_fixa: document.getElementById('pFixa').value,
+  };
+}
+
+let _timer;
+function recarregar() { clearTimeout(_timer); _timer = setTimeout(load, 350); }
+
+async function load() {
+  const body = document.getElementById('prBody');
+  const d = await DB.getShopeePrecificador(params());
+  if (!d || d.error) { body.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
+  // preenche a taxa (do escrow) na 1ª carga, se o campo estava vazio
+  const tx = document.getElementById('pTaxa');
+  if (!taxaPreenchida && (tx.value === '' || tx.value == null)) { tx.value = d.taxa_pct; taxaPreenchida = true; }
+  document.getElementById('taxaHint').textContent = d.fee_escrow != null ? `taxa real do escrow: ${Number(d.fee_escrow).toFixed(2)}%` : 'sem escrow ainda — padrão 14%';
+
+  const rows = d.rows || [];
+  body.innerHTML = rows.length ? rows.map(it => `
+    <tr class="item-head">
+      <td colspan="6"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')}</span></div></div></td>
+    </tr>
+    ${it.variacoes.map(v => rowVar(it, v)).join('')}
+  `).join('') : '<tr><td colspan="6" class="empty-state" style="padding:30px">Nenhum produto. Sincronize o catálogo ou ajuste a busca.</td></tr>';
+}
+
+function rowVar(it, v) {
+  const mgClass = v.current_margin == null ? '' : (v.current_margin < 0 ? 'mg-neg' : 'mg-pos');
+  const mg = v.current_margin == null ? '—' : v.current_margin.toFixed(1)+'%';
+  const canApply = v.suggested_price != null;
+  return `<tr class="var-row" data-item="${esc(it.item_id)}" data-model="${v.model_id}">
+    <td style="padding-left:34px" class="var-name">${esc(v.model_name||'—')}<div style="font-size:10px;color:var(--text-muted)">${esc(v.model_sku||it.item_sku||'')}</div></td>
+    <td class="num"><input class="cost-input" type="number" step="0.01" min="0" value="${v.cost ?? ''}" placeholder="—"
+        onchange="salvarCusto('${esc(it.item_id)}', ${v.model_id}, this.value)"></td>
+    <td class="num">${R(v.current_price)}</td>
+    <td class="num ${mgClass}">${mg}</td>
+    <td class="num sug">${R(v.suggested_price)}</td>
+    <td class="num"><button class="btn-aplicar-1" ${canApply?'':'disabled'}
+        onclick="aplicarUm('${esc(it.item_id)}', ${v.model_id}, ${v.suggested_price})">aplicar</button></td>
+  </tr>`;
+}
+
+async function salvarCusto(itemId, modelId, cost) {
+  await DB.salvarShopeeCusto(itemId, modelId, cost === '' ? 0 : Number(cost));
+  load(); // recalcula o sugerido com o novo custo
+}
+
+async function aplicarUm(itemId, modelId, price) {
+  if (price == null) return;
+  const msg = document.getElementById('prMsg');
+  msg.textContent = 'Aplicando...'; msg.style.color = 'var(--text-muted)';
+  const res = await DB.aplicarShopeeEstoquePreco([{ item_id: itemId, model_id: modelId, price: Number(price).toFixed(2) }]);
+  if (res?.ok) { msg.textContent = '✓ Preço aplicado na Shopee.'; msg.style.color = 'var(--green)'; load(); }
+  else { msg.textContent = 'Erro: ' + (res?.resultados?.[0]?.error || res?.error || 'falha'); msg.style.color = 'var(--red)'; }
+}
+
+async function aplicarTodos() {
+  const rows = [...document.querySelectorAll('.var-row')];
+  const changes = [];
+  for (const tr of rows) {
+    const btn = tr.querySelector('.btn-aplicar-1');
+    if (btn.disabled) continue;
+    const sug = tr.querySelector('.sug').textContent.replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',', '.');
+    if (!sug) continue;
+    changes.push({ item_id: tr.dataset.item, model_id: Number(tr.dataset.model), price: Number(sug).toFixed(2) });
+  }
+  const msg = document.getElementById('prMsg');
+  if (!changes.length) { msg.textContent = 'Nada pra aplicar — defina os custos primeiro.'; msg.style.color = 'var(--text-muted)'; return; }
+  if (!confirm(`Aplicar o preço sugerido em ${changes.length} variação(ões) na Shopee?`)) return;
+  msg.textContent = `Aplicando ${changes.length}...`; msg.style.color = 'var(--text-muted)';
+  const res = await DB.aplicarShopeeEstoquePreco(changes);
+  if (res?.error) { msg.textContent = 'Erro: ' + res.error; msg.style.color = 'var(--red)'; return; }
+  const falhas = (res.resultados||[]).filter(r => !r.ok).length;
+  msg.textContent = falhas ? `${res.aplicados}/${res.total} aplicados (${falhas} falha(s)).` : `✓ ${res.aplicados} preços aplicados na Shopee.`;
+  msg.style.color = falhas ? 'var(--red)' : 'var(--green)';
+  load();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLojas();
+  load();
+});
+</script>
+</body>
+</html>

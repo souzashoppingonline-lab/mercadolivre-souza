@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Score de Anúncios Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Score de Anúncios'; window.ACTIVE_NAV='shopee-score.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
+    .shp-filters select, .shp-filters input { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .shp-kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+    .shp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:10px; padding:14px 16px; }
+    .shp-kpi .l { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+    .shp-kpi .v { font-size:24px; font-weight:800; margin-top:4px; }
+    .sc-item { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+    .sc-head { display:flex; align-items:center; gap:14px; padding:12px 16px; cursor:pointer; }
+    .sc-head img { width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; }
+    .sc-head .noimg { width:44px; height:44px; border-radius:8px; background:var(--surface); flex-shrink:0; }
+    .sc-title { flex:1; min-width:0; font-size:13px; }
+    .sc-title small { color:var(--text-muted); font-size:11px; }
+    .ring { --p:0; --c:#27ae60; width:52px; height:52px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; background:conic-gradient(var(--c) calc(var(--p)*1%), var(--surface) 0); position:relative; }
+    .ring::before { content:''; position:absolute; inset:5px; border-radius:50%; background:var(--bg-card); }
+    .ring span { position:relative; z-index:1; }
+    .falta-chip { font-size:10px; background:rgba(231,76,60,.12); color:var(--red); border-radius:12px; padding:2px 8px; margin:2px 3px 0 0; display:inline-block; }
+    .sc-body { display:none; border-top:1px solid var(--border); padding:12px 16px; }
+    .sc-body.open { display:block; }
+    .crit { display:flex; gap:8px; padding:6px 0; font-size:12.5px; align-items:flex-start; }
+    .crit i { margin-top:2px; }
+    .crit .dica { color:var(--text-muted); font-size:11px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Qualidade de cada anúncio Shopee (0–100) — título, fotos, descrição, atributos, vídeo, SKU e estoque. Piores primeiro. Clique para ver <b>o que falta</b>.</p>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="scLoja" onchange="load()"><option value="">Todas as lojas</option></select>
+        <input type="text" id="scBusca" placeholder="Buscar título ou SKU..." style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')load()">
+        <button class="action-btn" onclick="load()"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+      </div>
+
+      <div class="shp-kpis">
+        <div class="shp-kpi"><div class="l">Score médio</div><div class="v" id="kMedia">—</div></div>
+        <div class="shp-kpi"><div class="l">Ótimos (80+)</div><div class="v" id="kOtimo" style="color:var(--green)">—</div></div>
+        <div class="shp-kpi"><div class="l">Regulares (40–59)</div><div class="v" id="kReg" style="color:#f0932b">—</div></div>
+        <div class="shp-kpi"><div class="l">Ruins (&lt;40)</div><div class="v" id="kRuim" style="color:var(--red)">—</div></div>
+      </div>
+
+      <div id="scList"><div class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></div></div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const ringColor = s => s>=80?'#27ae60':s>=60?'#7cb342':s>=40?'#f0932b':'#e74c3c';
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('scLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+async function load() {
+  const store_id = document.getElementById('scLoja').value;
+  const q = document.getElementById('scBusca').value.trim();
+  const list = document.getElementById('scList');
+  list.innerHTML = '<div class="empty-state" style="padding:30px">Carregando...</div>';
+  const d = await DB.getShopeeScore({ store_id, q });
+  if (!d || d.error) { list.innerHTML = `<div class="empty-state" style="padding:30px;color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</div>`; return; }
+  const r = d.resumo || {};
+  set('kMedia', r.media ?? 0); set('kOtimo', r.otimo ?? 0); set('kReg', r.regular ?? 0); set('kRuim', r.ruim ?? 0);
+  const rows = d.rows || [];
+  list.innerHTML = rows.length ? rows.map(a => `
+    <div class="sc-item">
+      <div class="sc-head" onclick="this.nextElementSibling.classList.toggle('open')">
+        <div class="ring" style="--p:${a.score};--c:${ringColor(a.score)}"><span>${a.score}</span></div>
+        ${a.thumbnail?`<img src="${esc(a.thumbnail)}" alt="">`:'<div class="noimg"></div>'}
+        <div class="sc-title">${esc(a.title||'—')}<div><small>${a.resumo.imagens} foto(s) · ${a.resumo.titulo_chars} car. no título · ${a.resumo.atributos} atributo(s)${a.resumo.video?' · vídeo ✓':''}</small></div>
+          <div>${(a.faltando||[]).map(f=>`<span class="falta-chip">${esc(f.nome.split(' (')[0])}</span>`).join('')}</div>
+        </div>
+        <i class="fas fa-chevron-down" style="color:var(--text-muted)"></i>
+      </div>
+      <div class="sc-body">
+        ${(a.faltando||[]).length ? (a.faltando||[]).map(f=>`<div class="crit"><i class="fas fa-circle-xmark" style="color:var(--red)"></i><div><b>${esc(f.nome)}</b> <span style="color:var(--text-muted)">(+${f.peso} pts)</span><div class="dica">${esc(f.dica)}</div></div></div>`).join('') : '<div class="crit"><i class="fas fa-circle-check" style="color:var(--green)"></i><div>Anúncio completo — nada a melhorar 🎉</div></div>'}
+      </div>
+    </div>`).join('') : `<div class="empty-state" style="padding:30px">${esc(d.nota||'Nenhum anúncio.')}</div>`;
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLojas();
+  load();
+});
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
+const { scoreItem } = require('../marketplaces/shopee/shopeeScore');
 
 const router = express.Router();
 
@@ -370,6 +371,54 @@ router.get('/executivo', async (req, res) => {
   } catch (e) {
     console.error('[api/shopee] /executivo', e.message);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Score de qualidade dos anúncios Shopee. Calcula em cima do get_item_base_info
+// já guardado (shopee_item_data.raw) — sem chamar a Shopee. Retorna score por
+// anúncio + detalhamento (o que falta) + resumo (média, distribuição). Isolado do ML.
+router.get('/score', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const q = (req.query.q || '').trim();
+    const params = [mpId, storeId];
+    let qFilter = '';
+    if (q) { params.push(`%${q}%`); qFilter = `AND (i.title ILIKE $${params.length} OR sid.item_sku ILIKE $${params.length})`; }
+    const { rows } = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title, i.thumbnail, i.available_quantity, i.status,
+              sid.has_model, sid.variation_count, sid.raw
+       FROM items i
+       JOIN shopee_item_data sid ON sid.item_id = i.ml_id
+       WHERE i.marketplace_id = $1 AND ($2 = '' OR i.store_id = $2::bigint) ${qFilter}
+       ORDER BY i.title LIMIT 500`,
+      params
+    );
+
+    const out = rows.map((r) => {
+      const s = scoreItem(r.raw || {}, { title: r.title, available_quantity: r.available_quantity },
+        { has_model: r.has_model, variation_count: r.variation_count });
+      return {
+        item_id: r.item_id, title: r.title, thumbnail: r.thumbnail, status: r.status,
+        score: s.score, nivel: s.nivel, faltando: s.faltando, resumo: s.resumo,
+      };
+    }).sort((a, b) => a.score - b.score); // piores primeiro (é onde agir)
+
+    const n = out.length;
+    const media = n ? Math.round(out.reduce((a, x) => a + x.score, 0) / n) : 0;
+    res.json({
+      rows: out, resumo: {
+        total: n, media,
+        otimo: out.filter((x) => x.nivel === 'otimo').length,
+        bom: out.filter((x) => x.nivel === 'bom').length,
+        regular: out.filter((x) => x.nivel === 'regular').length,
+        ruim: out.filter((x) => x.nivel === 'ruim').length,
+      },
+      nota: n === 0 ? 'Nenhum anúncio sincronizado ainda — aguarde o sync de catálogo (worker).' : null,
+    });
+  } catch (e) {
+    console.error('[api/shopee] /score', e.message);
+    res.status(500).json({ error: e.message, rows: [] });
   }
 });
 

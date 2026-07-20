@@ -199,6 +199,7 @@ const DB = {
   async getShopeeExecutivo(params = {}) { return this._get('/shopee/executivo', params); },
   async getShopeePerformance(params = {}) { return this._get('/shopee/performance', params); },
   async getShopeeIaSocio(store_id) { return this._post('/shopee/ia-socio', { store_id }); },
+  async getShopeeScore(params = {}) { return this._get('/shopee/score', params); },
   async getShopeeVendas(params = {})   { return this._get('/shopee/vendas', params); },
   async getShopeeAnuncios(params = {}) { return this._get('/shopee/anuncios', params); },
   async getShopeeFinanceiro(params = {}) { return this._get('/shopee/financeiro', params); },

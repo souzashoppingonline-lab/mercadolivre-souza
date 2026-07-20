@@ -167,6 +167,12 @@ Página **Precificador** (`pages/shopee-precificador.html`, `SHOPEE_NAV_ITEMS` +
 - **Taxa Shopee** (decisão do usuário): **automática do escrow** — `escrowFeePct()` calcula a taxa efetiva real (`SUM(commission_fee)/SUM(buyer_total)` de `shopee_order_data`), pré-preenchida e editável; cai pra 14% se ainda não há escrow. Rota `GET /api/shopee/precificador` (margem/taxa/taxa_fixa por query).
 - Tabela `shopee_item_cost` (v40) — ver `database.md`.
 
+## Score de Anúncios — implementado (tela própria)
+
+Página **Score de Anúncios** (`pages/shopee-score.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): nota de qualidade 0–100 por anúncio, piores primeiro, com o detalhamento do que falta. Backend `GET /api/shopee/score?store_id&q`.
+- **Motor** `server/src/marketplaces/shopee/shopeeScore.js` (`scoreItem(raw, item, extra)`) — **função pura**, calcula em cima do `get_item_base_info` já guardado (`shopee_item_data.raw`), **sem chamar a Shopee**. Critérios (pesos somam 100): título 25–100 chars (20), ≥3 fotos (20), descrição ≥100 chars (15), ≥3 atributos (15), vídeo (10), SKU (10), variação/estoque (10).
+- Retorna score, nível (otimo/bom/regular/ruim), `faltando[]` (com dica e pontos) e resumo. KPIs de distribuição na tela.
+
 ## Lojas — implementado (tela própria)
 
 Página **Lojas** (`pages/shopee-lojas.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`) — identifica as lojas Shopee registradas, no mesmo padrão visual da página de Lojas do ML (`pages/lojas.html`), mas isolada e com a identidade Shopee (laranja `#ee4d2d`, ícone de sacola). Grid de cards, um por loja, mostrando: `shop_id` real + id interno, status **Autorizada/Sem autorização** (`refresh_token IS NOT NULL`), validade do token de acesso (`token_valid`/`token_expires_at` — o polling renova sozinho pelo refresh_token), última atualização, e métricas por loja (**pedidos total/mês**, **faturamento do mês**, **produtos ativos**). Loja sem autorização mostra botão **Autorizar loja** → `/auth/shopee/login` (mesmo OAuth do console). Backend: `GET /api/shopee/lojas` (enriquecida — ver `api.md`), consumida por `DB.getShopeeLojas()`. Multi-loja de fábrica: cada linha de `stores` com `marketplace_id=SHOPEE` vira um card.

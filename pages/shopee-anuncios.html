@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Anúncios Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Anúncios'; window.ACTIVE_NAV='shopee-anuncios.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 18px; }
+    .shp-filters select { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+    .shp-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .shp-kpi { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--shopee); border-radius: 12px; padding: 16px 18px; }
+    .shp-kpi .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .shp-kpi .val { font-size: 26px; font-weight: 800; line-height: 1.1; }
+    .top-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 900px) { .top-row { grid-template-columns: 1fr; } }
+    .chart-wrap { position: relative; height: 240px; }
+    .banner { background: rgba(238,77,45,.08); border: 1px solid rgba(238,77,45,.3); border-radius: 10px; padding: 12px 16px; margin-bottom: 18px; font-size: 13px; color: var(--text-muted); display: none; }
+    .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
+    .badge.active { background: rgba(39,174,96,.15); color: var(--green); }
+    .badge.paused { background: rgba(240,147,43,.15); color: #f0932b; }
+    .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; height: 24px; width: 70%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="banner" id="banner"></div>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="shpLoja" onchange="loadAll()"><option value="">Todas as lojas</option></select>
+        <label style="font-size:12px;color:var(--text-muted);margin-left:8px"><i class="fas fa-filter"></i> Status</label>
+        <select id="shpStatus" onchange="loadAll()">
+          <option value="">Todos</option>
+          <option value="active">Ativos</option>
+          <option value="paused">Pausados</option>
+        </select>
+        <button class="action-btn" onclick="loadAll()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <div class="shp-kpis">
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-tags"></i> Total de anúncios</div><div class="val" id="kTotal"><div class="skeleton"></div></div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-circle-check"></i> Ativos</div><div class="val" id="kAtivos" style="color:var(--green)"><div class="skeleton"></div></div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-circle-pause"></i> Pausados</div><div class="val" id="kPausados" style="color:#f0932b"><div class="skeleton"></div></div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-cubes"></i> Estoque total</div><div class="val" id="kEstoque"><div class="skeleton"></div></div></div>
+      </div>
+
+      <div class="top-row">
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-chart-pie" style="color:var(--shopee)"></i> Ativos × Pausados</h3></div>
+          <div class="chart-wrap"><canvas id="chartStatus"></canvas></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;color:var(--text-muted)">
+          <i class="fas fa-box-open" style="font-size:38px;color:var(--shopee);opacity:.6;margin-bottom:12px"></i>
+          <div style="font-size:14px;max-width:320px" id="catalogoNota">Catálogo Shopee ainda não sincronizado.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Anúncios Shopee</h3>
+          <span id="anunCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('anunTbody').closest('table'), 'shopee-anuncios.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>SKU</th><th>Título</th><th>Loja</th><th class="tbl-num">Estoque</th><th class="tbl-num">Vendidos</th><th class="tbl-num">Preço</th><th>Status</th></tr></thead>
+            <tbody id="anunTbody"><tr><td colspan="7" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const N = v => new Intl.NumberFormat('pt-BR').format(Number(v)||0);
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const STATUS_LABEL = { active:'Ativo', paused:'Pausado', closed:'Encerrado' };
+let chartStatus;
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('shpLoja');
+  (d?.lojas || []).forEach(l => {
+    const o = document.createElement('option');
+    o.value = l.id; o.textContent = l.nickname + (l.conectada ? '' : ' (desconectada)');
+    sel.appendChild(o);
+  });
+}
+
+function drawStatus(ativos, pausados) {
+  chartStatus?.destroy();
+  chartStatus = new Chart(document.getElementById('chartStatus'), {
+    type: 'doughnut',
+    data: { labels: ['Ativos','Pausados'], datasets: [{ data: [ativos, pausados], backgroundColor: ['#27ae60','#f0932b'], borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#aaa', padding: 12 } } } }
+  });
+}
+
+async function loadAll() {
+  const store_id = document.getElementById('shpLoja').value;
+  const status = document.getElementById('shpStatus').value;
+  const d = await DB.getShopeeAnuncios({ store_id, status });
+  const tbody = document.getElementById('anunTbody');
+  if (!d || d.error) {
+    ['kTotal','kAtivos','kPausados','kEstoque'].forEach(id => set(id,'—'));
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--red)">Erro: ${d?.error||'sem dados'}</td></tr>`;
+    return;
+  }
+  const r = d.resumo || {};
+  set('kTotal', N(r.total)); set('kAtivos', N(r.ativos)); set('kPausados', N(r.pausados)); set('kEstoque', N(r.estoque_total));
+  drawStatus(Number(r.ativos||0), Number(r.pausados||0));
+
+  const banner = document.getElementById('banner');
+  if (d.note) { banner.style.display = 'block'; banner.innerHTML = '<i class="fas fa-circle-info"></i> ' + d.note; set('catalogoNota', d.note); }
+  else { banner.style.display = 'none'; set('catalogoNota', 'Catálogo sincronizado.'); }
+
+  const rows = d.rows || [];
+  set('anunCount', `${rows.length} anúncio(s)`);
+  tbody.innerHTML = rows.length ? rows.map(a => `
+    <tr>
+      <td style="font-size:11px;color:var(--text-muted)">${a.sku || '—'}</td>
+      <td>${a.title || '—'}</td>
+      <td>${a.conta || '—'}</td>
+      <td class="tbl-num">${a.estoque ?? 0}</td>
+      <td class="tbl-num">${a.vendidos ?? 0}</td>
+      <td class="tbl-num">${R(a.price)}</td>
+      <td>${a.status ? `<span class="badge ${a.status}">${STATUS_LABEL[a.status]||a.status}</span>` : '—'}</td>
+    </tr>`).join('') : `<tr><td colspan="7" class="empty-state">${d.note || 'Nenhum anúncio Shopee sincronizado ainda'}</td></tr>`;
+}
+
+WS.on('item_updated', p => { if (p?.marketplace === 'SHOPEE') loadAll(); });
+
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadAll);
+  await loadLojas();
+  loadAll();
+});
+</script>
+</body>
+</html>

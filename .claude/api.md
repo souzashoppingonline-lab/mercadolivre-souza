@@ -110,6 +110,9 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/shopee/pedidos` | até 200 pedidos Shopee mais recentes (`id`, `cliente`, `sku`, `valor`, `status`, `data`, `conta`) |
 | `GET /api/shopee/produtos?status` | até 200 itens Shopee (`sku`, `title`, `estoque`, `price`, `status`). Campo `note` explica quando vazio — catálogo de produtos Shopee (Product API) ainda não é sincronizado, só pedidos (ver `todo.md`) |
 | `GET /api/shopee/status` | mesmos campos do Amazon (`ultima_sincronizacao`, `contas_conectadas`/`contas_total`, `ultimo_erro`) |
+| `GET /api/shopee/lojas` | lojas Shopee cadastradas (`id`, `nickname`, `shopee_shop_id`, `conectada`) — alimenta o seletor de loja das páginas (multi-loja) |
+| `GET /api/shopee/vendas?store_id&dias` | Vendas Totais agregadas no período (`dias` default 30, máx 365; `store_id` opcional filtra uma loja, senão agrega todas). `{resumo:{vendas,pedidos,cancelados,ticket_medio,vendas_hoje,pedidos_hoje,dias}, por_dia:[{dia,pedidos,vendas}], por_loja:[{store_id,nickname,shopee_shop_id,pedidos,vendas}], por_status:[{status,pedidos,vendas}]}`. Lê `orders` de `marketplace_id=SHOPEE`, janela por `date_created` no fuso SP |
+| `GET /api/shopee/anuncios?store_id&status` | catálogo (`items` de `marketplace_id=SHOPEE`) com filtro por loja/status — `{rows:[{sku,title,estoque,vendidos,price,status,conta}], resumo:{total,ativos,pausados,estoque_total}, note}`. `note` explica quando vazio (Product API ainda não sincroniza catálogo — ver `todo.md`) |
 
 ## Alertas
 | Rota | Descrição |

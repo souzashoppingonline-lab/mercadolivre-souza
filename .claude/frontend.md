@@ -42,7 +42,7 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 - **Financeiro**: vendas-turbo (dashboard da planilha Vendas ML Turbo — ver `finance.md`), conciliacao-bancaria (Agenda de Recebimentos — cards Hoje/Amanhã/7 dias/30 dias calculados no cliente a partir de `GET /api/conciliacao/agenda-recebimentos`, tabela dia-a-dia com export CSV; ver `conciliacao-bancaria.md`)
 - **Sistema**: mcp (chat com IA), monitor (métricas de servidor + config Telegram), schedule (jobs agendados), webhook (logs de webhooks recebidos)
 
-Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js`/`js/layout-shopee.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee` (dashboard dedicado da Shopee, mesmo padrão — ver `shopee.md`).
+Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js`/`js/layout-shopee.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee`, `shopee-vendas`, `shopee-anuncios` (dashboards dedicados da Shopee, mesmo padrão — ver `shopee.md`).
 
 ## Padrão de nova página (contrato)
 
@@ -99,7 +99,7 @@ Igual em espírito a `js/layout.js`, mas **exclusivo das páginas Amazon** — n
 
 ## `js/layout-shopee.js` — sidebar e topbar exclusivos da Shopee
 
-Mesmo molde exato de `js/layout-amazon.js` (mesma função `document.addEventListener('DOMContentLoaded', ...)`, mesmas classes CSS reaproveitadas, cor de destaque própria — laranja Shopee `#ee4d2d`). `SHOPEE_NAV_ITEMS` hoje só tem **Dashboard** (`dashboard-shopee.html`) — páginas de detalhe (`shopee-vendas.html`/`shopee-pedidos.html`/`shopee-produtos.html`, mesmo padrão da Amazon) ficam pra quando pedidos reais de sandbox começarem a chegar (ver `todo.md`).
+Mesmo molde exato de `js/layout-amazon.js` (mesma função `document.addEventListener('DOMContentLoaded', ...)`, mesmas classes CSS reaproveitadas, cor de destaque própria — laranja Shopee `#ee4d2d`). `SHOPEE_NAV_ITEMS`: **Dashboard** (`dashboard-shopee.html`), **Vendas Totais** (`shopee-vendas.html`), **Anúncios** (`shopee-anuncios.html`). As duas novas usam **Chart.js** (mesma CDN das páginas ML — `cdn.jsdelivr.net/npm/chart.js`) e um **seletor de loja** (`#shpLoja`, populado por `DB.getShopeeLojas()`) pra filtrar por conta ou agregar todas — o backend (`/shopee/vendas`, `/shopee/anuncios`) já aceita `store_id`, então nada é hardcoded a uma loja (multi-loja desde o início).
 
 ## `pages/dashboard-amazon.html`, `amazon-vendas.html`, `amazon-pedidos.html`, `amazon-produtos.html`, `amazon-anuncios.html` e `pages/dashboard-shopee.html`
 

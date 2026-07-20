@@ -113,4 +113,127 @@ router.get('/status', async (req, res) => {
   }
 });
 
+// Lojas Shopee cadastradas — alimenta o seletor de loja das páginas (multi-loja).
+// Toda página nova filtra por store_id usando esta lista; sem store_id agrega tudo.
+router.get('/lojas', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const { rows } = await pool.query(
+      `SELECT id, nickname, shopee_shop_id,
+              (refresh_token IS NOT NULL) AS conectada
+       FROM stores WHERE marketplace_id = $1 ORDER BY nickname`,
+      [mpId]
+    );
+    res.json({ lojas: rows });
+  } catch (e) {
+    console.error('[api/shopee] /lojas', e.message);
+    res.status(500).json({ error: e.message, lojas: [] });
+  }
+});
+
+// Vendas Totais — agregados no período (default 30 dias), com filtro opcional
+// por loja (store_id). Traz série por dia (gráfico), quebra por loja (multi-loja)
+// e por status. Tudo lido de `orders` filtrando marketplace_id=SHOPEE.
+router.get('/vendas', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 30));
+    // Filtro comum: marketplace + loja opcional + janela de N dias no fuso SP.
+    const WHERE = `o.marketplace_id = $1 AND ($2 = '' OR o.store_id = $2::bigint)
+      AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - ($3::int - 1)`;
+    const params = [mpId, storeId, dias];
+
+    const { rows: resumoRows } = await pool.query(
+      `SELECT COUNT(*) AS pedidos,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.status <> 'cancelled'), 0) AS vendas,
+              COUNT(*) FILTER (WHERE o.status = 'cancelled') AS cancelados,
+              COUNT(*) FILTER (WHERE (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS pedidos_hoje,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.status <> 'cancelled' AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date), 0) AS vendas_hoje
+       FROM orders o WHERE ${WHERE}`,
+      params
+    );
+    const { rows: porDia } = await pool.query(
+      `SELECT (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+              COUNT(*) AS pedidos,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.status <> 'cancelled'), 0) AS vendas
+       FROM orders o WHERE ${WHERE} GROUP BY 1 ORDER BY 1`,
+      params
+    );
+    const { rows: porLoja } = await pool.query(
+      `SELECT o.store_id, s.nickname, s.shopee_shop_id,
+              COUNT(*) AS pedidos,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.status <> 'cancelled'), 0) AS vendas
+       FROM orders o LEFT JOIN stores s ON s.id = o.store_id
+       WHERE ${WHERE} GROUP BY o.store_id, s.nickname, s.shopee_shop_id ORDER BY vendas DESC`,
+      params
+    );
+    const { rows: porStatus } = await pool.query(
+      `SELECT o.status, COUNT(*) AS pedidos, COALESCE(SUM(o.total_amount), 0) AS vendas
+       FROM orders o WHERE ${WHERE} GROUP BY o.status ORDER BY pedidos DESC`,
+      params
+    );
+
+    const r0 = resumoRows[0] || {};
+    const pedidosValidos = Number(r0.pedidos || 0) - Number(r0.cancelados || 0);
+    res.json({
+      resumo: {
+        vendas: Number(r0.vendas || 0),
+        pedidos: Number(r0.pedidos || 0),
+        cancelados: Number(r0.cancelados || 0),
+        ticket_medio: pedidosValidos > 0 ? Number(r0.vendas || 0) / pedidosValidos : 0,
+        vendas_hoje: Number(r0.vendas_hoje || 0),
+        pedidos_hoje: Number(r0.pedidos_hoje || 0),
+        dias,
+      },
+      por_dia: porDia.map((d) => ({ dia: d.dia, pedidos: Number(d.pedidos), vendas: Number(d.vendas) })),
+      por_loja: porLoja.map((l) => ({ store_id: l.store_id, nickname: l.nickname, shopee_shop_id: l.shopee_shop_id, pedidos: Number(l.pedidos), vendas: Number(l.vendas) })),
+      por_status: porStatus.map((s) => ({ status: s.status, pedidos: Number(s.pedidos), vendas: Number(s.vendas) })),
+    });
+  } catch (e) {
+    console.error('[api/shopee] /vendas', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Anúncios (catálogo) — lê `items` de marketplace_id=SHOPEE, com filtro por loja
+// e status. Hoje ainda não há sync de catálogo Shopee (Product API — ver
+// .claude/todo.md), então vem vazio com uma nota; a estrutura já está pronta.
+router.get('/anuncios', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const status = req.query.status || '';
+    const params = [mpId, storeId];
+    let statusFilter = '';
+    if (status) { params.push(status); statusFilter = `AND i.status = $${params.length}`; }
+    const { rows } = await pool.query(
+      `SELECT i.ml_id AS sku, i.title, i.available_quantity AS estoque,
+              i.sold_quantity AS vendidos, i.price, i.status, s.nickname AS conta
+       FROM items i LEFT JOIN stores s ON s.id = i.store_id
+       WHERE i.marketplace_id = $1 AND ($2 = '' OR i.store_id = $2::bigint) ${statusFilter}
+       ORDER BY i.updated_at DESC LIMIT 500`,
+      params
+    );
+    const { rows: resumoRows } = await pool.query(
+      `SELECT COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE status = 'active') AS ativos,
+              COUNT(*) FILTER (WHERE status = 'paused') AS pausados,
+              COALESCE(SUM(available_quantity), 0) AS estoque_total
+       FROM items WHERE marketplace_id = $1 AND ($2 = '' OR store_id = $2::bigint)`,
+      [mpId, storeId]
+    );
+    res.json({
+      rows,
+      resumo: resumoRows[0] || { total: 0, ativos: 0, pausados: 0, estoque_total: 0 },
+      note: rows.length === 0
+        ? 'Sincronização de catálogo de produtos da Shopee ainda não implementada — hoje só pedidos são sincronizados (ver .claude/todo.md). A estrutura da página já está pronta para quando a Product API for integrada.'
+        : null,
+    });
+  } catch (e) {
+    console.error('[api/shopee] /anuncios', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

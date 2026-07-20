@@ -41,7 +41,7 @@ Montado globalmente em `server.js`, **antes** de todas as outras rotas (inclusiv
 - **Sem sessão válida**: `/api/*` devolve `401`; qualquer outra rota redireciona para `/pages/login.html`.
 - **Papel `admin`**: acesso irrestrito, igual ao sistema sempre foi.
 - **Papel `embalagem`**: só passa se o caminho for `/api/embalagem/*`, `/api/lojas` (dropdown de loja na aba Conferência do Dia), `/pages/embalagem.html`, ou um asset estático (`/css/`, `/js/`, `/favicon`). Qualquer outro caminho: `403` em API, redirect para `/pages/embalagem.html` em página.
-- **Papel `shopee-demo`**: só passa se o caminho for `/api/shopee/*`, `/pages/dashboard-shopee.html`, ou um asset estático. Qualquer outro caminho: `403` em API, redirect para `/pages/dashboard-shopee.html` em página. Criado especificamente pra dar acesso a um revisor externo (ex. processo de aprovação de produção da Shopee Open Platform, que pede uma URL ativa do produto + credencial de teste) sem expor nenhum dado do Mercado Livre/financeiro/embalagem — ver `shopee.md`.
+- **Papel `shopee-demo`**: só passa se o caminho for `/api/shopee/*`, `/pages/dashboard-shopee.html`, `/pages/shopee-vendas.html`, `/pages/shopee-anuncios.html`, ou um asset estático. Qualquer outro caminho: `403` em API, redirect para `/pages/dashboard-shopee.html` em página. Criado especificamente pra dar acesso a um revisor externo (ex. processo de aprovação de produção da Shopee Open Platform, que pede uma URL ativa do produto + credencial de teste) sem expor nenhum dado do Mercado Livre/financeiro/embalagem — ver `shopee.md`.
 
 ## Frontend
 

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendas Totais Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Independente do ML: usa js/layout-shopee.js — ver .claude/frontend.md. -->
+  <script>window.PAGE_TITLE='Vendas Totais'; window.ACTIVE_NAV='shopee-vendas.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 18px; }
+    .shp-filters select { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+    .shp-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .shp-kpi { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--shopee); border-radius: 12px; padding: 16px 18px; }
+    .shp-kpi .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .shp-kpi .val { font-size: 26px; font-weight: 800; line-height: 1.1; }
+    .shp-kpi .sub { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+    .chart-wrap { position: relative; height: 300px; }
+    .chart-wrap.sm { height: 260px; }
+    .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; height: 24px; width: 70%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="shpLoja" onchange="loadAll()"><option value="">Todas as lojas</option></select>
+        <label style="font-size:12px;color:var(--text-muted);margin-left:8px"><i class="fas fa-calendar"></i> Período</label>
+        <select id="shpPeriodo" onchange="loadAll()">
+          <option value="7">Últimos 7 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <button class="action-btn" onclick="loadAll()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <div class="shp-kpis">
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-dollar-sign"></i> Vendas no período</div>
+          <div class="val" id="kVendas"><div class="skeleton"></div></div>
+          <div class="sub" id="kVendasHoje">Hoje: —</div>
+        </div>
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-box"></i> Pedidos</div>
+          <div class="val" id="kPedidos"><div class="skeleton"></div></div>
+          <div class="sub" id="kPedidosHoje">Hoje: —</div>
+        </div>
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-receipt"></i> Ticket médio</div>
+          <div class="val" id="kTicket"><div class="skeleton"></div></div>
+          <div class="sub">por pedido válido</div>
+        </div>
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-ban"></i> Cancelados</div>
+          <div class="val" id="kCancelados"><div class="skeleton"></div></div>
+          <div class="sub">no período</div>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-chart-line" style="color:var(--shopee)"></i> Vendas por dia</h3></div>
+          <div class="chart-wrap"><canvas id="chartDia"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-chart-pie" style="color:var(--shopee)"></i> Por status</h3></div>
+          <div class="chart-wrap sm"><canvas id="chartStatus"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><h3><i class="fas fa-store" style="color:var(--shopee)"></i> Vendas por loja</h3></div>
+        <div class="chart-wrap sm"><canvas id="chartLoja"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Detalhe por loja</h3>
+          <span id="lojaCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('lojaTbody').closest('table'), 'shopee-vendas-por-loja.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Loja</th><th>shop_id</th><th class="tbl-num">Pedidos</th><th class="tbl-num">Vendas</th></tr></thead>
+            <tbody id="lojaTbody"><tr><td colspan="4" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const N = v => new Intl.NumberFormat('pt-BR').format(Number(v)||0);
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const SHOPEE = '#ee4d2d';
+const STATUS_LABEL = { paid:'Pago', pending:'Pendente', cancelled:'Cancelado', shipped:'Enviado', ready_to_ship:'Pronto p/ envio' };
+const STATUS_COLORS = { paid:'#27ae60', pending:'#f0932b', cancelled:'#e74c3c', shipped:'#4a90ff', ready_to_ship:'#9b59b6' };
+let charts = {};
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('shpLoja');
+  (d?.lojas || []).forEach(l => {
+    const o = document.createElement('option');
+    o.value = l.id;
+    o.textContent = l.nickname + (l.conectada ? '' : ' (desconectada)');
+    sel.appendChild(o);
+  });
+}
+
+function drawDia(porDia) {
+  const labels = porDia.map(d => new Date(d.dia + 'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));
+  charts.dia?.destroy();
+  charts.dia = new Chart(document.getElementById('chartDia'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Vendas (R$)', data: porDia.map(d=>d.vendas), borderColor: SHOPEE, backgroundColor: 'rgba(238,77,45,.12)', fill: true, tension: .3, yAxisID: 'y' },
+      { label: 'Pedidos', data: porDia.map(d=>d.pedidos), borderColor: '#4a90ff', backgroundColor: 'transparent', tension: .3, yAxisID: 'y1' },
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#aaa' } }, tooltip: { callbacks: { label: c => c.dataset.yAxisID==='y' ? `${c.dataset.label}: ${R(c.parsed.y)}` : `${c.dataset.label}: ${N(c.parsed.y)}` } } },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: 'rgba(255,255,255,.05)' } },
+        y: { position: 'left', ticks: { color: '#888', callback: v => R(v) }, grid: { color: 'rgba(255,255,255,.05)' } },
+        y1: { position: 'right', ticks: { color: '#888' }, grid: { drawOnChartArea: false } },
+      } }
+  });
+}
+
+function drawStatus(porStatus) {
+  charts.status?.destroy();
+  charts.status = new Chart(document.getElementById('chartStatus'), {
+    type: 'doughnut',
+    data: { labels: porStatus.map(s => STATUS_LABEL[s.status] || s.status || '—'),
+      datasets: [{ data: porStatus.map(s=>s.pedidos), backgroundColor: porStatus.map(s => STATUS_COLORS[s.status] || '#777'), borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#aaa', padding: 12 } } } }
+  });
+}
+
+function drawLoja(porLoja) {
+  charts.loja?.destroy();
+  charts.loja = new Chart(document.getElementById('chartLoja'), {
+    type: 'bar',
+    data: { labels: porLoja.map(l => l.nickname || ('loja '+l.store_id)),
+      datasets: [{ label: 'Vendas (R$)', data: porLoja.map(l=>l.vendas), backgroundColor: SHOPEE, borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => R(c.parsed.y) } } },
+      scales: { x: { ticks: { color: '#888' }, grid: { display: false } }, y: { ticks: { color: '#888', callback: v => R(v) }, grid: { color: 'rgba(255,255,255,.05)' } } } }
+  });
+}
+
+async function loadAll() {
+  const store_id = document.getElementById('shpLoja').value;
+  const dias = document.getElementById('shpPeriodo').value;
+  const d = await DB.getShopeeVendas({ store_id, dias });
+  if (!d || d.error) {
+    ['kVendas','kPedidos','kTicket','kCancelados'].forEach(id => set(id,'—'));
+    document.getElementById('lojaTbody').innerHTML = `<tr><td colspan="4" class="empty-state" style="color:var(--red)">Erro: ${d?.error||'sem dados'}</td></tr>`;
+    return;
+  }
+  const r = d.resumo || {};
+  set('kVendas', R(r.vendas)); set('kVendasHoje', 'Hoje: ' + R(r.vendas_hoje));
+  set('kPedidos', N(r.pedidos)); set('kPedidosHoje', 'Hoje: ' + N(r.pedidos_hoje));
+  set('kTicket', R(r.ticket_medio));
+  set('kCancelados', N(r.cancelados));
+  drawDia(d.por_dia || []);
+  drawStatus(d.por_status || []);
+  drawLoja(d.por_loja || []);
+  const lojas = d.por_loja || [];
+  set('lojaCount', `${lojas.length} loja(s)`);
+  document.getElementById('lojaTbody').innerHTML = lojas.length ? lojas.map(l => `
+    <tr>
+      <td style="font-weight:650">${l.nickname || ('loja '+l.store_id)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${l.shopee_shop_id || '—'}</td>
+      <td class="tbl-num">${N(l.pedidos)}</td>
+      <td class="tbl-num">${R(l.vendas)}</td>
+    </tr>`).join('') : '<tr><td colspan="4" class="empty-state">Nenhuma venda no período</td></tr>';
+}
+
+WS.on('order_updated', p => { if (p?.marketplace === 'SHOPEE') loadAll(); });
+setInterval(loadAll, 60000);
+
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadAll);
+  await loadLojas();
+  loadAll();
+});
+</script>
+</body>
+</html>

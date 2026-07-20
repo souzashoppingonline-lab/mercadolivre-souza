@@ -49,9 +49,11 @@ Receptor **isolado** do gateway ML: `server/src/routes/shopeeWebhook.js`, montad
 - **Dedup com o polling**: mesmo `jobId` → BullMQ ignora duplicata se os dois dispararem pro mesmo pedido. O polling **continua ligado** como rede de segurança (webhooks podem se perder).
 - **Configuração** (usuário): no console Shopee → "Mecanismo de Empurra", cadastrar `push_url = https://multimixvendas.duckdns.org/webhooks/shopee` e habilitar o push de status de pedido. O IP `207.180.194.61` já está na allowlist. Ver `.env.example` (`SHOPEE_WEBHOOK_VERIFY`).
 
-## Próximos (financeiro/escrow, status de entrega, chat) — diagnóstico primeiro
+## Financeiro (escrow) + status de entrega — implementados (v36, tela própria)
 
-Escrow (repasse/taxas por pedido), status de entrega (logística) e chat de comprador serão módulos **isolados na Shopee** (pedido do usuário: nada misturado com ML — o financeiro Shopee é uma tela própria, **não** a Conciliação Bancária). Antes de codar cada parser, rodar `server/test-shopee-apis.js` (READ-ONLY) pra confirmar o formato real dos 3 endpoints (`payment/get_escrow_detail`, `logistics/get_tracking_info`, `sellerchat/get_conversation_list`) — mesma disciplina do rastreio/relatório MP.
+Página **Financeiro** (`pages/shopee-financeiro.html`, `SHOPEE_NAV_ITEMS`), **isolada da Conciliação Bancária do ML** (pedido do usuário: tudo Shopee separado). Mostra por pedido quanto o comprador pagou (`buyer_total`), a **taxa Shopee** (`commission_fee`), o **líquido/repasse** (`escrow_amount` — confirmado no diagnóstico: buyer 53,70 → comissão 8,95 → líquido 43,76), a forma de pagamento e o **status de entrega** (`logistics_status`). KPIs bruto/taxa/líquido, gráfico e tabela com filtro loja/período. Backend `/api/shopee/financeiro`. Dados de `get_escrow_detail` + `get_tracking_info`, gravados pelo worker no bloco `SHOPEE_SHIPPABLE` (ver `workers.md`) e `shopeeClient.getEscrowDetail`/`getTrackingInfo`. Backfill dos pedidos antigos: `server/backfill-shopee-financeiro.js`.
+
+**Chat** (`sellerchat/get_conversation_list`) — ainda não implementado: o diagnóstico (`test-shopee-apis.js`) deu `param_error` (491), então falta acertar os parâmetros da API de chat antes de codar. Escrow e entrega vieram 200 e estão prontos.
 
 ## Webhook — histórico (antes da implementação acima)
 

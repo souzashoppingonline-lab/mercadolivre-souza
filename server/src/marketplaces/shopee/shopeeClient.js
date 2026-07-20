@@ -216,6 +216,29 @@ class ShopeeClient extends MarketplaceClient {
     });
     return resp?.response?.tracking_number || null;
   }
+
+  // Financeiro (repasse/escrow) do pedido — detalhamento de taxa + líquido.
+  // `order_income.escrow_amount` = valor líquido que o vendedor recebe. Só
+  // finaliza depois do pagamento confirmado. GET. Ver .claude/shopee.md.
+  async getEscrowDetail(orderSn) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/payment/get_escrow_detail', {
+      method: 'GET',
+      query: { order_sn: orderSn },
+    });
+    return resp?.response || null;
+  }
+
+  // Status de entrega + eventos de rastreio. `logistics_status` é o status
+  // geral (ORDER_CREATED/... /DELIVERED); `tracking_info[]` são os eventos. GET.
+  async getTrackingInfo(orderSn) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/logistics/get_tracking_info', {
+      method: 'GET',
+      query: { order_sn: orderSn },
+    });
+    return resp?.response || null;
+  }
 }
 
 module.exports = { ShopeeClient, getAuthorizationUrl, exchangeCodeForToken, sign, baseUrl };

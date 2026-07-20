@@ -236,4 +236,61 @@ router.get('/anuncios', async (req, res) => {
   }
 });
 
+// Financeiro (repasse/escrow) — quanto líquido cai por pedido, taxa Shopee e
+// status de entrega. Isolado da Conciliação Bancária do ML (pedido do usuário:
+// tudo Shopee separado). Lê shopee_order_data (preenchido pelo worker via
+// get_escrow_detail/get_tracking_info). store_id opcional + período em dias.
+router.get('/financeiro', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 30));
+    const params = [mpId, storeId, dias];
+    const WHERE = `o.marketplace_id = $1 AND ($2 = '' OR o.store_id = $2::bigint)
+      AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - ($3::int - 1)`;
+
+    const { rows } = await pool.query(
+      `SELECT o.ml_id AS order_sn, o.date_created, o.status, s.nickname AS conta,
+              sod.buyer_total, sod.commission_fee, sod.escrow_amount,
+              sod.buyer_payment_method, sod.logistics_status, sod.tracking_number
+       FROM orders o
+       JOIN shopee_order_data sod ON sod.order_sn = o.ml_id
+       LEFT JOIN stores s ON s.id = o.store_id
+       WHERE ${WHERE}
+       ORDER BY o.date_created DESC LIMIT 500`,
+      params
+    );
+    const { rows: resumo } = await pool.query(
+      `SELECT COUNT(*) FILTER (WHERE sod.escrow_amount IS NOT NULL) AS com_escrow,
+              COALESCE(SUM(sod.buyer_total), 0) AS bruto,
+              COALESCE(SUM(sod.commission_fee), 0) AS comissao,
+              COALESCE(SUM(sod.escrow_amount), 0) AS liquido
+       FROM orders o JOIN shopee_order_data sod ON sod.order_sn = o.ml_id
+       WHERE ${WHERE}`,
+      params
+    );
+    const r = resumo[0] || {};
+    res.json({
+      rows: rows.map((x) => ({
+        order_sn: x.order_sn, data: x.date_created, status: x.status, conta: x.conta,
+        buyer_total: x.buyer_total != null ? Number(x.buyer_total) : null,
+        commission_fee: x.commission_fee != null ? Number(x.commission_fee) : null,
+        escrow_amount: x.escrow_amount != null ? Number(x.escrow_amount) : null,
+        buyer_payment_method: x.buyer_payment_method, logistics_status: x.logistics_status,
+        tracking_number: x.tracking_number,
+      })),
+      resumo: {
+        com_escrow: Number(r.com_escrow || 0),
+        bruto: Number(r.bruto || 0),
+        comissao: Number(r.comissao || 0),
+        liquido: Number(r.liquido || 0),
+        dias,
+      },
+    });
+  } catch (e) {
+    console.error('[api/shopee] /financeiro', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

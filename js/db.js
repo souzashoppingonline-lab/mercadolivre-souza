@@ -190,6 +190,7 @@ const DB = {
   async getShopeeLojas()    { return this._get('/shopee/lojas'); },
   async getShopeeVendas(params = {})   { return this._get('/shopee/vendas', params); },
   async getShopeeAnuncios(params = {}) { return this._get('/shopee/anuncios', params); },
+  async getShopeeFinanceiro(params = {}) { return this._get('/shopee/financeiro', params); },
 
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },

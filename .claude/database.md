@@ -162,6 +162,12 @@ buyer_username TEXT
 order_status TEXT              -- valor bruto da Shopee (UNPAID/READY_TO_SHIP/SHIPPED/COMPLETED/...), antes do mapeamento para orders.status
 raw_data JSONB                 -- resposta completa de order/get_order_detail
 tracking_number TEXT           -- v35: rastreio (BR...) da etiqueta Shopee; índice parcial (WHERE NOT NULL). Casa a etiqueta bipada→pedido na Embalagem
+buyer_total NUMERIC             -- v36: financeiro (escrow). buyer_total_amount = quanto o comprador pagou
+commission_fee NUMERIC          -- v36: comissão/taxa Shopee do pedido
+escrow_amount NUMERIC           -- v36: LÍQUIDO que o vendedor recebe (order_income.escrow_amount)
+buyer_payment_method TEXT       -- v36: forma de pagamento (Pix, cartão, ...)
+escrow_raw JSONB                -- v36: resposta completa de get_escrow_detail (auditoria)
+logistics_status TEXT           -- v36: status de entrega geral (get_tracking_info.logistics_status)
 updated_at TIMESTAMPTZ
 ```
 Gravada por `server/src/marketplaceEventWorker.js` (`handleShopeeOrderEvent`), mesmo papel de `amazon_order_data`. O `tracking_number` (v35) é buscado via `ShopeeClient.getTrackingNumber` só quando o pedido está em status "embarcável" (`SHOPEE_SHIPPABLE`) — antes disso a Logistics API não tem rastreio. Backfill dos pedidos antigos: `server/backfill-shopee-tracking.js`.

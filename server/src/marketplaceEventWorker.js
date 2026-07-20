@@ -156,26 +156,44 @@ async function handleShopeeOrderEvent(evt) {
     [o.order_sn, marketplaceId, evt.storeId, totalAmount, status, o.create_time ? new Date(o.create_time * 1000) : null]
   );
 
-  // Rastreio (tracking) — só existe depois que o pedido é preparado pra envio.
-  // Busca sob-demanda pra Embalagem casar a etiqueta bipada (QR = tracking) com
-  // o pedido. Se ainda não tiver, não sobrescreve o que já estava (COALESCE).
-  let trackingNumber = null;
+  // Quando o pedido está "embarcável" (pago + preparo de envio), busca sob-demanda:
+  // rastreio (Embalagem), financeiro/escrow (líquido+taxas) e status de entrega.
+  // Tudo tolerante a falha — nunca quebra o handler; COALESCE no upsert não apaga
+  // o que já estava se uma das chamadas vier vazia.
+  let trackingNumber = null, escrow = null, logisticsStatus = null;
   if (SHOPEE_SHIPPABLE.has(o.order_status)) {
     try { trackingNumber = await client.getTrackingNumber(o.order_sn); }
     catch (e) { console.warn(`[marketplace-worker] tracking Shopee ${o.order_sn}: ${e.message}`); }
+    try { escrow = await client.getEscrowDetail(o.order_sn); }
+    catch (e) { console.warn(`[marketplace-worker] escrow Shopee ${o.order_sn}: ${e.message}`); }
+    try { logisticsStatus = (await client.getTrackingInfo(o.order_sn))?.logistics_status || null; }
+    catch (e) { console.warn(`[marketplace-worker] tracking-info Shopee ${o.order_sn}: ${e.message}`); }
   }
+  const inc = escrow?.order_income || {};
+  const buyerTotal = escrow ? Number(inc.buyer_total_amount ?? 0) : null;
+  const commissionFee = escrow ? Number(inc.commission_fee ?? 0) : null;
+  const escrowAmount = escrow ? Number(inc.escrow_amount ?? 0) : null;
+  const payMethod = escrow ? (inc.buyer_payment_method || null) : null;
 
   await pool.query(
-    `INSERT INTO shopee_order_data (order_id, order_sn, shop_id, buyer_username, order_status, raw_data, tracking_number, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+    `INSERT INTO shopee_order_data (order_id, order_sn, shop_id, buyer_username, order_status, raw_data,
+        tracking_number, buyer_total, commission_fee, escrow_amount, buyer_payment_method, escrow_raw, logistics_status, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
      ON CONFLICT (order_id) DO UPDATE SET
        shop_id = EXCLUDED.shop_id,
        buyer_username = EXCLUDED.buyer_username,
        order_status = EXCLUDED.order_status,
        raw_data = EXCLUDED.raw_data,
        tracking_number = COALESCE(EXCLUDED.tracking_number, shopee_order_data.tracking_number),
+       buyer_total = COALESCE(EXCLUDED.buyer_total, shopee_order_data.buyer_total),
+       commission_fee = COALESCE(EXCLUDED.commission_fee, shopee_order_data.commission_fee),
+       escrow_amount = COALESCE(EXCLUDED.escrow_amount, shopee_order_data.escrow_amount),
+       buyer_payment_method = COALESCE(EXCLUDED.buyer_payment_method, shopee_order_data.buyer_payment_method),
+       escrow_raw = COALESCE(EXCLUDED.escrow_raw, shopee_order_data.escrow_raw),
+       logistics_status = COALESCE(EXCLUDED.logistics_status, shopee_order_data.logistics_status),
        updated_at = now()`,
-    [o.order_sn, o.order_sn, client.cfg?.shopId || null, o.buyer_username || null, o.order_status || null, JSON.stringify(o), trackingNumber]
+    [o.order_sn, o.order_sn, client.cfg?.shopId || null, o.buyer_username || null, o.order_status || null, JSON.stringify(o),
+     trackingNumber, buyerTotal, commissionFee, escrowAmount, payMethod, escrow ? JSON.stringify(escrow) : null, logisticsStatus]
   );
 
   await redis.del('kpis:summary');

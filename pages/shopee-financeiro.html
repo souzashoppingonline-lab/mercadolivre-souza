@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financeiro Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Financeiro'; window.ACTIVE_NAV='shopee-financeiro.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
+    .shp-filters select { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .shp-kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; margin-bottom:20px; }
+    .shp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:12px; padding:16px 18px; }
+    .shp-kpi .lbl { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .shp-kpi .val { font-size:24px; font-weight:800; line-height:1.1; }
+    .chart-wrap { position:relative; height:260px; }
+    .badge { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:20px; background:rgba(255,255,255,.08); color:var(--text-muted); }
+    .badge.ok { background:rgba(39,174,96,.15); color:var(--green); }
+    .badge.transit { background:rgba(74,144,255,.15); color:#4a90ff; }
+    .skeleton { background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:4px; height:22px; width:70%; }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Repasse (escrow) da Shopee: quanto <b>líquido</b> você recebe por pedido, já descontadas as taxas Shopee, e o status de entrega. Isolado da Conciliação Bancária do Mercado Livre.</p>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="finLoja" onchange="loadFin()"><option value="">Todas as lojas</option></select>
+        <label style="font-size:12px;color:var(--text-muted);margin-left:8px"><i class="fas fa-calendar"></i> Período</label>
+        <select id="finPeriodo" onchange="loadFin()">
+          <option value="7">Últimos 7 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <button class="action-btn" onclick="loadFin()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <div class="shp-kpis">
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-dollar-sign"></i> Bruto (comprador pagou)</div><div class="val" id="kBruto"><div class="skeleton"></div></div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-percent"></i> Taxa Shopee (comissão)</div><div class="val" id="kComissao" style="color:var(--red)"><div class="skeleton"></div></div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-hand-holding-dollar"></i> Líquido (repasse)</div><div class="val" id="kLiquido" style="color:var(--green)"><div class="skeleton"></div></div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-file-invoice-dollar"></i> Pedidos com repasse</div><div class="val" id="kQtd"><div class="skeleton"></div></div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><h3><i class="fas fa-chart-bar" style="color:var(--shopee)"></i> Bruto × Taxa × Líquido</h3></div>
+        <div class="chart-wrap"><canvas id="finChart"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Repasse por pedido</h3>
+          <span id="finCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('finTbody').closest('table'), 'shopee-financeiro.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr>
+              <th>Pedido</th><th>Loja</th><th>Pgto</th>
+              <th class="tbl-num">Bruto</th><th class="tbl-num">Taxa</th><th class="tbl-num">Líquido</th>
+              <th>Entrega</th><th>Data</th>
+            </tr></thead>
+            <tbody id="finTbody"><tr><td colspan="8" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const N = v => new Intl.NumberFormat('pt-BR').format(Number(v)||0);
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+let finChart;
+
+// Status de entrega Shopee → rótulo PT + cor (ver logistics_status do get_tracking_info)
+const LOG_LABEL = {
+  LOGISTICS_NOT_STARTED:['Não iniciado',''], LOGISTICS_REQUEST_CREATED:['Preparando','transit'],
+  LOGISTICS_PICKUP_DONE:['Coletado','transit'], LOGISTICS_PICKUP_RETRY:['Recoleta','transit'],
+  LOGISTICS_DELIVERY_DONE:['Entregue','ok'], LOGISTICS_DELIVERY_FAILED:['Falha entrega','transit'],
+  LOGISTICS_REQUEST_CANCELED:['Cancelado',''], ORDER_CREATED:['Pedido criado','transit'],
+};
+function entregaBadge(s) {
+  if (!s) return '<span class="badge">—</span>';
+  const [txt, cls] = LOG_LABEL[s] || [s, ''];
+  return `<span class="badge ${cls}">${txt}</span>`;
+}
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('finLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+function drawChart(r) {
+  finChart?.destroy();
+  finChart = new Chart(document.getElementById('finChart'), {
+    type: 'bar',
+    data: { labels: ['Bruto','Taxa Shopee','Líquido'],
+      datasets: [{ data: [r.bruto, r.comissao, r.liquido], backgroundColor: ['#4a90ff','#e74c3c','#27ae60'], borderRadius: 8 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>R(c.parsed.y)}}},
+      scales:{ x:{ticks:{color:'#aaa'},grid:{display:false}}, y:{ticks:{color:'#888',callback:v=>R(v)},grid:{color:'rgba(255,255,255,.05)'}} } }
+  });
+}
+
+async function loadFin() {
+  const store_id = document.getElementById('finLoja').value;
+  const dias = document.getElementById('finPeriodo').value;
+  document.getElementById('finTbody').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando...</td></tr>';
+  const d = await DB.getShopeeFinanceiro({ store_id, dias });
+  if (!d || d.error) {
+    ['kBruto','kComissao','kLiquido','kQtd'].forEach(id => set(id,'—'));
+    document.getElementById('finTbody').innerHTML = `<tr><td colspan="8" class="empty-state" style="color:var(--red)">Erro: ${d?.error||'sem dados'}</td></tr>`;
+    return;
+  }
+  const r = d.resumo || {};
+  set('kBruto', R(r.bruto)); set('kComissao', R(r.comissao)); set('kLiquido', R(r.liquido)); set('kQtd', N(r.com_escrow));
+  drawChart(r);
+  const rows = d.rows || [];
+  set('finCount', `${rows.length} pedido(s)`);
+  document.getElementById('finTbody').innerHTML = rows.length ? rows.map(x => `
+    <tr>
+      <td>${x.order_sn || '—'}</td>
+      <td style="font-weight:650">${x.conta || '—'}</td>
+      <td>${x.buyer_payment_method || '—'}</td>
+      <td class="tbl-num">${x.buyer_total!=null ? R(x.buyer_total) : '—'}</td>
+      <td class="tbl-num" style="color:var(--red)">${x.commission_fee!=null ? R(x.commission_fee) : '—'}</td>
+      <td class="tbl-num" style="color:var(--green);font-weight:700">${x.escrow_amount!=null ? R(x.escrow_amount) : '<span style="color:var(--text-muted)">a apurar</span>'}</td>
+      <td>${entregaBadge(x.logistics_status)}</td>
+      <td style="white-space:nowrap;font-size:12px">${x.data ? new Date(x.data).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—'}</td>
+    </tr>`).join('') : '<tr><td colspan="8" class="empty-state">Nenhum pedido com repasse no período (o financeiro é apurado após o pagamento/envio)</td></tr>';
+}
+
+WS.on('order_updated', p => { if (p?.marketplace === 'SHOPEE') loadFin(); });
+setInterval(loadFin, 60000);
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadFin);
+  await loadLojas();
+  loadFin();
+});
+</script>
+</body>
+</html>

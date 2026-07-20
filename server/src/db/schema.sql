@@ -220,6 +220,13 @@ CREATE TABLE IF NOT EXISTS shopee_order_data (
 -- Idempotente pra bancos já criados na v18 (o CREATE TABLE IF NOT EXISTS acima
 -- não adiciona coluna a tabela existente) — mesmo padrão dos ALTERs de stores/orders.
 ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS tracking_number TEXT;
+-- v36: financeiro (escrow) + status de entrega
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS buyer_total NUMERIC;
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS commission_fee NUMERIC;
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS escrow_amount NUMERIC;
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS buyer_payment_method TEXT;
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS escrow_raw JSONB;
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS logistics_status TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shopee_order_data_order_sn ON shopee_order_data(order_sn);
 CREATE INDEX IF NOT EXISTS idx_shopee_order_data_tracking ON shopee_order_data(tracking_number) WHERE tracking_number IS NOT NULL;
 

@@ -11,6 +11,7 @@ const SHOPEE_NAV_ITEMS = [
   { href: 'dashboard-shopee.html', icon: 'fa-home', label: 'Dashboard' },
   { href: 'shopee-vendas.html', icon: 'fa-chart-line', label: 'Vendas Totais' },
   { href: 'shopee-anuncios.html', icon: 'fa-tags', label: 'Anúncios' },
+  { href: 'shopee-financeiro.html', icon: 'fa-money-bill-wave', label: 'Financeiro' },
 ];
 
 function buildShopeeSidebar(activeHref) {

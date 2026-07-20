@@ -64,6 +64,7 @@
     .emb-order-title { font-size: 28px; font-weight: 800; line-height: 1.25; margin-bottom: 10px; }
     .emb-mp-badge { display: inline-block; font-size: 14px; font-weight: 800; padding: 2px 10px; border-radius: 8px; vertical-align: middle; }
     .emb-mp-badge.shopee { background: #ee4d2d; color: #fff; }
+    .emb-mp-badge.ml { background: #ffe600; color: #2d3277; }
     .emb-order-qty { font-size: 60px; font-weight: 900; color: var(--primary); line-height: 1; margin-bottom: 12px; }
     .emb-order-qty span { font-size: 17px; font-weight: 700; color: var(--text-muted); margin-left: 8px; }
     .emb-order-buyer { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
@@ -165,6 +166,7 @@
             <div class="emb-field"><label>Comprador</label><input id="fVideoBuyer" placeholder="Nickname"></div>
             <div class="emb-field"><label>De</label><input type="date" id="fVideoDe"></div>
             <div class="emb-field"><label>Até</label><input type="date" id="fVideoAte"></div>
+            <div class="emb-field"><label>Marketplace</label><select id="fVideoMkt"><option value="">Todos</option><option value="ML">Mercado Livre</option><option value="SHOPEE">Shopee</option></select></div>
             <button class="emb-btn" onclick="loadVideos()"><i class="fas fa-search"></i> Buscar</button>
           </div>
           <div class="emb-video-list" id="videoList"><div class="emb-placeholder">Use os filtros para buscar vídeos de embalagem.</div></div>
@@ -187,6 +189,7 @@
           <div class="emb-filters">
             <div class="emb-field"><label>Nº do Pedido</label><input id="fConfOrderId" placeholder="Ex: 2000123456"></div>
             <div class="emb-field"><label>Data</label><input type="date" id="fConfData"></div>
+            <div class="emb-field"><label>Marketplace</label><select id="fConfMkt"><option value="">Todos</option><option value="ML">Mercado Livre</option><option value="SHOPEE">Shopee</option></select></div>
             <div class="emb-field"><label>Loja</label><select id="fConfLoja"><option value="">Todas</option></select></div>
             <div class="emb-field"><label>Comprador</label><input id="fConfBuyer" placeholder="Nickname"></div>
             <button class="emb-btn" onclick="loadConferenciaDia()"><i class="fas fa-sync-alt"></i> Atualizar</button>
@@ -207,6 +210,7 @@
                 <option value="90">Últimos 90 dias</option>
               </select>
             </div>
+            <div class="emb-field"><label>Marketplace</label><select id="fHistMkt"><option value="">Todos</option><option value="ML">Mercado Livre</option><option value="SHOPEE">Shopee</option></select></div>
             <div class="emb-field"><label>Loja</label><select id="fHistLoja"><option value="">Todas</option></select></div>
             <button class="emb-btn" onclick="loadHistorico()"><i class="fas fa-sync-alt"></i> Atualizar</button>
           </div>
@@ -584,10 +588,13 @@ function fmtDuration(sec) {
 }
 function videoRowHtml(v, { showStore = false } = {}) {
   const storeBit = showStore && v.store_nickname ? ` · <i class="fas fa-store"></i> ${escapeHtml(v.store_nickname)}` : '';
+  const mktBadge = v.marketplace === 'SHOPEE'
+    ? '<span class="emb-mp-badge shopee" style="font-size:11px">Shopee</span> '
+    : (v.marketplace === 'ML' ? '<span class="emb-mp-badge ml" style="font-size:11px">ML</span> ' : '');
   return `
     <div class="emb-video-row">
       <div>
-        <div class="title">${escapeHtml(v.sample_title || v.shipping_id)}</div>
+        <div class="title">${mktBadge}${escapeHtml(v.sample_title || v.shipping_id)}</div>
         <div class="meta">${escapeHtml(v.sample_buyer || '—')}${storeBit} · Pedido(s): ${(v.order_ids || []).map(escapeHtml).join(', ')} · ${new Date(v.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div>
       </div>
       <div class="dur">${fmtDuration(v.duration_seconds)}</div>
@@ -602,6 +609,7 @@ async function loadVideos() {
   const buyer = document.getElementById('fVideoBuyer').value.trim(); if (buyer) params.buyer = buyer;
   const de = document.getElementById('fVideoDe').value; if (de) params.date_from = de;
   const ate = document.getElementById('fVideoAte').value; if (ate) params.date_to = ate + 'T23:59:59';
+  const mkt = document.getElementById('fVideoMkt').value; if (mkt) params.marketplace = mkt;
 
   const list = document.getElementById('videoList');
   list.innerHTML = '<div class="emb-placeholder">Buscando...</div>';
@@ -632,6 +640,7 @@ async function loadConferenciaDia() {
   const params = { date_from: dia, date_to: dia + 'T23:59:59' };
   const orderId = document.getElementById('fConfOrderId').value.trim(); if (orderId) params.order_id = orderId;
   const storeId = document.getElementById('fConfLoja').value; if (storeId) params.store_id = storeId;
+  const mkt = document.getElementById('fConfMkt').value; if (mkt) params.marketplace = mkt;
   const buyer = document.getElementById('fConfBuyer').value.trim(); if (buyer) params.buyer = buyer;
 
   const list = document.getElementById('conferenciaList');
@@ -643,7 +652,7 @@ async function loadConferenciaDia() {
   renderConfKpis(rows);
   list.innerHTML = rows.length ? rows.map(v => videoRowHtml(v, { showStore: true })).join('') : '<div class="emb-placeholder">Nenhum pedido bipado hoje ainda.</div>';
 
-  renderConfHourChart(dia, storeId);
+  renderConfHourChart(dia, storeId, mkt);
   renderConfStoreChart(rows);
 }
 
@@ -698,11 +707,11 @@ function todayISOFrom(d) {
 
 // Colunas por hora (0-23), dia selecionado vs. dia anterior — GET /por-hora
 // já devolve as 24 posições zero-fill, então o eixo nunca fica com buraco.
-async function renderConfHourChart(dia, storeId) {
+async function renderConfHourChart(dia, storeId, marketplace) {
   const anterior = diaAnterior(dia);
   const [hoje, ontem] = await Promise.all([
-    DB.getEmbalagemPorHora({ date: dia, store_id: storeId || undefined }),
-    DB.getEmbalagemPorHora({ date: anterior, store_id: storeId || undefined }),
+    DB.getEmbalagemPorHora({ date: dia, store_id: storeId || undefined, marketplace: marketplace || undefined }),
+    DB.getEmbalagemPorHora({ date: anterior, store_id: storeId || undefined, marketplace: marketplace || undefined }),
   ]);
   const horas = (hoje?.hours || []).map(h => `${String(h.hour).padStart(2, '0')}h`);
 
@@ -790,8 +799,9 @@ async function loadHistorico() {
   await loadLojasSelect('fHistLoja');
   const days = document.getElementById('fHistDias').value;
   const storeId = document.getElementById('fHistLoja').value;
+  const mkt = document.getElementById('fHistMkt').value;
 
-  const data = await DB.getEmbalagemHistorico({ days, store_id: storeId || undefined });
+  const data = await DB.getEmbalagemHistorico({ days, store_id: storeId || undefined, marketplace: mkt || undefined });
   const rows = data?.days || [];
 
   const total = rows.reduce((s, r) => s + r.count, 0);

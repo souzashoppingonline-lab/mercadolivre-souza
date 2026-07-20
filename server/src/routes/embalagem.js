@@ -158,25 +158,28 @@ router.post('/finalizar', upload.single('video'), async (req, res) => {
 // pages/devolucoes.html).
 router.get('/videos', async (req, res) => {
   try {
-    const { order_id, buyer, date_from, date_to, store_id } = req.query;
+    const { order_id, buyer, date_from, date_to, store_id, marketplace } = req.query;
     const where = [];
     const params = [];
     if (order_id) { params.push(order_id); where.push(`$${params.length} = ANY(pv.order_ids)`); }
     if (store_id) { params.push(store_id); where.push(`pv.store_id = $${params.length}`); }
+    if (marketplace) { params.push(marketplace); where.push(`mk.code = $${params.length}`); }
     if (date_from) { params.push(date_from); where.push(`pv.created_at >= $${params.length}`); }
     if (date_to) { params.push(date_to); where.push(`pv.created_at <= $${params.length}`); }
     if (buyer) { params.push(`%${buyer}%`); where.push(`ord.buyer_nickname ILIKE $${params.length}`); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
+    // Marketplace de cada vídeo = marketplace da loja dona (stores.marketplace_id).
     const { rows } = await pool.query(
       `SELECT pv.id, pv.shipping_id, pv.order_ids, pv.created_at, pv.duration_seconds, pv.store_id,
               ord.title AS sample_title, ord.buyer_nickname AS sample_buyer, ord.shipping_type AS sample_shipping_type,
-              s.nickname AS store_nickname
+              s.nickname AS store_nickname, COALESCE(mk.code, 'ML') AS marketplace
        FROM packing_videos pv
        LEFT JOIN LATERAL (
          SELECT title, buyer_nickname, shipping_type FROM orders WHERE ml_id = pv.order_ids[1]
        ) ord ON true
        LEFT JOIN stores s ON s.id = pv.store_id
+       LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
        ${whereSql}
        ORDER BY pv.created_at DESC
        LIMIT 100`,
@@ -227,7 +230,7 @@ router.get('/videos-por-pedidos', async (req, res) => {
 // (AT TIME ZONE 'America/Sao_Paulo' antes de truncar — ver decisions.md).
 router.get('/por-hora', async (req, res) => {
   try {
-    const { date, store_id } = req.query;
+    const { date, store_id, marketplace } = req.query;
     if (!date) return res.status(400).json({ error: 'date é obrigatório (YYYY-MM-DD)' });
 
     const { rows } = await pool.query(
@@ -238,9 +241,10 @@ router.get('/por-hora', async (req, res) => {
         AND pv.created_at >= ($1::date AT TIME ZONE 'America/Sao_Paulo')
         AND pv.created_at <  (($1::date + 1) AT TIME ZONE 'America/Sao_Paulo')
         AND ($2::bigint IS NULL OR pv.store_id = $2)
+        AND ($3 = '' OR pv.store_id IN (SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id WHERE COALESCE(mk.code,'ML') = $3))
        GROUP BY h.hour
        ORDER BY h.hour`,
-      [date, store_id || null]
+      [date, store_id || null, marketplace || '']
     );
     res.json({ date, hours: rows });
   } catch (e) {
@@ -258,7 +262,7 @@ router.get('/por-hora', async (req, res) => {
 router.get('/historico', async (req, res) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 90);
-    const { store_id } = req.query;
+    const { store_id, marketplace } = req.query;
 
     const { rows } = await pool.query(
       `SELECT d.day::date AS date,
@@ -270,9 +274,10 @@ router.get('/historico', async (req, res) => {
          ON pv.created_at >= (d.day AT TIME ZONE 'America/Sao_Paulo')
         AND pv.created_at <  ((d.day + interval '1 day') AT TIME ZONE 'America/Sao_Paulo')
         AND ($2::bigint IS NULL OR pv.store_id = $2)
+        AND ($3 = '' OR pv.store_id IN (SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id WHERE COALESCE(mk.code,'ML') = $3))
        GROUP BY d.day
        ORDER BY d.day`,
-      [days, store_id || null]
+      [days, store_id || null, marketplace || '']
     );
     res.json({ days: rows });
   } catch (e) {

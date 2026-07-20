@@ -115,6 +115,7 @@ A mesma página `embalagem.html` atende ML e Shopee — o operador bipa qualquer
 - **Comprador**: `null` no Shopee (dado sensível — app sem acesso); os demais campos (item, quantidade, variação, valor) vêm normalmente.
 - **Vídeo/gravação/busca/histórico**: 100% reaproveitado — o `packing_videos.shipping_id` guarda o valor bipado (shipping_id do ML **ou** tracking da Shopee) na mesma coluna, e `order_ids` guarda o `order_sn`. Nenhuma rota nova além da generalização do lookup.
 - Um **badge "Shopee"** (`.emb-mp-badge`) aparece no título do card quando é Shopee, pro operador saber a origem.
+- **Filtro por marketplace nas buscas**: as abas Buscar vídeos, Conferência do Dia e Histórico ganharam um select **Marketplace** (Todos/Mercado Livre/Shopee). O `GET /videos`/`/por-hora`/`/historico` aceitam `marketplace` (código `ML`/`SHOPEE`), derivado da loja do vídeo (`packing_videos.store_id` → `stores.marketplace_id` → `marketplaces.code`, `COALESCE` pra `ML` quando nulo). Cada linha da lista mostra um mini-badge ML/Shopee (`videoRowHtml`). O dropdown de **loja** continua listando só contas ML (`DB.getLojas` é ML-only); pra ver só Shopee, use o filtro de marketplace.
 - **Variação/tipo em letra grande**: `.emb-order-tag` foi aumentada (30px, uppercase, além do piscar `.attention`) — pedido do usuário, vale pros dois marketplaces, é o dado que mais causa erro de embalagem.
 
 ## O que NÃO foi implementado (fora de escopo desta fase)

@@ -51,6 +51,7 @@
       <div class="shp-kpis">
         <div class="shp-kpi"><div class="lbl"><i class="fas fa-dollar-sign"></i> Bruto (comprador pagou)</div><div class="val" id="kBruto"><div class="skeleton"></div></div></div>
         <div class="shp-kpi"><div class="lbl"><i class="fas fa-percent"></i> Taxa Shopee (comissão)</div><div class="val" id="kComissao" style="color:var(--red)"><div class="skeleton"></div></div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-truck"></i> Frete (comprador pagou)</div><div class="val" id="kFrete"><div class="skeleton"></div></div></div>
         <div class="shp-kpi"><div class="lbl"><i class="fas fa-hand-holding-dollar"></i> Líquido (repasse)</div><div class="val" id="kLiquido" style="color:var(--green)"><div class="skeleton"></div></div></div>
         <div class="shp-kpi"><div class="lbl"><i class="fas fa-file-invoice-dollar"></i> Pedidos com repasse</div><div class="val" id="kQtd"><div class="skeleton"></div></div></div>
       </div>
@@ -70,10 +71,10 @@
           <table class="data-table">
             <thead><tr>
               <th>Pedido</th><th>Loja</th><th>Pgto</th>
-              <th class="tbl-num">Bruto</th><th class="tbl-num">Taxa</th><th class="tbl-num">Líquido</th>
+              <th class="tbl-num">Bruto</th><th class="tbl-num">Frete</th><th class="tbl-num">Taxa</th><th class="tbl-num">Líquido</th>
               <th>Entrega</th><th>Data</th>
             </tr></thead>
-            <tbody id="finTbody"><tr><td colspan="8" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+            <tbody id="finTbody"><tr><td colspan="9" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -125,15 +126,15 @@ function drawChart(r) {
 async function loadFin() {
   const store_id = document.getElementById('finLoja').value;
   const dias = document.getElementById('finPeriodo').value;
-  document.getElementById('finTbody').innerHTML = '<tr><td colspan="8" class="empty-state">Carregando...</td></tr>';
+  document.getElementById('finTbody').innerHTML = '<tr><td colspan="9" class="empty-state">Carregando...</td></tr>';
   const d = await DB.getShopeeFinanceiro({ store_id, dias });
   if (!d || d.error) {
-    ['kBruto','kComissao','kLiquido','kQtd'].forEach(id => set(id,'—'));
-    document.getElementById('finTbody').innerHTML = `<tr><td colspan="8" class="empty-state" style="color:var(--red)">Erro: ${d?.error||'sem dados'}</td></tr>`;
+    ['kBruto','kComissao','kFrete','kLiquido','kQtd'].forEach(id => set(id,'—'));
+    document.getElementById('finTbody').innerHTML = `<tr><td colspan="9" class="empty-state" style="color:var(--red)">Erro: ${d?.error||'sem dados'}</td></tr>`;
     return;
   }
   const r = d.resumo || {};
-  set('kBruto', R(r.bruto)); set('kComissao', R(r.comissao)); set('kLiquido', R(r.liquido)); set('kQtd', N(r.com_escrow));
+  set('kBruto', R(r.bruto)); set('kComissao', R(r.comissao)); set('kFrete', R(r.frete)); set('kLiquido', R(r.liquido)); set('kQtd', N(r.com_escrow));
   drawChart(r);
   const rows = d.rows || [];
   set('finCount', `${rows.length} pedido(s)`);
@@ -143,11 +144,12 @@ async function loadFin() {
       <td style="font-weight:650">${x.conta || '—'}</td>
       <td>${x.buyer_payment_method || '—'}</td>
       <td class="tbl-num">${x.buyer_total!=null ? R(x.buyer_total) : '—'}</td>
+      <td class="tbl-num">${x.frete!=null ? R(x.frete) : '—'}</td>
       <td class="tbl-num" style="color:var(--red)">${x.commission_fee!=null ? R(x.commission_fee) : '—'}</td>
       <td class="tbl-num" style="color:var(--green);font-weight:700">${x.escrow_amount!=null ? R(x.escrow_amount) : '<span style="color:var(--text-muted)">a apurar</span>'}</td>
       <td>${entregaBadge(x.logistics_status)}</td>
       <td style="white-space:nowrap;font-size:12px">${x.data ? new Date(x.data).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—'}</td>
-    </tr>`).join('') : '<tr><td colspan="8" class="empty-state">Nenhum pedido com repasse no período (o financeiro é apurado após o pagamento/envio)</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum pedido com repasse no período (o financeiro é apurado após o pagamento/envio)</td></tr>';
 }
 
 WS.on('order_updated', p => { if (p?.marketplace === 'SHOPEE') loadFin(); });

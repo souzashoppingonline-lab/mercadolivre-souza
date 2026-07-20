@@ -252,7 +252,10 @@ router.get('/financeiro', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT o.ml_id AS order_sn, o.date_created, o.status, s.nickname AS conta,
               sod.buyer_total, sod.commission_fee, sod.escrow_amount,
-              sod.buyer_payment_method, sod.logistics_status, sod.tracking_number
+              sod.buyer_payment_method, sod.logistics_status, sod.tracking_number,
+              -- frete vem do escrow_raw (order_income): não precisou de coluna nova
+              (sod.escrow_raw->'order_income'->>'buyer_paid_shipping_fee')::numeric AS frete_comprador,
+              (sod.escrow_raw->'order_income'->>'actual_shipping_fee')::numeric AS frete_real
        FROM orders o
        JOIN shopee_order_data sod ON sod.order_sn = o.ml_id
        LEFT JOIN stores s ON s.id = o.store_id
@@ -264,7 +267,8 @@ router.get('/financeiro', async (req, res) => {
       `SELECT COUNT(*) FILTER (WHERE sod.escrow_amount IS NOT NULL) AS com_escrow,
               COALESCE(SUM(sod.buyer_total), 0) AS bruto,
               COALESCE(SUM(sod.commission_fee), 0) AS comissao,
-              COALESCE(SUM(sod.escrow_amount), 0) AS liquido
+              COALESCE(SUM(sod.escrow_amount), 0) AS liquido,
+              COALESCE(SUM((sod.escrow_raw->'order_income'->>'buyer_paid_shipping_fee')::numeric), 0) AS frete
        FROM orders o JOIN shopee_order_data sod ON sod.order_sn = o.ml_id
        WHERE ${WHERE}`,
       params
@@ -278,12 +282,15 @@ router.get('/financeiro', async (req, res) => {
         escrow_amount: x.escrow_amount != null ? Number(x.escrow_amount) : null,
         buyer_payment_method: x.buyer_payment_method, logistics_status: x.logistics_status,
         tracking_number: x.tracking_number,
+        frete: x.frete_comprador != null ? Number(x.frete_comprador) : null,
+        frete_real: x.frete_real != null ? Number(x.frete_real) : null,
       })),
       resumo: {
         com_escrow: Number(r.com_escrow || 0),
         bruto: Number(r.bruto || 0),
         comissao: Number(r.comissao || 0),
         liquido: Number(r.liquido || 0),
+        frete: Number(r.frete || 0),
         dias,
       },
     });

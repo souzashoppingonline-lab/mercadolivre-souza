@@ -13,6 +13,7 @@ const SHOPEE_NAV_ITEMS = [
   { href: 'shopee-anuncios.html', icon: 'fa-tags', label: 'Anúncios' },
   { href: 'shopee-financeiro.html', icon: 'fa-money-bill-wave', label: 'Financeiro' },
   { href: 'shopee-chat.html', icon: 'fa-comments', label: 'Mensagens' },
+  { href: 'shopee-lojas.html', icon: 'fa-store', label: 'Lojas' },
 ];
 
 function buildShopeeSidebar(activeHref) {

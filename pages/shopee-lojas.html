@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lojas Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Independente do ML: usa js/layout-shopee.js — ver .claude/frontend.md. -->
+  <script>window.PAGE_TITLE='Lojas'; window.ACTIVE_NAV='shopee-lojas.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .summary-bar { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .summary-chip { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .lojas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+    .loja-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s; }
+    .loja-card:hover { border-color: var(--shopee); }
+    .loja-card.connected { border-left: 3px solid var(--green); }
+    .loja-card.disconnected { border-left: 3px solid var(--red); }
+    .loja-header { display: flex; align-items: center; gap: 14px; }
+    .loja-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .loja-icon.connected { background: rgba(238,77,45,0.15); color: var(--shopee); }
+    .loja-icon.disconnected { background: rgba(231,76,60,0.15); color: var(--red); }
+    .loja-meta { flex: 1; }
+    .loja-nickname { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+    .loja-id { font-size: 11px; color: var(--text-muted); }
+    .status-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+    .status-badge.ok { background: rgba(39,174,96,0.15); color: var(--green); }
+    .status-badge.err { background: rgba(231,76,60,0.12); color: var(--red); }
+    .loja-rows { display: flex; flex-direction: column; gap: 6px; }
+    .loja-row { display: flex; justify-content: space-between; font-size: 12px; }
+    .loja-row .k { color: var(--text-muted); }
+    .loja-row .v { font-weight: 600; }
+    .btn-reconectar { margin-top: 4px; background: rgba(238,77,45,0.1); border: 1px solid var(--shopee); color: var(--shopee); border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.2s; text-decoration: none; display: inline-block; text-align: center; }
+    .btn-reconectar:hover { background: var(--shopee); color: #fff; }
+    .empty-state { text-align: center; color: var(--text-muted); padding: 40px 20px; font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="summary-bar" id="summaryBar"></div>
+      <div class="lojas-grid" id="lojasGrid">
+        <div class="empty-state" style="grid-column:1/-1">Carregando lojas Shopee...</div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+async function load() {
+  const data = await DB.getShopeeLojas() || { lojas: [] };
+  const lojas = data.lojas || [];
+  const grid = document.getElementById('lojasGrid');
+  const bar  = document.getElementById('summaryBar');
+
+  // "Conectada" = tem refresh_token; se o token de acesso expirou (token_valid=false)
+  // o polling renova sozinho pelo refresh_token, então mostramos só um aviso leve.
+  const conectadas   = lojas.filter(l => l.conectada).length;
+  const desconectadas = lojas.length - conectadas;
+  bar.innerHTML = `
+    <div class="summary-chip"><i class="fas fa-store" style="color:var(--shopee)"></i> ${lojas.length} loja${lojas.length!==1?'s':''} Shopee cadastrada${lojas.length!==1?'s':''}</div>
+    <div class="summary-chip"><i class="fas fa-circle" style="color:var(--green);font-size:9px"></i> ${conectadas} conectada${conectadas!==1?'s':''}</div>
+    ${desconectadas ? `<div class="summary-chip"><i class="fas fa-circle" style="color:var(--red);font-size:9px"></i> ${desconectadas} sem autorização</div>` : ''}
+    <a href="/auth/shopee/login" class="summary-chip" style="color:var(--shopee);border-color:var(--shopee);cursor:pointer;text-decoration:none"><i class="fas fa-plus"></i> Conectar loja Shopee</a>`;
+
+  grid.innerHTML = lojas.length ? lojas.map(l => `
+    <div class="loja-card ${l.conectada ? 'connected' : 'disconnected'}">
+      <div class="loja-header">
+        <div class="loja-icon ${l.conectada ? 'connected' : 'disconnected'}"><i class="fas fa-shopping-bag"></i></div>
+        <div class="loja-meta">
+          <div class="loja-nickname">${l.nickname || 'Loja Shopee'}</div>
+          <div class="loja-id">shop_id: ${l.shopee_shop_id || '—'} · id interno: ${l.id}</div>
+          <span class="status-badge ${l.conectada ? 'ok' : 'err'}" style="margin-top:4px">
+            <i class="fas fa-circle" style="font-size:7px"></i>
+            ${l.conectada ? 'Autorizada' : 'Sem autorização'}
+          </span>
+        </div>
+      </div>
+      <div class="loja-rows">
+        <div class="loja-row"><span class="k">Pedidos (total)</span><span class="v">${l.total_pedidos ?? 0}</span></div>
+        <div class="loja-row"><span class="k">Pedidos no mês</span><span class="v">${l.pedidos_mes ?? 0}</span></div>
+        <div class="loja-row"><span class="k">Faturamento mês</span><span class="v">${fmt(l.faturamento_mes)}</span></div>
+        <div class="loja-row"><span class="k">Produtos ativos</span><span class="v">${l.produtos_ativos ?? 0}</span></div>
+        <div class="loja-row"><span class="k">Token de acesso</span><span class="v" style="color:${l.token_valid ? 'var(--green)' : 'var(--text-muted)'}">${l.token_valid ? 'válido' : 'renovando'}</span></div>
+        <div class="loja-row"><span class="k">Token expira</span><span class="v" style="font-size:11px">${fmtDate(l.token_expires_at)}</span></div>
+        <div class="loja-row"><span class="k">Atualizado</span><span class="v" style="font-size:11px">${fmtDate(l.updated_at)}</span></div>
+      </div>
+      ${!l.conectada ? `<a href="/auth/shopee/login" class="btn-reconectar"><i class="fas fa-plug"></i> Autorizar loja</a>` : ''}
+    </div>
+  `).join('') : '<div class="empty-state" style="grid-column:1/-1">Nenhuma loja Shopee cadastrada. <a href="/auth/shopee/login" style="color:var(--shopee)">Autorizar primeira loja →</a></div>';
+}
+
+WS.on('_connected', () => {
+  const el = document.getElementById('wsStatus');
+  if (el) el.innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
+});
+WS.on('kpis_updated', load);
+WS.on('order_updated', load);
+load();
+</script>
+</body>
+</html>

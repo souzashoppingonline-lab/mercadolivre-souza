@@ -113,15 +113,42 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// Lojas Shopee cadastradas — alimenta o seletor de loja das páginas (multi-loja).
-// Toda página nova filtra por store_id usando esta lista; sem store_id agrega tudo.
+// Lojas Shopee cadastradas — alimenta o seletor de loja das páginas (multi-loja)
+// E a página "Lojas" (pages/shopee-lojas.html). Toda página nova filtra por
+// store_id usando esta lista; sem store_id agrega tudo. Além dos campos base
+// (id/nickname/shopee_shop_id/conectada, usados pelos seletores), traz métricas
+// por loja pra tela de gestão: validade do token, última atualização, nº de
+// pedidos, faturamento do mês e produtos ativos. Tudo por LEFT JOIN lateral
+// filtrando marketplace_id=SHOPEE — nada compartilhado com o ML.
 router.get('/lojas', async (req, res) => {
   try {
     const mpId = await shopeeMarketplaceId();
     const { rows } = await pool.query(
-      `SELECT id, nickname, shopee_shop_id,
-              (refresh_token IS NOT NULL) AS conectada
-       FROM stores WHERE marketplace_id = $1 ORDER BY nickname`,
+      `SELECT s.id, s.nickname, s.shopee_shop_id,
+              (s.refresh_token IS NOT NULL) AS conectada,
+              s.token_expires_at,
+              (s.token_expires_at IS NOT NULL AND s.token_expires_at > now()) AS token_valid,
+              s.updated_at,
+              COALESCE(o.total_pedidos, 0)   AS total_pedidos,
+              COALESCE(o.faturamento_mes, 0) AS faturamento_mes,
+              COALESCE(o.pedidos_mes, 0)     AS pedidos_mes,
+              COALESCE(it.produtos_ativos, 0) AS produtos_ativos
+       FROM stores s
+       LEFT JOIN (
+         SELECT store_id,
+                COUNT(*) AS total_pedidos,
+                COUNT(*) FILTER (WHERE date_created >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')) AS pedidos_mes,
+                COALESCE(SUM(total_amount) FILTER (
+                  WHERE status != 'cancelled'
+                    AND date_created >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo')
+                ), 0) AS faturamento_mes
+         FROM orders WHERE marketplace_id = $1 GROUP BY store_id
+       ) o ON o.store_id = s.id
+       LEFT JOIN (
+         SELECT store_id, COUNT(*) AS produtos_ativos
+         FROM items WHERE marketplace_id = $1 AND status = 'active' GROUP BY store_id
+       ) it ON it.store_id = s.id
+       WHERE s.marketplace_id = $1 ORDER BY s.nickname`,
       [mpId]
     );
     res.json({ lojas: rows });

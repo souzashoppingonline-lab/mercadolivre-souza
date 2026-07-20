@@ -251,6 +251,69 @@ class ShopeeClient extends MarketplaceClient {
     });
     return resp?.response?.conversations || [];
   }
+
+  // Histórico de mensagens de UMA conversa (pra abrir o chat e ver o fio inteiro,
+  // não só a última). GET; params no query string (mesmo contrato dos outros
+  // sellerchat/*). `offset` vazio na 1ª página. Retorna a lista mais recente.
+  async getMessageList(conversationId, pageSize = 25, offset = '') {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/sellerchat/get_message_list', {
+      method: 'GET',
+      query: { conversation_id: String(conversationId), page_size: String(pageSize), offset: offset || undefined },
+    });
+    return resp?.response?.messages || [];
+  }
+
+  // Envia uma mensagem de texto ao comprador (resposta dentro da plataforma).
+  // ESCRITA → POST com body (diferente dos sellerchat/* de leitura, que são GET).
+  // `toId` é o user_id do comprador (campo to_id vindo do get_conversation_list).
+  // Pode exigir "Acesso a dados sensíveis" aprovado no console — se não tiver, a
+  // Shopee devolve erro de negócio e o _call propaga (a rota traduz pro usuário).
+  async sendMessage(toId, text) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/sellerchat/send_message', {
+      method: 'POST',
+      body: { to_id: Number(toId), message_type: 'text', content: { text: String(text) } },
+    });
+    return resp?.response || null;
+  }
 }
 
-module.exports = { ShopeeClient, getAuthorizationUrl, exchangeCodeForToken, sign, baseUrl };
+// Helper para rotas: constrói um ShopeeClient para UMA loja (linha de `stores`),
+// renovando o access_token proativamente (margem 10min) e persistindo o novo par
+// com CAS — mesma disciplina do ShopeePollingEventSource._ensureValidToken, mas
+// pontual (uma chamada de rota), sem intervalo. Mantém shopeeClient.js sem
+// dependência de banco: o pool é injetado pelo chamador.
+async function getShopeeClientForStore(pool, storeId, envCfg) {
+  const { rows } = await pool.query(
+    `SELECT id, shopee_shop_id, access_token, refresh_token, token_expires_at
+     FROM stores WHERE id = $1`,
+    [storeId]
+  );
+  const store = rows[0];
+  if (!store) throw new Error(`Loja Shopee ${storeId} não encontrada`);
+
+  const client = new ShopeeClient({
+    ...envCfg,
+    shopId: store.shopee_shop_id,
+    accessToken: store.access_token,
+    refreshToken: store.refresh_token,
+  });
+
+  const expiresAt = store.token_expires_at ? new Date(store.token_expires_at).getTime() : 0;
+  const safetyMarginMs = 10 * 60 * 1000;
+  if (Date.now() >= expiresAt - safetyMarginMs && store.refresh_token) {
+    const tokens = await client.refreshAccessToken();
+    const newExpiresAt = Date.now() + Number(tokens.expire_in || 14400) * 1000;
+    // CAS: só grava se o refresh_token ainda for o que lemos (não sobrescreve
+    // um par mais novo salvo pelo polling em paralelo).
+    await pool.query(
+      `UPDATE stores SET access_token=$2, refresh_token=$3, token_expires_at=$4, updated_at=now()
+       WHERE id=$1 AND refresh_token=$5`,
+      [store.id, tokens.access_token, tokens.refresh_token, new Date(newExpiresAt), store.refresh_token]
+    );
+  }
+  return client;
+}
+
+module.exports = { ShopeeClient, getAuthorizationUrl, exchangeCodeForToken, sign, baseUrl, getShopeeClientForStore };

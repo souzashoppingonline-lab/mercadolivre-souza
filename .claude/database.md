@@ -183,9 +183,10 @@ last_message_type TEXT
 last_message_time BIGINT       -- timestamp em NANOSSEGUNDOS (formato Shopee)
 latest_message_id TEXT
 notified_message_id TEXT       -- dedup do Telegram (último já notificado)
+to_id TEXT                     -- v38: user_id do comprador (destinatário do send_message)
 updated_at TIMESTAMPTZ
 ```
-Preenchida pelo job `syncShopeeChat` (`marketplaceEventWorker`, 10min). Índice parcial `unread_count>0`. Ver `shopee.md`. O `tracking_number` (v35) é buscado via `ShopeeClient.getTrackingNumber` só quando o pedido está em status "embarcável" (`SHOPEE_SHIPPABLE`) — antes disso a Logistics API não tem rastreio. Backfill dos pedidos antigos: `server/backfill-shopee-tracking.js`.
+Preenchida pelo job `syncShopeeChat` (`marketplaceEventWorker`, 10min). Índice parcial `unread_count>0`. `to_id` (v38) habilita **responder o cliente dentro da plataforma** (`send_message`) — ver `shopee.md` e as rotas `/api/shopee/chat/*` em `api.md`. O `tracking_number` (v35) é buscado via `ShopeeClient.getTrackingNumber` só quando o pedido está em status "embarcável" (`SHOPEE_SHIPPABLE`) — antes disso a Logistics API não tem rastreio. Backfill dos pedidos antigos: `server/backfill-shopee-tracking.js`.
 
 ### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
 ```

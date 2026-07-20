@@ -192,6 +192,8 @@ const DB = {
   async getShopeeAnuncios(params = {}) { return this._get('/shopee/anuncios', params); },
   async getShopeeFinanceiro(params = {}) { return this._get('/shopee/financeiro', params); },
   async getShopeeChat(params = {}) { return this._get('/shopee/chat', params); },
+  async getShopeeChatMensagens(conversationId) { return this._get(`/shopee/chat/${encodeURIComponent(conversationId)}/mensagens`); },
+  async responderShopeeChat(conversation_id, text) { return this._post('/shopee/chat/responder', { conversation_id, text }); },
 
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },

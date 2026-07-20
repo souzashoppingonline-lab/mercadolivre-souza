@@ -241,8 +241,10 @@ CREATE TABLE IF NOT EXISTS shopee_chat (
   last_message_time BIGINT,
   latest_message_id TEXT,
   notified_message_id TEXT,
+  to_id TEXT,                    -- v38: user_id do comprador (destinatário do send_message)
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE shopee_chat ADD COLUMN IF NOT EXISTS to_id TEXT;  -- v38 (idempotente p/ tabela já existente)
 CREATE INDEX IF NOT EXISTS idx_shopee_chat_store ON shopee_chat(store_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_chat_unread ON shopee_chat(unread_count) WHERE unread_count > 0;
 

@@ -4,6 +4,8 @@
 // routes/amazon.js. Ver pages/dashboard-shopee.html e .claude/shopee.md.
 const express = require('express');
 const pool = require('../db/pool');
+const env = require('../config/env');
+const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
 
 const router = express.Router();
 
@@ -336,9 +338,9 @@ router.get('/chat', async (req, res) => {
       `SELECT c.conversation_id, c.buyer_name, c.unread_count, c.last_message,
               c.last_message_type, c.last_message_time, s.nickname AS conta
        FROM shopee_chat c LEFT JOIN stores s ON s.id = c.store_id
-       WHERE c.unread_count > 0 AND ($1 = '' OR c.store_id = $1::bigint)
+       WHERE ($2 = '1' OR c.unread_count > 0) AND ($1 = '' OR c.store_id = $1::bigint)
        ORDER BY c.last_message_time DESC NULLS LAST LIMIT 200`,
-      [storeId]
+      [storeId, req.query.todas === '1' ? '1' : '0']
     );
     const totalNaoLidas = rows.reduce((a, r) => a + Number(r.unread_count || 0), 0);
     res.json({
@@ -355,6 +357,76 @@ router.get('/chat', async (req, res) => {
   } catch (e) {
     console.error('[api/shopee] /chat', e.message);
     res.status(500).json({ error: e.message, rows: [], resumo: {} });
+  }
+});
+
+// Histórico de UMA conversa (abrir o chat). Resolve a loja dona da conversa,
+// constrói o client daquela conta (renova token se preciso) e busca as mensagens
+// ao vivo na Shopee. `de` = 'comprador' | 'loja' (direção, calculada pelo to_id
+// do comprador guardado em shopee_chat). Isolado do ML.
+router.get('/chat/:conversationId/mensagens', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT store_id, buyer_name, to_id FROM shopee_chat WHERE conversation_id = $1`,
+      [conversationId]
+    );
+    const conv = rows[0];
+    if (!conv || !conv.store_id) return res.status(404).json({ error: 'Conversa não encontrada', rows: [] });
+
+    const client = await getShopeeClientForStore(pool, conv.store_id, env.shopee);
+    const msgs = await client.getMessageList(conversationId, 30);
+    const buyerId = conv.to_id != null ? String(conv.to_id) : null;
+    // Shopee devolve as mensagens da mais nova pra mais antiga — invertemos pra
+    // renderizar em ordem cronológica (como um chat).
+    const ordered = [...(msgs || [])].reverse().map((m) => ({
+      message_id: String(m.message_id || ''),
+      de: buyerId && String(m.from_id) === buyerId ? 'comprador' : 'loja',
+      tipo: m.message_type || 'text',
+      texto: m.content?.text || (m.message_type && m.message_type !== 'text' ? `(${m.message_type})` : ''),
+      // Shopee usa segundos aqui (created_timestamp) — normaliza pra ms.
+      ts_ms: m.created_timestamp ? Number(m.created_timestamp) * 1000 : null,
+    }));
+    res.json({ buyer_name: conv.buyer_name, rows: ordered });
+  } catch (e) {
+    console.error('[api/shopee] /chat/mensagens', e.message);
+    res.status(500).json({ error: e.message, rows: [] });
+  }
+});
+
+// Responder o cliente DENTRO da plataforma (send_message). Resolve to_id + loja
+// pela conversa, envia via client daquela conta e zera o unread localmente
+// (some da lista de "não lidas" no próximo refresh). Pode exigir "Acesso a dados
+// sensíveis" aprovado no console — se a Shopee recusar, devolve o erro pro front.
+router.post('/chat/responder', express.json(), async (req, res) => {
+  try {
+    const { conversation_id, text } = req.body || {};
+    if (!conversation_id || !text || !String(text).trim()) {
+      return res.status(400).json({ error: 'conversation_id e text são obrigatórios' });
+    }
+    const { rows } = await pool.query(
+      `SELECT store_id, to_id FROM shopee_chat WHERE conversation_id = $1`,
+      [conversation_id]
+    );
+    const conv = rows[0];
+    if (!conv || !conv.store_id) return res.status(404).json({ error: 'Conversa não encontrada' });
+    if (!conv.to_id) return res.status(422).json({ error: 'Sem o user_id do comprador nesta conversa ainda — aguarde o próximo sync do chat (até 10 min) e tente de novo.' });
+
+    const client = await getShopeeClientForStore(pool, conv.store_id, env.shopee);
+    await client.sendMessage(conv.to_id, String(text).trim());
+
+    // Respondemos → não está mais "não lida". Atualiza o espelho local.
+    await pool.query(
+      `UPDATE shopee_chat SET unread_count = 0, last_message = $2, last_message_type = 'text', updated_at = now()
+       WHERE conversation_id = $1`,
+      [conversation_id, String(text).trim()]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[api/shopee] /chat/responder', e.message);
+    // Erros de negócio da Shopee (ex: falta de acesso sensível) chegam aqui com
+    // a mensagem original — repassa pro usuário entender o motivo.
+    res.status(500).json({ error: e.message });
   }
 });
 

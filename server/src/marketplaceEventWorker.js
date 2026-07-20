@@ -308,16 +308,18 @@ async function syncShopeeChat() {
       const latestId = String(c.latest_message_id || '');
       const buyer = c.to_name || String(c.to_id || '');
       const lastText = c.latest_message_content?.text || `(${c.latest_message_type || 'mensagem'})`;
+      const toId = c.to_id != null ? String(c.to_id) : null; // user_id do comprador (pra responder via send_message)
       const { rows } = await pool.query(
-        `INSERT INTO shopee_chat (conversation_id, store_id, buyer_name, unread_count, last_message, last_message_type, last_message_time, latest_message_id, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+        `INSERT INTO shopee_chat (conversation_id, store_id, buyer_name, unread_count, last_message, last_message_type, last_message_time, latest_message_id, to_id, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
          ON CONFLICT (conversation_id) DO UPDATE SET
            buyer_name=EXCLUDED.buyer_name, unread_count=EXCLUDED.unread_count,
            last_message=EXCLUDED.last_message, last_message_type=EXCLUDED.last_message_type,
            last_message_time=EXCLUDED.last_message_time, latest_message_id=EXCLUDED.latest_message_id,
+           to_id=COALESCE(EXCLUDED.to_id, shopee_chat.to_id),
            updated_at=now()
          RETURNING notified_message_id`,
-        [c.conversation_id, storeId, buyer, unread, lastText, c.latest_message_type || null, c.last_message_timestamp || null, latestId]
+        [c.conversation_id, storeId, buyer, unread, lastText, c.latest_message_type || null, c.last_message_timestamp || null, latestId, toId]
       );
       const notifiedId = rows[0]?.notified_message_id;
       // last_message_timestamp vem em NANOSSEGUNDOS → ms. Só notifica se < 24h.

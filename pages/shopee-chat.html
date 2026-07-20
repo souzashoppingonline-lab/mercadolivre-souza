@@ -16,13 +16,33 @@
     .shp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:12px; padding:16px 18px; }
     .shp-kpi .lbl { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
     .shp-kpi .val { font-size:26px; font-weight:800; line-height:1.1; }
-    .chat-row { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--bg-card); margin-bottom:10px; }
+    .chat-row { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--bg-card); margin-bottom:10px; cursor:pointer; transition:border-color .15s; }
+    .chat-row:hover { border-color:var(--shopee); }
     .chat-av { width:42px; height:42px; border-radius:50%; background:var(--shopee); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0; }
     .chat-body { min-width:0; flex:1; }
     .chat-name { font-weight:700; }
     .chat-msg { font-size:13px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .chat-badge { background:var(--shopee); color:#fff; font-weight:800; font-size:12px; padding:3px 10px; border-radius:20px; flex-shrink:0; }
     .chat-time { font-size:11px; color:var(--text-muted); flex-shrink:0; }
+    .toggle-todas { font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; }
+    /* Painel de conversa (drawer à direita) */
+    .drawer-back { position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.6); backdrop-filter:blur(2px); display:none; }
+    .drawer { position:fixed; top:0; right:0; height:100%; width:min(460px,100%); background:var(--bg-card); border-left:1px solid var(--border); z-index:1001; display:none; flex-direction:column; box-shadow:-8px 0 30px rgba(0,0,0,.5); }
+    .drawer.open, .drawer-back.open { display:flex; }
+    .drawer-head { padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+    .drawer-head .chat-av { width:38px; height:38px; }
+    .drawer-close { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; }
+    .msgs { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
+    .msg { max-width:78%; padding:9px 13px; border-radius:14px; font-size:13px; line-height:1.4; word-break:break-word; }
+    .msg.comprador { align-self:flex-start; background:var(--surface); border:1px solid var(--border); border-bottom-left-radius:4px; }
+    .msg.loja { align-self:flex-end; background:var(--shopee); color:#fff; border-bottom-right-radius:4px; }
+    .msg .mt { display:block; font-size:10px; opacity:.7; margin-top:4px; }
+    .composer { border-top:1px solid var(--border); padding:12px; display:flex; gap:8px; flex-shrink:0; }
+    .composer textarea { flex:1; resize:none; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); font-size:13px; font-family:inherit; max-height:120px; }
+    .composer textarea:focus { outline:none; border-color:var(--shopee); }
+    .composer button { background:var(--shopee); color:#fff; border:none; border-radius:10px; padding:0 16px; font-weight:700; cursor:pointer; }
+    .composer button:disabled { opacity:.5; cursor:not-allowed; }
+    .drawer-err { display:none; font-size:12px; color:var(--red); padding:8px 14px; background:rgba(231,76,60,.1); margin:0 12px; border-radius:8px; }
   </style>
 </head>
 <body>
@@ -32,11 +52,12 @@
     <div id="app-topbar"></div>
     <div class="content-area">
 
-      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Conversas de compradores Shopee com <b>mensagem não lida</b> (não respondidas). Também chegam no Telegram quando novas. Responda pelo app da Shopee.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Conversas de compradores Shopee. Clique numa conversa para <b>ver o histórico e responder o cliente aqui na plataforma</b>. Mensagens não lidas também chegam no Telegram.</p>
 
       <div class="shp-filters">
         <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
         <select id="chatLoja" onchange="loadChat()"><option value="">Todas as lojas</option></select>
+        <label class="toggle-todas"><input type="checkbox" id="chatTodas" onchange="loadChat()"> mostrar já respondidas</label>
         <button class="action-btn" onclick="loadChat()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
       </div>
 
@@ -50,6 +71,23 @@
     </div>
   </main>
 </div>
+
+<!-- Drawer de conversa -->
+<div class="drawer-back" id="drawerBack" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="chat-av" id="dAv">?</div>
+    <div><div class="chat-name" id="dName">—</div><div style="font-size:11px;color:var(--text-muted)" id="dConta"></div></div>
+    <button class="drawer-close" onclick="closeDrawer()"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="msgs" id="dMsgs"></div>
+  <div class="drawer-err" id="dErr"></div>
+  <div class="composer">
+    <textarea id="dText" rows="1" placeholder="Escreva uma resposta..." oninput="autoGrow(this)"></textarea>
+    <button id="dSend" onclick="enviar()"><i class="fas fa-paper-plane"></i></button>
+  </div>
+</aside>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout-shopee.js"></script>
@@ -60,6 +98,8 @@ const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 const initial = n => (String(n||'?').trim()[0]||'?').toUpperCase();
 const fmtDt = ms => ms ? new Date(ms).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
 
+let currentConv = null; // conversa aberta no drawer
+
 async function loadLojas() {
   const d = await DB.getShopeeLojas();
   const sel = document.getElementById('chatLoja');
@@ -68,29 +108,91 @@ async function loadLojas() {
 
 async function loadChat() {
   const store_id = document.getElementById('chatLoja').value;
+  const todas = document.getElementById('chatTodas').checked ? 1 : undefined;
   const list = document.getElementById('chatList');
   list.innerHTML = '<div class="empty-state" style="padding:30px">Carregando...</div>';
-  const d = await DB.getShopeeChat({ store_id });
-  if (!d || d.error) { list.innerHTML = `<div class="empty-state" style="padding:30px;color:var(--red)">Erro: ${d?.error||'sem dados'}</div>`; return; }
+  const d = await DB.getShopeeChat({ store_id, todas });
+  if (!d || d.error) { list.innerHTML = `<div class="empty-state" style="padding:30px;color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</div>`; return; }
   const r = d.resumo || {};
   set('kConversas', r.conversas ?? 0); set('kNaoLidas', r.nao_lidas ?? 0);
   const rows = d.rows || [];
   list.innerHTML = rows.length ? rows.map(c => `
-    <div class="chat-row">
+    <div class="chat-row" onclick='openDrawer(${JSON.stringify(c).replace(/'/g, "&#39;")})'>
       <div class="chat-av">${esc(initial(c.buyer_name))}</div>
       <div class="chat-body">
         <div class="chat-name">${esc(c.buyer_name || '—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(c.conta||'')}</span></div>
         <div class="chat-msg">${esc(c.last_message || '')}</div>
       </div>
       <div class="chat-time">${fmtDt(c.last_message_ms)}</div>
-      <div class="chat-badge">${c.unread_count} não lida${c.unread_count>1?'s':''}</div>
+      ${c.unread_count>0 ? `<div class="chat-badge">${c.unread_count} não lida${c.unread_count>1?'s':''}</div>` : ''}
     </div>`).join('') : '<div class="empty-state" style="padding:30px">Nenhuma mensagem pendente 🎉</div>';
 }
 
+function autoGrow(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
+
+async function openDrawer(c) {
+  currentConv = c;
+  set('dName', c.buyer_name || '—'); set('dConta', c.conta || '');
+  document.getElementById('dAv').textContent = initial(c.buyer_name);
+  document.getElementById('dErr').style.display = 'none';
+  document.getElementById('dText').value = ''; autoGrow(document.getElementById('dText'));
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawerBack').classList.add('open');
+  const box = document.getElementById('dMsgs');
+  box.innerHTML = '<div class="empty-state" style="margin:auto">Carregando conversa...</div>';
+  const d = await DB.getShopeeChatMensagens(c.conversation_id);
+  if (!d || d.error) { box.innerHTML = `<div class="empty-state" style="margin:auto;color:var(--red)">Erro ao carregar: ${esc(d?.error||'')}</div>`; return; }
+  renderMsgs(d.rows || []);
+}
+
+function renderMsgs(rows) {
+  const box = document.getElementById('dMsgs');
+  box.innerHTML = rows.length ? rows.map(m => `
+    <div class="msg ${m.de==='loja'?'loja':'comprador'}">
+      ${esc(m.texto || '')}
+      <span class="mt">${fmtDt(m.ts_ms)}</span>
+    </div>`).join('') : '<div class="empty-state" style="margin:auto">Sem mensagens no histórico.</div>';
+  box.scrollTop = box.scrollHeight;
+}
+
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawerBack').classList.remove('open');
+  currentConv = null;
+}
+
+async function enviar() {
+  if (!currentConv) return;
+  const ta = document.getElementById('dText');
+  const text = ta.value.trim();
+  if (!text) return;
+  const btn = document.getElementById('dSend');
+  const err = document.getElementById('dErr');
+  btn.disabled = true; err.style.display = 'none';
+  const res = await DB.responderShopeeChat(currentConv.conversation_id, text);
+  btn.disabled = false;
+  if (!res || res.error) {
+    err.textContent = res?.error || 'Falha ao enviar. Tente novamente.';
+    err.style.display = 'block';
+    return;
+  }
+  // Otimista: acrescenta a mensagem enviada no fim e limpa o campo.
+  const box = document.getElementById('dMsgs');
+  const div = document.createElement('div');
+  div.className = 'msg loja';
+  div.innerHTML = `${esc(text)}<span class="mt">${fmtDt(Date.now())}</span>`;
+  box.appendChild(div); box.scrollTop = box.scrollHeight;
+  ta.value = ''; autoGrow(ta);
+  loadChat(); // atualiza a lista (a conversa deixa de estar "não lida")
+}
+
+document.getElementById('dText')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); }
+});
+
 WS.on('_connected', loadChat);
-setInterval(loadChat, 60000);
+setInterval(() => { if (!currentConv) loadChat(); }, 60000);
 document.addEventListener('DOMContentLoaded', async () => {
-  document.getElementById('btnRefresh')?.addEventListener('click', loadChat);
   await loadLojas();
   loadChat();
 });

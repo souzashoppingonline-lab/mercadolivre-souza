@@ -86,9 +86,15 @@ Criado especificamente para o processo de aprovação de produção da Shopee Op
 Diagnóstico (`test-shopee-chat.js`) fechou o contrato: `get_conversation_list` exige `type` + `direction=latest` + `page_size` (sem `direction` → `param_error`). `type='unread'` traz só conversas com mensagem não lida.
 
 - `ShopeeClient.getConversationList(type, pageSize)`.
-- Job **`syncShopeeChat`** (`marketplaceEventWorker`, a cada 10min, isolado do ML): busca conversas não lidas, grava em `shopee_chat` (dedup por `notified_message_id`) e notifica no **Telegram** (`tg_mensagens`) as novas — **com guard de 24h** (`last_message_timestamp` em nanossegundos; conversa antiga é marcada como notificada sem mandar Telegram, pra não spammar no 1º run).
-- Página **Mensagens** (`pages/shopee-chat.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): KPIs + lista de conversas pendentes. Backend `/api/shopee/chat`. Responder é feito pelo app da Shopee (fase 1 só notifica/lista).
-- Tabela `shopee_chat` (v37) — ver `database.md`.
+- Job **`syncShopeeChat`** (`marketplaceEventWorker`, a cada 10min, isolado do ML): busca conversas não lidas, grava em `shopee_chat` (dedup por `notified_message_id`, e guarda o `to_id` do comprador — v38) e notifica no **Telegram** (`tg_mensagens`) as novas — **com guard de 24h** (`last_message_timestamp` em nanossegundos; conversa antiga é marcada como notificada sem mandar Telegram, pra não spammar no 1º run).
+- Página **Mensagens** (`pages/shopee-chat.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): KPIs + lista de conversas. Clicar numa conversa abre um **drawer com o histórico** (`get_message_list`) e uma **caixa de resposta** — dá pra **responder o cliente dentro da plataforma** (não é mais só leitura). Toggle "mostrar já respondidas" (`?todas=1`) pra reabrir conversas antigas. Backend `/api/shopee/chat`, `/api/shopee/chat/:id/mensagens`, `/api/shopee/chat/responder`.
+
+### Responder dentro da plataforma (send_message) — v38
+
+- `ShopeeClient.getMessageList(conversationId, pageSize)` (GET, histórico) e `ShopeeClient.sendMessage(toId, text)` (**POST** — escrita — `sellerchat/send_message`, body `{to_id, message_type:'text', content:{text}}`; `toId` é o `user_id` do comprador vindo do `to_id` da conversa).
+- Helper `getShopeeClientForStore(pool, storeId, env.shopee)` (em `shopeeClient.js`): constrói o client da loja dona da conversa e **renova o token proativamente com CAS** (mesma disciplina do `ShopeePollingEventSource._ensureValidToken`, mas pontual pra rota). O `shopeeClient.js` continua sem conhecer o banco — o `pool` é injetado.
+- ⚠️ O `send_message` pode exigir **"Acesso a dados sensíveis"** aprovado no console (o mesmo `SHOPEE_SENSITIVE_ACCESS`). Se a Shopee recusar, o erro de negócio dela é repassado ao front (a UI mostra o motivo). Confirmar o formato real do histórico com `server/test-shopee-chat-msg.js` (read-only).
+- Tabela `shopee_chat` (v37) + coluna `to_id` (v38) — ver `database.md`.
 
 ## Lojas — implementado (tela própria)
 

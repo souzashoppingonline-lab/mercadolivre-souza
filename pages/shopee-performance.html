@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance de Anúncios Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="../js/tableExport.js"></script>
+  <script>window.PAGE_TITLE='Performance de Anúncios'; window.ACTIVE_NAV='shopee-performance.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .params { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+    .param { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+    .param label { display:block; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .param select { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:8px 10px; color:var(--text); font-size:14px; font-weight:600; }
+    .pf-table { width:100%; border-collapse:collapse; }
+    .pf-table th { text-align:left; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+    .pf-table th.num { text-align:right; }
+    .pf-table td { padding:9px 12px; border-bottom:1px solid var(--border); font-size:13px; }
+    .pf-table td.num { text-align:right; }
+    .pf-table img { width:36px; height:36px; border-radius:6px; object-fit:cover; }
+    .pf-table .noimg { width:36px; height:36px; border-radius:6px; background:var(--surface); }
+    .mg-pos { color:var(--green); font-weight:700; }
+    .mg-neg { color:var(--red); font-weight:700; }
+    .dim { color:var(--text-muted); }
+    .note { background:rgba(255,230,0,.06); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-size:12px; color:var(--text-muted); margin-top:14px; display:flex; gap:8px; align-items:flex-start; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="params">
+        <div class="param"><label>Loja</label><select id="pfLoja" onchange="load()"><option value="">Todas as lojas</option></select></div>
+        <div class="param"><label>Período</label>
+          <select id="pfDias" onchange="load()">
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="30" selected>Últimos 30 dias</option>
+            <option value="60">Últimos 60 dias</option>
+            <option value="90">Últimos 90 dias</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="card-header" style="padding:14px 16px">
+          <h3>Performance por anúncio</h3>
+          <span id="pfCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('pfBody').closest('table'), 'shopee-performance.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="pf-table">
+            <thead><tr>
+              <th></th><th>Anúncio</th>
+              <th class="num">Visitas</th><th class="num">Conversão</th>
+              <th class="num">Pedidos</th><th class="num">Unidades</th>
+              <th class="num">Faturamento</th><th class="num">Lucro</th><th class="num">Margem</th>
+            </tr></thead>
+            <tbody id="pfBody"><tr><td colspan="9" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="note"><i class="fas fa-circle-info" style="margin-top:2px"></i><span id="pfNota"></span></div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => 'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0);
+const N = v => new Intl.NumberFormat('pt-BR').format(Number(v)||0);
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('pfLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+async function load() {
+  const store_id = document.getElementById('pfLoja').value;
+  const dias = document.getElementById('pfDias').value;
+  const body = document.getElementById('pfBody');
+  body.innerHTML = '<tr><td colspan="9" class="empty-state" style="padding:30px">Carregando...</td></tr>';
+  const d = await DB.getShopeePerformance({ store_id, dias });
+  if (!d || d.error) { body.innerHTML = `<tr><td colspan="9" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
+  set('pfNota', d.nota_visitas || '');
+  const rows = d.rows || [];
+  set('pfCount', `${rows.length} anúncio(s) com venda`);
+  body.innerHTML = rows.length ? rows.map(a => {
+    const mg = a.margem_pct==null ? '—' : a.margem_pct.toFixed(1)+'%';
+    const mgCls = a.margem_pct==null ? '' : (a.margem_pct<0?'mg-neg':'mg-pos');
+    return `<tr>
+      <td>${a.thumbnail?`<img src="${esc(a.thumbnail)}" alt="">`:'<div class="noimg"></div>'}</td>
+      <td>${esc(a.title||'—')}<div class="dim" style="font-size:11px">${esc(a.sku||a.item_id)}</div></td>
+      <td class="num dim" title="não disponível pela API da Shopee">—</td>
+      <td class="num dim" title="não disponível pela API da Shopee">—</td>
+      <td class="num">${N(a.pedidos)}</td>
+      <td class="num">${N(a.unidades)}</td>
+      <td class="num">${R(a.faturamento)}</td>
+      <td class="num ${a.lucro<0?'mg-neg':''}">${R(a.lucro)}${a.custo_completo?'':' <span class="dim" title="custo parcial">*</span>'}</td>
+      <td class="num ${mgCls}">${mg}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="9" class="empty-state" style="padding:30px">Nenhuma venda no período.</td></tr>';
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLojas();
+  load();
+});
+</script>
+</body>
+</html>

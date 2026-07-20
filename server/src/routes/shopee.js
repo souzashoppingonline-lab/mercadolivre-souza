@@ -160,6 +160,72 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// Performance de Anúncios Shopee — por anúncio no período: pedidos, unidades,
+// faturamento, lucro (líquido escrow − custo) e margem. Visitas/conversão NÃO
+// vêm da Open API da Shopee (só no Seller Center), então ficam null com nota.
+router.get('/performance', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const dias = Number(req.query.dias) || 30;
+    const feePct = (await escrowFeePct(mpId, storeId)) ?? 14;
+
+    const { rows } = await pool.query(
+      `SELECT o.item_id, o.quantity, o.total_amount, sod.escrow_amount, ic.avg_cost
+       FROM orders o
+       LEFT JOIN shopee_order_data sod ON sod.order_id = o.ml_id
+       LEFT JOIN (SELECT item_id, AVG(cost) AS avg_cost FROM shopee_item_cost GROUP BY item_id) ic ON ic.item_id = o.item_id
+       WHERE o.marketplace_id = $1 AND o.status != 'cancelled'
+         AND ($2 = '' OR o.store_id = $2::bigint)
+         AND o.date_created > now() - ($3 || ' days')::interval`,
+      [mpId, storeId, String(dias)]
+    );
+
+    // agrega por item
+    const agg = new Map();
+    for (const r of rows) {
+      const id = String(r.item_id || '');
+      if (!id) continue;
+      if (!agg.has(id)) agg.set(id, { item_id: id, pedidos: 0, unidades: 0, faturamento: 0, liquido: 0, custo: 0, comCusto: 0 });
+      const a = agg.get(id);
+      const bruto = Number(r.total_amount || 0);
+      a.pedidos += 1;
+      a.unidades += Number(r.quantity || 1);
+      a.faturamento += bruto;
+      a.liquido += r.escrow_amount != null ? Number(r.escrow_amount) : bruto * (1 - feePct / 100);
+      if (r.avg_cost != null) { a.custo += Number(r.avg_cost) * Number(r.quantity || 1); a.comCusto += 1; }
+    }
+    const ids = [...agg.keys()];
+    let meta = new Map();
+    if (ids.length) {
+      const { rows: its } = await pool.query(
+        `SELECT i.ml_id AS item_id, i.title, i.thumbnail, sid.item_sku
+         FROM items i LEFT JOIN shopee_item_data sid ON sid.item_id = i.ml_id
+         WHERE i.ml_id = ANY($1)`, [ids]);
+      meta = new Map(its.map((i) => [String(i.item_id), i]));
+    }
+    const out = [...agg.values()].map((a) => {
+      const m = meta.get(a.item_id) || {};
+      const lucro = a.liquido - a.custo;
+      return {
+        item_id: a.item_id, title: m.title || a.item_id, thumbnail: m.thumbnail || null, sku: m.item_sku || null,
+        pedidos: a.pedidos, unidades: a.unidades, faturamento: a.faturamento,
+        lucro, margem_pct: a.faturamento ? (lucro / a.faturamento) * 100 : 0,
+        custo_completo: a.comCusto === a.pedidos,
+        visitas: null, conversao: null, // Open API da Shopee não expõe (ver nota)
+      };
+    }).sort((x, y) => y.faturamento - x.faturamento);
+
+    res.json({
+      rows: out, dias,
+      nota_visitas: 'Visitas e conversão por anúncio não são expostas pela API da Shopee (só no Seller Center) — por isso ficam em branco.',
+    });
+  } catch (e) {
+    console.error('[api/shopee] /performance', e.message);
+    res.status(500).json({ error: e.message, rows: [] });
+  }
+});
+
 // Dashboard Executivo Shopee — KPIs consolidados (Faturamento, Lucro, Pedidos,
 // Ticket, Margem) do período. Lucro = líquido do escrow (após taxa Shopee real)
 // − custo do produto (digitado no Precificador, shopee_item_cost). Pedidos sem

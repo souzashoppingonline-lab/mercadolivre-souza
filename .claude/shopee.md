@@ -114,6 +114,11 @@ Página **Estoque & Preço** (`pages/shopee-precos-estoque.html`, `SHOPEE_NAV_IT
 - **Rotas**: `GET /api/shopee/estoque-preco` (itens + variações do espelho local `shopee_item_data`, filtro loja/busca) e `POST /api/shopee/anuncios/aplicar` (`{changes:[{item_id,model_id,price?,stock?}]}` — agrupa por item, grava na Shopee, atualiza o espelho local na hora via `updateLocalItemAfterWrite` pra não esperar o sync de 30min).
 - ⚠️ **Escrita real** — altera preço/estoque da loja. Verificação empírica do contrato sem alterar nada: `server/test-shopee-update.js` (regrava o estoque com o mesmo valor = no-op). Roda uma vez antes de confiar na tela.
 
+## Performance de Anúncios — implementado (tela própria)
+
+Página **Performance** (`pages/shopee-performance.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): por anúncio no período (7–90 dias), **Pedidos, Unidades, Faturamento, Lucro e Margem** (mesma lógica do executivo: líquido escrow − custo; `*` quando o custo é parcial), ordenado por faturamento. Filtro loja/período, exporta CSV. Backend `GET /api/shopee/performance?store_id&dias`.
+- **Visitas/Conversão**: colunas presentes mas **em branco** — a Open API da Shopee **não expõe** visitas/conversão por anúncio (só no Seller Center). Documentado como limitação (não é gap de implementação).
+
 ## Dashboard Executivo — implementado (KPIs no dashboard-shopee)
 
 O **dashboard-shopee** (tela inicial) ganhou os KPIs executivos de hoje: **Faturamento** (vendas), **Pedidos**, **Lucro**, **Ticket Médio**, **Margem** (+ Produtos). Backend `GET /api/shopee/executivo?store_id&dias` (0=hoje):

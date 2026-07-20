@@ -34,8 +34,14 @@ module.exports = {
     partnerId: process.env.SHOPEE_PARTNER_ID,
     partnerKey: process.env.SHOPEE_PARTNER_KEY,
     redirectUri: process.env.SHOPEE_REDIRECT_URI,
-    // 'sandbox' (partner.uat.shopeemobile.com) até confirmar app de produção aprovado (ver .claude/shopee.md)
+    // 'sandbox' (partner.uat.shopeemobile.com) ou 'production' (partner.shopeemobile.com).
+    // Trocar para 'production' quando o app estiver aprovado e as credenciais forem as "ao vivo" (ver .claude/shopee.md).
     env: process.env.SHOPEE_ENV || 'sandbox',
+    // Campos SENSÍVEIS (buyer_username, endereço) só podem ser pedidos ao
+    // get_order_detail se o app tiver "Acesso a dados sensíveis" aprovado no
+    // console. Sem isso, pedir esses campos em produção quebra a chamada — por
+    // padrão NÃO pedimos (ver getOrder em shopeeClient.js e .claude/shopee.md).
+    sensitiveAccess: process.env.SHOPEE_SENSITIVE_ACCESS === 'true',
   },
   // Login de acesso restrito (staff) — ver .claude/auth-staff.md.
   staffAuth: {

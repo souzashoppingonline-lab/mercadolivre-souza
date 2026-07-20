@@ -6,7 +6,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
-const { getAuthorizationUrl, exchangeCodeForToken } = require('../marketplaces/shopee/shopeeClient');
+const { getAuthorizationUrl, exchangeCodeForToken, baseUrl } = require('../marketplaces/shopee/shopeeClient');
 
 const router = express.Router();
 
@@ -14,7 +14,7 @@ const DIAG_STYLE = `body{font-family:sans-serif;background:#1a1d23;color:#f0f0f0
   h2{color:#FFE600;margin-bottom:4px}table{width:100%;border-collapse:collapse;margin:16px 0}
   td{padding:10px 12px;border:1px solid #2a2d35;vertical-align:top}td:first-child{width:140px;color:#888;font-size:13px}
   code{background:#2a2d35;padding:2px 6px;border-radius:4px;font-size:13px;word-break:break-all}
-  .ok{color:#4CAF50}.err{color:#f44336}
+  .ok{color:#4CAF50}.err{color:#f44336}.warn{color:#ff9800}
   a{color:#FFE600;text-decoration:none}p{line-height:1.6;color:#aaa}`;
 
 // Diagnóstico — mostra partner_id e redirect_uri sem expor a partner_key
@@ -28,7 +28,9 @@ router.get('/config', (req, res) => {
       <tr><td>partner_id</td><td>${partnerId ? `<code>${partnerId}</code>` : '<span class="err">❌ NÃO CONFIGURADO (SHOPEE_PARTNER_ID)</span>'}</td></tr>
       <tr><td>partner_key</td><td>${env.shopee.partnerKey ? '<span class="ok">✓ configurado (oculto)</span>' : '<span class="err">❌ NÃO CONFIGURADO (SHOPEE_PARTNER_KEY)</span>'}</td></tr>
       <tr><td>redirect_uri</td><td>${redirectUri ? `<code>${redirectUri}</code>` : '<span class="err">❌ NÃO CONFIGURADO (SHOPEE_REDIRECT_URI)</span>'}</td></tr>
-      <tr><td>ambiente</td><td><code>${shopeeEnv}</code></td></tr>
+      <tr><td>ambiente</td><td><code>${shopeeEnv}</code> ${shopeeEnv === 'production' ? '<span class="ok">(produção — partner.shopeemobile.com)</span>' : '<span class="err">(sandbox — partner.uat.shopeemobile.com)</span>'}</td></tr>
+      <tr><td>host</td><td><code>${baseUrl(shopeeEnv)}</code></td></tr>
+      <tr><td>acesso a dados sensíveis</td><td>${env.shopee.sensitiveAccess ? '<span class="ok">✓ habilitado (pede buyer_username)</span>' : '<span class="warn">— desabilitado (não pede campos sensíveis; correto se o app está "Sem acesso")</span>'}</td></tr>
     </table>
     <p><strong>O redirect_uri acima deve estar cadastrado EXATAMENTE</strong> no domínio de redirecionamento configurado no console da Shopee.</p>
     <p><a href="/auth/shopee/login">→ Tentar autorizar uma loja</a></p>

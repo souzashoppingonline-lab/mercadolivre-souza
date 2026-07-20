@@ -1,6 +1,17 @@
 # Integração — Shopee
 
-> Status atual (17/07/2026): **fase 1 concluída — autenticação (assinatura HMAC + OAuth completo), sincronização de pedidos via polling e dashboard dedicado (`pages/dashboard-shopee.html`, antes placeholder).** Credenciais (`SHOPEE_PARTNER_ID`/`SHOPEE_PARTNER_KEY`) já estão em `server/.env`, ambiente **sandbox** (não produção — a Shopee avisa que sandbox "é funcional mas não replica 100% o comportamento de produção"). `shopeeClient.js` deixou de ser stub. Usuário está em processo de solicitar produção no console da Shopee Open Platform ("Transmissão ao vivo"), que exige uma URL ativa do produto — resolvido apontando pro dashboard, com uma conta de login restrita (`shopee-demo`, ver seção abaixo) pro revisor. Falta o usuário autorizar de fato uma loja de teste via `/auth/shopee/login` para o pipeline começar a processar pedidos reais de sandbox — ver "Como testar" abaixo. Ver a decisão de arquitetura completa em `decisions.md` ("Shopee sai do stub").
+> Status atual (20/07/2026): **fase 1 concluída e app aprovado ao vivo (produção).** Autenticação (assinatura HMAC + OAuth completo), sincronização de pedidos via polling e dashboard dedicado (`pages/dashboard-shopee.html`). O app `financeecom` foi aprovado para o ambiente **ao vivo** (Live partner ID `2039090`); as credenciais de produção foram para o `server/.env` com `SHOPEE_ENV=production`. O app está como **"Sem acesso a dados sensíveis"**, então `getOrder` não pede `buyer_username`/endereço por padrão (`SHOPEE_SENSITIVE_ACCESS=false`) — ver seção "Ir para produção" abaixo. Falta o usuário autorizar a loja real via `/auth/shopee/login` e reiniciar o worker para o pipeline processar pedidos de produção. Conta de login restrita (`shopee-demo`, ver seção abaixo) foi criada pro revisor da Shopee. Ver a decisão de arquitetura completa em `decisions.md` ("Shopee sai do stub").
+
+## Ir para produção (app aprovado ao vivo — partner_id 2039090)
+
+O app `financeecom` foi aprovado para o ambiente **ao vivo** (Live partner ID `2039090`, categoria "Sistema interno do vendedor", chave da API Live válida até 14/01/27). O código já suporta produção — `baseUrl('production')` → `https://partner.shopeemobile.com`. Para migrar de sandbox → produção:
+
+1. No `server/.env` de produção: `SHOPEE_PARTNER_ID=2039090`, `SHOPEE_PARTNER_KEY=<chave da API Live>` (colar **só no .env**, nunca em chat/log — se vazar, redefinir no console), `SHOPEE_ENV=production`, `SHOPEE_REDIRECT_URI=https://multimixvendas.duckdns.org/auth/shopee/callback` (deve bater exatamente com o cadastrado no console do parceiro **ao vivo**).
+2. Confirmar o IP de saída `207.180.194.61` na **Lista de IPs Permitidos do parceiro ao vivo** (allowlist separada da conta de teste).
+3. Reiniciar `ml-dashboard-novo` + `ml-worker-novo`; conferir `/auth/shopee/config` (mostra ambiente, host e acesso a dados sensíveis).
+4. Autorizar a loja real em `/auth/shopee/login`; reiniciar o worker de novo pro polling pegar a conta nova.
+
+**Acesso a dados sensíveis** (`SHOPEE_SENSITIVE_ACCESS`, default `false`): o app está como **"Sem acesso"** a dados sensíveis. Campos como `buyer_username`/endereço só podem ser pedidos ao `get_order_detail` se esse acesso for aprovado no console — pedir sem permissão **quebra a chamada** em produção. Por isso `getOrder` (em `shopeeClient.js`) só inclui `buyer_username` nos `response_optional_fields` quando `SHOPEE_SENSITIVE_ACCESS=true`; por padrão só pede campos não-sensíveis (`total_amount`, `order_status`, `item_list`, `create_time`, `update_time`). O handler já grava `buyer_username` como `null` quando ausente. Quando/se a Shopee aprovar acesso a dados sensíveis, setar `SHOPEE_SENSITIVE_ACCESS=true` no `.env`.
 
 ## O que já existe
 
@@ -9,7 +20,7 @@
 - **`server/src/routes/shopeeAuth.js`** (montada em `/auth/shopee`) — fluxo OAuth completo: `GET /config` (diagnóstico), `GET /login` (redireciona pra Shopee), `GET /callback` (troca `code` por tokens, cria/atualiza a linha em `stores`). Ver `api.md`.
 - **`server/src/marketplaceEventWorker.js`** — ganhou um segundo `Worker`/fila (`marketplace-events-shopee`) e handler (`handleShopeeOrderEvent`), paralelo ao da Amazon, sem tocar nele. Ver `workers.md`.
 - **Migration v18** (`server/src/db/migrate-v18.sql`, espelhada em `schema.sql`) — habilita `marketplaces.SHOPEE` (`enabled=true`, `api_type='polling'`), `stores.shopee_shop_id` (índice único parcial), tabela `shopee_order_data`. Ver `database.md`.
-- `env.shopee` em `config/env.js` (`partnerId`, `partnerKey`, `redirectUri`, `env`).
+- `env.shopee` em `config/env.js` (`partnerId`, `partnerKey`, `redirectUri`, `env`, `sensitiveAccess`).
 
 ## Infraestrutura confirmada para o app na Shopee
 

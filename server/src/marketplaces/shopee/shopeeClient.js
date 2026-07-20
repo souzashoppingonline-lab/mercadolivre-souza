@@ -160,10 +160,16 @@ class ShopeeClient extends MarketplaceClient {
   // orderId aqui é o order_sn da Shopee (string opaca, não numérica).
   async getOrder(orderId) {
     this._assertConfigured();
+    // `buyer_username` é dado SENSÍVEL na Shopee: só pode ser pedido se o app
+    // tiver "Acesso a dados sensíveis" aprovado (SHOPEE_SENSITIVE_ACCESS=true).
+    // Sem isso, o get_order_detail pode rejeitar a chamada inteira em produção —
+    // então por padrão só pedimos os campos não-sensíveis (ver .claude/shopee.md).
+    const fields = ['total_amount', 'order_status', 'item_list', 'create_time', 'update_time'];
+    if (this.cfg.sensitiveAccess) fields.unshift('buyer_username');
     const detail = await this._call('/api/v2/order/get_order_detail', {
       body: {
         order_sn_list: [orderId],
-        response_optional_fields: ['buyer_username', 'total_amount', 'order_status', 'item_list', 'create_time', 'update_time'],
+        response_optional_fields: fields,
       },
     });
     return detail?.response?.order_list?.[0] || null;

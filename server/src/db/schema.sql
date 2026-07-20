@@ -248,6 +248,25 @@ ALTER TABLE shopee_chat ADD COLUMN IF NOT EXISTS to_id TEXT;  -- v38 (idempotent
 CREATE INDEX IF NOT EXISTS idx_shopee_chat_store ON shopee_chat(store_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_chat_unread ON shopee_chat(unread_count) WHERE unread_count > 0;
 
+-- v39: catálogo Shopee (Product API) — campos exclusivos por item. Ver .claude/shopee.md.
+CREATE TABLE IF NOT EXISTS shopee_item_data (
+  item_id TEXT PRIMARY KEY,
+  store_id BIGINT,
+  item_sku TEXT,
+  has_model BOOLEAN DEFAULT false,
+  variation_count INT DEFAULT 0,
+  price_min NUMERIC,
+  price_max NUMERIC,
+  stock_total INT DEFAULT 0,
+  models JSONB,
+  tier_variation JSONB,
+  category_id BIGINT,
+  description TEXT,
+  raw JSONB,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_item_data_store ON shopee_item_data(store_id);
+
 -- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (
   marketplace_id INT NOT NULL REFERENCES marketplaces(id),

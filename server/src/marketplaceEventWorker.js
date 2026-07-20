@@ -21,6 +21,7 @@ const AMAZON_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — ajustável sem toca
 const SHOPEE_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — mesmo intervalo da Amazon na fase 1 (polling)
 const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar feedback visível em dev
 const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens não lidas do chat Shopee
+const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS || 30 * 60 * 1000); // 30min — sync do catálogo (Product API)
 
 // AMAZON_ENV=mock troca o cliente/EventSource real por um que fabrica pedidos
 // de teste variados, sem depender do sandbox estático da Amazon (que só
@@ -290,6 +291,12 @@ async function startMarketplaceEventWorkers() {
   if (shopeeStores.length) {
     syncShopeeChat().catch((e) => console.warn('[marketplace-worker] chat Shopee 1º run:', e.message));
     setInterval(() => syncShopeeChat().catch((e) => console.warn('[marketplace-worker] chat Shopee:', e.message)), SHOPEE_CHAT_INTERVAL_MS);
+
+    // Catálogo Shopee (Product API) — sincroniza itens/preço/estoque/variações
+    // pra tabela items + shopee_item_data. Fundação de anúncios/precificador/
+    // estoque em massa/SEO/tarefas/promoções. Isolado do pipeline ML.
+    syncShopeeCatalog().catch((e) => console.warn('[marketplace-worker] catálogo Shopee 1º run:', e.message));
+    setInterval(() => syncShopeeCatalog().catch((e) => console.warn('[marketplace-worker] catálogo Shopee:', e.message)), SHOPEE_CATALOG_INTERVAL_MS);
   }
 }
 
@@ -333,6 +340,92 @@ async function syncShopeeChat() {
         await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2`, [latestId, c.conversation_id]);
       }
     }
+  }
+}
+
+// Sincroniza o catálogo Shopee (Product API) → items (campos comuns) +
+// shopee_item_data (SKU/variações/preço+estoque por variação). Fonte de preço/
+// estoque é o get_model_list (autoritativo). Isolado do pipeline ML.
+async function syncShopeeCatalog() {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = 'SHOPEE'`);
+  const marketplaceId = mp[0]?.id;
+  if (!marketplaceId) return;
+
+  for (const [storeId, client] of shopeeClients) {
+    let items;
+    try { items = await client.listAllItems('NORMAL', 100); }
+    catch (e) { console.warn(`[catalog] loja ${storeId} get_item_list: ${e.message}`); continue; }
+    if (!items.length) { console.log(`[catalog] loja ${storeId}: sem itens ativos`); continue; }
+
+    // Detalhe base em lotes de 50 (limite do get_item_base_info).
+    const baseById = new Map();
+    const ids = items.map((i) => i.item_id);
+    for (let i = 0; i < ids.length; i += 50) {
+      try {
+        const list = await client.getItemsBaseInfo(ids.slice(i, i + 50));
+        for (const it of list) baseById.set(it.item_id, it);
+      } catch (e) { console.warn(`[catalog] loja ${storeId} base_info: ${e.message}`); }
+      await sleep(300);
+    }
+
+    let ok = 0;
+    for (const it of items) {
+      const base = baseById.get(it.item_id);
+      if (!base) continue;
+
+      // Preço/estoque/variações via get_model_list (autoritativo — ver diagnóstico).
+      let models = [], tier = [];
+      try { const ml = await client.getModelList(it.item_id); models = ml.model || []; tier = ml.tier_variation || []; }
+      catch (e) { /* segue com o que o base_info tiver */ }
+      await sleep(200);
+
+      const prices = models.map((m) => Number(m.price_info?.[0]?.current_price)).filter((n) => !Number.isNaN(n));
+      const baseInfoPrice = Number(base.price_info?.[0]?.current_price);
+      const priceMin = prices.length ? Math.min(...prices) : (Number.isNaN(baseInfoPrice) ? null : baseInfoPrice);
+      const priceMax = prices.length ? Math.max(...prices) : priceMin;
+      const stockTotal = models.length
+        ? models.reduce((a, m) => a + (Number(m.stock_info_v2?.summary_info?.total_available_stock) || 0), 0)
+        : (Number(base.stock_info_v2?.summary_info?.total_available_stock) || 0);
+      const modelsCompact = models.map((m) => ({
+        model_id: m.model_id, model_name: m.model_name, model_sku: m.model_sku,
+        current_price: m.price_info?.[0]?.current_price ?? null,
+        original_price: m.price_info?.[0]?.original_price ?? null,
+        stock: m.stock_info_v2?.summary_info?.total_available_stock ?? 0,
+        model_status: m.model_status,
+      }));
+      const image = base.image?.image_url_list?.[0] || tier?.[0]?.option_list?.[0]?.image?.image_url || null;
+      const status = base.item_status === 'NORMAL' ? 'active' : (base.item_status === 'UNLIST' ? 'paused' : 'closed');
+      const catStr = base.category_id != null ? String(base.category_id) : null;
+
+      // Campos COMUNS → items (reaproveita a tabela do ML; anúncios/produtos já leem daqui).
+      await pool.query(
+        `INSERT INTO items (ml_id, store_id, title, price, available_quantity, status, category_id, thumbnail, marketplace_id, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+         ON CONFLICT (ml_id) DO UPDATE SET
+           store_id=EXCLUDED.store_id, title=EXCLUDED.title, price=EXCLUDED.price,
+           available_quantity=EXCLUDED.available_quantity, status=EXCLUDED.status,
+           category_id=EXCLUDED.category_id, thumbnail=EXCLUDED.thumbnail,
+           marketplace_id=EXCLUDED.marketplace_id, updated_at=now()`,
+        [String(it.item_id), storeId, base.item_name || null, priceMin, stockTotal, status, catStr, image, marketplaceId]
+      );
+
+      // Campos EXCLUSIVOS da Shopee → shopee_item_data.
+      await pool.query(
+        `INSERT INTO shopee_item_data (item_id, store_id, item_sku, has_model, variation_count, price_min, price_max, stock_total, models, tier_variation, category_id, description, raw, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+         ON CONFLICT (item_id) DO UPDATE SET
+           store_id=EXCLUDED.store_id, item_sku=EXCLUDED.item_sku, has_model=EXCLUDED.has_model,
+           variation_count=EXCLUDED.variation_count, price_min=EXCLUDED.price_min, price_max=EXCLUDED.price_max,
+           stock_total=EXCLUDED.stock_total, models=EXCLUDED.models, tier_variation=EXCLUDED.tier_variation,
+           category_id=EXCLUDED.category_id, description=EXCLUDED.description, raw=EXCLUDED.raw, updated_at=now()`,
+        [String(it.item_id), storeId, base.item_sku || null, !!base.has_model, modelsCompact.length,
+         priceMin, priceMax, stockTotal, JSON.stringify(modelsCompact), JSON.stringify(tier),
+         base.category_id != null ? base.category_id : null, base.description || null, JSON.stringify(base)]
+      );
+      ok++;
+    }
+    console.log(`[catalog] loja ${storeId}: ${ok}/${items.length} itens Shopee sincronizados`);
   }
 }
 

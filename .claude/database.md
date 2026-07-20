@@ -188,6 +188,25 @@ updated_at TIMESTAMPTZ
 ```
 Preenchida pelo job `syncShopeeChat` (`marketplaceEventWorker`, 10min). Índice parcial `unread_count>0`. `to_id` (v38) habilita **responder o cliente dentro da plataforma** (`send_message`) — ver `shopee.md` e as rotas `/api/shopee/chat/*` em `api.md`. O `tracking_number` (v35) é buscado via `ShopeeClient.getTrackingNumber` só quando o pedido está em status "embarcável" (`SHOPEE_SHIPPABLE`) — antes disso a Logistics API não tem rastreio. Backfill dos pedidos antigos: `server/backfill-shopee-tracking.js`.
 
+### `shopee_item_data` — v39: catálogo Shopee (campos exclusivos por item)
+```
+item_id TEXT PK                -- = items.ml_id (item_id da Shopee)
+store_id BIGINT
+item_sku TEXT                  -- SKU pai
+has_model BOOLEAN              -- tem variações?
+variation_count INT
+price_min NUMERIC              -- menor current_price entre variações
+price_max NUMERIC
+stock_total INT                -- soma do estoque disponível das variações
+models JSONB                   -- [{model_id, model_name, model_sku, current_price, original_price, stock, model_status}]
+tier_variation JSONB           -- estrutura das variações (nome + opções + imagem)
+category_id BIGINT
+description TEXT
+raw JSONB                      -- get_item_base_info bruto
+updated_at TIMESTAMPTZ
+```
+Campos COMUNS do item ficam em `items` (title/price/available_quantity/status/category_id/thumbnail, `marketplace_id=SHOPEE`). Preenchida pelo job `syncShopeeCatalog` (`marketplaceEventWorker`, 30min) via Product API. Fundação de anúncios/precificador/estoque/SEO/tarefas/promoções. Ver `shopee.md`.
+
 ### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
 ```
 marketplace_id INT FK marketplaces, source_key TEXT   -- PK composta

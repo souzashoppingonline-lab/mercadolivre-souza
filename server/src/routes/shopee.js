@@ -261,9 +261,13 @@ router.get('/anuncios', async (req, res) => {
     let statusFilter = '';
     if (status) { params.push(status); statusFilter = `AND i.status = $${params.length}`; }
     const { rows } = await pool.query(
-      `SELECT i.ml_id AS sku, i.title, i.available_quantity AS estoque,
-              i.sold_quantity AS vendidos, i.price, i.status, s.nickname AS conta
-       FROM items i LEFT JOIN stores s ON s.id = i.store_id
+      `SELECT i.ml_id AS item_id, sid.item_sku AS sku, i.title, i.available_quantity AS estoque,
+              i.sold_quantity AS vendidos, i.price, i.status, i.thumbnail, i.category_id,
+              s.nickname AS conta,
+              sid.has_model, sid.variation_count, sid.price_min, sid.price_max
+       FROM items i
+       LEFT JOIN stores s ON s.id = i.store_id
+       LEFT JOIN shopee_item_data sid ON sid.item_id = i.ml_id
        WHERE i.marketplace_id = $1 AND ($2 = '' OR i.store_id = $2::bigint) ${statusFilter}
        ORDER BY i.updated_at DESC LIMIT 500`,
       params
@@ -280,7 +284,7 @@ router.get('/anuncios', async (req, res) => {
       rows,
       resumo: resumoRows[0] || { total: 0, ativos: 0, pausados: 0, estoque_total: 0 },
       note: rows.length === 0
-        ? 'Sincronização de catálogo de produtos da Shopee ainda não implementada — hoje só pedidos são sincronizados (ver .claude/todo.md). A estrutura da página já está pronta para quando a Product API for integrada.'
+        ? 'Nenhum anúncio sincronizado ainda. O catálogo Shopee é sincronizado automaticamente pelo worker (job syncShopeeCatalog, a cada 30 min). Reinicie o ml-worker-novo e aguarde o 1º ciclo.'
         : null,
     });
   } catch (e) {

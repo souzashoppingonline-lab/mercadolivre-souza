@@ -240,6 +240,52 @@ class ShopeeClient extends MarketplaceClient {
     return resp?.response || null;
   }
 
+  // ── Product API (catálogo) — GET, params no query string ──
+
+  // Lista TODOS os item_id da loja no status pedido (NORMAL=ativo), paginando
+  // (offset/page_size, máx 100). Retorna só os ids + status (o detalhe vem no
+  // getItemsBaseInfo). Confirmado no diagnóstico test-shopee-produtos.js.
+  async listAllItems(itemStatus = 'NORMAL', pageSizeMax = 100) {
+    this._assertConfigured();
+    const all = [];
+    let offset = 0;
+    for (let guard = 0; guard < 200; guard++) { // teto de segurança (200*100 = 20k itens)
+      const resp = await this._call('/api/v2/product/get_item_list', {
+        method: 'GET',
+        query: { offset: String(offset), page_size: String(pageSizeMax), item_status: itemStatus },
+      });
+      const items = resp?.response?.item || [];
+      all.push(...items);
+      if (!resp?.response?.has_next_page || !items.length) break;
+      offset = resp.response.next_offset != null ? resp.response.next_offset : offset + items.length;
+    }
+    return all;
+  }
+
+  // Detalhe base de até 50 itens por chamada (item_id_list separado por vírgula).
+  // Traz item_name, item_sku, category_id, item_status, description, image, e —
+  // para itens SEM variação — price_info/stock_info_v2 e has_model.
+  async getItemsBaseInfo(itemIdList) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/product/get_item_base_info', {
+      method: 'GET',
+      query: { item_id_list: itemIdList.join(',') },
+    });
+    return resp?.response?.item_list || [];
+  }
+
+  // Variações (models) de um item, com preço/estoque/SKU por variação —
+  // fonte autoritativa de preço/estoque (price_info[].current_price,
+  // stock_info_v2.summary_info.total_available_stock). Ver diagnóstico.
+  async getModelList(itemId) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/product/get_model_list', {
+      method: 'GET',
+      query: { item_id: String(itemId) },
+    });
+    return resp?.response || { tier_variation: [], model: [] };
+  }
+
   // Conversas de chat. type='unread' traz só as com mensagem não lida (o que
   // interessa pra "não respondidas"). GET; exige type + direction + page_size
   // (confirmado no diagnóstico test-shopee-chat.js — sem direction dá param_error).

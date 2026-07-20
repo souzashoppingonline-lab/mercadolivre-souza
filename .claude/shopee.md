@@ -96,6 +96,16 @@ Diagnóstico (`test-shopee-chat.js`) fechou o contrato: `get_conversation_list` 
 - ⚠️ O `send_message` pode exigir **"Acesso a dados sensíveis"** aprovado no console (o mesmo `SHOPEE_SENSITIVE_ACCESS`). Se a Shopee recusar, o erro de negócio dela é repassado ao front (a UI mostra o motivo). Confirmar o formato real do histórico com `server/test-shopee-chat-msg.js` (read-only).
 - Tabela `shopee_chat` (v37) + coluna `to_id` (v38) — ver `database.md`.
 
+## Catálogo (Product API) — implementado (v39, fundação)
+
+Sync do catálogo Shopee → **`items`** (campos comuns, reaproveitando a tabela do ML) + **`shopee_item_data`** (SKU, variações/models com preço+estoque por variação, descrição). É a **fundação** de anúncios, precificador, estoque em massa, SEO, TaskEngine e promoções (todos leem daqui).
+
+- **Client** (`shopeeClient.js`): `listAllItems(status)` (pagina `product/get_item_list`, `offset`/`page_size`/`item_status`), `getItemsBaseInfo(ids)` (lotes de 50 — nome/SKU/categoria/status/descrição/imagem), `getModelList(itemId)` (**fonte autoritativa de preço/estoque** — `price_info[].current_price`, `stock_info_v2.summary_info.total_available_stock`, por variação).
+- **Job `syncShopeeCatalog`** (`marketplaceEventWorker`, a cada `SHOPEE_CATALOG_INTERVAL_MS`=30min, isolado do ML): pra cada loja, lista itens ativos → base_info em lote → model_list por item → upsert em `items` (title/price=menor preço/available_quantity=estoque somado/status NORMAL→active/category_id/thumbnail) e `shopee_item_data` (item_sku, has_model, variation_count, price_min/max, stock_total, models[], tier_variation). Delay entre chamadas (rate limit).
+- **Página Anúncios** (`pages/shopee-anuncios.html`) deixou de ser placeholder: lista os itens reais com **foto**, SKU, badge de **nº de variações**, faixa de preço (min–max quando tem variação), estoque (destaque vermelho ≤3), status. Backend `/api/shopee/anuncios` (LEFT JOIN `shopee_item_data`).
+- Confirmação empírica dos campos: `server/test-shopee-produtos.js` (read-only).
+- Tabela `shopee_item_data` (v39) — ver `database.md`.
+
 ## Lojas — implementado (tela própria)
 
 Página **Lojas** (`pages/shopee-lojas.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`) — identifica as lojas Shopee registradas, no mesmo padrão visual da página de Lojas do ML (`pages/lojas.html`), mas isolada e com a identidade Shopee (laranja `#ee4d2d`, ícone de sacola). Grid de cards, um por loja, mostrando: `shop_id` real + id interno, status **Autorizada/Sem autorização** (`refresh_token IS NOT NULL`), validade do token de acesso (`token_valid`/`token_expires_at` — o polling renova sozinho pelo refresh_token), última atualização, e métricas por loja (**pedidos total/mês**, **faturamento do mês**, **produtos ativos**). Loja sem autorização mostra botão **Autorizar loja** → `/auth/shopee/login` (mesmo OAuth do console). Backend: `GET /api/shopee/lojas` (enriquecida — ver `api.md`), consumida por `DB.getShopeeLojas()`. Multi-loja de fábrica: cada linha de `stores` com `marketplace_id=SHOPEE` vira um card.

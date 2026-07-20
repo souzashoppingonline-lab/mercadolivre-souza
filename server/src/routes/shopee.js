@@ -160,6 +160,30 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// Renomear uma loja Shopee. O `nickname` é o nome exibido em TODAS as telas
+// (chat/relatórios/vendas/financeiro leem `s.nickname AS conta`), então este é
+// "o novo nome da loja". Só afeta lojas com marketplace_id=SHOPEE (isolado do
+// ML). Nada de token/sync é tocado — nickname nunca é sobrescrito pelo worker.
+router.patch('/lojas/:id', express.json(), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const nickname = (req.body?.nickname || '').trim();
+    if (!nickname) return res.status(400).json({ error: 'nickname é obrigatório' });
+    if (nickname.length > 80) return res.status(400).json({ error: 'nome muito longo (máx. 80 caracteres)' });
+
+    const mpId = await shopeeMarketplaceId();
+    const { rowCount } = await pool.query(
+      `UPDATE stores SET nickname = $1, updated_at = now() WHERE id = $2 AND marketplace_id = $3`,
+      [nickname, id, mpId]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Loja Shopee não encontrada' });
+    res.json({ ok: true, nickname });
+  } catch (e) {
+    console.error('[api/shopee] PATCH /lojas', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Vendas Totais — agregados no período (default 30 dias), com filtro opcional
 // por loja (store_id). Traz série por dia (gráfico), quebra por loja (multi-loja)
 // e por status. Tudo lido de `orders` filtrando marketplace_id=SHOPEE.

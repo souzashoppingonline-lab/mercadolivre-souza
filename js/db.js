@@ -188,6 +188,7 @@ const DB = {
   async getShopeeProdutos(params = {}) { return this._get('/shopee/produtos', params); },
   async getShopeeStatus()   { return this._get('/shopee/status'); },
   async getShopeeLojas()    { return this._get('/shopee/lojas'); },
+  async renomearShopeeLoja(id, nickname) { return this._patch(`/shopee/lojas/${id}`, { nickname }); },
   async getShopeeVendas(params = {})   { return this._get('/shopee/vendas', params); },
   async getShopeeAnuncios(params = {}) { return this._get('/shopee/anuncios', params); },
   async getShopeeFinanceiro(params = {}) { return this._get('/shopee/financeiro', params); },

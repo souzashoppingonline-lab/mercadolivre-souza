@@ -35,6 +35,14 @@
     .btn-reconectar { margin-top: 4px; background: rgba(238,77,45,0.1); border: 1px solid var(--shopee); color: var(--shopee); border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.2s; text-decoration: none; display: inline-block; text-align: center; }
     .btn-reconectar:hover { background: var(--shopee); color: #fff; }
     .empty-state { text-align: center; color: var(--text-muted); padding: 40px 20px; font-size: 13px; }
+    .rename-box { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 2px; }
+    .rename-box label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+    .rename-row { display: flex; gap: 8px; }
+    .rename-row input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text-primary); font-size: 13px; }
+    .rename-row input:focus { outline: none; border-color: var(--shopee); }
+    .rename-row button { background: var(--shopee); border: none; color: #fff; border-radius: 8px; padding: 0 14px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .rename-row button:disabled { opacity: .5; cursor: not-allowed; }
+    .rename-msg { font-size: 11px; margin-top: 6px; display: none; }
   </style>
 </head>
 <body>
@@ -56,6 +64,8 @@
 <script src="../js/sidebar.js"></script>
 <script>
 const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const escAttr = v => String(v==null?'':v).replace(/"/g,'&quot;').replace(/</g,'&lt;');
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -84,13 +94,21 @@ async function load() {
       <div class="loja-header">
         <div class="loja-icon ${l.conectada ? 'connected' : 'disconnected'}"><i class="fas fa-shopping-bag"></i></div>
         <div class="loja-meta">
-          <div class="loja-nickname">${l.nickname || 'Loja Shopee'}</div>
+          <div class="loja-nickname">${esc(l.nickname || 'Loja Shopee')}</div>
           <div class="loja-id">shop_id: ${l.shopee_shop_id || '—'} · id interno: ${l.id}</div>
           <span class="status-badge ${l.conectada ? 'ok' : 'err'}" style="margin-top:4px">
             <i class="fas fa-circle" style="font-size:7px"></i>
             ${l.conectada ? 'Autorizada' : 'Sem autorização'}
           </span>
         </div>
+      </div>
+      <div class="rename-box">
+        <label>Nome da loja (aparece nos relatórios e no chat)</label>
+        <div class="rename-row">
+          <input type="text" id="nick-${l.id}" value="${escAttr(l.nickname || '')}" maxlength="80" placeholder="Ex: Loja Principal">
+          <button onclick="renomear('${l.id}')"><i class="fas fa-check"></i> Salvar</button>
+        </div>
+        <div class="rename-msg" id="nick-msg-${l.id}"></div>
       </div>
       <div class="loja-rows">
         <div class="loja-row"><span class="k">Pedidos (total)</span><span class="v">${l.total_pedidos ?? 0}</span></div>
@@ -104,6 +122,27 @@ async function load() {
       ${!l.conectada ? `<a href="/auth/shopee/login" class="btn-reconectar"><i class="fas fa-plug"></i> Autorizar loja</a>` : ''}
     </div>
   `).join('') : '<div class="empty-state" style="grid-column:1/-1">Nenhuma loja Shopee cadastrada. <a href="/auth/shopee/login" style="color:var(--shopee)">Autorizar primeira loja →</a></div>';
+}
+
+async function renomear(id) {
+  const input = document.getElementById(`nick-${id}`);
+  const msg = document.getElementById(`nick-msg-${id}`);
+  if (!input) return;
+  const nickname = input.value.trim();
+  if (!nickname) {
+    if (msg) { msg.textContent = 'Digite um nome.'; msg.style.display = 'block'; msg.style.color = 'var(--red)'; }
+    return;
+  }
+  const res = await DB.renomearShopeeLoja(id, nickname);
+  if (res?.ok) {
+    if (msg) { msg.textContent = '✓ Nome salvo — já aparece nos relatórios e no chat.'; msg.style.display = 'block'; msg.style.color = 'var(--green)'; }
+    // Reflete o novo nome no título do card na hora.
+    const card = input.closest('.loja-card');
+    const title = card?.querySelector('.loja-nickname');
+    if (title) title.textContent = nickname;
+  } else {
+    if (msg) { msg.textContent = res?.error || 'Erro ao salvar.'; msg.style.display = 'block'; msg.style.color = 'var(--red)'; }
+  }
 }
 
 WS.on('_connected', () => {

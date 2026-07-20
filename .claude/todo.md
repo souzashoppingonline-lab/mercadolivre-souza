@@ -56,6 +56,29 @@
 - [ ] Notificação Telegram de vendas Shopee (fora de escopo até agora, mesma decisão já tomada pra Amazon).
 - [ ] Trocar `SHOPEE_ENV` para `production` só depois de aprovação de produção pela Shopee (em andamento — usuário preenchendo o formulário "Transmissão ao vivo" no console).
 
+## Fase Shopee — melhorias e IA Sócio
+
+Fase de expansão da Shopee, totalmente isolada do Mercado Livre (arquivos/rotas/páginas próprios, mesmo padrão de separação já adotado para Amazon).
+
+### Já concluído (referência)
+
+- [x] **Chat Shopee** — responder o cliente dentro da plataforma (`send_message`) + histórico da conversa (`get_message_list`). — v38
+- [x] **Página Lojas Shopee** + renomear loja (o `nickname` renomeado é usado em relatórios e no chat).
+- [x] **Webhook (Mecanismo de Empurra)** — handshake de verificação corrigido.
+- [x] **Sync de Catálogo (Product API)** → popula `items` + `shopee_item_data` (job `syncShopeeCatalog`, a cada 30 min). — v39
+- [x] **Página Anúncios real** — foto, variações, faixa de preço.
+- [x] **Estoque & Preço em massa** — `update_price`/`update_stock`, por variação.
+- [x] **Precificador** — custo por variação em `shopee_item_cost` (v40); taxa automática vinda do escrow.
+- [x] **Promoções** — descontos/vouchers, prazos, contagem regressiva, alerta Telegram de vencimento (v41, job `syncShopeePromos`).
+- [x] **Painel de Problemas** — atrasados, pausados, sem estoque, sem imagem, cancelados.
+
+### Pendente desta fase
+
+- [ ] **Dashboard Executivo Shopee** — KPIs de Hoje (Faturamento, Lucro, Pedidos, Ticket Médio, Margem), com custo editável integrado ao `shopee_item_cost`.
+- [ ] **Performance de Anúncios Shopee** — tabela SKU / Pedidos / Faturamento / Lucro. Visitas e taxa de conversão dependem da **Shopee Data API** — rodar diagnóstico read-only para verificar se está liberada (pode exigir whitelist no console).
+- [ ] **IA Sócio Shopee** — rota que monta o contexto (vendas por dia/loja, margem, estoque, promoções, problemas) e chama a API do Claude (`ANTHROPIC_API_KEY` já existe em `env`), com página de recomendações automáticas.
+- [ ] **Reclamações/Reembolsos no Painel de Problemas** — dependem da **Returns API da Shopee** (ainda não integrada).
+
 ## Login de acesso restrito (staff) — código pronto, falta ativar em produção (ver `auth-staff.md`)
 
 - [x] Migration v22 (`staff_users`), deps (`bcryptjs`/`jsonwebtoken`/`cookie-parser`), `routes/staffAuth.js` (login/logout/me + `requireStaffAuth`), `server.js` (cookie-parser + gate + `express.static` + fallback SPA), `pages/login.html`, `js/layout.js` (nav por papel + botão Sair), `server/scripts/createStaffUser.js`.

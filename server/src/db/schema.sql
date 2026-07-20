@@ -217,6 +217,9 @@ CREATE TABLE IF NOT EXISTS shopee_order_data (
   tracking_number TEXT,   -- rastreio (BR...) da etiqueta Shopee, pra casar bipagem→pedido na Embalagem (v35)
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+-- Idempotente pra bancos já criados na v18 (o CREATE TABLE IF NOT EXISTS acima
+-- não adiciona coluna a tabela existente) — mesmo padrão dos ALTERs de stores/orders.
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS tracking_number TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shopee_order_data_order_sn ON shopee_order_data(order_sn);
 CREATE INDEX IF NOT EXISTS idx_shopee_order_data_tracking ON shopee_order_data(tracking_number) WHERE tracking_number IS NOT NULL;
 

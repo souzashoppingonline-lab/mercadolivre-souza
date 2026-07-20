@@ -114,6 +114,14 @@ Página **Estoque & Preço** (`pages/shopee-precos-estoque.html`, `SHOPEE_NAV_IT
 - **Rotas**: `GET /api/shopee/estoque-preco` (itens + variações do espelho local `shopee_item_data`, filtro loja/busca) e `POST /api/shopee/anuncios/aplicar` (`{changes:[{item_id,model_id,price?,stock?}]}` — agrupa por item, grava na Shopee, atualiza o espelho local na hora via `updateLocalItemAfterWrite` pra não esperar o sync de 30min).
 - ⚠️ **Escrita real** — altera preço/estoque da loja. Verificação empírica do contrato sem alterar nada: `server/test-shopee-update.js` (regrava o estoque com o mesmo valor = no-op). Roda uma vez antes de confiar na tela.
 
+## Painel de Problemas — implementado (tela própria)
+
+Página **Painel de Problemas** (`pages/shopee-problemas.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): cards do que precisa de ação na Shopee, cada um expansível com a amostra dos itens. Tudo `marketplace_id=SHOPEE` (isolado do ML). Backend `GET /api/shopee/problemas?store_id`.
+
+- **Pedidos atrasados**: pagos, `date_created < now−2 dias` e `logistics_status` ainda não despachado (não em DELIVERY/REQUEST/PICKUP_DONE). Aproximado (não temos o prazo RTS exato da Shopee).
+- **Anúncios pausados** (`status='paused'`), **Sem estoque** (`available_quantity=0` ativos), **Sem imagem** (`thumbnail` vazio), **Pedidos cancelados** (30 dias).
+- **Reclamações/reembolsos**: expostos como **indisponíveis** (dependem da Returns API da Shopee, ainda não integrada) — pra não mostrar número falso.
+
 ## Promoções — implementado (tela própria + alerta Telegram)
 
 Página **Promoções** (`pages/shopee-promocoes.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): acompanha descontos e vouchers com **contagem regressiva pro prazo** e alerta de vencimento.

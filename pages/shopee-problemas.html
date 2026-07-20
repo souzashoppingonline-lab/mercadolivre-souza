@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel de Problemas Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Painel de Problemas'; window.ACTIVE_NAV='shopee-problemas.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
+    .shp-filters select { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .prob-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+    .prob-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    .prob-card.has { border-left:3px solid var(--red); }
+    .prob-card.ok { border-left:3px solid var(--green); }
+    .prob-head { display:flex; align-items:center; gap:12px; padding:16px; cursor:pointer; }
+    .prob-ico { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+    .prob-ico.has { background:rgba(231,76,60,.15); color:var(--red); }
+    .prob-ico.ok { background:rgba(39,174,96,.15); color:var(--green); }
+    .prob-meta { flex:1; min-width:0; }
+    .prob-name { font-weight:700; font-size:14px; }
+    .prob-acao { font-size:11px; color:var(--text-muted); }
+    .prob-count { font-size:26px; font-weight:800; }
+    .prob-count.has { color:var(--red); }
+    .prob-count.ok { color:var(--green); }
+    .prob-list { border-top:1px solid var(--border); max-height:280px; overflow-y:auto; display:none; }
+    .prob-list.open { display:block; }
+    .prob-item { padding:9px 16px; border-bottom:1px solid var(--border); font-size:12px; display:flex; justify-content:space-between; gap:10px; }
+    .prob-item .t { color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .prob-item .x { color:var(--text-muted); flex-shrink:0; }
+    .note { background:rgba(255,230,0,.06); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-size:12px; color:var(--text-muted); margin-top:16px; display:flex; gap:8px; align-items:flex-start; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Pontos da Shopee que <b>precisam de ação</b>. Clique num card para ver os itens. Atualiza ao carregar.</p>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="probLoja" onchange="load()"><option value="">Todas as lojas</option></select>
+        <button class="action-btn" onclick="load()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <div class="prob-grid" id="probGrid"><div class="empty-state" style="grid-column:1/-1;padding:30px"><div class="spinner" style="margin:auto"></div></div></div>
+
+      <div class="note"><i class="fas fa-circle-info" style="margin-top:2px"></i><span id="notaInd"></span></div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const R = v => 'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0);
+const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '';
+
+const META = {
+  pedidos_atrasados:  { label: 'Pedidos atrasados', icon: 'fa-truck-clock' },
+  anuncios_pausados:  { label: 'Anúncios pausados', icon: 'fa-pause' },
+  sem_estoque:        { label: 'Produtos sem estoque', icon: 'fa-box-open' },
+  sem_imagem:         { label: 'Produtos sem imagem', icon: 'fa-image' },
+  pedidos_cancelados: { label: 'Pedidos cancelados (30d)', icon: 'fa-ban' },
+};
+
+function itemLine(cat, it) {
+  if (cat === 'pedidos_atrasados') return `<div class="prob-item"><span class="t">#${esc(it.pedido)}</span><span class="x">${fmtD(it.data)} · ${esc((it.logistics_status||'').replace('LOGISTICS_',''))}</span></div>`;
+  if (cat === 'pedidos_cancelados') return `<div class="prob-item"><span class="t">#${esc(it.pedido)}</span><span class="x">${R(it.valor)} · ${fmtD(it.data)}</span></div>`;
+  return `<div class="prob-item"><span class="t">${esc(it.title||it.item_id)}</span><span class="x">${esc(it.item_id)}</span></div>`;
+}
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('probLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+async function load() {
+  const store_id = document.getElementById('probLoja').value;
+  const grid = document.getElementById('probGrid');
+  grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:30px">Carregando...</div>';
+  const d = await DB.getShopeeProblemas({ store_id });
+  if (!d || d.error) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</div>`; return; }
+  document.getElementById('notaInd').textContent = d.nota_indisponiveis || '';
+  const cats = d.categorias || {};
+  grid.innerHTML = Object.keys(META).map(cat => {
+    const c = cats[cat] || { total: 0, itens: [], acao: '' };
+    const has = c.total > 0;
+    return `<div class="prob-card ${has?'has':'ok'}">
+      <div class="prob-head" onclick="this.nextElementSibling.classList.toggle('open')">
+        <div class="prob-ico ${has?'has':'ok'}"><i class="fas ${META[cat].icon}"></i></div>
+        <div class="prob-meta">
+          <div class="prob-name">${META[cat].label}</div>
+          <div class="prob-acao">${has ? esc(c.acao) : 'tudo certo 🎉'}</div>
+        </div>
+        <div class="prob-count ${has?'has':'ok'}">${c.total}</div>
+      </div>
+      <div class="prob-list">${(c.itens||[]).map(it => itemLine(cat, it)).join('') || '<div class="prob-item"><span class="x">nenhum</span></div>'}</div>
+    </div>`;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLojas();
+  load();
+});
+</script>
+</body>
+</html>

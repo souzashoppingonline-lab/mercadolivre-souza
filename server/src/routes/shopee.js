@@ -160,6 +160,66 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// Painel de Problemas Shopee — pontos que precisam de ação, todos filtrando
+// marketplace_id=SHOPEE (isolado do ML). Cada categoria traz contagem + amostra.
+router.get('/problemas', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const P = [mpId, storeId];
+    const flt = ` AND ($2 = '' OR i.store_id = $2::bigint)`;
+    const fltO = ` AND ($2 = '' OR o.store_id = $2::bigint)`;
+
+    // Anúncios pausados
+    const pausados = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title FROM items i
+       WHERE i.marketplace_id = $1 AND i.status = 'paused'${flt} ORDER BY i.updated_at DESC LIMIT 50`, P);
+    // Produtos sem estoque (ativos, estoque 0)
+    const semEstoque = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title FROM items i
+       WHERE i.marketplace_id = $1 AND i.status = 'active' AND COALESCE(i.available_quantity,0) = 0${flt}
+       ORDER BY i.updated_at DESC LIMIT 50`, P);
+    // Produtos sem imagem
+    const semImagem = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title FROM items i
+       WHERE i.marketplace_id = $1 AND (i.thumbnail IS NULL OR i.thumbnail = '')${flt}
+       ORDER BY i.updated_at DESC LIMIT 50`, P);
+    // Pedidos cancelados (últimos 30 dias)
+    const cancelados = await pool.query(
+      `SELECT o.ml_id AS pedido, o.total_amount AS valor, o.date_created AS data FROM orders o
+       WHERE o.marketplace_id = $1 AND o.status = 'cancelled'
+         AND o.date_created > now() - interval '30 days'${fltO}
+       ORDER BY o.date_created DESC LIMIT 50`, P);
+    // Pedidos possivelmente atrasados: pagos, ainda não despachados, > 2 dias
+    const atrasados = await pool.query(
+      `SELECT o.ml_id AS pedido, o.date_created AS data, sod.logistics_status
+       FROM orders o LEFT JOIN shopee_order_data sod ON sod.order_id = o.ml_id
+       WHERE o.marketplace_id = $1 AND o.status = 'paid'
+         AND o.date_created < now() - interval '2 days'
+         AND (sod.logistics_status IS NULL OR sod.logistics_status NOT IN
+              ('LOGISTICS_DELIVERY_DONE','LOGISTICS_REQUEST_DONE','LOGISTICS_PICKUP_DONE'))${fltO}
+       ORDER BY o.date_created ASC LIMIT 50`, P);
+
+    const list = (r) => r.rows;
+    res.json({
+      categorias: {
+        pedidos_atrasados: { total: atrasados.rowCount, itens: list(atrasados), acao: 'Despachar / verificar coleta' },
+        anuncios_pausados: { total: pausados.rowCount, itens: list(pausados), acao: 'Reativar se for pra vender' },
+        sem_estoque:       { total: semEstoque.rowCount, itens: list(semEstoque), acao: 'Repor estoque' },
+        sem_imagem:        { total: semImagem.rowCount, itens: list(semImagem), acao: 'Adicionar foto' },
+        pedidos_cancelados:{ total: cancelados.rowCount, itens: list(cancelados), acao: 'Investigar motivo (30 dias)' },
+      },
+      // Reclamações e reembolsos dependem da Returns API da Shopee (ainda não
+      // integrada) — expostos como indisponíveis pra não mostrar número falso.
+      indisponiveis: ['reclamacoes', 'reembolsos'],
+      nota_indisponiveis: 'Reclamações e reembolsos precisam da Returns API da Shopee (ainda não integrada).',
+    });
+  } catch (e) {
+    console.error('[api/shopee] /problemas', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Promoções Shopee (descontos + vouchers) com prazos, do espelho local
 // (shopee_promotions, preenchido pelo job syncShopeePromos). Filtro por loja,
 // tipo e status. Recalcula o status na hora (o cron é de 1h). Isolado do ML.

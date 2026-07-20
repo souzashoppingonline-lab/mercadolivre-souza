@@ -75,7 +75,7 @@ const EMBALAGEM_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 // Papel 'shopee-demo' — só a página/API do dashboard Shopee (ver
 // pages/dashboard-shopee.html, routes/shopee.js). Usado por um revisor
 // externo (ex. Shopee Open Platform) que não deve ver nenhum outro dado.
-const SHOPEE_DEMO_PAGES = ['/pages/dashboard-shopee.html', '/pages/shopee-vendas.html', '/pages/shopee-anuncios.html', '/pages/shopee-financeiro.html', '/pages/shopee-chat.html', '/pages/shopee-lojas.html', '/pages/shopee-precos-estoque.html', '/pages/shopee-precificador.html', '/pages/shopee-promocoes.html'];
+const SHOPEE_DEMO_PAGES = ['/pages/dashboard-shopee.html', '/pages/shopee-vendas.html', '/pages/shopee-anuncios.html', '/pages/shopee-financeiro.html', '/pages/shopee-chat.html', '/pages/shopee-lojas.html', '/pages/shopee-precos-estoque.html', '/pages/shopee-precificador.html', '/pages/shopee-promocoes.html', '/pages/shopee-problemas.html'];
 const SHOPEE_DEMO_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 
 function isPublicPath(p) {

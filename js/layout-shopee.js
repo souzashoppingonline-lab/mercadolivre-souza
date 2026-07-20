@@ -14,6 +14,7 @@ const SHOPEE_NAV_ITEMS = [
   { href: 'shopee-precos-estoque.html', icon: 'fa-money-check-dollar', label: 'Estoque & Preço' },
   { href: 'shopee-precificador.html', icon: 'fa-calculator', label: 'Precificador' },
   { href: 'shopee-promocoes.html', icon: 'fa-bullhorn', label: 'Promoções' },
+  { href: 'shopee-problemas.html', icon: 'fa-triangle-exclamation', label: 'Painel de Problemas' },
   { href: 'shopee-financeiro.html', icon: 'fa-money-bill-wave', label: 'Financeiro' },
   { href: 'shopee-chat.html', icon: 'fa-comments', label: 'Mensagens' },
   { href: 'shopee-lojas.html', icon: 'fa-store', label: 'Lojas' },

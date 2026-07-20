@@ -105,6 +105,18 @@ Enquanto grava, um timer ao lado do badge de status (`#scanTimer`, atualizado a 
 
 Os dois limiares são constantes no topo do `<script>` de `pages/embalagem.html`, ajustáveis se a operação real mostrar que os valores (5s/10min) não fazem sentido.
 
+## Estação única ML + Shopee (v35)
+
+A mesma página `embalagem.html` atende ML e Shopee — o operador bipa qualquer etiqueta e a tela resolve sozinha qual marketplace é.
+
+- **Detecção pelo formato do que foi bipado** (`parseShippingId`): QR/JSON do ML → `shipping_id` (11 dígitos, como antes); string `^BR[0-9A-Z]{8,}$` (ex.: `BR269090120689K`) → é o **rastreio** do QR da etiqueta Shopee, preservado como veio (não vira "só dígitos"). Fallback continua "só dígitos" pro barcode linear do ML.
+- **Lookup** (`GET /api/embalagem/pedido/:key`): tenta `orders.shipping_id` (ML) primeiro; se vazio, casa por `shopee_order_data.tracking_number` (Shopee) e expande o `item_list` do `raw_data` em cards no mesmo shape do ML (`lookupShopeeByTracking`). A resposta traz `marketplace` (`ML`/`SHOPEE`).
+- **Foto**: no Shopee vem de `item_list[].image_info.image_url` (a resposta de `get_order_detail` já traz) — não depende de sync de catálogo.
+- **Comprador**: `null` no Shopee (dado sensível — app sem acesso); os demais campos (item, quantidade, variação, valor) vêm normalmente.
+- **Vídeo/gravação/busca/histórico**: 100% reaproveitado — o `packing_videos.shipping_id` guarda o valor bipado (shipping_id do ML **ou** tracking da Shopee) na mesma coluna, e `order_ids` guarda o `order_sn`. Nenhuma rota nova além da generalização do lookup.
+- Um **badge "Shopee"** (`.emb-mp-badge`) aparece no título do card quando é Shopee, pro operador saber a origem.
+- **Variação/tipo em letra grande**: `.emb-order-tag` foi aumentada (30px, uppercase, além do piscar `.attention`) — pedido do usuário, vale pros dois marketplaces, é o dado que mais causa erro de embalagem.
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.

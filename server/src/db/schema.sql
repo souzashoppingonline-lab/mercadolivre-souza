@@ -214,9 +214,11 @@ CREATE TABLE IF NOT EXISTS shopee_order_data (
   buyer_username TEXT,
   order_status TEXT,
   raw_data JSONB,
+  tracking_number TEXT,   -- rastreio (BR...) da etiqueta Shopee, pra casar bipagem→pedido na Embalagem (v35)
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shopee_order_data_order_sn ON shopee_order_data(order_sn);
+CREATE INDEX IF NOT EXISTS idx_shopee_order_data_tracking ON shopee_order_data(tracking_number) WHERE tracking_number IS NOT NULL;
 
 -- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (

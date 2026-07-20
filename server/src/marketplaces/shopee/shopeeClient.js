@@ -202,6 +202,20 @@ class ShopeeClient extends MarketplaceClient {
     });
     return list?.response?.order_list || [];
   }
+
+  // Rastreio (tracking number) de um pedido — Logistics API, GET com params no
+  // query. Só existe DEPOIS que o pedido é preparado pra envio (READY_TO_SHIP+);
+  // antes disso a Shopee devolve erro/vazio. É o valor que está no QR da
+  // etiqueta (ex.: BR269090120689K) — usado pra casar etiqueta→pedido na
+  // Embalagem (ver .claude/embalagem.md).
+  async getTrackingNumber(orderSn) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/logistics/get_tracking_number', {
+      method: 'GET',
+      query: { order_sn: orderSn },
+    });
+    return resp?.response?.tracking_number || null;
+  }
 }
 
 module.exports = { ShopeeClient, getAuthorizationUrl, exchangeCodeForToken, sign, baseUrl };

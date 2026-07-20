@@ -25,6 +25,7 @@ Os endpoints de leitura da Shopee (`order/get_order_list`, `order/get_order_deta
 - **`server/src/marketplaceEventWorker.js`** — ganhou um segundo `Worker`/fila (`marketplace-events-shopee`) e handler (`handleShopeeOrderEvent`), paralelo ao da Amazon, sem tocar nele. Ver `workers.md`.
 - **Migration v18** (`server/src/db/migrate-v18.sql`, espelhada em `schema.sql`) — habilita `marketplaces.SHOPEE` (`enabled=true`, `api_type='polling'`), `stores.shopee_shop_id` (índice único parcial), tabela `shopee_order_data`. Ver `database.md`.
 - `env.shopee` em `config/env.js` (`partnerId`, `partnerKey`, `redirectUri`, `env`, `sensitiveAccess`).
+- **`ShopeeClient.getTrackingNumber(orderSn)`** (v35) — Logistics API (`logistics/get_tracking_number`, GET). Devolve o rastreio (`BR…`) que está no QR da etiqueta. O worker grava em `shopee_order_data.tracking_number` quando o pedido está embarcável; a **Embalagem** (estação única ML+Shopee) casa a etiqueta bipada por esse campo. Ver `embalagem.md`. Confirmado empiricamente que o `get_tracking_number` devolve exatamente o `BR…` impresso na etiqueta (`server/test-shopee-tracking.js`). O rastreio está no escopo "logistics" que o app já autorizou — **não** é bloqueado pelo "Sem acesso a dados sensíveis".
 
 ## Infraestrutura confirmada para o app na Shopee
 

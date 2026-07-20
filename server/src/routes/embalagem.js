@@ -32,6 +32,62 @@ const storage = multer.diskStorage({
 // bem abaixo disso; o limite é só uma trava de segurança.
 const upload = multer({ storage, limits: { fileSize: 300 * 1024 * 1024 } });
 
+// Último vídeo gravado pra essa etiqueta (ML ou Shopee) — o packing_videos
+// guarda o valor bipado (shipping_id do ML ou tracking da Shopee) na mesma
+// coluna `shipping_id`, então a checagem é a mesma pros dois.
+async function lastPacking(key) {
+  const { rows } = await pool.query(
+    `SELECT id, created_at FROM packing_videos WHERE shipping_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [key]
+  );
+  return rows[0] || null;
+}
+
+// Casa a etiqueta Shopee (tracking BR...) com o pedido e expande o item_list do
+// raw_data em "cards" no mesmo formato que o frontend já renderiza pro ML.
+// Foto vem de item.image_info.image_url (a resposta de get_order_detail traz),
+// então não depende da sincronização de catálogo. Comprador fica null (dado
+// sensível — app sem acesso). Variação vira variation_attributes (model_name).
+async function lookupShopeeByTracking(tracking) {
+  const { rows } = await pool.query(
+    `SELECT sod.order_sn, sod.raw_data, o.store_id, o.status, o.date_created, s.nickname AS store_nickname
+       FROM shopee_order_data sod
+       JOIN orders o ON o.ml_id = sod.order_sn
+       LEFT JOIN stores s ON s.id = o.store_id
+      WHERE sod.tracking_number = $1`,
+    [tracking]
+  );
+  const out = [];
+  for (const r of rows) {
+    const raw = r.raw_data || {};
+    const items = Array.isArray(raw.item_list) ? raw.item_list : [];
+    for (const it of items) {
+      const img = it.image_info && (it.image_info.image_url || (Array.isArray(it.image_info.image_url_list) && it.image_info.image_url_list[0]));
+      out.push({
+        order_id: r.order_sn,
+        item_id: it.item_id != null ? String(it.item_id) : null,
+        title: it.item_name || '(sem título)',
+        quantity: it.model_quantity_purchased || 1,
+        buyer_nickname: null, // dado sensível — app Shopee sem acesso
+        store_id: r.store_id,
+        unit_price: it.model_discounted_price != null ? it.model_discounted_price : it.model_original_price,
+        status: r.status,
+        shipping_type: 'shopee',
+        date_created: r.date_created,
+        seller_sku: it.model_sku || it.item_sku || null,
+        // mesmo shape que o ML: array de {name, value_name} — a variação Shopee é o model_name.
+        variation_attributes: it.model_name ? [{ name: 'Variação', value_name: it.model_name }] : null,
+        thumbnail: img || null,
+        permalink: null,
+        available_quantity: null,
+        store_nickname: r.store_nickname,
+        marketplace: 'SHOPEE',
+      });
+    }
+  }
+  return out;
+}
+
 // GET /api/embalagem/pedido/:shippingId — busca pedido(s) pela etiqueta bipada.
 // Pode retornar mais de 1 linha: um mesmo envio (pack) pode agrupar vários
 // pedidos do mesmo comprador.
@@ -50,16 +106,22 @@ router.get('/pedido/:shippingId', async (req, res) => {
        ORDER BY o.date_created ASC`,
       [req.params.shippingId]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Nenhum pedido encontrado para essa etiqueta' });
+    // Fallback Shopee: a etiqueta Shopee traz o RASTREIO (BR...) no QR, não o
+    // número do pedido. Se não achou por shipping_id (ML), tenta casar por
+    // tracking_number (Shopee) — mesma estação de bipagem pros dois marketplaces.
+    if (!rows.length) {
+      const shopeeOrders = await lookupShopeeByTracking(req.params.shippingId);
+      if (shopeeOrders.length) {
+        const already = await lastPacking(req.params.shippingId);
+        return res.json({ shipping_id: req.params.shippingId, marketplace: 'SHOPEE', orders: shopeeOrders, already_packed: already });
+      }
+      return res.status(404).json({ error: 'Nenhum pedido encontrado para essa etiqueta' });
+    }
 
     // Verificação se essa etiqueta já foi bipada/gravada antes — não bloqueia,
     // só avisa o operador (ver pages/embalagem.html: confirm() antes de gravar de novo).
-    const { rows: existing } = await pool.query(
-      `SELECT id, created_at FROM packing_videos WHERE shipping_id = $1 ORDER BY created_at DESC LIMIT 1`,
-      [req.params.shippingId]
-    );
-
-    res.json({ shipping_id: req.params.shippingId, orders: rows, already_packed: existing[0] || null });
+    const already = await lastPacking(req.params.shippingId);
+    res.json({ shipping_id: req.params.shippingId, marketplace: 'ML', orders: rows, already_packed: already });
   } catch (e) {
     console.error('[api/embalagem] GET /pedido/:shippingId', e.message);
     res.status(500).json({ error: e.message });

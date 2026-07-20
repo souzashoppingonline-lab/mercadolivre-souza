@@ -106,6 +106,10 @@ async function handleOrderEvent(evt) {
 // confirmado, por isso os status "operacionais" (embalar/enviar/concluído)
 // já contam como 'paid' (ver .claude/business-rules.md e 04-Orders.md da
 // KB fornecida pelo usuário).
+// Status em que o pedido já tem etiqueta/rastreio emitido (tracking existe).
+// Antes disso (UNPAID/pago sem preparo) o get_tracking_number vem vazio.
+const SHOPEE_SHIPPABLE = new Set(['READY_TO_SHIP', 'PROCESSED', 'RETRY_SHIP', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED']);
+
 function mapShopeeStatus(orderStatus) {
   switch (orderStatus) {
     case 'READY_TO_SHIP':
@@ -151,16 +155,26 @@ async function handleShopeeOrderEvent(evt) {
     [o.order_sn, marketplaceId, evt.storeId, totalAmount, status, o.create_time ? new Date(o.create_time * 1000) : null]
   );
 
+  // Rastreio (tracking) — só existe depois que o pedido é preparado pra envio.
+  // Busca sob-demanda pra Embalagem casar a etiqueta bipada (QR = tracking) com
+  // o pedido. Se ainda não tiver, não sobrescreve o que já estava (COALESCE).
+  let trackingNumber = null;
+  if (SHOPEE_SHIPPABLE.has(o.order_status)) {
+    try { trackingNumber = await client.getTrackingNumber(o.order_sn); }
+    catch (e) { console.warn(`[marketplace-worker] tracking Shopee ${o.order_sn}: ${e.message}`); }
+  }
+
   await pool.query(
-    `INSERT INTO shopee_order_data (order_id, order_sn, shop_id, buyer_username, order_status, raw_data, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6, now())
+    `INSERT INTO shopee_order_data (order_id, order_sn, shop_id, buyer_username, order_status, raw_data, tracking_number, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7, now())
      ON CONFLICT (order_id) DO UPDATE SET
        shop_id = EXCLUDED.shop_id,
        buyer_username = EXCLUDED.buyer_username,
        order_status = EXCLUDED.order_status,
        raw_data = EXCLUDED.raw_data,
+       tracking_number = COALESCE(EXCLUDED.tracking_number, shopee_order_data.tracking_number),
        updated_at = now()`,
-    [o.order_sn, o.order_sn, client.cfg?.shopId || null, o.buyer_username || null, o.order_status || null, JSON.stringify(o)]
+    [o.order_sn, o.order_sn, client.cfg?.shopId || null, o.buyer_username || null, o.order_status || null, JSON.stringify(o), trackingNumber]
   );
 
   await redis.del('kpis:summary');

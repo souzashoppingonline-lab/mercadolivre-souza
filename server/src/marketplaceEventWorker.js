@@ -11,6 +11,7 @@ const env = require('./config/env');
 const pool = require('./db/pool');
 const redis = require('./db/redis');
 const { publish } = require('./ws/hub');
+const { tgNotify } = require('./notify');
 const { Scheduler } = require('./marketplaces/Scheduler');
 const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
 const { ShopeePollingEventSource } = require('./marketplaces/shopee/ShopeePollingEventSource');
@@ -182,6 +183,19 @@ async function handleShopeeOrderEvent(evt) {
 
   if (status === 'paid' && previousStatus !== 'paid') {
     console.log(`[marketplace-worker] ✅ nova venda Shopee (store_id=${evt.storeId}): ${o.order_sn} | R$ ${totalAmount}`);
+    // Notifica no Telegram no mesmo tópico das vendas ML (tg_vendas) — respeita
+    // o mesmo on/off, silêncio e throttle já configurados pelo usuário.
+    try {
+      const { rows: sn } = await pool.query(`SELECT nickname FROM stores WHERE id = $1`, [evt.storeId]);
+      const loja = sn[0]?.nickname || `loja ${evt.storeId}`;
+      const items = Array.isArray(o.item_list) ? o.item_list : [];
+      const titulo = items[0]?.item_name || o.order_sn;
+      const qtdItens = items.reduce((s, it) => s + (Number(it.model_quantity_purchased) || 0), 0) || items.length;
+      const val = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAmount);
+      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🛍️ <b>Shopee</b>\n🏪 ${loja}\n📦 ${titulo}${qtdItens > 1 ? ` (${qtdItens} itens)` : ''}\n💰 ${val}\n🔖 Pedido: ${o.order_sn}`);
+    } catch (e) {
+      console.error('[marketplace-worker] tgNotify Shopee erro:', e.message);
+    }
   }
 }
 

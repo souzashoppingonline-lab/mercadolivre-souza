@@ -286,6 +286,39 @@ class ShopeeClient extends MarketplaceClient {
     return resp?.response || { tier_variation: [], model: [] };
   }
 
+  // ── Product API (ESCRITA) — POST com body. Altera a loja de verdade. ──
+
+  // Atualiza o estoque de um item. stockList = [{model_id, stock}] (model_id=0
+  // pra item sem variação). A Shopee v2 usa seller_stock[] (multi-armazém);
+  // sem location_id = estoque único. Confirmar com test-shopee-update.js (no-op).
+  async updateStock(itemId, stockList) {
+    this._assertConfigured();
+    const stock_list = stockList.map((s) => ({
+      model_id: Number(s.model_id || 0),
+      seller_stock: [{ stock: Number(s.stock) }],
+    }));
+    const resp = await this._call('/api/v2/product/update_stock', {
+      method: 'POST',
+      body: { item_id: Number(itemId), stock_list },
+    });
+    return resp?.response || null;
+  }
+
+  // Atualiza o preço de um item. priceList = [{model_id, price}] (model_id=0 pra
+  // item sem variação). A Shopee chama de original_price (é o preço de venda).
+  async updatePrice(itemId, priceList) {
+    this._assertConfigured();
+    const price_list = priceList.map((p) => ({
+      model_id: Number(p.model_id || 0),
+      original_price: Number(p.price),
+    }));
+    const resp = await this._call('/api/v2/product/update_price', {
+      method: 'POST',
+      body: { item_id: Number(itemId), price_list },
+    });
+    return resp?.response || null;
+  }
+
   // Conversas de chat. type='unread' traz só as com mensagem não lida (o que
   // interessa pra "não respondidas"). GET; exige type + direction + page_size
   // (confirmado no diagnóstico test-shopee-chat.js — sem direction dá param_error).

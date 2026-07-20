@@ -106,6 +106,14 @@ Sync do catálogo Shopee → **`items`** (campos comuns, reaproveitando a tabela
 - Confirmação empírica dos campos: `server/test-shopee-produtos.js` (read-only).
 - Tabela `shopee_item_data` (v39) — ver `database.md`.
 
+## Estoque & Preço em massa — implementado (tela própria, ESCRITA)
+
+Página **Estoque & Preço** (`pages/shopee-precos-estoque.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): grade com um bloco por produto e uma linha editável **por variação** (preço + estoque). Edita vários, mostra "N campos alterados", e **Aplicar alterações** grava tudo de uma vez.
+
+- **Client** (ESCRITA — POST): `updatePrice(itemId, [{model_id, price}])` (`product/update_price`, `original_price`) e `updateStock(itemId, [{model_id, stock}])` (`product/update_stock`, `seller_stock:[{stock}]`). `model_id=0` pra item sem variação.
+- **Rotas**: `GET /api/shopee/estoque-preco` (itens + variações do espelho local `shopee_item_data`, filtro loja/busca) e `POST /api/shopee/anuncios/aplicar` (`{changes:[{item_id,model_id,price?,stock?}]}` — agrupa por item, grava na Shopee, atualiza o espelho local na hora via `updateLocalItemAfterWrite` pra não esperar o sync de 30min).
+- ⚠️ **Escrita real** — altera preço/estoque da loja. Verificação empírica do contrato sem alterar nada: `server/test-shopee-update.js` (regrava o estoque com o mesmo valor = no-op). Roda uma vez antes de confiar na tela.
+
 ## Lojas — implementado (tela própria)
 
 Página **Lojas** (`pages/shopee-lojas.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`) — identifica as lojas Shopee registradas, no mesmo padrão visual da página de Lojas do ML (`pages/lojas.html`), mas isolada e com a identidade Shopee (laranja `#ee4d2d`, ícone de sacola). Grid de cards, um por loja, mostrando: `shop_id` real + id interno, status **Autorizada/Sem autorização** (`refresh_token IS NOT NULL`), validade do token de acesso (`token_valid`/`token_expires_at` — o polling renova sozinho pelo refresh_token), última atualização, e métricas por loja (**pedidos total/mês**, **faturamento do mês**, **produtos ativos**). Loja sem autorização mostra botão **Autorizar loja** → `/auth/shopee/login` (mesmo OAuth do console). Backend: `GET /api/shopee/lojas` (enriquecida — ver `api.md`), consumida por `DB.getShopeeLojas()`. Multi-loja de fábrica: cada linha de `stores` com `marketplace_id=SHOPEE` vira um card.

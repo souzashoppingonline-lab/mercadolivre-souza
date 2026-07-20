@@ -160,6 +160,121 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// Itens Shopee com as variações (models) pra grade editável de Estoque & Preço.
+// Lê do espelho local (shopee_item_data) — sem bater na Shopee (rápido). Filtro
+// por loja e busca por título/SKU.
+router.get('/estoque-preco', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const q = (req.query.q || '').trim();
+    const params = [mpId, storeId];
+    let qFilter = '';
+    if (q) { params.push(`%${q}%`); qFilter = `AND (i.title ILIKE $${params.length} OR sid.item_sku ILIKE $${params.length})`; }
+    const { rows } = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title, i.thumbnail, i.status, s.nickname AS conta,
+              sid.item_sku, sid.has_model, sid.variation_count, sid.stock_total,
+              sid.price_min, sid.price_max, sid.models
+       FROM items i
+       LEFT JOIN stores s ON s.id = i.store_id
+       LEFT JOIN shopee_item_data sid ON sid.item_id = i.ml_id
+       WHERE i.marketplace_id = $1 AND ($2 = '' OR i.store_id = $2::bigint) ${qFilter}
+       ORDER BY i.title LIMIT 500`,
+      params
+    );
+    res.json({ rows });
+  } catch (e) {
+    console.error('[api/shopee] /estoque-preco', e.message);
+    res.status(500).json({ error: e.message, rows: [] });
+  }
+});
+
+// Aplicar mudanças de preço/estoque em massa (Estoque & Preço). Recebe
+// { changes: [{ item_id, model_id, price?, stock? }] } — grava na Shopee via
+// update_price/update_stock (agrupando por item) e atualiza o espelho local
+// (items + shopee_item_data.models). Retorna resultado por item. ESCRITA real —
+// só afeta lojas Shopee (resolve store_id pelo item). Isolado do ML.
+router.post('/anuncios/aplicar', express.json(), async (req, res) => {
+  try {
+    const changes = Array.isArray(req.body?.changes) ? req.body.changes : [];
+    if (!changes.length) return res.status(400).json({ error: 'nenhuma mudança enviada' });
+
+    const mpId = await shopeeMarketplaceId();
+    // agrupa por item_id
+    const byItem = new Map();
+    for (const c of changes) {
+      if (!c.item_id) continue;
+      if (!byItem.has(c.item_id)) byItem.set(c.item_id, []);
+      byItem.get(c.item_id).push(c);
+    }
+
+    const resultados = [];
+    for (const [itemId, list] of byItem) {
+      // resolve a loja dona do item (tem que ser Shopee)
+      const { rows: ir } = await pool.query(
+        `SELECT store_id FROM items WHERE ml_id = $1 AND marketplace_id = $2`, [String(itemId), mpId]
+      );
+      const storeId = ir[0]?.store_id;
+      if (!storeId) { resultados.push({ item_id: itemId, ok: false, error: 'item não encontrado' }); continue; }
+
+      let client;
+      try { client = await getShopeeClientForStore(pool, storeId, env.shopee); }
+      catch (e) { resultados.push({ item_id: itemId, ok: false, error: e.message }); continue; }
+
+      const priceList = list.filter((c) => c.price != null && c.price !== '').map((c) => ({ model_id: c.model_id || 0, price: Number(c.price) }));
+      const stockList = list.filter((c) => c.stock != null && c.stock !== '').map((c) => ({ model_id: c.model_id || 0, stock: Number(c.stock) }));
+
+      try {
+        if (priceList.length) await client.updatePrice(itemId, priceList);
+        if (stockList.length) await client.updateStock(itemId, stockList);
+      } catch (e) {
+        resultados.push({ item_id: itemId, ok: false, error: e.message });
+        continue;
+      }
+
+      // Atualiza o espelho local (models JSON + agregados em items/shopee_item_data).
+      await updateLocalItemAfterWrite(itemId, storeId, priceList, stockList);
+      resultados.push({ item_id: itemId, ok: true });
+    }
+
+    const okCount = resultados.filter((r) => r.ok).length;
+    res.json({ ok: okCount === resultados.length, aplicados: okCount, total: resultados.length, resultados });
+  } catch (e) {
+    console.error('[api/shopee] /anuncios/aplicar', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reflete no banco o que foi gravado na Shopee (evita esperar o próximo sync de
+// 30min pra ver o novo valor). Atualiza models[] de shopee_item_data e reagrega
+// price_min/max/stock_total + os campos de items.
+async function updateLocalItemAfterWrite(itemId, storeId, priceList, stockList) {
+  const { rows } = await pool.query(`SELECT models FROM shopee_item_data WHERE item_id = $1`, [String(itemId)]);
+  let models = rows[0]?.models || [];
+  const priceByModel = new Map(priceList.map((p) => [Number(p.model_id || 0), Number(p.price)]));
+  const stockByModel = new Map(stockList.map((s) => [Number(s.model_id || 0), Number(s.stock)]));
+  models = (models || []).map((m) => {
+    const mid = Number(m.model_id || 0);
+    return {
+      ...m,
+      current_price: priceByModel.has(mid) ? priceByModel.get(mid) : m.current_price,
+      stock: stockByModel.has(mid) ? stockByModel.get(mid) : m.stock,
+    };
+  });
+  const prices = models.map((m) => Number(m.current_price)).filter((n) => !Number.isNaN(n));
+  const priceMin = prices.length ? Math.min(...prices) : null;
+  const priceMax = prices.length ? Math.max(...prices) : null;
+  const stockTotal = models.reduce((a, m) => a + (Number(m.stock) || 0), 0);
+  await pool.query(
+    `UPDATE shopee_item_data SET models = $2, price_min = $3, price_max = $4, stock_total = $5, updated_at = now() WHERE item_id = $1`,
+    [String(itemId), JSON.stringify(models), priceMin, priceMax, stockTotal]
+  );
+  await pool.query(
+    `UPDATE items SET price = $2, available_quantity = $3, updated_at = now() WHERE ml_id = $1`,
+    [String(itemId), priceMin, stockTotal]
+  );
+}
+
 // Renomear uma loja Shopee. O `nickname` é o nome exibido em TODAS as telas
 // (chat/relatórios/vendas/financeiro leem `s.nickname AS conta`), então este é
 // "o novo nome da loja". Só afeta lojas com marketplace_id=SHOPEE (isolado do

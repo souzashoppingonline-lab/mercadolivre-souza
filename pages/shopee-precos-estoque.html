@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estoque & Preço Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Estoque & Preço'; window.ACTIVE_NAV='shopee-precos-estoque.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
+    .shp-filters select, .shp-filters input { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .ep-table { width:100%; border-collapse:collapse; }
+    .ep-table th { text-align:left; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:1px solid var(--border); }
+    .ep-table th.num { text-align:right; }
+    .item-head td { background:var(--surface); padding:10px 12px; border-top:1px solid var(--border); }
+    .item-head .ttl { display:flex; align-items:center; gap:10px; font-weight:700; font-size:13px; }
+    .item-head img { width:34px; height:34px; border-radius:6px; object-fit:cover; }
+    .item-head .sku { font-size:11px; color:var(--text-muted); font-weight:400; }
+    .var-row td { padding:8px 12px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:middle; }
+    .var-name { color:var(--text-muted); }
+    .ep-input { width:110px; background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:7px 9px; color:var(--text); font-size:13px; text-align:right; }
+    .ep-input:focus { outline:none; border-color:var(--shopee); }
+    .ep-input.dirty { border-color:var(--shopee); background:rgba(238,77,45,.08); }
+    .ep-cell { display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+    .ep-cell .cur { font-size:11px; color:var(--text-muted); }
+    .apply-bar { position:sticky; bottom:0; background:var(--bg-card); border-top:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:14px; margin-top:8px; border-radius:0 0 12px 12px; }
+    .apply-bar button { background:var(--shopee); color:#fff; border:none; border-radius:8px; padding:10px 18px; font-weight:700; cursor:pointer; font-size:13px; }
+    .apply-bar button:disabled { opacity:.5; cursor:not-allowed; }
+    .apply-msg { font-size:13px; }
+    .warn { background:rgba(238,77,45,.08); border:1px solid rgba(238,77,45,.3); border-radius:10px; padding:12px 14px; font-size:13px; color:var(--text-muted); margin-bottom:16px; display:flex; gap:10px; align-items:flex-start; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="warn"><i class="fas fa-triangle-exclamation" style="color:var(--shopee);margin-top:2px"></i>
+        <span>Alterar aqui <b>grava direto na Shopee</b> (preço e estoque da loja de verdade). Edite os campos, confira e clique em <b>Aplicar alterações</b>. Preço é por variação.</span>
+      </div>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="epLoja" onchange="load()"><option value="">Todas as lojas</option></select>
+        <input type="text" id="epBusca" placeholder="Buscar por título ou SKU..." style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')load()">
+        <button class="action-btn" onclick="load()"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="table-responsive">
+          <table class="ep-table">
+            <thead><tr>
+              <th style="width:40%">Produto / Variação</th>
+              <th>SKU</th>
+              <th class="num">Preço (R$)</th>
+              <th class="num">Estoque</th>
+            </tr></thead>
+            <tbody id="epBody"><tr><td colspan="4" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="apply-bar">
+          <button id="btnAplicar" onclick="aplicar()" disabled><i class="fas fa-cloud-arrow-up"></i> Aplicar alterações</button>
+          <span class="apply-msg" id="applyMsg" style="color:var(--text-muted)">Nenhuma alteração pendente.</span>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0);
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('epLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+function varRows(item) {
+  // models pode ser vazio (item sem variação) → 1 linha com model_id=0
+  const models = (item.models && item.models.length) ? item.models : [{ model_id: 0, model_name: '—', current_price: item.price_min, stock: item.stock_total }];
+  return models.map(m => {
+    const price = m.current_price ?? '';
+    const stock = m.stock ?? 0;
+    return `<tr class="var-row">
+      <td class="var-name" style="padding-left:40px">${esc(m.model_name || '—')}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${esc(m.model_sku || item.item_sku || '')}</td>
+      <td class="num"><div class="ep-cell"><span class="cur">atual ${price!==''?R(price):'—'}</span>
+        <input class="ep-input" type="number" step="0.01" min="0" value="${price}"
+          data-item="${item.item_id}" data-model="${m.model_id||0}" data-field="price" data-orig="${price}" oninput="onEdit(this)"></div></td>
+      <td class="num"><div class="ep-cell"><span class="cur">atual ${stock}</span>
+        <input class="ep-input" type="number" step="1" min="0" value="${stock}"
+          data-item="${item.item_id}" data-model="${m.model_id||0}" data-field="stock" data-orig="${stock}" oninput="onEdit(this)"></div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function load() {
+  const store_id = document.getElementById('epLoja').value;
+  const q = document.getElementById('epBusca').value.trim();
+  const body = document.getElementById('epBody');
+  body.innerHTML = '<tr><td colspan="4" class="empty-state" style="padding:30px">Carregando...</td></tr>';
+  const d = await DB.getShopeeEstoquePreco({ store_id, q });
+  if (!d || d.error) { body.innerHTML = `<tr><td colspan="4" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
+  const rows = d.rows || [];
+  body.innerHTML = rows.length ? rows.map(it => `
+    <tr class="item-head">
+      <td colspan="2"><div class="ttl">${it.thumbnail?`<img src="${it.thumbnail}" alt="">`:''}<div>${esc(it.title||'—')}<div class="sku">${esc(it.conta||'')} · ${it.has_model?`${it.variation_count} variações`:'sem variação'}</div></div></div></td>
+      <td class="num" style="font-size:11px;color:var(--text-muted)">${it.price_min!=null?('R$ '+R(it.price_min)):''}</td>
+      <td class="num" style="font-size:11px;color:var(--text-muted)">estoque ${it.stock_total??0}</td>
+    </tr>
+    ${varRows(it)}
+  `).join('') : '<tr><td colspan="4" class="empty-state" style="padding:30px">Nenhum produto. Sincronize o catálogo (worker) ou ajuste a busca.</td></tr>';
+  refreshApply();
+}
+
+function onEdit(input) {
+  const changed = String(input.value) !== String(input.dataset.orig);
+  input.classList.toggle('dirty', changed);
+  refreshApply();
+}
+
+function dirtyInputs() { return [...document.querySelectorAll('.ep-input.dirty')]; }
+
+function refreshApply() {
+  const n = dirtyInputs().length;
+  const btn = document.getElementById('btnAplicar');
+  const msg = document.getElementById('applyMsg');
+  btn.disabled = n === 0;
+  msg.textContent = n === 0 ? 'Nenhuma alteração pendente.' : `${n} campo(s) alterado(s) — pronto pra aplicar.`;
+  msg.style.color = n === 0 ? 'var(--text-muted)' : 'var(--shopee)';
+}
+
+async function aplicar() {
+  const dirty = dirtyInputs();
+  if (!dirty.length) return;
+  // agrupa por item_id + model_id (um campo price, outro stock podem coexistir)
+  const map = new Map();
+  for (const inp of dirty) {
+    const key = `${inp.dataset.item}::${inp.dataset.model}`;
+    if (!map.has(key)) map.set(key, { item_id: inp.dataset.item, model_id: Number(inp.dataset.model) });
+    map.get(key)[inp.dataset.field] = inp.value;
+  }
+  const changes = [...map.values()];
+  const btn = document.getElementById('btnAplicar');
+  const msg = document.getElementById('applyMsg');
+  btn.disabled = true; msg.textContent = 'Aplicando na Shopee...'; msg.style.color = 'var(--text-muted)';
+  const res = await DB.aplicarShopeeEstoquePreco(changes);
+  if (!res || res.error) { msg.textContent = 'Erro: ' + (res?.error || 'falha'); msg.style.color = 'var(--red)'; btn.disabled = false; return; }
+  const falhas = (res.resultados || []).filter(r => !r.ok);
+  if (falhas.length) {
+    msg.innerHTML = `<span style="color:var(--red)">${res.aplicados}/${res.total} aplicados. Falhas: ${falhas.map(f=>esc(f.item_id+': '+f.error)).join('; ')}</span>`;
+  } else {
+    msg.textContent = `✓ ${res.aplicados} produto(s) atualizados na Shopee.`; msg.style.color = 'var(--green)';
+  }
+  load(); // recarrega com os valores novos
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLojas();
+  load();
+});
+</script>
+</body>
+</html>

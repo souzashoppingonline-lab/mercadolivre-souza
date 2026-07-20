@@ -143,7 +143,7 @@ Página **Promoções** (`pages/shopee-promocoes.html`, `SHOPEE_NAV_ITEMS` + all
 
 Página **Precificador** (`pages/shopee-precificador.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): calcula o **preço ideal por variação** a partir de custo + margem + taxa, e aplica com 1 clique (reusa o `/anuncios/aplicar`).
 
-- **Fórmula**: `preço_sugerido = (custo + taxa_fixa) / (1 − taxa% − margem%)` (margem sobre o preço de venda). Mostra também a **margem atual** no preço vigente (verde/vermelho).
+- **Fórmula**: `preço_sugerido = (custo + taxa_fixa) / (1 − taxa% − imposto% − margem%)` (margem, taxa Shopee e imposto todos sobre o preço de venda). Mostra também a **margem atual** no preço vigente (verde/vermelho). Campos: margem, taxa Shopee, taxa fixa (R$) e **imposto (%)**.
 - **Custo** (decisão do usuário): **digitado na tela**, salvo em `shopee_item_cost` (v40) **por variação** (`item_id`+`model_id`) — tabela separada de propósito, porque o sync de catálogo reescreve `shopee_item_data.models` a cada 30min. Rota `POST /api/shopee/custo`.
 - **Taxa Shopee** (decisão do usuário): **automática do escrow** — `escrowFeePct()` calcula a taxa efetiva real (`SUM(commission_fee)/SUM(buyer_total)` de `shopee_order_data`), pré-preenchida e editável; cai pra 14% se ainda não há escrow. Rota `GET /api/shopee/precificador` (margem/taxa/taxa_fixa por query).
 - Tabela `shopee_item_cost` (v40) — ver `database.md`.

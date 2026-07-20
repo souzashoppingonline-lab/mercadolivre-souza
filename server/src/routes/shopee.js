@@ -388,6 +388,7 @@ router.get('/precificador', async (req, res) => {
     const q = (req.query.q || '').trim();
     const margem = Number(req.query.margem);            // % desejada sobre o preço
     const taxaFixa = Number(req.query.taxa_fixa) || 0;  // R$ por venda
+    const impostoPct = Number(req.query.imposto) || 0;  // % de imposto sobre o preço
     const feeEscrow = await escrowFeePct(mpId, storeId);
     const taxaPct = req.query.taxa_pct != null && req.query.taxa_pct !== ''
       ? Number(req.query.taxa_pct)
@@ -412,12 +413,12 @@ router.get('/precificador', async (req, res) => {
     );
     const costMap = new Map(costRows.map((c) => [`${c.item_id}::${Number(c.model_id)}`, Number(c.cost)]));
 
-    const denom = 1 - (taxaPct / 100) - (margem / 100);
+    const denom = 1 - (taxaPct / 100) - (impostoPct / 100) - (margem / 100);
     const calcSuggested = (cost) => (denom > 0 && cost != null) ? (Number(cost) + taxaFixa) / denom : null;
     const calcMargin = (price, cost) => {
       const p = Number(price);
       if (!p || cost == null) return null;
-      const lucro = p - Number(cost) - (p * taxaPct / 100 + taxaFixa);
+      const lucro = p - Number(cost) - (p * taxaPct / 100) - (p * impostoPct / 100) - taxaFixa;
       return (lucro / p) * 100;
     };
 
@@ -437,7 +438,7 @@ router.get('/precificador', async (req, res) => {
         }),
       };
     });
-    res.json({ rows: out, taxa_pct: taxaPct, taxa_fixa: taxaFixa, margem, fee_escrow: feeEscrow });
+    res.json({ rows: out, taxa_pct: taxaPct, taxa_fixa: taxaFixa, imposto: impostoPct, margem, fee_escrow: feeEscrow });
   } catch (e) {
     console.error('[api/shopee] /precificador', e.message);
     res.status(500).json({ error: e.message, rows: [] });

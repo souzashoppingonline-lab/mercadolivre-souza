@@ -194,6 +194,7 @@ const DB = {
   async getShopeePrecificador(params = {}) { return this._get('/shopee/precificador', params); },
   async salvarShopeeCusto(item_id, model_id, cost) { return this._post('/shopee/custo', { item_id, model_id, cost }); },
   async getShopeePromocoes(params = {}) { return this._get('/shopee/promocoes', params); },
+  async getShopeePromocaoItens(tipo, promoId) { return this._get(`/shopee/promocoes/${tipo}/${encodeURIComponent(promoId)}/itens`); },
   async getShopeeProblemas(params = {}) { return this._get('/shopee/problemas', params); },
   async getShopeeExecutivo(params = {}) { return this._get('/shopee/executivo', params); },
   async getShopeeVendas(params = {})   { return this._get('/shopee/vendas', params); },

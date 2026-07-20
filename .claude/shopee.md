@@ -136,6 +136,7 @@ Página **Promoções** (`pages/shopee-promocoes.html`, `SHOPEE_NAV_ITEMS` + all
 - **Client**: `getDiscountList(status)` (`discount/get_discount_list`, pagina via `more`) e `getVoucherList(status)` (`voucher/get_voucher_list`). Campos confirmados em `test-shopee-promo.js`: desconto = `discount_id/discount_name/start_time/end_time/status`; voucher = `voucher_id/voucher_name/voucher_code/start_time/end_time/reward_type(1=valor,2=%)/percentage|discount_amount/current_usage/usage_quantity`.
 - **Job `syncShopeePromos`** (`marketplaceEventWorker`, a cada `SHOPEE_PROMO_INTERVAL_MS`=1h): busca descontos (ongoing+upcoming) e vouchers (não expirados), upsert em `shopee_promotions`, e **alerta no Telegram** (`tg_vendas`) as promoções ativas que vencem em < `SHOPEE_PROMO_ALERT_HOURS`=24h — dedup por `expiry_notified` (rearma se a promoção for estendida).
 - **Rota** `GET /api/shopee/promocoes?store_id&tipo`: lê `shopee_promotions`, recalcula status na hora, KPIs (ativas/agendadas/vencendo 24h). A contagem regressiva é client-side (atualiza a cada 1min sem refetch).
+- **Loja em destaque** no card (chip no topo) e **clique → modal** com os anúncios dentro da promoção: `GET /api/shopee/promocoes/:tipo/:promoId/itens` (desconto via `get_discount`→item_list com preço promocional; voucher via `item_id_list` ou escopo "loja toda"), enriquecido com título/foto de `items`.
 - Tabela `shopee_promotions` (v41) — ver `database.md`.
 
 ## Precificador — implementado (tela própria)

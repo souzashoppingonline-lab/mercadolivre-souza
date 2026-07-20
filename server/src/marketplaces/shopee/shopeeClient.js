@@ -329,6 +329,38 @@ class ShopeeClient extends MarketplaceClient {
     return all;
   }
 
+  // Detalhe de um desconto — traz os itens (item_list) dentro da promoção, com
+  // preço promocional por variação. Pagina via `more`. GET.
+  async getDiscountItems(discountId, pageSize = 100) {
+    this._assertConfigured();
+    const all = [];
+    let pageNo = 1;
+    let info = null;
+    for (let guard = 0; guard < 100; guard++) {
+      const resp = await this._call('/api/v2/discount/get_discount', {
+        method: 'GET',
+        query: { discount_id: String(discountId), page_no: String(pageNo), page_size: String(pageSize) },
+      });
+      const r = resp?.response || {};
+      if (!info) info = { discount_name: r.discount_name, start_time: r.start_time, end_time: r.end_time, status: r.status };
+      const list = r.item_list || [];
+      all.push(...list);
+      if (!r.more || !list.length) break;
+      pageNo += 1;
+    }
+    return { info, item_list: all };
+  }
+
+  // Detalhe de um voucher — pra saber se é da loja toda ou de itens específicos.
+  async getVoucher(voucherId) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/voucher/get_voucher', {
+      method: 'GET',
+      query: { voucher_id: String(voucherId) },
+    });
+    return resp?.response || null;
+  }
+
   // ── Product API (ESCRITA) — POST com body. Altera a loja de verdade. ──
 
   // Atualiza o estoque de um item. stockList = [{model_id, stock}] (model_id=0

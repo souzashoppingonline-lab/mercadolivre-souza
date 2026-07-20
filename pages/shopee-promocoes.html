@@ -17,8 +17,26 @@
     .shp-kpi .lbl { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
     .shp-kpi .val { font-size:26px; font-weight:800; line-height:1.1; }
     .promo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
-    .promo-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px; }
+    .promo-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:border-color .15s; }
+    .promo-card:hover { border-color:var(--shopee); }
     .promo-card.venc { border-color:var(--shopee); box-shadow:0 0 0 1px var(--shopee) inset; }
+    .loja-chip { display:inline-flex; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:3px 10px; font-size:12px; font-weight:600; align-self:flex-start; }
+    .loja-chip i { color:var(--shopee); font-size:11px; }
+    .ver-itens { font-size:11px; color:var(--shopee); display:flex; align-items:center; gap:5px; margin-top:2px; }
+    /* modal */
+    .modal-back { position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.7); backdrop-filter:blur(3px); display:none; align-items:flex-start; justify-content:center; overflow-y:auto; }
+    .modal-back.open { display:flex; }
+    .modal-box { max-width:560px; width:100%; margin:60px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+    .modal-head { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+    .modal-head .x { margin-left:auto; cursor:pointer; color:var(--text-muted); font-size:18px; }
+    .modal-body { max-height:60vh; overflow-y:auto; }
+    .mitem { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--border); }
+    .mitem img { width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; }
+    .mitem .noimg { width:44px; height:44px; border-radius:8px; background:var(--surface); flex-shrink:0; }
+    .mitem .t { flex:1; min-width:0; font-size:13px; }
+    .mitem .t small { color:var(--text-muted); font-size:11px; }
+    .mitem .pp { text-align:right; font-size:13px; }
+    .mitem .pp .promo { color:var(--shopee); font-weight:700; }
     .promo-top { display:flex; align-items:center; gap:8px; }
     .promo-name { font-weight:700; font-size:14px; flex:1; }
     .tipo-badge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; text-transform:uppercase; }
@@ -67,6 +85,19 @@
     </div>
   </main>
 </div>
+
+<!-- Modal: anúncios da promoção -->
+<div class="modal-back" id="itensModal" onclick="if(event.target===this)fecharItens()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <i class="fas fa-box-open" style="color:var(--shopee)"></i>
+      <div><div style="font-weight:700" id="mTitulo">Promoção</div><div style="font-size:11px;color:var(--text-muted)" id="mSub"></div></div>
+      <i class="fas fa-times x" onclick="fecharItens()"></i>
+    </div>
+    <div class="modal-body" id="mBody"><div class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></div></div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout-shopee.js"></script>
@@ -111,7 +142,8 @@ function render() {
   const list = _promos.filter(p => !fStatus || p.status === fStatus);
   grid.innerHTML = list.length ? list.map(p => {
     const cd = countdown(p.end_ms);
-    return `<div class="promo-card ${p.status==='ongoing'&&cd.urgent?'venc':''}">
+    return `<div class="promo-card ${p.status==='ongoing'&&cd.urgent?'venc':''}" onclick='abrirItens(${JSON.stringify({tipo:p.tipo,promo_id:p.promo_id,name:p.name}).replace(/'/g,"&#39;")})'>
+      <span class="loja-chip"><i class="fas fa-store"></i> ${esc(p.conta||'Loja Shopee')}</span>
       <div class="promo-top">
         <span class="tipo-badge ${p.tipo}">${p.tipo==='voucher'?'Voucher':'Desconto'}</span>
         <span class="promo-name">${esc(p.name||'—')}</span>
@@ -122,10 +154,10 @@ function render() {
         ${p.desconto&&p.desconto!=='—'?`<div class="promo-row"><span class="k">Desconto</span><span class="v">${esc(p.desconto)}</span></div>`:''}
         <div class="promo-row"><span class="k">Início</span><span class="v">${fmtDt(p.start_ms)}</span></div>
         <div class="promo-row"><span class="k">Fim (prazo)</span><span class="v">${fmtDt(p.end_ms)}</span></div>
-        <div class="promo-row"><span class="k">Loja</span><span class="v">${esc(p.conta||'')}</span></div>
       </div>
       ${p.status==='ongoing'?`<div class="promo-row" style="margin-top:2px"><span class="k">Vence em</span><span class="countdown ${cd.urgent?'urgent':''}" data-end="${p.end_ms}">${cd.txt}</span></div>`:''}
       ${p.status==='upcoming'?`<div class="promo-row" style="margin-top:2px"><span class="k">Começa em</span><span class="countdown" data-start="${p.start_ms}">${countdown(p.start_ms).txt}</span></div>`:''}
+      <div class="ver-itens"><i class="fas fa-box-open"></i> ver anúncios da promoção</div>
     </div>`;
   }).join('') : '<div class="empty-state" style="grid-column:1/-1;padding:30px">Nenhuma promoção. Sincronize (aguarde o worker) ou ajuste os filtros.</div>';
 }
@@ -137,6 +169,32 @@ setInterval(() => {
   });
   document.querySelectorAll('.countdown[data-start]').forEach(el => { el.textContent = countdown(Number(el.dataset.start)).txt; });
 }, 60000);
+
+const RB = v => 'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0);
+
+async function abrirItens(p) {
+  document.getElementById('mTitulo').textContent = p.name || 'Promoção';
+  document.getElementById('mSub').textContent = p.tipo === 'voucher' ? 'Voucher' : 'Desconto';
+  const body = document.getElementById('mBody');
+  body.innerHTML = '<div class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></div>';
+  document.getElementById('itensModal').classList.add('open');
+  const d = await DB.getShopeePromocaoItens(p.tipo, p.promo_id);
+  if (!d || d.error) { body.innerHTML = `<div class="empty-state" style="padding:30px;color:var(--red)">Erro: ${esc(d?.error||'')}</div>`; return; }
+  if (d.escopo === 'loja') { body.innerHTML = `<div class="empty-state" style="padding:30px">${esc(d.nota||'Válido para a loja inteira.')}</div>`; return; }
+  const itens = d.itens || [];
+  document.getElementById('mSub').textContent = `${d.tipo==='voucher'?'Voucher':'Desconto'} · ${itens.length} anúncio(s)`;
+  body.innerHTML = itens.length ? itens.map(it => `
+    <div class="mitem">
+      ${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:'<div class="noimg"></div>'}
+      <div class="t">${esc(it.title||'—')}<br><small>${esc(it.item_id)}</small></div>
+      <div class="pp">
+        ${it.price!=null?`<div style="color:var(--text-muted);${it.promo_price!=null?'text-decoration:line-through;font-size:11px':''}">${RB(it.price)}</div>`:''}
+        ${it.promo_price!=null?`<div class="promo">${RB(it.promo_price)}</div>`:''}
+      </div>
+    </div>`).join('') : '<div class="empty-state" style="padding:30px">Nenhum anúncio nesta promoção.</div>';
+}
+
+function fecharItens() { document.getElementById('itensModal').classList.remove('open'); }
 
 document.addEventListener('DOMContentLoaded', async () => {
   await loadLojas();

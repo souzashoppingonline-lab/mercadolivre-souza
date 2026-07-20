@@ -306,6 +306,60 @@ router.get('/promocoes', async (req, res) => {
   }
 });
 
+// Anúncios dentro de uma promoção (modal). Desconto: get_discount → item_list.
+// Voucher: item_id_list (voucher de produto) ou "loja toda". Enriquece com
+// título/foto de `items`. Resolve o client pela loja da promoção.
+router.get('/promocoes/:tipo/:promoId/itens', async (req, res) => {
+  try {
+    const { tipo, promoId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT store_id, name, raw FROM shopee_promotions WHERE tipo = $1 AND promo_id = $2`,
+      [tipo, promoId]
+    );
+    const promo = rows[0];
+    if (!promo || !promo.store_id) return res.status(404).json({ error: 'Promoção não encontrada', itens: [] });
+
+    const enrich = async (ids) => {
+      if (!ids.length) return [];
+      const { rows: its } = await pool.query(
+        `SELECT ml_id AS item_id, title, thumbnail, price, status FROM items WHERE ml_id = ANY($1)`,
+        [ids.map(String)]
+      );
+      const map = new Map(its.map((i) => [String(i.item_id), i]));
+      return ids.map((id) => map.get(String(id)) || { item_id: String(id), title: '(anúncio não sincronizado)', thumbnail: null });
+    };
+
+    if (tipo === 'discount') {
+      const client = await getShopeeClientForStore(pool, promo.store_id, env.shopee);
+      const { item_list } = await client.getDiscountItems(promoId);
+      const ids = item_list.map((i) => i.item_id).filter(Boolean);
+      const base = await enrich(ids);
+      // anexa o preço promocional (menor entre as variações) quando vier
+      const promoPriceById = new Map();
+      for (const it of item_list) {
+        const models = it.model_list || [];
+        const precos = models.map((m) => Number(m.model_promotion_price ?? m.promotion_price)).filter((n) => !Number.isNaN(n));
+        const p = precos.length ? Math.min(...precos) : Number(it.item_promotion_price ?? it.promotion_price);
+        if (!Number.isNaN(p) && p) promoPriceById.set(String(it.item_id), p);
+      }
+      const itens = base.map((b) => ({ ...b, promo_price: promoPriceById.get(String(b.item_id)) ?? null }));
+      return res.json({ nome: promo.name, tipo, escopo: 'itens', itens });
+    }
+
+    // voucher
+    const raw = promo.raw || {};
+    const idList = raw.item_id_list || [];
+    if (!idList.length) {
+      return res.json({ nome: promo.name, tipo, escopo: 'loja', itens: [], nota: 'Voucher válido para a loja inteira (não é limitado a anúncios específicos).' });
+    }
+    const itens = await enrich(idList);
+    return res.json({ nome: promo.name, tipo, escopo: 'itens', itens });
+  } catch (e) {
+    console.error('[api/shopee] /promocoes/itens', e.message);
+    res.status(500).json({ error: e.message, itens: [] });
+  }
+});
+
 // Taxa efetiva REAL da Shopee, derivada do escrow dos pedidos (comissão que a
 // Shopee já cobrou ÷ total pago pelo comprador). É a "taxa automática" do
 // Precificador. Filtro opcional por loja. Retorna null se ainda não há escrow.

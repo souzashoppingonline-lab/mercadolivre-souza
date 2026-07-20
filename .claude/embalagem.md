@@ -50,7 +50,7 @@ Pedido explícito do usuário, com print mostrando o card real: quantidade ("1 u
 
 ### Aba Buscar vídeos
 
-Filtros: nº do pedido, comprador, data de/até (`GET /api/embalagem/videos`). Resultado: lista com título/comprador/loja/data/duração + botão "Assistir", que abre um modal com `<video controls>` apontando pra `GET /api/embalagem/videos/:id/file` (Express `res.sendFile` já suporta `Range`, então dá pra avançar/voltar no vídeo sem baixar ele inteiro).
+Filtros: **rastreio ou pedido**, comprador, data de/até, marketplace (`GET /api/embalagem/videos`). O campo "Rastreio ou Pedido" casa `pv.shipping_id` (o valor bipado — **tracking `BR…` da Shopee** ou `shipping_id` do ML) **ou** um `order_id` em `pv.order_ids` — pro Shopee o operador tem a etiqueta (rastreio) na mão, não o nº do pedido. Resultado: lista com título/comprador/loja/data/duração + botão "Assistir", que abre um modal com `<video controls>` apontando pra `GET /api/embalagem/videos/:id/file` (Express `res.sendFile` já suporta `Range`, então dá pra avançar/voltar no vídeo sem baixar ele inteiro).
 
 ### Aba Conferência do Dia
 

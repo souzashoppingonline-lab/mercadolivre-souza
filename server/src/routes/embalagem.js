@@ -161,7 +161,9 @@ router.get('/videos', async (req, res) => {
     const { order_id, buyer, date_from, date_to, store_id, marketplace } = req.query;
     const where = [];
     const params = [];
-    if (order_id) { params.push(order_id); where.push(`$${params.length} = ANY(pv.order_ids)`); }
+    // Casa pelo RASTREIO/etiqueta (pv.shipping_id — o valor bipado: tracking BR...
+    // da Shopee ou shipping_id do ML) OU pelo número do pedido (pv.order_ids).
+    if (order_id) { params.push(order_id); where.push(`(pv.shipping_id = $${params.length} OR $${params.length} = ANY(pv.order_ids))`); }
     if (store_id) { params.push(store_id); where.push(`pv.store_id = $${params.length}`); }
     if (marketplace) { params.push(marketplace); where.push(`mk.code = $${params.length}`); }
     if (date_from) { params.push(date_from); where.push(`pv.created_at >= $${params.length}`); }

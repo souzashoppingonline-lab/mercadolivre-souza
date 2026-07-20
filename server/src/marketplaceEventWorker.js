@@ -201,6 +201,16 @@ async function handleShopeeOrderEvent(evt) {
 
   if (status === 'paid' && previousStatus !== 'paid') {
     console.log(`[marketplace-worker] ✅ nova venda Shopee (store_id=${evt.storeId}): ${o.order_sn} | R$ ${totalAmount}`);
+    // Guard anti-pedido-antigo (mesmo racional do ML em worker.js): só notifica
+    // no Telegram se a venda tem < 24h. Sem isso, o polling descobrindo um
+    // pedido antigo (previousStatus nulo → 'paid') spammaria o Telegram — foi
+    // exatamente o bug que o ML já tinha. create_time vem em segundos (epoch).
+    const saleMs = o.create_time ? Number(o.create_time) * 1000 : 0;
+    const isRecentEnough = saleMs && (Date.now() - saleMs < 24 * 60 * 60 * 1000);
+    if (!isRecentEnough) {
+      console.log(`[marketplace-worker] venda Shopee ${o.order_sn} tem mais de 24h — não notifica no Telegram (anti-pedido-antigo)`);
+      return;
+    }
     // Notifica no Telegram no mesmo tópico das vendas ML (tg_vendas) — respeita
     // o mesmo on/off, silêncio e throttle já configurados pelo usuário.
     try {

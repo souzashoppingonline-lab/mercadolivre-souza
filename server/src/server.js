@@ -19,6 +19,11 @@ const wsHub = require('./ws/hub');
 
 const app = express();
 app.use(cors());
+// Webhook Shopee ("Mecanismo de Empurra") — montado ANTES do express.json()
+// global porque a validação de assinatura precisa do corpo CRU (o router usa
+// express.raw()). Isolado do gateway ML; público (não passa pelo gate de auth,
+// que só é registrado abaixo). Ver routes/shopeeWebhook.js e .claude/shopee.md.
+app.use('/webhooks/shopee', require('./routes/shopeeWebhook'));
 app.use(express.json());
 app.use(cookieParser());
 

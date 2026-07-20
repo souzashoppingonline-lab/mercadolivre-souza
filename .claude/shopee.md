@@ -41,7 +41,19 @@ Os endpoints de leitura da Shopee (`order/get_order_list`, `order/get_order_deta
 4. **Reiniciar `ml-worker-novo`** — hot-reload de conta nova não existe ainda (mesma limitação já registrada pra Amazon em `todo.md`).
 5. Acompanhar `journalctl -u ml-worker-novo -f` por linhas `[shopee-polling]`/`[marketplace-worker]` — a 1ª execução do polling olha as últimas 24h; como o sandbox não gera pedidos reais automaticamente, pode ser necessário criar um pedido de teste pela "Ferramenta de teste" do console pra ver o pipeline processar de ponta a ponta.
 
-## Webhook ("Mecanismo de Empurra") — fase 2, não implementado ainda
+## Webhook ("Mecanismo de Empurra") — implementado (tempo real)
+
+Receptor **isolado** do gateway ML: `server/src/routes/shopeeWebhook.js`, montado em **`/webhooks/shopee`** (arquivo/rota/lógica próprios, nada compartilhado com `webhookGateway.js`). Montado **antes** do `express.json()` global (usa `express.raw()` — a assinatura Shopee precisa do corpo cru). Fluxo: responde `200` na hora → valida assinatura → enfileira o **mesmo evento padronizado do polling** (`marketplace-events-shopee`, `jobId` `SHOPEE:ORDER_UPDATED:{storeId}-{orderSn}`) → `handleShopeeOrderEvent` processa igual, só que **em tempo real** (venda cai no dashboard/Telegram na hora, não em até 15 min).
+
+- **Assinatura**: `HMAC-SHA256(partner_key, push_url + "|" + raw_body)` no header `Authorization`. Se não confere, o push é logado (pra diagnóstico) e **não** é processado, salvo `SHOPEE_WEBHOOK_VERIFY=false` (escape hatch pro 1º teste). Se o formato real divergir, os logs mostram `recebida=… esperada=…` pra ajustar.
+- **Dedup com o polling**: mesmo `jobId` → BullMQ ignora duplicata se os dois dispararem pro mesmo pedido. O polling **continua ligado** como rede de segurança (webhooks podem se perder).
+- **Configuração** (usuário): no console Shopee → "Mecanismo de Empurra", cadastrar `push_url = https://multimixvendas.duckdns.org/webhooks/shopee` e habilitar o push de status de pedido. O IP `207.180.194.61` já está na allowlist. Ver `.env.example` (`SHOPEE_WEBHOOK_VERIFY`).
+
+## Próximos (financeiro/escrow, status de entrega, chat) — diagnóstico primeiro
+
+Escrow (repasse/taxas por pedido), status de entrega (logística) e chat de comprador serão módulos **isolados na Shopee** (pedido do usuário: nada misturado com ML — o financeiro Shopee é uma tela própria, **não** a Conciliação Bancária). Antes de codar cada parser, rodar `server/test-shopee-apis.js` (READ-ONLY) pra confirmar o formato real dos 3 endpoints (`payment/get_escrow_detail`, `logistics/get_tracking_info`, `sellerchat/get_conversation_list`) — mesma disciplina do rastreio/relatório MP.
+
+## Webhook — histórico (antes da implementação acima)
 
 A Shopee expõe push de pedido de verdade (confirmado pela KB de referência do usuário e pela existência da seção "Mecanismo de Empurra" no console) — diferente do que a versão anterior deste arquivo especulava. A fase 1 usa **polling mesmo assim** (mesma decisão que a Amazon tomou no início: validar autenticação/formato de chamada sem depender de um endpoint de webhook público testado). Antes de migrar para push:
 

@@ -192,6 +192,7 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | Rota | Descrição |
 |---|---|
 | `POST /webhooks/ml` | entrada de webhooks do Mercado Livre — responde 200 imediato, enfileira no BullMQ |
+| `POST /webhooks/shopee` | webhook Shopee ("Mecanismo de Empurra") — **isolado do gateway ML** (`routes/shopeeWebhook.js`, montado antes do `express.json()` pra ter o corpo cru). Valida assinatura HMAC (`push_url\|body`, header Authorization), responde 200 e enfileira o mesmo evento do polling (`marketplace-events-shopee`) → tempo real. `SHOPEE_WEBHOOK_VERIFY=false` desliga a validação pro 1º teste. `GET /webhooks/shopee` responde 200 (teste de conectividade do console) |
 | `POST /webhooks/telegram` | recebe replies do bot Telegram para responder perguntas ML diretamente do chat |
 
 ## `/auth/*` e `/ml/*` — ver `mercadolivre.md`

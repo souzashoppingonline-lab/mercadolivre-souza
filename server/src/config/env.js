@@ -42,6 +42,10 @@ module.exports = {
     // console. Sem isso, pedir esses campos em produção quebra a chamada — por
     // padrão NÃO pedimos (ver getOrder em shopeeClient.js e .claude/shopee.md).
     sensitiveAccess: process.env.SHOPEE_SENSITIVE_ACCESS === 'true',
+    // Webhook ("Mecanismo de Empurra"): valida a assinatura HMAC do push por
+    // padrão. SHOPEE_WEBHOOK_VERIFY=false desliga a validação (escape hatch pro
+    // 1º teste, enquanto se confirma o formato exato da assinatura no console).
+    webhookVerify: process.env.SHOPEE_WEBHOOK_VERIFY !== 'false',
   },
   // Login de acesso restrito (staff) — ver .claude/auth-staff.md.
   staffAuth: {

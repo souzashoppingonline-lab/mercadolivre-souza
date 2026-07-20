@@ -27,7 +27,9 @@ router.post('/', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) =>
   res.sendStatus(200); // ack rápido — a Shopee espera 200 imediato
 
   try {
-    const partnerKey = env.shopee.partnerKey;
+    // A Shopee assina o push com a "Chave de parceiro Live Push" (separada da
+    // partner_key da API). Fallback pra partnerKey se a de push não estiver no .env.
+    const partnerKey = env.shopee.pushPartnerKey || env.shopee.partnerKey;
     const authHeader = req.get('Authorization') || '';
     // push_url exata que a Shopee chamou (tem que bater com a cadastrada no console).
     const pushUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;

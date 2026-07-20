@@ -46,6 +46,10 @@ module.exports = {
     // padrão. SHOPEE_WEBHOOK_VERIFY=false desliga a validação (escape hatch pro
     // 1º teste, enquanto se confirma o formato exato da assinatura no console).
     webhookVerify: process.env.SHOPEE_WEBHOOK_VERIFY !== 'false',
+    // Chave SEPARADA que a Shopee usa pra assinar os pushes ("Chave de parceiro
+    // Live Push" no console → Mecanismo de Empurra) — NÃO é a partner_key da API.
+    // Sem ela, a validação da assinatura do webhook falha (verified=false).
+    pushPartnerKey: process.env.SHOPEE_PUSH_PARTNER_KEY,
   },
   // Login de acesso restrito (staff) — ver .claude/auth-staff.md.
   staffAuth: {

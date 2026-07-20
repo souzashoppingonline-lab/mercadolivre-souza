@@ -95,9 +95,12 @@ class ShopeeClient extends MarketplaceClient {
     }
   }
 
-  // Chamada shop-level assinada. `body` vai como JSON (a Shopee aceita POST
-  // com corpo de negócio mesmo com os parâmetros de auth só na query string).
-  async _call(apiPath, { method = 'POST', body, useAccessToken = true } = {}) {
+  // Chamada shop-level assinada. Os endpoints de leitura da Shopee (order/*)
+  // são GET com TODOS os parâmetros de negócio no query string (`query`) — em
+  // produção um POST nesses paths retorna 404 (o sandbox tolerava POST, mas não
+  // era o contrato). Só a assinatura (partner_id + api_path + timestamp +
+  // access_token + shop_id) entra no `sign`; os params de `query` não.
+  async _call(apiPath, { method = 'POST', body, query, useAccessToken = true } = {}) {
     const { partnerId, partnerKey, env, shopId, accessToken } = this.cfg;
     const timestamp = nowSeconds();
     const signature = sign({
@@ -107,6 +110,7 @@ class ShopeeClient extends MarketplaceClient {
     });
     const qs = new URLSearchParams({ partner_id: partnerId, timestamp: String(timestamp), sign: signature });
     if (useAccessToken) { qs.set('access_token', accessToken); qs.set('shop_id', String(shopId)); }
+    if (query) for (const [k, v] of Object.entries(query)) { if (v != null) qs.set(k, String(v)); }
 
     const res = await fetch(`${baseUrl(env)}${apiPath}?${qs}`, {
       method,
@@ -166,10 +170,13 @@ class ShopeeClient extends MarketplaceClient {
     // então por padrão só pedimos os campos não-sensíveis (ver .claude/shopee.md).
     const fields = ['total_amount', 'order_status', 'item_list', 'create_time', 'update_time'];
     if (this.cfg.sensitiveAccess) fields.unshift('buyer_username');
+    // GET: order_sn_list e response_optional_fields como listas separadas por
+    // vírgula no query string (não body — ver comentário em _call).
     const detail = await this._call('/api/v2/order/get_order_detail', {
-      body: {
-        order_sn_list: [orderId],
-        response_optional_fields: fields,
+      method: 'GET',
+      query: {
+        order_sn_list: orderId,
+        response_optional_fields: fields.join(','),
       },
     });
     return detail?.response?.order_list?.[0] || null;
@@ -180,13 +187,17 @@ class ShopeeClient extends MarketplaceClient {
     this._assertConfigured();
     const timeFrom = Math.floor(new Date(sinceISODate).getTime() / 1000);
     const timeTo = nowSeconds();
+    // GET com os params no query string. A Shopee limita a janela a 15 dias —
+    // o polling usa cursor curto (últimas 24h por padrão), então não estoura.
     const list = await this._call('/api/v2/order/get_order_list', {
-      body: {
+      method: 'GET',
+      query: {
         time_range_field: 'update_time',
         time_from: timeFrom,
         time_to: timeTo,
         page_size: 50,
-        response_optional_fields: ['order_status'],
+        cursor: '',
+        response_optional_fields: 'order_status',
       },
     });
     return list?.response?.order_list || [];

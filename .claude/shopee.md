@@ -13,6 +13,10 @@ O app `financeecom` foi aprovado para o ambiente **ao vivo** (Live partner ID `2
 
 **Acesso a dados sensíveis** (`SHOPEE_SENSITIVE_ACCESS`, default `false`): o app está como **"Sem acesso"** a dados sensíveis. Campos como `buyer_username`/endereço só podem ser pedidos ao `get_order_detail` se esse acesso for aprovado no console — pedir sem permissão **quebra a chamada** em produção. Por isso `getOrder` (em `shopeeClient.js`) só inclui `buyer_username` nos `response_optional_fields` quando `SHOPEE_SENSITIVE_ACCESS=true`; por padrão só pede campos não-sensíveis (`total_amount`, `order_status`, `item_list`, `create_time`, `update_time`). O handler já grava `buyer_username` como `null` quando ausente. Quando/se a Shopee aprovar acesso a dados sensíveis, setar `SHOPEE_SENSITIVE_ACCESS=true` no `.env`.
 
+## Contrato GET × POST (sandbox era tolerante, produção é estrita)
+
+Os endpoints de leitura da Shopee (`order/get_order_list`, `order/get_order_detail`) são **GET com todos os params de negócio no query string**. O sandbox (`partner.uat.shopeemobile.com`) aceitava POST com corpo JSON; a **produção** (`partner.shopeemobile.com`) **não roteia POST nesses paths e retorna 404**. Descoberto ao ativar produção (o polling deu `get_order_list -> HTTP 404` na 1ª chamada). `shopeeClient._call` agora aceita `method: 'GET'` + `query: {...}` (params fora da assinatura), e `getOrder`/`listRecentOrders` usam GET, com `order_sn_list`/`response_optional_fields` como listas separadas por vírgula. Os endpoints de **auth** (`auth/token/get`, `auth/access_token/get`) continuam POST com body — esses sempre foram POST. Regra prática: **auth = POST body, leitura = GET query.**
+
 ## O que já existe
 
 - **`server/src/marketplaces/shopee/shopeeClient.js`** — cliente real: `SignatureBuilder` (HMAC-SHA256, base string partner-level vs. shop-level), `getAuthorizationUrl`/`exchangeCodeForToken` (funções partner-level, exportadas separadas da classe porque rodam antes de qualquer loja autorizada), `refreshAccessToken`/`getOrder`/`listRecentOrders` (contrato `MarketplaceClient`, mesmo de `amazonClient.js`).

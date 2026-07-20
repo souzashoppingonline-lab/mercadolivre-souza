@@ -24,6 +24,22 @@ router.get('/', (req, res) => res.sendStatus(200));
 
 router.post('/', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) => {
   const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '';
+
+  let payload = {};
+  try { payload = JSON.parse(rawBody || '{}'); } catch { payload = {}; }
+
+  // Handshake de verificação: ao cadastrar/"Verificar" a push_url no console, a
+  // Shopee envia {"code":0,"data":{"verify_info":"...Please respond in the certain
+  // format."}} e espera o MESMO corpo de volta (challenge-response por echo), não
+  // um "OK". Ecoar o raw body verbatim com 200 + Content-Type JSON satisfaz o
+  // botão "Verificar". Vem antes do ack genérico e do gate de assinatura porque
+  // esse ping de verificação não carrega order_sn e não deve ser enfileirado.
+  if (payload && payload.code === 0 && payload.data && payload.data.verify_info) {
+    console.log('[shopee-webhook] handshake de verificação recebido — ecoando verify_info');
+    res.set('Content-Type', 'application/json');
+    return res.status(200).send(rawBody);
+  }
+
   res.sendStatus(200); // ack rápido — a Shopee espera 200 imediato
 
   try {
@@ -41,7 +57,6 @@ router.post('/', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) =>
       if (!verified) console.warn(`[shopee-webhook] assinatura não confere — recebida=${authHeader.slice(0, 20)}… esperada=${expected.slice(0, 20)}… url=${pushUrl}`);
     }
 
-    const payload = JSON.parse(rawBody || '{}');
     // Log pra diagnóstico do formato real do push (code/shop/dados).
     console.log(`[shopee-webhook] code=${payload.code} shop=${payload.shop_id} verified=${verified} body=${rawBody.slice(0, 300)}`);
 

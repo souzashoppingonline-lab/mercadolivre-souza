@@ -45,6 +45,21 @@
           <div class="sub">▲ Hoje</div>
         </div>
         <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-hand-holding-dollar"></i> Lucro</div>
+          <div class="val" id="shpLucro"><div class="skeleton"></div></div>
+          <div class="sub" id="shpLucroSub" style="color:var(--text-muted)">após taxa Shopee − custo</div>
+        </div>
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-receipt"></i> Ticket Médio</div>
+          <div class="val" id="shpTicket"><div class="skeleton"></div></div>
+          <div class="sub" style="color:var(--text-muted)">▲ Hoje</div>
+        </div>
+        <div class="shp-kpi">
+          <div class="lbl"><i class="fas fa-percent"></i> Margem</div>
+          <div class="val" id="shpMargem"><div class="skeleton"></div></div>
+          <div class="sub" style="color:var(--text-muted)">lucro / faturamento</div>
+        </div>
+        <div class="shp-kpi">
           <div class="lbl"><i class="fas fa-cubes"></i> Produtos</div>
           <div class="val" id="shpProdutos"><div class="skeleton"></div></div>
           <div class="sub" style="color:var(--text-muted)">Ativos</div>
@@ -139,10 +154,25 @@ const STATUS_LABEL = { paid:'Pago', pending:'Pendente', cancelled:'Cancelado', s
 
 async function loadKpis() {
   const d = await DB.getShopeeKpis();
-  if (!d || d.error) { set('shpVendas','—'); set('shpPedidos','—'); set('shpProdutos','—'); return; }
-  set('shpVendas', R(d.vendas_hoje));
-  set('shpPedidos', d.pedidos_hoje ?? 0);
-  set('shpProdutos', d.produtos_ativos ?? 0);
+  if (!d || d.error) { set('shpVendas','—'); set('shpPedidos','—'); set('shpProdutos','—'); }
+  else {
+    set('shpVendas', R(d.vendas_hoje));
+    set('shpPedidos', d.pedidos_hoje ?? 0);
+    set('shpProdutos', d.produtos_ativos ?? 0);
+  }
+  // Executivo: Lucro, Ticket, Margem (hoje). Lucro = líquido escrow − custo.
+  const e = await DB.getShopeeExecutivo();
+  if (e && !e.error) {
+    set('shpLucro', R(e.lucro));
+    set('shpTicket', R(e.ticket_medio));
+    set('shpMargem', (Number(e.margem_pct)||0).toFixed(1) + '%');
+    const sub = document.getElementById('shpLucroSub');
+    if (sub) {
+      if (!e.custo_completo) { sub.textContent = `⚠ parcial: ${e.pedidos_com_custo}/${e.pedidos} c/ custo`; sub.style.color = '#ee4d2d'; }
+      else { sub.textContent = 'após taxa Shopee − custo'; sub.style.color = 'var(--text-muted)'; }
+    }
+    const ml = document.getElementById('shpLucro'); if (ml) ml.style.color = Number(e.lucro) < 0 ? 'var(--red)' : 'var(--green)';
+  } else { set('shpLucro','—'); set('shpTicket','—'); set('shpMargem','—'); }
 }
 
 async function loadPedidos() {

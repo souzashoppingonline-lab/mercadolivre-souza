@@ -114,6 +114,13 @@ Página **Estoque & Preço** (`pages/shopee-precos-estoque.html`, `SHOPEE_NAV_IT
 - **Rotas**: `GET /api/shopee/estoque-preco` (itens + variações do espelho local `shopee_item_data`, filtro loja/busca) e `POST /api/shopee/anuncios/aplicar` (`{changes:[{item_id,model_id,price?,stock?}]}` — agrupa por item, grava na Shopee, atualiza o espelho local na hora via `updateLocalItemAfterWrite` pra não esperar o sync de 30min).
 - ⚠️ **Escrita real** — altera preço/estoque da loja. Verificação empírica do contrato sem alterar nada: `server/test-shopee-update.js` (regrava o estoque com o mesmo valor = no-op). Roda uma vez antes de confiar na tela.
 
+## Dashboard Executivo — implementado (KPIs no dashboard-shopee)
+
+O **dashboard-shopee** (tela inicial) ganhou os KPIs executivos de hoje: **Faturamento** (vendas), **Pedidos**, **Lucro**, **Ticket Médio**, **Margem** (+ Produtos). Backend `GET /api/shopee/executivo?store_id&dias` (0=hoje):
+- **Lucro = líquido do escrow − custo**. Líquido = `SUM(escrow_amount)` (após taxa Shopee real); pedidos sem escrow ainda (muito recentes) estimam o líquido pela **taxa efetiva** (`escrowFeePct`). Custo = `AVG(shopee_item_cost)` por item × quantidade (custo digitado no Precificador).
+- **Transparência**: retorna `pedidos_com_custo`/`custo_completo` — se nem todo pedido tem custo cadastrado, o dashboard mostra "⚠ parcial: X/Y c/ custo" no Lucro (não finge que o lucro é exato).
+- **Margem** = lucro/faturamento. **Ticket** = faturamento/pedidos.
+
 ## Painel de Problemas — implementado (tela própria)
 
 Página **Painel de Problemas** (`pages/shopee-problemas.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): cards do que precisa de ação na Shopee, cada um expansível com a amostra dos itens. Tudo `marketplace_id=SHOPEE` (isolado do ML). Backend `GET /api/shopee/problemas?store_id`.

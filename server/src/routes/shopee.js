@@ -160,6 +160,56 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// Dashboard Executivo Shopee — KPIs consolidados (Faturamento, Lucro, Pedidos,
+// Ticket, Margem) do período. Lucro = líquido do escrow (após taxa Shopee real)
+// − custo do produto (digitado no Precificador, shopee_item_cost). Pedidos sem
+// escrow ainda (muito recentes) usam a taxa efetiva média pra estimar o líquido.
+router.get('/executivo', async (req, res) => {
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || '';
+    const dias = Number(req.query.dias) || 0; // 0 = hoje
+    const periodo = dias > 0
+      ? `o.date_created > now() - ($3 || ' days')::interval`
+      : `(o.date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date`;
+    const params = dias > 0 ? [mpId, storeId, String(dias)] : [mpId, storeId];
+
+    const { rows } = await pool.query(
+      `SELECT o.total_amount, o.quantity, sod.escrow_amount, ic.avg_cost
+       FROM orders o
+       LEFT JOIN shopee_order_data sod ON sod.order_id = o.ml_id
+       LEFT JOIN (SELECT item_id, AVG(cost) AS avg_cost FROM shopee_item_cost GROUP BY item_id) ic ON ic.item_id = o.item_id
+       WHERE o.marketplace_id = $1 AND o.status != 'cancelled'
+         AND ($2 = '' OR o.store_id = $2::bigint) AND ${periodo}`,
+      params
+    );
+
+    const feePct = (await escrowFeePct(mpId, storeId)) ?? 14;
+    let faturamento = 0, liquido = 0, custo = 0, pedidos = rows.length, comCusto = 0;
+    for (const r of rows) {
+      const bruto = Number(r.total_amount || 0);
+      faturamento += bruto;
+      // líquido: escrow real se houver; senão estima pelo % de taxa efetiva
+      liquido += r.escrow_amount != null ? Number(r.escrow_amount) : bruto * (1 - feePct / 100);
+      if (r.avg_cost != null) { custo += Number(r.avg_cost) * Number(r.quantity || 1); comCusto += 1; }
+    }
+    const lucro = liquido - custo;
+    res.json({
+      faturamento, pedidos,
+      ticket_medio: pedidos ? faturamento / pedidos : 0,
+      lucro,
+      margem_pct: faturamento ? (lucro / faturamento) * 100 : 0,
+      custo, liquido, taxa_pct: Number(feePct.toFixed(2)),
+      // transparência: quantos pedidos tinham custo cadastrado (o lucro é parcial se < pedidos)
+      pedidos_com_custo: comCusto,
+      custo_completo: comCusto === pedidos,
+    });
+  } catch (e) {
+    console.error('[api/shopee] /executivo', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Painel de Problemas Shopee — pontos que precisam de ação, todos filtrando
 // marketplace_id=SHOPEE (isolado do ML). Cada categoria traz contagem + amostra.
 router.get('/problemas', async (req, res) => {

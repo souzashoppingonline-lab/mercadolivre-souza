@@ -40,6 +40,33 @@ router.get('/dashboard/kpis', async (req, res) => {
   res.json(data);
 });
 
+// Quebra das vendas de HOJE por marketplace (ML/Shopee) — cards no dashboard.
+// COALESCE trata pedidos ML antigos com marketplace_id nulo como ML, pra o
+// somatório bater com o KPI consolidado "Vendas Hoje".
+router.get('/dashboard/por-marketplace', async (req, res) => {
+  try {
+    const mlId = (await pool.query(`SELECT id FROM marketplaces WHERE code='ML'`)).rows[0]?.id;
+    const { rows } = await pool.query(
+      `SELECT mk.code, mk.name,
+              COUNT(o.ml_id) AS pedidos,
+              COALESCE(SUM(o.total_amount), 0) AS vendas
+       FROM marketplaces mk
+       LEFT JOIN orders o
+         ON COALESCE(o.marketplace_id, $1) = mk.id
+        AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date
+        AND o.status <> 'cancelled'
+       WHERE mk.code IN ('ML', 'SHOPEE')
+       GROUP BY mk.code, mk.name
+       ORDER BY vendas DESC`,
+      [mlId]
+    );
+    res.json({ marketplaces: rows.map(r => ({ code: r.code, name: r.name, pedidos: Number(r.pedidos), vendas: Number(r.vendas) })) });
+  } catch (e) {
+    console.error('[api] /dashboard/por-marketplace error:', e.message);
+    res.status(500).json({ error: e.message, marketplaces: [] });
+  }
+});
+
 router.get('/dashboard/alerts', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT title, available_quantity FROM vw_ml_items WHERE status='active' AND available_quantity <= 5 ORDER BY available_quantity ASC LIMIT 10`

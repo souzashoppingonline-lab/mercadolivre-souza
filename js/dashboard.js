@@ -8,17 +8,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.querySelector('.btn-refresh')?.addEventListener('click', loadDashboard);
 
-  WS.on('kpis_updated', loadKPIs);
-  WS.on('order_updated', () => { loadKPIs(); loadComparativo(); renderPedidosChart(); });
+  WS.on('kpis_updated', () => { loadKPIs(); loadMktCards(); });
+  WS.on('order_updated', () => { loadKPIs(); loadMktCards(); loadComparativo(); renderPedidosChart(); });
   WS.on('stock_alert', () => { loadKPIs(); loadAlertas(); });
   // Ao reconectar, recarrega tudo — garante dados atualizados mesmo após WS cair
-  WS.on('_connected', () => { loadKPIs(); loadComparativo(); });
+  WS.on('_connected', () => { loadKPIs(); loadMktCards(); loadComparativo(); });
   // Polling a cada 60s como fallback para quando eventos WS são perdidos
-  setInterval(() => { loadKPIs(); loadComparativo(); }, 60000);
+  setInterval(() => { loadKPIs(); loadMktCards(); loadComparativo(); }, 60000);
 });
 
 async function loadDashboard() {
-  await Promise.all([loadKPIs(), loadComparativo(), loadAlertas(), renderVendasChart(), renderPedidosChart(), loadTopProdutos()]);
+  await Promise.all([loadKPIs(), loadMktCards(), loadComparativo(), loadAlertas(), renderVendasChart(), renderPedidosChart(), loadTopProdutos()]);
+}
+
+// Cards de vendas de hoje por marketplace (ML / Shopee).
+const MKT_META = {
+  ML:     { nome: 'Mercado Livre', cor: '#ffe600', icon: 'fa-shopping-bag' },
+  SHOPEE: { nome: 'Shopee',        cor: '#ee4d2d', icon: 'fa-store' },
+  AMAZON: { nome: 'Amazon',        cor: '#ff9900', icon: 'fa-box' },
+};
+async function loadMktCards() {
+  const el = document.getElementById('mktCards');
+  if (!el) return;
+  const data = await DB.getDashboardPorMarketplace();
+  const rows = data?.marketplaces || [];
+  if (!rows.length || data?.error) { el.innerHTML = ''; return; }
+  el.innerHTML = rows.map(m => {
+    const meta = MKT_META[m.code] || { nome: m.name || m.code, cor: 'var(--primary)', icon: 'fa-store' };
+    return `
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-left:3px solid ${meta.cor};border-radius:12px;padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
+          <i class="fas ${meta.icon}" style="color:${meta.cor}"></i> ${meta.nome} · Hoje
+        </div>
+        <div style="font-size:1.5rem;font-weight:800;line-height:1.1">${R(m.vendas)}</div>
+        <div style="font-size:.8rem;color:var(--text-muted);margin-top:4px">${m.pedidos} pedido(s)</div>
+      </div>`;
+  }).join('');
 }
 
 async function loadKPIs() {

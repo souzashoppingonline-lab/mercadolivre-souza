@@ -97,6 +97,7 @@ const DB = {
 
   // ── Dashboard ──────────────────────────────────────────────
   async getDashboardKPIs()    { return this._get('/dashboard/kpis'); },
+  async getDashboardPorMarketplace() { return this._get('/dashboard/por-marketplace'); },
   async getDashboardChart(period = 7) { return this._get('/dashboard/chart', { period }); },
   async getTopProducts(limit = 10)    { return this._get('/dashboard/top-products', { limit }); },
   async getAlerts()           { return this._get('/dashboard/alerts'); },

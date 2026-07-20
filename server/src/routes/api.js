@@ -20,9 +20,13 @@ async function cached(key, ttlSeconds, fn) {
 // ── Dashboard ──────────────────────────────────────────────
 router.get('/dashboard/kpis', async (req, res) => {
   const data = await cached('kpis:summary', 30, async () => {
+    // Vendas/Pedidos Hoje: CONSOLIDADO de todos os marketplaces (ML+Shopee+Amazon)
+    // — pedido do usuário pra ver o total geral no dashboard. Usa a tabela base
+    // `orders` (não a view vw_ml_orders) de propósito. perguntas/anúncios abaixo
+    // continuam ML-only. Cache kpis:summary já é invalidado pelos workers ML e Shopee.
     const today = await pool.query(
       `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) vendas
-       FROM vw_ml_orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND status != 'cancelled'`
+       FROM orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND status != 'cancelled'`
     );
     const perguntas = await pool.query(`SELECT COUNT(*) n FROM questions WHERE status='UNANSWERED'`);
     const anuncios = await pool.query(`SELECT COUNT(*) n FROM vw_ml_items WHERE status='active'`);
@@ -291,9 +295,11 @@ router.get('/pedidos', async (req, res) => {
 
 router.get('/vendas/diarias', async (req, res) => {
   const days = Number(req.query.days) || 30;
+  // Gráfico de vendas diárias: CONSOLIDADO de todos os marketplaces (base `orders`,
+  // não vw_ml_orders) — pedido do usuário. O restante do dashboard segue ML-only.
   const { rows } = await pool.query(
     `SELECT (date_created AT TIME ZONE 'America/Sao_Paulo')::date as data, COUNT(*) pedidos, SUM(total_amount) bruto
-     FROM vw_ml_orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - $1::int AND status != 'cancelled'
+     FROM orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - $1::int AND status != 'cancelled'
      GROUP BY 1 ORDER BY 1`,
     [days]
   );
@@ -488,9 +494,13 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
          CASE WHEN o.date_created >= $1 AND o.date_created < $2 THEN 'hoje'
               WHEN o.date_created >= $3 AND o.date_created < $4 THEN 'ontem'
          END AS periodo
-       FROM vw_ml_orders o
-       JOIN vw_ml_stores s ON s.id = o.store_id
-       LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+       -- CONSOLIDADO: tabelas base orders/stores/items (nao as views ML) pra o
+       -- comparativo somar todos os marketplaces. A tela mostra so receita
+       -- (SUM total_amount) e pedidos; os campos de lucro (ml_fee/custo/imposto)
+       -- nao sao exibidos, entao ficarem 0 no Shopee nao afeta o que aparece.
+       FROM orders o
+       JOIN stores s ON s.id = o.store_id
+       LEFT JOIN items i ON i.ml_id = o.item_id
        WHERE ((o.date_created >= $1 AND o.date_created < $2)
            OR (o.date_created >= $3 AND o.date_created < $4))
          AND o.status != 'cancelled'

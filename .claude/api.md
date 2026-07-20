@@ -7,7 +7,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 ## Dashboard
 | Rota | Descrição |
 |---|---|
-| `GET /api/dashboard/kpis` | vendas/pedidos de hoje, perguntas pendentes, anúncios ativos. Cache Redis 30s (`kpis:summary`) |
+| `GET /api/dashboard/kpis` | vendas/pedidos de hoje **(consolidado — todos os marketplaces, tabela base `orders`)**, perguntas pendentes + anúncios ativos (esses seguem ML-only via `vw_ml_*`). Cache Redis 30s (`kpis:summary`, invalidado pelos workers ML e Shopee). Ver `decisions.md` (exceção consciente ao isolamento ML-only) |
 | `GET /api/dashboard/chart?period=N` | série diária de pedidos/receita, últimos N dias |
 | `GET /api/dashboard/top-products?limit=N` | produtos mais vendidos por receita |
 | `GET /api/dashboard/alerts` | itens com estoque ≤ 5 |
@@ -47,10 +47,10 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/pedidos?status&period` | lista + summary por status. `period`: `hoje`, `ontem` ou N dias |
 | `GET /api/pedidos/:id/detalhes` | pedido completo com cálculo de margem (custo, imposto, tarifa, fretes) |
 | `PATCH /api/pedidos/:id/frete-vendedor { cost }` | grava `shipping_seller_cost` manualmente |
-| `GET /api/vendas/diarias?days` | série diária, com estimativa fixa `liquido = bruto*0.88` / `taxas = bruto*0.12` (aproximação, não usa custo real por pedido) |
+| `GET /api/vendas/diarias?days` | série diária **(consolidado — todos os marketplaces, base `orders`)** pro gráfico do dashboard, com estimativa fixa `liquido = bruto*0.88` / `taxas = bruto*0.12` (aproximação, não usa custo real por pedido) |
 | `GET /api/vendas/detalhado?store_id&status&days&search&date_from&date_to` | linha a linha com margem calculada por pedido — fórmula em `finance.md` |
 | `GET /api/vendas/hoje` | KPI do dia (sempre `CURRENT_DATE`, independe de filtro de período) + `projecao_mes` (run-rate simples: receita acumulada do mês ÷ dias decorridos × dias no mês), `receita_mes`, `dias_decorridos`, `dias_no_mes` |
-| `GET /api/vendas/hoje-vs-ontem?store_id` | comparação até o mesmo horário do dia anterior (aritmética em UTC ajustada para BRT) |
+| `GET /api/vendas/hoje-vs-ontem?store_id` | comparação até o mesmo horário do dia anterior (aritmética em UTC ajustada para BRT) **(consolidado — todos os marketplaces, base `orders`/`stores`/`items`)**. A tela mostra só receita+pedidos; o `lucro` calculado usa campos ML (0 no Shopee) mas não é exibido |
 | `GET /api/vendas/por-loja?days` | receita diária por loja, período atual vs período anterior equivalente |
 | `GET /api/analises/estoque-parado?store_id&days&modo` | itens ativos sem venda no período (`modo=parado`) ou todos com contagem de vendas |
 | `GET /api/analises/horarios?store_id&period` | pedidos/receita por hora do dia (fuso America/Sao_Paulo) |

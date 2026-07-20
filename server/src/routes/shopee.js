@@ -160,6 +160,103 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// IA Sócio Shopee — junta o contexto da operação (vendas hoje×ontem, top
+// anúncios, estoque baixo, promoções vencendo, problemas, margem) e pede pra
+// API do Claude uma análise + recomendações em português. Isolado do ML.
+router.post('/ia-socio', async (req, res) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'ANTHROPIC_API_KEY não configurada no servidor. Adicione ao .env e reinicie.' });
+  try {
+    const mpId = await shopeeMarketplaceId();
+    const storeId = req.query.store_id || req.body?.store_id || '';
+    const tz = `AT TIME ZONE 'America/Sao_Paulo'`;
+    const P = [mpId, storeId];
+
+    const [vendasR, topR, lowR, promoR, probR, custoR] = await Promise.all([
+      pool.query(
+        `SELECT
+           COALESCE(SUM(total_amount) FILTER (WHERE (date_created ${tz})::date = (now() ${tz})::date),0) AS fat_hoje,
+           COUNT(*) FILTER (WHERE (date_created ${tz})::date = (now() ${tz})::date) AS ped_hoje,
+           COALESCE(SUM(total_amount) FILTER (WHERE (date_created ${tz})::date = (now() ${tz})::date - 1),0) AS fat_ontem,
+           COUNT(*) FILTER (WHERE (date_created ${tz})::date = (now() ${tz})::date - 1) AS ped_ontem,
+           COALESCE(SUM(total_amount) FILTER (WHERE date_created > now() - interval '7 days'),0) AS fat_7d
+         FROM orders o WHERE marketplace_id = $1 AND status != 'cancelled' AND ($2 = '' OR store_id = $2::bigint)`, P),
+      pool.query(
+        `SELECT COALESCE(i.title, o.item_id) AS anuncio, COUNT(*) AS pedidos, SUM(o.total_amount) AS faturamento
+         FROM orders o LEFT JOIN items i ON i.ml_id = o.item_id
+         WHERE o.marketplace_id = $1 AND o.status != 'cancelled' AND ($2 = '' OR o.store_id = $2::bigint)
+           AND o.date_created > now() - interval '30 days'
+         GROUP BY 1 ORDER BY faturamento DESC LIMIT 5`, P),
+      pool.query(
+        `SELECT title, available_quantity FROM items
+         WHERE marketplace_id = $1 AND status = 'active' AND COALESCE(available_quantity,0) <= 5 AND ($2 = '' OR store_id = $2::bigint)
+         ORDER BY available_quantity LIMIT 10`, P),
+      pool.query(
+        `SELECT name, tipo, to_timestamp(end_time) ${tz} AS fim FROM shopee_promotions
+         WHERE ($2 = '' OR store_id = $2::bigint)
+           AND end_time > extract(epoch from now()) AND end_time < extract(epoch from now()) + 3*86400
+         ORDER BY end_time ASC LIMIT 10`, [mpId, storeId]),
+      pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE status='paused') AS pausados,
+           COUNT(*) FILTER (WHERE status='active' AND COALESCE(available_quantity,0)=0) AS sem_estoque,
+           COUNT(*) FILTER (WHERE thumbnail IS NULL OR thumbnail='') AS sem_imagem
+         FROM items WHERE marketplace_id = $1 AND ($2 = '' OR store_id = $2::bigint)`, P),
+      pool.query(
+        `SELECT COUNT(DISTINCT sc.item_id) AS com_custo,
+                (SELECT COUNT(*) FROM items WHERE marketplace_id=$1 AND status='active' AND ($2='' OR store_id=$2::bigint)) AS ativos
+         FROM shopee_item_cost sc JOIN items i ON i.ml_id=sc.item_id AND i.marketplace_id=$1
+         WHERE ($2='' OR i.store_id=$2::bigint)`, P),
+    ]);
+
+    const v = vendasR.rows[0];
+    const variacao = Number(v.fat_ontem) > 0 ? ((Number(v.fat_hoje) - Number(v.fat_ontem)) / Number(v.fat_ontem)) * 100 : null;
+    const ctx = {
+      vendas: {
+        faturamento_hoje: Number(v.fat_hoje), pedidos_hoje: Number(v.ped_hoje),
+        faturamento_ontem: Number(v.fat_ontem), pedidos_ontem: Number(v.ped_ontem),
+        variacao_pct_vs_ontem: variacao != null ? Number(variacao.toFixed(1)) : null,
+        faturamento_7d: Number(v.fat_7d),
+      },
+      taxa_shopee_efetiva_pct: (await escrowFeePct(mpId, storeId)),
+      top_anuncios_30d: topR.rows,
+      estoque_baixo: lowR.rows,
+      promocoes_vencendo_3d: promoR.rows,
+      problemas: probR.rows[0],
+      custos_cadastrados: custoR.rows[0],
+      data_hoje: new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+    };
+
+    const fetch = require('node-fetch');
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1200,
+        system: `Você é o "Sócio", um analista sênior de e-commerce especialista em Shopee, sócio do vendedor. Fale em português brasileiro, direto, prático e honesto. Hoje é ${ctx.data_hoje}.
+
+Analise os DADOS REAIS da(s) loja(s) Shopee abaixo e entregue:
+1. Um resumo do dia (faturamento, pedidos, variação vs. ontem).
+2. 3 a 6 RECOMENDAÇÕES ACIONÁVEIS priorizadas (o que fazer agora e por quê), usando os dados: estoque baixo (dias até acabar se der pra estimar), promoções vencendo, anúncios pausados/sem imagem, margem.
+3. Um alerta se algo estiver ruim (queda de vendas, ruptura de estoque, promoção vencendo).
+
+Regras: valores em R$ com vírgula brasileira. Use **negrito** nos números e nomes de anúncios. Use listas. Seja específico (cite anúncios/promoções pelo nome). Se o custo não está cadastrado em vários itens (custos_cadastrados), avise que a margem/lucro é parcial. NÃO invente dados que não estão no JSON.
+
+DADOS:
+${JSON.stringify(ctx, null, 2)}`,
+        messages: [{ role: 'user', content: 'Faça a análise de sócio da minha operação Shopee agora e me diga o que fazer.' }],
+      }),
+    });
+    const aiData = await aiRes.json();
+    if (!aiRes.ok) throw new Error(aiData?.error?.message || `Anthropic API ${aiRes.status}`);
+    res.json({ analise: aiData.content?.[0]?.text || 'Sem resposta.', contexto: ctx });
+  } catch (e) {
+    console.error('[api/shopee] /ia-socio', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Performance de Anúncios Shopee — por anúncio no período: pedidos, unidades,
 // faturamento, lucro (líquido escrow − custo) e margem. Visitas/conversão NÃO
 // vêm da Open API da Shopee (só no Seller Center), então ficam null com nota.

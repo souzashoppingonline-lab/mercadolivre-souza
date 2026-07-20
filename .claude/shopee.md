@@ -114,6 +114,13 @@ Página **Estoque & Preço** (`pages/shopee-precos-estoque.html`, `SHOPEE_NAV_IT
 - **Rotas**: `GET /api/shopee/estoque-preco` (itens + variações do espelho local `shopee_item_data`, filtro loja/busca) e `POST /api/shopee/anuncios/aplicar` (`{changes:[{item_id,model_id,price?,stock?}]}` — agrupa por item, grava na Shopee, atualiza o espelho local na hora via `updateLocalItemAfterWrite` pra não esperar o sync de 30min).
 - ⚠️ **Escrita real** — altera preço/estoque da loja. Verificação empírica do contrato sem alterar nada: `server/test-shopee-update.js` (regrava o estoque com o mesmo valor = no-op). Roda uma vez antes de confiar na tela.
 
+## IA Sócio — implementado (análise automática via API do Claude)
+
+Página **IA Sócio** (`pages/shopee-ia-socio.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): botão "Analisar minha operação" → o "Sócio" (API do Claude) revisa os dados Shopee e devolve resumo do dia + recomendações acionáveis. Backend `POST /api/shopee/ia-socio?store_id`.
+- **Contexto montado** (só dados reais, isolado do ML): vendas hoje×ontem×7d (variação %), taxa efetiva do escrow, top 5 anúncios (30d), estoque baixo (≤5), promoções vencendo em 3d, contagem de problemas (pausados/sem estoque/sem imagem), e **cobertura de custos cadastrados** (pra avisar quando margem/lucro é parcial).
+- **Chamada**: mesmo padrão de `routes/api.js` `/mcp/chat` — `fetch` em `api.anthropic.com/v1/messages`, `x-api-key=ANTHROPIC_API_KEY`, model `claude-haiku-4-5-20251001`, system prompt com persona "Sócio" + o JSON do contexto. Retorna `{analise, contexto}`.
+- Frontend renderiza markdown mínimo (negrito/listas) + KPIs do dia. Requer `ANTHROPIC_API_KEY` no `.env` (503 se faltar).
+
 ## Performance de Anúncios — implementado (tela própria)
 
 Página **Performance** (`pages/shopee-performance.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): por anúncio no período (7–90 dias), **Pedidos, Unidades, Faturamento, Lucro e Margem** (mesma lógica do executivo: líquido escrow − custo; `*` quando o custo é parcial), ordenado por faturamento. Filtro loja/período, exporta CSV. Backend `GET /api/shopee/performance?store_id&dias`.

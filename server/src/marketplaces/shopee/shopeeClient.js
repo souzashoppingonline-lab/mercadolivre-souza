@@ -329,6 +329,34 @@ class ShopeeClient extends MarketplaceClient {
     return all;
   }
 
+  // Devoluções/reembolsos recentes (Returns API). A Shopee limita a janela de
+  // create_time a 15 dias, então varremos em janelas de 15d até cobrir `days`.
+  // Paginação via `more`. Campos confirmados em test-shopee-returns.js.
+  async listRecentReturns(days = 30) {
+    this._assertConfigured();
+    const all = [];
+    const now = nowSeconds();
+    const win = 15 * 24 * 3600;
+    const start = now - days * 24 * 3600;
+    let to = now;
+    while (to > start) {
+      const from = Math.max(start, to - win + 1);
+      let pageNo = 1;
+      for (let guard = 0; guard < 100; guard++) {
+        const resp = await this._call('/api/v2/returns/get_return_list', {
+          method: 'GET',
+          query: { page_no: String(pageNo), page_size: '50', create_time_from: String(from), create_time_to: String(to) },
+        });
+        const list = resp?.response?.return || [];
+        all.push(...list);
+        if (!resp?.response?.more || !list.length) break;
+        pageNo += 1;
+      }
+      to = from - 1;
+    }
+    return all;
+  }
+
   // Detalhe de um desconto — traz os itens (item_list) dentro da promoção, com
   // preço promocional por variação. Pagina via `more`. GET.
   async getDiscountItems(discountId, pageSize = 100) {

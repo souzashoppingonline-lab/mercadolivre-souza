@@ -24,6 +24,7 @@ const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens n
 const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS || 30 * 60 * 1000); // 30min — sync do catálogo (Product API)
 const SHOPEE_PROMO_INTERVAL_MS = Number(process.env.SHOPEE_PROMO_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de promoções + alerta de vencimento
 const SHOPEE_PROMO_ALERT_HOURS = Number(process.env.SHOPEE_PROMO_ALERT_HOURS || 24); // alerta quando a promoção vence em menos de X horas
+const SHOPEE_RETURNS_INTERVAL_MS = Number(process.env.SHOPEE_RETURNS_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de devoluções/reembolsos
 
 // AMAZON_ENV=mock troca o cliente/EventSource real por um que fabrica pedidos
 // de teste variados, sem depender do sandbox estático da Amazon (que só
@@ -304,6 +305,10 @@ async function startMarketplaceEventWorkers() {
     // Telegram quando uma promoção está perto de vencer. Isolado do pipeline ML.
     syncShopeePromos().catch((e) => console.warn('[marketplace-worker] promoções Shopee 1º run:', e.message));
     setInterval(() => syncShopeePromos().catch((e) => console.warn('[marketplace-worker] promoções Shopee:', e.message)), SHOPEE_PROMO_INTERVAL_MS);
+
+    // Devoluções/reembolsos Shopee (Returns API) — sync + alerta Telegram de nova.
+    syncShopeeReturns().catch((e) => console.warn('[marketplace-worker] devoluções Shopee 1º run:', e.message));
+    setInterval(() => syncShopeeReturns().catch((e) => console.warn('[marketplace-worker] devoluções Shopee:', e.message)), SHOPEE_RETURNS_INTERVAL_MS);
   }
 }
 
@@ -508,6 +513,45 @@ async function syncShopeePromos() {
       }
     }
     console.log(`[promos] loja ${storeId}: ${promos.length} promoção(ões) sincronizada(s)`);
+  }
+}
+
+// Sincroniza devoluções/reembolsos Shopee (Returns API) → shopee_returns e
+// alerta no Telegram as novas (< 24h, dedup por notified). Isolado do ML.
+async function syncShopeeReturns() {
+  const nowS = Math.floor(Date.now() / 1000);
+  for (const [storeId, client] of shopeeClients) {
+    let returns;
+    try { returns = await client.listRecentReturns(30); }
+    catch (e) { console.warn(`[returns] loja ${storeId}: ${e.message}`); continue; }
+    for (const r of returns || []) {
+      if (!r.return_sn) continue;
+      const it = (r.item || [])[0] || {};
+      const { rows } = await pool.query(
+        `INSERT INTO shopee_returns (return_sn, store_id, order_sn, status, reason, text_reason, refund_amount, currency, buyer_username, item_id, item_name, create_time, update_time, raw, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+         ON CONFLICT (return_sn) DO UPDATE SET
+           status=EXCLUDED.status, text_reason=EXCLUDED.text_reason, refund_amount=EXCLUDED.refund_amount,
+           update_time=EXCLUDED.update_time, raw=EXCLUDED.raw, updated_at=now()
+         RETURNING notified`,
+        [r.return_sn, storeId, r.order_sn || null, r.status || null, r.reason || null, r.text_reason || null,
+         r.refund_amount != null ? Number(r.refund_amount) : null, r.currency || null, r.user?.username || null,
+         it.item_id != null ? String(it.item_id) : null, it.name || null, r.create_time || null, r.update_time || null, JSON.stringify(r)]
+      );
+      const notified = rows[0]?.notified;
+      const createdMs = Number(r.create_time || 0) * 1000;
+      const recente = createdMs && (Date.now() - createdMs < 24 * 60 * 60 * 1000);
+      const aberta = !['CANCELLED', 'CLOSED'].includes(r.status);
+      if (aberta && recente && !notified) {
+        const val = r.refund_amount != null ? `R$ ${Number(r.refund_amount).toFixed(2).replace('.', ',')}` : '';
+        await tgNotify('tg_vendas', `↩️ <b>Devolução Shopee</b>\n📦 Pedido ${r.order_sn || ''}\n📝 ${it.name || ''}\n💸 Reembolso ${val}\n🗣️ ${String(r.text_reason || r.reason || '').slice(0, 160)}`);
+        await pool.query(`UPDATE shopee_returns SET notified=true WHERE return_sn=$1`, [r.return_sn]);
+      } else if (!notified) {
+        // devolução antiga: marca como notificada sem mandar Telegram (evita spam retroativo no 1º run)
+        await pool.query(`UPDATE shopee_returns SET notified=true WHERE return_sn=$1`, [r.return_sn]);
+      }
+    }
+    console.log(`[returns] loja ${storeId}: ${(returns || []).length} devolução(ões) sincronizada(s)`);
   }
 }
 

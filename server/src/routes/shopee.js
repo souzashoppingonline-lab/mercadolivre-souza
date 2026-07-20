@@ -412,6 +412,19 @@ router.get('/problemas', async (req, res) => {
          AND (sod.logistics_status IS NULL OR sod.logistics_status NOT IN
               ('LOGISTICS_DELIVERY_DONE','LOGISTICS_REQUEST_DONE','LOGISTICS_PICKUP_DONE'))${fltO}
        ORDER BY o.date_created ASC LIMIT 50`, P);
+    // Reclamações = devoluções abertas (status ainda em andamento)
+    const reclamacoes = await pool.query(
+      `SELECT order_sn AS pedido, item_name, refund_amount AS valor, status, text_reason
+       FROM shopee_returns
+       WHERE ($2 = '' OR store_id = $2::bigint) AND status NOT IN ('CANCELLED','CLOSED')
+       ORDER BY create_time DESC LIMIT 50`, P);
+    // Reembolsos = devoluções dos últimos 30 dias (com valor de reembolso)
+    const reembolsos = await pool.query(
+      `SELECT order_sn AS pedido, item_name, refund_amount AS valor, status
+       FROM shopee_returns
+       WHERE ($2 = '' OR store_id = $2::bigint)
+         AND create_time > extract(epoch from now()) - 30*86400
+       ORDER BY create_time DESC LIMIT 50`, P);
 
     const list = (r) => r.rows;
     res.json({
@@ -421,11 +434,11 @@ router.get('/problemas', async (req, res) => {
         sem_estoque:       { total: semEstoque.rowCount, itens: list(semEstoque), acao: 'Repor estoque' },
         sem_imagem:        { total: semImagem.rowCount, itens: list(semImagem), acao: 'Adicionar foto' },
         pedidos_cancelados:{ total: cancelados.rowCount, itens: list(cancelados), acao: 'Investigar motivo (30 dias)' },
+        reclamacoes:       { total: reclamacoes.rowCount, itens: list(reclamacoes), acao: 'Responder/resolver a devolução' },
+        reembolsos:        { total: reembolsos.rowCount, itens: list(reembolsos), acao: 'Reembolsos nos últimos 30 dias' },
       },
-      // Reclamações e reembolsos dependem da Returns API da Shopee (ainda não
-      // integrada) — expostos como indisponíveis pra não mostrar número falso.
-      indisponiveis: ['reclamacoes', 'reembolsos'],
-      nota_indisponiveis: 'Reclamações e reembolsos precisam da Returns API da Shopee (ainda não integrada).',
+      indisponiveis: [],
+      nota_indisponiveis: 'Devoluções/reembolsos vêm da Returns API da Shopee (sincronizada a cada 1h pelo worker).',
     });
   } catch (e) {
     console.error('[api/shopee] /problemas', e.message);

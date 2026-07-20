@@ -139,7 +139,14 @@ Página **Painel de Problemas** (`pages/shopee-problemas.html`, `SHOPEE_NAV_ITEM
 
 - **Pedidos atrasados**: pagos, `date_created < now−2 dias` e `logistics_status` ainda não despachado (não em DELIVERY/REQUEST/PICKUP_DONE). Aproximado (não temos o prazo RTS exato da Shopee).
 - **Anúncios pausados** (`status='paused'`), **Sem estoque** (`available_quantity=0` ativos), **Sem imagem** (`thumbnail` vazio), **Pedidos cancelados** (30 dias).
-- **Reclamações/reembolsos**: expostos como **indisponíveis** (dependem da Returns API da Shopee, ainda não integrada) — pra não mostrar número falso.
+- **Devoluções abertas (reclamações)** e **Reembolsos (30d)**: da Returns API (v42) — ver abaixo.
+
+### Devoluções/Reembolsos (Returns API) — implementado (v42)
+
+- **Client**: `listRecentReturns(days=30)` — a Shopee limita `create_time` a **janelas de 15 dias**, então varre em janelas de 15d (`returns/get_return_list`, pagina via `more`). Campos confirmados em `test-shopee-returns.js`: `return_sn`, `order_sn`, `status`, `reason`/`text_reason`, `refund_amount`, `user.username`, `item[]` (item_id/name/sku), `create_time`.
+- **Job `syncShopeeReturns`** (`marketplaceEventWorker`, a cada `SHOPEE_RETURNS_INTERVAL_MS`=1h): upsert em `shopee_returns` e **alerta no Telegram** (`tg_vendas`) as devoluções novas (< 24h, abertas, dedup por `notified` — marca antigas como notificadas sem mandar, evita spam retroativo).
+- **Painel de Problemas**: `reclamacoes` = devoluções com status ≠ CANCELLED/CLOSED; `reembolsos` = devoluções dos últimos 30d. (Saíram de "indisponíveis".)
+- Tabela `shopee_returns` (v42) — ver `database.md`.
 
 ## Promoções — implementado (tela própria + alerta Telegram)
 

@@ -233,6 +233,27 @@ updated_at TIMESTAMPTZ
 ```
 Preenchida pelo job `syncShopeePromos` (`marketplaceEventWorker`, 1h). Alimenta a página **Promoções** (`/api/shopee/promocoes`) e o alerta de vencimento no Telegram. Ver `shopee.md`.
 
+### `shopee_returns` — v42: devoluções/reembolsos Shopee (Returns API)
+```
+return_sn TEXT PK
+store_id BIGINT
+order_sn TEXT
+status TEXT              -- REQUESTED/PROCESSING/ACCEPTED/CANCELLED/CLOSED/...
+reason TEXT             -- código (CHANGE_MIND...)
+text_reason TEXT        -- texto do comprador
+refund_amount NUMERIC
+currency TEXT
+buyer_username TEXT
+item_id TEXT
+item_name TEXT          -- 1º item da devolução
+create_time BIGINT      -- epoch s
+update_time BIGINT
+raw JSONB
+notified BOOLEAN        -- dedup do alerta Telegram
+updated_at TIMESTAMPTZ
+```
+Preenchida pelo job `syncShopeeReturns` (`marketplaceEventWorker`, 1h; a Shopee limita a busca a janelas de 15 dias). Alimenta as categorias `reclamacoes`/`reembolsos` do Painel de Problemas (`/api/shopee/problemas`) e o alerta Telegram de devolução nova. Ver `shopee.md`.
+
 ### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
 ```
 marketplace_id INT FK marketplaces, source_key TEXT   -- PK composta

@@ -296,6 +296,29 @@ CREATE TABLE IF NOT EXISTS shopee_promotions (
 CREATE INDEX IF NOT EXISTS idx_shopee_promotions_store ON shopee_promotions(store_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_promotions_end ON shopee_promotions(end_time);
 
+-- v42: devoluções/reembolsos Shopee (Returns API). Ver .claude/shopee.md.
+CREATE TABLE IF NOT EXISTS shopee_returns (
+  return_sn TEXT PRIMARY KEY,
+  store_id BIGINT,
+  order_sn TEXT,
+  status TEXT,
+  reason TEXT,
+  text_reason TEXT,
+  refund_amount NUMERIC,
+  currency TEXT,
+  buyer_username TEXT,
+  item_id TEXT,
+  item_name TEXT,
+  create_time BIGINT,
+  update_time BIGINT,
+  raw JSONB,
+  notified BOOLEAN DEFAULT false,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_returns_store ON shopee_returns(store_id);
+CREATE INDEX IF NOT EXISTS idx_shopee_returns_status ON shopee_returns(status);
+CREATE INDEX IF NOT EXISTS idx_shopee_returns_create ON shopee_returns(create_time);
+
 -- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (
   marketplace_id INT NOT NULL REFERENCES marketplaces(id),

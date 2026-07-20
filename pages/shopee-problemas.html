@@ -71,11 +71,14 @@ const META = {
   sem_estoque:        { label: 'Produtos sem estoque', icon: 'fa-box-open' },
   sem_imagem:         { label: 'Produtos sem imagem', icon: 'fa-image' },
   pedidos_cancelados: { label: 'Pedidos cancelados (30d)', icon: 'fa-ban' },
+  reclamacoes:        { label: 'Devoluções abertas', icon: 'fa-rotate-left' },
+  reembolsos:         { label: 'Reembolsos (30d)', icon: 'fa-money-bill-transfer' },
 };
 
 function itemLine(cat, it) {
   if (cat === 'pedidos_atrasados') return `<div class="prob-item"><span class="t">#${esc(it.pedido)}</span><span class="x">${fmtD(it.data)} · ${esc((it.logistics_status||'').replace('LOGISTICS_',''))}</span></div>`;
   if (cat === 'pedidos_cancelados') return `<div class="prob-item"><span class="t">#${esc(it.pedido)}</span><span class="x">${R(it.valor)} · ${fmtD(it.data)}</span></div>`;
+  if (cat === 'reclamacoes' || cat === 'reembolsos') return `<div class="prob-item"><span class="t">${esc(it.item_name||it.pedido)}<br><span style="font-size:10px;color:var(--text-muted)">#${esc(it.pedido)} · ${esc(it.status||'')}</span></span><span class="x">${R(it.valor)}</span></div>`;
   return `<div class="prob-item"><span class="t">${esc(it.title||it.item_id)}</span><span class="x">${esc(it.item_id)}</span></div>`;
 }
 

@@ -230,6 +230,22 @@ ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS logistics_status TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shopee_order_data_order_sn ON shopee_order_data(order_sn);
 CREATE INDEX IF NOT EXISTS idx_shopee_order_data_tracking ON shopee_order_data(tracking_number) WHERE tracking_number IS NOT NULL;
 
+-- v37: chat Shopee (conversas com comprador) — isolado. Ver .claude/shopee.md.
+CREATE TABLE IF NOT EXISTS shopee_chat (
+  conversation_id TEXT PRIMARY KEY,
+  store_id BIGINT,
+  buyer_name TEXT,
+  unread_count INT DEFAULT 0,
+  last_message TEXT,
+  last_message_type TEXT,
+  last_message_time BIGINT,
+  latest_message_id TEXT,
+  notified_message_id TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_chat_store ON shopee_chat(store_id);
+CREATE INDEX IF NOT EXISTS idx_shopee_chat_unread ON shopee_chat(unread_count) WHERE unread_count > 0;
+
 -- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (
   marketplace_id INT NOT NULL REFERENCES marketplaces(id),

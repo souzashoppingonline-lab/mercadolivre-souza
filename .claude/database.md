@@ -170,7 +170,22 @@ escrow_raw JSONB                -- v36: resposta completa de get_escrow_detail (
 logistics_status TEXT           -- v36: status de entrega geral (get_tracking_info.logistics_status)
 updated_at TIMESTAMPTZ
 ```
-Gravada por `server/src/marketplaceEventWorker.js` (`handleShopeeOrderEvent`), mesmo papel de `amazon_order_data`. O `tracking_number` (v35) é buscado via `ShopeeClient.getTrackingNumber` só quando o pedido está em status "embarcável" (`SHOPEE_SHIPPABLE`) — antes disso a Logistics API não tem rastreio. Backfill dos pedidos antigos: `server/backfill-shopee-tracking.js`.
+Gravada por `server/src/marketplaceEventWorker.js` (`handleShopeeOrderEvent`), mesmo papel de `amazon_order_data`.
+
+### `shopee_chat` — v37: conversas de chat Shopee (não respondidas)
+```
+conversation_id TEXT PK
+store_id BIGINT
+buyer_name TEXT
+unread_count INT
+last_message TEXT
+last_message_type TEXT
+last_message_time BIGINT       -- timestamp em NANOSSEGUNDOS (formato Shopee)
+latest_message_id TEXT
+notified_message_id TEXT       -- dedup do Telegram (último já notificado)
+updated_at TIMESTAMPTZ
+```
+Preenchida pelo job `syncShopeeChat` (`marketplaceEventWorker`, 10min). Índice parcial `unread_count>0`. Ver `shopee.md`. O `tracking_number` (v35) é buscado via `ShopeeClient.getTrackingNumber` só quando o pedido está em status "embarcável" (`SHOPEE_SHIPPABLE`) — antes disso a Logistics API não tem rastreio. Backfill dos pedidos antigos: `server/backfill-shopee-tracking.js`.
 
 ### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
 ```

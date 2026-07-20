@@ -300,4 +300,35 @@ router.get('/financeiro', async (req, res) => {
   }
 });
 
+// Chat — conversas Shopee não respondidas (unread_count > 0). Isolado.
+// Preenchido pelo job syncShopeeChat (marketplaceEventWorker). store_id opcional.
+router.get('/chat', async (req, res) => {
+  try {
+    const storeId = req.query.store_id || '';
+    const { rows } = await pool.query(
+      `SELECT c.conversation_id, c.buyer_name, c.unread_count, c.last_message,
+              c.last_message_type, c.last_message_time, s.nickname AS conta
+       FROM shopee_chat c LEFT JOIN stores s ON s.id = c.store_id
+       WHERE c.unread_count > 0 AND ($1 = '' OR c.store_id = $1::bigint)
+       ORDER BY c.last_message_time DESC NULLS LAST LIMIT 200`,
+      [storeId]
+    );
+    const totalNaoLidas = rows.reduce((a, r) => a + Number(r.unread_count || 0), 0);
+    res.json({
+      rows: rows.map((r) => ({
+        conversation_id: r.conversation_id, buyer_name: r.buyer_name,
+        unread_count: Number(r.unread_count || 0), last_message: r.last_message,
+        last_message_type: r.last_message_type,
+        // nanos → ms pro frontend formatar
+        last_message_ms: r.last_message_time ? Math.round(Number(r.last_message_time) / 1e6) : null,
+        conta: r.conta,
+      })),
+      resumo: { conversas: rows.length, nao_lidas: totalNaoLidas },
+    });
+  } catch (e) {
+    console.error('[api/shopee] /chat', e.message);
+    res.status(500).json({ error: e.message, rows: [], resumo: {} });
+  }
+});
+
 module.exports = router;

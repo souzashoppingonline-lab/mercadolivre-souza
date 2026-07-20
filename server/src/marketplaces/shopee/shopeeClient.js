@@ -239,6 +239,18 @@ class ShopeeClient extends MarketplaceClient {
     });
     return resp?.response || null;
   }
+
+  // Conversas de chat. type='unread' traz só as com mensagem não lida (o que
+  // interessa pra "não respondidas"). GET; exige type + direction + page_size
+  // (confirmado no diagnóstico test-shopee-chat.js — sem direction dá param_error).
+  async getConversationList(type = 'unread', pageSize = 25) {
+    this._assertConfigured();
+    const resp = await this._call('/api/v2/sellerchat/get_conversation_list', {
+      method: 'GET',
+      query: { type, direction: 'latest', page_size: String(pageSize) },
+    });
+    return resp?.response?.conversations || [];
+  }
 }
 
 module.exports = { ShopeeClient, getAuthorizationUrl, exchangeCodeForToken, sign, baseUrl };

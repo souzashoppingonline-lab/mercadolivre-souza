@@ -20,6 +20,7 @@ const { MockClient, MockEventSource } = require('./marketplaces/mock/mockProvide
 const AMAZON_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — ajustável sem tocar no restante do pipeline
 const SHOPEE_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — mesmo intervalo da Amazon na fase 1 (polling)
 const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar feedback visível em dev
+const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens não lidas do chat Shopee
 
 // AMAZON_ENV=mock troca o cliente/EventSource real por um que fabrica pedidos
 // de teste variados, sem depender do sandbox estático da Amazon (que só
@@ -283,6 +284,54 @@ async function startMarketplaceEventWorkers() {
   }
 
   scheduler.startAll().catch((err) => console.error('[marketplace-worker] scheduler startAll falhou:', err.message));
+
+  // Chat Shopee — poll de conversas não lidas a cada 10 min, notifica no Telegram
+  // as mensagens novas (dedup + guard de 24h). Isolado do pipeline ML.
+  if (shopeeStores.length) {
+    syncShopeeChat().catch((e) => console.warn('[marketplace-worker] chat Shopee 1º run:', e.message));
+    setInterval(() => syncShopeeChat().catch((e) => console.warn('[marketplace-worker] chat Shopee:', e.message)), SHOPEE_CHAT_INTERVAL_MS);
+  }
+}
+
+// Poll das conversas de chat Shopee não lidas → grava em shopee_chat e notifica
+// no Telegram (tópico tg_mensagens, mesmo das mensagens ML). Dedup por
+// notified_message_id + guard de 24h (não spammar conversa antiga no 1º run —
+// mesmo racional do anti-pedido-antigo das vendas).
+async function syncShopeeChat() {
+  for (const [storeId, client] of shopeeClients) {
+    let convs;
+    try { convs = await client.getConversationList('unread', 25); }
+    catch (e) { console.warn(`[marketplace-worker] chat Shopee store ${storeId}: ${e.message}`); continue; }
+    for (const c of convs || []) {
+      if (!c.conversation_id) continue;
+      const unread = Number(c.unread_count || 0);
+      const latestId = String(c.latest_message_id || '');
+      const buyer = c.to_name || String(c.to_id || '');
+      const lastText = c.latest_message_content?.text || `(${c.latest_message_type || 'mensagem'})`;
+      const { rows } = await pool.query(
+        `INSERT INTO shopee_chat (conversation_id, store_id, buyer_name, unread_count, last_message, last_message_type, last_message_time, latest_message_id, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+         ON CONFLICT (conversation_id) DO UPDATE SET
+           buyer_name=EXCLUDED.buyer_name, unread_count=EXCLUDED.unread_count,
+           last_message=EXCLUDED.last_message, last_message_type=EXCLUDED.last_message_type,
+           last_message_time=EXCLUDED.last_message_time, latest_message_id=EXCLUDED.latest_message_id,
+           updated_at=now()
+         RETURNING notified_message_id`,
+        [c.conversation_id, storeId, buyer, unread, lastText, c.latest_message_type || null, c.last_message_timestamp || null, latestId]
+      );
+      const notifiedId = rows[0]?.notified_message_id;
+      // last_message_timestamp vem em NANOSSEGUNDOS → ms. Só notifica se < 24h.
+      const tsMs = Number(c.last_message_timestamp || 0) / 1e6;
+      const recente = tsMs && (Date.now() - tsMs < 24 * 60 * 60 * 1000);
+      if (unread > 0 && latestId && latestId !== notifiedId && recente) {
+        await tgNotify('tg_mensagens', `💬 <b>Mensagem Shopee não respondida</b>\n👤 ${buyer}\n📩 ${unread} não lida(s)\n📝 ${String(lastText).slice(0, 200)}`);
+        await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2`, [latestId, c.conversation_id]);
+      } else if (unread > 0 && latestId && latestId !== notifiedId && !recente) {
+        // conversa antiga: marca como notificada sem mandar Telegram (evita spam retroativo)
+        await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2`, [latestId, c.conversation_id]);
+      }
+    }
+  }
 }
 
 module.exports = { startMarketplaceEventWorkers };

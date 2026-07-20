@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mensagens Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Mensagens'; window.ACTIVE_NAV='shopee-chat.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
+    .shp-filters select { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .shp-kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; margin-bottom:20px; }
+    .shp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:12px; padding:16px 18px; }
+    .shp-kpi .lbl { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .shp-kpi .val { font-size:26px; font-weight:800; line-height:1.1; }
+    .chat-row { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--bg-card); margin-bottom:10px; }
+    .chat-av { width:42px; height:42px; border-radius:50%; background:var(--shopee); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0; }
+    .chat-body { min-width:0; flex:1; }
+    .chat-name { font-weight:700; }
+    .chat-msg { font-size:13px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .chat-badge { background:var(--shopee); color:#fff; font-weight:800; font-size:12px; padding:3px 10px; border-radius:20px; flex-shrink:0; }
+    .chat-time { font-size:11px; color:var(--text-muted); flex-shrink:0; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Conversas de compradores Shopee com <b>mensagem não lida</b> (não respondidas). Também chegam no Telegram quando novas. Responda pelo app da Shopee.</p>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="chatLoja" onchange="loadChat()"><option value="">Todas as lojas</option></select>
+        <button class="action-btn" onclick="loadChat()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <div class="shp-kpis">
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-comments"></i> Conversas pendentes</div><div class="val" id="kConversas">—</div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-envelope"></i> Mensagens não lidas</div><div class="val" id="kNaoLidas" style="color:var(--shopee)">—</div></div>
+      </div>
+
+      <div id="chatList"><div class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></div></div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const initial = n => (String(n||'?').trim()[0]||'?').toUpperCase();
+const fmtDt = ms => ms ? new Date(ms).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('chatLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+async function loadChat() {
+  const store_id = document.getElementById('chatLoja').value;
+  const list = document.getElementById('chatList');
+  list.innerHTML = '<div class="empty-state" style="padding:30px">Carregando...</div>';
+  const d = await DB.getShopeeChat({ store_id });
+  if (!d || d.error) { list.innerHTML = `<div class="empty-state" style="padding:30px;color:var(--red)">Erro: ${d?.error||'sem dados'}</div>`; return; }
+  const r = d.resumo || {};
+  set('kConversas', r.conversas ?? 0); set('kNaoLidas', r.nao_lidas ?? 0);
+  const rows = d.rows || [];
+  list.innerHTML = rows.length ? rows.map(c => `
+    <div class="chat-row">
+      <div class="chat-av">${esc(initial(c.buyer_name))}</div>
+      <div class="chat-body">
+        <div class="chat-name">${esc(c.buyer_name || '—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(c.conta||'')}</span></div>
+        <div class="chat-msg">${esc(c.last_message || '')}</div>
+      </div>
+      <div class="chat-time">${fmtDt(c.last_message_ms)}</div>
+      <div class="chat-badge">${c.unread_count} não lida${c.unread_count>1?'s':''}</div>
+    </div>`).join('') : '<div class="empty-state" style="padding:30px">Nenhuma mensagem pendente 🎉</div>';
+}
+
+WS.on('_connected', loadChat);
+setInterval(loadChat, 60000);
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadChat);
+  await loadLojas();
+  loadChat();
+});
+</script>
+</body>
+</html>

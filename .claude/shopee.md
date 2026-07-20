@@ -79,3 +79,12 @@ Criado especificamente para o processo de aprovação de produção da Shopee Op
 - Não tentar "adivinhar" nomes de campo/endpoint que não estão confirmados — a Shopee muda contrato entre versões menores; qualquer endpoint novo (produto, logística, financeiro — ainda não implementados) deve ter o campo/nome confirmado no portal do parceiro antes de codificar.
 - Não criar uma rota admin manual pra colar `refresh_token` de Shopee (como existe hoje pra Amazon) — a Shopee sempre exige o fluxo OAuth completo pra emitir token; não existe "gerar refresh token" fora dele (ver `decisions.md`).
 - Nunca colar `Partner Key`/tokens em chat — só em `server/.env`.
+
+## Chat (mensagens não respondidas) — implementado (v37)
+
+Diagnóstico (`test-shopee-chat.js`) fechou o contrato: `get_conversation_list` exige `type` + `direction=latest` + `page_size` (sem `direction` → `param_error`). `type='unread'` traz só conversas com mensagem não lida.
+
+- `ShopeeClient.getConversationList(type, pageSize)`.
+- Job **`syncShopeeChat`** (`marketplaceEventWorker`, a cada 10min, isolado do ML): busca conversas não lidas, grava em `shopee_chat` (dedup por `notified_message_id`) e notifica no **Telegram** (`tg_mensagens`) as novas — **com guard de 24h** (`last_message_timestamp` em nanossegundos; conversa antiga é marcada como notificada sem mandar Telegram, pra não spammar no 1º run).
+- Página **Mensagens** (`pages/shopee-chat.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): KPIs + lista de conversas pendentes. Backend `/api/shopee/chat`. Responder é feito pelo app da Shopee (fase 1 só notifica/lista).
+- Tabela `shopee_chat` (v37) — ver `database.md`.

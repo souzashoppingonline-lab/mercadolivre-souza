@@ -286,6 +286,49 @@ class ShopeeClient extends MarketplaceClient {
     return resp?.response || { tier_variation: [], model: [] };
   }
 
+  // ── Promoções (leitura) — GET, params no query string ──
+
+  // Lista descontos (promoção de preço) do status pedido (ongoing/upcoming/
+  // expired/all), paginando via `more`. Campos: discount_id, discount_name,
+  // start_time, end_time (epoch s), status. Confirmado em test-shopee-promo.js.
+  async getDiscountList(status = 'ongoing', pageSize = 100) {
+    this._assertConfigured();
+    const all = [];
+    let pageNo = 1;
+    for (let guard = 0; guard < 100; guard++) {
+      const resp = await this._call('/api/v2/discount/get_discount_list', {
+        method: 'GET',
+        query: { discount_status: status, page_no: String(pageNo), page_size: String(pageSize) },
+      });
+      const list = resp?.response?.discount_list || [];
+      all.push(...list);
+      if (!resp?.response?.more || !list.length) break;
+      pageNo += 1;
+    }
+    return all;
+  }
+
+  // Lista vouchers/cupons do status pedido, paginando via `more`. Campos:
+  // voucher_id, voucher_name, voucher_code, start_time, end_time, reward_type
+  // (1=valor fixo/2=%), percentage|discount_amount, min_basket_price,
+  // current_usage, usage_quantity, item_id_list (voucher de produto).
+  async getVoucherList(status = 'all', pageSize = 100) {
+    this._assertConfigured();
+    const all = [];
+    let pageNo = 1;
+    for (let guard = 0; guard < 100; guard++) {
+      const resp = await this._call('/api/v2/voucher/get_voucher_list', {
+        method: 'GET',
+        query: { status, page_no: String(pageNo), page_size: String(pageSize) },
+      });
+      const list = resp?.response?.voucher_list || [];
+      all.push(...list);
+      if (!resp?.response?.more || !list.length) break;
+      pageNo += 1;
+    }
+    return all;
+  }
+
   // ── Product API (ESCRITA) — POST com body. Altera a loja de verdade. ──
 
   // Atualiza o estoque de um item. stockList = [{model_id, stock}] (model_id=0

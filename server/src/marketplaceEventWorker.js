@@ -22,6 +22,8 @@ const SHOPEE_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — mesmo intervalo da 
 const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar feedback visível em dev
 const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens não lidas do chat Shopee
 const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS || 30 * 60 * 1000); // 30min — sync do catálogo (Product API)
+const SHOPEE_PROMO_INTERVAL_MS = Number(process.env.SHOPEE_PROMO_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de promoções + alerta de vencimento
+const SHOPEE_PROMO_ALERT_HOURS = Number(process.env.SHOPEE_PROMO_ALERT_HOURS || 24); // alerta quando a promoção vence em menos de X horas
 
 // AMAZON_ENV=mock troca o cliente/EventSource real por um que fabrica pedidos
 // de teste variados, sem depender do sandbox estático da Amazon (que só
@@ -297,6 +299,11 @@ async function startMarketplaceEventWorkers() {
     // estoque em massa/SEO/tarefas/promoções. Isolado do pipeline ML.
     syncShopeeCatalog().catch((e) => console.warn('[marketplace-worker] catálogo Shopee 1º run:', e.message));
     setInterval(() => syncShopeeCatalog().catch((e) => console.warn('[marketplace-worker] catálogo Shopee:', e.message)), SHOPEE_CATALOG_INTERVAL_MS);
+
+    // Promoções Shopee (descontos + vouchers) — sincroniza prazos e alerta no
+    // Telegram quando uma promoção está perto de vencer. Isolado do pipeline ML.
+    syncShopeePromos().catch((e) => console.warn('[marketplace-worker] promoções Shopee 1º run:', e.message));
+    setInterval(() => syncShopeePromos().catch((e) => console.warn('[marketplace-worker] promoções Shopee:', e.message)), SHOPEE_PROMO_INTERVAL_MS);
   }
 }
 
@@ -426,6 +433,81 @@ async function syncShopeeCatalog() {
       ok++;
     }
     console.log(`[catalog] loja ${storeId}: ${ok}/${items.length} itens Shopee sincronizados`);
+  }
+}
+
+// Resumo legível do desconto de um voucher (reward_type: 1=valor fixo, 2=%).
+function voucherDesconto(v) {
+  if (Number(v.reward_type) === 2 && v.percentage != null) return `${v.percentage}%`;
+  if (v.discount_amount != null) return `R$${v.discount_amount}`;
+  return '—';
+}
+
+function promoStatus(startS, endS) {
+  const now = Math.floor(Date.now() / 1000);
+  if (now < Number(startS)) return 'upcoming';
+  if (now > Number(endS)) return 'expired';
+  return 'ongoing';
+}
+
+// Sincroniza promoções Shopee (descontos + vouchers) pra shopee_promotions e
+// alerta no Telegram as que vão vencer em < SHOPEE_PROMO_ALERT_HOURS (dedup por
+// expiry_notified). Isolado do pipeline ML.
+async function syncShopeePromos() {
+  const nowS = Math.floor(Date.now() / 1000);
+  for (const [storeId, client] of shopeeClients) {
+    const promos = [];
+    try {
+      const [ongoing, upcoming] = await Promise.all([
+        client.getDiscountList('ongoing'),
+        client.getDiscountList('upcoming'),
+      ]);
+      for (const d of [...ongoing, ...upcoming]) {
+        promos.push({
+          tipo: 'discount', promo_id: String(d.discount_id), name: d.discount_name, code: null,
+          start_time: d.start_time, end_time: d.end_time, desconto: null,
+          status: d.status || promoStatus(d.start_time, d.end_time), raw: d,
+        });
+      }
+    } catch (e) { console.warn(`[promos] loja ${storeId} descontos: ${e.message}`); }
+
+    try {
+      const vouchers = await client.getVoucherList('all');
+      for (const v of vouchers) {
+        if (Number(v.end_time) < nowS) continue; // ignora vouchers já expirados (não polui)
+        promos.push({
+          tipo: 'voucher', promo_id: String(v.voucher_id), name: v.voucher_name, code: v.voucher_code,
+          start_time: v.start_time, end_time: v.end_time, desconto: voucherDesconto(v),
+          status: promoStatus(v.start_time, v.end_time), raw: v,
+        });
+      }
+    } catch (e) { console.warn(`[promos] loja ${storeId} vouchers: ${e.message}`); }
+
+    for (const p of promos) {
+      const { rows } = await pool.query(
+        `INSERT INTO shopee_promotions (tipo, promo_id, store_id, name, code, start_time, end_time, desconto, status, raw, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+         ON CONFLICT (tipo, promo_id) DO UPDATE SET
+           store_id=EXCLUDED.store_id, name=EXCLUDED.name, code=EXCLUDED.code,
+           start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, desconto=EXCLUDED.desconto,
+           status=EXCLUDED.status, raw=EXCLUDED.raw, updated_at=now()
+         RETURNING expiry_notified`,
+        [p.tipo, p.promo_id, storeId, p.name, p.code, p.start_time, p.end_time, p.desconto, p.status, JSON.stringify(p.raw)]
+      );
+      const jaNotificado = rows[0]?.expiry_notified;
+      // Alerta de vencimento: promoção ativa que vence em < X horas e ainda não avisada.
+      const faltaHoras = (Number(p.end_time) - nowS) / 3600;
+      if (p.status === 'ongoing' && faltaHoras > 0 && faltaHoras <= SHOPEE_PROMO_ALERT_HOURS && !jaNotificado) {
+        const fim = new Date(Number(p.end_time) * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        const tag = p.tipo === 'voucher' ? `🎟️ Voucher ${p.code || ''}` : '🏷️ Desconto';
+        await tgNotify('tg_vendas', `⏰ <b>Promoção Shopee vencendo</b>\n${tag}\n📝 ${p.name || ''}${p.desconto ? ` (${p.desconto})` : ''}\n⌛ vence em ${faltaHoras.toFixed(1)}h — ${fim}`);
+        await pool.query(`UPDATE shopee_promotions SET expiry_notified = true WHERE tipo=$1 AND promo_id=$2`, [p.tipo, p.promo_id]);
+      } else if (faltaHoras > SHOPEE_PROMO_ALERT_HOURS && jaNotificado) {
+        // Promoção foi estendida (novo end_time distante) → rearma o alerta.
+        await pool.query(`UPDATE shopee_promotions SET expiry_notified = false WHERE tipo=$1 AND promo_id=$2`, [p.tipo, p.promo_id]);
+      }
+    }
+    console.log(`[promos] loja ${storeId}: ${promos.length} promoção(ões) sincronizada(s)`);
   }
 }
 

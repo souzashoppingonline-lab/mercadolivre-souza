@@ -277,6 +277,25 @@ CREATE TABLE IF NOT EXISTS shopee_item_cost (
 );
 CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_item ON shopee_item_cost(item_id);
 
+-- v41: promoções Shopee (descontos + vouchers) com prazos + alerta de vencimento. Ver .claude/shopee.md.
+CREATE TABLE IF NOT EXISTS shopee_promotions (
+  tipo TEXT NOT NULL,
+  promo_id TEXT NOT NULL,
+  store_id BIGINT,
+  name TEXT,
+  code TEXT,
+  start_time BIGINT,
+  end_time BIGINT,
+  desconto TEXT,
+  status TEXT,
+  raw JSONB,
+  expiry_notified BOOLEAN DEFAULT false,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (tipo, promo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_promotions_store ON shopee_promotions(store_id);
+CREATE INDEX IF NOT EXISTS idx_shopee_promotions_end ON shopee_promotions(end_time);
+
 -- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (
   marketplace_id INT NOT NULL REFERENCES marketplaces(id),

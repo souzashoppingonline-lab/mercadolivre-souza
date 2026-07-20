@@ -193,6 +193,7 @@ const DB = {
   async aplicarShopeeEstoquePreco(changes) { return this._post('/shopee/anuncios/aplicar', { changes }); },
   async getShopeePrecificador(params = {}) { return this._get('/shopee/precificador', params); },
   async salvarShopeeCusto(item_id, model_id, cost) { return this._post('/shopee/custo', { item_id, model_id, cost }); },
+  async getShopeePromocoes(params = {}) { return this._get('/shopee/promocoes', params); },
   async getShopeeVendas(params = {})   { return this._get('/shopee/vendas', params); },
   async getShopeeAnuncios(params = {}) { return this._get('/shopee/anuncios', params); },
   async getShopeeFinanceiro(params = {}) { return this._get('/shopee/financeiro', params); },

@@ -160,6 +160,42 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// Promoções Shopee (descontos + vouchers) com prazos, do espelho local
+// (shopee_promotions, preenchido pelo job syncShopeePromos). Filtro por loja,
+// tipo e status. Recalcula o status na hora (o cron é de 1h). Isolado do ML.
+router.get('/promocoes', async (req, res) => {
+  try {
+    const storeId = req.query.store_id || '';
+    const tipo = req.query.tipo || '';
+    const { rows } = await pool.query(
+      `SELECT p.tipo, p.promo_id, p.name, p.code, p.start_time, p.end_time, p.desconto, p.status, s.nickname AS conta
+       FROM shopee_promotions p LEFT JOIN stores s ON s.id = p.store_id
+       WHERE ($1 = '' OR p.store_id = $1::bigint) AND ($2 = '' OR p.tipo = $2)
+       ORDER BY p.end_time ASC`,
+      [storeId, tipo]
+    );
+    const nowS = Math.floor(Date.now() / 1000);
+    const statusOf = (s, e) => (nowS < Number(s) ? 'upcoming' : (nowS > Number(e) ? 'expired' : 'ongoing'));
+    const out = rows.map((r) => ({
+      tipo: r.tipo, promo_id: r.promo_id, name: r.name, code: r.code,
+      start_ms: Number(r.start_time) * 1000, end_ms: Number(r.end_time) * 1000,
+      desconto: r.desconto, status: statusOf(r.start_time, r.end_time), conta: r.conta,
+    }));
+    const vencendo = out.filter((p) => p.status === 'ongoing' && (p.end_ms - Date.now()) < 24 * 3600 * 1000).length;
+    res.json({
+      rows: out,
+      resumo: {
+        ativas: out.filter((p) => p.status === 'ongoing').length,
+        agendadas: out.filter((p) => p.status === 'upcoming').length,
+        vencendo_24h: vencendo,
+      },
+    });
+  } catch (e) {
+    console.error('[api/shopee] /promocoes', e.message);
+    res.status(500).json({ error: e.message, rows: [], resumo: {} });
+  }
+});
+
 // Taxa efetiva REAL da Shopee, derivada do escrow dos pedidos (comissão que a
 // Shopee já cobrou ÷ total pago pelo comprador). É a "taxa automática" do
 // Precificador. Filtro opcional por loja. Retorna null se ainda não há escrow.

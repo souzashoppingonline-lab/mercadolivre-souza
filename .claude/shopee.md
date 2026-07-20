@@ -114,6 +114,15 @@ Página **Estoque & Preço** (`pages/shopee-precos-estoque.html`, `SHOPEE_NAV_IT
 - **Rotas**: `GET /api/shopee/estoque-preco` (itens + variações do espelho local `shopee_item_data`, filtro loja/busca) e `POST /api/shopee/anuncios/aplicar` (`{changes:[{item_id,model_id,price?,stock?}]}` — agrupa por item, grava na Shopee, atualiza o espelho local na hora via `updateLocalItemAfterWrite` pra não esperar o sync de 30min).
 - ⚠️ **Escrita real** — altera preço/estoque da loja. Verificação empírica do contrato sem alterar nada: `server/test-shopee-update.js` (regrava o estoque com o mesmo valor = no-op). Roda uma vez antes de confiar na tela.
 
+## Promoções — implementado (tela própria + alerta Telegram)
+
+Página **Promoções** (`pages/shopee-promocoes.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): acompanha descontos e vouchers com **contagem regressiva pro prazo** e alerta de vencimento.
+
+- **Client**: `getDiscountList(status)` (`discount/get_discount_list`, pagina via `more`) e `getVoucherList(status)` (`voucher/get_voucher_list`). Campos confirmados em `test-shopee-promo.js`: desconto = `discount_id/discount_name/start_time/end_time/status`; voucher = `voucher_id/voucher_name/voucher_code/start_time/end_time/reward_type(1=valor,2=%)/percentage|discount_amount/current_usage/usage_quantity`.
+- **Job `syncShopeePromos`** (`marketplaceEventWorker`, a cada `SHOPEE_PROMO_INTERVAL_MS`=1h): busca descontos (ongoing+upcoming) e vouchers (não expirados), upsert em `shopee_promotions`, e **alerta no Telegram** (`tg_vendas`) as promoções ativas que vencem em < `SHOPEE_PROMO_ALERT_HOURS`=24h — dedup por `expiry_notified` (rearma se a promoção for estendida).
+- **Rota** `GET /api/shopee/promocoes?store_id&tipo`: lê `shopee_promotions`, recalcula status na hora, KPIs (ativas/agendadas/vencendo 24h). A contagem regressiva é client-side (atualiza a cada 1min sem refetch).
+- Tabela `shopee_promotions` (v41) — ver `database.md`.
+
 ## Precificador — implementado (tela própria)
 
 Página **Precificador** (`pages/shopee-precificador.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): calcula o **preço ideal por variação** a partir de custo + margem + taxa, e aplica com 1 clique (reusa o `/anuncios/aplicar`).

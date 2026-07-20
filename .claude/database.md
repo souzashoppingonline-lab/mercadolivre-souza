@@ -216,6 +216,23 @@ updated_at TIMESTAMPTZ
 ```
 Custo digitado na tela do Precificador (a Shopee não fornece custo). **Separada** de `shopee_item_data` de propósito: o sync de catálogo reescreve `shopee_item_data.models` a cada 30min, então o custo morreria junto. Por variação porque custos diferem (ex: 1/2/3/4 peças). Ver `shopee.md`.
 
+### `shopee_promotions` — v41: promoções Shopee (descontos + vouchers) com prazos
+```
+tipo TEXT       -- 'discount' | 'voucher'   ┐ PK
+promo_id TEXT   -- discount_id | voucher_id ┘ (tipo, promo_id)
+store_id BIGINT
+name TEXT
+code TEXT               -- voucher_code (null p/ desconto)
+start_time BIGINT       -- epoch s
+end_time BIGINT         -- epoch s (o "prazo")
+desconto TEXT           -- resumo legível (12% / R$5)
+status TEXT             -- upcoming | ongoing | expired
+raw JSONB
+expiry_notified BOOLEAN -- dedup do alerta de vencimento no Telegram
+updated_at TIMESTAMPTZ
+```
+Preenchida pelo job `syncShopeePromos` (`marketplaceEventWorker`, 1h). Alimenta a página **Promoções** (`/api/shopee/promocoes`) e o alerta de vencimento no Telegram. Ver `shopee.md`.
+
 ### `marketplace_sync_state` — v15: cursor de "última sincronização" para EventSources de polling
 ```
 marketplace_id INT FK marketplaces, source_key TEXT   -- PK composta

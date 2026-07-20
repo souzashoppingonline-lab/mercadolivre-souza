@@ -42,7 +42,7 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 - **Financeiro**: vendas-turbo (dashboard da planilha Vendas ML Turbo — ver `finance.md`), conciliacao-bancaria (Agenda de Recebimentos — cards Hoje/Amanhã/7 dias/30 dias calculados no cliente a partir de `GET /api/conciliacao/agenda-recebimentos`, tabela dia-a-dia com export CSV; ver `conciliacao-bancaria.md`)
 - **Sistema**: mcp (chat com IA), monitor (métricas de servidor + config Telegram), schedule (jobs agendados), webhook (logs de webhooks recebidos)
 
-Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js`/`js/layout-shopee.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee`, `shopee-vendas`, `shopee-anuncios`, `shopee-precos-estoque`, `shopee-precificador`, `shopee-financeiro`, `shopee-chat`, `shopee-lojas` (dashboards dedicados da Shopee, mesmo padrão — ver `shopee.md`).
+Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js`/`js/layout-shopee.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee`, `shopee-vendas`, `shopee-anuncios`, `shopee-precos-estoque`, `shopee-precificador`, `shopee-promocoes`, `shopee-financeiro`, `shopee-chat`, `shopee-lojas` (dashboards dedicados da Shopee, mesmo padrão — ver `shopee.md`).
 
 ## Padrão de nova página (contrato)
 

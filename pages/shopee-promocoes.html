@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Promoções Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Promoções'; window.ACTIVE_NAV='shopee-promocoes.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:18px; }
+    .shp-filters select { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .shp-kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; margin-bottom:20px; }
+    .shp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:12px; padding:16px 18px; }
+    .shp-kpi .lbl { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .shp-kpi .val { font-size:26px; font-weight:800; line-height:1.1; }
+    .promo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+    .promo-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px; }
+    .promo-card.venc { border-color:var(--shopee); box-shadow:0 0 0 1px var(--shopee) inset; }
+    .promo-top { display:flex; align-items:center; gap:8px; }
+    .promo-name { font-weight:700; font-size:14px; flex:1; }
+    .tipo-badge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; text-transform:uppercase; }
+    .tipo-badge.discount { background:rgba(238,77,45,.15); color:var(--shopee); }
+    .tipo-badge.voucher { background:rgba(99,102,241,.15); color:#818cf8; }
+    .st-badge { font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; display:inline-flex; align-items:center; gap:5px; align-self:flex-start; }
+    .st-ongoing { background:rgba(39,174,96,.15); color:var(--green); }
+    .st-upcoming { background:rgba(52,152,219,.15); color:#5dade2; }
+    .st-expired { background:rgba(150,150,150,.15); color:var(--text-muted); }
+    .promo-rows { display:flex; flex-direction:column; gap:5px; font-size:12px; }
+    .promo-row { display:flex; justify-content:space-between; }
+    .promo-row .k { color:var(--text-muted); }
+    .promo-row .v { font-weight:600; }
+    .countdown { font-weight:800; font-size:15px; }
+    .countdown.urgent { color:var(--shopee); }
+    .promo-code { font-family:monospace; background:var(--surface); border:1px dashed var(--border); border-radius:6px; padding:2px 8px; font-size:12px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Promoções da Shopee (descontos e vouchers) com <b>contagem regressiva pro prazo</b>. As que vão vencer em menos de 24h também <b>avisam no Telegram</b>. Sincroniza a cada 1h.</p>
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="prLoja" onchange="load()"><option value="">Todas as lojas</option></select>
+        <label style="font-size:12px;color:var(--text-muted);margin-left:8px"><i class="fas fa-tag"></i> Tipo</label>
+        <select id="prTipo" onchange="load()"><option value="">Todos</option><option value="discount">Descontos</option><option value="voucher">Vouchers</option></select>
+        <label style="font-size:12px;color:var(--text-muted);margin-left:8px">Status</label>
+        <select id="prStatus" onchange="render()"><option value="">Todos</option><option value="ongoing">Ativas</option><option value="upcoming">Agendadas</option><option value="expired">Expiradas</option></select>
+        <button class="action-btn" onclick="load()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <div class="shp-kpis">
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-bolt"></i> Ativas</div><div class="val" id="kAtivas">—</div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-clock"></i> Agendadas</div><div class="val" id="kAgendadas">—</div></div>
+        <div class="shp-kpi"><div class="lbl"><i class="fas fa-hourglass-end"></i> Vencendo em 24h</div><div class="val" id="kVencendo" style="color:var(--shopee)">—</div></div>
+      </div>
+
+      <div class="promo-grid" id="promoGrid"><div class="empty-state" style="grid-column:1/-1;padding:30px"><div class="spinner" style="margin:auto"></div></div></div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDt = ms => ms ? new Date(ms).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const ST_LABEL = { ongoing:'Ativa', upcoming:'Agendada', expired:'Expirada' };
+let _promos = [];
+
+function countdown(endMs) {
+  const diff = endMs - Date.now();
+  if (diff <= 0) return { txt: 'encerrada', urgent: false };
+  const d = Math.floor(diff/86400000), h = Math.floor(diff%86400000/3600000), m = Math.floor(diff%3600000/60000);
+  const txt = d > 0 ? `${d}d ${h}h` : (h > 0 ? `${h}h ${m}min` : `${m}min`);
+  return { txt, urgent: diff < 24*3600000 };
+}
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('prLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+async function load() {
+  const store_id = document.getElementById('prLoja').value;
+  const tipo = document.getElementById('prTipo').value;
+  const grid = document.getElementById('promoGrid');
+  grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:30px">Carregando...</div>';
+  const d = await DB.getShopeePromocoes({ store_id, tipo });
+  if (!d || d.error) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</div>`; return; }
+  const r = d.resumo || {};
+  set('kAtivas', r.ativas ?? 0); set('kAgendadas', r.agendadas ?? 0); set('kVencendo', r.vencendo_24h ?? 0);
+  _promos = d.rows || [];
+  render();
+}
+
+function render() {
+  const grid = document.getElementById('promoGrid');
+  const fStatus = document.getElementById('prStatus').value;
+  const list = _promos.filter(p => !fStatus || p.status === fStatus);
+  grid.innerHTML = list.length ? list.map(p => {
+    const cd = countdown(p.end_ms);
+    return `<div class="promo-card ${p.status==='ongoing'&&cd.urgent?'venc':''}">
+      <div class="promo-top">
+        <span class="tipo-badge ${p.tipo}">${p.tipo==='voucher'?'Voucher':'Desconto'}</span>
+        <span class="promo-name">${esc(p.name||'—')}</span>
+      </div>
+      <span class="st-badge st-${p.status}"><i class="fas fa-circle" style="font-size:7px"></i> ${ST_LABEL[p.status]||p.status}</span>
+      <div class="promo-rows">
+        ${p.code?`<div class="promo-row"><span class="k">Código</span><span class="promo-code">${esc(p.code)}</span></div>`:''}
+        ${p.desconto&&p.desconto!=='—'?`<div class="promo-row"><span class="k">Desconto</span><span class="v">${esc(p.desconto)}</span></div>`:''}
+        <div class="promo-row"><span class="k">Início</span><span class="v">${fmtDt(p.start_ms)}</span></div>
+        <div class="promo-row"><span class="k">Fim (prazo)</span><span class="v">${fmtDt(p.end_ms)}</span></div>
+        <div class="promo-row"><span class="k">Loja</span><span class="v">${esc(p.conta||'')}</span></div>
+      </div>
+      ${p.status==='ongoing'?`<div class="promo-row" style="margin-top:2px"><span class="k">Vence em</span><span class="countdown ${cd.urgent?'urgent':''}" data-end="${p.end_ms}">${cd.txt}</span></div>`:''}
+      ${p.status==='upcoming'?`<div class="promo-row" style="margin-top:2px"><span class="k">Começa em</span><span class="countdown" data-start="${p.start_ms}">${countdown(p.start_ms).txt}</span></div>`:''}
+    </div>`;
+  }).join('') : '<div class="empty-state" style="grid-column:1/-1;padding:30px">Nenhuma promoção. Sincronize (aguarde o worker) ou ajuste os filtros.</div>';
+}
+
+// Atualiza os contadores a cada minuto (sem refetch)
+setInterval(() => {
+  document.querySelectorAll('.countdown[data-end]').forEach(el => {
+    const cd = countdown(Number(el.dataset.end)); el.textContent = cd.txt; el.classList.toggle('urgent', cd.urgent);
+  });
+  document.querySelectorAll('.countdown[data-start]').forEach(el => { el.textContent = countdown(Number(el.dataset.start)).txt; });
+}, 60000);
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLojas();
+  load();
+});
+</script>
+</body>
+</html>

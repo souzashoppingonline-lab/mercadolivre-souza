@@ -108,6 +108,10 @@ Desde v15, `worker.js` também sobe (2 linhas aditivas no final do arquivo, nenh
 - **Devoluções Shopee (v42)** — job `syncShopeeReturns` (`marketplaceEventWorker`, a cada `SHOPEE_RETURNS_INTERVAL_MS`=1h): `ShopeeClient.listRecentReturns(SHOPEE_RETURNS_LOOKBACK_DAYS=180)` (varre em janelas de 15d — limite da Returns API) → upsert em `shopee_returns` + alerta Telegram (`tg_vendas`) de devolução nova (< 24h, dedup `notified`). Alimenta reclamações/reembolsos do Painel de Problemas. Isolado do ML.
 - Se as credenciais Amazon (`AMAZON_LWA_CLIENT_ID`/`AMAZON_LWA_CLIENT_SECRET`) ou Shopee (`SHOPEE_PARTNER_ID`/`SHOPEE_PARTNER_KEY`) não estiverem configuradas, `discoverEvents()` é um no-op silencioso (mesma postura defensiva dos respectivos clients).
 
+## Devoluções — reconsulta de status em 2º plano (rate-limit safe)
+
+Job **`syncClaimsStatus`** (`worker.js`, só manual — botão "Atualizar pendentes" na página de Devoluções): busca as devoluções pendentes (`returns.status IN ('opened','analysis')`, últimos 120 dias, com `claim_id` no `raw_data`) e reconsulta **1 por vez** (`ml.getClaim`, delay base 8s; 429 → 20s + circuit breaker por loja: 3× 429 pausa a loja). Atualiza `status`/`raw_data`. A API de claims do ML tem rate limit apertado (é por nº de chamadas/janela, não por tamanho — token compartilhado com os webhooks), por isso é espaçado. Publica `devolucoes_sync_start`/`devolucoes_sync_done` no WS (a página avisa por toast e recarrega) e um resumo no Telegram (`tg_devolucoes`). O botão 🔄 por linha (`POST /alertas/devolucoes/:id/atualizar-status`) faz o mesmo pra 1 devolução, na hora.
+
 ## Comandos manuais (canal Redis `worker:cmd`)
 
 Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (busca retroativa completa, não agendada), `syncParentItems`, `syncVisitas`, `syncPrecos`, `syncScores`, `sync-seo-score`/`syncSeoScore`, `sync-catalog-competition`/`syncCatalogCompetition`, `syncNotionTarefas`, `syncTopVendas`, `emailDailyReports`, `emailRelatorioSemanal`, `checkOutlierEstatistico`, `checkTaxaDevolucaoAlta`, `reprocessSkipped`. Disparado por `POST /api/schedule/jobs/:name/trigger` ou `server/sync-now.sh`.

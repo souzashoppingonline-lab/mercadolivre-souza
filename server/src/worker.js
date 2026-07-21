@@ -1550,6 +1550,60 @@ async function syncShippingStatus() {
   }
 }
 
+// Reconsulta em segundo plano o status das devoluções PENDENTES (claim status
+// opened/analysis) — 1 GET por devolução, espaçado no tempo pra respeitar o
+// rate limit apertado da API de claims do ML. Disparado manualmente pelo botão
+// "Atualizar pendentes" (worker:cmd). Mesma disciplina de 429 do syncShippingStatus.
+let isSyncingClaims = false;
+async function syncClaimsStatus() {
+  if (isSyncingClaims) { console.warn('[sync-claims-status] já em execução — ignorando'); return; }
+  isSyncingClaims = true;
+  console.log('[sync-claims-status] iniciando reconsulta das devoluções pendentes...');
+  try {
+    const { rows: pending } = await pool.query(
+      `SELECT id, store_id, raw_data->>'id' AS claim_id FROM returns
+       WHERE (status IN ('opened','analysis') OR status IS NULL)
+         AND raw_data->>'id' IS NOT NULL
+         AND date > now() - interval '120 days'
+       ORDER BY updated_at ASC NULLS FIRST
+       LIMIT 150`
+    );
+    await publish('devolucoes_sync_start', { total: pending.length });
+    let updated = 0, errors = 0;
+    const blockedStores = new Set();
+    const streak = new Map();
+    for (const r of pending) {
+      if (blockedStores.has(r.store_id)) continue;
+      let waitMs = 8000; // intervalo base entre chamadas (conservador — token compartilhado com webhooks)
+      try {
+        const claim = await ml.getClaim(r.claim_id, r.store_id);
+        await pool.query(
+          `UPDATE returns SET status=$1, reason=COALESCE($2,reason), raw_data=$3, updated_at=now() WHERE id=$4`,
+          [claim.status, claim.reason_id || null, JSON.stringify(claim), r.id]
+        );
+        updated++;
+        streak.set(r.store_id, 0);
+      } catch (e) {
+        errors++;
+        console.warn(`[sync-claims-status] erro return=${r.id} claim=${r.claim_id}: ${e.message}`);
+        if (e.message?.includes('429')) {
+          waitMs = 20000; // tomou 429 → espera bem mais antes da próxima
+          const s = (streak.get(r.store_id) || 0) + 1;
+          streak.set(r.store_id, s);
+          if (s >= 3) { blockedStores.add(r.store_id); console.warn(`[sync-claims-status] loja ${r.store_id} — 3x 429, pausando o resto desta loja`); }
+        }
+      }
+      await new Promise((res) => setTimeout(res, waitMs));
+    }
+    console.log(`[sync-claims-status] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length})`);
+    await publish('devolucoes_sync_done', { updated, errors, total: pending.length });
+    try { await tgNotify('tg_devolucoes', `✅ <b>Devoluções atualizadas</b>\n🔄 ${updated} reconsultadas · ${errors} erro(s) · de ${pending.length} pendentes`); } catch {}
+    return { updated, errors, total: pending.length };
+  } finally {
+    isSyncingClaims = false;
+  }
+}
+
 // ── Limpeza de vídeos de embalagem — retenção de 30 dias ────────────────
 async function cleanupPackingVideos() {
   try {
@@ -2727,6 +2781,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'sync-shipping-status' || cmd === 'syncShippingStatus') {
       console.log('[worker] syncShippingStatus disparado manualmente');
       syncShippingStatus().catch(e => console.error('[worker] syncShippingStatus erro:', e.message));
+    }
+    if (cmd === 'sync-claims-status' || cmd === 'syncClaimsStatus') {
+      console.log('[worker] syncClaimsStatus disparado manualmente');
+      syncClaimsStatus().catch(e => console.error('[worker] syncClaimsStatus erro:', e.message));
     }
     if (cmd === 'mp-reports' || cmd === 'syncMpAccountReports') {
       console.log('[worker] syncMpAccountReports disparado manualmente');

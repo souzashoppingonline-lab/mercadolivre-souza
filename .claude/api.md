@@ -141,7 +141,8 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `PATCH /api/alertas/devolucoes/:id/note { note }` | anotação manual em uma devolução |
 | `PATCH /api/alertas/devolucoes/:id/prejuizo { prejuizo }` | valor de prejuízo digitado manualmente (R$) — string vazia/inválida grava `NULL` (não lançado), não zero |
 | `PATCH /api/alertas/devolucoes/:id/abertura-chamado { abertura_chamado }` | flag manual "Abrir chamado" (v43) — checkbox na tabela de Devoluções; sai como Sim/Não no CSV/PDF |
-| `POST /api/alertas/devolucoes/:id/atualizar-status` | reconsulta **só esta** claim no ML (`ml.getClaim`, 1 GET — evita rate limit) e atualiza `status`/`raw_data` da devolução. Ação pontual (mlClient chamado da rota, exceção documentada). Retorna `{ok,status,stage,type}` |
+| `POST /api/alertas/devolucoes/:id/atualizar-status` | reconsulta **só esta** claim no ML (`ml.getClaim`, 1 GET — evita rate limit) e atualiza `status`/`raw_data` da devolução. Ação pontual (mlClient chamado da rota, exceção documentada). Retorna `{ok,status,stage,type}`. 429 → mensagem amigável |
+| `POST /api/schedule/jobs/syncClaimsStatus/trigger` | dispara no worker (`worker:cmd`) o job `syncClaimsStatus` — reconsulta em 2º plano todas as devoluções pendentes (status opened/analysis), 1 por vez espaçada (respeita rate limit). Avisa no WS (`devolucoes_sync_start`/`devolucoes_sync_done`) e Telegram |
 | `GET /api/alertas/devolucoes/evolucao?days&store_id` | série diária zero-fill (`days` 1-90, padrão 30) — `dias: [{date, devolucoes, pedidos, taxa_pct}]`, usada pelo gráfico "Evolução da Taxa de Devolução". Independente do filtro de data da tabela principal (só respeita `store_id`), mesmo padrão de `GET /api/embalagem/historico` |
 | `GET /api/alteracoes?store_id&days&limit` | trilha de `item_changes` com título/thumbnail do item |
 

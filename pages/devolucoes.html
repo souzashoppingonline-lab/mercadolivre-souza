@@ -162,6 +162,7 @@
           <h3>Solicitações de Devolução</h3>
           <input type="text" id="devTableSearch" placeholder="🔎 Filtrar aqui: pedido, comprador ou produto..." oninput="filterDevTable()"
             style="margin-left:auto;min-width:260px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
+          <button class="btn-save-note" id="btnAtualizarPendentes" onclick="atualizarPendentes(this)" style="margin-left:8px" title="Reconsulta em segundo plano todas as devoluções em análise, 1 por vez (respeita o rate limit do ML)"><i class="fas fa-arrows-rotate"></i> Atualizar pendentes</button>
           <button class="btn-save-note" onclick="exportDevCSV()" style="margin-left:8px"><i class="fas fa-file-csv"></i> CSV</button>
           <button class="btn-save-note" onclick="exportDevPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
@@ -390,6 +391,28 @@ function devRowArray(r) {
   ];
 }
 const DEV_COLS = ['Pedido', 'Loja', 'Comprador', 'Produto', 'Motivo', 'Valor', 'Status', 'Data', 'Vídeo', 'Prejuízo (R$)', 'Observação', 'Abrir chamado'];
+
+// Toast simples (canto inferior) pra avisos de atualização em segundo plano.
+function toastDev(msg) {
+  let t = document.getElementById('devToast');
+  if (!t) {
+    t = document.createElement('div'); t.id = 'devToast';
+    t.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2000;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:10px;padding:12px 16px;font-size:13px;max-width:340px;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(t._to); t._to = setTimeout(() => { t.style.display = 'none'; }, 8000);
+}
+
+// Dispara a reconsulta EM SEGUNDO PLANO de todas as devoluções pendentes (o
+// worker faz 1 por vez, espaçado, sem tomar rate limit). Avisa via WebSocket.
+async function atualizarPendentes(btn) {
+  if (!confirm('Reconsultar em segundo plano todas as devoluções em análise?\n\nO sistema atualiza 1 por vez, devagar, pra não tomar rate limit do Mercado Livre. Você pode continuar usando a página — te aviso quando terminar.')) return;
+  btn.disabled = true;
+  const res = await DB.triggerJob('syncClaimsStatus');
+  if (!res || res.error) { btn.disabled = false; alert('Erro ao iniciar: ' + (res?.error || '')); return; }
+  toastDev('⏳ Atualizando devoluções pendentes em segundo plano... te aviso ao terminar.');
+}
 
 // Reconsulta SÓ esta devolução no ML (1 GET) e atualiza o status na tela.
 async function atualizarStatus(id, btn) {
@@ -791,6 +814,12 @@ async function syncRetroativo() {
 
 WS.on('devolucao_recebida', load);
 WS.on('order_updated', load);
+WS.on('devolucoes_sync_start', p => toastDev(`⏳ Atualizando ${p?.total ?? 0} devolução(ões) pendente(s) em segundo plano...`));
+WS.on('devolucoes_sync_done', p => {
+  const b = document.getElementById('btnAtualizarPendentes'); if (b) b.disabled = false;
+  toastDev(`✅ ${p?.updated ?? 0} devolução(ões) atualizadas${p?.errors ? ` · ${p.errors} erro(s)` : ''} (de ${p?.total ?? 0}).`);
+  load();
+});
 WS.on('_connected', () => { const el=document.getElementById('wsStatus'); if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 load();
 </script>

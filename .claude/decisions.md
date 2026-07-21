@@ -500,3 +500,15 @@ Ver fórmulas completas (status por `diferenca_pct`, estrelas por percentil, lim
 **Por que não só mexer nos jobs**: espaçar jobs sozinho não impede burst de webhook + job coincidirem, nem a competição cega entre lojas. O throttle global é a única camada que enxerga *todas* as chamadas ML do processo — é a proteção real. O limiter por-loja do BullMQ continua como 2ª camada (barato, já existia).
 
 **Risco assumido**: fica no hot-path de toda chamada ML. Mitigado com burst allowance (30) pra não frear o processamento normal de webhook, e taxa (20/s = 1200/min) bem abaixo do teto (~3000/min) deixando margem pro processo HTTP (que tem instância de limiter própria, já que o módulo é carregado separado em cada processo). Ponto em aberto: se no futuro cada loja ganhar `ml_client_id` próprio (orçamentos de verdade independentes), o throttle global vira conservador demais — nesse cenário valeria um bucket por-app-key em vez de um global. Não é o caso hoje.
+
+## Circuit breaker por-loja no mlClient — complemento do throttle global
+
+**Contexto**: após subir o throttle global (acima), o flood de 429 persistiu em produção **concentrado numa loja só** (UNIFULL_MULTIMERCADO), com o token dela também levando `OAUTH_RATE_LIMITED`. O throttle global paceia o *ritmo*, mas não desfaz uma penalidade que o ML já aplicou: depois de um flood, o ML devolve 429 pra quase tudo daquele app por um tempo, mesmo em ritmo baixo.
+
+**Por que persistia**: o `apiCooldown` do worker é por-`topic:storeId` e só liga **depois** de esgotar os 5 retries do BullMQ. Como a loja tem ~6 tópicos ativos (orders_v2/shipments/items/payments/…), eram ~30 chamadas 429 por rodada, cada tópico queimando seus 5 retries batendo no ML — e o cooldown de um tópico não segura os outros. Os próprios retries mantinham a penalidade viva.
+
+**Decisão**: circuit breaker **por-loja, na base (`mlClient.get`)**, por cima de todos os tópicos. Ao receber 429, `noteStore429` abre um cooldown crescente pra aquela loja (5s→10→20→40→60s teto); enquanto ativo, `storeInCooldown` faz `get()` falhar na hora, **sem tocar no ML nem renovar token**. O 1º sucesso (`noteStoreOk`) zera streak+cooldown. Mesmo racional do breaker de `syncShippingStatus`, agora na camada onde toda chamada passa.
+
+**Por que na base e não no worker**: só o `mlClient` vê *todas* as chamadas da loja (webhooks de qualquer tópico + jobs agendados + ações de rota). Um gate lá corta o flood inteiro de uma vez; no worker teria que replicar em cada handler. A mensagem de erro contém "429", então o `catch` do `processJob` já a classifica como rate-limit (retry→drop no cooldown de 5min do tópico) — os retries agora falham instantâneos, sem ML, deixando o app da loja esfriar e recuperar. As outras lojas seguem normais.
+
+**Trade-off**: uma loja que leve um 429 isolado fica 5s sem chamadas ML — irrelevante (o webhook reprocessa). O ganho é parar de alimentar a penalidade do ML com retries inúteis.

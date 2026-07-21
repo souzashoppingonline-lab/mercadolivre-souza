@@ -52,6 +52,33 @@ function rlPenalize(seconds = 2) {
   RL.tokens = Math.min(RL.tokens, -RL.refillPerSec * seconds);
 }
 
+// ── Circuit breaker por loja (429 do lado do ML) ──────────────────────────
+// Quando o ML penaliza o app de UMA loja, ele devolve 429 pra praticamente
+// tudo daquela loja por um tempo — e os 5 retries do BullMQ (por tópico!)
+// continuam batendo, mantendo a penalidade viva. Este gate, por-loja e por
+// cima de todos os tópicos, para de mandar as chamadas daquela loja por uma
+// janela crescente (5s→60s) assim que ela leva 429, deixando o ML recuperar.
+// As outras lojas seguem normais. Reseta no 1º sucesso. Mesmo racional do
+// circuit breaker de `syncShippingStatus` (ver decisions.md), agora na base.
+const storeCooldown = new Map(); // storeId → unix ms até quando pular chamadas
+const store429Streak = new Map(); // storeId → nº de 429 seguidos (backoff)
+
+function noteStore429(storeId) {
+  const streak = (store429Streak.get(storeId) || 0) + 1;
+  store429Streak.set(storeId, streak);
+  const secs = Math.min(60, 5 * Math.pow(2, streak - 1)); // 5,10,20,40,60(teto)
+  storeCooldown.set(storeId, Date.now() + secs * 1000);
+}
+function noteStoreOk(storeId) {
+  if (store429Streak.has(storeId)) {
+    store429Streak.delete(storeId);
+    storeCooldown.delete(storeId);
+  }
+}
+function storeInCooldown(storeId) {
+  return Date.now() < (storeCooldown.get(storeId) || 0);
+}
+
 async function getAccessToken(storeId) {
   const { rows } = await pool.query(
     'SELECT access_token, token_expires_at FROM stores WHERE id = $1', [storeId]
@@ -93,6 +120,12 @@ async function getAccessToken(storeId) {
 }
 
 async function get(path, storeId, retries = 1) {
+  // Circuit breaker por loja: se o ML já está penalizando esta loja (429 recente),
+  // nem tenta — falha na hora sem tocar no ML nem renovar token, deixando o app
+  // dela esfriar. O backoff do BullMQ reagenda; ML para de ver o flood e recupera.
+  if (storeInCooldown(storeId)) {
+    throw new Error(`ML API ${path} -> store ${storeId} em cooldown de rate limit (429 recente)`);
+  }
   const token = await getAccessToken(storeId);
   await acquireToken(); // throttle global app-wide (todas as chamadas ML compartilham o teto)
   const res = await fetch(`${BASE}${path}`, {
@@ -102,9 +135,12 @@ async function get(path, storeId, retries = 1) {
   // 429 — throw immediately so BullMQ's exponential backoff handles the delay.
   // Internal retry would silently block the queue slot for 30 s+ and still fail.
   if (res.status === 429) {
+    noteStore429(storeId); // abre/estende o cooldown desta loja (5s→60s)
     rlPenalize(); // recua o app inteiro por ~2s, não só esta chamada
     throw new Error(`ML API ${path} -> HTTP 429 (rate limited)`);
   }
+
+  if (res.ok) noteStoreOk(storeId); // 1º sucesso zera o streak/cooldown da loja
 
   // 5xx transient error — one quick retry after 2 s, then propagate.
   if (res.status >= 500 && retries > 0) {

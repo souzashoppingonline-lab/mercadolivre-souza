@@ -154,6 +154,7 @@ function buildTopbar(title, staffUser) {
         <span id="wsStatus" style="font-size:12px;color:var(--text-muted)">
           <i class="fas fa-circle" style="color:var(--orange);font-size:8px"></i> conectando
         </span>
+        <button class="btn-refresh" id="btnSomAlerta" title="Ativar som de alertas de venda"><i class="fas fa-bell-slash"></i></button>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
         ${buildLogoutButton(staffUser)}
       </div>
@@ -257,6 +258,27 @@ function initAlerts() {
   ['click', 'keydown', 'touchstart'].forEach(ev =>
     window.addEventListener(ev, _getCtx, { once: true, capture: true })
   );
+
+  // Botão explícito de "Ativar som" no topo — o jeito mais confiável de destravar
+  // o áudio (o clique É o gesto que o navegador exige) e ainda dá um retorno
+  // audível de que está funcionando. Fica com o sino cortado até ativar.
+  const somBtn = document.getElementById('btnSomAlerta');
+  let somAtivo = false;
+  function setSomIcon() {
+    if (!somBtn) return;
+    somBtn.innerHTML = `<i class="fas fa-${somAtivo ? 'bell' : 'bell-slash'}"></i>`;
+    somBtn.title = somAtivo ? 'Som de alertas ativo — clique para testar' : 'Clique para ativar o som de venda';
+    somBtn.style.color = somAtivo ? 'var(--green, #22c55e)' : 'var(--orange, #f59e0b)';
+  }
+  setSomIcon();
+  somBtn?.addEventListener('click', () => {
+    _getCtx();               // destrava o AudioContext dentro do gesto
+    somAtivo = true;
+    setSomIcon();
+    playMlSound();           // confirmação audível (som do ML ou fallback)
+    showToast('🔔 Som ativado', 'Você vai ouvir um alerta a cada venda nova.', '🔔',
+      { color: '#22c55e', link: '#', tag: 'som-ativo' });
+  });
 
   // Som gerado via Web Audio API — sem arquivo externo
   function playBeep(freq = 880, duration = 0.18, volume = 0.4) {

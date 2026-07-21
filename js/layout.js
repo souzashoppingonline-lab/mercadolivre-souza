@@ -240,10 +240,29 @@ function initAlerts() {
     Notification.requestPermission();
   }
 
+  // Áudio: UM AudioContext compartilhado, destravado no 1º gesto do usuário.
+  // Navegadores criam o contexto 'suspended' por política de autoplay — sem um
+  // clique/tecla antes, nada toca. Criar um contexto novo a cada beep (como era
+  // antes) nascia sempre suspenso → mudo. Aqui destravamos uma vez e reusamos,
+  // então alertas vindos do WebSocket (sem gesto direto) tocam normalmente.
+  let _audioCtx = null;
+  function _getCtx() {
+    try {
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+      return _audioCtx;
+    } catch (e) { return null; }
+  }
+  // Destrava no 1º clique/tecla/toque em qualquer lugar da página.
+  ['click', 'keydown', 'touchstart'].forEach(ev =>
+    window.addEventListener(ev, _getCtx, { once: true, capture: true })
+  );
+
   // Som gerado via Web Audio API — sem arquivo externo
   function playBeep(freq = 880, duration = 0.18, volume = 0.4) {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = _getCtx();
+      if (!ctx) return;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);

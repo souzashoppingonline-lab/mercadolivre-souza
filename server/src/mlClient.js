@@ -11,45 +11,48 @@ const refreshLocks = new Map();
 // Per-store OAuth cooldown: after a 429 on token refresh, block further attempts for 35 min
 const oauthCooldown = new Map(); // storeId → unix ms when cooldown expires
 
-// ── Throttle global app-wide ──────────────────────────────────────────────
-// O rate limit do ML é por-APP (um orçamento único compartilhado por TODAS as
-// lojas e tokens), não por loja. O limiter do BullMQ é por-loja (3/3s cada),
-// então N lojas + jobs agendados competem às cegas pelo mesmo orçamento e
-// estouram 429 em conjunto. Este token-bucket único faz TODA chamada ML
-// (webhook-driven e agendada) passar pelo mesmo teto, dimensionado bem abaixo
-// do limite real (~3000/min) com folga para picos e para o processo HTTP.
-// Valores ajustáveis por env sem redeploy de código.
-const RL = {
-  capacity: Number(process.env.ML_RL_BURST || 30),    // tokens de pico (burst)
-  refillPerSec: Number(process.env.ML_RL_RATE || 20), // req/s sustentado (~1200/min)
-  tokens: Number(process.env.ML_RL_BURST || 30),
-  last: Date.now(),
-};
+// ── Throttle por-APP (por loja) ───────────────────────────────────────────
+// O rate limit do ML é por-APP. Na produção atual CADA loja tem seu próprio
+// app (`stores.ml_client_id` preenchido — confirmado no banco), logo cada uma
+// tem um orçamento independente (~3000/min cada). Portanto o bucket é POR LOJA,
+// não global: estrangular as três num teto único faria uma loja saudável
+// esperar pela cota da loja saturada. Cada loja ganha seu próprio token-bucket,
+// dimensionado abaixo do teto do app com folga para picos. Lojas que caírem no
+// app global do `.env` (sem client_id próprio) recebem, cada uma, seu bucket —
+// levemente permissivo, mas o circuit breaker abaixo cobre o 429 nesse caso.
+// Valores ajustáveis por env sem redeploy.
+const RL_CAP  = Number(process.env.ML_RL_BURST || 30); // tokens de pico (burst) por loja
+const RL_RATE = Number(process.env.ML_RL_RATE || 20);  // req/s sustentado por loja (~1200/min)
+const rlBuckets = new Map(); // storeId → { tokens, last }
 
-function _rlRefill() {
+function _rlBucket(storeId) {
+  let b = rlBuckets.get(storeId);
+  if (!b) { b = { tokens: RL_CAP, last: Date.now() }; rlBuckets.set(storeId, b); }
   const now = Date.now();
-  const elapsed = (now - RL.last) / 1000;
+  const elapsed = (now - b.last) / 1000;
   if (elapsed > 0) {
-    RL.tokens = Math.min(RL.capacity, RL.tokens + elapsed * RL.refillPerSec);
-    RL.last = now;
+    b.tokens = Math.min(RL_CAP, b.tokens + elapsed * RL_RATE);
+    b.last = now;
   }
+  return b;
 }
 
-// Espera cooperativa (Node single-thread → sem lock) até haver 1 token livre.
-async function acquireToken() {
+// Espera cooperativa (Node single-thread → sem lock) até haver 1 token no
+// bucket DESTA loja. Não bloqueia as outras lojas.
+async function acquireToken(storeId) {
   for (;;) {
-    _rlRefill();
-    if (RL.tokens >= 1) { RL.tokens -= 1; return; }
-    const waitMs = Math.ceil(((1 - RL.tokens) / RL.refillPerSec) * 1000);
+    const b = _rlBucket(storeId);
+    if (b.tokens >= 1) { b.tokens -= 1; return; }
+    const waitMs = Math.ceil(((1 - b.tokens) / RL_RATE) * 1000);
     await new Promise(r => setTimeout(r, Math.max(15, waitMs)));
   }
 }
 
-// Ao receber 429, drena o bucket para que o app inteiro recue por ~`seconds`,
-// não só a chamada que falhou — evita que as outras lojas continuem batendo.
-function rlPenalize(seconds = 2) {
-  _rlRefill();
-  RL.tokens = Math.min(RL.tokens, -RL.refillPerSec * seconds);
+// Ao receber 429, drena o bucket DESTA loja para ela recuar por ~`seconds` —
+// não afeta o ritmo das outras (apps independentes).
+function rlPenalize(storeId, seconds = 2) {
+  const b = _rlBucket(storeId);
+  b.tokens = Math.min(b.tokens, -RL_RATE * seconds);
 }
 
 // ── Circuit breaker por loja (429 do lado do ML) ──────────────────────────
@@ -136,7 +139,7 @@ async function get(path, storeId, retries = 1) {
     throw new Error(`ML API ${path} -> store ${storeId} em cooldown de rate limit (429 recente)`);
   }
   const token = await getAccessToken(storeId);
-  await acquireToken(); // throttle global app-wide (todas as chamadas ML compartilham o teto)
+  await acquireToken(storeId); // throttle do app DESTA loja (não bloqueia as outras)
   const res = await fetch(`${BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -145,7 +148,7 @@ async function get(path, storeId, retries = 1) {
   // Internal retry would silently block the queue slot for 30 s+ and still fail.
   if (res.status === 429) {
     noteStore429(storeId); // abre/estende o cooldown desta loja (5s→60s)
-    rlPenalize(); // recua o app inteiro por ~2s, não só esta chamada
+    rlPenalize(storeId); // recua o app DESTA loja por ~2s
     throw new Error(`ML API ${path} -> HTTP 429 (rate limited)`);
   }
 
@@ -166,13 +169,13 @@ async function get(path, storeId, retries = 1) {
 
 async function post(path, storeId, body) {
   const token = await getAccessToken(storeId);
-  await acquireToken(); // throttle global app-wide
+  await acquireToken(storeId); // throttle do app desta loja
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (res.status === 429) rlPenalize();
+  if (res.status === 429) rlPenalize(storeId);
   if (!res.ok) throw new Error(`ML API POST ${path} -> HTTP ${res.status}: ${await res.text()}`);
   return res.json();
 }

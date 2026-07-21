@@ -10,6 +10,8 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 const pool = require('../db/pool');
+const env = require('../config/env');
+const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
 
 const router = express.Router();
 
@@ -88,6 +90,46 @@ async function lookupShopeeByTracking(tracking) {
   return out;
 }
 
+// Busca sob demanda: quando o bipe não acha o rastreio Shopee no banco (pedido
+// recém-preparado, antes da sincronização de 15 min pegá-lo), puxa o
+// tracking_number na hora dos pedidos Shopee recentes que ainda estão sem — até
+// achar o código bipado. Ordena por mais recente (o recém-preparado vem 1º) e
+// PARA assim que casa, pra não estourar latência nem rate limit da Shopee.
+// Retorna true se preencheu o rastreio bipado. Escreve só em shopee_order_data.
+async function refreshShopeeTrackingOnDemand(tracking) {
+  const { rows } = await pool.query(
+    `SELECT sod.order_sn, o.store_id
+       FROM shopee_order_data sod
+       JOIN orders o ON o.ml_id = sod.order_sn
+      WHERE sod.tracking_number IS NULL
+        AND o.date_created > now() - interval '20 days'
+      ORDER BY o.date_created DESC
+      LIMIT 40`
+  );
+  if (!rows.length) return false;
+  const clients = new Map(); // store_id → client (ou null se falhou construir)
+  let found = false;
+  for (const r of rows) {
+    if (!clients.has(r.store_id)) {
+      try { clients.set(r.store_id, await getShopeeClientForStore(pool, r.store_id, env.shopee)); }
+      catch (e) { clients.set(r.store_id, null); }
+    }
+    const client = clients.get(r.store_id);
+    if (!client) continue;
+    try {
+      const tn = await client.getTrackingNumber(r.order_sn);
+      if (tn) {
+        await pool.query(
+          `UPDATE shopee_order_data SET tracking_number = $1, updated_at = now() WHERE order_sn = $2`,
+          [tn, r.order_sn]
+        );
+        if (tn === tracking) { found = true; break; } // achou o bipado — para aqui
+      }
+    } catch (e) { /* ignora e tenta o próximo pedido */ }
+  }
+  return found;
+}
+
 // GET /api/embalagem/pedido/:shippingId — busca pedido(s) pela etiqueta bipada.
 // Pode retornar mais de 1 linha: um mesmo envio (pack) pode agrupar vários
 // pedidos do mesmo comprador.
@@ -110,10 +152,22 @@ router.get('/pedido/:shippingId', async (req, res) => {
     // número do pedido. Se não achou por shipping_id (ML), tenta casar por
     // tracking_number (Shopee) — mesma estação de bipagem pros dois marketplaces.
     if (!rows.length) {
-      const shopeeOrders = await lookupShopeeByTracking(req.params.shippingId);
+      const codigo = String(req.params.shippingId).trim();
+      let shopeeOrders = await lookupShopeeByTracking(codigo);
+      // Auto-busca sob demanda: se não achou e o código NÃO é um shipping_id ML
+      // (numérico puro), é candidato a rastreio Shopee ainda não sincronizado —
+      // puxa o tracking na hora e tenta de novo, sem o operador fazer nada.
+      if (!shopeeOrders.length && !/^\d+$/.test(codigo)) {
+        try {
+          const achou = await refreshShopeeTrackingOnDemand(codigo);
+          if (achou) shopeeOrders = await lookupShopeeByTracking(codigo);
+        } catch (e) {
+          console.error('[api/embalagem] auto-busca rastreio Shopee falhou:', e.message);
+        }
+      }
       if (shopeeOrders.length) {
-        const already = await lastPacking(req.params.shippingId);
-        return res.json({ shipping_id: req.params.shippingId, marketplace: 'SHOPEE', orders: shopeeOrders, already_packed: already });
+        const already = await lastPacking(codigo);
+        return res.json({ shipping_id: codigo, marketplace: 'SHOPEE', orders: shopeeOrders, already_packed: already });
       }
       return res.status(404).json({ error: 'Nenhum pedido encontrado para essa etiqueta' });
     }

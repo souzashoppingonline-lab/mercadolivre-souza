@@ -511,7 +511,7 @@ async function handlePostPurchase({ resource, storeId }) {
     const orderId = claimOrderId(claim);
     const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
     const itemTitle = claim.resolution?.description || null;
-    await resolveClaimReason(claim.reason_id, storeId);
+    const reasonText = await resolveClaimReason(claim.reason_id, storeId);
     const amount = await resolveReturnAmount(orderId);
     await pool.query(
       `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
@@ -522,7 +522,19 @@ async function handlePostPurchase({ resource, storeId }) {
     );
     await publish('devolucao_recebida', { store_id: storeId, claim_id: claimId, status: claim.status });
     if (claim.status === 'opened') {
-      await tgNotify('tg_devolucoes', `🔄 <b>Nova devolução solicitada</b>\n📦 Pedido: ${orderId||'—'}\n💬 Motivo: ${claim.reason_id||'—'}\n💰 Valor: R$ ${Number(claim.total||0).toFixed(2)}`);
+      const loja = await getStoreName(storeId);
+      const { rows: od } = await pool.query(
+        `SELECT o.title, o.item_id, i.permalink
+           FROM orders o LEFT JOIN items i ON i.ml_id = o.item_id
+          WHERE o.ml_id = $1`, [orderId]
+      );
+      const prod = od[0]?.title || itemTitle || '—';
+      const anuncio = od[0]?.item_id
+        ? (od[0].permalink ? `<a href="${od[0].permalink}">${od[0].item_id}</a>` : od[0].item_id)
+        : '—';
+      const motivo = reasonText ? `${reasonText} (${claim.reason_id})` : (claim.reason_id || '—');
+      await tgNotify('tg_devolucoes',
+        `🔄 <b>Nova devolução solicitada</b>\n🏪 Loja: ${loja}\n📦 Pedido: ${orderId||'—'}\n🏷️ Produto: ${prod}\n🔗 Anúncio: ${anuncio}\n💬 Motivo: ${motivo}\n💰 Valor: R$ ${Number(amount||0).toFixed(2)}`);
     }
   } catch (e) {
     console.warn(`[worker] handlePostPurchase fallback (${e.message})`);

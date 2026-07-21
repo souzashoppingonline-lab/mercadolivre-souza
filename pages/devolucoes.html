@@ -680,7 +680,9 @@ function logLabel(tipo) {
   const l = (tipo || '').toLowerCase();
   if (l.includes('fulfillment')) return 'Full';
   if (l.includes('self_service') || l.includes('flex')) return 'Flex';
-  if (l.includes('xd_drop_off') || l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return 'Mercado Envios';
+  // Todas as variações de Mercado Envios caem no mesmo rótulo — senão pedidos e
+  // devoluções ficam em linhas separadas e a taxa não bate (ex.: drop_off).
+  if (l.includes('drop_off') || l.includes('me1') || l.includes('me2') || l.includes('me3') || l.includes('cross_docking')) return 'Mercado Envios';
   return tipo || '—';
 }
 const fmtDT = d => d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';

@@ -161,7 +161,9 @@
         <div class="card-header">
           <h3>Solicitações de Devolução</h3>
           <input type="text" id="devTableSearch" placeholder="🔎 Filtrar aqui: pedido, comprador ou produto..." oninput="filterDevTable()"
-            style="margin-left:auto;min-width:280px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
+            style="margin-left:auto;min-width:260px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
+          <button class="btn-save-note" onclick="exportDevCSV()" style="margin-left:8px"><i class="fas fa-file-csv"></i> CSV</button>
+          <button class="btn-save-note" onclick="exportDevPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <div class="table-responsive">
           <table class="data-table">
@@ -257,6 +259,7 @@ async function savePrejuizo(id, btn) {
 
 let periodoAtual = { date_from: '', date_to: '' };
 let allDevRows = [];
+let viewDevRows = []; // linhas atualmente exibidas (respeitando o filtro) — usado no CSV/PDF
 
 async function loadLojasFiltro() {
   const sel = document.getElementById('filtroLoja');
@@ -306,6 +309,7 @@ function setPeriodoCustom() {
 
 // Render da tabela de devoluções (extraído pra ser reusado pelo filtro local).
 function renderDevRows(rows) {
+  viewDevRows = rows;
   document.getElementById('devTable').innerHTML = rows.length
     ? rows.map(r => {
         const st = statusMap[r.status] || { l: r.status, c: '' };
@@ -354,6 +358,59 @@ function filterDevTable() {
     String(r.item_title || r.title || '').toLowerCase().includes(q) ||
     String(r.conta || '').toLowerCase().includes(q));
   renderDevRows(f);
+}
+
+// Monta as 11 colunas de uma linha pra exportar (CSV/PDF). Lê Prejuízo/Observação
+// dos inputs (captura o que está na tela, mesmo não salvo) e o vídeo do DOM.
+function devVideoText(oid) {
+  const cell = document.getElementById('video-cell-' + oid);
+  if (!cell) return '—';
+  const a = cell.querySelector('a');
+  if (a) return a.href || 'sim';
+  const t = (cell.textContent || '').trim();
+  return t && t !== '—' ? t : '—';
+}
+function devRowArray(r) {
+  const st = statusMap[r.status] || { l: r.status };
+  const motivo = [r.reason_detail || r.reason || '', [traduzido(TYPE_LABEL, r.type), traduzido(STAGE_LABEL, r.stage)].filter(Boolean).join(' • ')].filter(Boolean).join(' — ');
+  const prej = (document.getElementById('prejuizo-' + r.id) || {}).value ?? (r.prejuizo ?? '');
+  const obs = (document.getElementById('note-' + r.id) || {}).value ?? (r.note ?? '');
+  return [
+    r.order_id || '', r.conta || '', r.buyer_nickname || '', r.item_title || r.title || '',
+    motivo, (r.order_amount ?? r.amount ?? ''), (st.l || r.status || ''), fmtD(r.date),
+    devVideoText(r.order_id), prej, obs,
+  ];
+}
+const DEV_COLS = ['Pedido', 'Loja', 'Comprador', 'Produto', 'Motivo', 'Valor', 'Status', 'Data', 'Vídeo', 'Prejuízo (R$)', 'Observação'];
+
+function exportDevCSV() {
+  const esc = v => { v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const linhas = (viewDevRows || []).map(r => devRowArray(r).map(esc).join(';'));
+  const csv = '﻿' + [DEV_COLS.join(';'), ...linhas].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `devolucoes-ml-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+function exportDevPDF() {
+  const h = v => String(v == null ? '' : v).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const trs = (viewDevRows || []).map(r => {
+    const a = devRowArray(r);
+    return '<tr>' + a.map((v, i) => `<td>${i === 5 && v !== '' ? h(fmt(v)) : h(v)}</td>`).join('') + '</tr>';
+  }).join('');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Solicitações de Devolução</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;padding:14px;color:#111}h2{margin:0}small{color:#666}
+    table{width:100%;border-collapse:collapse;margin-top:12px;font-size:9.5px}
+    th,td{border:1px solid #ccc;padding:4px 6px;text-align:left;vertical-align:top}
+    th{background:#f2f2f2}@page{size:landscape;margin:8mm}</style></head>
+    <body><h2>Solicitações de Devolução — Mercado Livre</h2>
+    <small>${(viewDevRows || []).length} registro(s) · gerado em ${new Date().toLocaleString('pt-BR')}</small>
+    <table><thead><tr>${DEV_COLS.map(c => `<th>${h(c)}</th>`).join('')}</tr></thead><tbody>${trs}</tbody></table>
+    <scr` + `ipt>window.onload=function(){setTimeout(function(){window.print();},250);}</scr` + `ipt></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permita pop-ups pra gerar o PDF.'); return; }
+  w.document.write(html); w.document.close();
 }
 
 // Copia o número do pedido pra área de transferência (pra colar no Mercado Livre).

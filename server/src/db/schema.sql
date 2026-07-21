@@ -160,8 +160,10 @@ CREATE TABLE IF NOT EXISTS returns (
   updated_at TIMESTAMPTZ DEFAULT now(),
   note TEXT,
   raw_data JSONB,
-  prejuizo NUMERIC -- v28: valor de prejuízo digitado manualmente pelo usuário (não vem da API do ML)
+  prejuizo NUMERIC, -- v28: valor de prejuízo digitado manualmente pelo usuário (não vem da API do ML)
+  abertura_chamado BOOLEAN DEFAULT false -- v43: flag manual "Abrir chamado" (checkbox na página de Devoluções)
 );
+ALTER TABLE returns ADD COLUMN IF NOT EXISTS abertura_chamado BOOLEAN DEFAULT false; -- v43 (idempotente p/ tabela já existente)
 
 CREATE TABLE IF NOT EXISTS claim_reasons (
   id TEXT PRIMARY KEY,

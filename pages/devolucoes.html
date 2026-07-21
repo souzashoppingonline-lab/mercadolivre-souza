@@ -167,8 +167,8 @@
         </div>
         <div class="table-responsive">
           <table class="data-table">
-            <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Prejuízo (R$)</th><th>Observação</th></tr></thead>
-            <tbody id="devTable"><tr><td colspan="11" class="empty-state">Carregando...</td></tr></tbody>
+            <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Prejuízo (R$)</th><th>Observação</th><th>Abrir chamado</th></tr></thead>
+            <tbody id="devTable"><tr><td colspan="12" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -342,9 +342,12 @@ function renderDevRows(rows) {
               <button class="btn-save-note" onclick="saveNote(${r.id}, this)">Salvar</button>
             </div>
           </td>
+          <td style="text-align:center" onclick="event.stopPropagation()" title="Marcar se foi aberto chamado nesta devolução">
+            <input type="checkbox" id="chamado-${r.id}" ${r.abertura_chamado ? 'checked' : ''} onchange="saveChamado(${r.id}, this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--primary)">
+          </td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="11" class="empty-state">Nenhuma devolução encontrada</td></tr>';
+    : '<tr><td colspan="12" class="empty-state">Nenhuma devolução encontrada</td></tr>';
   loadVideoLinks(rows.map(r => r.order_id).filter(Boolean));
 }
 
@@ -375,13 +378,22 @@ function devRowArray(r) {
   const motivo = [r.reason_detail || r.reason || '', [traduzido(TYPE_LABEL, r.type), traduzido(STAGE_LABEL, r.stage)].filter(Boolean).join(' • ')].filter(Boolean).join(' — ');
   const prej = (document.getElementById('prejuizo-' + r.id) || {}).value ?? (r.prejuizo ?? '');
   const obs = (document.getElementById('note-' + r.id) || {}).value ?? (r.note ?? '');
+  const cb = document.getElementById('chamado-' + r.id);
+  const chamado = (cb ? cb.checked : !!r.abertura_chamado) ? 'Sim' : 'Não';
   return [
     r.order_id || '', r.conta || '', r.buyer_nickname || '', r.item_title || r.title || '',
     motivo, (r.order_amount ?? r.amount ?? ''), (st.l || r.status || ''), fmtD(r.date),
-    devVideoText(r.order_id), prej, obs,
+    devVideoText(r.order_id), prej, obs, chamado,
   ];
 }
-const DEV_COLS = ['Pedido', 'Loja', 'Comprador', 'Produto', 'Motivo', 'Valor', 'Status', 'Data', 'Vídeo', 'Prejuízo (R$)', 'Observação'];
+const DEV_COLS = ['Pedido', 'Loja', 'Comprador', 'Produto', 'Motivo', 'Valor', 'Status', 'Data', 'Vídeo', 'Prejuízo (R$)', 'Observação', 'Abrir chamado'];
+
+// Salva a flag "Abrir chamado" (checkbox) e reflete no cache pra o export pegar.
+async function saveChamado(id, val) {
+  const row = allDevRows.find(x => String(x.id) === String(id));
+  if (row) row.abertura_chamado = val;
+  try { await DB.saveDevolucaoChamado(id, val); } catch (e) { console.error('saveChamado', e); }
+}
 
 function exportDevCSV() {
   const esc = v => { v = String(v == null ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };

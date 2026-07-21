@@ -1863,7 +1863,7 @@ router.get('/alertas/devolucoes', async (req, res) => {
     const [{ rows }, { rows: pedidosPorLojaRows }, { rows: pedidosPorLogisticaRows }] = await Promise.all([
       pool.query(
         `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
-                r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo,
+                r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo, r.abertura_chamado,
                 COALESCE(cr.detail, r.reason) AS reason_detail,
                 r.raw_data,
                 r.raw_data->>'stage' AS stage,
@@ -2022,6 +2022,21 @@ router.patch('/alertas/devolucoes/:id/note', async (req, res) => {
     res.json(rows[0]);
   } catch (e) {
     console.error('[/alertas/devolucoes/:id/note]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.patch('/alertas/devolucoes/:id/abertura-chamado', async (req, res) => {
+  try {
+    const aberto = req.body.abertura_chamado === true || req.body.abertura_chamado === 'true';
+    const { rows } = await pool.query(
+      `UPDATE returns SET abertura_chamado = $1, updated_at = now() WHERE id = $2 RETURNING id, abertura_chamado`,
+      [aberto, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[/alertas/devolucoes/:id/abertura-chamado]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

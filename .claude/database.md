@@ -131,6 +131,7 @@ date, updated_at TIMESTAMPTZ
 note  -- v23 (mesma correção): usado pelo endpoint PATCH /api/alertas/devolucoes/:id/note (anotação manual do time)
 raw_data JSONB  -- v24: claim completa da API do ML (stage/type/players/resolution/etc) — mesmo padrão de orders.raw_data
 prejuizo NUMERIC  -- v28: valor de prejuízo digitado manualmente pelo usuário (R$ perdido com a devolução) — NÃO vem da API do ML, PATCH /api/alertas/devolucoes/:id/prejuizo. NULL = ainda não avaliado (distinto de prejuízo zero)
+abertura_chamado BOOLEAN  -- v43: flag manual "Abrir chamado" (checkbox na tabela de Devoluções), PATCH /api/alertas/devolucoes/:id/abertura-chamado. Sai como Sim/Não no CSV/PDF
 ```
 
 ### `claim_reasons` — v24: cache de tradução de reason_id

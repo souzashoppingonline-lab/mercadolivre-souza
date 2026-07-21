@@ -2049,6 +2049,11 @@ router.post('/alertas/devolucoes/:id/atualizar-status', async (req, res) => {
     res.json({ ok: true, id: upd.rows[0].id, status: claim.status, stage: claim.stage || null, type: claim.type || null });
   } catch (e) {
     console.error('[/alertas/devolucoes/:id/atualizar-status]', e.message);
+    // A API de claims do ML tem rate limit apertado — mensagem clara pro usuário
+    // esperar em vez de mostrar "erro" genérico. Uma devolução por vez.
+    if (/429|rate limit/i.test(e.message)) {
+      return res.status(429).json({ error: 'O Mercado Livre limitou as consultas (rate limit). Aguarde ~1 minuto e atualize uma devolução por vez.' });
+    }
     res.status(500).json({ error: e.message });
   }
 });

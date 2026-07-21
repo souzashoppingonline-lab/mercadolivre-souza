@@ -253,7 +253,16 @@ const DB = {
   async saveDevolucaoNote(id, note)    { return this._patch(`/alertas/devolucoes/${id}/note`, { note }); },
   async saveDevolucaoPrejuizo(id, prejuizo) { return this._patch(`/alertas/devolucoes/${id}/prejuizo`, { prejuizo }); },
   async saveDevolucaoChamado(id, abertura_chamado) { return this._patch(`/alertas/devolucoes/${id}/abertura-chamado`, { abertura_chamado }); },
-  async atualizarDevolucaoStatus(id) { return this._post(`/alertas/devolucoes/${id}/atualizar-status`, {}); },
+  async atualizarDevolucaoStatus(id) {
+    // Fetch próprio (não usa _post) pra preservar a mensagem de erro do corpo
+    // — inclusive o 429 amigável — em vez de virar null no catch genérico.
+    try {
+      const res = await fetch(`${this.BASE}/alertas/devolucoes/${id}/atualizar-status`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      return await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    } catch (e) { return { error: e.message }; }
+  },
   async getDevolucoesEvolucao(params = {}) { return this._get('/alertas/devolucoes/evolucao', params); },
   async getAnunciosProblema(p={})  { return this._get('/alertas/anuncios-problema', p); },
   async getQualidadeAnuncio(p={})  { return this._get('/qualidade-anuncio', p); },

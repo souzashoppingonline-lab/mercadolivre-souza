@@ -158,7 +158,11 @@
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Solicitações de Devolução</h3></div>
+        <div class="card-header">
+          <h3>Solicitações de Devolução</h3>
+          <input type="text" id="devTableSearch" placeholder="🔎 Filtrar aqui: pedido, comprador ou produto..." oninput="filterDevTable()"
+            style="margin-left:auto;min-width:280px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
+        </div>
         <div class="table-responsive">
           <table class="data-table">
             <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Prejuízo (R$)</th><th>Observação</th></tr></thead>
@@ -300,6 +304,66 @@ function setPeriodoCustom() {
   load();
 }
 
+// Render da tabela de devoluções (extraído pra ser reusado pelo filtro local).
+function renderDevRows(rows) {
+  document.getElementById('devTable').innerHTML = rows.length
+    ? rows.map(r => {
+        const st = statusMap[r.status] || { l: r.status, c: '' };
+        const produto = r.item_title || r.title || '—';
+        const oid = r.order_id || '';
+        return `<tr onclick="openDevDetail(${r.id})" style="cursor:pointer">
+          <td style="font-size:11px;white-space:nowrap">
+            <span style="display:inline-flex;align-items:center;gap:6px">#${oid||'—'}${oid?`<button title="Copiar nº do pedido" onclick="event.stopPropagation();copiarPedido('${oid}',this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;font-size:12px"><i class="fas fa-copy"></i></button>`:''}</span>
+          </td>
+          <td style="font-size:.75rem;color:var(--text-muted)">${r.conta||'—'}</td>
+          <td style="white-space:nowrap">${r.buyer_nickname||'—'}</td>
+          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${produto}">${produto}</td>
+          <td style="max-width:180px" title="${r.reason||''}">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reason_detail || r.reason || '—'}</div>
+            ${(r.type || r.stage) ? `<div style="font-size:10px;color:var(--text-muted)">${[traduzido(TYPE_LABEL, r.type), traduzido(STAGE_LABEL, r.stage)].filter(Boolean).join(' • ')}</div>` : ''}
+          </td>
+          <td style="white-space:nowrap">${fmt(r.order_amount ?? r.amount)}</td>
+          <td><span class="badge ${st.c}">${st.l}</span></td>
+          <td style="white-space:nowrap">${fmtD(r.date)}</td>
+          <td id="video-cell-${r.order_id}" style="white-space:nowrap" onclick="event.stopPropagation()">—</td>
+          <td onclick="event.stopPropagation()">
+            <div class="note-cell">
+              <input class="note-input prejuizo-input" id="prejuizo-${r.id}" type="number" step="0.01" min="0" inputmode="decimal" value="${r.prejuizo ?? ''}" placeholder="0,00" style="max-width:90px">
+              <button class="btn-save-note" onclick="savePrejuizo(${r.id}, this)">Salvar</button>
+            </div>
+          </td>
+          <td onclick="event.stopPropagation()">
+            <div class="note-cell">
+              <input class="note-input" id="note-${r.id}" value="${(r.note||'').replace(/"/g,'&quot;')}" placeholder="Adicionar observação...">
+              <button class="btn-save-note" onclick="saveNote(${r.id}, this)">Salvar</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="11" class="empty-state">Nenhuma devolução encontrada</td></tr>';
+  loadVideoLinks(rows.map(r => r.order_id).filter(Boolean));
+}
+
+// Filtro local (instantâneo) da tabela — sobre os dados já carregados.
+function filterDevTable() {
+  const q = (document.getElementById('devTableSearch').value || '').trim().toLowerCase();
+  if (!q) { renderDevRows(allDevRows); return; }
+  const f = allDevRows.filter(r =>
+    String(r.order_id || '').toLowerCase().includes(q) ||
+    String(r.buyer_nickname || '').toLowerCase().includes(q) ||
+    String(r.item_title || r.title || '').toLowerCase().includes(q) ||
+    String(r.conta || '').toLowerCase().includes(q));
+  renderDevRows(f);
+}
+
+// Copia o número do pedido pra área de transferência (pra colar no Mercado Livre).
+async function copiarPedido(oid, btn) {
+  try { await navigator.clipboard.writeText(String(oid)); }
+  catch { const ta = document.createElement('textarea'); ta.value = oid; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); }
+  const i = btn.querySelector('i');
+  if (i) { const old = i.className; i.className = 'fas fa-check'; btn.style.color = 'var(--green)'; setTimeout(() => { i.className = old; btn.style.color = ''; }, 1200); }
+}
+
 async function load() {
   await loadLojasFiltro();
   const q = document.getElementById('searchInput').value.trim();
@@ -327,40 +391,7 @@ async function load() {
 
   const rows = data.items || [];
   allDevRows = rows;
-  document.getElementById('devTable').innerHTML = rows.length
-    ? rows.map(r => {
-        const st = statusMap[r.status] || { l: r.status, c: '' };
-        const produto = r.item_title || r.title || '—';
-        return `<tr onclick="openDevDetail(${r.id})" style="cursor:pointer">
-          <td style="font-size:11px;white-space:nowrap">#${r.order_id||'—'}</td>
-          <td style="font-size:.75rem;color:var(--text-muted)">${r.conta||'—'}</td>
-          <td style="white-space:nowrap">${r.buyer_nickname||'—'}</td>
-          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${produto}">${produto}</td>
-          <td style="max-width:180px" title="${r.reason||''}">
-            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.reason_detail || r.reason || '—'}</div>
-            ${(r.type || r.stage) ? `<div style="font-size:10px;color:var(--text-muted)">${[traduzido(TYPE_LABEL, r.type), traduzido(STAGE_LABEL, r.stage)].filter(Boolean).join(' • ')}</div>` : ''}
-          </td>
-          <td style="white-space:nowrap">${fmt(r.order_amount ?? r.amount)}</td>
-          <td><span class="badge ${st.c}">${st.l}</span></td>
-          <td style="white-space:nowrap">${fmtD(r.date)}</td>
-          <td id="video-cell-${r.order_id}" style="white-space:nowrap" onclick="event.stopPropagation()">—</td>
-          <td onclick="event.stopPropagation()">
-            <div class="note-cell">
-              <input class="note-input prejuizo-input" id="prejuizo-${r.id}" type="number" step="0.01" min="0" inputmode="decimal" value="${r.prejuizo ?? ''}" placeholder="0,00" style="max-width:90px">
-              <button class="btn-save-note" onclick="savePrejuizo(${r.id}, this)">Salvar</button>
-            </div>
-          </td>
-          <td onclick="event.stopPropagation()">
-            <div class="note-cell">
-              <input class="note-input" id="note-${r.id}" value="${(r.note||'').replace(/"/g,'&quot;')}" placeholder="Adicionar observação...">
-              <button class="btn-save-note" onclick="saveNote(${r.id}, this)">Salvar</button>
-            </div>
-          </td>
-        </tr>`;
-      }).join('')
-    : '<tr><td colspan="11" class="empty-state">Nenhuma devolução encontrada</td></tr>';
-
-  loadVideoLinks(rows.map(r => r.order_id).filter(Boolean));
+  renderDevRows(rows);
 
   renderRankMotivos(rows);
   renderRankProdutos(s);

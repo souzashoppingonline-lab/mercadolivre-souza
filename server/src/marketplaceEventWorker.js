@@ -25,6 +25,7 @@ const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS
 const SHOPEE_PROMO_INTERVAL_MS = Number(process.env.SHOPEE_PROMO_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de promoções + alerta de vencimento
 const SHOPEE_PROMO_ALERT_HOURS = Number(process.env.SHOPEE_PROMO_ALERT_HOURS || 24); // alerta quando a promoção vence em menos de X horas
 const SHOPEE_RETURNS_INTERVAL_MS = Number(process.env.SHOPEE_RETURNS_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de devoluções/reembolsos
+const SHOPEE_RETURNS_LOOKBACK_DAYS = Number(process.env.SHOPEE_RETURNS_LOOKBACK_DAYS || 180); // histórico de devoluções (varrido em janelas de 15d)
 
 // AMAZON_ENV=mock troca o cliente/EventSource real por um que fabrica pedidos
 // de teste variados, sem depender do sandbox estático da Amazon (que só
@@ -522,7 +523,7 @@ async function syncShopeeReturns() {
   const nowS = Math.floor(Date.now() / 1000);
   for (const [storeId, client] of shopeeClients) {
     let returns;
-    try { returns = await client.listRecentReturns(30); }
+    try { returns = await client.listRecentReturns(SHOPEE_RETURNS_LOOKBACK_DAYS); }
     catch (e) { console.warn(`[returns] loja ${storeId}: ${e.message}`); continue; }
     for (const r of returns || []) {
       if (!r.return_sn) continue;

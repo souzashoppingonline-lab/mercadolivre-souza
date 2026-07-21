@@ -72,6 +72,7 @@ const WS = {
 // Topics emitted by the backend after each worker run:
 // 'kpis_updated'         → dashboard KPIs changed
 // 'order_updated'        → a pedido changed status
+// 'nova_venda'           → venda NOVA (paid, <24h) → som + push (js/layout.js)
 // 'question_received'    → new ML question
 // 'message_received'     → new ML message
 // 'stock_alert'          → low stock threshold hit

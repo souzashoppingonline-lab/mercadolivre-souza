@@ -146,6 +146,7 @@ Página operacional (pensada pra rodar num PC/tablet fixo na bancada de embalage
 - Injeta `<aside class="sidebar">` e `<header class="topbar">` a partir de `NAV_ITEMS`.
 - **Seletor de loja** (`storeSwitcher`): busca `DB.getLojas()`, guarda a loja ativa em `localStorage.ml_active_store`, dispara `window.dispatchEvent(new CustomEvent('storeChanged', { detail: { storeId, storeName } }))` — páginas que filtram por loja devem escutar esse evento.
 - **Alertas globais** (`initAlerts`): toca um beep (Web Audio API, sem arquivo externo) e mostra um toast + notificação nativa do browser quando chegam os eventos WS `question_received` (status `UNANSWERED`) e `message_received`. Também injeta um badge vermelho no link "Perguntas" da sidebar.
+  - **`nova_venda`** (venda nova no ML): toca o **som do Mercado Livre** — `playMlSound()` tenta `/sounds/ml-venda.mp3` (arquivo opcional, ver `sounds/README.md`) e, se ausente/autoplay bloqueado, cai num arpejo sintetizado (`playMlChime`, Web Audio, sem arquivo externo) — e mostra um toast **verde** que leva a `vendas.html`. `showToast(title, body, icon, opts)` agora aceita `opts = { color, link, tag }` (default amarelo/perguntas, retrocompatível). O evento só chega na transição real p/ `paid` de venda < 24h (guarda no `worker.js`), então nunca toca em pedido antigo nem em importação em massa.
 - Pede permissão de `Notification` do browser automaticamente ao carregar (se ainda não decidido).
 
 ## `js/websocket.js` — cliente WS

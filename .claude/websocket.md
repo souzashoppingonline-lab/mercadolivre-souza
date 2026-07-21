@@ -33,6 +33,7 @@ Objeto `WS` singleton (`frontend.md` documenta a API pública `WS.on`/`WS.off`).
 | Tópico | Publicado por (handler em `worker.js`) | Payload | Consumido em |
 |---|---|---|---|
 | `order_updated` | `handleOrder`, `handleShipment` | `{ id, status }` ou `{ shipment_id }` | `dashboard.js`, `pages/pedidos.html`, `pages/vendas*.html` |
+| `nova_venda` | `handleOrder` (só na transição real p/ `paid` e venda < 24h — **mesma guarda anti-pedido-antigo do Telegram `tg_vendas`**; não dispara em importação em massa `silent`) | `{ marketplace:'ML', loja, titulo, valor, comprador, order_id }` | `layout.js` (`initAlerts`): **som do ML** (`/sounds/ml-venda.mp3` ou arpejo sintetizado fallback) + toast verde + notificação nativa. Presente em toda página |
 | `question_received` | `handleQuestion`, também emitido por `webhookGateway.js` ao processar reply do Telegram | `{ id, status, text }` | `layout.js` (alerta sonoro), `pages/perguntas.html` |
 | `message_received` | `handleMessage` | `{ pack_id }` | `layout.js` (alerta sonoro), `pages/mensagens.html` |
 | `anuncio_updated` | `handleItem`, `syncPrecos` | `{ id, status }` ou `{ sync: 'precos' }` | `pages/anuncios.html`, `pages/produtos.html` |

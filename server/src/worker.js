@@ -291,7 +291,20 @@ async function handleOrder({ resource, storeId, silent = false }) {
     const fmtDataHora = d => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' });
     const saleDateFmt = saleDate ? fmtDataHora(saleDate) : fmtDataHora(new Date());
     const notifiedAtFmt = fmtDataHora(new Date());
-    if (!silent) await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}`);
+    if (!silent) {
+      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}`);
+      // Alerta em tempo real na tela do dashboard (som + push) — consumido por
+      // js/layout.js (WS.on('nova_venda')). Mesma guarda anti-pedido-antigo do
+      // Telegram, então nunca dispara em importação em massa (silent) nem venda >24h.
+      await publish('nova_venda', {
+        marketplace: 'ML',
+        loja,
+        titulo: item0.item?.title || '—',
+        valor: val,
+        comprador: order.buyer?.nickname || '—',
+        order_id: order.id,
+      });
+    }
   }
 }
 

@@ -257,12 +257,32 @@ function initAlerts() {
     } catch(e) {}
   }
 
-  function showToast(title, body, icon) {
+  // "Cha-ching" do Mercado Livre. Se você colocar o arquivo real em
+  // /sounds/ml-venda.mp3 (o som oficial do ML), ele toca; se não existir ou o
+  // autoplay bloquear, cai num arpejo sintetizado alegre (sem arquivo externo).
+  function playMlChime() {
+    playBeep(660, 0.18, 0.5);
+    setTimeout(() => playBeep(880, 0.18, 0.5), 120);
+    setTimeout(() => playBeep(1175, 0.28, 0.5), 240);
+  }
+  function playMlSound() {
+    try {
+      const a = new Audio('/sounds/ml-venda.mp3');
+      a.volume = 0.6;
+      const p = a.play();
+      if (p && p.catch) p.catch(() => playMlChime()); // 404/autoplay → fallback
+    } catch (e) { playMlChime(); }
+  }
+
+  function showToast(title, body, icon, opts = {}) {
+    const color = opts.color || '#f59e0b';
+    const link  = opts.link  || '../pages/perguntas.html';
+    const tag   = opts.tag   || 'ml-alert';
     // Toast visual na tela
     const t = document.createElement('div');
     t.style.cssText = `
       position:fixed;top:20px;right:20px;z-index:99999;
-      background:#1a1a2e;border:1px solid #f59e0b;border-radius:12px;
+      background:#1a1a2e;border:1px solid ${color};border-radius:12px;
       padding:14px 18px;max-width:320px;box-shadow:0 8px 30px rgba(0,0,0,.5);
       display:flex;gap:12px;align-items:flex-start;cursor:pointer;
       animation:slideIn .3s ease;
@@ -270,10 +290,10 @@ function initAlerts() {
     t.innerHTML = `
       <span style="font-size:1.4rem">${icon}</span>
       <div>
-        <div style="font-weight:700;font-size:.9rem;color:#f59e0b;margin-bottom:3px">${title}</div>
+        <div style="font-weight:700;font-size:.9rem;color:${color};margin-bottom:3px">${title}</div>
         <div style="font-size:.8rem;color:#ccc;line-height:1.4">${body}</div>
       </div>
-      <span onclick="this.parentNode.remove()" style="color:#666;font-size:1rem;margin-left:auto;cursor:pointer">✕</span>
+      <span onclick="event.stopPropagation();this.parentNode.remove()" style="color:#666;font-size:1rem;margin-left:auto;cursor:pointer">✕</span>
     `;
     if (!document.querySelector('#toast-style')) {
       const s = document.createElement('style');
@@ -282,13 +302,13 @@ function initAlerts() {
       document.head.appendChild(s);
     }
     document.body.appendChild(t);
-    t.addEventListener('click', () => { t.remove(); window.location.href = '../pages/perguntas.html'; });
-    setTimeout(() => t.style.animation = 'slideIn .3s ease reverse', 4700);
-    setTimeout(() => t.remove(), 5000);
+    t.addEventListener('click', () => { t.remove(); window.location.href = link; });
+    setTimeout(() => t.style.animation = 'slideIn .3s ease reverse', 5800);
+    setTimeout(() => t.remove(), 6000);
 
     // Notificação nativa do browser (funciona mesmo com aba em background)
     if ('Notification' in window && Notification.permission === 'granted') {
-      const n = new Notification(title, { body, icon: '/favicon.ico', tag: 'ml-question' });
+      const n = new Notification(title, { body, icon: '/favicon.ico', tag });
       n.onclick = () => { window.focus(); n.close(); };
     }
   }
@@ -326,5 +346,19 @@ function initAlerts() {
     playBeep(660, 0.15);
     setTimeout(() => playBeep(880, 0.15), 180);
     showToast('💬 Nova Mensagem!', payload.buyer_nickname || 'Comprador enviou mensagem', '💬');
+  });
+
+  // Escuta VENDA NOVA no Mercado Livre — som do ML + push verde na tela.
+  // Disparado só na transição real para 'paid' e venda < 24h (ver worker.js),
+  // então nunca toca em pedido antigo nem em importação em massa.
+  WS.on('nova_venda', payload => {
+    playMlSound();
+    const linha = [payload.valor, payload.titulo].filter(Boolean).join(' · ');
+    showToast(
+      `🎉 Nova Venda! ${payload.loja || ''}`.trim(),
+      linha || 'Você fez uma venda no Mercado Livre',
+      '🛒',
+      { color: '#22c55e', link: '../pages/vendas.html', tag: 'ml-venda' }
+    );
   });
 }

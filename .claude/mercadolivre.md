@@ -42,10 +42,12 @@ Tópicos recomendados a configurar no painel do app ML (de `server/README.md`): 
 
 ## Rate limiting da API do ML — como o sistema se protege
 
-- Cada loja tem app ML próprio → rate limit por app, não compartilhado entre lojas (por isso filas/workers separados por `storeId`, ver `workers.md`).
-- ML permite ~3000 req/min por app; o worker se autolimita a ~60 req/min por loja (`limiter: 3 req/3s` × `concurrency: 3`) — bem abaixo do limite, para deixar margem para os syncs noturnos e picos de webhook simultâneos.
+- **Atenção:** o rate limit do ML é por-APP. Só é "independente entre lojas" quando cada loja tem `ml_client_id`/`ml_client_secret` próprios (ver "Credenciais por loja" abaixo). Lojas que caem nas credenciais globais do `.env` **compartilham o mesmo orçamento** — na produção atual (RICOPI/UNIFULL/TOP_MIX no app global) todas dividem ~3000 req/min.
+- **Throttle global app-wide (`mlClient.js`):** um único token-bucket por onde passa TODA chamada `get`/`post`/`mpGet` (webhook-driven e agendada). Default ~20 req/s sustentado com burst de 30 (`ML_RL_BURST`/`ML_RL_RATE` no `.env`). Ao receber 429, `rlPenalize()` drena o bucket → o app inteiro recua ~2s, não só a chamada que falhou. Isso impede que várias lojas + jobs agendados estourem o teto por-app em conjunto (era a causa do flood de 429).
+- O limiter por-loja do BullMQ (`limiter: 3 req/3s` × `concurrency: 3` = ~60 req/min/loja) continua existindo como 2ª camada, mas **não** enxerga as chamadas dos jobs agendados (billing, shipping, top-vendas, reprocess) — por isso o throttle global é a proteção real.
 - 429 em chamadas normais → backoff exponencial do BullMQ (5 tentativas) → cooldown de 5 min por `topic:storeId` se esgotar tentativas.
 - 429 no refresh de token (OAuth) → cooldown de 5 min por loja (histórico: já foi 35 min, reduzido — ver `decisions.md`).
+- **Jobs pesados espaçados:** `syncBillingCharges` (endpoint que mais dá 429) roda a cada 3h (`ML_BILLING_INTERVAL_MIN`, era 30 min) — as cobranças mudam pouco ao longo do dia, não compensava a pressão no orçamento por-app.
 
 ## Credenciais por loja
 

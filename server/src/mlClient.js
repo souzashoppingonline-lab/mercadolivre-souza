@@ -11,6 +11,47 @@ const refreshLocks = new Map();
 // Per-store OAuth cooldown: after a 429 on token refresh, block further attempts for 35 min
 const oauthCooldown = new Map(); // storeId → unix ms when cooldown expires
 
+// ── Throttle global app-wide ──────────────────────────────────────────────
+// O rate limit do ML é por-APP (um orçamento único compartilhado por TODAS as
+// lojas e tokens), não por loja. O limiter do BullMQ é por-loja (3/3s cada),
+// então N lojas + jobs agendados competem às cegas pelo mesmo orçamento e
+// estouram 429 em conjunto. Este token-bucket único faz TODA chamada ML
+// (webhook-driven e agendada) passar pelo mesmo teto, dimensionado bem abaixo
+// do limite real (~3000/min) com folga para picos e para o processo HTTP.
+// Valores ajustáveis por env sem redeploy de código.
+const RL = {
+  capacity: Number(process.env.ML_RL_BURST || 30),    // tokens de pico (burst)
+  refillPerSec: Number(process.env.ML_RL_RATE || 20), // req/s sustentado (~1200/min)
+  tokens: Number(process.env.ML_RL_BURST || 30),
+  last: Date.now(),
+};
+
+function _rlRefill() {
+  const now = Date.now();
+  const elapsed = (now - RL.last) / 1000;
+  if (elapsed > 0) {
+    RL.tokens = Math.min(RL.capacity, RL.tokens + elapsed * RL.refillPerSec);
+    RL.last = now;
+  }
+}
+
+// Espera cooperativa (Node single-thread → sem lock) até haver 1 token livre.
+async function acquireToken() {
+  for (;;) {
+    _rlRefill();
+    if (RL.tokens >= 1) { RL.tokens -= 1; return; }
+    const waitMs = Math.ceil(((1 - RL.tokens) / RL.refillPerSec) * 1000);
+    await new Promise(r => setTimeout(r, Math.max(15, waitMs)));
+  }
+}
+
+// Ao receber 429, drena o bucket para que o app inteiro recue por ~`seconds`,
+// não só a chamada que falhou — evita que as outras lojas continuem batendo.
+function rlPenalize(seconds = 2) {
+  _rlRefill();
+  RL.tokens = Math.min(RL.tokens, -RL.refillPerSec * seconds);
+}
+
 async function getAccessToken(storeId) {
   const { rows } = await pool.query(
     'SELECT access_token, token_expires_at FROM stores WHERE id = $1', [storeId]
@@ -53,6 +94,7 @@ async function getAccessToken(storeId) {
 
 async function get(path, storeId, retries = 1) {
   const token = await getAccessToken(storeId);
+  await acquireToken(); // throttle global app-wide (todas as chamadas ML compartilham o teto)
   const res = await fetch(`${BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -60,6 +102,7 @@ async function get(path, storeId, retries = 1) {
   // 429 — throw immediately so BullMQ's exponential backoff handles the delay.
   // Internal retry would silently block the queue slot for 30 s+ and still fail.
   if (res.status === 429) {
+    rlPenalize(); // recua o app inteiro por ~2s, não só esta chamada
     throw new Error(`ML API ${path} -> HTTP 429 (rate limited)`);
   }
 
@@ -78,11 +121,13 @@ async function get(path, storeId, retries = 1) {
 
 async function post(path, storeId, body) {
   const token = await getAccessToken(storeId);
+  await acquireToken(); // throttle global app-wide
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (res.status === 429) rlPenalize();
   if (!res.ok) throw new Error(`ML API POST ${path} -> HTTP ${res.status}: ${await res.text()}`);
   return res.json();
 }

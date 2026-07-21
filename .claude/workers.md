@@ -88,6 +88,9 @@ Outros loops independentes:
 - `tokenRefreshLoop` — roda no boot e a cada 30 min; renova token se faltar <4h, alerta Telegram (`tg_token`) escalonado (a cada 6h se >48h, sempre se <4h). Tokens "epoch zero" (`token_expires_at < ano 2000`, ver `mercadolivre.md`) nunca são renovados automaticamente — só alerta, exige reconexão manual.
 - `reprocessSkipped` — roda no boot (+5min) e a cada 30 min; reprocessa `webhook_logs` com `status='skipped'` e `topic='orders_v2'` das últimas 4h, respeitando o cooldown ainda ativo.
 - Sync inicial automático de vendas 2 min após o boot, **só fora do horário de pico** (22h–08h) para não competir com tráfego de webhook.
+- `syncBillingCharges` — roda no boot (+6min) e a cada 3h (`ML_BILLING_INTERVAL_MIN`, era 30 min; reduzido porque é o endpoint que mais dá 429 e as cobranças mudam pouco no dia). Varre `ml_billing_charges` de cada loja ML (grupos ML+MP), 2s entre chamadas.
+
+**Throttle global de rate limit (todos os jobs acima + webhooks):** desde a correção do flood de 429, TODA chamada ao `mlClient` (`get`/`post`/`mpGet`) — inclusive a destes jobs agendados, que **não** passam pelo limiter por-loja do BullMQ — atravessa um token-bucket único em `mlClient.js` (~20 req/s, burst 30, `ML_RL_BURST`/`ML_RL_RATE`). É a proteção real contra o estouro do orçamento por-app compartilhado entre lojas. Detalhes e racional em `mercadolivre.md` e `decisions.md`.
 
 ## Eventos de outros marketplaces — v15/v16/v18 (`marketplaceEventWorker.js`, processo à parte do dispatch acima)
 

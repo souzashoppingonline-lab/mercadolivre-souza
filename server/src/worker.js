@@ -2658,7 +2658,11 @@ async function syncBillingCharges() {
     }
   }
 }
-setInterval(() => syncBillingCharges().catch(e => console.error('[billing] interval erro:', e.message)), 30 * 60 * 1000);
+// Billing é o endpoint que mais devolve 429 e as cobranças mudam pouco ao longo
+// do dia — rodar a cada 30 min era desperdício e pressão desnecessária no
+// orçamento por-app do ML. Frequência reduzida (default 3h, ajustável por env).
+const BILLING_INTERVAL_MS = Number(process.env.ML_BILLING_INTERVAL_MIN || 180) * 60 * 1000;
+setInterval(() => syncBillingCharges().catch(e => console.error('[billing] interval erro:', e.message)), BILLING_INTERVAL_MS);
 setTimeout(() => syncBillingCharges().catch(e => console.error('[billing] initial erro:', e.message)), 6 * 60 * 1000);
 
 // Conciliação fase 2: baixa/parseia os Relatórios de Liberação do Mercado Pago

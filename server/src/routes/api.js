@@ -2026,6 +2026,33 @@ router.patch('/alertas/devolucoes/:id/note', async (req, res) => {
   }
 });
 
+// Atualiza o status de UMA devolução reconsultando a claim no ML (1 GET só —
+// evita rate limit de um sync geral). Ação pontual explícita → pode chamar o
+// mlClient da rota (exceção documentada em architecture.md, igual answerQuestion).
+router.post('/alertas/devolucoes/:id/atualizar-status', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT store_id, raw_data FROM returns WHERE id = $1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'devolução não encontrada' });
+    const storeId = rows[0].store_id;
+    const raw = rows[0].raw_data || {};
+    const claimId = raw.id || raw.claim_id;
+    if (!storeId || !claimId) return res.status(422).json({ error: 'sem claim_id/loja pra reconsultar esta devolução' });
+
+    const ml = require('../mlClient');
+    const claim = await ml.getClaim(claimId, storeId); // GET só desta claim
+
+    const upd = await pool.query(
+      `UPDATE returns SET status = $1, reason = COALESCE($2, reason), raw_data = $3, updated_at = now()
+       WHERE id = $4 RETURNING id, status`,
+      [claim.status, claim.reason_id || null, JSON.stringify(claim), req.params.id]
+    );
+    res.json({ ok: true, id: upd.rows[0].id, status: claim.status, stage: claim.stage || null, type: claim.type || null });
+  } catch (e) {
+    console.error('[/alertas/devolucoes/:id/atualizar-status]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.patch('/alertas/devolucoes/:id/abertura-chamado', async (req, res) => {
   try {
     const aberto = req.body.abertura_chamado === true || req.body.abertura_chamado === 'true';

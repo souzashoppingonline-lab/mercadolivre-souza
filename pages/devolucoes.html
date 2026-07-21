@@ -327,7 +327,10 @@ function renderDevRows(rows) {
             ${(r.type || r.stage) ? `<div style="font-size:10px;color:var(--text-muted)">${[traduzido(TYPE_LABEL, r.type), traduzido(STAGE_LABEL, r.stage)].filter(Boolean).join(' • ')}</div>` : ''}
           </td>
           <td style="white-space:nowrap">${fmt(r.order_amount ?? r.amount)}</td>
-          <td><span class="badge ${st.c}">${st.l}</span></td>
+          <td onclick="event.stopPropagation()" style="white-space:nowrap">
+            <span class="badge ${st.c}">${st.l}</span>
+            <button title="Atualizar status desta devolução no Mercado Livre" onclick="atualizarStatus(${r.id}, this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;margin-left:4px"><i class="fas fa-rotate"></i></button>
+          </td>
           <td style="white-space:nowrap">${fmtD(r.date)}</td>
           <td id="video-cell-${r.order_id}" style="white-space:nowrap" onclick="event.stopPropagation()">—</td>
           <td onclick="event.stopPropagation()">
@@ -387,6 +390,22 @@ function devRowArray(r) {
   ];
 }
 const DEV_COLS = ['Pedido', 'Loja', 'Comprador', 'Produto', 'Motivo', 'Valor', 'Status', 'Data', 'Vídeo', 'Prejuízo (R$)', 'Observação', 'Abrir chamado'];
+
+// Reconsulta SÓ esta devolução no ML (1 GET) e atualiza o status na tela.
+async function atualizarStatus(id, btn) {
+  const i = btn.querySelector('i');
+  const old = i ? i.className : '';
+  if (i) i.className = 'fas fa-rotate fa-spin';
+  btn.disabled = true;
+  const res = await DB.atualizarDevolucaoStatus(id);
+  btn.disabled = false;
+  if (i) i.className = old;
+  if (!res || res.error) { alert('Não foi possível atualizar: ' + (res?.error || 'erro')); return; }
+  // Atualiza o cache (status/stage/type) e re-renderiza a visão atual.
+  const row = allDevRows.find(x => String(x.id) === String(id));
+  if (row) { row.status = res.status; if (res.stage != null) row.stage = res.stage; if (res.type != null) row.type = res.type; }
+  renderDevRows(viewDevRows);
+}
 
 // Salva a flag "Abrir chamado" (checkbox) e reflete no cache pra o export pegar.
 async function saveChamado(id, val) {

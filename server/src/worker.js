@@ -1590,13 +1590,13 @@ async function syncShippingStatus() {
 // rate limit apertado da API de claims do ML. Disparado manualmente pelo botão
 // "Atualizar pendentes" (worker:cmd). Mesma disciplina de 429 do syncShippingStatus.
 let isSyncingClaims = false;
-async function syncClaimsStatus() {
+async function syncClaimsStatus(manual = false) {
   if (isSyncingClaims) { console.warn('[sync-claims-status] já em execução — ignorando'); return; }
   isSyncingClaims = true;
   console.log('[sync-claims-status] iniciando reconsulta das devoluções pendentes...');
   try {
     const { rows: pending } = await pool.query(
-      `SELECT id, store_id, raw_data->>'id' AS claim_id FROM returns
+      `SELECT id, store_id, order_id, title, amount, raw_data->>'id' AS claim_id FROM returns
        WHERE (status IN ('opened','analysis') OR status IS NULL)
          AND raw_data->>'id' IS NOT NULL
          AND date > now() - interval '120 days'
@@ -1618,6 +1618,16 @@ async function syncClaimsStatus() {
         );
         updated++;
         streak.set(r.store_id, 0);
+        // Saiu do estado pendente → devolução encerrada. Notifica UMA vez (na
+        // próxima rodada ela já não é 'pendente', então não é reconsultada).
+        if (claim.status && !['opened', 'analysis'].includes(claim.status)) {
+          const labels = { closed: 'Encerrada', resolved: 'Resolvida', rejected: 'Rejeitada', cancelled: 'Cancelada', archived: 'Arquivada' };
+          const rot = labels[claim.status] || claim.status;
+          const loja = await getStoreName(r.store_id);
+          await tgNotify('tg_devolucoes',
+            `✅ <b>Devolução encerrada</b>\n🏪 Loja: ${loja}\n📦 Pedido: ${r.order_id||'—'}\n🏷️ Produto: ${r.title||'—'}\n📌 Status: ${rot}\n💰 Valor: R$ ${Number(r.amount||0).toFixed(2)}`
+          ).catch(() => {});
+        }
       } catch (e) {
         errors++;
         console.warn(`[sync-claims-status] erro return=${r.id} claim=${r.claim_id}: ${e.message}`);
@@ -1632,7 +1642,9 @@ async function syncClaimsStatus() {
     }
     console.log(`[sync-claims-status] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length})`);
     await publish('devolucoes_sync_done', { updated, errors, total: pending.length });
-    try { await tgNotify('tg_devolucoes', `✅ <b>Devoluções atualizadas</b>\n🔄 ${updated} reconsultadas · ${errors} erro(s) · de ${pending.length} pendentes`); } catch {}
+    // Resumo só no run manual (botão "Atualizar pendentes") — no automático não
+    // spammar; o que interessa no automático é o alerta por devolução encerrada.
+    if (manual) { try { await tgNotify('tg_devolucoes', `✅ <b>Devoluções atualizadas</b>\n🔄 ${updated} reconsultadas · ${errors} erro(s) · de ${pending.length} pendentes`); } catch {} }
     return { updated, errors, total: pending.length };
   } finally {
     isSyncingClaims = false;
@@ -2726,6 +2738,7 @@ scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');
 scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
+scheduleAt(7,  0,  () => syncClaimsStatus(false), 'sync-claims-status'); // reconsulta devoluções → alerta quando encerra
 scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
 
@@ -2823,7 +2836,7 @@ cmdSub.on('message', (channel, msg) => {
     }
     if (cmd === 'sync-claims-status' || cmd === 'syncClaimsStatus') {
       console.log('[worker] syncClaimsStatus disparado manualmente');
-      syncClaimsStatus().catch(e => console.error('[worker] syncClaimsStatus erro:', e.message));
+      syncClaimsStatus(true).catch(e => console.error('[worker] syncClaimsStatus erro:', e.message));
     }
     if (cmd === 'mp-reports' || cmd === 'syncMpAccountReports') {
       console.log('[worker] syncMpAccountReports disparado manualmente');

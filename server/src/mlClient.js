@@ -68,11 +68,20 @@ function noteStore429(storeId) {
   store429Streak.set(storeId, streak);
   const secs = Math.min(60, 5 * Math.pow(2, streak - 1)); // 5,10,20,40,60(teto)
   storeCooldown.set(storeId, Date.now() + secs * 1000);
+  if (streak === 1) {
+    console.warn(`[mlClient] 🧊 breaker aberto — store ${storeId} (429) — segurando chamadas`);
+  }
 }
 function noteStoreOk(storeId) {
-  if (store429Streak.has(storeId)) {
+  // Só desarma num sucesso "limpo" — fora de uma janela de cooldown ativa.
+  // Um 200 de endpoint barato (invoices/stock-locations) no meio de uma
+  // rajada de 429 NÃO pode zerar o breaker, senão ele nunca segura: o cooldown
+  // era limpo em milissegundos por qualquer sucesso interleaved (bug real
+  // observado em produção — invoices da loja retornavam 200 entre os 429).
+  if (store429Streak.has(storeId) && Date.now() >= (storeCooldown.get(storeId) || 0)) {
     store429Streak.delete(storeId);
     storeCooldown.delete(storeId);
+    console.warn(`[mlClient] ✅ breaker fechado — store ${storeId} recuperou`);
   }
 }
 function storeInCooldown(storeId) {

@@ -710,6 +710,16 @@ async function processJob(job) {
       }
       return;
     }
+    if (err.message?.includes('em cooldown de rate limit')) {
+      // Circuit breaker do mlClient já está segurando esta loja — NÃO é uma
+      // chamada nova ao ML, é o gate local (não gasta cota). Retry silencioso
+      // (sem poluir o log com "tentativa"); ao esgotar, cai no cooldown de
+      // tópico de 5min e vira 'skipped' (reprocessSkipped recupera orders_v2).
+      if (job.attemptsMade < 4) throw err;
+      apiCooldown.set(cooldownKey, Date.now() + 5 * 60 * 1000);
+      await pool.query(`UPDATE webhook_logs SET status='skipped', processed_at=now() WHERE id=$1`, [logId]);
+      return;
+    }
     if (err.message?.includes('429')) {
       if (job.attemptsMade < 4) {
         console.warn(`[worker] ⏳ rate limit — ${nickname} | ${topic} | tentativa ${job.attemptsMade + 1}/5`);

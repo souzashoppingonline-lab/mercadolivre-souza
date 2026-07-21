@@ -146,6 +146,7 @@ Página **Painel de Problemas** (`pages/shopee-problemas.html`, `SHOPEE_NAV_ITEM
 - **Client**: `listRecentReturns(days=30)` — a Shopee limita `create_time` a **janelas de 15 dias**, então varre em janelas de 15d (`returns/get_return_list`, pagina via `more`). Campos confirmados em `test-shopee-returns.js`: `return_sn`, `order_sn`, `status`, `reason`/`text_reason`, `refund_amount`, `user.username`, `item[]` (item_id/name/sku), `create_time`.
 - **Job `syncShopeeReturns`** (`marketplaceEventWorker`, a cada `SHOPEE_RETURNS_INTERVAL_MS`=1h): upsert em `shopee_returns` e **alerta no Telegram** (`tg_vendas`) as devoluções novas (< 24h, abertas, dedup por `notified` — marca antigas como notificadas sem mandar, evita spam retroativo).
 - **Painel de Problemas**: `reclamacoes` = devoluções com status ≠ CANCELLED/CLOSED; `reembolsos` = devoluções dos últimos 30d. (Saíram de "indisponíveis".)
+- **Página Solicitações de Devolução** (`pages/shopee-devolucoes.html`, `SHOPEE_NAV_ITEMS` + allowlist): tabela completa das devoluções com **filtros** (loja, **status** — dropdown populado dos status distintos, período, busca por produto/pedido/comprador), KPIs (total/abertas/valor reembolsado) e CSV. Backend `GET /api/shopee/devolucoes?store_id&status&dias&q`.
 - Tabela `shopee_returns` (v42) — ver `database.md`.
 
 ## Promoções — implementado (tela própria + alerta Telegram)

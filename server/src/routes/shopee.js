@@ -422,6 +422,55 @@ router.get('/score', async (req, res) => {
   }
 });
 
+// Solicitações de Devolução (tabela com filtros) — lê da shopee_returns. Filtros:
+// loja, status, período (dias), busca (produto/pedido/comprador). Isolado do ML.
+router.get('/devolucoes', async (req, res) => {
+  try {
+    const storeId = req.query.store_id || '';
+    const status = req.query.status || '';
+    const dias = Number(req.query.dias) || 0;      // 0 = todas as guardadas
+    const q = (req.query.q || '').trim();
+    const params = [storeId, status, dias];
+    let qFilter = '';
+    if (q) { params.push(`%${q}%`); qFilter = `AND (r.item_name ILIKE $${params.length} OR r.order_sn ILIKE $${params.length} OR r.buyer_username ILIKE $${params.length})`; }
+
+    const { rows } = await pool.query(
+      `SELECT r.return_sn, r.order_sn, r.item_name, r.buyer_username, r.reason, r.text_reason,
+              r.refund_amount, r.currency, r.status, r.create_time, r.update_time, s.nickname AS conta
+       FROM shopee_returns r LEFT JOIN stores s ON s.id = r.store_id
+       WHERE ($1 = '' OR r.store_id = $1::bigint)
+         AND ($2 = '' OR r.status = $2)
+         AND ($3 = 0 OR r.create_time > extract(epoch from now()) - $3 * 86400)
+         ${qFilter}
+       ORDER BY r.create_time DESC LIMIT 500`,
+      params
+    );
+    // status distintos pra popular o dropdown do filtro
+    const { rows: st } = await pool.query(
+      `SELECT DISTINCT status FROM shopee_returns WHERE status IS NOT NULL AND ($1 = '' OR store_id = $1::bigint) ORDER BY status`,
+      [storeId]
+    );
+    const out = rows.map((r) => ({
+      return_sn: r.return_sn, order_sn: r.order_sn, item_name: r.item_name, comprador: r.buyer_username,
+      motivo: r.reason, texto: r.text_reason, valor: r.refund_amount != null ? Number(r.refund_amount) : null,
+      status: r.status, data_ms: r.create_time ? Number(r.create_time) * 1000 : null,
+      atualizado_ms: r.update_time ? Number(r.update_time) * 1000 : null, conta: r.conta,
+    }));
+    res.json({
+      rows: out,
+      status_list: st.map((x) => x.status),
+      resumo: {
+        total: out.length,
+        abertas: out.filter((x) => !['CANCELLED', 'CLOSED'].includes(x.status)).length,
+        valor_total: out.reduce((a, x) => a + (x.valor || 0), 0),
+      },
+    });
+  } catch (e) {
+    console.error('[api/shopee] /devolucoes', e.message);
+    res.status(500).json({ error: e.message, rows: [] });
+  }
+});
+
 // Painel de Problemas Shopee — pontos que precisam de ação, todos filtrando
 // marketplace_id=SHOPEE (isolado do ML). Cada categoria traz contagem + amostra.
 router.get('/problemas', async (req, res) => {

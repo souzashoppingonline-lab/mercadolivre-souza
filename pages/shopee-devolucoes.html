@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Devoluções Shopee — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="../js/tableExport.js"></script>
+  <script>window.PAGE_TITLE='Solicitações de Devolução'; window.ACTIVE_NAV='shopee-devolucoes.html';</script>
+  <style>
+    :root { --shopee: #ee4d2d; }
+    .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
+    .shp-filters select, .shp-filters input { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
+    .shp-kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-bottom:18px; }
+    .shp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:10px; padding:14px 16px; }
+    .shp-kpi .l { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; }
+    .shp-kpi .v { font-size:22px; font-weight:800; margin-top:4px; }
+    .dv-table { width:100%; border-collapse:collapse; }
+    .dv-table th { text-align:left; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+    .dv-table th.num { text-align:right; }
+    .dv-table td { padding:9px 12px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:top; }
+    .dv-table td.num { text-align:right; }
+    .st { font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+    .st-open { background:rgba(240,147,43,.15); color:#f0932b; }
+    .st-closed { background:rgba(150,150,150,.15); color:var(--text-muted); }
+    .dim { color:var(--text-muted); font-size:11px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="shp-filters">
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
+        <select id="dvLoja" onchange="load()"><option value="">Todas as lojas</option></select>
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-filter"></i> Status</label>
+        <select id="dvStatus" onchange="load()"><option value="">Todos</option></select>
+        <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-calendar"></i> Período</label>
+        <select id="dvDias" onchange="load()">
+          <option value="0">Todas</option>
+          <option value="7">7 dias</option>
+          <option value="15">15 dias</option>
+          <option value="30" selected>30 dias</option>
+        </select>
+        <input type="text" id="dvBusca" placeholder="Produto, pedido ou comprador..." style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')load()">
+        <button class="action-btn" onclick="load()"><i class="fas fa-magnifying-glass"></i> Filtrar</button>
+      </div>
+
+      <div class="shp-kpis">
+        <div class="shp-kpi"><div class="l">Devoluções</div><div class="v" id="kTotal">—</div></div>
+        <div class="shp-kpi"><div class="l">Abertas</div><div class="v" id="kAbertas" style="color:#f0932b">—</div></div>
+        <div class="shp-kpi"><div class="l">Total reembolsado</div><div class="v" id="kValor">—</div></div>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="card-header" style="padding:14px 16px">
+          <h3>Solicitações de Devolução</h3>
+          <span id="dvCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('dvBody').closest('table'), 'shopee-devolucoes.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="dv-table">
+            <thead><tr>
+              <th>Data</th><th>Pedido</th><th>Produto</th><th>Comprador</th><th>Motivo</th>
+              <th class="num">Reembolso</th><th>Status</th>
+            </tr></thead>
+            <tbody id="dvBody"><tr><td colspan="7" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-shopee.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => v==null?'—':'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v));
+const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const fmtDt = ms => ms ? new Date(ms).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const REASON = { CHANGE_MIND:'Desistência', WRONG_ITEM:'Item errado', ITEM_DAMAGED:'Item danificado', NOT_RECEIVED:'Não recebido', ITEM_WRONG_DAMAGED:'Errado/danificado', OTHERS:'Outro' };
+let statusFilled = false;
+
+async function loadLojas() {
+  const d = await DB.getShopeeLojas();
+  const sel = document.getElementById('dvLoja');
+  (d?.lojas || []).forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.nickname; sel.appendChild(o); });
+}
+
+function fillStatus(list) {
+  if (statusFilled) return;
+  const sel = document.getElementById('dvStatus');
+  (list || []).forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+  statusFilled = true;
+}
+
+async function load() {
+  const store_id = document.getElementById('dvLoja').value;
+  const status = document.getElementById('dvStatus').value;
+  const dias = document.getElementById('dvDias').value;
+  const q = document.getElementById('dvBusca').value.trim();
+  const body = document.getElementById('dvBody');
+  body.innerHTML = '<tr><td colspan="7" class="empty-state" style="padding:30px">Carregando...</td></tr>';
+  const d = await DB.getShopeeDevolucoes({ store_id, status, dias, q });
+  if (!d || d.error) { body.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
+  fillStatus(d.status_list);
+  const r = d.resumo || {};
+  set('kTotal', r.total ?? 0); set('kAbertas', r.abertas ?? 0); set('kValor', R(r.valor_total));
+  const rows = d.rows || [];
+  set('dvCount', `${rows.length} devolução(ões)`);
+  const aberta = s => !['CANCELLED','CLOSED'].includes(s);
+  body.innerHTML = rows.length ? rows.map(x => `
+    <tr>
+      <td class="dim">${fmtDt(x.data_ms)}</td>
+      <td>#${esc(x.order_sn||'')}<div class="dim">${esc(x.return_sn||'')}</div></td>
+      <td>${esc(x.item_name||'—')}</td>
+      <td>${esc(x.comprador||'—')}</td>
+      <td>${esc(REASON[x.motivo]||x.motivo||'—')}${x.texto?`<div class="dim" title="${esc(x.texto)}">${esc(String(x.texto).slice(0,50))}${String(x.texto).length>50?'…':''}</div>`:''}</td>
+      <td class="num">${R(x.valor)}</td>
+      <td><span class="st ${aberta(x.status)?'st-open':'st-closed'}">${esc(x.status||'—')}</span></td>
+    </tr>`).join('') : '<tr><td colspan="7" class="empty-state" style="padding:30px">Nenhuma devolução no filtro. (Sincroniza a cada 1h pelo worker.)</td></tr>';
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLojas();
+  load();
+});
+</script>
+</body>
+</html>

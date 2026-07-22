@@ -78,6 +78,8 @@
     /* Variação/tipo em LETRA GRANDE — é o que mais causa erro de embalagem
        (pedido explícito do usuário). Bem maior que o resto, além de piscar. */
     .emb-order-tag { font-size: 30px; font-weight: 900; padding: 8px 18px; border-radius: 12px; background: rgba(255,230,0,.14); color: var(--primary); text-transform: uppercase; letter-spacing: .5px; line-height: 1.1; }
+    .emb-order-sku { font-size: 42px; font-weight: 900; color: var(--primary); line-height: 1; margin-bottom: 12px; display: inline-block; padding: 6px 14px; border-radius: 10px; background: rgba(255,230,0,.12); letter-spacing: .3px; }
+    .emb-order-sku.attention { animation: embQtyBlink .9s infinite; }
 
     .emb-camera-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 12px; }
     .emb-camera-box video { width: 100%; height: 100%; object-fit: cover; }
@@ -422,10 +424,10 @@ function renderOrders(orders, alreadyPacked) {
           <i class="fas fa-arrow-left emb-qty-arrow" aria-hidden="true"></i>
         </div>
         ${variacoes.length ? `<div class="emb-order-tags">${variacoes.map(v => `<span class="emb-order-tag attention">${escapeHtml(v)}</span>`).join('')}</div>` : ''}
+        ${o.seller_sku ? `<div style="margin-bottom: 14px;"><span class="emb-order-sku attention">SKU: ${escapeHtml(o.seller_sku)}</span></div>` : ''}
         <div class="emb-order-buyer"><i class="fas fa-user"></i> Comprador: <b>${escapeHtml(o.buyer_nickname || '—')}</b> · <i class="fas fa-store"></i> ${escapeHtml(o.store_nickname || '')}</div>
         <div class="emb-order-details">
           <div class="emb-order-detail"><span class="k">Pedido</span><span class="v">${escapeHtml(o.order_id)}</span></div>
-          ${o.seller_sku ? `<div class="emb-order-detail"><span class="k">SKU</span><span class="v">${escapeHtml(o.seller_sku)}</span></div>` : ''}
           <div class="emb-order-detail"><span class="k">Valor</span><span class="v">${R$(Number(o.unit_price || 0) * Number(o.quantity || 1))}</span></div>
           <div class="emb-order-detail"><span class="k">Logística</span><span class="v">${escapeHtml(logLabel(o.shipping_type))}</span></div>
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>

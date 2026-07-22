@@ -151,33 +151,51 @@ async function refreshShopeeTrackingOnDemand(tracking) {
 
 // Helper para extrair foto da variação de um pedido ML — se houver variation_name
 // ordenada, procura essa variação no item.variations[] e pega sua picture.
+// Versão melhorada: tenta múltiplas estratégias de matching.
 function extractVariationPicture(orderData) {
   try {
     const item0 = orderData?.order_items?.[0]?.item;
     if (!item0) return null;
-    // Identifica qual variação foi ordenada (pode ser model_name ou via
-    // variation_attributes — procura num e noutro, ordem de prioridade varia
-    // conforme a versão da API do ML que o cliente tem).
+
     const variations = Array.isArray(item0.variations) ? item0.variations : [];
     if (!variations.length) return null;
-    // Se há um variation_attributes com um value_name, procura por ele
+
+    // Estratégia 1: procura por variation_attributes (estrutura API atual)
     const varAttrs = orderData.order_items[0]?.item?.variation_attributes;
     if (Array.isArray(varAttrs) && varAttrs.length > 0) {
       const searchValue = varAttrs[0]?.value_name;
       if (searchValue) {
-        const found = variations.find(v => {
+        // Busca exata: name ou model_name iguais a value_name
+        let found = variations.find(v => {
           const varName = v.name || v.model_name;
-          return varName === searchValue || v.attribute_combinations?.some(ac => ac.values?.includes(searchValue));
+          return varName?.toLowerCase?.() === searchValue.toLowerCase?.();
         });
+
+        // Se não achou exata, tenta por attribute_combinations
+        if (!found) {
+          found = variations.find(v =>
+            v.attribute_combinations?.some(ac =>
+              ac.values?.some(val => val?.toLowerCase?.() === searchValue.toLowerCase?.())
+            )
+          );
+        }
+
         if (found?.picture?.url) return found.picture.url;
         if (found?.pictures?.[0]?.url) return found.pictures[0].url;
       }
     }
-    // Fallback: se não achou pelo value_name, pega a 1ª variação (comum em ML)
-    const first = variations[0];
-    if (first?.picture?.url) return first.picture.url;
-    if (first?.pictures?.[0]?.url) return first.pictures[0].url;
-  } catch (e) { /* fallback silencioso */ }
+
+    // Estratégia 2: procura por thumbnail no item (alguns produtos têm picture lá)
+    if (item0.picture?.url) return item0.picture.url;
+    if (item0.pictures?.[0]?.url) return item0.pictures[0].url;
+
+    // Estratégia 3: se há só uma variação, usa ela; se há múltiplas, pega a 1ª
+    // (nem sempre corresponde à comprada, mas é melhor que nada)
+    const firstVar = variations[0];
+    if (firstVar?.picture?.url) return firstVar.picture.url;
+    if (firstVar?.pictures?.[0]?.url) return firstVar.pictures[0].url;
+
+  } catch (e) { console.error('[embalagem] erro ao extrair foto de variação:', e.message); }
   return null;
 }
 
@@ -206,6 +224,16 @@ router.get('/pedido/:shippingId', async (req, res) => {
       rows.forEach(row => {
         const rawData = row.raw_data || {};
         const variationPicture = extractVariationPicture(rawData);
+        // DEBUG: log temporário pra entender a estrutura
+        if (!variationPicture && process.env.DEBUG_EMBALAGEM) {
+          console.log('[embalagem] variation_picture não encontrada para', {
+            title: row.title,
+            variation_attributes: row.variation_attributes,
+            variations_count: rawData?.order_items?.[0]?.item?.variations?.length || 0,
+            item_picture: rawData?.order_items?.[0]?.item?.picture?.url,
+            first_variation: rawData?.order_items?.[0]?.item?.variations?.[0]?.picture?.url
+          });
+        }
         // Prioriza a foto da variação; fallback para thumbnail principal
         row.thumbnail = variationPicture || row.thumbnail;
       });

@@ -358,7 +358,7 @@ async function handleMessage({ resource, storeId }) {
     || (msg.from?.user_id ? String(msg.from.user_id) : null);
   const text = msg.text || msg.message || msg.message_text || null;
   const msgDate = msg.message_date?.received || msg.message_date?.created || null;
-  console.log(`[msg-debug] msgId=${msgId} packId=${packId} from=${JSON.stringify(msg.from)} buyer=${buyerNickname} text=${JSON.stringify(text)}`);
+  console.log(`[msg-debug] msgId=${msgId} keys=${Object.keys(msg||{}).join(',')} full=${JSON.stringify(msg).slice(0, 900)}`);
 
   await pool.query(
     `INSERT INTO messages (store_id, pack_id, buyer_nickname, last_message, unread, last_message_date, updated_at)

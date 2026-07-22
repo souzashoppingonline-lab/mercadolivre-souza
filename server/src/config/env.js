@@ -63,4 +63,9 @@ module.exports = {
     // precisar logar toda hora.
     sessionDays: Number(process.env.STAFF_SESSION_DAYS || 180),
   },
+  // Impressora térmica (rede) — rótulos de embalagem com QR code (ver .claude/embalagem.md)
+  thermalPrinter: {
+    ip: process.env.THERMAL_PRINTER_IP,
+    port: Number(process.env.THERMAL_PRINTER_PORT || 9100),
+  },
 };

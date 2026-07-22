@@ -12,6 +12,7 @@ const fs = require('fs');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
+const { printLabel } = require('../thermal/thermalPrinter');
 
 const router = express.Router();
 
@@ -535,6 +536,28 @@ router.get('/relatorio', async (req, res) => {
     res.json({ rows });
   } catch (e) {
     console.error('[api/embalagem] GET /relatorio', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/embalagem/print-label — imprime rótulo térmico (10x15 cm) com QR code
+// Chamada após video finalizar com sucesso. Se impressora não está configurada, retorna ok=false.
+router.post('/print-label', async (req, res) => {
+  try {
+    const { shipping_id, product_name, variation_type, sku, company_name } = req.body;
+    if (!shipping_id) return res.status(400).json({ error: 'shipping_id é obrigatório' });
+
+    const result = await printLabel({
+      shipping_id,
+      product_name: product_name || '(sem título)',
+      variation_type,
+      sku,
+      company_name,
+    });
+
+    res.json(result);
+  } catch (e) {
+    console.error('[api/embalagem] POST /print-label', e.message);
     res.status(500).json({ error: e.message });
   }
 });

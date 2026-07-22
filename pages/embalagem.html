@@ -553,9 +553,57 @@ async function uploadPackingVideo(session, blob, durationSeconds) {
     const res = await DB.finalizarEmbalagem(fd);
     if (!res || res.error) {
       showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${res?.error || 'erro desconhecido'}`, 'error');
+    } else {
+      // Vídeo gravado com sucesso — imprime rótulo térmico em paralelo
+      // (não espera impressão terminar, não bloqueia UX)
+      printThermalLabel(session);
     }
   } catch (e) {
     showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${e.message}`, 'error');
+  }
+}
+
+// Imprime rótulo térmico com QR code — chamado após upload bem-sucedido
+async function printThermalLabel(session) {
+  try {
+    const order = session.orders[0];
+    if (!order) return;
+
+    // Extrai dados do pedido
+    const variationType = order.variation_attributes
+      ? order.variation_attributes.map(v => v.value_name).join(' / ')
+      : null;
+
+    const payload = {
+      shipping_id: session.shippingId,
+      product_name: order.title || '(sem título)',
+      variation_type: variationType,
+      sku: order.seller_sku,
+      company_name: 'EMPRESA XYZ', // padrão — pode vir de config depois
+    };
+
+    const res = await fetch('/api/embalagem/print-label', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      console.warn(`[thermal] erro ao imprimir (HTTP ${res.status}):`, await res.text());
+      return;
+    }
+
+    const result = await res.json();
+    if (result.ok) {
+      console.log('[thermal] rótulo impresso:', session.shippingId);
+    } else if (result.reason === 'printer_not_configured') {
+      // Silencioso — impressora não está configurada no .env
+      console.debug('[thermal] impressora não configurada');
+    } else {
+      console.warn('[thermal] erro ao imprimir:', result.error);
+    }
+  } catch (e) {
+    console.error('[thermal] erro ao chamar rota de impressão:', e.message);
   }
 }
 

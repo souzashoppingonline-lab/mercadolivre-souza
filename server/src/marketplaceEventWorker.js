@@ -187,7 +187,8 @@ async function handleShopeeOrderEvent(evt) {
   const serviceFee = escrow ? num(inc.service_fee) : null;
   const netCommissionFee = escrow ? num(inc.net_commission_fee) : null;
   const netServiceFee = escrow ? num(inc.net_service_fee) : null;
-  const sellerRebate = escrow ? num(inc.seller_product_rebate) : null;
+  // seller_product_rebate é um objeto ({amount, *_offset}) — guarda como JSON.
+  const sellerRebate = escrow && inc.seller_product_rebate != null ? JSON.stringify(inc.seller_product_rebate) : null;
 
   await pool.query(
     `INSERT INTO shopee_order_data (order_id, order_sn, shop_id, buyer_username, order_status, raw_data,

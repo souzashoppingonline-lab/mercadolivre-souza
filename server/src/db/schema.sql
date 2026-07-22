@@ -232,7 +232,7 @@ ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS escrow_raw JSONB;
 ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS service_fee           NUMERIC;
 ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS net_commission_fee    NUMERIC;
 ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS net_service_fee       NUMERIC;
-ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS seller_product_rebate NUMERIC;
+ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS seller_product_rebate JSONB;
 ALTER TABLE shopee_order_data ADD COLUMN IF NOT EXISTS logistics_status TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shopee_order_data_order_sn ON shopee_order_data(order_sn);
 CREATE INDEX IF NOT EXISTS idx_shopee_order_data_tracking ON shopee_order_data(tracking_number) WHERE tracking_number IS NOT NULL;

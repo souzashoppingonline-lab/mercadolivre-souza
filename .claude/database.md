@@ -172,7 +172,7 @@ logistics_status TEXT           -- v36: status de entrega geral (get_tracking_in
 service_fee NUMERIC             -- v44: taxa de serviço bruta (order_income.service_fee)
 net_commission_fee NUMERIC      -- v44: comissão LÍQUIDA após rebates (valor final descontado)
 net_service_fee NUMERIC         -- v44: taxa de serviço LÍQUIDA após rebates
-seller_product_rebate NUMERIC   -- v44: abatimento/compensação aplicado às taxas
+seller_product_rebate JSONB     -- v44: abatimento/compensação ({amount, commission_fee_offset, service_fee_offset})
 updated_at TIMESTAMPTZ
 ```
 Gravada por `server/src/marketplaceEventWorker.js` (`handleShopeeOrderEvent`), mesmo papel de `amazon_order_data`.

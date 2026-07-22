@@ -232,7 +232,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   initStoreSwitcher();
   initAlerts();
   initLogout();
+  initSidebarToggles();
 });
+
+// Recolher (desktop) / abrir-fechar (mobile) a sidebar. Precisa rodar DEPOIS de
+// montar o topbar+sidebar acima — o sidebar.js rodava no DOMContentLoaded, antes
+// deste build assíncrono (await fetchStaffUser), então os botões ainda não
+// existiam e o clique não fazia nada. Aqui os elementos já estão no DOM.
+function initSidebarToggles() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  let overlay = document.querySelector('.overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'overlay';
+    document.body.appendChild(overlay);
+  }
+  const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+  const toggle = () => {
+    if (isMobile()) { sidebar.classList.toggle('open'); overlay.classList.toggle('active'); }
+    else { sidebar.classList.toggle('collapsed'); }
+  };
+  document.getElementById('menuToggle')?.addEventListener('click', toggle);    // ☰ no topbar
+  document.getElementById('sidebarToggle')?.addEventListener('click', toggle); // ☰ no header da sidebar
+  overlay.addEventListener('click', () => { sidebar.classList.remove('open'); overlay.classList.remove('active'); });
+}
 
 // ── Alertas globais: som + notificação do browser ──────────
 function initAlerts() {

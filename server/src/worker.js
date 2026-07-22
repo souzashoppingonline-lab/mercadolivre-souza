@@ -356,9 +356,9 @@ async function handleMessage({ resource, storeId }) {
   const buyerNickname = msg.from?.nickname
     || msg.order?.buyer?.nickname
     || (msg.from?.user_id ? String(msg.from.user_id) : null);
-  const text = msg.text || null;
+  const text = msg.text || msg.message || msg.message_text || null;
   const msgDate = msg.message_date?.received || msg.message_date?.created || null;
-  console.log(`[msg-debug] msgId=${msgId} packId=${packId} from=${JSON.stringify(msg.from)} buyer=${buyerNickname}`);
+  console.log(`[msg-debug] msgId=${msgId} packId=${packId} from=${JSON.stringify(msg.from)} buyer=${buyerNickname} text=${JSON.stringify(text)}`);
 
   await pool.query(
     `INSERT INTO messages (store_id, pack_id, buyer_nickname, last_message, unread, last_message_date, updated_at)
@@ -372,8 +372,11 @@ async function handleMessage({ resource, storeId }) {
     [storeId, packId, buyerNickname, text, msgDate]
   );
 
-  await publish('message_received', { pack_id: packId });
-  await tgNotify('tg_mensagens', `💬 <b>Nova mensagem de comprador</b>\n👤 ${buyerNickname||'—'}\n📝 ${(text||'').slice(0,200)}`);
+  await publish('message_received', { pack_id: packId, buyer_nickname: buyerNickname });
+  const loja = await getStoreName(storeId);
+  const dashUrl = (process.env.DASH_URL || 'https://multimixvendas.duckdns.org') + '/pages/mensagens.html';
+  await tgNotify('tg_mensagens',
+    `💬 <b>Nova mensagem de comprador</b>\n🏪 Loja: ${loja}\n👤 ${buyerNickname||'—'}\n📝 ${(text||'—').slice(0,300)}\n<a href="${dashUrl}">Abrir mensagens →</a>`);
 }
 
 async function handleItem({ resource, storeId }) {

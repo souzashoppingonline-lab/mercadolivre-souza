@@ -134,40 +134,39 @@ A mesma página `embalagem.html` atende ML e Shopee — o operador bipa qualquer
 - **Filtro por marketplace nas buscas**: as abas Buscar vídeos, Conferência do Dia e Histórico ganharam um select **Marketplace** (Todos/Mercado Livre/Shopee). O `GET /videos`/`/por-hora`/`/historico` aceitam `marketplace` (código `ML`/`SHOPEE`), derivado da loja do vídeo (`packing_videos.store_id` → `stores.marketplace_id` → `marketplaces.code`, `COALESCE` pra `ML` quando nulo). Cada linha da lista mostra um mini-badge ML/Shopee (`videoRowHtml`). O dropdown de **loja** continua listando só contas ML (`DB.getLojas` é ML-only); pra ver só Shopee, use o filtro de marketplace.
 - **Variação/tipo em letra grande**: `.emb-order-tag` foi aumentada (30px, uppercase, além do piscar `.attention`) — pedido do usuário, vale pros dois marketplaces, é o dado que mais causa erro de embalagem.
 
-## Impressora térmica — rótulo pós-embalagem (v46)
+## Rótulo de embalagem em PDF — 10x15cm com QR code (v46)
 
-**Fluxo**: após vídeo gravado + upload bem-sucedido (`POST /finalizar`), o sistema imprime automaticamente um rótulo térmica de 10x15 cm com:
+**Fluxo**: após vídeo gravado + upload bem-sucedido (`POST /finalizar`), o sistema exibe um modal de confirmação mostrando um preview com:
 - **QR code** contendo o `shipping_id` (rastreabilidade: basta escanear pra recuperar a embalagem)
-- **Nome do produto** (primeira linha destacada)
+- **Nome da loja** (loja responsável pela embalagem)
+- **SKU** (código único do item — crítico pra auditoria contra item errado)
+- **Nome do produto** 
 - **Tipo/Variação** (Cor/Tamanho, se houver)
-- **SKU** (código único do item — impresso pra auditoria contra item errado)
-- **Data/Hora** de embalagem (timestamp)
-- **Rodapé**: "PRODUTO EMBALADO PELA EMPRESA XYZ" (configurável, padrão "EMPRESA XYZ")
-- **Corte automático** do papel (comando `cut()` ESC/POS)
+- **Aviso "⚠ PRODUTO FRÁGIL"** (vermelho, destacado)
+- **Data/Hora** de embalagem (timestamp em formato brasileiro)
+- **Rodapé**: "PRODUTO EMBALADO PELA [EMPRESA]" (configurável, padrão "EMPRESA XYZ")
 
-**Configuração**: variáveis de ambiente no `.env`:
-```
-THERMAL_PRINTER_IP=192.168.1.100    # IP ou hostname da impressora na rede local
-THERMAL_PRINTER_PORT=9100            # Porta padrão ESC/POS (raw socket)
-```
-
-Se `THERMAL_PRINTER_IP` não estiver configurado, a impressão é silenciosa (não é erro — útil em ambiente de teste). Se houver erro de conectividade, é logado mas não interrompe o fluxo do embalador.
+Ao confirmar, o navegador dispara um download automático (`etiqueta-{shipping_id}.pdf`). O usuário pode então:
+- Imprimir em impressora térmica local (10x15cm é o tamanho padrão, basta configurar o papel)
+- Imprimir em impressora comum A4 (o PDF se adapta)
+- Visualizar no arquivo antes de imprimir
 
 **Implementação**:
-- `server/src/thermal/thermalPrinter.js` — módulo ESC/POS (linguagem padrão de impressoras térmicas) com suporte a QR code via `escpos` + `escpos-network` + `qrcode`.
-- `POST /api/embalagem/print-label` — rota que recebe `{ shipping_id, product_name, variation_type, sku, company_name }` e envia comando à impressora.
-- `pages/embalagem.html` — função `printThermalLabel()` chamada após upload bem-sucedido (em paralelo, não bloqueia UX).
+- `server/src/thermal/pdfLabel.js` — novo módulo que gera PDF de 10x15cm (283.46 × 425.19 pontos a 72 DPI) usando `pdfkit` + `qrcode`.
+- `POST /api/embalagem/print-label` — rota que recebe `{ shipping_id, product_name, variation_type, sku, store_name, company_name }` e retorna PDF como blob com headers `Content-Type: application/pdf` e `Content-Disposition: attachment`.
+- `pages/embalagem.html` — função `confirmAndSendPrint()` chamada após click em "Confirmar Impressão" no modal, trata resposta como blob e dispara download automático via `createElement('a').click()`.
+- Dependencies: `pdfkit@^0.14.0` (adicionado a `package.json`)
 
 **Decisões de design**:
-- **Impressora em rede**: conexão socket direto (porta 9100), não via protocolo HTTP — mais rápido e confiável (típico de impressoras térmicas industriais).
-- **Chamada assíncrona**: após vídeo finalizar, a impressão roda em segundo plano sem `await` — o embalador já pode bipar a próxima etiqueta enquanto o rótulo imprime.
-- **Falha silenciosa**: se a impressora não responde, log em console mas nenhuma interrupção de UI — o operador continua embalando, um supervisor revisa depois se houver falta de rótulo.
-- **Dados extraídos do pedido**: variação, SKU e nome vêm de `session.orders[0]` (já carregado no frontend), sem chamada extra à API.
+- **PDF em vez de impressora térmica direta**: evita complexidade de infraestrutura (proxy, rede, driver). O embalador controla como/onde imprimir.
+- **Preview antes de confirmar**: o modal mostra os dados que serão impressos (nome, SKU, variação, loja) — o operador pode cancelar se algo estiver errado, sem gerar PDF.
+- **Auto-download**: depois de confirmar, o PDF já começa a baixar (não precisa de confirmação adicional no navegador); a tela retorna ao estado pronto pra bipar a próxima etiqueta.
+- **Dados extraídos do pedido**: variação, SKU, nome e loja vêm de `session.orders[0]` (já carregado no frontend) + metadados da loja (`stores.nickname`), sem chamada extra à API.
+- **Sem estoque de papel**: não há limite operacional de impressões como havia com impressora térmica em rede — cada PDF é um arquivo, qualquer quantidade de cópias sem custo adicional.
 
-**Próximos passos opcionais**:
-- Permitir `company_name` customizado por loja (campo editável em settings/config).
-- Imprimir código de barras 128 (além do QR) pro rastreamento manual com scanner de barras simples.
-- Integrar com sistema de devolução: incluir número de devolução no rótulo se o pedido foi sinalizador de devolução.
+**Configuração** (mínima):
+- Nenhuma variável de ambiente necessária no `.env` — basta ter `pdfkit` instalado.
+- Se desejar customizar `company_name` por loja, a coluna já existe em `stores` (padrão "EMPRESA XYZ" é fallback no código).
 
 ## O que NÃO foi implementado (fora de escopo desta fase)
 

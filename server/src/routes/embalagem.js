@@ -12,7 +12,7 @@ const fs = require('fs');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
-const { printLabel } = require('../thermal/thermalPrinter');
+const { generateLabelPDF } = require('../thermal/pdfLabel');
 
 const router = express.Router();
 
@@ -547,16 +547,9 @@ router.post('/print-label', async (req, res) => {
     const { shipping_id, product_name, variation_type, sku, store_name, company_name } = req.body;
     if (!shipping_id) return res.status(400).json({ error: 'shipping_id é obrigatório' });
 
-    console.log('[api/embalagem] POST /print-label chamado:', {
-      shipping_id,
-      product_name,
-      variation_type,
-      sku,
-      store_name,
-      company_name
-    });
+    console.log('[api/embalagem] POST /print-label → gerando PDF:', shipping_id);
 
-    const result = await printLabel({
+    const pdfBuffer = await generateLabelPDF({
       shipping_id,
       product_name: product_name || '(sem título)',
       variation_type,
@@ -565,8 +558,10 @@ router.post('/print-label', async (req, res) => {
       company_name: company_name || 'EMPRESA XYZ',
     });
 
-    console.log('[api/embalagem] resultado printLabel:', result);
-    res.json(result);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="etiqueta-${shipping_id}.pdf"`);
+    res.send(pdfBuffer);
+    console.log('[api/embalagem] ✓ PDF enviado:', shipping_id);
   } catch (e) {
     console.error('[api/embalagem] POST /print-label erro:', e.message, e.stack);
     res.status(500).json({ error: e.message });

@@ -625,7 +625,7 @@ function showPrintConfirmation(payload) {
 
 async function confirmAndSendPrint(payload) {
   try {
-    console.log('[thermal] ✓ confirmado, enviando para impressora...');
+    console.log('[thermal] ✓ confirmado, gerando PDF...');
     console.log('[thermal] payload:', payload);
 
     const res = await fetch('/api/embalagem/print-label', {
@@ -637,26 +637,27 @@ async function confirmAndSendPrint(payload) {
     if (!res.ok) {
       const errText = await res.text();
       console.warn(`[thermal] erro HTTP ${res.status}:`, errText);
-      showScanMsg(`⚠️ Erro ao imprimir etiqueta (HTTP ${res.status})`, 'error');
+      showScanMsg(`⚠️ Erro ao gerar etiqueta (HTTP ${res.status})`, 'error');
       return;
     }
 
-    const result = await res.json();
-    console.log('[thermal] resposta do servidor:', result);
-    if (result.ok) {
-      console.log('[thermal] ✓ rótulo impresso:', payload.shipping_id);
-      showScanMsg(`✓ Etiqueta impressa com sucesso`, 'success');
-      document.getElementById('scanInput').focus();
-    } else if (result.reason === 'printer_not_configured') {
-      console.debug('[thermal] impressora não configurada no servidor');
-      showScanMsg(`ℹ️ Impressora não está configurada`, 'warn');
-    } else {
-      console.warn('[thermal] ✗ erro ao imprimir:', result.error);
-      showScanMsg(`⚠️ Erro ao imprimir: ${result.error}`, 'error');
-    }
+    // Faz download automático do PDF
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `etiqueta-${payload.shipping_id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    console.log('[thermal] ✓ PDF baixado:', payload.shipping_id);
+    showScanMsg(`✓ Etiqueta PDF pronta para impressão`, 'success');
+    document.getElementById('scanInput').focus();
   } catch (e) {
     console.error('[thermal] exceção:', e.message, e.stack);
-    showScanMsg(`⚠️ Erro ao chamar rota de impressão`, 'error');
+    showScanMsg(`⚠️ Erro ao gerar etiqueta: ${e.message}`, 'error');
   }
 }
 

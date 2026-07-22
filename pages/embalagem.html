@@ -563,31 +563,61 @@ async function uploadPackingVideo(session, blob, durationSeconds) {
   }
 }
 
-// Imprime rótulo térmico com QR code — chamado após upload bem-sucedido
-async function printThermalLabel(session) {
+// Prepara dados de impressão e mostra modal de confirmação
+function printThermalLabel(session) {
+  console.log('[thermal] iniciando fluxo de impressão para:', session.shippingId);
+  const order = session.orders[0];
+  if (!order) {
+    console.warn('[thermal] nenhum pedido encontrado na sessão');
+    return;
+  }
+
+  const variationType = order.variation_attributes
+    ? order.variation_attributes.map(v => v.value_name).join(' / ')
+    : null;
+
+  const payload = {
+    shipping_id: session.shippingId,
+    product_name: order.title || '(sem título)',
+    variation_type: variationType,
+    sku: order.seller_sku,
+    store_name: order.store_nickname || '(sem loja)',
+    company_name: 'EMPRESA XYZ',
+  };
+
+  // Mostra modal de confirmação com preview dos dados
+  showPrintConfirmation(payload);
+}
+
+function showPrintConfirmation(payload) {
+  console.log('[thermal] mostrando modal de confirmação');
+
+  // Preenche os campos do modal
+  document.getElementById('printPreviewQR').textContent = `QR: ${payload.shipping_id}`;
+  document.getElementById('printPreviewStore').textContent = payload.store_name || '(sem loja)';
+  document.getElementById('printPreviewSKU').textContent = payload.sku || '(sem SKU)';
+  document.getElementById('printPreviewProduct').textContent = payload.product_name;
+  document.getElementById('printPreviewType').textContent = payload.variation_type || '(sem variação)';
+
+  // Mostra modal
+  document.getElementById('printConfirmModal').style.display = 'flex';
+
+  // Aguarda clique no botão de confirmação
+  document.getElementById('printConfirmBtn').onclick = () => {
+    document.getElementById('printConfirmModal').style.display = 'none';
+    confirmAndSendPrint(payload);
+  };
+
+  document.getElementById('printCancelBtn').onclick = () => {
+    document.getElementById('printConfirmModal').style.display = 'none';
+    console.log('[thermal] impressão cancelada pelo usuário');
+  };
+}
+
+async function confirmAndSendPrint(payload) {
   try {
-    console.log('[thermal] iniciando impressão para:', session.shippingId);
-    const order = session.orders[0];
-    if (!order) {
-      console.warn('[thermal] nenhum pedido encontrado na sessão');
-      return;
-    }
-
-    // Extrai dados do pedido
-    const variationType = order.variation_attributes
-      ? order.variation_attributes.map(v => v.value_name).join(' / ')
-      : null;
-
-    const payload = {
-      shipping_id: session.shippingId,
-      product_name: order.title || '(sem título)',
-      variation_type: variationType,
-      sku: order.seller_sku,
-      store_name: order.store_nickname || '(sem loja)',
-      company_name: 'EMPRESA XYZ', // padrão — pode vir de config depois
-    };
-
-    console.log('[thermal] payload enviado:', payload);
+    console.log('[thermal] ✓ confirmado, enviando para impressora...');
+    console.log('[thermal] payload:', payload);
 
     const res = await fetch('/api/embalagem/print-label', {
       method: 'POST',
@@ -597,22 +627,26 @@ async function printThermalLabel(session) {
 
     if (!res.ok) {
       const errText = await res.text();
-      console.warn(`[thermal] erro ao imprimir (HTTP ${res.status}):`, errText);
+      console.warn(`[thermal] erro HTTP ${res.status}:`, errText);
+      showScanMsg(`⚠️ Erro ao imprimir etiqueta (HTTP ${res.status})`, 'error');
       return;
     }
 
     const result = await res.json();
     console.log('[thermal] resposta do servidor:', result);
     if (result.ok) {
-      console.log('[thermal] ✓ rótulo impresso:', session.shippingId);
+      console.log('[thermal] ✓ rótulo impresso:', payload.shipping_id);
+      showScanMsg(`✓ Etiqueta impressa com sucesso`, 'success');
     } else if (result.reason === 'printer_not_configured') {
-      // Silencioso — impressora não está configurada no .env
       console.debug('[thermal] impressora não configurada no servidor');
+      showScanMsg(`ℹ️ Impressora não está configurada`, 'warn');
     } else {
       console.warn('[thermal] ✗ erro ao imprimir:', result.error);
+      showScanMsg(`⚠️ Erro ao imprimir: ${result.error}`, 'error');
     }
   } catch (e) {
-    console.error('[thermal] exceção ao chamar rota de impressão:', e.message, e.stack);
+    console.error('[thermal] exceção:', e.message, e.stack);
+    showScanMsg(`⚠️ Erro ao chamar rota de impressão`, 'error');
   }
 }
 
@@ -1068,5 +1102,56 @@ function renderRelatorioChart(rows) {
 initCamera();
 refocusScan();
 </script>
+
+<!-- Modal de Confirmação de Impressão -->
+<div id="printConfirmModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
+  <div style="background:var(--bg-card); border-radius:14px; padding:30px; max-width:500px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <h2 style="font-size:24px; font-weight:800; margin-bottom:20px; text-align:center;">Confirmar Impressão</h2>
+
+    <div style="background:var(--bg-card2); border-radius:12px; padding:20px; margin-bottom:20px; border:2px solid var(--primary);">
+      <div style="text-align:center; margin-bottom:16px;">
+        <div style="font-size:14px; color:var(--text-muted); margin-bottom:6px;">Etiqueta que será impressa:</div>
+        <div id="printPreviewQR" style="font-size:40px; font-weight:900; color:var(--primary); word-break:break-all;">QR: ...</div>
+      </div>
+
+      <div style="border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div>
+            <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">Loja</div>
+            <div id="printPreviewStore" style="font-size:14px; font-weight:700;">LOJA</div>
+          </div>
+          <div>
+            <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">SKU</div>
+            <div id="printPreviewSKU" style="font-size:14px; font-weight:700;">SKU</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">Produto</div>
+        <div id="printPreviewProduct" style="font-size:13px; font-weight:600; color:var(--text-main);"></div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">Tipo/Variação</div>
+        <div id="printPreviewType" style="font-size:13px; font-weight:600; color:var(--text-main);"></div>
+      </div>
+
+      <div style="background:rgba(39,174,96,.15); border-left:3px solid var(--green); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--green); text-align:center; font-weight:600;">
+        ⚠ PRODUTO FRÁGIL — CUIDADO AO MANUSEAR
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <button id="printCancelBtn" style="background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:10px; padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;">
+        ✕ Cancelar
+      </button>
+      <button id="printConfirmBtn" style="background:var(--green); border:none; color:#fff; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;">
+        ✓ Confirmar Impressão
+      </button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

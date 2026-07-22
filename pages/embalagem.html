@@ -519,6 +519,10 @@ async function finalizeCurrent() {
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);
 
+  // Mostra modal de confirmação ANTES de fazer upload
+  // (não depende de vídeo — funciona mesmo sem câmera)
+  printThermalLabel(session);
+
   // Upload roda em segundo plano (sem await) — não trava o operador esperando
   // a rede pra poder bipar a próxima etiqueta. Ver .claude/embalagem.md.
   uploadPackingVideo(session, blob, durationSeconds);
@@ -554,9 +558,7 @@ async function uploadPackingVideo(session, blob, durationSeconds) {
     if (!res || res.error) {
       showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${res?.error || 'erro desconhecido'}`, 'error');
     } else {
-      // Vídeo gravado com sucesso — imprime rótulo térmico em paralelo
-      // (não espera impressão terminar, não bloqueia UX)
-      printThermalLabel(session);
+      console.log('[thermal] ✓ vídeo salvo com sucesso:', session.shippingId);
     }
   } catch (e) {
     showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${e.message}`, 'error');

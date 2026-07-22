@@ -37,7 +37,7 @@ async function generateLabelPDF(data) {
   doc.image(qrImage, (width - 80) / 2, 8, { width: 80, height: 80 });
 
   // Loja (bold, grande)
-  doc.fontSize(10).font('Helvetica-Bold');
+  doc.fontSize(12).font('Helvetica-Bold');
   doc.text(`LOJA: ${store_name || '(sem loja)'}`.substring(0, 32), 8, 95, {
     width: width - 16,
     align: 'center',
@@ -45,8 +45,8 @@ async function generateLabelPDF(data) {
 
   // SKU
   if (sku) {
-    doc.fontSize(10).font('Helvetica-Bold');
-    doc.text(`SKU: ${sku}`.substring(0, 32), 8, 110, {
+    doc.fontSize(12).font('Helvetica-Bold');
+    doc.text(`SKU: ${sku}`.substring(0, 32), 8, 112, {
       width: width - 16,
       align: 'center',
     });
@@ -56,31 +56,31 @@ async function generateLabelPDF(data) {
   doc.moveTo(8, 130).lineTo(width - 8, 130).stroke();
 
   // Produto (normal, pequeno)
-  doc.fontSize(8).font('Helvetica');
+  doc.fontSize(9).font('Helvetica');
   doc.text(`Produto:`, 8, 135);
-  doc.fontSize(8).font('Helvetica-Bold');
-  doc.text(`${product_name}`.substring(0, 40), 8, 145, {
+  doc.fontSize(10).font('Helvetica-Bold');
+  doc.text(`${product_name}`.substring(0, 40), 8, 147, {
     width: width - 16,
   });
 
   // Variação
   if (variation_type) {
-    doc.fontSize(8).font('Helvetica');
-    doc.text(`Tipo:`, 8, 165);
-    doc.fontSize(8).font('Helvetica-Bold');
-    doc.text(`${variation_type}`.substring(0, 40), 8, 175, {
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`Tipo:`, 8, 167);
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text(`${variation_type}`.substring(0, 40), 8, 179, {
       width: width - 16,
     });
   }
 
   // Aviso frágil
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('red');
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('red');
   doc.text('⚠ PRODUTO FRÁGIL ⚠', 8, 195, {
     width: width - 16,
     align: 'center',
   });
-  doc.fontSize(7).font('Helvetica').fillColor('black');
-  doc.text('POR FAVOR CUIDADO AO MANUSEAR', 8, 208, {
+  doc.fontSize(8).font('Helvetica').fillColor('black');
+  doc.text('POR FAVOR CUIDADO AO MANUSEAR', 8, 209, {
     width: width - 16,
     align: 'center',
   });
@@ -89,20 +89,25 @@ async function generateLabelPDF(data) {
   const now = new Date();
   const dateStr = now.toLocaleDateString('pt-BR');
   const timeStr = now.toLocaleTimeString('pt-BR');
-  doc.fontSize(7).font('Helvetica');
-  doc.text(`${dateStr} ${timeStr}`, 8, 225, {
+  doc.fontSize(8).font('Helvetica');
+  doc.text(`${dateStr} ${timeStr}`, 8, 228, {
     width: width - 16,
     align: 'center',
   });
 
   // Footer
-  doc.fontSize(8).font('Helvetica-Bold');
+  doc.fontSize(9).font('Helvetica-Bold');
   doc.text('PRODUTO EMBALADO', 8, 245, {
     width: width - 16,
     align: 'center',
   });
   doc.fontSize(8).font('Helvetica');
-  doc.text(`PELA ${company_name}`.substring(0, 32), 8, 256, {
+  doc.text('COM TODOS OS PADRÕES', 8, 256, {
+    width: width - 16,
+    align: 'center',
+  });
+  doc.fontSize(8).font('Helvetica');
+  doc.text('DE QUALIDADE E SEGURANÇA', 8, 266, {
     width: width - 16,
     align: 'center',
   });

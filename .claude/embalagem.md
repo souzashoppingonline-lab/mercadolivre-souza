@@ -134,6 +134,41 @@ A mesma página `embalagem.html` atende ML e Shopee — o operador bipa qualquer
 - **Filtro por marketplace nas buscas**: as abas Buscar vídeos, Conferência do Dia e Histórico ganharam um select **Marketplace** (Todos/Mercado Livre/Shopee). O `GET /videos`/`/por-hora`/`/historico` aceitam `marketplace` (código `ML`/`SHOPEE`), derivado da loja do vídeo (`packing_videos.store_id` → `stores.marketplace_id` → `marketplaces.code`, `COALESCE` pra `ML` quando nulo). Cada linha da lista mostra um mini-badge ML/Shopee (`videoRowHtml`). O dropdown de **loja** continua listando só contas ML (`DB.getLojas` é ML-only); pra ver só Shopee, use o filtro de marketplace.
 - **Variação/tipo em letra grande**: `.emb-order-tag` foi aumentada (30px, uppercase, além do piscar `.attention`) — pedido do usuário, vale pros dois marketplaces, é o dado que mais causa erro de embalagem.
 
+## Impressora térmica — rótulo pós-embalagem (v46)
+
+**Fluxo**: após vídeo gravado + upload bem-sucedido (`POST /finalizar`), o sistema imprime automaticamente um rótulo térmica de 10x15 cm com:
+- **QR code** contendo o `shipping_id` (rastreabilidade: basta escanear pra recuperar a embalagem)
+- **Nome do produto** (primeira linha destacada)
+- **Tipo/Variação** (Cor/Tamanho, se houver)
+- **SKU** (código único do item — impresso pra auditoria contra item errado)
+- **Data/Hora** de embalagem (timestamp)
+- **Rodapé**: "PRODUTO EMBALADO PELA EMPRESA XYZ" (configurável, padrão "EMPRESA XYZ")
+- **Corte automático** do papel (comando `cut()` ESC/POS)
+
+**Configuração**: variáveis de ambiente no `.env`:
+```
+THERMAL_PRINTER_IP=192.168.1.100    # IP ou hostname da impressora na rede local
+THERMAL_PRINTER_PORT=9100            # Porta padrão ESC/POS (raw socket)
+```
+
+Se `THERMAL_PRINTER_IP` não estiver configurado, a impressão é silenciosa (não é erro — útil em ambiente de teste). Se houver erro de conectividade, é logado mas não interrompe o fluxo do embalador.
+
+**Implementação**:
+- `server/src/thermal/thermalPrinter.js` — módulo ESC/POS (linguagem padrão de impressoras térmicas) com suporte a QR code via `escpos` + `escpos-network` + `qrcode`.
+- `POST /api/embalagem/print-label` — rota que recebe `{ shipping_id, product_name, variation_type, sku, company_name }` e envia comando à impressora.
+- `pages/embalagem.html` — função `printThermalLabel()` chamada após upload bem-sucedido (em paralelo, não bloqueia UX).
+
+**Decisões de design**:
+- **Impressora em rede**: conexão socket direto (porta 9100), não via protocolo HTTP — mais rápido e confiável (típico de impressoras térmicas industriais).
+- **Chamada assíncrona**: após vídeo finalizar, a impressão roda em segundo plano sem `await` — o embalador já pode bipar a próxima etiqueta enquanto o rótulo imprime.
+- **Falha silenciosa**: se a impressora não responde, log em console mas nenhuma interrupção de UI — o operador continua embalando, um supervisor revisa depois se houver falta de rótulo.
+- **Dados extraídos do pedido**: variação, SKU e nome vêm de `session.orders[0]` (já carregado no frontend), sem chamada extra à API.
+
+**Próximos passos opcionais**:
+- Permitir `company_name` customizado por loja (campo editável em settings/config).
+- Imprimir código de barras 128 (além do QR) pro rastreamento manual com scanner de barras simples.
+- Integrar com sistema de devolução: incluir número de devolução no rótulo se o pedido foi sinalizador de devolução.
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.

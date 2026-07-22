@@ -125,6 +125,7 @@
         <button class="emb-tab-btn" id="tabBtnBuscar" onclick="switchTab('buscar')"><i class="fas fa-search"></i> Buscar vídeos</button>
         <button class="emb-tab-btn" id="tabBtnConferencia" onclick="switchTab('conferencia')"><i class="fas fa-clipboard-check"></i> Conferência do Dia</button>
         <button class="emb-tab-btn" id="tabBtnHistorico" onclick="switchTab('historico')"><i class="fas fa-chart-line"></i> Histórico</button>
+        <button class="emb-tab-btn" id="tabBtnRelatorios" onclick="switchTab('relatorios')"><i class="fas fa-file-chart-bar"></i> Relatórios</button>
       </div>
 
       <!-- ═══ ABA: BIPAR ═══ -->
@@ -225,6 +226,26 @@
             <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Tempo médio por pedido, por dia</div>
             <canvas id="histTimeChart" height="90"></canvas>
           </div>
+        </div>
+      </div>
+
+      <!-- ═══ ABA: RELATÓRIOS ═══ -->
+      <div class="emb-panel" id="panelRelatorios">
+        <div class="emb-card">
+          <p class="emb-subtitle" style="margin-top:0">Estatísticas de embalagem por embalador (staff) e marketplace — produtividade da equipe.</p>
+          <div class="emb-filters">
+            <div class="emb-field"><label>De</label><input type="date" id="fRelDe"></div>
+            <div class="emb-field"><label>Até</label><input type="date" id="fRelAte"></div>
+            <div class="emb-field"><label>Embalador</label><select id="fRelStaff"><option value="">Todos</option></select></div>
+            <div class="emb-field"><label>Marketplace</label><select id="fRelMkt"><option value="">Todos</option><option value="ML">Mercado Livre</option><option value="SHOPEE">Shopee</option></select></div>
+            <button class="emb-btn" onclick="loadRelatorios()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+          </div>
+          <div class="card-grid" id="relKpis" style="margin-bottom:16px"></div>
+          <div style="margin-bottom:16px">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Pedidos embalados por embalador e marketplace</div>
+            <canvas id="relChart" height="90"></canvas>
+          </div>
+          <div class="emb-video-list" id="relTableList"><div class="emb-placeholder">Carregando dados...</div></div>
         </div>
       </div>
 
@@ -508,12 +529,25 @@ async function finalizeCurrent() {
   return true;
 }
 
+async function getCurrentStaffUser() {
+  try {
+    const res = await fetch('/auth/staff/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
 async function uploadPackingVideo(session, blob, durationSeconds) {
+  const staff = await getCurrentStaffUser();
   const fd = new FormData();
   fd.append('shipping_id', session.shippingId);
   fd.append('order_ids', JSON.stringify(session.orders.map(o => o.order_id)));
   fd.append('duration_seconds', String(durationSeconds));
   fd.append('store_id', session.orders[0]?.store_id || '');
+  if (staff?.id) fd.append('staff_user_id', String(staff.id));
+  if (staff?.username) fd.append('staff_user_name', staff.username);
   fd.append('video', blob, `${session.shippingId}.webm`);
   try {
     const res = await DB.finalizarEmbalagem(fd);
@@ -572,13 +606,16 @@ function switchTab(tab) {
   document.getElementById('panelBuscar').classList.toggle('active', tab === 'buscar');
   document.getElementById('panelConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('panelHistorico').classList.toggle('active', tab === 'historico');
+  document.getElementById('panelRelatorios').classList.toggle('active', tab === 'relatorios');
   document.getElementById('tabBtnBipar').classList.toggle('active', tab === 'bipar');
   document.getElementById('tabBtnBuscar').classList.toggle('active', tab === 'buscar');
   document.getElementById('tabBtnConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('tabBtnHistorico').classList.toggle('active', tab === 'historico');
+  document.getElementById('tabBtnRelatorios').classList.toggle('active', tab === 'relatorios');
   if (tab === 'bipar') refocusScan();
   if (tab === 'conferencia') loadConferenciaDia();
   if (tab === 'historico') loadHistorico();
+  if (tab === 'relatorios') loadRelatorios();
 }
 
 // ── Vídeo em lista (usado por "Buscar vídeos" e "Conferência do Dia") ──
@@ -872,6 +909,102 @@ function closeVideoModal() {
   player.removeAttribute('src');
   player.load();
   document.getElementById('videoModalBackdrop').classList.remove('open');
+}
+
+// ── Aba: Relatórios — estatísticas por embalador e marketplace ────────
+async function loadRelatorios() {
+  await loadLojasSelect('fRelStaff'); // carrega lista de lojas no select (reutiliza função)
+  const de = document.getElementById('fRelDe').value;
+  const ate = document.getElementById('fRelAte').value;
+  const staff = document.getElementById('fRelStaff').value;
+  const mkt = document.getElementById('fRelMkt').value;
+
+  const params = {};
+  if (de) params.date_from = de;
+  if (ate) params.date_to = ate + 'T23:59:59';
+  if (staff) params.staff_user_name = staff;
+  if (mkt) params.marketplace = mkt;
+
+  const list = document.getElementById('relTableList');
+  list.innerHTML = '<div class="emb-placeholder">Carregando dados...</div>';
+  const data = await DB.getRelatorioEmbalagem(params);
+  const rows = data?.rows || [];
+
+  renderRelatorioKpis(rows);
+  renderRelatorioChart(rows);
+
+  const html = rows.length ? rows.map(row => `
+    <div class="emb-video-row">
+      <div>
+        <div class="title"><strong>${escapeHtml(row.staff_user_name || '—')}</strong> · ${row.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee" style="font-size:11px">Shopee</span>' : '<span class="emb-mp-badge ml" style="font-size:11px">ML</span>'}</div>
+        <div class="meta">Pedidos: ${row.count} · Duração total: ${fmtDuration(row.total_duration)} · Média por pedido: ${row.total_orders ? fmtDuration(row.total_duration / row.total_orders) : '—'}</div>
+      </div>
+      <div class="dur">${row.count} pedidos</div>
+    </div>`).join('') : '<div class="emb-placeholder">Nenhum dado encontrado com esses filtros.</div>';
+  list.innerHTML = html;
+}
+
+function renderRelatorioKpis(rows) {
+  const kpis = document.getElementById('relKpis');
+  if (!rows.length) {
+    kpis.innerHTML = '';
+    return;
+  }
+
+  const totalPedidos = rows.reduce((s, r) => s + r.count, 0);
+  const totalDuration = rows.reduce((s, r) => s + Number(r.total_duration || 0), 0);
+  const totalOrders = rows.reduce((s, r) => s + r.total_orders, 0);
+  const avgPerOrder = totalOrders ? totalDuration / totalOrders : null;
+  const staffCount = new Set(rows.map(r => r.staff_user_name)).size;
+
+  kpis.innerHTML = `
+    <div class="stat-card"><div class="label">Total embalado</div><div class="value">${totalPedidos}</div></div>
+    <div class="stat-card"><div class="label">Embaladores</div><div class="value">${staffCount}</div></div>
+    <div class="stat-card"><div class="label">Tempo total</div><div class="value" style="color:var(--teal)">${fmtDuration(totalDuration)}</div></div>
+    <div class="stat-card"><div class="label">Média por pedido</div><div class="value" style="color:var(--orange)">${fmtDuration(avgPerOrder)}</div></div>`;
+}
+
+function renderRelatorioChart(rows) {
+  if (!rows.length) {
+    destroyChart('rel');
+    return;
+  }
+
+  // Agrupa por embalador — cada linha é um embalador; cores diferentes por marketplace
+  const byStaff = new Map();
+  for (const row of rows) {
+    if (!byStaff.has(row.staff_user_name)) byStaff.set(row.staff_user_name, {});
+    const staffData = byStaff.get(row.staff_user_name);
+    staffData[row.marketplace] = row.count;
+  }
+
+  const staffNames = Array.from(byStaff.keys()).sort();
+  const marketplaces = new Set(rows.map(r => r.marketplace));
+  const colors = { ML: '#FFE600', SHOPEE: '#ee4d2d' };
+
+  const datasets = Array.from(marketplaces).map(mkt => ({
+    label: mkt === 'SHOPEE' ? 'Shopee' : 'Mercado Livre',
+    data: staffNames.map(staff => byStaff.get(staff)[mkt] || 0),
+    backgroundColor: colors[mkt] + 'cc',
+    borderColor: colors[mkt],
+    borderWidth: 1.5,
+    borderRadius: 4,
+  }));
+
+  destroyChart('rel');
+  charts.rel = new Chart(document.getElementById('relChart'), {
+    type: 'bar',
+    data: { labels: staffNames, datasets },
+    options: {
+      responsive: true,
+      animation: { duration: 700, easing: 'easeOutQuart' },
+      plugins: { legend: { position: 'bottom', labels: { color: '#ccc', boxWidth: 10, font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 11 } }, grid: { display: false }, stacked: false },
+        y: { ticks: { color: '#888', stepSize: 1 }, grid: { color: 'rgba(255,255,255,.04)' }, beginAtZero: true },
+      },
+    },
+  });
 }
 
 // ── Init ────────────────────────────────────────────────────

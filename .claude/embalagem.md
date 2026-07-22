@@ -98,6 +98,19 @@ Complementa a Conferência do Dia (que só compara "dia selecionado vs. dia ante
 - **Gráfico 1** (`histCountChart`, colunas): bipagens por dia.
 - **Gráfico 2** (`histTimeChart`, linha preenchida): tempo médio por pedido, dia a dia — é aqui que dá pra ver se o tempo de embalagem está melhorando ou piorando ao longo das semanas, não só num dia isolado.
 
+### Aba Relatórios — estatísticas por embalador e marketplace
+
+Mostra breakdown de produtividade da equipe: quem embalou quantos pedidos, e em qual marketplace (ML vs. Shopee). Rastreia `staff_user_id` e `staff_user_name` em cada vídeo gravado, permitindo análise de desempenho por embalador.
+
+- **Rastreamento de staff**: quando o embalador grava um vídeo em `POST /api/embalagem/finalizar`, o frontend captura o usuário logado (`GET /auth/staff/me`) e envia `staff_user_id`/`staff_user_name` no upload. Migration v45 adicionou as colunas em `packing_videos` + índice em `(staff_user_id, created_at DESC)` pra queries rápidas.
+- **Rota**: `GET /api/embalagem/relatorio?date_from&date_to&staff_user_name&marketplace` — agregação por embalador e marketplace, devolvendo `staff_user_name`, `marketplace` (`ML`/`SHOPEE`), `count` (quantidade de pedidos embalados), `total_duration` (tempo total de gravação), `total_orders` (número de pedidos — diferente de `count` se houver packs com múltiplos pedidos).
+- **Cards de resumo**: total embalado no período, número de embaladores únicos, tempo total, tempo médio por pedido.
+- **Gráfico** (colunas agrupadas): embalador no eixo X, duas cores (ML/Shopee) por coluna, altura = quantidade de pedidos. Cada marketplace com cor distinta (ML amarelo, Shopee vermelho).
+- **Tabela de detalhe**: lista todos os registros agregados — cada linha é um embalador + marketplace + seus números (pedidos, duração, média).
+- **Filtros**: data de/até, embalador (dropdown), marketplace (Todos/ML/Shopee).
+
+Serve pra insights de produtividade ("Quem embalou mais pedidos?", "Qual marketplace demanda mais tempo?") sem necessidade de consulta SQL manual.
+
 ## Alerta de gravação anormal (aba Bipar)
 
 Enquanto grava, um timer ao lado do badge de status (`#scanTimer`, atualizado a cada 1s via `setInterval` em `startDurationWatcher()`) mostra o tempo decorrido — feedback visual contínuo, não só no final.

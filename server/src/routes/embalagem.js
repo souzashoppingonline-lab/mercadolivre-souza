@@ -246,7 +246,7 @@ router.get('/pedido/:shippingId', async (req, res) => {
 // monta o nome/pasta do arquivo (destination/filename acima).
 router.post('/finalizar', upload.single('video'), async (req, res) => {
   try {
-    const { shipping_id, order_ids, duration_seconds, store_id } = req.body;
+    const { shipping_id, order_ids, duration_seconds, store_id, staff_user_id, staff_user_name } = req.body;
     if (!req.file) return res.status(400).json({ error: 'arquivo de vídeo ausente' });
     if (!shipping_id) return res.status(400).json({ error: 'shipping_id é obrigatório' });
 
@@ -254,9 +254,9 @@ router.post('/finalizar', upload.single('video'), async (req, res) => {
     try { orderIdsArr = JSON.parse(order_ids || '[]'); } catch (e) { orderIdsArr = []; }
 
     const { rows } = await pool.query(
-      `INSERT INTO packing_videos (shipping_id, order_ids, file_path, duration_seconds, store_id)
-       VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
-      [shipping_id, orderIdsArr, req.file.path, duration_seconds ? Number(duration_seconds) : null, store_id || null]
+      `INSERT INTO packing_videos (shipping_id, order_ids, file_path, duration_seconds, store_id, staff_user_id, staff_user_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`,
+      [shipping_id, orderIdsArr, req.file.path, duration_seconds ? Number(duration_seconds) : null, store_id || null, staff_user_id || null, staff_user_name || null]
     );
     res.status(201).json({ id: rows[0].id, created_at: rows[0].created_at });
   } catch (e) {
@@ -412,6 +412,49 @@ router.get('/videos/:id/file', async (req, res) => {
     });
   } catch (e) {
     console.error('[api/embalagem] GET /videos/:id/file', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/embalagem/relatorio?date_from&date_to&staff_user_name&marketplace
+// — agregação por embalador (staff_user_name) e marketplace (código do marketplace).
+// Devolve lista de {staff_user_name, marketplace, count} — estatísticas de embalagem.
+router.get('/relatorio', async (req, res) => {
+  try {
+    const { date_from, date_to, staff_user_name, marketplace } = req.query;
+    const where = [];
+    const params = [];
+
+    if (date_from) { params.push(date_from); where.push(`pv.created_at >= $${params.length}`); }
+    if (date_to) { params.push(date_to); where.push(`pv.created_at <= $${params.length}`); }
+    if (staff_user_name) { params.push(staff_user_name); where.push(`pv.staff_user_name = $${params.length}`); }
+
+    let mkWhere = '';
+    if (marketplace) {
+      params.push(marketplace);
+      mkWhere = `AND COALESCE(mk.code,'ML') = $${params.length}`;
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const { rows } = await pool.query(
+      `SELECT pv.staff_user_name,
+              COALESCE(mk.code, 'ML') AS marketplace,
+              COUNT(pv.id)::int AS count,
+              COALESCE(SUM(pv.duration_seconds) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::numeric AS total_duration,
+              COALESCE(SUM(cardinality(pv.order_ids)) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::int AS total_orders
+       FROM packing_videos pv
+       LEFT JOIN stores s ON s.id = pv.store_id
+       LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
+       ${whereSql}
+       ${mkWhere}
+       GROUP BY pv.staff_user_name, COALESCE(mk.code, 'ML')
+       ORDER BY pv.staff_user_name ASC, COALESCE(mk.code, 'ML') ASC`,
+      params
+    );
+    res.json({ rows });
+  } catch (e) {
+    console.error('[api/embalagem] GET /relatorio', e.message);
     res.status(500).json({ error: e.message });
   }
 });

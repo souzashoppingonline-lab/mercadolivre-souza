@@ -611,6 +611,7 @@ function showPrintConfirmation(payload) {
   document.getElementById('printCancelBtn').onclick = () => {
     document.getElementById('printConfirmModal').style.display = 'none';
     console.log('[thermal] impressão cancelada pelo usuário');
+    document.getElementById('scanInput').focus();
   };
 }
 
@@ -637,6 +638,7 @@ async function confirmAndSendPrint(payload) {
     if (result.ok) {
       console.log('[thermal] ✓ rótulo impresso:', payload.shipping_id);
       showScanMsg(`✓ Etiqueta impressa com sucesso`, 'success');
+      document.getElementById('scanInput').focus();
     } else if (result.reason === 'printer_not_configured') {
       console.debug('[thermal] impressora não configurada no servidor');
       showScanMsg(`ℹ️ Impressora não está configurada`, 'warn');

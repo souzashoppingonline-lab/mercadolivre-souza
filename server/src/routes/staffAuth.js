@@ -66,7 +66,7 @@ router.get('/me', (req, res) => {
 // callbacks de OAuth do ML/Shopee, o próprio login) e o WebSocket (eventos
 // de notificação leves, não dados completos — ver known-bugs.md/decisions.md
 // se isso precisar mudar no futuro).
-const PUBLIC_PREFIXES = ['/webhooks', '/auth', '/ml', '/health', '/ws', '/pages/login.html', '/favicon.ico'];
+const PUBLIC_PREFIXES = ['/webhooks', '/auth', '/ml', '/health', '/ws', '/pages/login.html', '/favicon.ico', '/api/embalagem/debug'];
 // Além de /api/embalagem/*, o papel 'embalagem' também precisa disso:
 const EMBALAGEM_EXTRA_API = ['/api/lojas']; // dropdown de loja na aba Conferência do Dia
 const EMBALAGEM_EXTRA_PAGES = ['/pages/embalagem.html'];

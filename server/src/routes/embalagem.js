@@ -158,13 +158,15 @@ function extractVariationPicture(orderData) {
     if (!item0) return null;
 
     const variations = Array.isArray(item0.variations) ? item0.variations : [];
-    if (!variations.length) return null;
 
     // Estratégia 1: procura por variation_attributes (estrutura API atual)
     const varAttrs = orderData.order_items[0]?.item?.variation_attributes;
-    if (Array.isArray(varAttrs) && varAttrs.length > 0) {
-      const searchValue = varAttrs[0]?.value_name;
-      if (searchValue) {
+    if (Array.isArray(varAttrs) && varAttrs.length > 0 && variations.length > 0) {
+      // Se há múltiplas variation_attributes, busca por todas (ex: Cor + Tamanho)
+      for (const attr of varAttrs) {
+        const searchValue = attr?.value_name;
+        if (!searchValue) continue;
+
         // Busca exata: name ou model_name iguais a value_name
         let found = variations.find(v => {
           const varName = v.name || v.model_name;
@@ -180,20 +182,31 @@ function extractVariationPicture(orderData) {
           );
         }
 
+        // Se encontrou e tem picture, retorna
         if (found?.picture?.url) return found.picture.url;
         if (found?.pictures?.[0]?.url) return found.pictures[0].url;
       }
     }
 
-    // Estratégia 2: procura por thumbnail no item (alguns produtos têm picture lá)
+    // Estratégia 2: se só há 1 variação, é a que foi comprada
+    if (variations.length === 1) {
+      const v = variations[0];
+      if (v?.picture?.url) return v.picture.url;
+      if (v?.pictures?.[0]?.url) return v.pictures[0].url;
+    }
+
+    // Estratégia 3: tenta com item.thumbnail (foto genérica do item)
+    if (item0.thumbnail) return item0.thumbnail;
     if (item0.picture?.url) return item0.picture.url;
     if (item0.pictures?.[0]?.url) return item0.pictures[0].url;
 
-    // Estratégia 3: se há só uma variação, usa ela; se há múltiplas, pega a 1ª
-    // (nem sempre corresponde à comprada, mas é melhor que nada)
-    const firstVar = variations[0];
-    if (firstVar?.picture?.url) return firstVar.picture.url;
-    if (firstVar?.pictures?.[0]?.url) return firstVar.pictures[0].url;
+    // Estratégia 4: Última alternativa — primeira variação qualquer
+    // (nem sempre a correta, mas é melhor que nada)
+    if (variations.length > 0) {
+      const firstVar = variations[0];
+      if (firstVar?.picture?.url) return firstVar.picture.url;
+      if (firstVar?.pictures?.[0]?.url) return firstVar.pictures[0].url;
+    }
 
   } catch (e) { console.error('[embalagem] erro ao extrair foto de variação:', e.message); }
   return null;

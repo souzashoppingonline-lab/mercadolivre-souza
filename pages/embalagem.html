@@ -579,6 +579,7 @@ async function printThermalLabel(session) {
       product_name: order.title || '(sem título)',
       variation_type: variationType,
       sku: order.seller_sku,
+      store_name: order.store_nickname || '(sem loja)',
       company_name: 'EMPRESA XYZ', // padrão — pode vir de config depois
     };
 

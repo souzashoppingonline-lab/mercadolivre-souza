@@ -37,77 +37,78 @@ async function generateLabelPDF(data) {
   doc.image(qrImage, (width - 60) / 2, 8, { width: 60, height: 60 });
 
   // Loja (bold, grande)
-  doc.fontSize(14).font('Helvetica-Bold');
-  doc.text(`LOJA: ${store_name || '(sem loja)'}`.substring(0, 32), 8, 73, {
+  doc.fontSize(16).font('Helvetica-Bold');
+  doc.text(`LOJA: ${store_name || '(sem loja)'}`.substring(0, 32), 8, 70, {
     width: width - 16,
     align: 'center',
   });
 
   // SKU
   if (sku) {
-    doc.fontSize(14).font('Helvetica-Bold');
-    doc.text(`SKU: ${sku}`.substring(0, 32), 8, 93, {
+    doc.fontSize(16).font('Helvetica-Bold');
+    doc.text(`SKU: ${sku}`.substring(0, 32), 8, 89, {
       width: width - 16,
       align: 'center',
     });
   }
 
   // Separador
-  doc.moveTo(8, 110).lineTo(width - 8, 110).stroke();
+  doc.moveTo(8, 107).lineTo(width - 8, 107).stroke();
 
   // Produto (normal, pequeno)
-  doc.fontSize(11).font('Helvetica');
-  doc.text(`Produto:`, 8, 117);
-  doc.fontSize(12).font('Helvetica-Bold');
-  doc.text(`${product_name}`.substring(0, 40), 8, 132, {
+  doc.fontSize(12).font('Helvetica');
+  doc.text(`Produto:`, 8, 114);
+  doc.fontSize(14).font('Helvetica-Bold');
+  doc.text(`${product_name}`.substring(0, 40), 8, 129, {
     width: width - 16,
   });
 
   // Variação
   if (variation_type) {
-    doc.fontSize(11).font('Helvetica');
-    doc.text(`Tipo:`, 8, 157);
-    doc.fontSize(12).font('Helvetica-Bold');
-    doc.text(`${variation_type}`.substring(0, 40), 8, 172, {
+    doc.fontSize(12).font('Helvetica');
+    doc.text(`Tipo:`, 8, 154);
+    doc.fontSize(14).font('Helvetica-Bold');
+    doc.text(`${variation_type}`.substring(0, 40), 8, 169, {
       width: width - 16,
     });
   }
 
-  // Aviso frágil
-  doc.fontSize(12).font('Helvetica-Bold').fillColor('red');
-  doc.text('⚠ PRODUTO FRÁGIL ⚠', 8, 197, {
+  // Aviso frágil — MUITO GRANDE E VISÍVEL
+  doc.fontSize(18).font('Helvetica-Bold').fillColor('red');
+  doc.text('⚠ PRODUTO FRÁGIL ⚠', 8, 190, {
     width: width - 16,
     align: 'center',
   });
-  doc.fontSize(10).font('Helvetica').fillColor('black');
-  doc.text('POR FAVOR CUIDADO AO MANUSEAR', 8, 213, {
+  doc.fontSize(14).font('Helvetica-Bold').fillColor('red');
+  doc.text('CUIDADO AO MANUSEAR', 8, 210, {
     width: width - 16,
     align: 'center',
   });
+  doc.fillColor('black');
 
   // Data/hora
   const now = new Date();
   const dateStr = now.toLocaleDateString('pt-BR');
   const timeStr = now.toLocaleTimeString('pt-BR');
-  doc.fontSize(10).font('Helvetica');
+  doc.fontSize(11).font('Helvetica');
   doc.text(`${dateStr} ${timeStr}`, 8, 233, {
     width: width - 16,
     align: 'center',
   });
 
   // Footer
-  doc.fontSize(11).font('Helvetica-Bold');
+  doc.fontSize(12).font('Helvetica-Bold');
   doc.text('PRODUTO EMBALADO', 8, 256, {
     width: width - 16,
     align: 'center',
   });
-  doc.fontSize(10).font('Helvetica');
+  doc.fontSize(11).font('Helvetica');
   doc.text('COM TODOS OS PADRÕES', 8, 270, {
     width: width - 16,
     align: 'center',
   });
-  doc.fontSize(10).font('Helvetica');
-  doc.text('DE QUALIDADE E SEGURANÇA', 8, 282, {
+  doc.fontSize(11).font('Helvetica');
+  doc.text('DE QUALIDADE E SEGURANÇA', 8, 283, {
     width: width - 16,
     align: 'center',
   });

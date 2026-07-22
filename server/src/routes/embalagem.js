@@ -199,6 +199,45 @@ function extractVariationPicture(orderData) {
   return null;
 }
 
+// DEBUG: endpoint temporário pra diagnosticar estrutura de variações (sem autenticação)
+router.get('/debug/pedido/:shippingId', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT o.ml_id, o.title, o.raw_data FROM orders o WHERE o.shipping_id = $1 LIMIT 1`,
+      [req.params.shippingId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'pedido não encontrado' });
+
+    const row = rows[0];
+    const item = row.raw_data?.order_items?.[0]?.item || {};
+    const variations = item.variations || [];
+
+    res.json({
+      title: row.title,
+      has_variations: variations.length > 0,
+      num_variations: variations.length,
+      variation_attributes: row.raw_data?.order_items?.[0]?.item?.variation_attributes,
+      first_variation_structure: variations[0] ? {
+        id: variations[0].id,
+        name: variations[0].name,
+        model_name: variations[0].model_name,
+        has_picture: !!variations[0].picture,
+        has_pictures: Array.isArray(variations[0].pictures) && variations[0].pictures.length > 0,
+        picture: variations[0].picture?.url ? 'URL_EXISTS' : null,
+        pictures_count: variations[0].pictures?.length || 0
+      } : null,
+      all_variations_summary: variations.map((v, i) => ({
+        index: i,
+        name: v.name || v.model_name,
+        has_picture: !!v.picture?.url,
+        has_pictures: Array.isArray(v.pictures) && v.pictures.length > 0
+      }))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/embalagem/pedido/:shippingId — busca pedido(s) pela etiqueta bipada.
 // Pode retornar mais de 1 linha: um mesmo envio (pack) pode agrupar vários
 // pedidos do mesmo comprador.

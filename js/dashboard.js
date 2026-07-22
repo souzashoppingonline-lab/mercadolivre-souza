@@ -216,14 +216,20 @@ async function loadTopProdutos() {
   if (!tbody) return;
 
   const data = await DB.getProdutos();
-  const produtos = (data?.products || []).slice(0, 5);
+  // Ordena pelos MAIS VENDIDOS de verdade (receita dos nossos pedidos) — o
+  // sold_quantity do ML costuma vir 0/zerado, então usamos sold_periodo/
+  // revenue_periodo, que vêm da tabela orders.
+  const produtos = (data?.products || [])
+    .slice()
+    .sort((a, b) => (Number(b.revenue_periodo) || 0) - (Number(a.revenue_periodo) || 0))
+    .slice(0, 5);
 
   tbody.innerHTML = produtos.length
     ? produtos.map(p => `
       <tr>
         <td>${p.title}</td>
-        <td>${p.sold ?? 0}</td>
-        <td>${R((p.price ?? 0) * (p.sold ?? 0))}</td>
+        <td>${p.sold_periodo ?? 0}</td>
+        <td>${R(Number(p.revenue_periodo) || 0)}</td>
         <td><span class="badge ${p.status}">${p.status === 'active' ? 'Ativo' : 'Pausado'}</span></td>
       </tr>`).join('')
     : '<tr><td colspan="4" class="empty-state">Nenhum produto encontrado</td></tr>';

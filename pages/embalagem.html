@@ -272,6 +272,12 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
+// Reset modal na inicialização (evita exibir modal de uma sessão anterior)
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('printConfirmModal');
+  if (modal) modal.style.display = 'none';
+});
+
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }

@@ -163,11 +163,18 @@
           <input type="text" id="devTableSearch" placeholder="🔎 Filtrar aqui: pedido, comprador ou produto..." oninput="filterDevTable()"
             style="margin-left:auto;min-width:260px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
           <button class="btn-save-note" id="btnAtualizarPendentes" onclick="atualizarPendentes(this)" style="margin-left:8px" title="Reconsulta em segundo plano todas as devoluções em análise, 1 por vez (respeita o rate limit do ML)"><i class="fas fa-arrows-rotate"></i> Atualizar pendentes</button>
+          <button class="btn-save-note" id="btnMaskDev" onclick="toggleDevMask()" style="margin-left:8px" title="Oculta Pedido, Loja e Produto na tela (para print/compartilhar). Não afeta o CSV/PDF."><i class="fas fa-eye-slash"></i> Ocultar</button>
           <button class="btn-save-note" onclick="exportDevCSV()" style="margin-left:8px"><i class="fas fa-file-csv"></i> CSV</button>
           <button class="btn-save-note" onclick="exportDevPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
+        <style>
+          /* Máscara de privacidade: borra Pedido(1), Loja(2), Produto(4) na tela */
+          #devTableEl.masked td:nth-child(1),
+          #devTableEl.masked td:nth-child(2),
+          #devTableEl.masked td:nth-child(4) { filter: blur(6px); user-select: none; }
+        </style>
         <div class="table-responsive">
-          <table class="data-table">
+          <table class="data-table" id="devTableEl">
             <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Prejuízo (R$)</th><th>Observação</th><th>Abrir chamado</th></tr></thead>
             <tbody id="devTable"><tr><td colspan="12" class="empty-state">Carregando...</td></tr></tbody>
           </table>
@@ -390,6 +397,15 @@ function devRowArray(r) {
     devVideoText(r.order_id), prej, obs, chamado,
   ];
 }
+// Máscara de privacidade — borra Pedido/Loja/Produto na tela (view-only; CSV/PDF
+// exportam o dado real, pois a máscara é só CSS). Pra print/compartilhar tela.
+function toggleDevMask() {
+  const t = document.getElementById('devTableEl');
+  const on = t.classList.toggle('masked');
+  const b = document.getElementById('btnMaskDev');
+  if (b) b.innerHTML = on ? '<i class="fas fa-eye"></i> Mostrar' : '<i class="fas fa-eye-slash"></i> Ocultar';
+}
+
 const DEV_COLS = ['Pedido', 'Loja', 'Comprador', 'Produto', 'Motivo', 'Valor', 'Status', 'Data', 'Vídeo', 'Prejuízo (R$)', 'Observação', 'Abrir chamado'];
 
 // Toast simples (canto inferior) pra avisos de atualização em segundo plano.

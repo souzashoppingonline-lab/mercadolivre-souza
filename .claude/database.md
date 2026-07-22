@@ -164,11 +164,15 @@ order_status TEXT              -- valor bruto da Shopee (UNPAID/READY_TO_SHIP/SH
 raw_data JSONB                 -- resposta completa de order/get_order_detail
 tracking_number TEXT           -- v35: rastreio (BR...) da etiqueta Shopee; índice parcial (WHERE NOT NULL). Casa a etiqueta bipada→pedido na Embalagem
 buyer_total NUMERIC             -- v36: financeiro (escrow). buyer_total_amount = quanto o comprador pagou
-commission_fee NUMERIC          -- v36: comissão/taxa Shopee do pedido
+commission_fee NUMERIC          -- v36: comissão/taxa Shopee BRUTA do pedido
 escrow_amount NUMERIC           -- v36: LÍQUIDO que o vendedor recebe (order_income.escrow_amount)
 buyer_payment_method TEXT       -- v36: forma de pagamento (Pix, cartão, ...)
 escrow_raw JSONB                -- v36: resposta completa de get_escrow_detail (auditoria)
 logistics_status TEXT           -- v36: status de entrega geral (get_tracking_info.logistics_status)
+service_fee NUMERIC             -- v44: taxa de serviço bruta (order_income.service_fee)
+net_commission_fee NUMERIC      -- v44: comissão LÍQUIDA após rebates (valor final descontado)
+net_service_fee NUMERIC         -- v44: taxa de serviço LÍQUIDA após rebates
+seller_product_rebate NUMERIC   -- v44: abatimento/compensação aplicado às taxas
 updated_at TIMESTAMPTZ
 ```
 Gravada por `server/src/marketplaceEventWorker.js` (`handleShopeeOrderEvent`), mesmo papel de `amazon_order_data`.

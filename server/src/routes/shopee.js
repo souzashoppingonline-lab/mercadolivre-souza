@@ -637,10 +637,17 @@ router.get('/promocoes/:tipo/:promoId/itens', async (req, res) => {
 // Taxa efetiva REAL da Shopee, derivada do escrow dos pedidos (comissão que a
 // Shopee já cobrou ÷ total pago pelo comprador). É a "taxa automática" do
 // Precificador. Filtro opcional por loja. Retorna null se ainda não há escrow.
+// Taxa Shopee efetiva por pedido = LÍQUIDA (net_commission + net_service, após
+// rebates) quando a API devolveu os campos NET (mudança Shopee dez/25–fev/26,
+// ver .claude/shopee.md); senão cai no BRUTO (commission_fee) — pedidos antigos.
+const TAXA_NET_SQL = `CASE WHEN sod.net_commission_fee IS NOT NULL OR sod.net_service_fee IS NOT NULL
+       THEN COALESCE(sod.net_commission_fee,0) + COALESCE(sod.net_service_fee,0)
+       ELSE sod.commission_fee END`;
+
 async function escrowFeePct(mpId, storeId) {
   const params = [mpId, storeId];
   const { rows } = await pool.query(
-    `SELECT COALESCE(SUM(sod.commission_fee),0) AS com, COALESCE(SUM(sod.buyer_total),0) AS bt
+    `SELECT COALESCE(SUM(${TAXA_NET_SQL}),0) AS com, COALESCE(SUM(sod.buyer_total),0) AS bt
      FROM shopee_order_data sod
      JOIN orders o ON o.ml_id = sod.order_id AND o.marketplace_id = $1
      WHERE ($2 = '' OR o.store_id = $2::bigint) AND sod.buyer_total > 0`,
@@ -1004,7 +1011,7 @@ router.get('/financeiro', async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT o.ml_id AS order_sn, o.date_created, o.status, s.nickname AS conta,
-              sod.buyer_total, sod.commission_fee, sod.escrow_amount,
+              sod.buyer_total, ${TAXA_NET_SQL} AS commission_fee, sod.escrow_amount,
               sod.buyer_payment_method, sod.logistics_status, sod.tracking_number,
               -- frete vem do escrow_raw (order_income): não precisou de coluna nova
               (sod.escrow_raw->'order_income'->>'buyer_paid_shipping_fee')::numeric AS frete_comprador,
@@ -1019,7 +1026,7 @@ router.get('/financeiro', async (req, res) => {
     const { rows: resumo } = await pool.query(
       `SELECT COUNT(*) FILTER (WHERE sod.escrow_amount IS NOT NULL) AS com_escrow,
               COALESCE(SUM(sod.buyer_total), 0) AS bruto,
-              COALESCE(SUM(sod.commission_fee), 0) AS comissao,
+              COALESCE(SUM(${TAXA_NET_SQL}), 0) AS comissao,
               COALESCE(SUM(sod.escrow_amount), 0) AS liquido,
               COALESCE(SUM((sod.escrow_raw->'order_income'->>'buyer_paid_shipping_fee')::numeric), 0) AS frete
        FROM orders o JOIN shopee_order_data sod ON sod.order_sn = o.ml_id

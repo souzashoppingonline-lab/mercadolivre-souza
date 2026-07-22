@@ -180,11 +180,20 @@ async function handleShopeeOrderEvent(evt) {
   const commissionFee = escrow ? Number(inc.commission_fee ?? 0) : null;
   const escrowAmount = escrow ? Number(inc.escrow_amount ?? 0) : null;
   const payMethod = escrow ? (inc.buyer_payment_method || null) : null;
+  // Taxas líquidas (NET) — valor final descontado após rebates (mudança Shopee
+  // dez/2025–fev/2026, ver .claude/shopee.md). NULL quando a API não devolve
+  // (pedido/escrow anterior à mudança) → cálculo cai no bruto.
+  const num = (v) => (v == null ? null : Number(v));
+  const serviceFee = escrow ? num(inc.service_fee) : null;
+  const netCommissionFee = escrow ? num(inc.net_commission_fee) : null;
+  const netServiceFee = escrow ? num(inc.net_service_fee) : null;
+  const sellerRebate = escrow ? num(inc.seller_product_rebate) : null;
 
   await pool.query(
     `INSERT INTO shopee_order_data (order_id, order_sn, shop_id, buyer_username, order_status, raw_data,
-        tracking_number, buyer_total, commission_fee, escrow_amount, buyer_payment_method, escrow_raw, logistics_status, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+        tracking_number, buyer_total, commission_fee, escrow_amount, buyer_payment_method, escrow_raw, logistics_status,
+        service_fee, net_commission_fee, net_service_fee, seller_product_rebate, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
      ON CONFLICT (order_id) DO UPDATE SET
        shop_id = EXCLUDED.shop_id,
        buyer_username = EXCLUDED.buyer_username,
@@ -197,9 +206,14 @@ async function handleShopeeOrderEvent(evt) {
        buyer_payment_method = COALESCE(EXCLUDED.buyer_payment_method, shopee_order_data.buyer_payment_method),
        escrow_raw = COALESCE(EXCLUDED.escrow_raw, shopee_order_data.escrow_raw),
        logistics_status = COALESCE(EXCLUDED.logistics_status, shopee_order_data.logistics_status),
+       service_fee = COALESCE(EXCLUDED.service_fee, shopee_order_data.service_fee),
+       net_commission_fee = COALESCE(EXCLUDED.net_commission_fee, shopee_order_data.net_commission_fee),
+       net_service_fee = COALESCE(EXCLUDED.net_service_fee, shopee_order_data.net_service_fee),
+       seller_product_rebate = COALESCE(EXCLUDED.seller_product_rebate, shopee_order_data.seller_product_rebate),
        updated_at = now()`,
     [o.order_sn, o.order_sn, client.cfg?.shopId || null, o.buyer_username || null, o.order_status || null, JSON.stringify(o),
-     trackingNumber, buyerTotal, commissionFee, escrowAmount, payMethod, escrow ? JSON.stringify(escrow) : null, logisticsStatus]
+     trackingNumber, buyerTotal, commissionFee, escrowAmount, payMethod, escrow ? JSON.stringify(escrow) : null, logisticsStatus,
+     serviceFee, netCommissionFee, netServiceFee, sellerRebate]
   );
 
   await redis.del('kpis:summary');

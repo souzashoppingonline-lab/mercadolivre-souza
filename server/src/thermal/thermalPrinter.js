@@ -7,6 +7,8 @@ const env = require('../config/env');
 // Gera e envia rótulo de embalagem (10x15 cm) pra impressora térmica
 // data: { shipping_id, product_name, variation_type, sku, store_name, company_name }
 async function printLabel(data) {
+  console.log('[thermal/printLabel] iniciado com dados:', data);
+
   const {
     shipping_id,
     product_name,
@@ -16,6 +18,8 @@ async function printLabel(data) {
     company_name = 'EMPRESA XYZ',
   } = data;
 
+  console.log('[thermal/printLabel] env.thermalPrinter:', env.thermalPrinter);
+
   // Se impressora não está configurada, return silenciosamente (não é erro)
   if (!env.thermalPrinter.ip) {
     console.warn('[thermal] impressora não configurada (THERMAL_PRINTER_IP vazio) — pulando impressão');
@@ -23,14 +27,18 @@ async function printLabel(data) {
   }
 
   try {
+    console.log('[thermal] conectando à impressora:', env.thermalPrinter.ip, ':', env.thermalPrinter.port);
     // Conecta via rede (socket raw, porta padrão 9100)
     const device = new Escpos.Network(env.thermalPrinter.ip, env.thermalPrinter.port);
     const printer = new Escpos.Printer(device);
+    console.log('[thermal] device e printer criados');
 
     // Gera o rótulo
+    console.log('[thermal] abrindo conexão com impressora...');
     await printer
       .open()
       .then(() => {
+        console.log('[thermal] ✓ conexão aberta, enviando comandos ESC/POS...');
         printer
           // Inicializa impressora
           .initialize()
@@ -111,12 +119,13 @@ async function printLabel(data) {
         printer
           .cut()
           .close();
+        console.log('[thermal] ✓ comandos ESC/POS finalizados (cut + close)');
       });
 
-    console.log('[thermal] rótulo impresso com sucesso:', shipping_id);
+    console.log('[thermal] ✓ rótulo impresso com sucesso:', shipping_id);
     return { ok: true };
   } catch (e) {
-    console.error('[thermal] erro ao imprimir rótulo:', e.message);
+    console.error('[thermal] ✗ erro ao imprimir rótulo:', e.message, e.stack);
     return { ok: false, error: e.message };
   }
 }

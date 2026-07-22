@@ -566,8 +566,12 @@ async function uploadPackingVideo(session, blob, durationSeconds) {
 // Imprime rótulo térmico com QR code — chamado após upload bem-sucedido
 async function printThermalLabel(session) {
   try {
+    console.log('[thermal] iniciando impressão para:', session.shippingId);
     const order = session.orders[0];
-    if (!order) return;
+    if (!order) {
+      console.warn('[thermal] nenhum pedido encontrado na sessão');
+      return;
+    }
 
     // Extrai dados do pedido
     const variationType = order.variation_attributes
@@ -583,6 +587,8 @@ async function printThermalLabel(session) {
       company_name: 'EMPRESA XYZ', // padrão — pode vir de config depois
     };
 
+    console.log('[thermal] payload enviado:', payload);
+
     const res = await fetch('/api/embalagem/print-label', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -590,21 +596,23 @@ async function printThermalLabel(session) {
     });
 
     if (!res.ok) {
-      console.warn(`[thermal] erro ao imprimir (HTTP ${res.status}):`, await res.text());
+      const errText = await res.text();
+      console.warn(`[thermal] erro ao imprimir (HTTP ${res.status}):`, errText);
       return;
     }
 
     const result = await res.json();
+    console.log('[thermal] resposta do servidor:', result);
     if (result.ok) {
-      console.log('[thermal] rótulo impresso:', session.shippingId);
+      console.log('[thermal] ✓ rótulo impresso:', session.shippingId);
     } else if (result.reason === 'printer_not_configured') {
       // Silencioso — impressora não está configurada no .env
-      console.debug('[thermal] impressora não configurada');
+      console.debug('[thermal] impressora não configurada no servidor');
     } else {
-      console.warn('[thermal] erro ao imprimir:', result.error);
+      console.warn('[thermal] ✗ erro ao imprimir:', result.error);
     }
   } catch (e) {
-    console.error('[thermal] erro ao chamar rota de impressão:', e.message);
+    console.error('[thermal] exceção ao chamar rota de impressão:', e.message, e.stack);
   }
 }
 

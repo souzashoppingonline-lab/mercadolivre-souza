@@ -544,20 +544,31 @@ router.get('/relatorio', async (req, res) => {
 // Chamada após video finalizar com sucesso. Se impressora não está configurada, retorna ok=false.
 router.post('/print-label', async (req, res) => {
   try {
-    const { shipping_id, product_name, variation_type, sku, company_name } = req.body;
+    const { shipping_id, product_name, variation_type, sku, store_name, company_name } = req.body;
     if (!shipping_id) return res.status(400).json({ error: 'shipping_id é obrigatório' });
+
+    console.log('[api/embalagem] POST /print-label chamado:', {
+      shipping_id,
+      product_name,
+      variation_type,
+      sku,
+      store_name,
+      company_name
+    });
 
     const result = await printLabel({
       shipping_id,
       product_name: product_name || '(sem título)',
       variation_type,
       sku,
-      company_name,
+      store_name: store_name || '(sem loja)',
+      company_name: company_name || 'EMPRESA XYZ',
     });
 
+    console.log('[api/embalagem] resultado printLabel:', result);
     res.json(result);
   } catch (e) {
-    console.error('[api/embalagem] POST /print-label', e.message);
+    console.error('[api/embalagem] POST /print-label erro:', e.message, e.stack);
     res.status(500).json({ error: e.message });
   }
 });

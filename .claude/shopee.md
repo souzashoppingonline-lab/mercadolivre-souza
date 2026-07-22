@@ -54,6 +54,17 @@ Receptor **isolado** do gateway ML: `server/src/routes/shopeeWebhook.js`, montad
 
 Página **Financeiro** (`pages/shopee-financeiro.html`, `SHOPEE_NAV_ITEMS`), **isolada da Conciliação Bancária do ML** (pedido do usuário: tudo Shopee separado). Mostra por pedido quanto o comprador pagou (`buyer_total`), o **frete** (`order_income.buyer_paid_shipping_fee`, lido do `escrow_raw` — não virou coluna própria), a **taxa Shopee** (`commission_fee`), o **líquido/repasse** (`escrow_amount` — confirmado no diagnóstico: buyer 53,70 → comissão 8,95 → líquido 43,76), a forma de pagamento e o **status de entrega** (`logistics_status`). KPIs bruto/taxa/líquido, gráfico e tabela com filtro loja/período. Backend `/api/shopee/financeiro`. Dados de `get_escrow_detail` + `get_tracking_info`, gravados pelo worker no bloco `SHOPEE_SHIPPABLE` (ver `workers.md`) e `shopeeClient.getEscrowDetail`/`getTrackingInfo`. Backfill dos pedidos antigos: `server/backfill-shopee-financeiro.js`.
 
+### ⚠️ Valores LÍQUIDOS (NET) do escrow — mudança da Shopee, dez/2025–fev/2026
+
+A Shopee passou a expor as taxas também em **valor líquido** (após rebates/abatimentos) em `v2.payment.get_escrow_detail` e `get_escrow_detail_batch`. **As taxas brutas continuam disponíveis, mas os campos NET já são o valor final efetivamente cobrado do vendedor.** Para conciliação correta, usar os NET (não o bruto):
+
+- **Bruto** (originalmente calculado): `commission_fee`, `service_fee` — é o que gravamos hoje em `shopee_order_data.commission_fee`.
+- **Abatimentos/compensações**: bloco `seller_product_rebate` → `amount`, `commission_fee_offset`, `service_fee_offset`.
+- **Líquido (NET) — usar na conciliação**: `net_commission_fee`, `net_service_fee` (+ `net_commission_fee_info_list`, `net_service_fee_info_list` detalham a composição). Também `seller_product_rebate`.
+- **Outros campos novos** (considerar na resposta completa do escrow): `voucher_restante` (voucher restante, 06/02/2026), `ads_voucher_discount` (Ads Smart Voucher, 07/01/2026), `discount_pix`/`pix_discount` (desconto Pix).
+
+**Gap conhecido**: nosso `getEscrowDetail`/página Financeira ainda usam o **bruto** (`commission_fee`). Para refletir o que o vendedor realmente paga, migrar a taxa/`escrowFeePct` para `net_commission_fee + net_service_fee` (fallback pro bruto quando ausente) e guardar os novos campos no `escrow_raw` (já guardamos o JSON cru, então o dado bruto da API já está persistido — falta usá-lo no cálculo/tela). Regra oficial da Shopee: **sempre considerar a resposta completa da API** e acompanhar os anúncios no console do desenvolvedor. Registrado aqui para quando formos ajustar o cálculo de taxa/líquido.
+
 **Chat** (`sellerchat/get_conversation_list`) — **implementado** (v37, tela **Mensagens** própria em `SHOPEE_NAV_ITEMS`). Os parâmetros certos (diagnóstico `test-shopee-chat.js`): `type` + `direction=latest` + `page_size` (o `param_error` 491 inicial era por faltar `type`/`direction`). O worker faz `syncShopeeChat()` a cada `SHOPEE_CHAT_INTERVAL_MS` (10 min): pega as conversas **não lidas** (`type='unread'`), grava em `shopee_chat` e notifica o Telegram (`tg_mensagens`) com dedup por `notified_message_id` **e** guard anti-mensagem-antiga (só notifica se `last_message_timestamp` < 24h — timestamp em nanossegundos, `/1e6` pra ms). Backend `/api/shopee/chat`.
 
 ## Webhook — histórico (antes da implementação acima)

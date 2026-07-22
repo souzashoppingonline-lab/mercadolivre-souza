@@ -50,12 +50,15 @@ async function lastPacking(key) {
 // Foto vem de item.image_info.image_url (a resposta de get_order_detail traz),
 // então não depende da sincronização de catálogo. Comprador fica null (dado
 // sensível — app sem acesso). Variação vira variation_attributes (model_name).
+// Foto da variação vem do models JSONB em shopee_item_data (se houver).
 async function lookupShopeeByTracking(tracking) {
   const { rows } = await pool.query(
-    `SELECT sod.order_sn, sod.raw_data, o.store_id, o.status, o.date_created, s.nickname AS store_nickname
+    `SELECT sod.order_sn, sod.raw_data, o.store_id, o.status, o.date_created, s.nickname AS store_nickname,
+            sid.models, sid.item_id
        FROM shopee_order_data sod
        JOIN orders o ON o.ml_id = sod.order_sn
        LEFT JOIN stores s ON s.id = o.store_id
+       LEFT JOIN shopee_item_data sid ON sid.store_id = o.store_id
       WHERE sod.tracking_number = $1`,
     [tracking]
   );
@@ -63,8 +66,24 @@ async function lookupShopeeByTracking(tracking) {
   for (const r of rows) {
     const raw = r.raw_data || {};
     const items = Array.isArray(raw.item_list) ? raw.item_list : [];
+    const modelsMap = new Map(); // item_id → variation-specific picture
+    if (r.models) {
+      try {
+        const models = JSON.parse(typeof r.models === 'string' ? r.models : JSON.stringify(r.models));
+        if (Array.isArray(models?.tier_variation?.[0]?.options)) {
+          for (const opt of models.tier_variation[0].options) {
+            if (opt.picture?.image_url && opt.model_id) {
+              modelsMap.set(String(opt.model_id), opt.picture.image_url);
+            }
+          }
+        }
+      } catch (e) { /* models parse error — fallback to main image */ }
+    }
     for (const it of items) {
-      const img = it.image_info && (it.image_info.image_url || (Array.isArray(it.image_info.image_url_list) && it.image_info.image_url_list[0]));
+      const mainImg = it.image_info && (it.image_info.image_url || (Array.isArray(it.image_info.image_url_list) && it.image_info.image_url_list[0]));
+      // Tenta a foto da variação primeiro, fallback para a foto principal
+      const variationImg = it.model_id ? modelsMap.get(String(it.model_id)) : null;
+      const img = variationImg || mainImg;
       out.push({
         order_id: r.order_sn,
         item_id: it.item_id != null ? String(it.item_id) : null,
@@ -130,6 +149,38 @@ async function refreshShopeeTrackingOnDemand(tracking) {
   return found;
 }
 
+// Helper para extrair foto da variação de um pedido ML — se houver variation_name
+// ordenada, procura essa variação no item.variations[] e pega sua picture.
+function extractVariationPicture(orderData) {
+  try {
+    const item0 = orderData?.order_items?.[0]?.item;
+    if (!item0) return null;
+    // Identifica qual variação foi ordenada (pode ser model_name ou via
+    // variation_attributes — procura num e noutro, ordem de prioridade varia
+    // conforme a versão da API do ML que o cliente tem).
+    const variations = Array.isArray(item0.variations) ? item0.variations : [];
+    if (!variations.length) return null;
+    // Se há um variation_attributes com um value_name, procura por ele
+    const varAttrs = orderData.order_items[0]?.item?.variation_attributes;
+    if (Array.isArray(varAttrs) && varAttrs.length > 0) {
+      const searchValue = varAttrs[0]?.value_name;
+      if (searchValue) {
+        const found = variations.find(v => {
+          const varName = v.name || v.model_name;
+          return varName === searchValue || v.attribute_combinations?.some(ac => ac.values?.includes(searchValue));
+        });
+        if (found?.picture?.url) return found.picture.url;
+        if (found?.pictures?.[0]?.url) return found.pictures[0].url;
+      }
+    }
+    // Fallback: se não achou pelo value_name, pega a 1ª variação (comum em ML)
+    const first = variations[0];
+    if (first?.picture?.url) return first.picture.url;
+    if (first?.pictures?.[0]?.url) return first.pictures[0].url;
+  } catch (e) { /* fallback silencioso */ }
+  return null;
+}
+
 // GET /api/embalagem/pedido/:shippingId — busca pedido(s) pela etiqueta bipada.
 // Pode retornar mais de 1 linha: um mesmo envio (pack) pode agrupar vários
 // pedidos do mesmo comprador.
@@ -140,7 +191,8 @@ router.get('/pedido/:shippingId', async (req, res) => {
               o.unit_price, o.status, o.shipping_type, o.date_created,
               o.raw_data->'order_items'->0->'item'->>'seller_sku' AS seller_sku,
               o.raw_data->'order_items'->0->'item'->'variation_attributes' AS variation_attributes,
-              i.thumbnail, i.permalink, i.available_quantity, s.nickname AS store_nickname
+              i.thumbnail, i.permalink, i.available_quantity, s.nickname AS store_nickname,
+              o.raw_data
        FROM orders o
        LEFT JOIN items i ON i.ml_id = o.item_id
        LEFT JOIN stores s ON s.id = o.store_id
@@ -148,34 +200,40 @@ router.get('/pedido/:shippingId', async (req, res) => {
        ORDER BY o.date_created ASC`,
       [req.params.shippingId]
     );
+
+    // Enriquece cada pedido com a foto de variação (se houver)
+    if (rows.length) {
+      rows.forEach(row => {
+        const rawData = row.raw_data || {};
+        const variationPicture = extractVariationPicture(rawData);
+        // Prioriza a foto da variação; fallback para thumbnail principal
+        row.thumbnail = variationPicture || row.thumbnail;
+      });
+      const already = await lastPacking(req.params.shippingId);
+      return res.json({ shipping_id: req.params.shippingId, marketplace: 'ML', orders: rows, already_packed: already });
+    }
+
     // Fallback Shopee: a etiqueta Shopee traz o RASTREIO (BR...) no QR, não o
     // número do pedido. Se não achou por shipping_id (ML), tenta casar por
     // tracking_number (Shopee) — mesma estação de bipagem pros dois marketplaces.
-    if (!rows.length) {
-      const codigo = String(req.params.shippingId).trim();
-      let shopeeOrders = await lookupShopeeByTracking(codigo);
-      // Auto-busca sob demanda: se não achou e o código NÃO é um shipping_id ML
-      // (numérico puro), é candidato a rastreio Shopee ainda não sincronizado —
-      // puxa o tracking na hora e tenta de novo, sem o operador fazer nada.
-      if (!shopeeOrders.length && !/^\d+$/.test(codigo)) {
-        try {
-          const achou = await refreshShopeeTrackingOnDemand(codigo);
-          if (achou) shopeeOrders = await lookupShopeeByTracking(codigo);
-        } catch (e) {
-          console.error('[api/embalagem] auto-busca rastreio Shopee falhou:', e.message);
-        }
+    const codigo = String(req.params.shippingId).trim();
+    let shopeeOrders = await lookupShopeeByTracking(codigo);
+    // Auto-busca sob demanda: se não achou e o código NÃO é um shipping_id ML
+    // (numérico puro), é candidato a rastreio Shopee ainda não sincronizado —
+    // puxa o tracking na hora e tenta de novo, sem o operador fazer nada.
+    if (!shopeeOrders.length && !/^\d+$/.test(codigo)) {
+      try {
+        const achou = await refreshShopeeTrackingOnDemand(codigo);
+        if (achou) shopeeOrders = await lookupShopeeByTracking(codigo);
+      } catch (e) {
+        console.error('[api/embalagem] auto-busca rastreio Shopee falhou:', e.message);
       }
-      if (shopeeOrders.length) {
-        const already = await lastPacking(codigo);
-        return res.json({ shipping_id: codigo, marketplace: 'SHOPEE', orders: shopeeOrders, already_packed: already });
-      }
-      return res.status(404).json({ error: 'Nenhum pedido encontrado para essa etiqueta' });
     }
-
-    // Verificação se essa etiqueta já foi bipada/gravada antes — não bloqueia,
-    // só avisa o operador (ver pages/embalagem.html: confirm() antes de gravar de novo).
-    const already = await lastPacking(req.params.shippingId);
-    res.json({ shipping_id: req.params.shippingId, marketplace: 'ML', orders: rows, already_packed: already });
+    if (shopeeOrders.length) {
+      const already = await lastPacking(codigo);
+      return res.json({ shipping_id: codigo, marketplace: 'SHOPEE', orders: shopeeOrders, already_packed: already });
+    }
+    return res.status(404).json({ error: 'Nenhum pedido encontrado para essa etiqueta' });
   } catch (e) {
     console.error('[api/embalagem] GET /pedido/:shippingId', e.message);
     res.status(500).json({ error: e.message });

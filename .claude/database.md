@@ -41,6 +41,8 @@ access_token, refresh_token TEXT  -- reaproveitado por Amazon (refresh_token fix
 amazon_marketplace_id TEXT  -- v16: override por conta (país/marketplace Amazon); NULL usa AMAZON_MARKETPLACE_ID global
 amazon_region TEXT          -- v16: override por conta (na|eu|fe); NULL usa AMAZON_REGION global
 shopee_shop_id BIGINT       -- v18: shop_id real da Shopee (numérico, único) — índice único parcial (WHERE NOT NULL)
+shopee_partner_id TEXT      -- v46: partner_id específico da Shopee por loja (multi-partner support); NULL usa global SHOPEE_PARTNER_ID
+shopee_partner_key TEXT     -- v46: partner_key específico por loja (não implementado ainda; futuro v47+)
 token_expires_at TIMESTAMPTZ  -- Shopee: access_token expira em ~4h; refresh_token em ~30 dias (rotaciona a cada renovação)
 active_listings INT, monthly_revenue NUMERIC   -- não populados automaticamente hoje
 imposto_pct NUMERIC DEFAULT 0                  -- % de imposto usada no cálculo de margem

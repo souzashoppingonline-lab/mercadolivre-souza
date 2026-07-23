@@ -16,7 +16,8 @@ const env = require('../../config/env');
 
 class ShopeePollingEventSource extends EventSource {
   // store: linha de `stores` da conta (id, nickname, shopee_shop_id,
-  // access_token, refresh_token, token_expires_at).
+  // access_token, refresh_token, token_expires_at, shopee_partner_id, shopee_partner_key).
+  // v46: Suporta per-store partner credentials (nullable, fallback to global).
   constructor(store) {
     super();
     this.store = store;
@@ -26,6 +27,12 @@ class ShopeePollingEventSource extends EventSource {
       shopId: store.shopee_shop_id,
       accessToken: store.access_token,
       refreshToken: store.refresh_token,
+      // v46: per-store credentials (nullable)
+      partnerId: store.shopee_partner_id || env.shopee.partnerId,
+      partnerKey: store.shopee_partner_key || env.shopee.partnerKey,
+      // Armazenar globals também pra fallback em _assertConfigured
+      globalPartnerId: env.shopee.partnerId,
+      globalPartnerKey: env.shopee.partnerKey,
     });
     this.tokenExpiresAt = store.token_expires_at ? new Date(store.token_expires_at).getTime() : 0;
     this.marketplaceId = null;

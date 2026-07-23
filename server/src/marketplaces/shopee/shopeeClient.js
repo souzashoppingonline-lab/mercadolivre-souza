@@ -15,7 +15,8 @@
 //
 // Campos esperados em `cfg` (mesmos nomes de server/.env, sem prefixo SHOPEE_,
 // + campos por conta vindos de `stores`):
-//   partnerId, partnerKey   — compartilhados entre todas as contas (identificam o app)
+//   partnerId, partnerKey   — app-level ou por conta. Se presentes em `cfg`, usam per-store (v46);
+//                              senão caem pra global env.shopee.partnerId/partnerKey (backward compat).
 //   env                     — sandbox | production — global (SHOPEE_ENV)
 //   shopId                  — por conta (stores.shopee_shop_id, ver migration)
 //   accessToken             — por conta (stores.access_token)
@@ -89,7 +90,14 @@ class ShopeeClient extends MarketplaceClient {
   }
 
   _assertConfigured() {
-    const missing = ['partnerId', 'partnerKey', 'shopId', 'accessToken'].filter((k) => !this.cfg?.[k]);
+    // partnerId/partnerKey podem vir de per-store ou global (fallback)
+    const partnerId = this.cfg?.partnerId || this.cfg?.globalPartnerId;
+    const partnerKey = this.cfg?.partnerKey || this.cfg?.globalPartnerKey;
+    const missing = [];
+    if (!partnerId) missing.push('partnerId');
+    if (!partnerKey) missing.push('partnerKey');
+    if (!this.cfg?.shopId) missing.push('shopId');
+    if (!this.cfg?.accessToken) missing.push('accessToken');
     if (missing.length) {
       throw new MarketplaceTokenInvalidError(`Shopee não configurada para esta conta — faltando: ${missing.join(', ')}`);
     }
@@ -101,7 +109,10 @@ class ShopeeClient extends MarketplaceClient {
   // era o contrato). Só a assinatura (partner_id + api_path + timestamp +
   // access_token + shop_id) entra no `sign`; os params de `query` não.
   async _call(apiPath, { method = 'POST', body, query, useAccessToken = true } = {}) {
-    const { partnerId, partnerKey, env, shopId, accessToken } = this.cfg;
+    // Fallback: per-store credentials (v46) or global (backward compat)
+    const partnerId = this.cfg?.partnerId || this.cfg?.globalPartnerId;
+    const partnerKey = this.cfg?.partnerKey || this.cfg?.globalPartnerKey;
+    const { env, shopId, accessToken } = this.cfg;
     const timestamp = nowSeconds();
     const signature = sign({
       partnerId, partnerKey, apiPath, timestamp,
@@ -466,9 +477,13 @@ class ShopeeClient extends MarketplaceClient {
 // com CAS — mesma disciplina do ShopeePollingEventSource._ensureValidToken, mas
 // pontual (uma chamada de rota), sem intervalo. Mantém shopeeClient.js sem
 // dependência de banco: o pool é injetado pelo chamador.
+//
+// v46: Suporta per-store partner_id/key (se presentes em `stores`). Se NULL,
+// cai pra global (envCfg.partnerId/partnerKey). Backward compatible.
 async function getShopeeClientForStore(pool, storeId, envCfg) {
   const { rows } = await pool.query(
-    `SELECT id, shopee_shop_id, access_token, refresh_token, token_expires_at
+    `SELECT id, shopee_shop_id, access_token, refresh_token, token_expires_at,
+            shopee_partner_id, shopee_partner_key
      FROM stores WHERE id = $1`,
     [storeId]
   );
@@ -480,6 +495,12 @@ async function getShopeeClientForStore(pool, storeId, envCfg) {
     shopId: store.shopee_shop_id,
     accessToken: store.access_token,
     refreshToken: store.refresh_token,
+    // v46: per-store credentials (nullable, fallback to global)
+    partnerId: store.shopee_partner_id || envCfg.partnerId,
+    partnerKey: store.shopee_partner_key || envCfg.partnerKey,
+    // Armazenar globals também pra fallback em _assertConfigured/métodos internos
+    globalPartnerId: envCfg.partnerId,
+    globalPartnerKey: envCfg.partnerKey,
   });
 
   const expiresAt = store.token_expires_at ? new Date(store.token_expires_at).getTime() : 0;

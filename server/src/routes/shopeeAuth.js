@@ -38,8 +38,17 @@ router.get('/config', (req, res) => {
 });
 
 // Step 1 — redireciona para a página de autorização da Shopee
+// v46: Suporta ?partner_id=<id> pra usar credenciais de um partner específico (per-store).
+// Se não informado, usa o global SHOPEE_PARTNER_ID/SHOPEE_PARTNER_KEY.
 router.get('/login', (req, res) => {
-  const { partnerId, partnerKey, env: shopeeEnv, redirectUri } = env.shopee;
+  const { partnerId: globalPartnerId, partnerKey: globalPartnerKey, env: shopeeEnv, redirectUri } = env.shopee;
+
+  // v46: Se ?partner_id foi passado, buscar as credenciais desse partner (futura feature —
+  // por ora ainda não implementado o cadastro multi-partner no admin; isso vai pra v47+).
+  // Por enquanto, sempre usa global.
+  const partnerId = globalPartnerId;
+  const partnerKey = globalPartnerKey;
+
   if (!partnerId || !partnerKey || !redirectUri) {
     return res.status(500).send('Shopee não configurada — faltam SHOPEE_PARTNER_ID/SHOPEE_PARTNER_KEY/SHOPEE_REDIRECT_URI no .env. Ver /auth/shopee/config.');
   }
@@ -48,9 +57,11 @@ router.get('/login', (req, res) => {
 });
 
 // Step 2 — Shopee redireciona de volta com ?code=...&shop_id=...
+// v46: Suporta ?partner_id=<id> pra associar partner_id específico a essa loja Shopee
+// (credenciais per-store). Se não informado, deixa NULL (usa global).
 router.get('/callback', async (req, res) => {
-  const { code, shop_id: shopId } = req.query;
-  const { partnerId, partnerKey, env: shopeeEnv } = env.shopee;
+  const { code, shop_id: shopId, partner_id: queryPartnerId } = req.query;
+  const { partnerId: globalPartnerId, partnerKey: globalPartnerKey, env: shopeeEnv } = env.shopee;
 
   if (!code || !shopId) {
     return res.status(400).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Erro OAuth Shopee</title>
@@ -62,6 +73,11 @@ router.get('/callback', async (req, res) => {
   }
 
   try {
+    // v46: Usar o partner_id do query (se present) ou cair pra global
+    // (Isso permite testar multi-partner sem admin UI ainda implementado)
+    const partnerId = queryPartnerId || globalPartnerId;
+    const partnerKey = globalPartnerKey; // por enquanto, partnerKey sempre global (será v47 feature de admin)
+
     const tokens = await exchangeCodeForToken({ partnerId, partnerKey, env: shopeeEnv, code, shopId });
     const expiresAt = new Date(Date.now() + Number(tokens.expire_in || 14400) * 1000);
 
@@ -81,15 +97,17 @@ router.get('/callback', async (req, res) => {
         `SELECT COALESCE(MAX(id), 9100000000) AS max_id FROM stores WHERE id BETWEEN 9100000000 AND 9199999999`
       );
       storeId = (BigInt(maxRow[0].max_id) + 1n).toString();
+      // v46: Gravar partner_id/key per-store se foi informado no query
       await pool.query(
-        `INSERT INTO stores (id, nickname, marketplace_id, shopee_shop_id, access_token, refresh_token, token_expires_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7, now())`,
-        [storeId, `Shopee ${shopId}`, marketplaceId, shopId, tokens.access_token, tokens.refresh_token, expiresAt]
+        `INSERT INTO stores (id, nickname, marketplace_id, shopee_shop_id, access_token, refresh_token, token_expires_at, shopee_partner_id, shopee_partner_key, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())`,
+        [storeId, `Shopee ${shopId}`, marketplaceId, shopId, tokens.access_token, tokens.refresh_token, expiresAt, queryPartnerId || null, null]
       );
     } else {
+      // v46: Atualizar partner_id/key se foi informado no query
       await pool.query(
-        `UPDATE stores SET access_token=$2, refresh_token=$3, token_expires_at=$4, updated_at=now() WHERE id=$1`,
-        [storeId, tokens.access_token, tokens.refresh_token, expiresAt]
+        `UPDATE stores SET access_token=$2, refresh_token=$3, token_expires_at=$4, shopee_partner_id=$5, updated_at=now() WHERE id=$1`,
+        [storeId, tokens.access_token, tokens.refresh_token, expiresAt, queryPartnerId || null]
       );
     }
 
@@ -97,6 +115,7 @@ router.get('/callback', async (req, res) => {
       <style>${DIAG_STYLE}</style></head><body>
       <h2>✅ Loja Shopee autorizada</h2>
       <p>shop_id <code>${shopId}</code> conectado (store interno <code>${storeId}</code>).</p>
+      ${queryPartnerId ? `<p>⚠️ Partner ID específico <code>${queryPartnerId}</code> associado a essa loja.</p>` : ''}
       <p>Reinicie o worker (<code>ml-worker-novo</code>) para essa conta começar a sincronizar — ainda sem hot-reload (mesma limitação da Amazon, ver .claude/todo.md).</p>
       </body></html>`);
   } catch (e) {

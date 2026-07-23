@@ -73,18 +73,12 @@ async function generateLabelPDF(data) {
     });
   }
 
-  // Aviso frágil — MUITO GRANDE E VISÍVEL
-  doc.fontSize(18).font('Helvetica-Bold').fillColor('red');
-  doc.text('⚠ PRODUTO FRÁGIL ⚠', 8, 190, {
+  // Aviso frágil — GIGANTE EM PRETO PARA IMPRESSORA TÉRMICA
+  doc.fontSize(34).font('Helvetica-Bold').fillColor('black');
+  doc.text('⚠ FRÁGIL ⚠', 8, 185, {
     width: width - 16,
     align: 'center',
   });
-  doc.fontSize(14).font('Helvetica-Bold').fillColor('red');
-  doc.text('CUIDADO AO MANUSEAR', 8, 210, {
-    width: width - 16,
-    align: 'center',
-  });
-  doc.fillColor('black');
 
   // Data/hora
   const now = new Date();

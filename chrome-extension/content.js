@@ -6,12 +6,11 @@ console.log('FinanceEcom Monitor content script loaded');
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'collectData') {
-    const data = extractMercadoLivreData();
-    sendResponse(data);
+    extractMercadoLivreData().then(data => sendResponse(data));
   }
 });
 
-function extractMercadoLivreData() {
+async function extractMercadoLivreData() {
   const data = {
     title: null,
     price: null,
@@ -52,7 +51,6 @@ function extractMercadoLivreData() {
     if (salesMatch) {
       data.salesCount = parseInt(salesMatch[1], 10);
     } else {
-      // Fallback: procurar em qualquer lugar
       const salesFallback = pageText.match(/(\d+)\s*vendas/i);
       if (salesFallback) {
         data.salesCount = parseInt(salesFallback[1], 10);
@@ -74,33 +72,31 @@ function extractMercadoLivreData() {
       data.ratingCount = parseInt(ratingCountMatch[1], 10);
     }
 
-    // Extract comments count — procurar por "Comentários" ou "Opiniões"
+    // Extract comments count
     const commentsHeaderMatch = pageText.match(/(?:Comentários|Opiniões)\s*(?:\()?(\d+)\)?/i);
     if (commentsHeaderMatch) {
       data.commentsCount = parseInt(commentsHeaderMatch[1], 10);
     }
 
-    // Extract questions count — procurar por "Perguntas"
+    // Extract questions count
     const questionsHeaderMatch = pageText.match(/Perguntas?\s*(?:\()?(\d+)\)?/i);
     if (questionsHeaderMatch) {
       data.questionsCount = parseInt(questionsHeaderMatch[1], 10);
     }
 
-    // Extract seller name — buscar por "Vendido por:"
+    // Extract seller name
     const sellerMatch = pageText.match(/Vendido\s*(?:e\s*enviado\s*)?por:\s*(.+?)(?:\n|$)/i);
     if (sellerMatch) {
       data.seller = sellerMatch[1].trim();
     }
 
-    // Extract text fragments dos comentários (limitado — ML carrega via JS)
-    const reviewElements = document.querySelectorAll('[class*="review"], [class*="comment"], [class*="opinion"]');
-    if (reviewElements && reviewElements.length > 0) {
-      Array.from(reviewElements).slice(0, 5).forEach((el) => {
-        const text = el.textContent.trim();
-        if (text.length > 10 && text.length < 500) {
-          data.comments.push(text);
-        }
-      });
+    // Extract comments — inicialmente os visíveis
+    const visibleComments = extractCommentsFromPage();
+    data.comments.push(...visibleComments.slice(0, 100));
+
+    // Se há botão "Mostrar todas as opiniões", clicar e extrair mais
+    if (data.comments.length < 100 && data.commentsCount > data.comments.length) {
+      await collectAllComments(data);
     }
 
   } catch (error) {
@@ -108,4 +104,56 @@ function extractMercadoLivreData() {
   }
 
   return data;
+}
+
+function extractCommentsFromPage() {
+  const comments = [];
+  const reviewElements = document.querySelectorAll('[class*="review"], [class*="comment"], [class*="opinion"]');
+
+  if (reviewElements && reviewElements.length > 0) {
+    Array.from(reviewElements).forEach((el) => {
+      const text = el.textContent.trim();
+      if (text.length > 10 && text.length < 1000 && !text.includes('Mostrar todas')) {
+        comments.push(text);
+      }
+    });
+  }
+
+  return comments;
+}
+
+async function collectAllComments(data) {
+  try {
+    // Procurar botão "Mostrar todas as opiniões"
+    const button = Array.from(document.querySelectorAll('a, button')).find(el =>
+      el.textContent.toLowerCase().includes('mostrar todas') &&
+      el.textContent.toLowerCase().includes('opini')
+    );
+
+    if (button) {
+      console.log('[extension] Clicando em "Mostrar todas as opiniões"...');
+      button.click();
+
+      // Aguardar modal carregar (3 segundos)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Extrair comentários do modal
+      const modalComments = extractCommentsFromPage();
+
+      // Adicionar comentários até atingir 100
+      for (const comment of modalComments) {
+        if (data.comments.length >= 100) break;
+        if (!data.comments.includes(comment)) {
+          data.comments.push(comment);
+        }
+      }
+
+      console.log(`[extension] Total de comentários coletados: ${data.comments.length}`);
+
+      // Fechar modal (ESC ou clique em X)
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    }
+  } catch (error) {
+    console.error('[extension] Erro ao coletar comentários adicionais:', error);
+  }
 }

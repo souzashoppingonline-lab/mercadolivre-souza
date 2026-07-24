@@ -5,56 +5,67 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusDiv = document.getElementById('status');
   const dataPreviewDiv = document.getElementById('dataPreview');
 
-  // Restore saved API URL
   chrome.storage.local.get(['apiUrl'], (result) => {
     if (result.apiUrl) {
       apiUrlInput.value = result.apiUrl;
     }
   });
 
-  // Save API URL when input changes
   apiUrlInput.addEventListener('change', () => {
     chrome.storage.local.set({ apiUrl: apiUrlInput.value });
   });
 
-  // Collect data button
   collectBtn.addEventListener('click', async () => {
     const apiUrl = apiUrlInput.value.trim();
-
     if (!apiUrl) {
       showStatus('Por favor, configure a URL da API', 'error');
       return;
     }
 
-    showStatus('Coletando dados...', 'loading');
+    showStatus('Coletando dados brutos...', 'loading');
     collectBtn.disabled = true;
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      // Inject content script and get data
+      // Executar content.js para coletar dados BRUTOS
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        function: extractPageData,
+        function: () => {
+          return {
+            url: window.location.href,
+            pageText: document.body.innerText,
+            titleHtml: document.querySelector('h1')?.outerHTML || null,
+            priceHtml: document.querySelector('[class*="price"]')?.outerHTML || null,
+            ratingHtml: document.querySelector('[class*="rating"]')?.outerHTML || null,
+            jsonLd: Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+              .map(s => { try { return JSON.parse(s.textContent); } catch { return null; } })
+              .filter(Boolean),
+            domSnapshot: {
+              priceSection: document.querySelector('[class*="price"]')?.innerHTML?.substring(0, 2000) || null,
+              ratingSection: document.querySelector('[class*="rating"]')?.innerHTML?.substring(0, 1000) || null,
+              reviewsSection: document.querySelector('[class*="review"]')?.innerHTML?.substring(0, 2000) || null,
+            },
+            collectedAt: new Date().toISOString(),
+          };
+        },
       });
 
-      const data = results[0]?.result;
-
-      if (!data) {
+      const rawData = results[0]?.result;
+      if (!rawData) {
         showStatus('Não foi possível extrair dados da página', 'error');
         collectBtn.disabled = false;
         return;
       }
 
-      // Send data to API (rota pública, sem autenticação)
-      const baseUrl = apiUrl.replace(/\/api\/?$/, ''); // Remove /api se existir
+      // Enviar dados BRUTOS para backend processar
+      const baseUrl = apiUrl.replace(/\/api\/?$/, '');
       const response = await fetch(`${baseUrl}/extension/collect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           marketplace: 'mercadolivre',
-          pageUrl: tab.url,
-          ...data,
+          rawData: rawData,
           collectedAt: new Date().toISOString(),
         }),
       });
@@ -63,17 +74,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error(`API error: ${response.status}`);
       }
 
-      showStatus('✓ Dados coletados e enviados com sucesso!', 'success');
-      displayPreview(data);
+      const result = await response.json();
+      showStatus('✓ Dados coletados e processados!', 'success');
+      displayDebugPanel(result.extracted, result.debug);
     } catch (error) {
-      console.error('Erro na coleta:', error);
+      console.error('Erro:', error);
       showStatus(`Erro: ${error.message}`, 'error');
     } finally {
       collectBtn.disabled = false;
     }
   });
 
-  // Clear data preview
   clearBtn.addEventListener('click', () => {
     dataPreviewDiv.style.display = 'none';
     statusDiv.style.display = 'none';
@@ -85,114 +96,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusDiv.style.display = 'block';
   }
 
-  function displayPreview(data) {
-    let html = '';
+  function displayDebugPanel(extracted, debug) {
+    let html = '<div class="debug-panel">';
+    html += '<h3>📊 Status de Extração</h3>';
 
-    if (data.title) {
-      html += `<div class="data-item"><div class="data-label">📦 Título</div><div class="data-value">${escapeHtml(data.title)}</div></div>`;
-    }
+    const fields = [
+      { name: 'Título', value: extracted?.title },
+      { name: 'Preço Normal', value: extracted?.price?.normal },
+      { name: 'Preço Promoção', value: extracted?.price?.promotion },
+      { name: 'Vendas', value: extracted?.salesCount?.numero },
+      { name: 'Avaliação', value: extracted?.rating?.nota },
+      { name: 'Comentários (count)', value: extracted?.commentsCount },
+      { name: 'Perguntas (count)', value: extracted?.questionsCount },
+      { name: 'Comentários (conteúdo)', value: extracted?.comments?.length > 0 },
+      { name: 'Fotos', value: extracted?.images?.length > 0 },
+      { name: 'Seller', value: extracted?.seller },
+    ];
 
-    if (data.salesCount) {
-      html += `<div class="data-item"><div class="data-label">💰 Vendas</div><div class="data-value">${data.salesCount}</div></div>`;
-    }
+    fields.forEach(field => {
+      const icon = field.value ? '✓' : '✗';
+      const status = field.value ? 'success' : 'fail';
+      html += `<div class="debug-item ${status}">${icon} ${field.name}</div>`;
+    });
 
-    if (data.price) {
-      html += `<div class="data-item"><div class="data-label">💵 Preço</div><div class="data-value">R$ ${data.price}</div></div>`;
+    html += '</div><div class="data-sample">';
+    if (extracted?.title) {
+      html += `<div><strong>📦 Título:</strong> ${escapeHtml(extracted.title)}</div>`;
     }
-
-    if (data.commentsCount) {
-      html += `<div class="data-item"><div class="data-label">💬 Comentários</div><div class="data-value">${data.commentsCount}</div></div>`;
+    if (extracted?.price?.promotion) {
+      html += `<div><strong>💵 Preço Promoção:</strong> R$ ${extracted.price.promotion}</div>`;
     }
-
-    if (data.questionsCount) {
-      html += `<div class="data-item"><div class="data-label">❓ Perguntas</div><div class="data-value">${data.questionsCount}</div></div>`;
+    if (extracted?.rating?.nota) {
+      html += `<div><strong>⭐ Avaliação:</strong> ${extracted.rating.nota} (${extracted.rating.opinioes} opiniões)</div>`;
     }
-
-    if (data.rating) {
-      html += `<div class="data-item"><div class="data-label">⭐ Avaliação</div><div class="data-value">${data.rating}</div></div>`;
+    if (extracted?.comments?.length > 0) {
+      html += `<div><strong>📝 Comentários (${extracted.comments.length}):</strong><br>`;
+      html += extracted.comments.slice(0, 3).map(c => `• ${escapeHtml(c.substring(0, 100))}`).join('<br>');
+      html += '</div>';
     }
-
-    if (data.comments && data.comments.length > 0) {
-      html += `<div class="data-item"><div class="data-label">📝 Alguns comentários</div><div class="data-value">${data.comments.slice(0, 3).map(c => `• ${escapeHtml(c)}`).join('<br>')}</div></div>`;
-    }
+    html += '</div>';
 
     dataPreviewDiv.innerHTML = html;
     dataPreviewDiv.style.display = 'block';
   }
 
   function escapeHtml(text) {
-    const map = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#039;',
-    };
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
     return text.replace(/[&<>"']/g, m => map[m]);
   }
 });
-
-// Function to extract data from Mercado Livre product page
-function extractPageData() {
-  const data = {
-    title: null,
-    price: null,
-    salesCount: null,
-    rating: null,
-    commentsCount: null,
-    questionsCount: null,
-    comments: [],
-  };
-
-  try {
-    // Extract title
-    const titleEl = document.querySelector('h1') || document.querySelector('[class*="title"]');
-    if (titleEl) {
-      data.title = titleEl.textContent.trim();
-    }
-
-    // Extract price
-    const priceEl = document.querySelector('[class*="price"]');
-    if (priceEl) {
-      const priceText = priceEl.textContent.trim().replace(/[^\d,]/g, '');
-      data.price = priceText.replace(',', '.');
-    }
-
-    // Extract sales count (usually in format "XXX vendas")
-    const pageText = document.body.innerText;
-    const salesMatch = pageText.match(/(\d+)\s*vendas?/i);
-    if (salesMatch) {
-      data.salesCount = salesMatch[1];
-    }
-
-    // Extract rating
-    const ratingEl = document.querySelector('[class*="rating"]') ||
-                     document.querySelector('[class*="stars"]');
-    if (ratingEl) {
-      data.rating = ratingEl.textContent.trim();
-    }
-
-    // Count comments/reviews
-    const commentEls = document.querySelectorAll('[class*="review"]');
-    data.commentsCount = commentEls.length;
-
-    // Extract sample comments
-    commentEls.forEach((el, i) => {
-      if (i < 5) {
-        const text = el.textContent.trim();
-        if (text.length > 0 && text.length < 500) {
-          data.comments.push(text);
-        }
-      }
-    });
-
-    // Count questions (usually in a Q&A section)
-    const questionEls = document.querySelectorAll('[class*="question"], [class*="qa"]');
-    data.questionsCount = questionEls.length;
-
-  } catch (error) {
-    console.error('Erro ao extrair dados:', error);
-  }
-
-  return data;
-}

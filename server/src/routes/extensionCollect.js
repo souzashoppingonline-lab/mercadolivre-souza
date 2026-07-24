@@ -1,40 +1,44 @@
-// Rota pública para Chrome Extension coletar dados de anúncios
-// Não requer autenticação — é uma endpoint aberta para a extensão enviar dados
+// Rota pública para Chrome Extension coletar dados brutos de anúncios
+// Extensão envia dados BRUTOS → backend processa e extrai
 const express = require('express');
 const router = express.Router();
+const { extractMercadoLivreData } = require('../extractors/mercadolivre');
 
 router.post('/', async (req, res) => {
   try {
-    const { marketplace, pageUrl, title, price, salesCount, rating, commentsCount, questionsCount, comments, collectedAt } = req.body;
+    const { marketplace, rawData, collectedAt } = req.body;
 
-    if (!marketplace || !pageUrl) {
-      return res.status(400).json({ error: 'marketplace e pageUrl são obrigatórios' });
+    if (!marketplace || !rawData) {
+      return res.status(400).json({ error: 'marketplace e rawData são obrigatórios' });
     }
 
-    console.log('[extension/collect] Dados coletados:', {
-      marketplace,
-      pageUrl,
-      title: title ? title.substring(0, 50) : null,
-      salesCount,
-      commentsCount,
-      questionsCount,
-      collectedAt
+    console.log('[extension/collect] Dados brutos recebidos de', marketplace);
+
+    // Processar dados BRUTOS com o extractor
+    let extracted, debug;
+    if (marketplace === 'mercadolivre') {
+      const result = extractMercadoLivreData(rawData);
+      extracted = result.extracted;
+      debug = result.debug;
+    } else {
+      return res.status(400).json({ error: `Marketplace ${marketplace} não suportado ainda` });
+    }
+
+    // TODO: persistir em banco de dados
+    console.log('[extension/collect] Dados extraídos:', {
+      title: extracted.title ? extracted.title.substring(0, 50) : null,
+      price: extracted.price?.promotion || extracted.price?.normal,
+      salesCount: extracted.salesCount?.numero,
+      rating: extracted.rating?.nota,
+      commentsCount: extracted.commentsCount,
+      questionsCount: extracted.questionsCount,
     });
 
     res.json({
       success: true,
-      message: 'Dados recebidos e processados',
-      received: {
-        marketplace,
-        pageUrl,
-        title,
-        price,
-        salesCount,
-        rating,
-        commentsCount,
-        questionsCount,
-        collectedAt
-      }
+      message: 'Dados extraídos com sucesso',
+      extracted,
+      debug,
     });
   } catch (error) {
     console.error('[extension/collect] Erro ao processar coleta:', error.message);

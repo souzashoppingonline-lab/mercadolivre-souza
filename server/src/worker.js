@@ -630,12 +630,18 @@ async function handleOffer({ resource, storeId }) {
   });
 
   const Rfmt = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+
+  // Buscar nome da loja pra incluir no alerta
+  const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id=$1`, [storeId]);
+  const storeName = storeRows[0]?.nickname || `Loja ${storeId}`;
+  const storeLabel = `\n🏪 <i>${storeName}</i>`;
+
   if (previousStatus === 'active' && currentStatus !== 'active') {
-    await tgNotify('tg_promocoes', `🔴 <b>Saiu da promoção!</b>\n📦 ${itemTitle || itemId}\n💰 Preço voltou para ${Rfmt(originalPrice)}\n⚠️ Reative a promoção`);
+    await tgNotify('tg_promocoes', `🔴 <b>Saiu da promoção!</b>\n📦 ${itemTitle || itemId}\n💰 Preço voltou para ${Rfmt(originalPrice)}\n⚠️ Reative a promoção${storeLabel}`);
   } else if (!previousStatus || (previousStatus !== 'active' && currentStatus === 'active')) {
-    await tgNotify('tg_promocoes', `🟢 <b>Entrou em promoção!</b>\n📦 ${itemTitle || itemId}\n💰 ${Rfmt(promoPrice)}${discountPct > 0 ? ` (${discountPct.toFixed(0)}% off)` : ''}`);
+    await tgNotify('tg_promocoes', `🟢 <b>Entrou em promoção!</b>\n📦 ${itemTitle || itemId}\n💰 ${Rfmt(promoPrice)}${discountPct > 0 ? ` (${discountPct.toFixed(0)}% off)` : ''}${storeLabel}`);
   } else {
-    await tgNotify('tg_promocoes', `🏷️ <b>Promoção alterada</b>\n📦 ${itemTitle || itemId}\n💰 ${Rfmt(promoPrice)}${discountPct > 0 ? ` (${discountPct.toFixed(0)}% off)` : ''}`);
+    await tgNotify('tg_promocoes', `🏷️ <b>Promoção alterada</b>\n📦 ${itemTitle || itemId}\n💰 ${Rfmt(promoPrice)}${discountPct > 0 ? ` (${discountPct.toFixed(0)}% off)` : ''}${storeLabel}`);
   }
 }
 

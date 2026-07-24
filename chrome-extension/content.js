@@ -42,18 +42,12 @@ async function extractMercadoLivreData() {
     // Get page text for regex matching
     const pageText = document.body.innerText;
 
-    // Extract price — buscar todos os preços em R$ e retornar o menor (promoção)
-    const priceMatches = pageText.match(/R\$\s*[\d.,]+/gi);
-    if (priceMatches && priceMatches.length > 0) {
-      // Converter para números, ignorar valores muito grandes (frete, etc)
-      const prices = priceMatches.map(p => {
-        const num = p.replace(/R\$\s*/i, '').replace(/\./g, '').replace(',', '.');
-        return parseFloat(num);
-      }).filter(p => p > 0 && p < 10000);
-
-      if (prices.length > 0) {
-        data.price = Math.min(...prices).toFixed(2);
-      }
+    // Extract price — padrão rigoroso: "R$ XXX,XX" (até 5 dígitos inteiros, 2 decimais)
+    const priceMatch = pageText.match(/R\$\s*(\d{1,5})[.,](\d{2})\b/);
+    if (priceMatch) {
+      const intPart = priceMatch[1];
+      const decPart = priceMatch[2];
+      data.price = intPart + '.' + decPart;
     }
 
     // Extract sales count — padrão "XXX vendas"
@@ -124,56 +118,53 @@ function extractCommentsFromPage() {
   const excludePatterns = [
     /^[\d.,\s★]*$/,  // Só números/pontos/vírgulas/estrelas
     /^[\d.]+\s*de\s*5/i,  // "4.8 de 5"
-    /mostrar todas/i,
+    /mostrar todas|ver todas|opiniões/i,
     /avaliação.*de\s*5/i,
-    /opini[õo]es/i,
-    /novo.*vendidos/i,
-    /\+\d+\s*vendidos/i,
-    /informações/i,
-    /carregando dados/i,
-    /mais vendido/i,
-    /em suportes/i,
-    /adicionar aos favoritos/i,
+    /novo|vendidos|+\d+/i,
+    /informações|carregando|mais vendido/i,
+    /em suportes|adicionar aos favoritos/i,
     /^[\d.]+\s*avaliação/i,
-    /^[a-z0-9.]+$/i,  // Strings genéricas muito curtas (domínios, IDs)
-    /frete/i,  // Info de frete
-    /garantia/i,  // Info de garantia isolada
-    /devolução/i,  // Info de devolução
-    /Compre.*aproveite/i,  // CTA genérica
-    /produto original/i,  // Declarações genéricas
+    /frete|garantia|devolução|compre|produto original/i,
+    /^[a-z0-9.]+$/i,  // Strings genéricas muito curtas
   ];
 
-  // Procurar por todos os textos na página
-  const walker = document.createTreeWalker(
-    document.body,
-    NodeFilter.SHOW_TEXT_NODE,
-    null,
-    false
+  // Estratégia 1: Procurar por elementos com classe review/opinion/comment
+  const reviewElements = document.querySelectorAll(
+    '[class*="review"], [class*="opinion"], [class*="comment"], [class*="feedback"]'
   );
 
-  let node;
-  while (node = walker.nextNode()) {
-    const text = node.textContent.trim();
-
-    // Verificar se é um comentário válido
-    if (text.length > 20 && text.length < 800) {
-      let isExcluded = false;
-
-      // Verificar se corresponde a algum padrão de exclusão
-      for (const pattern of excludePatterns) {
-        if (pattern.test(text)) {
-          isExcluded = true;
-          break;
+  if (reviewElements.length > 0) {
+    reviewElements.forEach(el => {
+      const text = el.textContent?.trim();
+      if (text && text.length > 20 && text.length < 800 && !seen.has(text)) {
+        let isExcluded = excludePatterns.some(p => p.test(text));
+        if (!isExcluded) {
+          comments.push(text);
+          seen.add(text);
         }
       }
+    });
+  }
 
-      // Se passou, adicionar
-      if (!isExcluded && !seen.has(text)) {
-        comments.push(text);
-        seen.add(text);
+  // Estratégia 2: Se poucos comentários, usar TreeWalker como fallback
+  if (comments.length < 20) {
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT_NODE,
+      null,
+      false
+    );
 
-        // Limitar a 100
-        if (comments.length >= 100) break;
+    let node;
+    while (node = walker.nextNode() && comments.length < 100) {
+      const text = node.textContent.trim();
+
+      if (text.length > 30 && text.length < 800 && !seen.has(text)) {
+        let isExcluded = excludePatterns.some(p => p.test(text));
+        if (!isExcluded) {
+          comments.push(text);
+          seen.add(text);
+        }
       }
     }
   }

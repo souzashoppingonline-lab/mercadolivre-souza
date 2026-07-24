@@ -34,94 +34,71 @@ function extractMercadoLivreData() {
       data.productId = urlMatch[1];
     }
 
-    // Extract title (multiple possible selectors for ML pages)
-    const titleEl = document.querySelector('h1') ||
-                    document.querySelector('h2') ||
-                    document.querySelector('[class*="title"]');
+    // Extract title — ML geralmente em h1
+    const titleEl = document.querySelector('h1');
     if (titleEl) {
       data.title = titleEl.textContent.trim();
     }
 
-    // Extract price
-    const priceEl = document.querySelector('[class*="price"]') ||
-                    document.querySelector('[data-price]') ||
-                    document.querySelector('.price-tag');
-    if (priceEl) {
-      const priceText = priceEl.textContent.trim();
-      // Clean price to extract numbers
-      const priceMatch = priceText.match(/R\$?\s*([\d.,]+)/);
-      if (priceMatch) {
-        data.price = priceMatch[1].replace(',', '.');
-      }
+    // Extract price — buscar por texto "R$" com número
+    const pageText = document.body.innerText;
+    const priceMatch = pageText.match(/R\$\s*([\d.]+(?:[.,]\d{2})?)/);
+    if (priceMatch) {
+      data.price = priceMatch[1].replace('.', '').replace(',', '.');
     }
 
-    // Extract sales count (look for "XXX vendas" pattern)
-    const pageText = document.body.innerText;
-    const salesMatch = pageText.match(/(\d+)\s*vendas?\s*(?:no|em|last)?/i);
+    // Extract sales count — padrão "XXX vendas"
+    const salesMatch = pageText.match(/^(\d+)\s*vendas?$/m);
     if (salesMatch) {
       data.salesCount = parseInt(salesMatch[1], 10);
-    }
-
-    // Extract rating and rating count
-    const ratingEl = document.querySelector('[class*="rating"]') ||
-                     document.querySelector('[data-rating]') ||
-                     document.querySelector('[class*="star"]');
-    if (ratingEl) {
-      const ratingText = ratingEl.textContent.trim();
-      const ratingMatch = ratingText.match(/([\d.]+)/);
-      if (ratingMatch) {
-        data.rating = parseFloat(ratingMatch[1]);
-      }
-
-      // Look for rating count
-      const ratingCountMatch = ratingText.match(/(\d+)\s*(?:avalia|opini|review)/i);
-      if (ratingCountMatch) {
-        data.ratingCount = parseInt(ratingCountMatch[1], 10);
-      }
-    }
-
-    // Extract seller name
-    const sellerEl = document.querySelector('[class*="seller"]') ||
-                     document.querySelector('[class*="vendor"]');
-    if (sellerEl) {
-      data.seller = sellerEl.textContent.trim();
-    }
-
-    // Extract comments/reviews
-    const commentEls = document.querySelectorAll('[class*="review"]') ||
-                      document.querySelectorAll('[class*="comment"]');
-
-    if (commentEls && commentEls.length > 0) {
-      data.commentsCount = commentEls.length;
-
-      // Extract comment texts
-      Array.from(commentEls).slice(0, 10).forEach((el) => {
-        const text = el.textContent.trim();
-        if (text.length > 0 && text.length < 1000) {
-          data.comments.push(text.substring(0, 500));
-        }
-      });
     } else {
-      // Fallback: look for review sections
-      const reviewSections = document.querySelectorAll('[class*="opinion"]');
-      if (reviewSections && reviewSections.length > 0) {
-        data.commentsCount = reviewSections.length;
+      // Fallback: procurar em qualquer lugar
+      const salesFallback = pageText.match(/(\d+)\s*vendas/i);
+      if (salesFallback) {
+        data.salesCount = parseInt(salesFallback[1], 10);
       }
     }
 
-    // Extract questions
-    const questionEls = document.querySelectorAll('[class*="question"]') ||
-                       document.querySelectorAll('[class*="qa"]') ||
-                       document.querySelectorAll('[class*="faq"]');
+    // Extract rating — buscar "X.X de 5" ou "★★★★★ X.X"
+    const ratingMatch = pageText.match(/([\d.]+)\s*(?:de\s*5|★)/);
+    if (ratingMatch) {
+      const ratingVal = parseFloat(ratingMatch[1]);
+      if (ratingVal >= 0 && ratingVal <= 5) {
+        data.rating = ratingVal;
+      }
+    }
 
-    if (questionEls && questionEls.length > 0) {
-      data.questionsCount = questionEls.length;
+    // Extract rating count — "(XXXX)"
+    const ratingCountMatch = pageText.match(/\((\d+)\s*(?:opini|avalia|review)\)/i);
+    if (ratingCountMatch) {
+      data.ratingCount = parseInt(ratingCountMatch[1], 10);
+    }
 
-      // Extract question texts
-      Array.from(questionEls).slice(0, 5).forEach((el) => {
+    // Extract comments count — procurar por "Comentários" ou "Opiniões"
+    const commentsHeaderMatch = pageText.match(/(?:Comentários|Opiniões)\s*(?:\()?(\d+)\)?/i);
+    if (commentsHeaderMatch) {
+      data.commentsCount = parseInt(commentsHeaderMatch[1], 10);
+    }
+
+    // Extract questions count — procurar por "Perguntas"
+    const questionsHeaderMatch = pageText.match(/Perguntas?\s*(?:\()?(\d+)\)?/i);
+    if (questionsHeaderMatch) {
+      data.questionsCount = parseInt(questionsHeaderMatch[1], 10);
+    }
+
+    // Extract seller name — buscar por "Vendido por:"
+    const sellerMatch = pageText.match(/Vendido\s*(?:e\s*enviado\s*)?por:\s*(.+?)(?:\n|$)/i);
+    if (sellerMatch) {
+      data.seller = sellerMatch[1].trim();
+    }
+
+    // Extract text fragments dos comentários (limitado — ML carrega via JS)
+    const reviewElements = document.querySelectorAll('[class*="review"], [class*="comment"], [class*="opinion"]');
+    if (reviewElements && reviewElements.length > 0) {
+      Array.from(reviewElements).slice(0, 5).forEach((el) => {
         const text = el.textContent.trim();
-        if (text.length > 0 && text.length < 500) {
-          data.questions.push(text);
+        if (text.length > 10 && text.length < 500) {
+          data.comments.push(text);
         }
       });
     }

@@ -39,11 +39,15 @@ async function extractMercadoLivreData() {
       data.title = titleEl.textContent.trim();
     }
 
-    // Extract price — buscar por texto "R$" com número
+    // Extract price — buscar por texto "R$" com número (pegar apenas o primeiro)
     const pageText = document.body.innerText;
-    const priceMatch = pageText.match(/R\$\s*([\d.]+(?:[.,]\d{2})?)/);
+    const priceMatch = pageText.match(/R\$\s*([\d.]+[.,]\d{2})/);
     if (priceMatch) {
-      data.price = priceMatch[1].replace('.', '').replace(',', '.');
+      // Normalizar: remover pontos de milhar, manter virgula decimal
+      let price = priceMatch[1];
+      price = price.replace(/\./g, '').replace(',', '.');
+      // Se tiver mais de um ponto, é erro — tomar só os primeiros dígitos
+      data.price = price;
     }
 
     // Extract sales count — padrão "XXX vendas"
@@ -108,16 +112,44 @@ async function extractMercadoLivreData() {
 
 function extractCommentsFromPage() {
   const comments = [];
-  const reviewElements = document.querySelectorAll('[class*="review"], [class*="comment"], [class*="opinion"]');
 
-  if (reviewElements && reviewElements.length > 0) {
-    Array.from(reviewElements).forEach((el) => {
-      const text = el.textContent.trim();
-      if (text.length > 10 && text.length < 1000 && !text.includes('Mostrar todas')) {
+  // Procurar por divs que contêm comentários/opiniões
+  const possibleSelectors = [
+    '[class*="review-content"]',
+    '[class*="comment-text"]',
+    '[class*="opinion-text"]',
+    '[class*="user-review"]'
+  ];
+
+  // Também buscar por padrão de texto que começa com comentário real
+  const allElements = document.querySelectorAll('div, p, span');
+
+  Array.from(allElements).forEach((el) => {
+    const text = el.textContent.trim();
+
+    // Filtrar: comentário deve ter entre 15-1000 caracteres
+    // NÃO deve conter padrões de avaliação/metadata
+    if (text.length > 15 && text.length < 1000) {
+      const lowerText = text.toLowerCase();
+
+      // Descartar se for metadata/avaliação
+      if (
+        lowerText.includes('mostrar todas') ||
+        lowerText.includes('avaliação') ||
+        lowerText.includes('informações avantpro') ||
+        lowerText.includes('carregando dados') ||
+        text.match(/^\d+\s*$/) || // Só números
+        text.match(/^[\d.]+\s*de\s*5/) // Padrão de rating
+      ) {
+        return;
+      }
+
+      // Se passou nos filtros, é um comentário
+      if (!comments.includes(text)) {
         comments.push(text);
       }
-    });
-  }
+    }
+  });
 
   return comments;
 }

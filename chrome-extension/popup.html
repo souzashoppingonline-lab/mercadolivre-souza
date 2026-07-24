@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinanceEcom Monitor</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      width: 350px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+    }
+    .header {
+      background: linear-gradient(135deg, #FFE600 0%, #FFC107 100%);
+      color: #333;
+      padding: 16px;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .header p {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+    .content {
+      padding: 16px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .status {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .status.loading {
+      background: #e3f2fd;
+      border-color: #2196F3;
+      color: #1976D2;
+    }
+    .status.success {
+      background: #e8f5e9;
+      border-color: #4CAF50;
+      color: #2e7d32;
+    }
+    .status.error {
+      background: #ffebee;
+      border-color: #f44336;
+      color: #c62828;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    button {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .btn-primary {
+      background: #FFE600;
+      color: #333;
+    }
+    .btn-primary:hover {
+      background: #FFC107;
+      box-shadow: 0 2px 8px rgba(255, 193, 7, 0.4);
+    }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: white;
+      color: #333;
+      border: 1px solid #ddd;
+    }
+    .btn-secondary:hover {
+      background: #f5f5f5;
+    }
+    .data-preview {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .data-item {
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .data-item:last-child {
+      border-bottom: none;
+    }
+    .data-label {
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .data-value {
+      color: #333;
+      word-break: break-word;
+    }
+    .spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #FFE600;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .api-config {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .api-config label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #666;
+    }
+    .api-config input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📊 FinanceEcom Monitor</h1>
+    <p>Coleta de dados do Mercado Livre</p>
+  </div>
+
+  <div class="content">
+    <div class="api-config">
+      <label for="apiUrl">URL da API:</label>
+      <input type="text" id="apiUrl" placeholder="https://seu-servidor.com/api" value="http://localhost:3000/api">
+    </div>
+
+    <div class="controls">
+      <button class="btn-primary" id="collectBtn">📥 Coletar Dados</button>
+      <button class="btn-secondary" id="clearBtn">🗑️ Limpar</button>
+    </div>
+
+    <div id="status" class="status" style="display:none;"></div>
+    <div id="dataPreview" class="data-preview" style="display:none;"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -3339,4 +3339,38 @@ router.get('/conciliacao/prazo', async (req, res) => {
   }
 });
 
+// ── Chrome Extension — Coleta de dados de anúncios ──────────
+router.post('/marketplace-events/collect', async (req, res) => {
+  try {
+    const { marketplace, pageUrl, title, price, salesCount, rating, commentsCount, questionsCount, comments, collectedAt } = req.body;
+
+    if (!marketplace || !pageUrl) {
+      return res.status(400).json({ error: 'marketplace e pageUrl são obrigatórios' });
+    }
+
+    console.log('[extension] Dados coletados:', { marketplace, pageUrl, title, salesCount, collectedAt });
+
+    // Log para análise (pode ser expandido para armazenar em tabela dedicada futuramente)
+    // Por enquanto apenas registra no console/log da aplicação
+    res.json({
+      success: true,
+      message: 'Dados recebidos e processados',
+      received: {
+        marketplace,
+        pageUrl,
+        title,
+        price,
+        salesCount,
+        rating,
+        commentsCount,
+        questionsCount,
+        collectedAt
+      }
+    });
+  } catch (error) {
+    console.error('[extension] Erro ao processar coleta:', error.message);
+    res.status(500).json({ error: 'Erro ao processar dados', details: error.message });
+  }
+});
+
 module.exports = router;

@@ -39,28 +39,15 @@ async function extractMercadoLivreData() {
       data.title = titleEl.textContent.trim();
     }
 
-    // Extract price — buscar pelo elemento com classe de preço
-    let priceFound = false;
-    const priceElements = document.querySelectorAll('[class*="price"]');
-    if (priceElements && priceElements.length > 0) {
-      const priceText = priceElements[0].textContent.trim();
-      const priceMatch = priceText.match(/R\$\s*([\d]+[.,]\d{2})/);
-      if (priceMatch) {
-        data.price = priceMatch[1].replace('.', '').replace(',', '.');
-        priceFound = true;
-      }
-    }
-
-    // Fallback: procurar no texto da página por padrão R$ XXX,XX (primeiro match)
-    if (!priceFound) {
-      const pageText = document.body.innerText;
-      const priceMatch = pageText.match(/R\$\s*([\d]+(?:[.,]\d{3})*[.,]\d{2})/);
-      if (priceMatch) {
-        let price = priceMatch[1];
-        // Remover pontos de milhar, converter última vírgula em ponto
-        price = price.replace(/\./g, '').replace(',', '.');
-        data.price = price;
-      }
+    // Extract price — RIGOROSO: pegar primeira ocorrência de R$ seguida de número com até 5 dígitos inteiros
+    const pageText = document.body.innerText;
+    // Padrão: R$ + 1-5 dígitos + separador + 2 dígitos (ex: R$ 129,90 ou R$ 1.234,56)
+    const priceMatch = pageText.match(/R\$\s*(\d{1,5}(?:[.,]\d{3})*[.,]\d{2})/);
+    if (priceMatch) {
+      let price = priceMatch[1];
+      // Normalizar: remover TODOS os pontos (milhar), depois converter última vírgula em ponto
+      price = price.replace(/\./g, '').replace(',', '.');
+      data.price = price;
     }
 
     // Extract sales count — padrão "XXX vendas"
@@ -183,37 +170,7 @@ function extractCommentsFromPage() {
 }
 
 async function collectAllComments(data) {
-  try {
-    // Procurar botão "Mostrar todas as opiniões"
-    const button = Array.from(document.querySelectorAll('a, button')).find(el =>
-      el.textContent.toLowerCase().includes('mostrar todas') &&
-      el.textContent.toLowerCase().includes('opini')
-    );
-
-    if (button) {
-      console.log('[extension] Clicando em "Mostrar todas as opiniões"...');
-      button.click();
-
-      // Aguardar modal carregar (3 segundos)
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // Extrair comentários do modal
-      const modalComments = extractCommentsFromPage();
-
-      // Adicionar comentários até atingir 100
-      for (const comment of modalComments) {
-        if (data.comments.length >= 100) break;
-        if (!data.comments.includes(comment)) {
-          data.comments.push(comment);
-        }
-      }
-
-      console.log(`[extension] Total de comentários coletados: ${data.comments.length}`);
-
-      // Fechar modal (ESC ou clique em X)
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    }
-  } catch (error) {
-    console.error('[extension] Erro ao coletar comentários adicionais:', error);
-  }
+  // Por enquanto, desabilitado — o modal de ML é complexo de automatizar
+  // Os comentários visíveis já são suficientes para análise
+  console.log('[extension] Coleta de comentários visíveis concluída:', data.comments.length);
 }

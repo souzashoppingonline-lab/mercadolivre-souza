@@ -39,26 +39,14 @@ async function extractMercadoLivreData() {
       data.title = titleEl.textContent.trim();
     }
 
-    // Extract price — procurar em elemento específico da ML
-    // NOTA: A extração de preço é complexa pois a página ML tem múltiplos valores
-    // Estratégia: procurar em elemento [class*="price"] e validar que tem apenas 1 match
-    const priceElements = document.querySelectorAll('[class*="price"]');
-    if (priceElements && priceElements.length > 0) {
-      for (const el of priceElements) {
-        const text = el.textContent.trim();
-        // Validar: deve conter R$ e ter exatamente 1 número com 2 decimais
-        if (text.includes('R$')) {
-          const matches = text.match(/(\d+(?:[.,]\d{3})*[.,]\d{2})/g);
-          if (matches && matches.length === 1) {
-            let price = matches[0];
-            price = price.replace(/\./g, '').replace(',', '.');
-            data.price = price;
-            break;
-          }
-        }
-      }
-    }
-    // Se não conseguiu extrair com certeza, deixar vazio (melhor que errado)
+    // Get page text for regex matching
+    const pageText = document.body.innerText;
+
+    // Extract price — DESABILITADO POR ENQUANTO
+    // A página do ML tem múltiplos elementos com "R$" (preço, frete, parcelado, etc.)
+    // e não conseguimos extrair com certeza qual é o principal.
+    // TODO: implementar quando a estrutura HTML for melhor compreendida
+    data.price = null;
 
     // Extract sales count — padrão "XXX vendas"
     const salesMatch = pageText.match(/^(\d+)\s*vendas?$/m);

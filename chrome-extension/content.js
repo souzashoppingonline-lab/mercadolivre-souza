@@ -39,31 +39,26 @@ async function extractMercadoLivreData() {
       data.title = titleEl.textContent.trim();
     }
 
-    // Extract price — procurar em elemento com classe "price" ou no início da página
-    let priceExtracted = false;
-
-    // Estratégia 1: procurar em element com data-price ou class contendo "price"
-    const priceEl = document.querySelector('[data-price], [class*="price-tag"], [class*="andes-money"]');
-    if (priceEl) {
-      const text = priceEl.textContent.trim();
-      const match = text.match(/(\d+[.,]\d{2})/);
-      if (match) {
-        data.price = match[1].replace(',', '.');
-        priceExtracted = true;
+    // Extract price — procurar em elemento específico da ML
+    // NOTA: A extração de preço é complexa pois a página ML tem múltiplos valores
+    // Estratégia: procurar em elemento [class*="price"] e validar que tem apenas 1 match
+    const priceElements = document.querySelectorAll('[class*="price"]');
+    if (priceElements && priceElements.length > 0) {
+      for (const el of priceElements) {
+        const text = el.textContent.trim();
+        // Validar: deve conter R$ e ter exatamente 1 número com 2 decimais
+        if (text.includes('R$')) {
+          const matches = text.match(/(\d+(?:[.,]\d{3})*[.,]\d{2})/g);
+          if (matches && matches.length === 1) {
+            let price = matches[0];
+            price = price.replace(/\./g, '').replace(',', '.');
+            data.price = price;
+            break;
+          }
+        }
       }
     }
-
-    // Estratégia 2: Se não encontrou, procurar no texto APENAS os primeiros 2000 caracteres (antes de muitos preços)
-    if (!priceExtracted) {
-      const pageText = document.body.innerText.substring(0, 2000);
-      // Padrão SIMPLES: R$ seguido de 1-3 dígitos . 1-3 dígitos , 2 dígitos
-      const priceMatch = pageText.match(/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/);
-      if (priceMatch) {
-        let price = priceMatch[1];
-        price = price.replace(/\./g, '').replace(',', '.');
-        data.price = price;
-      }
-    }
+    // Se não conseguiu extrair com certeza, deixar vazio (melhor que errado)
 
     // Extract sales count — padrão "XXX vendas"
     const salesMatch = pageText.match(/^(\d+)\s*vendas?$/m);

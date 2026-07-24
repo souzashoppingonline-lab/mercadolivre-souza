@@ -28,7 +28,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Chrome Extension — coleta de dados de anúncios (rota pública, antes do gate de auth)
-app.post('/extension/collect', require('./routes/extensionCollect'));
+app.use('/extension/collect', require('./routes/extensionCollect'));
 
 // Login de acesso restrito (staff) — ver .claude/auth-staff.md. Desligado
 // por padrão (STAFF_AUTH_ENABLED=false); a própria função já ignora tudo

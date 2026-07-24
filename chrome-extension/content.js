@@ -39,15 +39,30 @@ async function extractMercadoLivreData() {
       data.title = titleEl.textContent.trim();
     }
 
-    // Extract price — RIGOROSO: pegar primeira ocorrência de R$ seguida de número com até 5 dígitos inteiros
-    const pageText = document.body.innerText;
-    // Padrão: R$ + 1-5 dígitos + separador + 2 dígitos (ex: R$ 129,90 ou R$ 1.234,56)
-    const priceMatch = pageText.match(/R\$\s*(\d{1,5}(?:[.,]\d{3})*[.,]\d{2})/);
-    if (priceMatch) {
-      let price = priceMatch[1];
-      // Normalizar: remover TODOS os pontos (milhar), depois converter última vírgula em ponto
-      price = price.replace(/\./g, '').replace(',', '.');
-      data.price = price;
+    // Extract price — procurar em elemento com classe "price" ou no início da página
+    let priceExtracted = false;
+
+    // Estratégia 1: procurar em element com data-price ou class contendo "price"
+    const priceEl = document.querySelector('[data-price], [class*="price-tag"], [class*="andes-money"]');
+    if (priceEl) {
+      const text = priceEl.textContent.trim();
+      const match = text.match(/(\d+[.,]\d{2})/);
+      if (match) {
+        data.price = match[1].replace(',', '.');
+        priceExtracted = true;
+      }
+    }
+
+    // Estratégia 2: Se não encontrou, procurar no texto APENAS os primeiros 2000 caracteres (antes de muitos preços)
+    if (!priceExtracted) {
+      const pageText = document.body.innerText.substring(0, 2000);
+      // Padrão SIMPLES: R$ seguido de 1-3 dígitos . 1-3 dígitos , 2 dígitos
+      const priceMatch = pageText.match(/R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/);
+      if (priceMatch) {
+        let price = priceMatch[1];
+        price = price.replace(/\./g, '').replace(',', '.');
+        data.price = price;
+      }
     }
 
     // Extract sales count — padrão "XXX vendas"

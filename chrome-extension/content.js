@@ -42,11 +42,19 @@ async function extractMercadoLivreData() {
     // Get page text for regex matching
     const pageText = document.body.innerText;
 
-    // Extract price — DESABILITADO POR ENQUANTO
-    // A página do ML tem múltiplos elementos com "R$" (preço, frete, parcelado, etc.)
-    // e não conseguimos extrair com certeza qual é o principal.
-    // TODO: implementar quando a estrutura HTML for melhor compreendida
-    data.price = null;
+    // Extract price — buscar todos os preços em R$ e retornar o menor (promoção)
+    const priceMatches = pageText.match(/R\$\s*[\d.,]+/gi);
+    if (priceMatches && priceMatches.length > 0) {
+      // Converter para números, ignorar valores muito grandes (frete, etc)
+      const prices = priceMatches.map(p => {
+        const num = p.replace(/R\$\s*/i, '').replace(/\./g, '').replace(',', '.');
+        return parseFloat(num);
+      }).filter(p => p > 0 && p < 10000);
+
+      if (prices.length > 0) {
+        data.price = Math.min(...prices).toFixed(2);
+      }
+    }
 
     // Extract sales count — padrão "XXX vendas"
     const salesMatch = pageText.match(/^(\d+)\s*vendas?$/m);
@@ -96,8 +104,8 @@ async function extractMercadoLivreData() {
     const visibleComments = extractCommentsFromPage();
     data.comments.push(...visibleComments.slice(0, 100));
 
-    // Se há botão "Mostrar todas as opiniões", clicar e extrair mais
-    if (data.comments.length < 100 && data.commentsCount > data.comments.length) {
+    // Se há botão "Mostrar todas as opiniões", tentar clicar e extrair mais
+    if (data.commentsCount > data.comments.length) {
       await collectAllComments(data);
     }
 
@@ -114,7 +122,8 @@ function extractCommentsFromPage() {
 
   // Padrões de texto que indicam metadata/não-comentário
   const excludePatterns = [
-    /^[\d.,\s]*$/,  // Só números/pontos/vírgulas
+    /^[\d.,\s★]*$/,  // Só números/pontos/vírgulas/estrelas
+    /^[\d.]+\s*de\s*5/i,  // "4.8 de 5"
     /mostrar todas/i,
     /avaliação.*de\s*5/i,
     /opini[õo]es/i,
@@ -125,8 +134,13 @@ function extractCommentsFromPage() {
     /mais vendido/i,
     /em suportes/i,
     /adicionar aos favoritos/i,
-    /bcom/i,
-    /^[\d.]+\s*avaliação/i
+    /^[\d.]+\s*avaliação/i,
+    /^[a-z0-9.]+$/i,  // Strings genéricas muito curtas (domínios, IDs)
+    /frete/i,  // Info de frete
+    /garantia/i,  // Info de garantia isolada
+    /devolução/i,  // Info de devolução
+    /Compre.*aproveite/i,  // CTA genérica
+    /produto original/i,  // Declarações genéricas
   ];
 
   // Procurar por todos os textos na página
@@ -168,7 +182,35 @@ function extractCommentsFromPage() {
 }
 
 async function collectAllComments(data) {
-  // Por enquanto, desabilitado — o modal de ML é complexo de automatizar
-  // Os comentários visíveis já são suficientes para análise
-  console.log('[extension] Coleta de comentários visíveis concluída:', data.comments.length);
+  try {
+    // Procurar botão "Mostrar todas as opiniões" ou similar
+    const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+    const showAllBtn = buttons.find(btn => {
+      const text = btn.textContent.toLowerCase();
+      return text.includes('mostrar todas') || text.includes('ver todas') || text.includes('opiniões');
+    });
+
+    if (showAllBtn) {
+      console.log('[extension] Clicando em "Mostrar todas as opiniões"...');
+      showAllBtn.click();
+
+      // Aguardar modal abrir (max 3s)
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Procurar comentários no modal
+      const modalComments = extractCommentsFromPage();
+      const newComments = modalComments.filter(c => !data.comments.includes(c));
+
+      if (newComments.length > 0) {
+        data.comments.push(...newComments.slice(0, 100 - data.comments.length));
+        console.log('[extension] Adicionados', newComments.length, 'comentários do modal');
+      }
+
+      // Fechar modal (procurar X ou ESC)
+      const closeBtn = document.querySelector('[aria-label*="close" i], button[class*="close" i]');
+      if (closeBtn) closeBtn.click();
+    }
+  } catch (err) {
+    console.error('[extension] Erro ao abrir modal de comentários:', err.message);
+  }
 }

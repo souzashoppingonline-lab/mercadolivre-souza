@@ -46,8 +46,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      // Send data to API
-      const response = await fetch(`${apiUrl}/marketplace-events/collect`, {
+      // Send data to API (rota pública, sem autenticação)
+      const baseUrl = apiUrl.replace(/\/api\/?$/, ''); // Remove /api se existir
+      const response = await fetch(`${baseUrl}/extension/collect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

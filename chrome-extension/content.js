@@ -39,15 +39,28 @@ async function extractMercadoLivreData() {
       data.title = titleEl.textContent.trim();
     }
 
-    // Extract price — buscar por texto "R$" com número (pegar apenas o primeiro)
-    const pageText = document.body.innerText;
-    const priceMatch = pageText.match(/R\$\s*([\d.]+[.,]\d{2})/);
-    if (priceMatch) {
-      // Normalizar: remover pontos de milhar, manter virgula decimal
-      let price = priceMatch[1];
-      price = price.replace(/\./g, '').replace(',', '.');
-      // Se tiver mais de um ponto, é erro — tomar só os primeiros dígitos
-      data.price = price;
+    // Extract price — buscar pelo elemento com classe de preço
+    let priceFound = false;
+    const priceElements = document.querySelectorAll('[class*="price"]');
+    if (priceElements && priceElements.length > 0) {
+      const priceText = priceElements[0].textContent.trim();
+      const priceMatch = priceText.match(/R\$\s*([\d]+[.,]\d{2})/);
+      if (priceMatch) {
+        data.price = priceMatch[1].replace('.', '').replace(',', '.');
+        priceFound = true;
+      }
+    }
+
+    // Fallback: procurar no texto da página por padrão R$ XXX,XX (primeiro match)
+    if (!priceFound) {
+      const pageText = document.body.innerText;
+      const priceMatch = pageText.match(/R\$\s*([\d]+(?:[.,]\d{3})*[.,]\d{2})/);
+      if (priceMatch) {
+        let price = priceMatch[1];
+        // Remover pontos de milhar, converter última vírgula em ponto
+        price = price.replace(/\./g, '').replace(',', '.');
+        data.price = price;
+      }
     }
 
     // Extract sales count — padrão "XXX vendas"
@@ -112,44 +125,59 @@ async function extractMercadoLivreData() {
 
 function extractCommentsFromPage() {
   const comments = [];
+  const seen = new Set();
 
-  // Procurar por divs que contêm comentários/opiniões
-  const possibleSelectors = [
-    '[class*="review-content"]',
-    '[class*="comment-text"]',
-    '[class*="opinion-text"]',
-    '[class*="user-review"]'
+  // Padrões de texto que indicam metadata/não-comentário
+  const excludePatterns = [
+    /^[\d.,\s]*$/,  // Só números/pontos/vírgulas
+    /mostrar todas/i,
+    /avaliação.*de\s*5/i,
+    /opini[õo]es/i,
+    /novo.*vendidos/i,
+    /\+\d+\s*vendidos/i,
+    /informações/i,
+    /carregando dados/i,
+    /mais vendido/i,
+    /em suportes/i,
+    /adicionar aos favoritos/i,
+    /bcom/i,
+    /^[\d.]+\s*avaliação/i
   ];
 
-  // Também buscar por padrão de texto que começa com comentário real
-  const allElements = document.querySelectorAll('div, p, span');
+  // Procurar por todos os textos na página
+  const walker = document.createTreeWalker(
+    document.body,
+    NodeFilter.SHOW_TEXT_NODE,
+    null,
+    false
+  );
 
-  Array.from(allElements).forEach((el) => {
-    const text = el.textContent.trim();
+  let node;
+  while (node = walker.nextNode()) {
+    const text = node.textContent.trim();
 
-    // Filtrar: comentário deve ter entre 15-1000 caracteres
-    // NÃO deve conter padrões de avaliação/metadata
-    if (text.length > 15 && text.length < 1000) {
-      const lowerText = text.toLowerCase();
+    // Verificar se é um comentário válido
+    if (text.length > 20 && text.length < 800) {
+      let isExcluded = false;
 
-      // Descartar se for metadata/avaliação
-      if (
-        lowerText.includes('mostrar todas') ||
-        lowerText.includes('avaliação') ||
-        lowerText.includes('informações avantpro') ||
-        lowerText.includes('carregando dados') ||
-        text.match(/^\d+\s*$/) || // Só números
-        text.match(/^[\d.]+\s*de\s*5/) // Padrão de rating
-      ) {
-        return;
+      // Verificar se corresponde a algum padrão de exclusão
+      for (const pattern of excludePatterns) {
+        if (pattern.test(text)) {
+          isExcluded = true;
+          break;
+        }
       }
 
-      // Se passou nos filtros, é um comentário
-      if (!comments.includes(text)) {
+      // Se passou, adicionar
+      if (!isExcluded && !seen.has(text)) {
         comments.push(text);
+        seen.add(text);
+
+        // Limitar a 100
+        if (comments.length >= 100) break;
       }
     }
-  });
+  }
 
   return comments;
 }

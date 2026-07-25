@@ -34,8 +34,17 @@ O PDF **não é guardado**: é regerado sob demanda a partir de `print_jobs.labe
 
 Cada PC/impressora = uma linha em `print_stations` (com seu `token` e
 `printer_name`). `print_jobs.station_id` roteia a etiqueta pra impressora certa.
-Enfileiramento por `store_id` cai na 1ª estação da loja; ou passe `station_id`
-explícito. Assim UNIFULL e r souza podem imprimir em máquinas diferentes.
+
+Resolução da estação no enfileiramento (`resolveStationId` em `routes/print.js`),
+nessa ordem: **1)** `station_id` explícito no body; **2)** 1ª estação da `store_id`;
+**3)** estação **global** (`store_id IS NULL`) — uma impressora só pra todas as lojas.
+
+O frontend (`pages/embalagem.html`, `loadPrintStations`) deixa **cada PC escolher a
+sua estação** — salvo em `localStorage['print_station_id']` e enviado como
+`station_id` no enfileiramento. O seletor só aparece quando há **2+ estações**
+(com 1, roteia sozinho pela global). É assim que 2 estações de embalagem (2 PCs, 2
+impressoras) funcionam: cada PC bipa e imprime na sua própria impressora,
+independente da loja do pedido.
 
 ## Confiabilidade
 

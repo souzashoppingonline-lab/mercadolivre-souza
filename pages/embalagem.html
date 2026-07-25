@@ -137,6 +137,12 @@
               <span class="emb-status-badge idle" id="scanStatusBadge"><i class="fas fa-circle"></i> Aguardando</span>
               <span id="scanTimer" style="font-size:12px;color:var(--text-muted);white-space:nowrap"></span>
             </div>
+            <!-- Print Agent: cada PC escolhe a impressora desta estação (salvo local).
+                 Só aparece quando há 2+ estações; com 1, roteia sozinho. -->
+            <div id="printStationRow" style="display:none;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--text-muted)">
+              <span><i class="fas fa-print"></i> Imprimir nesta estação:</span>
+              <select id="printStationSelect" style="padding:4px 8px;border-radius:6px;background:var(--bg-card,#1e1e1e);color:inherit;border:1px solid rgba(255,255,255,.15)"></select>
+            </div>
             <div id="scanMsg"></div>
             <div id="durationWarn"></div>
             <div id="ordersDisplay">
@@ -276,7 +282,28 @@
 document.addEventListener('DOMContentLoaded', () => {
   const modal = document.getElementById('printConfirmModal');
   if (modal) modal.style.display = 'none';
+  loadPrintStations();
 });
+
+// Print Agent — carrega as estações e deixa cada PC escolher a sua (guardado em
+// localStorage). Só mostra o seletor quando há 2+ estações; com 1 (ou nenhuma),
+// o backend roteia sozinho (estação da loja ou a global). Ver .claude/print-agent.md.
+async function loadPrintStations() {
+  try {
+    const res = await fetch('/api/print/stations', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const { rows } = await res.json();
+    const sel = document.getElementById('printStationSelect');
+    const row = document.getElementById('printStationRow');
+    if (!sel || !row || !Array.isArray(rows) || rows.length < 2) return;
+    const saved = localStorage.getItem('print_station_id') || '';
+    sel.innerHTML = '<option value="">(automático)</option>' + rows.map(r =>
+      `<option value="${r.id}" ${String(r.id) === saved ? 'selected' : ''}>${escapeHtml(r.name)}${r.store_nickname ? (' — ' + escapeHtml(r.store_nickname)) : ''}</option>`
+    ).join('');
+    sel.onchange = () => localStorage.setItem('print_station_id', sel.value);
+    row.style.display = 'flex';
+  } catch { /* estações são opcionais — silencioso */ }
+}
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -632,10 +659,13 @@ async function confirmAndSendPrint(payload) {
     // Se houver estação configurada, o agente da expedição imprime sozinho — sem
     // download no navegador. Ver .claude/print-agent.md.
     try {
+      // station_id do PC (se este PC escolheu uma estação); senão o backend cai
+      // na estação da loja ou na global.
+      const stationId = localStorage.getItem('print_station_id') || undefined;
       const enq = await fetch('/api/print/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shipping_id: payload.shipping_id, store_id: payload.store_id, label: payload }),
+        body: JSON.stringify({ shipping_id: payload.shipping_id, station_id: stationId, store_id: payload.store_id, label: payload }),
       });
       if (enq.ok) {
         console.log('[thermal] ✓ enfileirado pro agente de impressão');

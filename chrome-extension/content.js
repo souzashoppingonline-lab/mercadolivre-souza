@@ -83,13 +83,36 @@ button.onclick = async () => {
 };
 
 // Aguardar document.body estar disponível
-if (document.body) {
-  document.body.appendChild(button);
-} else {
-  // Fallback: aguardar e tentar de novo
-  document.addEventListener('DOMContentLoaded', () => {
-    if (document.body) {
-      document.body.appendChild(button);
+function tryAppendButton() {
+  if (document.body) {
+    document.body.appendChild(button);
+    console.log('[extension] botão injetado com sucesso');
+    return true;
+  }
+  return false;
+}
+
+if (!tryAppendButton()) {
+  // Estratégia 1: DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', tryAppendButton);
+
+  // Estratégia 2: MutationObserver para detectar quando body fica disponível
+  const observer = new MutationObserver(() => {
+    if (tryAppendButton()) {
+      observer.disconnect();
     }
   });
+
+  if (document.documentElement) {
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  // Estratégia 3: Timeout final (5 segundos)
+  setTimeout(() => {
+    if (tryAppendButton()) {
+      observer.disconnect();
+    } else {
+      console.error('[extension] Falha ao injetar botão após 5s');
+    }
+  }, 5000);
 }

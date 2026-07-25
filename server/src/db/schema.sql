@@ -257,7 +257,8 @@ CREATE INDEX IF NOT EXISTS idx_shopee_chat_unread ON shopee_chat(unread_count) W
 
 -- v39: catálogo Shopee (Product API) — campos exclusivos por item. Ver .claude/shopee.md.
 CREATE TABLE IF NOT EXISTS shopee_item_data (
-  item_id TEXT PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
+  item_id TEXT NOT NULL,
   store_id BIGINT,
   item_sku TEXT,
   has_model BOOLEAN DEFAULT false,

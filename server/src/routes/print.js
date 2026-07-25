@@ -18,7 +18,11 @@ async function resolveStationId({ station_id, store_id }) {
     );
     if (rows[0]) return rows[0].id;
   }
-  return null;
+  // Fallback: estação "global" (store_id NULL) — uma impressora só pra todas as lojas.
+  const { rows } = await pool.query(
+    `SELECT id FROM print_stations WHERE store_id IS NULL ORDER BY id LIMIT 1`
+  );
+  return rows[0] ? rows[0].id : null;
 }
 
 // POST /api/print/jobs — enfileira uma etiqueta pra impressão automática.

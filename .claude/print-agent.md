@@ -64,10 +64,12 @@ como padrão.
 ## Estado
 
 - Backend (migration v49 + rotas `/api/print/*` e `/print-agent/*` + WS) implementado.
-- Frontend ligado: `confirmAndSendPrint` em `pages/embalagem.html` tenta
-  `POST /api/print/jobs` primeiro (impressão automática pelo agente); se a loja não
-  tiver estação cadastrada (409), cai no **PDF no navegador** (comportamento antigo,
-  fallback). O payload da etiqueta já era montado pelo próprio frontend.
+- Frontend ligado e **automático**: o **2º bipe** (que encerra a gravação) dispara
+  `printThermalLabel` → `confirmAndSendPrint` **direto, sem modal de confirmação** —
+  bipou 2x, sai a etiqueta. A etiqueta leva só os campos já existentes (produto, SKU,
+  loja, variação, QR do `shipping_id`), nenhum a mais. `confirmAndSendPrint` tenta
+  `POST /api/print/jobs` (agente); se a loja não tem estação (409), cai no **PDF no
+  navegador** (fallback). O modal de confirmação antigo foi removido.
 - Falta operacional (não é código): cadastrar a(s) estação(ões) via
   `POST /api/print/stations`, instalar o agente no PC da expedição com o token, e
   ter a Elgin PRO FULL com papel 10×15. Ver `print-agent/README.md`.

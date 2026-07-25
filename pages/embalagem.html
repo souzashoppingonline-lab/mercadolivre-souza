@@ -280,8 +280,6 @@
 <script>
 // Reset modal na inicialização (evita exibir modal de uma sessão anterior)
 document.addEventListener('DOMContentLoaded', () => {
-  const modal = document.getElementById('printConfirmModal');
-  if (modal) modal.style.display = 'none';
   loadPrintStations();
 });
 
@@ -621,34 +619,9 @@ function printThermalLabel(session) {
     company_name: 'EMPRESA XYZ',
   };
 
-  // Mostra modal de confirmação com preview dos dados
-  showPrintConfirmation(payload);
-}
-
-function showPrintConfirmation(payload) {
-  console.log('[thermal] mostrando modal de confirmação');
-
-  // Preenche os campos do modal
-  document.getElementById('printPreviewQR').textContent = `QR: ${payload.shipping_id}`;
-  document.getElementById('printPreviewStore').textContent = payload.store_name || '(sem loja)';
-  document.getElementById('printPreviewSKU').textContent = payload.sku || '(sem SKU)';
-  document.getElementById('printPreviewProduct').textContent = payload.product_name;
-  document.getElementById('printPreviewType').textContent = payload.variation_type || '(sem variação)';
-
-  // Mostra modal
-  document.getElementById('printConfirmModal').style.display = 'flex';
-
-  // Aguarda clique no botão de confirmação
-  document.getElementById('printConfirmBtn').onclick = () => {
-    document.getElementById('printConfirmModal').style.display = 'none';
-    confirmAndSendPrint(payload);
-  };
-
-  document.getElementById('printCancelBtn').onclick = () => {
-    document.getElementById('printConfirmModal').style.display = 'none';
-    console.log('[thermal] impressão cancelada pelo usuário');
-    document.getElementById('scanInput').focus();
-  };
+  // Impressão automática: sem modal — o 2º bipe já dispara a etiqueta.
+  // A etiqueta leva exatamente estes campos (produto, SKU, loja, variação, QR).
+  confirmAndSendPrint(payload);
 }
 
 async function confirmAndSendPrint(payload) {
@@ -1166,56 +1139,6 @@ function renderRelatorioChart(rows) {
 initCamera();
 refocusScan();
 </script>
-
-<!-- Modal de Confirmação de Impressão -->
-<div id="printConfirmModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:9999; display:flex; align-items:center; justify-content:center;">
-  <div style="background:var(--bg-card); border-radius:14px; padding:30px; max-width:500px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,.3);">
-    <h2 style="font-size:24px; font-weight:800; margin-bottom:20px; text-align:center;">Confirmar Impressão</h2>
-
-    <div style="background:var(--bg-card2); border-radius:12px; padding:20px; margin-bottom:20px; border:2px solid var(--primary);">
-      <div style="text-align:center; margin-bottom:16px;">
-        <div style="font-size:14px; color:var(--text-muted); margin-bottom:6px;">Etiqueta que será impressa:</div>
-        <div id="printPreviewQR" style="font-size:40px; font-weight:900; color:var(--primary); word-break:break-all;">QR: ...</div>
-      </div>
-
-      <div style="border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-          <div>
-            <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">Loja</div>
-            <div id="printPreviewStore" style="font-size:14px; font-weight:700;">LOJA</div>
-          </div>
-          <div>
-            <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">SKU</div>
-            <div id="printPreviewSKU" style="font-size:14px; font-weight:700;">SKU</div>
-          </div>
-        </div>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">Produto</div>
-        <div id="printPreviewProduct" style="font-size:13px; font-weight:600; color:var(--text-main);"></div>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">Tipo/Variação</div>
-        <div id="printPreviewType" style="font-size:13px; font-weight:600; color:var(--text-main);"></div>
-      </div>
-
-      <div style="background:rgba(39,174,96,.15); border-left:3px solid var(--green); padding:10px 12px; border-radius:6px; font-size:12px; color:var(--green); text-align:center; font-weight:600;">
-        ⚠ PRODUTO FRÁGIL — CUIDADO AO MANUSEAR
-      </div>
-    </div>
-
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-      <button id="printCancelBtn" style="background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:10px; padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;">
-        ✕ Cancelar
-      </button>
-      <button id="printConfirmBtn" style="background:var(--green); border:none; color:#fff; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;">
-        ✓ Confirmar Impressão
-      </button>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>

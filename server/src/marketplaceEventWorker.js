@@ -289,8 +289,10 @@ async function startMarketplaceEventWorkers() {
 
   // Mesma ideia para contas Shopee (marketplace_id=SHOPEE) — fase 1 usa
   // polling (ShopeePollingEventSource), mesmo padrão da Amazon. Ver .claude/shopee.md.
+  // Cada loja pode ter seu próprio partner_id/key (v46+) ou cai para o global do .env.
   const { rows: shopeeStores } = await pool.query(
-    `SELECT id, nickname, shopee_shop_id, access_token, refresh_token, token_expires_at
+    `SELECT id, nickname, shopee_shop_id, access_token, refresh_token, token_expires_at,
+            shopee_partner_id, shopee_partner_key
      FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'SHOPEE')`
   );
   if (!shopeeStores.length) {

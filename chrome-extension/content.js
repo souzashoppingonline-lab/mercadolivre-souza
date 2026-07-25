@@ -1,118 +1,132 @@
-// Content script v3 — super minimalista
-// Injeta botão na página, clica = envia HTML bruto para backend
+// Content Script v1 — coleta dados brutos da página do Mercado Livre
 
-console.log('[extension] content.js carregado');
+console.log('[content] Content Script carregado');
 
-// Injetar botão flutuante na página
-const button = document.createElement('button');
-button.innerHTML = '📊 Enviar para Análise';
-button.style.cssText = `
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 999999;
-  padding: 12px 16px;
-  background: #FFE600;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  transition: all 0.3s ease;
-`;
+// Esperar um pouco para a página renderizar (React hydration)
+setTimeout(() => {
+  injectButton();
+}, 1000);
 
-button.onmouseover = () => {
-  button.style.background = '#FFC107';
-  button.style.boxShadow = '0 6px 16px rgba(0,0,0,0.2)';
-};
+function injectButton() {
+  // Verificar se o botão já não existe
+  if (document.getElementById('finance-ecom-button')) {
+    console.log('[content] Botão já existe');
+    return;
+  }
 
-button.onmouseout = () => {
-  button.style.background = '#FFE600';
-  button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-};
+  // Criar botão flutuante
+  const button = document.createElement('button');
+  button.id = 'finance-ecom-button';
+  button.innerHTML = '📊 Coletar Dados';
+  button.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 999999;
+    padding: 12px 16px;
+    background: #FFE600;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transition: all 0.3s ease;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  `;
 
-button.onclick = async () => {
+  // Hover effect
+  button.onmouseover = () => {
+    button.style.background = '#FFC107';
+    button.style.boxShadow = '0 6px 16px rgba(0,0,0,0.2)';
+  };
+
+  button.onmouseout = () => {
+    button.style.background = '#FFE600';
+    button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+  };
+
+  // Evento de clique
+  button.onclick = () => {
+    collectAndSend(button);
+  };
+
+  // Injetar na página
+  if (document.body) {
+    document.body.appendChild(button);
+    console.log('[content] Botão injetado com sucesso');
+  } else {
+    console.warn('[content] document.body não disponível');
+  }
+}
+
+function collectAndSend(button) {
+  const originalText = button.innerHTML;
   button.innerHTML = '⏳ Enviando...';
   button.disabled = true;
 
   try {
-    // Recuperar API URL do storage
-    const result = await chrome.storage.local.get(['apiUrl']);
-    const apiUrl = result.apiUrl?.trim();
+    // Coletar dados brutos
+    const rawData = {
+      url: window.location.href,
+      html: document.body.innerHTML,
+      pageText: document.body.innerText,
+      title: document.title,
+      collectedAt: new Date().toISOString(),
+    };
 
-    if (!apiUrl) {
-      alert('Configure a URL da API no popup da extensão');
-      return;
-    }
+    console.log('[content] Dados coletados, enviando ao Service Worker...');
 
-    // Enviar HTML bruto para backend
-    const response = await fetch(`${apiUrl}/extension/collect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        marketplace: 'mercadolivre',
-        rawData: {
-          url: window.location.href,
-          html: document.body.innerHTML,
-          pageText: document.body.innerText,
-          collectedAt: new Date().toISOString(),
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Erro ${response.status}`);
-    }
-
-    const data = await response.json();
-    button.innerHTML = '✓ Enviado!';
-    button.style.background = '#4CAF50';
-
-    setTimeout(() => {
-      button.innerHTML = '📊 Enviar para Análise';
-      button.style.background = '#FFE600';
-      button.disabled = false;
-    }, 2000);
+    // Enviar ao Service Worker
+    chrome.runtime.sendMessage(
+      {
+        action: 'collect_data',
+        data: rawData,
+      },
+      (response) => {
+        handleResponse(response, button, originalText);
+      }
+    );
   } catch (error) {
-    console.error('[extension] Erro:', error);
-    alert(`Erro: ${error.message}`);
-    button.innerHTML = '📊 Enviar para Análise';
-    button.disabled = false;
+    console.error('[content] Erro ao coletar dados:', error);
+    showMessage(button, '❌ Erro ao coletar', 'error', originalText);
   }
-};
-
-// Aguardar document.body estar disponível
-function tryAppendButton() {
-  if (document.body) {
-    document.body.appendChild(button);
-    console.log('[extension] botão injetado com sucesso');
-    return true;
-  }
-  return false;
 }
 
-if (!tryAppendButton()) {
-  // Estratégia 1: DOMContentLoaded
-  document.addEventListener('DOMContentLoaded', tryAppendButton);
-
-  // Estratégia 2: MutationObserver para detectar quando body fica disponível
-  const observer = new MutationObserver(() => {
-    if (tryAppendButton()) {
-      observer.disconnect();
-    }
-  });
-
-  if (document.documentElement) {
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+function handleResponse(response, button, originalText) {
+  if (chrome.runtime.lastError) {
+    console.error('[content] Erro de comunicação:', chrome.runtime.lastError);
+    showMessage(button, '❌ Erro: ' + chrome.runtime.lastError.message, 'error', originalText);
+    return;
   }
 
-  // Estratégia 3: Timeout final (5 segundos)
+  if (!response) {
+    console.error('[content] Sem resposta do Service Worker');
+    showMessage(button, '❌ Sem resposta do serviço', 'error', originalText);
+    return;
+  }
+
+  if (response.success) {
+    console.log('[content] Sucesso:', response.data);
+    showMessage(button, '✓ Dados enviados!', 'success', originalText);
+  } else {
+    console.error('[content] Erro na resposta:', response.error);
+    showMessage(button, '❌ ' + response.error, 'error', originalText);
+  }
+}
+
+function showMessage(button, message, type, originalText) {
+  button.innerHTML = message;
+
+  if (type === 'success') {
+    button.style.background = '#4CAF50';
+  } else if (type === 'error') {
+    button.style.background = '#f44336';
+  }
+
   setTimeout(() => {
-    if (tryAppendButton()) {
-      observer.disconnect();
-    } else {
-      console.error('[extension] Falha ao injetar botão após 5s');
-    }
-  }, 5000);
+    button.innerHTML = originalText;
+    button.style.background = '#FFE600';
+    button.disabled = false;
+  }, 3000);
 }

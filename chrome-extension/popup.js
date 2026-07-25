@@ -1,14 +1,18 @@
-// Popup v3 — super minimalista, só salva URL da API
+// Popup Script v1 — configuração da extensão
 
 document.addEventListener('DOMContentLoaded', () => {
   const apiUrlInput = document.getElementById('apiUrl');
   const saveBtn = document.getElementById('saveBtn');
+  const clearBtn = document.getElementById('clearBtn');
   const statusDiv = document.getElementById('status');
+
+  console.log('[popup] Popup carregado');
 
   // Restaurar URL salva
   chrome.storage.local.get(['apiUrl'], (result) => {
     if (result.apiUrl) {
       apiUrlInput.value = result.apiUrl;
+      console.log('[popup] URL restaurada:', result.apiUrl);
     }
   });
 
@@ -17,34 +21,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiUrl = apiUrlInput.value.trim();
 
     if (!apiUrl) {
-      statusDiv.textContent = 'Digite a URL da API';
-      statusDiv.className = 'status error';
-      statusDiv.style.display = 'block';
+      showStatus('Digite a URL da API', 'error');
+      return;
+    }
+
+    // Validar URL básica
+    try {
+      new URL(apiUrl);
+    } catch (e) {
+      showStatus('URL inválida', 'error');
       return;
     }
 
     chrome.storage.local.set({ apiUrl }, () => {
-      statusDiv.textContent = '✓ URL salva!';
-      statusDiv.className = 'status success';
-      statusDiv.style.display = 'block';
-
-      setTimeout(() => {
-        statusDiv.style.display = 'none';
-      }, 2000);
+      console.log('[popup] URL salva:', apiUrl);
+      showStatus('✓ URL salva com sucesso!', 'success');
     });
   });
 
-  // Clear
-  document.getElementById('clearBtn').addEventListener('click', () => {
+  // Limpar dados
+  clearBtn.addEventListener('click', () => {
     chrome.storage.local.remove(['apiUrl'], () => {
       apiUrlInput.value = '';
-      statusDiv.textContent = 'Limpado';
-      statusDiv.className = 'status';
-      statusDiv.style.display = 'block';
-
-      setTimeout(() => {
-        statusDiv.style.display = 'none';
-      }, 1500);
+      console.log('[popup] Dados limpos');
+      showStatus('Dados removidos', 'success');
     });
   });
+
+  // Salvar quando Enter for pressionado
+  apiUrlInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      saveBtn.click();
+    }
+  });
+
+  function showStatus(message, type) {
+    statusDiv.textContent = message;
+    statusDiv.className = 'status ' + type;
+    statusDiv.style.display = 'block';
+
+    setTimeout(() => {
+      statusDiv.style.display = 'none';
+    }, 3000);
+  }
 });

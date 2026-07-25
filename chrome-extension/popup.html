@@ -2,131 +2,210 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FinanceEcom Monitor</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
-      width: 320px;
+      width: 350px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #f5f5f5;
       color: #333;
     }
+
     .header {
       background: linear-gradient(135deg, #FFE600 0%, #FFC107 100%);
       color: #333;
-      padding: 16px;
+      padding: 20px 16px;
       text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
+
     .header h1 {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 600;
       margin-bottom: 4px;
     }
-    .content {
-      padding: 16px;
-    }
-    .api-config {
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 12px;
-      margin-bottom: 12px;
-    }
-    .api-config label {
-      display: block;
+
+    .header p {
       font-size: 12px;
-      font-weight: 600;
-      margin-bottom: 6px;
       color: #666;
     }
-    .api-config input {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 12px;
-      font-family: monospace;
+
+    .content {
+      padding: 20px 16px;
     }
+
+    .section {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #555;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: "Courier New", monospace;
+      transition: all 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #FFE600;
+      box-shadow: 0 0 0 3px rgba(255, 230, 0, 0.1);
+    }
+
     .controls {
       display: flex;
       gap: 8px;
-      margin-bottom: 12px;
+      margin-top: 16px;
     }
+
     button {
       flex: 1;
       padding: 10px;
       border: none;
-      border-radius: 4px;
-      font-size: 13px;
+      border-radius: 6px;
+      font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
     }
-    .btn-save {
+
+    .btn-primary {
       background: #FFE600;
       color: #333;
     }
-    .btn-save:hover {
+
+    .btn-primary:hover {
       background: #FFC107;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     }
-    .btn-clear {
-      background: white;
-      border: 1px solid #ddd;
+
+    .btn-secondary {
+      background: #f0f0f0;
       color: #333;
-    }
-    .btn-clear:hover {
-      background: #f5f5f5;
-    }
-    .status {
-      background: white;
       border: 1px solid #ddd;
-      border-radius: 4px;
-      padding: 10px;
+    }
+
+    .btn-secondary:hover {
+      background: #e8e8e8;
+    }
+
+    .status {
+      padding: 10px 12px;
+      border-radius: 6px;
       font-size: 12px;
+      text-align: center;
+      margin-top: 12px;
       display: none;
+      font-weight: 500;
     }
-    .status.error {
-      background: #ffebee;
-      border-color: #f44336;
-      color: #c62828;
-    }
+
     .status.success {
       background: #e8f5e9;
-      border-color: #4CAF50;
+      border: 1px solid #4CAF50;
       color: #2e7d32;
     }
-    .help {
+
+    .status.error {
+      background: #ffebee;
+      border: 1px solid #f44336;
+      color: #c62828;
+    }
+
+    .info {
       background: #e3f2fd;
       border: 1px solid #2196F3;
-      border-radius: 4px;
-      padding: 10px;
+      border-radius: 6px;
+      padding: 12px;
       font-size: 11px;
       color: #1565c0;
-      margin-top: 12px;
-      line-height: 1.4;
+      line-height: 1.5;
+      margin-top: 16px;
+    }
+
+    .info strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .status-indicator.connected {
+      background: #4CAF50;
+    }
+
+    .status-indicator.disconnected {
+      background: #f44336;
     }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>📊 FinanceEcom Monitor</h1>
+    <p>Coleta de dados Mercado Livre</p>
   </div>
 
   <div class="content">
-    <div class="api-config">
-      <label for="apiUrl">URL da API:</label>
-      <input type="text" id="apiUrl" placeholder="http://localhost:3000" value="">
+    <!-- Configuração da API -->
+    <div class="section">
+      <div class="section-title">⚙️ Configuração da API</div>
+      <label for="apiUrl">URL do Servidor:</label>
+      <input
+        type="text"
+        id="apiUrl"
+        placeholder="http://207.180.194.61:3000"
+        value=""
+      >
+      <div class="controls">
+        <button class="btn-primary" id="saveBtn">💾 Salvar</button>
+        <button class="btn-secondary" id="clearBtn">🗑️ Limpar</button>
+      </div>
+      <div id="status" class="status"></div>
     </div>
 
-    <div class="controls">
-      <button class="btn-save" id="saveBtn">💾 Salvar</button>
-      <button class="btn-clear" id="clearBtn">🗑️ Limpar</button>
-    </div>
-
-    <div id="status" class="status"></div>
-
-    <div class="help">
-      💡 Após salvar, vá para um produto do Mercado Livre. Um botão amarelo aparecerá no canto inferior direito. Clique para enviar dados.
+    <!-- Informações -->
+    <div class="info">
+      <strong>Como usar:</strong>
+      1. Insira a URL do servidor acima<br>
+      2. Clique em "Salvar"<br>
+      3. Vá para um produto do Mercado Livre<br>
+      4. Clique no botão amarelo "📊 Coletar Dados"<br>
+      5. Aguarde a sincronização
     </div>
   </div>
 

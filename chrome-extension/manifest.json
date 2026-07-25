@@ -6,7 +6,8 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://produto.mercadolivre.com.br/*",
@@ -17,7 +18,7 @@
     "default_title": "FinanceEcom Monitor"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "service-worker.js"
   },
   "content_scripts": [
     {
@@ -26,7 +27,7 @@
         "https://www.mercadolivre.com.br/*"
       ],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ]
 }

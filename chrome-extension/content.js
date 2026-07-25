@@ -65,7 +65,7 @@ button.onclick = async () => {
       throw new Error(`Erro ${response.status}`);
     }
 
-    const result = await response.json();
+    const data = await response.json();
     button.innerHTML = '✓ Enviado!';
     button.style.background = '#4CAF50';
 

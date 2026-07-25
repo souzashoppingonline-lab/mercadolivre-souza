@@ -238,8 +238,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_shopee_order_data_order_sn ON shopee_order
 CREATE INDEX IF NOT EXISTS idx_shopee_order_data_tracking ON shopee_order_data(tracking_number) WHERE tracking_number IS NOT NULL;
 
 -- v37: chat Shopee (conversas com comprador) — isolado. Ver .claude/shopee.md.
+-- v47: multi-loja — conversation_id não é mais PK, mas parte de UNIQUE com store_id
 CREATE TABLE IF NOT EXISTS shopee_chat (
-  conversation_id TEXT PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
   store_id BIGINT,
   buyer_name TEXT,
   unread_count INT DEFAULT 0,
@@ -249,7 +251,8 @@ CREATE TABLE IF NOT EXISTS shopee_chat (
   latest_message_id TEXT,
   notified_message_id TEXT,
   to_id TEXT,                    -- v38: user_id do comprador (destinatário do send_message)
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (conversation_id, store_id)
 );
 ALTER TABLE shopee_chat ADD COLUMN IF NOT EXISTS to_id TEXT;  -- v38 (idempotente p/ tabela já existente)
 CREATE INDEX IF NOT EXISTS idx_shopee_chat_store ON shopee_chat(store_id);
@@ -286,6 +289,7 @@ CREATE TABLE IF NOT EXISTS shopee_item_cost (
 CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_item ON shopee_item_cost(item_id);
 
 -- v41: promoções Shopee (descontos + vouchers) com prazos + alerta de vencimento. Ver .claude/shopee.md.
+-- v47: multi-loja — PRIMARY KEY estendida para incluir store_id
 CREATE TABLE IF NOT EXISTS shopee_promotions (
   tipo TEXT NOT NULL,
   promo_id TEXT NOT NULL,
@@ -299,14 +303,16 @@ CREATE TABLE IF NOT EXISTS shopee_promotions (
   raw JSONB,
   expiry_notified BOOLEAN DEFAULT false,
   updated_at TIMESTAMPTZ DEFAULT now(),
-  PRIMARY KEY (tipo, promo_id)
+  PRIMARY KEY (tipo, promo_id, store_id)
 );
 CREATE INDEX IF NOT EXISTS idx_shopee_promotions_store ON shopee_promotions(store_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_promotions_end ON shopee_promotions(end_time);
 
 -- v42: devoluções/reembolsos Shopee (Returns API). Ver .claude/shopee.md.
+-- v47: multi-loja — return_sn não é mais PK, mas parte de UNIQUE com store_id
 CREATE TABLE IF NOT EXISTS shopee_returns (
-  return_sn TEXT PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
+  return_sn TEXT NOT NULL,
   store_id BIGINT,
   order_sn TEXT,
   status TEXT,
@@ -321,7 +327,8 @@ CREATE TABLE IF NOT EXISTS shopee_returns (
   update_time BIGINT,
   raw JSONB,
   notified BOOLEAN DEFAULT false,
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (return_sn, store_id)
 );
 CREATE INDEX IF NOT EXISTS idx_shopee_returns_store ON shopee_returns(store_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_returns_status ON shopee_returns(status);

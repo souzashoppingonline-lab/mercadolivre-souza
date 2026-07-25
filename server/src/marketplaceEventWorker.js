@@ -347,7 +347,7 @@ async function syncShopeeChat() {
       const { rows } = await pool.query(
         `INSERT INTO shopee_chat (conversation_id, store_id, buyer_name, unread_count, last_message, last_message_type, last_message_time, latest_message_id, to_id, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
-         ON CONFLICT (conversation_id) DO UPDATE SET
+         ON CONFLICT (conversation_id, store_id) DO UPDATE SET
            buyer_name=EXCLUDED.buyer_name, unread_count=EXCLUDED.unread_count,
            last_message=EXCLUDED.last_message, last_message_type=EXCLUDED.last_message_type,
            last_message_time=EXCLUDED.last_message_time, latest_message_id=EXCLUDED.latest_message_id,
@@ -362,10 +362,10 @@ async function syncShopeeChat() {
       const recente = tsMs && (Date.now() - tsMs < 24 * 60 * 60 * 1000);
       if (unread > 0 && latestId && latestId !== notifiedId && recente) {
         await tgNotify('tg_mensagens', `💬 <b>Mensagem Shopee não respondida</b>\n👤 ${buyer}\n📩 ${unread} não lida(s)\n📝 ${String(lastText).slice(0, 200)}`);
-        await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2`, [latestId, c.conversation_id]);
+        await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2 AND store_id=$3`, [latestId, c.conversation_id, storeId]);
       } else if (unread > 0 && latestId && latestId !== notifiedId && !recente) {
         // conversa antiga: marca como notificada sem mandar Telegram (evita spam retroativo)
-        await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2`, [latestId, c.conversation_id]);
+        await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2 AND store_id=$3`, [latestId, c.conversation_id, storeId]);
       }
     }
   }
@@ -430,8 +430,8 @@ async function syncShopeeCatalog() {
       await pool.query(
         `INSERT INTO items (ml_id, store_id, title, price, available_quantity, status, category_id, thumbnail, marketplace_id, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
-         ON CONFLICT (ml_id) DO UPDATE SET
-           store_id=EXCLUDED.store_id, title=EXCLUDED.title, price=EXCLUDED.price,
+         ON CONFLICT (ml_id, store_id) DO UPDATE SET
+           title=EXCLUDED.title, price=EXCLUDED.price,
            available_quantity=EXCLUDED.available_quantity, status=EXCLUDED.status,
            category_id=EXCLUDED.category_id, thumbnail=EXCLUDED.thumbnail,
            marketplace_id=EXCLUDED.marketplace_id, updated_at=now()`,
@@ -442,8 +442,8 @@ async function syncShopeeCatalog() {
       await pool.query(
         `INSERT INTO shopee_item_data (item_id, store_id, item_sku, has_model, variation_count, price_min, price_max, stock_total, models, tier_variation, category_id, description, raw, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
-         ON CONFLICT (item_id) DO UPDATE SET
-           store_id=EXCLUDED.store_id, item_sku=EXCLUDED.item_sku, has_model=EXCLUDED.has_model,
+         ON CONFLICT (item_id, store_id) DO UPDATE SET
+           item_sku=EXCLUDED.item_sku, has_model=EXCLUDED.has_model,
            variation_count=EXCLUDED.variation_count, price_min=EXCLUDED.price_min, price_max=EXCLUDED.price_max,
            stock_total=EXCLUDED.stock_total, models=EXCLUDED.models, tier_variation=EXCLUDED.tier_variation,
            category_id=EXCLUDED.category_id, description=EXCLUDED.description, raw=EXCLUDED.raw, updated_at=now()`,
@@ -508,8 +508,8 @@ async function syncShopeePromos() {
       const { rows } = await pool.query(
         `INSERT INTO shopee_promotions (tipo, promo_id, store_id, name, code, start_time, end_time, desconto, status, raw, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
-         ON CONFLICT (tipo, promo_id) DO UPDATE SET
-           store_id=EXCLUDED.store_id, name=EXCLUDED.name, code=EXCLUDED.code,
+         ON CONFLICT (tipo, promo_id, store_id) DO UPDATE SET
+           name=EXCLUDED.name, code=EXCLUDED.code,
            start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, desconto=EXCLUDED.desconto,
            status=EXCLUDED.status, raw=EXCLUDED.raw, updated_at=now()
          RETURNING expiry_notified`,
@@ -522,10 +522,10 @@ async function syncShopeePromos() {
         const fim = new Date(Number(p.end_time) * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const tag = p.tipo === 'voucher' ? `🎟️ Voucher ${p.code || ''}` : '🏷️ Desconto';
         await tgNotify('tg_vendas', `⏰ <b>Promoção Shopee vencendo</b>\n${tag}\n📝 ${p.name || ''}${p.desconto ? ` (${p.desconto})` : ''}\n⌛ vence em ${faltaHoras.toFixed(1)}h — ${fim}`);
-        await pool.query(`UPDATE shopee_promotions SET expiry_notified = true WHERE tipo=$1 AND promo_id=$2`, [p.tipo, p.promo_id]);
+        await pool.query(`UPDATE shopee_promotions SET expiry_notified = true WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`, [p.tipo, p.promo_id, storeId]);
       } else if (faltaHoras > SHOPEE_PROMO_ALERT_HOURS && jaNotificado) {
         // Promoção foi estendida (novo end_time distante) → rearma o alerta.
-        await pool.query(`UPDATE shopee_promotions SET expiry_notified = false WHERE tipo=$1 AND promo_id=$2`, [p.tipo, p.promo_id]);
+        await pool.query(`UPDATE shopee_promotions SET expiry_notified = false WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`, [p.tipo, p.promo_id, storeId]);
       }
     }
     console.log(`[promos] loja ${storeId}: ${promos.length} promoção(ões) sincronizada(s)`);
@@ -546,7 +546,7 @@ async function syncShopeeReturns() {
       const { rows } = await pool.query(
         `INSERT INTO shopee_returns (return_sn, store_id, order_sn, status, reason, text_reason, refund_amount, currency, buyer_username, item_id, item_name, create_time, update_time, raw, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
-         ON CONFLICT (return_sn) DO UPDATE SET
+         ON CONFLICT (return_sn, store_id) DO UPDATE SET
            status=EXCLUDED.status, text_reason=EXCLUDED.text_reason, refund_amount=EXCLUDED.refund_amount,
            update_time=EXCLUDED.update_time, raw=EXCLUDED.raw, updated_at=now()
          RETURNING notified`,
@@ -561,10 +561,10 @@ async function syncShopeeReturns() {
       if (aberta && recente && !notified) {
         const val = r.refund_amount != null ? `R$ ${Number(r.refund_amount).toFixed(2).replace('.', ',')}` : '';
         await tgNotify('tg_vendas', `↩️ <b>Devolução Shopee</b>\n📦 Pedido ${r.order_sn || ''}\n📝 ${it.name || ''}\n💸 Reembolso ${val}\n🗣️ ${String(r.text_reason || r.reason || '').slice(0, 160)}`);
-        await pool.query(`UPDATE shopee_returns SET notified=true WHERE return_sn=$1`, [r.return_sn]);
+        await pool.query(`UPDATE shopee_returns SET notified=true WHERE return_sn=$1 AND store_id=$2`, [r.return_sn, storeId]);
       } else if (!notified) {
         // devolução antiga: marca como notificada sem mandar Telegram (evita spam retroativo no 1º run)
-        await pool.query(`UPDATE shopee_returns SET notified=true WHERE return_sn=$1`, [r.return_sn]);
+        await pool.query(`UPDATE shopee_returns SET notified=true WHERE return_sn=$1 AND store_id=$2`, [r.return_sn, storeId]);
       }
     }
     console.log(`[returns] loja ${storeId}: ${(returns || []).length} devolução(ões) sincronizada(s)`);

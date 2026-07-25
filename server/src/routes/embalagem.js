@@ -53,13 +53,15 @@ async function lastPacking(key) {
 // sensível — app sem acesso). Variação vira variation_attributes (model_name).
 // Foto da variação vem do models JSONB em shopee_item_data (se houver).
 async function lookupShopeeByTracking(tracking) {
+  // Uma linha por pedido. NÃO fazer JOIN com shopee_item_data por store_id: isso
+  // multiplicava o pedido pela quantidade de itens do catálogo da loja (ex.: 41
+  // itens → 41 cópias do mesmo card). A foto de variação é buscada à parte, só
+  // para os itens DESTE pedido (ver abaixo).
   const { rows } = await pool.query(
-    `SELECT sod.order_sn, sod.raw_data, o.store_id, o.status, o.date_created, s.nickname AS store_nickname,
-            sid.models, sid.item_id
+    `SELECT sod.order_sn, sod.raw_data, o.store_id, o.status, o.date_created, s.nickname AS store_nickname
        FROM shopee_order_data sod
        JOIN orders o ON o.ml_id = sod.order_sn
        LEFT JOIN stores s ON s.id = o.store_id
-       LEFT JOIN shopee_item_data sid ON sid.store_id = o.store_id
       WHERE sod.tracking_number = $1`,
     [tracking]
   );
@@ -67,18 +69,25 @@ async function lookupShopeeByTracking(tracking) {
   for (const r of rows) {
     const raw = r.raw_data || {};
     const items = Array.isArray(raw.item_list) ? raw.item_list : [];
-    const modelsMap = new Map(); // item_id → variation-specific picture
-    if (r.models) {
+    // Foto de variação (model_id → imagem) do catálogo, buscada apenas para os
+    // item_ids deste pedido — sem multiplicar linhas.
+    const modelsMap = new Map();
+    const itemIds = [...new Set(items.map((it) => (it.item_id != null ? String(it.item_id) : null)).filter(Boolean))];
+    if (itemIds.length) {
       try {
-        const models = JSON.parse(typeof r.models === 'string' ? r.models : JSON.stringify(r.models));
-        if (Array.isArray(models?.tier_variation?.[0]?.options)) {
-          for (const opt of models.tier_variation[0].options) {
-            if (opt.picture?.image_url && opt.model_id) {
-              modelsMap.set(String(opt.model_id), opt.picture.image_url);
+        const { rows: sidRows } = await pool.query(
+          `SELECT tier_variation FROM shopee_item_data WHERE store_id = $1 AND item_id = ANY($2::text[])`,
+          [r.store_id, itemIds]
+        );
+        for (const sid of sidRows) {
+          const tv = typeof sid.tier_variation === 'string' ? JSON.parse(sid.tier_variation) : sid.tier_variation;
+          if (Array.isArray(tv?.[0]?.options)) {
+            for (const opt of tv[0].options) {
+              if (opt.picture?.image_url && opt.model_id) modelsMap.set(String(opt.model_id), opt.picture.image_url);
             }
           }
         }
-      } catch (e) { /* models parse error — fallback to main image */ }
+      } catch (e) { /* sem foto de variação — cai na foto principal do item */ }
     }
     for (const it of items) {
       const mainImg = it.image_info && (it.image_info.image_url || (Array.isArray(it.image_info.image_url_list) && it.image_info.image_url_list[0]));

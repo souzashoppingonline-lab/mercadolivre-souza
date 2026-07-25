@@ -288,6 +288,10 @@ CREATE TABLE IF NOT EXISTS shopee_item_cost (
   updated_at TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (item_id, store_id, model_id)
 );
+-- Idempotência p/ banco em produção: a tabela foi criada em v40 SEM store_id.
+-- CREATE TABLE IF NOT EXISTS acima é pulado quando a tabela já existe, então a
+-- coluna precisa ser garantida por ALTER antes do índice de store_id (v47 troca a PK).
+ALTER TABLE shopee_item_cost ADD COLUMN IF NOT EXISTS store_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_item ON shopee_item_cost(item_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_store ON shopee_item_cost(store_id);
 

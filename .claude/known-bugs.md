@@ -76,3 +76,11 @@ Mesma classe de bug do `var(--card-bg)` (já corrigido em todo o projeto — ver
 5. Executar `node server/test-shopee-config.js` (script de diagnóstico local) pra confirmar
 
 Depois que as credenciais forem configuradas, o polling retomará e sincronizará automaticamente os pedidos Shopee.
+
+## 12. `items.ml_id` é PK simples — 2 lojas com o MESMO `item_id` colidiriam
+
+`items` tem `PRIMARY KEY (ml_id)` porque `ml_id` é referenciado por FK em `item_seo_score` e `catalog_competition` (mudar a PK para composta exigiria tornar essas FKs compostas — refactor grande, adiado). A sincronização de catálogo Shopee usa `ON CONFLICT (ml_id, store_id)` (índice `items_ml_store_unique`, v45) para deduplicar por loja, mas se **duas lojas Shopee diferentes** tivessem o **mesmo `item_id`**, o `INSERT` da 2ª loja violaria `items_pkey (ml_id)` **antes** do `ON CONFLICT` agir — e o item da 2ª loja não entraria.
+
+**Por que não é um problema real hoje**: o `item_id` da Shopee é único por listagem no nível da plataforma (cada anúncio recebe um id global distinto), então duas lojas nunca compartilham o mesmo `item_id`. IDs ML (`MLB…`) e Shopee (numérico) também nunca colidem. O caso só aparece em teste sintético forçando o mesmo id nas duas lojas.
+
+**Correção esperada (se algum dia necessário)**: migrar `items` para `PRIMARY KEY (ml_id, store_id)` e converter as FKs de `item_seo_score`/`catalog_competition` para compostas, ou desacoplar essas tabelas de `items` via id surrogate.

@@ -55,3 +55,24 @@ Mesma classe de bug do `var(--card-bg)` (já corrigido em todo o projeto — ver
 `worker.js` — o mesmo circuit breaker `if (e.message?.includes('429')) break;` que existia em `syncShippingStatus` (e foi corrigido lá, ver `decisions.md` — "2º bug real, descoberto ao testar o job em produção") ainda está presente em `syncPaymentReleases`. Como a query dela também mistura pagamentos de lojas diferentes numa fila só (`ORDER BY money_release_date ASC NULLS LAST LIMIT 200`, sem particionar por loja), um único 429 de **qualquer** loja aborta a reconsulta inteira, e como a ordenação não muda entre execuções, o mesmo pagamento tende a ficar sempre na posição que trava o lote — bloqueando a atualização de `released`/`net_received_amount` de todas as outras lojas até a próxima execução (1x/dia), mesmo que só 1 loja estivesse de fato rate-limited.
 
 **Correção esperada**: aplicar o mesmo padrão já usado em `syncShippingStatus` — circuit breaker por loja (`Set`/`Map` locais à função, 3 erros 429 seguidos da mesma loja pausam só ela, as demais continuam).
+
+## 11. Shopee polling retorna HTTP 403 — credenciais não configuradas em produção
+
+`ShopeePollingEventSource.discoverEvents()` chama `client.listRecentOrders()` que faz uma requisição GET assinada `/api/v2/order/get_order_list`. A assinatura HMAC depende de `partner_id`, `partner_key` (credenciais da app) e `access_token`/`shop_id` (por loja). Quando `SHOPEE_PARTNER_ID` ou `SHOPEE_PARTNER_KEY` estão vazios em `server/.env`, a assinatura é calculada com strings vazias, causando HTTP 403 em todos os endpoints da Shopee.
+
+**Síntoma**: logs mostram `[shopee-polling] (Shopee UNIFULL) listRecentOrders falhou: Shopee /api/v2/order/get_order_list -> HTTP 403` para qualquer chamada ao polling.
+
+**Raiz**: `server/.env` em produção tem `SHOPEE_PARTNER_ID=` e `SHOPEE_PARTNER_KEY=` vazios, e `SHOPEE_ENV=sandbox` (deveria ser `production`). Conforme `.claude/shopee.md`, o app `financeecom` foi aprovado para produção com partner ID `2039090`; esses valores precisam ser configurados.
+
+**Correção necessária** (ação do usuário, não código):
+1. No servidor de produção, abrir `server/.env`
+2. Configurar (valores do console Shopee Open Platform):
+   - `SHOPEE_PARTNER_ID=2039090`
+   - `SHOPEE_PARTNER_KEY=<chave live da API — nunca compartilhe>`
+   - `SHOPEE_ENV=production`
+   - `SHOPEE_REDIRECT_URI=https://multimixvendas.duckdns.org/auth/shopee/callback`
+3. Salvar `.env` e reiniciar o servidor Node + worker
+4. Verificar configuração acessando `https://multimixvendas.duckdns.org/auth/shopee/config` (diagnóstico)
+5. Executar `node server/test-shopee-config.js` (script de diagnóstico local) pra confirmar
+
+Depois que as credenciais forem configuradas, o polling retomará e sincronizará automaticamente os pedidos Shopee.

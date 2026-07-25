@@ -82,4 +82,14 @@ button.onclick = async () => {
   }
 };
 
-document.body.appendChild(button);
+// Aguardar document.body estar disponível
+if (document.body) {
+  document.body.appendChild(button);
+} else {
+  // Fallback: aguardar e tentar de novo
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.body) {
+      document.body.appendChild(button);
+    }
+  });
+}

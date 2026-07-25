@@ -272,7 +272,7 @@ router.get('/performance', async (req, res) => {
       `SELECT o.item_id, o.quantity, o.total_amount, sod.escrow_amount, ic.avg_cost
        FROM orders o
        LEFT JOIN shopee_order_data sod ON sod.order_id = o.ml_id
-       LEFT JOIN (SELECT item_id, AVG(cost) AS avg_cost FROM shopee_item_cost GROUP BY item_id) ic ON ic.item_id = o.item_id
+       LEFT JOIN (SELECT item_id, store_id, AVG(cost) AS avg_cost FROM shopee_item_cost GROUP BY item_id, store_id) ic ON ic.item_id = o.item_id AND ic.store_id = o.store_id
        WHERE o.marketplace_id = $1 AND o.status != 'cancelled'
          AND ($2 = '' OR o.store_id = $2::bigint)
          AND o.date_created > now() - ($3 || ' days')::interval`,
@@ -342,7 +342,7 @@ router.get('/executivo', async (req, res) => {
       `SELECT o.total_amount, o.quantity, sod.escrow_amount, ic.avg_cost
        FROM orders o
        LEFT JOIN shopee_order_data sod ON sod.order_id = o.ml_id
-       LEFT JOIN (SELECT item_id, AVG(cost) AS avg_cost FROM shopee_item_cost GROUP BY item_id) ic ON ic.item_id = o.item_id
+       LEFT JOIN (SELECT item_id, store_id, AVG(cost) AS avg_cost FROM shopee_item_cost GROUP BY item_id, store_id) ic ON ic.item_id = o.item_id AND ic.store_id = o.store_id
        WHERE o.marketplace_id = $1 AND o.status != 'cancelled'
          AND ($2 = '' OR o.store_id = $2::bigint) AND ${periodo}`,
       params
@@ -690,7 +690,8 @@ router.get('/precificador', async (req, res) => {
     );
     const { rows: costRows } = await pool.query(
       `SELECT sc.item_id, sc.model_id, sc.cost FROM shopee_item_cost sc
-       JOIN items i ON i.ml_id = sc.item_id AND i.marketplace_id = $1`, [mpId]
+       JOIN items i ON i.ml_id = sc.item_id AND i.store_id = sc.store_id AND i.marketplace_id = $1
+       WHERE ($2 = '' OR sc.store_id = $2::bigint)`, [mpId, storeId]
     );
     const costMap = new Map(costRows.map((c) => [`${c.item_id}::${Number(c.model_id)}`, Number(c.cost)]));
 
@@ -733,13 +734,14 @@ router.post('/custo', express.json(), async (req, res) => {
     const { item_id, model_id, cost } = req.body || {};
     if (!item_id) return res.status(400).json({ error: 'item_id é obrigatório' });
     const mpId = await shopeeMarketplaceId();
-    const { rows } = await pool.query(`SELECT 1 FROM items WHERE ml_id = $1 AND marketplace_id = $2`, [String(item_id), mpId]);
+    const { rows } = await pool.query(`SELECT store_id FROM items WHERE ml_id = $1 AND marketplace_id = $2`, [String(item_id), mpId]);
     if (!rows.length) return res.status(404).json({ error: 'item Shopee não encontrado' });
+    const storeId = rows[0]?.store_id;
     await pool.query(
-      `INSERT INTO shopee_item_cost (item_id, model_id, cost, updated_at)
-       VALUES ($1,$2,$3, now())
-       ON CONFLICT (item_id, model_id) DO UPDATE SET cost = EXCLUDED.cost, updated_at = now()`,
-      [String(item_id), Number(model_id || 0), Number(cost) || 0]
+      `INSERT INTO shopee_item_cost (item_id, store_id, model_id, cost, updated_at)
+       VALUES ($1,$2,$3,$4, now())
+       ON CONFLICT (item_id, store_id, model_id) DO UPDATE SET cost = EXCLUDED.cost, updated_at = now()`,
+      [String(item_id), storeId, Number(model_id || 0), Number(cost) || 0]
     );
     res.json({ ok: true });
   } catch (e) {

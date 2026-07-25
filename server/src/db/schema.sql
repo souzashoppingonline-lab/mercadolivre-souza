@@ -279,14 +279,17 @@ CREATE TABLE IF NOT EXISTS shopee_item_data (
 CREATE INDEX IF NOT EXISTS idx_shopee_item_data_store ON shopee_item_data(store_id);
 
 -- v40: custo por variação Shopee (digitado no Precificador; separado do sync). Ver .claude/shopee.md.
+-- v47: multi-loja — PRIMARY KEY estendida para incluir store_id
 CREATE TABLE IF NOT EXISTS shopee_item_cost (
   item_id TEXT NOT NULL,
+  store_id BIGINT,
   model_id BIGINT NOT NULL DEFAULT 0,
   cost NUMERIC NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ DEFAULT now(),
-  PRIMARY KEY (item_id, model_id)
+  PRIMARY KEY (item_id, store_id, model_id)
 );
 CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_item ON shopee_item_cost(item_id);
+CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_store ON shopee_item_cost(store_id);
 
 -- v41: promoções Shopee (descontos + vouchers) com prazos + alerta de vencimento. Ver .claude/shopee.md.
 -- v47: multi-loja — PRIMARY KEY estendida para incluir store_id

@@ -540,3 +540,10 @@ Toda leitura (`FROM`/`JOIN`) em `routes/api.js` usa essas views em vez das tabel
 ## Relação `items.parent_item_id` (variações)
 
 Anúncios com variações têm um item "pai" (`parent_item_id`). O worker preenche essa coluna via job noturno `syncParentItems` (multiget na API do ML, 20 IDs por lote). Consultas de performance/curva ABC agrupam por `COALESCE(parent_item_id, ml_id)` para não fragmentar vendas entre variações — ver `GET /produtos/performance` em `api.md`.
+
+## Print Agent — `print_stations`, `print_jobs` (v49)
+
+Impressão automática de etiquetas (ver `.claude/print-agent.md`).
+
+- **`print_stations`** (`id` BIGSERIAL PK, `name`, `store_id`→stores, `token` UNIQUE, `printer_name`, `last_seen`, `created_at`) — cada PC/impressora da expedição. `token` é o segredo que o agente usa.
+- **`print_jobs`** (`id` BIGSERIAL PK, `station_id`→print_stations, `store_id`→stores, `shipping_id`, `label` JSONB, `status` [pending/printing/printed/error], `attempts`, `error`, `created_at`, `claimed_at`, `printed_at`) — fila de impressão. O PDF não é guardado: é regerado de `label` via `generateLabelPDF`. Índices: `(station_id,status)`, `(status)`.

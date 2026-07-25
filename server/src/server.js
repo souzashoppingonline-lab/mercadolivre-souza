@@ -30,6 +30,10 @@ app.use(cookieParser());
 // Chrome Extension — coleta de dados de anúncios (rota pública, antes do gate de auth)
 app.use('/extension/collect', require('./routes/extensionCollect'));
 
+// Print Agent — rotas consumidas pelo agente da expedição (headless, sem cookie).
+// Auth por token de estação, então ficam ANTES do gate de staff. Ver .claude/print-agent.md.
+app.use('/print-agent', require('./routes/printAgent'));
+
 // Login de acesso restrito (staff) — ver .claude/auth-staff.md. Desligado
 // por padrão (STAFF_AUTH_ENABLED=false); a própria função já ignora tudo
 // quando o gate está desligado, então isso é seguro mesmo antes de criar
@@ -48,6 +52,8 @@ app.use('/api/shopee', shopeeRoutes);
 app.use('/api/tasks', tasksRoutes);
 // Embalagem — bipagem de etiqueta + vídeo de conferência (ver .claude/embalagem.md).
 app.use('/api/embalagem', embalagemRoutes);
+// Print Agent — gestão (enfileirar impressão + estações). Ver .claude/print-agent.md.
+app.use('/api/print', require('./routes/print'));
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);
@@ -77,7 +83,7 @@ app.use(express.static(staticRoot));
 // existirem).
 app.get('*', (req, res, next) => {
   const p = req.path;
-  if (p.startsWith('/api') || p.startsWith('/webhooks') || p.startsWith('/auth') || p.startsWith('/ml') || p.startsWith('/ws') || p === '/health') {
+  if (p.startsWith('/api') || p.startsWith('/webhooks') || p.startsWith('/auth') || p.startsWith('/ml') || p.startsWith('/ws') || p.startsWith('/print-agent') || p.startsWith('/extension') || p === '/health') {
     return next();
   }
   res.sendFile(path.join(staticRoot, 'index.html'));

@@ -1,0 +1,7 @@
+{
+  "baseUrl": "https://multimixvendas.duckdns.org",
+  "stationToken": "COLE_AQUI_O_TOKEN_DA_ESTACAO",
+  "printerName": "Elgin PRO FULL",
+  "sumatraPath": "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe",
+  "pollIntervalMs": 3000
+}

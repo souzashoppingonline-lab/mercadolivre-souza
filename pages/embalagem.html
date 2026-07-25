@@ -586,6 +586,7 @@ function printThermalLabel(session) {
 
   const payload = {
     shipping_id: session.shippingId,
+    store_id: order.store_id,               // roteia a estação de impressão (Print Agent)
     product_name: order.title || '(sem título)',
     variation_type: variationType,
     sku: order.seller_sku,
@@ -625,9 +626,31 @@ function showPrintConfirmation(payload) {
 
 async function confirmAndSendPrint(payload) {
   try {
-    console.log('[thermal] ✓ confirmado, gerando PDF...');
-    console.log('[thermal] payload:', payload);
+    console.log('[thermal] ✓ confirmado, payload:', payload);
 
+    // 1) Impressão automática (Print Agent): enfileira o job pra estação da loja.
+    // Se houver estação configurada, o agente da expedição imprime sozinho — sem
+    // download no navegador. Ver .claude/print-agent.md.
+    try {
+      const enq = await fetch('/api/print/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shipping_id: payload.shipping_id, store_id: payload.store_id, label: payload }),
+      });
+      if (enq.ok) {
+        console.log('[thermal] ✓ enfileirado pro agente de impressão');
+        showScanMsg('🖨️ Etiqueta enviada para impressão automática', 'success');
+        document.getElementById('scanInput').focus();
+        return;
+      }
+      // 409 = nenhuma estação cadastrada pra loja → cai no PDF no navegador (fallback)
+      console.warn(`[thermal] sem estação (HTTP ${enq.status}) — fallback pro PDF no navegador`);
+    } catch (e) {
+      console.warn('[thermal] falha ao enfileirar, fallback pro PDF:', e.message);
+    }
+
+    // 2) Fallback: gera o PDF e baixa no navegador (comportamento anterior).
+    console.log('[thermal] gerando PDF...');
     const res = await fetch('/api/embalagem/print-label', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

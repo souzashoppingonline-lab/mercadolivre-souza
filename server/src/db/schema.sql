@@ -694,3 +694,31 @@ CREATE TABLE IF NOT EXISTS mp_reports_imported (
   imported_at TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (store_id, file_name)
 );
+
+-- v49 — Print Agent: fila de impressão automática de etiquetas. Ver .claude/print-agent.md.
+CREATE TABLE IF NOT EXISTS print_stations (
+  id            BIGSERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  store_id      BIGINT REFERENCES stores(id),
+  token         TEXT NOT NULL UNIQUE,
+  printer_name  TEXT,
+  last_seen     TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_print_stations_store ON print_stations(store_id);
+
+CREATE TABLE IF NOT EXISTS print_jobs (
+  id           BIGSERIAL PRIMARY KEY,
+  station_id   BIGINT REFERENCES print_stations(id),
+  store_id     BIGINT REFERENCES stores(id),
+  shipping_id  TEXT,
+  label        JSONB NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'pending',
+  attempts     INT  NOT NULL DEFAULT 0,
+  error        TEXT,
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  claimed_at   TIMESTAMPTZ,
+  printed_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_print_jobs_station_status ON print_jobs(station_id, status);
+CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status);

@@ -31,6 +31,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `task-engine.md` | Agenda Trello: `TaskEngine` (geração automática de cartões), regras implementadas/futuras, escopo atual (só ML) |
 | `conciliacao-bancaria.md` | Módulo financeiro Pedido→Pagamento→Liberação→Transferência→Conciliação, status por fase, API de Faturamento ML, o que depende do app Mercado Pago |
 | `embalagem.md` | Bipagem de etiqueta (FLEX/Mercado Envios), gravação de vídeo de conferência, retenção de 30 dias |
+| `print-agent.md` | Impressão automática de etiquetas (10×15 térmica) via agente local: `print_stations`/`print_jobs`, rotas `/api/print/*` (gestão) e `/print-agent/*` (agente com token), pasta `print-agent/` |
 | `auth-staff.md` | Login de acesso restrito para funcionários (papéis admin/embalagem), JWT em cookie, kill switch, mudança de infraestrutura no nginx |
 | `shopee.md` | Status (não implementado) e como uma integração Shopee deveria se encaixar na arquitetura |
 | `amazon.md` | Status (não implementado) e como uma integração Amazon (SP-API) deveria se encaixar na arquitetura |

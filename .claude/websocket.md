@@ -44,3 +44,7 @@ Objeto `WS` singleton (`frontend.md` documenta a API pública `WS.on`/`WS.off`).
 | `kpis_updated` | **listado no `CLAUDE.md` original e no cliente `websocket.js` como tópico esperado, mas nenhum handler do worker o publica atualmente** — ver `known-bugs.md` | — | `dashboard.js` está inscrito, mas nunca recebe este evento na prática (o dashboard se atualiza via `order_updated`/`stock_alert`/polling de 60s, não via `kpis_updated`) |
 
 Sempre que um novo handler publicar um tópico novo (ou um tópico existente ganhar campos no payload), atualize a tabela acima na mesma tarefa.
+
+## Tópico `print:{station_id}` (Print Agent)
+
+Publicado por `POST /api/print/jobs` (`routes/print.js`) via `wsHub.publish` quando uma etiqueta é enfileirada, pra o agente da estação acordar na hora. Payload `{jobId, shipping_id}`. O agente também faz polling de `GET /print-agent/jobs/next` como caminho garantido (o WS é só o sinal de baixa latência). Ver `.claude/print-agent.md`.

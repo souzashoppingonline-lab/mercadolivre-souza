@@ -276,3 +276,18 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /auth/shopee/config` | diagnóstico — mostra `partner_id`/`redirect_uri`/ambiente configurados (`partner_key` só indica se está setada, nunca expõe o valor) |
 | `GET /auth/shopee/login` | monta a URL de autorização assinada (`shop/auth_partner`) e redireciona o seller para lá |
 | `GET /auth/shopee/callback` | recebe `?code&shop_id`, troca por `access_token`/`refresh_token` (`auth/token/get`) e cria/atualiza a linha em `stores` (`marketplace_id=SHOPEE`, id sintético `9100000001`+). Resposta avisa que o worker precisa ser reiniciado pra sincronizar a conta nova (mesma limitação hoje da Amazon) |
+
+## Print Agent (`/api/print/*` staff, `/print-agent/*` agente)
+
+Ver `.claude/print-agent.md`. As rotas do agente ficam **antes** do gate de staff (auth por token de estação no header `X-Station-Token`).
+
+**Gestão (staff, `/api/print`):**
+- `POST /api/print/jobs` — enfileira impressão. Body `{shipping_id, station_id?|store_id?, label:{product_name,variation_type,sku,store_name,company_name}}`. Publica WS `print:{station_id}`. 409 se a loja não tem estação.
+- `GET /api/print/jobs?status=&station_id=&limit=` — monitorar a fila.
+- `POST /api/print/stations` — cadastra estação, devolve o `token` (1x). Body `{name, store_id?, printer_name?}`.
+- `GET /api/print/stations` — lista (token mascarado).
+
+**Agente (`/print-agent`, token de estação):**
+- `GET /print-agent/jobs/next` — reivindica 1 job atômico (FOR UPDATE SKIP LOCKED).
+- `GET /print-agent/jobs/:id/pdf` — PDF 10×15 regerado de `label`.
+- `POST /print-agent/jobs/:id/confirm` | `.../error` — confirma/reagenda (retry até 3x).

@@ -1,7 +1,16 @@
--- v45: Relatórios de Embalagem — autenticação + breakdown por embalador/marketplace
--- Rastreia quem embalou cada pedido (staff_user_id) pra relatórios de produtividade
+-- v45: Corrigir constraints de múltiplas lojas Shopee (composite keys)
+-- Problema: item_id em shopee_item_data era PRIMARY KEY simples
+-- Causa: quando há 2+ lojas Shopee, o mesmo item_id aparece em ambas → violação de PK
+-- Solução: PRIMARY KEY (item_id, store_id) composite
 
-ALTER TABLE packing_videos ADD COLUMN IF NOT EXISTS staff_user_id BIGINT;
-ALTER TABLE packing_videos ADD COLUMN IF NOT EXISTS staff_user_name TEXT;
+-- Recriar shopee_item_data com composite key
+ALTER TABLE shopee_item_data DROP CONSTRAINT IF EXISTS shopee_item_data_pkey CASCADE;
+ALTER TABLE shopee_item_data ADD COLUMN id BIGSERIAL PRIMARY KEY;
+ALTER TABLE shopee_item_data ADD CONSTRAINT unique_shopee_item_store UNIQUE (item_id, store_id);
 
-CREATE INDEX IF NOT EXISTS idx_packing_videos_staff_user ON packing_videos(staff_user_id, created_at DESC);
+-- Garantir que store_id não é NULL (obrigatório para composite key)
+ALTER TABLE shopee_item_data ALTER COLUMN store_id SET NOT NULL;
+
+-- Corrigir tabela items: adicionar UNIQUE (ml_id, store_id) para Shopee/Amazon
+-- Manter compatibilidade com ML que usa ml_id simples
+ALTER TABLE items ADD CONSTRAINT unique_items_shopee_amazon UNIQUE (ml_id, store_id) WHERE marketplace_id IN (SELECT id FROM marketplaces WHERE code IN ('SHOPEE', 'AMAZON'));

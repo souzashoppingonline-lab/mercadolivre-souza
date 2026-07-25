@@ -73,39 +73,56 @@ async function generateLabelPDF(data) {
     });
   }
 
-  // Aviso frágil — GIGANTE EM PRETO PARA IMPRESSORA TÉRMICA
-  doc.fontSize(34).font('Helvetica-Bold').fillColor('black');
-  doc.text('⚠ FRÁGIL ⚠', 8, 185, {
-    width: width - 16,
-    align: 'center',
-  });
+  // ── Aviso FRÁGIL — elemento DOMINANTE da etiqueta ─────────────────────────
+  // Duas linhas centralizadas: "PRODUTO" (menor, negrito) + "FRÁGIL" (o maior
+  // texto da etiqueta). O tamanho de "FRÁGIL" é calculado pra preencher a largura
+  // útil sem cortar/quebrar (widthOfString escala linear com a fonte), limitado
+  // pela altura reservada ao aviso. Sem símbolos. Vetorial → imprime nítido a
+  // qualquer DPI (203 incl.). O bloco é centralizado vertical e horizontalmente.
+  const usableW = width - 16;          // largura útil (267.46 pt)
+  const warnTop = 195;                 // logo abaixo do bloco de produto/variação
+  const warnBottom = 345;              // deixa espaço pra data + rodapé
+  const warnH = warnBottom - warnTop;  // ~150 pt (~37% da altura útil)
+
+  // Maior fonte (pt) em que `text` cabe em `maxW` de largura, na fonte dada.
+  const maxFontForWidth = (text, font, maxW) => {
+    doc.font(font).fontSize(100);
+    return (maxW / doc.widthOfString(text)) * 100;
+  };
+
+  // "FRÁGIL": preenche ~96% da largura, mas nunca mais alto que ~55% da área.
+  const fragilSize = Math.min(maxFontForWidth('FRÁGIL', 'Helvetica-Bold', usableW * 0.96), warnH * 0.55);
+  // "PRODUTO": ~42% do tamanho do FRÁGIL (menor, mas negrito), sempre cabendo.
+  const produtoSize = Math.min(fragilSize * 0.42, maxFontForWidth('PRODUTO', 'Helvetica-Bold', usableW * 0.9));
+
+  // Centraliza o par (PRODUTO + espaço + FRÁGIL) verticalmente na área do aviso.
+  const gap = fragilSize * 0.12;
+  const blockH = produtoSize + gap + fragilSize;
+  let fy = warnTop + (warnH - blockH) / 2;
+
+  doc.fillColor('black').font('Helvetica-Bold');
+  doc.fontSize(produtoSize);
+  doc.text('PRODUTO', 8, fy, { width: usableW, align: 'center', lineBreak: false });
+  fy += produtoSize + gap;
+  doc.fontSize(fragilSize);
+  doc.text('FRÁGIL', 8, fy, { width: usableW, align: 'center', lineBreak: false });
 
   // Data/hora
   const now = new Date();
   const dateStr = now.toLocaleDateString('pt-BR');
   const timeStr = now.toLocaleTimeString('pt-BR');
   doc.fontSize(11).font('Helvetica');
-  doc.text(`${dateStr} ${timeStr}`, 8, 233, {
-    width: width - 16,
+  doc.text(`${dateStr} ${timeStr}`, 8, warnBottom + 6, {
+    width: usableW,
     align: 'center',
   });
 
-  // Footer
+  // Footer (mensagem mantida, sem alteração)
   doc.fontSize(12).font('Helvetica-Bold');
-  doc.text('PRODUTO EMBALADO', 8, 256, {
-    width: width - 16,
-    align: 'center',
-  });
+  doc.text('PRODUTO EMBALADO', 8, warnBottom + 26, { width: usableW, align: 'center' });
   doc.fontSize(11).font('Helvetica');
-  doc.text('COM TODOS OS PADRÕES', 8, 270, {
-    width: width - 16,
-    align: 'center',
-  });
-  doc.fontSize(11).font('Helvetica');
-  doc.text('DE QUALIDADE E SEGURANÇA', 8, 283, {
-    width: width - 16,
-    align: 'center',
-  });
+  doc.text('COM TODOS OS PADRÕES', 8, warnBottom + 40, { width: usableW, align: 'center' });
+  doc.text('DE QUALIDADE E SEGURANÇA', 8, warnBottom + 53, { width: usableW, align: 'center' });
 
   doc.end();
 

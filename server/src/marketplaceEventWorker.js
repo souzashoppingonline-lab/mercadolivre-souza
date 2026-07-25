@@ -162,14 +162,14 @@ async function handleShopeeOrderEvent(evt) {
     [o.order_sn, marketplaceId, evt.storeId, totalAmount, status, o.create_time ? new Date(o.create_time * 1000) : null]
   );
 
-  // Quando o pedido está "embarcável" (pago + preparo de envio), busca sob-demanda:
-  // rastreio (Embalagem), financeiro/escrow (líquido+taxas) e status de entrega.
-  // Tudo tolerante a falha — nunca quebra o handler; COALESCE no upsert não apaga
-  // o que já estava se uma das chamadas vier vazia.
+  // Busca sob-demanda: rastreio (Embalagem disponível assim que é gerado pela Shopee),
+  // financeiro/escrow (líquido+taxas) e status de entrega. Tudo tolerante a falha —
+  // nunca quebra o handler; COALESCE no upsert não apaga o que já estava se uma das
+  // chamadas vier vazia. Tracking pode estar disponível antes do status READY_TO_SHIP.
   let trackingNumber = null, escrow = null, logisticsStatus = null;
+  try { trackingNumber = await client.getTrackingNumber(o.order_sn); }
+  catch (e) { console.warn(`[marketplace-worker] tracking Shopee ${o.order_sn}: ${e.message}`); }
   if (SHOPEE_SHIPPABLE.has(o.order_status)) {
-    try { trackingNumber = await client.getTrackingNumber(o.order_sn); }
-    catch (e) { console.warn(`[marketplace-worker] tracking Shopee ${o.order_sn}: ${e.message}`); }
     try { escrow = await client.getEscrowDetail(o.order_sn); }
     catch (e) { console.warn(`[marketplace-worker] escrow Shopee ${o.order_sn}: ${e.message}`); }
     try { logisticsStatus = (await client.getTrackingInfo(o.order_sn))?.logistics_status || null; }

@@ -40,6 +40,11 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
 - `POST /produtos/:id/ativar` → define como único ativo de coleta.
 - `POST /produtos/:id/finalizar` → limpa o ativo.
 - `POST /produtos/:id/analisar` → stub (Fase 3).
+- `POST /produtos/:id/anuncio` → **adiciona concorrente à mão** (publica WS `analise_anuncio`).
+- `POST /anuncios/:adId/editar` → completa/corrige campos que a extensão não pegou (ex.: comentários, nota). `fotos` só sobrescreve se vier nova.
+- `POST /anuncios/:adId/excluir` → remove um card.
+
+O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`.
 
 **Extensão (público, a implementar no próximo passo, em `/extension`):**
 - `GET /extension/produto-ativo` → `{id, produto, status}` do ativo.

@@ -61,6 +61,12 @@
     .ap-badge.rep  { background:rgba(255,230,0,.14);color:#e6c200; }
     .ap-badge.gray { background:rgba(255,255,255,.07);color:var(--text-muted); }
     .ap-card .foot { display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-muted);border-top:1px solid rgba(255,255,255,.05);padding:7px 12px; }
+    .ap-card { position:relative; }
+    .ap-card .acts { position:absolute;top:6px;right:6px;display:flex;gap:5px;opacity:0;transition:opacity .15s; }
+    .ap-card:hover .acts { opacity:1; }
+    .ap-card .acts button { border:none;width:27px;height:27px;border-radius:7px;cursor:pointer;font-size:12px;background:rgba(0,0,0,.6);color:#fff; }
+    .ap-card .acts button:hover { background:rgba(0,0,0,.85); }
+    .ap-card .obs { font-size:.7rem;color:#e6c200;background:rgba(255,230,0,.08);border-radius:6px;padding:4px 7px;line-height:1.35; }
 
     /* Modal */
     .ap-modal-bg { position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:flex-start;justify-content:center;z-index:1000;padding:40px 16px;overflow-y:auto; }
@@ -136,7 +142,10 @@
             <button class="ap-btn ghost" style="margin-left:auto;padding:5px 12px" onclick="finalizarColeta()"><i class="fas fa-flag-checkered"></i> Finalizar coleta</button>
           </div>
 
-          <h3 style="font-size:.9rem;font-weight:800;margin:16px 0 4px"><i class="fas fa-users"></i> Concorrentes coletados (<span id="dQtd">0</span>)</h3>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:16px 0 4px">
+            <h3 style="font-size:.9rem;font-weight:800"><i class="fas fa-users"></i> Concorrentes coletados (<span id="dQtd">0</span>)</h3>
+            <button class="ap-btn ghost" onclick="abrirAnuncioNovo()"><i class="fas fa-plus"></i> Concorrente manual</button>
+          </div>
           <div class="ap-cards" id="cardsConc"></div>
           <div id="cardsVazio" class="ap-empty" style="display:none"><i class="fas fa-inbox"></i>Nenhum anúncio coletado ainda. Ative a coleta e use a extensão no Mercado Livre.</div>
         </div>
@@ -172,6 +181,45 @@
   </div>
 </div>
 
+<!-- Modal Anúncio concorrente (manual / editar) -->
+<div class="ap-modal-bg" id="modalAnuncio">
+  <div class="ap-modal">
+    <h3><span id="modalAnuncioTitulo">Adicionar concorrente</span><span class="x" onclick="fecharModalAnuncio()"><i class="fas fa-times"></i></span></h3>
+    <input type="hidden" id="aId">
+    <div class="ap-field"><label>Título do anúncio</label><input id="aTitulo" placeholder="Ração Quatree Supreme..."></div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Preço (R$)</label><input id="aPreco" type="number" step="0.01" placeholder="68.90"></div>
+      <div class="ap-field"><label>Preço original (R$)</label><input id="aPrecoOrig" type="number" step="0.01" placeholder="79.90"></div>
+    </div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Nota (0-5)</label><input id="aNota" type="number" step="0.1" placeholder="4.9"></div>
+      <div class="ap-field"><label>Vendas</label><input id="aVendas" placeholder="+500"></div>
+    </div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Perguntas (qtd)</label><input id="aPerguntas" type="number" placeholder="12"></div>
+      <div class="ap-field"><label>Comentários (qtd)</label><input id="aComentarios" type="number" placeholder="340"></div>
+    </div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Vendedor</label><input id="aVendedor" placeholder="Loja XYZ"></div>
+      <div class="ap-field"><label>Reputação</label><input id="aReputacao" placeholder="MercadoLíder Gold"></div>
+    </div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Cidade</label><input id="aCidade" placeholder="São Paulo"></div>
+      <div class="ap-field"><label>Estado (UF)</label><input id="aEstado" placeholder="SP"></div>
+    </div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>FULL</label><select id="aFull" style="width:100%;background:var(--bg-card2,#26272b);border:1px solid var(--border,#3a3b40);color:var(--text-main,#eee);border-radius:8px;padding:9px 11px;font-size:.85rem"><option value="">Não informado</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+      <div class="ap-field"><label>FLEX</label><select id="aFlex" style="width:100%;background:var(--bg-card2,#26272b);border:1px solid var(--border,#3a3b40);color:var(--text-main,#eee);border-radius:8px;padding:9px 11px;font-size:.85rem"><option value="">Não informado</option><option value="true">Sim</option><option value="false">Não</option></select></div>
+    </div>
+    <div class="ap-field"><label>Foto (URL)</label><input id="aFoto" placeholder="https://..."></div>
+    <div class="ap-field"><label>Observações (o que a extensão não pegou — ex.: principais reclamações)</label><textarea id="aObs" placeholder="Ex.: comentários reclamam de embalagem; muitos perguntam se serve p/ filhote"></textarea></div>
+    <div class="ap-modal-actions">
+      <button class="ap-btn ghost" onclick="fecharModalAnuncio()">Cancelar</button>
+      <button class="ap-btn primary" id="btnSalvarAnuncio" onclick="salvarAnuncio()"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
 <div class="ap-toast" id="toast"></div>
 
 <script src="../js/db.js"></script>
@@ -187,6 +235,7 @@ function toast(msg) { const t=document.getElementById('toast'); t.textContent=ms
 let PRODUTOS = [];   // cache da lista
 let ATIVO = null;    // produto_id ativo pra coleta (global)
 let CURRENT = null;  // produto aberto no detalhe
+let ANUNCIOS = [];   // anúncios do produto aberto (pra editar sem re-fetch)
 
 // ── Lista ────────────────────────────────────────────────────────────────
 async function loadLista() {
@@ -293,10 +342,11 @@ function voltarLista() {
   loadLista();
 }
 function renderCards(anuncios) {
-  document.getElementById('dQtd').textContent = anuncios.length;
+  ANUNCIOS = anuncios || [];
+  document.getElementById('dQtd').textContent = ANUNCIOS.length;
   const wrap = document.getElementById('cardsConc');
-  document.getElementById('cardsVazio').style.display = anuncios.length ? 'none' : 'block';
-  wrap.innerHTML = anuncios.map(cardHtml).join('');
+  document.getElementById('cardsVazio').style.display = ANUNCIOS.length ? 'none' : 'block';
+  wrap.innerHTML = ANUNCIOS.map(cardHtml).join('');
 }
 function cardHtml(a) {
   const foto = a.fotos && a.fotos[0] ? `<img class="thumb" src="${esc(a.fotos[0])}" onerror="this.outerHTML='<div class=&quot;thumb ph&quot;><i class=&quot;fas fa-image&quot;></i></div>'">` : `<div class="thumb ph"><i class="fas fa-image"></i></div>`;
@@ -304,15 +354,23 @@ function cardHtml(a) {
   const full = a.full ? '<span class="ap-badge full"><i class="fas fa-bolt"></i> FULL</span>' : '';
   const flex = a.flex ? '<span class="ap-badge flex"><i class="fas fa-shipping-fast"></i> FLEX</span>' : '';
   const nota = a.nota ? `<span class="ap-badge gray"><i class="fas fa-star" style="color:#e6c200"></i> ${esc(a.nota)}</span>` : '';
+  const perg = a.perguntas != null ? `<span class="ap-badge gray"><i class="fas fa-question"></i> ${esc(a.perguntas)}</span>` : '';
+  const com  = a.comentarios != null ? `<span class="ap-badge gray"><i class="fas fa-comment"></i> ${esc(a.comentarios)}</span>` : '';
   const local = [a.cidade, a.estado].filter(Boolean).join('/') || '—';
+  const obs = a.observacoes ? `<div class="obs"><i class="fas fa-pen-nib"></i> ${esc(a.observacoes)}</div>` : '';
   return `<div class="ap-card">
+    <div class="acts">
+      <button title="Editar / completar à mão" onclick="abrirAnuncioEditar(${a.id})"><i class="fas fa-pen"></i></button>
+      <button title="Excluir" onclick="excluirAnuncio(${a.id})"><i class="fas fa-trash"></i></button>
+    </div>
     ${foto}
     <div class="body">
       <div class="ttl">${esc(a.titulo || '(sem título)')}</div>
       <div class="price">${BRL(a.preco)}</div>
-      <div class="badges">${full}${flex}${nota}${rep}</div>
+      <div class="badges">${full}${flex}${nota}${perg}${com}${rep}</div>
+      ${obs}
     </div>
-    <div class="foot"><span><i class="fas fa-shopping-cart"></i> ${a.vendas != null ? esc(a.vendas) : '—'}</span><span><i class="fas fa-map-marker-alt"></i> ${esc(local)}</span></div>
+    <div class="foot"><span><i class="fas fa-shopping-cart"></i> ${a.vendas != null && a.vendas !== '' ? esc(a.vendas) : '—'}</span><span><i class="fas fa-map-marker-alt"></i> ${esc(local)}</span></div>
   </div>`;
 }
 
@@ -352,13 +410,66 @@ async function analisar() {
 // ── WebSocket: novo anúncio coletado aparece na hora ───────────────────────
 WS.on('analise_anuncio', (payload) => {
   if (!CURRENT || String(payload?.produto_id) !== String(CURRENT.id)) { if (document.getElementById('viewList').style.display !== 'none') loadLista(); return; }
-  const wrap = document.getElementById('cardsConc');
-  wrap.insertAdjacentHTML('afterbegin', cardHtml(payload.anuncio || {}));
-  document.getElementById('cardsVazio').style.display = 'none';
-  document.getElementById('dQtd').textContent = wrap.querySelectorAll('.ap-card').length;
+  const a = payload.anuncio || {};
+  if (a.id != null && ANUNCIOS.some(x => String(x.id) === String(a.id))) return; // já inserido (add manual)
+  ANUNCIOS.unshift(a);
+  renderCards(ANUNCIOS);
   toast('Novo anúncio coletado.');
 });
 WS.on('_connected', () => { if (document.getElementById('viewList').style.display !== 'none') loadLista(); });
+
+// ── Anúncio: adicionar manual / editar / excluir ───────────────────────────
+function setAnuncioForm(a) {
+  a = a || {};
+  const set = (id, v) => { document.getElementById(id).value = (v ?? '') === null ? '' : (v ?? ''); };
+  set('aId', a.id); set('aTitulo', a.titulo); set('aPreco', a.preco); set('aPrecoOrig', a.preco_original);
+  set('aNota', a.nota); set('aVendas', a.vendas); set('aPerguntas', a.perguntas); set('aComentarios', a.comentarios);
+  set('aVendedor', a.vendedor); set('aCidade', a.cidade); set('aEstado', a.estado); set('aReputacao', a.reputacao);
+  document.getElementById('aFull').value = a.full === true ? 'true' : (a.full === false ? 'false' : '');
+  document.getElementById('aFlex').value = a.flex === true ? 'true' : (a.flex === false ? 'false' : '');
+  set('aFoto', (a.fotos && a.fotos[0]) || ''); set('aObs', a.observacoes);
+}
+function abrirAnuncioNovo() {
+  if (!CURRENT) return;
+  document.getElementById('modalAnuncioTitulo').textContent = 'Adicionar concorrente';
+  setAnuncioForm({});
+  document.getElementById('modalAnuncio').classList.add('open');
+}
+function abrirAnuncioEditar(id) {
+  const a = ANUNCIOS.find(x => String(x.id) === String(id)); if (!a) return;
+  document.getElementById('modalAnuncioTitulo').textContent = 'Editar concorrente';
+  setAnuncioForm(a);
+  document.getElementById('modalAnuncio').classList.add('open');
+}
+function fecharModalAnuncio() { document.getElementById('modalAnuncio').classList.remove('open'); }
+async function salvarAnuncio() {
+  if (!CURRENT) return;
+  const g = (id) => { const v = document.getElementById(id).value.trim(); return v === '' ? null : v; };
+  const data = {
+    titulo: g('aTitulo'), preco: g('aPreco'), preco_original: g('aPrecoOrig'), nota: g('aNota'),
+    vendas: g('aVendas'), perguntas: g('aPerguntas'), comentarios: g('aComentarios'),
+    vendedor: g('aVendedor'), cidade: g('aCidade'), estado: g('aEstado'), reputacao: g('aReputacao'),
+    full: g('aFull'), flex: g('aFlex'), foto: g('aFoto'), observacoes: g('aObs'),
+  };
+  const adId = document.getElementById('aId').value;
+  const btn = document.getElementById('btnSalvarAnuncio'); btn.disabled = true;
+  const res = adId ? await DB.editarAnuncio(adId, data) : await DB.addAnuncioManual(CURRENT.id, data);
+  btn.disabled = false;
+  if (res?.error) return toast('Erro: ' + res.error);
+  fecharModalAnuncio();
+  if (adId) { const i = ANUNCIOS.findIndex(x => String(x.id) === String(adId)); if (i >= 0) ANUNCIOS[i] = res; }
+  else { ANUNCIOS.unshift(res); }
+  renderCards(ANUNCIOS);
+  toast(adId ? 'Concorrente atualizado.' : 'Concorrente adicionado.');
+}
+async function excluirAnuncio(id) {
+  if (!confirm('Excluir este concorrente?')) return;
+  const res = await DB.excluirAnuncio(id);
+  if (res?.error) return toast('Erro: ' + res.error);
+  ANUNCIOS = ANUNCIOS.filter(x => String(x.id) !== String(id));
+  renderCards(ANUNCIOS);
+  toast('Concorrente excluído.');
+}
 
 loadLista();
 </script>

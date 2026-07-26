@@ -216,6 +216,9 @@ const DB = {
   async ativarColetaProduto(id) { return this._post(`/analise/produtos/${id}/ativar`, {}); },
   async finalizarColetaProduto(id) { return this._post(`/analise/produtos/${id}/finalizar`, {}); },
   async analisarProduto(id) { return this._post(`/analise/produtos/${id}/analisar`, {}); },
+  async addAnuncioManual(id, data) { return this._post(`/analise/produtos/${id}/anuncio`, data); },
+  async editarAnuncio(adId, data) { return this._post(`/analise/anuncios/${adId}/editar`, data); },
+  async excluirAnuncio(adId) { return this._post(`/analise/anuncios/${adId}/excluir`, {}); },
 
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },

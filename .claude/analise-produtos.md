@@ -26,8 +26,9 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
   frete_entrada (R$), embalagem (R$), observacoes, status (`EM_ANALISE`/`ANALISADO`).
 - `analise_product_ads` — anúncio concorrente coletado (FK product_id, `UNIQUE
   (product_id, ml_id)` pra dedup). `is_full`/`is_flex` (não `full`/`flex` —
-  palavra reservada no Postgres); a API devolve como `full`/`flex`. `raw` guarda o
-  payload cru completo da extensão.
+  palavra reservada no Postgres); a API devolve como `full`/`flex`. `observacoes`
+  (anotação livre), `comentarios_texto` (comentários colados p/ a IA) e `raw`
+  (payload cru completo da extensão).
 - `analise_active_collection` — linha única (id=1) apontando o produto ativo de
   coleta. É daqui que a extensão lê o alvo.
 
@@ -44,7 +45,7 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
 - `POST /anuncios/:adId/editar` → completa/corrige campos que a extensão não pegou (ex.: comentários, nota). `fotos` só sobrescreve se vier nova.
 - `POST /anuncios/:adId/excluir` → remove um card.
 
-O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`.
+O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou e `comentarios_texto` (v52) pra **colar o texto cru dos comentários** do concorrente (Ctrl C/Ctrl V, sem separação) — distinto de `comentarios`, que é só a contagem numérica. A IA (Fase 3) lê esse texto pra agrupar reclamações/elogios. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`.
 
 **Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes do gate):**
 - `GET /extension/produto-ativo` → `{produto: {id, produto, status}|null}`.

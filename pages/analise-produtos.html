@@ -213,6 +213,7 @@
     </div>
     <div class="ap-field"><label>Foto (URL)</label><input id="aFoto" placeholder="https://..."></div>
     <div class="ap-field"><label>Observações (o que a extensão não pegou — ex.: principais reclamações)</label><textarea id="aObs" placeholder="Ex.: comentários reclamam de embalagem; muitos perguntam se serve p/ filhote"></textarea></div>
+    <div class="ap-field"><label>Comentários (cole aqui) — Ctrl C / Ctrl V dos comentários do concorrente, direto, sem separar</label><textarea id="aComentariosTexto" rows="5" placeholder="Cole aqui todos os comentários copiados da página do concorrente. A IA (Fase 3) agrupa reclamações e elogios depois."></textarea></div>
     <div class="ap-modal-actions">
       <button class="ap-btn ghost" onclick="fecharModalAnuncio()">Cancelar</button>
       <button class="ap-btn primary" id="btnSalvarAnuncio" onclick="salvarAnuncio()"><i class="fas fa-save"></i> Salvar</button>
@@ -358,6 +359,7 @@ function cardHtml(a) {
   const com  = a.comentarios != null ? `<span class="ap-badge gray"><i class="fas fa-comment"></i> ${esc(a.comentarios)}</span>` : '';
   const local = [a.cidade, a.estado].filter(Boolean).join('/') || '—';
   const obs = a.observacoes ? `<div class="obs"><i class="fas fa-pen-nib"></i> ${esc(a.observacoes)}</div>` : '';
+  const comTxt = a.comentarios_texto ? `<span class="ap-badge gray" title="Comentários colados para a IA analisar"><i class="fas fa-clipboard"></i> comentários</span>` : '';
   return `<div class="ap-card">
     <div class="acts">
       <button title="Editar / completar à mão" onclick="abrirAnuncioEditar(${a.id})"><i class="fas fa-pen"></i></button>
@@ -367,7 +369,7 @@ function cardHtml(a) {
     <div class="body">
       <div class="ttl">${esc(a.titulo || '(sem título)')}</div>
       <div class="price">${BRL(a.preco)}</div>
-      <div class="badges">${full}${flex}${nota}${perg}${com}${rep}</div>
+      <div class="badges">${full}${flex}${nota}${perg}${com}${comTxt}${rep}</div>
       ${obs}
     </div>
     <div class="foot"><span><i class="fas fa-shopping-cart"></i> ${a.vendas != null && a.vendas !== '' ? esc(a.vendas) : '—'}</span><span><i class="fas fa-map-marker-alt"></i> ${esc(local)}</span></div>
@@ -428,6 +430,7 @@ function setAnuncioForm(a) {
   document.getElementById('aFull').value = a.full === true ? 'true' : (a.full === false ? 'false' : '');
   document.getElementById('aFlex').value = a.flex === true ? 'true' : (a.flex === false ? 'false' : '');
   set('aFoto', (a.fotos && a.fotos[0]) || ''); set('aObs', a.observacoes);
+  set('aComentariosTexto', a.comentarios_texto);
 }
 function abrirAnuncioNovo() {
   if (!CURRENT) return;
@@ -450,6 +453,7 @@ async function salvarAnuncio() {
     vendas: g('aVendas'), perguntas: g('aPerguntas'), comentarios: g('aComentarios'),
     vendedor: g('aVendedor'), cidade: g('aCidade'), estado: g('aEstado'), reputacao: g('aReputacao'),
     full: g('aFull'), flex: g('aFlex'), foto: g('aFoto'), observacoes: g('aObs'),
+    comentarios_texto: g('aComentariosTexto'),
   };
   const adId = document.getElementById('aId').value;
   const btn = document.getElementById('btnSalvarAnuncio'); btn.disabled = true;

@@ -14,7 +14,7 @@ function mapAd(r) {
     perguntas: r.perguntas, comentarios: r.comentarios, vendedor: r.vendedor,
     cidade: r.cidade, estado: r.estado, reputacao: r.reputacao,
     full: r.is_full, flex: r.is_flex, fotos: r.fotos, videos: r.videos,
-    observacoes: r.observacoes, created_at: r.created_at,
+    observacoes: r.observacoes, comentarios_texto: r.comentarios_texto, created_at: r.created_at,
   };
 }
 
@@ -30,7 +30,7 @@ function adValues(b) {
     reputacao: b.reputacao || null, is_full: bool(b.full), is_flex: bool(b.flex),
     fotos: fotos && fotos.length ? JSON.stringify(fotos) : null,
     videos: videos && videos.length ? JSON.stringify(videos) : null,
-    observacoes: b.observacoes || null,
+    observacoes: b.observacoes || null, comentarios_texto: b.comentarios_texto || null,
   };
 }
 
@@ -40,9 +40,9 @@ async function upsertAd(productId, b) {
   b = b || {};
   const v = adValues(b);
   const raw = b.raw != null ? (typeof b.raw === 'string' ? b.raw : JSON.stringify(b.raw)) : null;
-  const cols = 'product_id, ml_id, titulo, preco, preco_original, nota, vendas, perguntas, comentarios, vendedor, cidade, estado, reputacao, is_full, is_flex, fotos, videos, observacoes, raw';
+  const cols = 'product_id, ml_id, titulo, preco, preco_original, nota, vendas, perguntas, comentarios, vendedor, cidade, estado, reputacao, is_full, is_flex, fotos, videos, observacoes, comentarios_texto, raw';
   const vals = [productId, b.ml_id || null, v.titulo, v.preco, v.preco_original, v.nota, v.vendas, v.perguntas,
-                v.comentarios, v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.videos, v.observacoes, raw];
+                v.comentarios, v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.videos, v.observacoes, v.comentarios_texto, raw];
   const ph = vals.map((_, i) => `$${i + 1}`).join(',');
   let sql = `INSERT INTO analise_product_ads (${cols}) VALUES (${ph})`;
   if (b.ml_id) {
@@ -53,7 +53,9 @@ async function upsertAd(productId, b) {
                estado=COALESCE(EXCLUDED.estado, analise_product_ads.estado), reputacao=COALESCE(EXCLUDED.reputacao, analise_product_ads.reputacao),
                is_full=COALESCE(EXCLUDED.is_full, analise_product_ads.is_full), is_flex=COALESCE(EXCLUDED.is_flex, analise_product_ads.is_flex),
                fotos=COALESCE(EXCLUDED.fotos, analise_product_ads.fotos), videos=COALESCE(EXCLUDED.videos, analise_product_ads.videos),
-               observacoes=COALESCE(EXCLUDED.observacoes, analise_product_ads.observacoes), raw=COALESCE(EXCLUDED.raw, analise_product_ads.raw)`;
+               observacoes=COALESCE(EXCLUDED.observacoes, analise_product_ads.observacoes),
+               comentarios_texto=COALESCE(EXCLUDED.comentarios_texto, analise_product_ads.comentarios_texto),
+               raw=COALESCE(EXCLUDED.raw, analise_product_ads.raw)`;
   }
   sql += ' RETURNING *';
   const { rows } = await pool.query(sql, vals);

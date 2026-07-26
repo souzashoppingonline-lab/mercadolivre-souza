@@ -46,9 +46,13 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
 
 O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`.
 
-**Extensão (público, a implementar no próximo passo, em `/extension`):**
-- `GET /extension/produto-ativo` → `{id, produto, status}` do ativo.
-- `POST /extension/anuncio` → grava o anúncio no produto ativo + publica WS.
+**Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes do gate):**
+- `GET /extension/produto-ativo` → `{produto: {id, produto, status}|null}`.
+- `POST /extension/anuncio` → grava no produto ATIVO (o servidor resolve; 409 se
+  nenhum). Aceita `rawData` (HTML/pageText/jsonLd → o servidor extrai via
+  `extractors/mercadolivre.js`) e faz **upsert por `ml_id`** (recoleta atualiza, não
+  duplica). Publica WS `analise_anuncio`. A gravação usa o módulo compartilhado
+  `server/src/analise/ads.js` (`upsertAd`), o mesmo do add manual.
 
 ## WebSocket
 
@@ -63,10 +67,21 @@ Produto") e detalhe (header + cards de concorrentes ao vivo + Ativar/Finalizar
 coleta + Analisar). Métodos em `js/db.js` (`getProdutosAnalise`, `criarProdutoAnalise`,
 `ativarColetaProduto`, etc.).
 
+## Extensão Chrome (`chrome-extension/`)
+
+`content.js` injeta um botão "Coletar p/ análise" na página do ML, coleta
+`pageText` + `jsonLd` (não o innerHTML — grande demais) e manda pro
+`service-worker.js`, que faz `POST /extension/anuncio` (padrão apiUrl
+`https://multimixvendas.duckdns.org`, configurável no popup). O `popup.js` mostra
+o **produto ativo** (`GET /extension/produto-ativo`) — a extensão nunca pergunta o
+alvo. `manifest.json` tem host_permission pro servidor. A rota antiga
+`/extension/collect` (`extensionCollect.js`) virou legado.
+
+Limite do body: `express.json({ limit: '1mb' })` (o pageText cabe; o innerHTML não
+é mais enviado).
+
 ## Pendências
 
-- **Extensão persistindo** (o gargalo): hoje `routes/extensionCollect.js` só faz
-  `console.log`. Próximo passo: `GET /extension/produto-ativo`, `POST
-  /extension/anuncio` (grava + publica `analise_anuncio`), e a extensão consultando
-  o produto ativo e mostrando o alvo.
-- Fases 2 e 3 (inteligência + IA).
+- Enriquecer o extrator: `reputacao`, `full`/`flex`, `cidade`/`estado` ainda não
+  vêm do `pageText` — o operador completa à mão (editar card). Fase futura.
+- Fases 2 e 3 (inteligência de preço/mapa/simulador + os 9 agentes de IA).

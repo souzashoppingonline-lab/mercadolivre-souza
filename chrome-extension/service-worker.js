@@ -24,19 +24,14 @@ async function handleCollectData(data, sendResponse) {
   try {
     console.log('[SW] Processando coleta de dados...');
 
-    // Recuperar API URL
+    // Recuperar API URL (padrão: servidor de produção)
     const result = await chrome.storage.local.get(['apiUrl']);
-    const apiUrl = result.apiUrl?.trim();
+    const apiUrl = (result.apiUrl && result.apiUrl.trim()) || 'https://multimixvendas.duckdns.org';
 
-    if (!apiUrl) {
-      sendResponse({ success: false, error: 'API URL não configurada' });
-      return;
-    }
+    console.log('[SW] Enviando para:', `${apiUrl}/extension/anuncio`);
 
-    console.log('[SW] Enviando para:', `${apiUrl}/extension/collect`);
-
-    // Enviar ao backend com retry exponencial
-    const response = await fetchWithRetry(`${apiUrl}/extension/collect`, {
+    // Envia o anúncio pro produto ATIVO (o servidor resolve qual é). Retry exponencial.
+    const response = await fetchWithRetry(`${apiUrl}/extension/anuncio`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

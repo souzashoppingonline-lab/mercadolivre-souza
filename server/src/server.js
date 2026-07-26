@@ -24,11 +24,13 @@ app.use(cors());
 // express.raw()). Isolado do gateway ML; público (não passa pelo gate de auth,
 // que só é registrado abaixo). Ver routes/shopeeWebhook.js e .claude/shopee.md.
 app.use('/webhooks/shopee', require('./routes/shopeeWebhook'));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
 // Chrome Extension — coleta de dados de anúncios (rota pública, antes do gate de auth)
 app.use('/extension/collect', require('./routes/extensionCollect'));
+// Análise de Produtos — extensão lê o produto ativo e envia os anúncios coletados.
+app.use('/extension', require('./routes/extensionAnalise'));
 
 // Print Agent — rotas consumidas pelo agente da expedição (headless, sem cookie).
 // Auth por token de estação, então ficam ANTES do gate de staff. Ver .claude/print-agent.md.

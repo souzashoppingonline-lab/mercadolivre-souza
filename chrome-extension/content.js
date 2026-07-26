@@ -66,12 +66,17 @@ function collectAndSend(button) {
   button.disabled = true;
 
   try {
-    // Coletar dados brutos
+    // Coletar dados brutos. Enviamos pageText (texto) + jsonLd (structured data
+    // p/ imagens) — NÃO o innerHTML inteiro (é enorme e o extrator do servidor
+    // não usa; mandar estouraria o limite do body).
+    const jsonLd = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+      .map((s) => { try { return JSON.parse(s.textContent); } catch (e) { return null; } })
+      .filter(Boolean).flat();
     const rawData = {
       url: window.location.href,
-      html: document.body.innerHTML,
       pageText: document.body.innerText,
       title: document.title,
+      jsonLd,
       collectedAt: new Date().toISOString(),
     };
 

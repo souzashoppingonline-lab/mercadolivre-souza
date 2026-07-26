@@ -16,6 +16,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Mostrar o produto ativo (a extensão NUNCA pergunta — lê do servidor).
+  const DEFAULT_API = 'https://multimixvendas.duckdns.org';
+  function loadAtivo() {
+    chrome.storage.local.get(['apiUrl'], (result) => {
+      const api = (result.apiUrl && result.apiUrl.trim()) || DEFAULT_API;
+      const box = document.getElementById('ativoBox');
+      if (!box) return;
+      fetch(`${api}/extension/produto-ativo`)
+        .then((r) => r.json())
+        .then(({ produto }) => {
+          box.innerHTML = produto
+            ? `<b style="color:#1e7e34">${String(produto.produto || '').replace(/</g, '&lt;')}</b><br><span style="color:#888">Os anúncios coletados vão para este produto.</span>`
+            : `<span style="color:#c62828">Nenhum produto em análise.</span><br><span style="color:#888">Ative a coleta de um produto no dashboard.</span>`;
+        })
+        .catch(() => { box.innerHTML = '<span style="color:#c62828">Não foi possível consultar o servidor.</span>'; });
+    });
+  }
+  loadAtivo();
+  document.getElementById('saveBtn')?.addEventListener('click', () => setTimeout(loadAtivo, 300));
+
   // Salvar URL
   saveBtn.addEventListener('click', () => {
     const apiUrl = apiUrlInput.value.trim();

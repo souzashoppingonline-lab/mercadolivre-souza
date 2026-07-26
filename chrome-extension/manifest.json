@@ -11,7 +11,8 @@
   ],
   "host_permissions": [
     "https://produto.mercadolivre.com.br/*",
-    "https://www.mercadolivre.com.br/*"
+    "https://www.mercadolivre.com.br/*",
+    "https://multimixvendas.duckdns.org/*"
   ],
   "action": {
     "default_popup": "popup.html",

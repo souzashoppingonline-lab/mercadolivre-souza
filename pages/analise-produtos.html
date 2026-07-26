@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Análise de Produtos — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Análise de Produtos'; window.ACTIVE_NAV='analise-produtos.html';</script>
+  <style>
+    .ap-head { display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap; }
+    .ap-head h2 { font-size:1.1rem;font-weight:800;display:flex;align-items:center;gap:8px; }
+    .ap-btn { border:none;border-radius:8px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px; }
+    .ap-btn.primary { background:var(--primary,#ffe600);color:#111; }
+    .ap-btn.green   { background:var(--green,#27ae60);color:#fff; }
+    .ap-btn.ghost   { background:var(--bg-card2,#26272b);color:var(--text-main,#eee);border:1px solid var(--border,#3a3b40); }
+    .ap-btn:disabled { opacity:.45;cursor:not-allowed; }
+
+    table.ap-table { width:100%;border-collapse:collapse;font-size:.82rem; }
+    table.ap-table th { text-align:left;color:var(--text-muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border,#3a3b40);white-space:nowrap; }
+    table.ap-table td { padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle; }
+    table.ap-table tr:hover td { background:rgba(255,255,255,.03); }
+    .ap-prod-name { font-weight:700;color:var(--text-main,#eee); }
+    .ap-money { font-variant-numeric:tabular-nums; }
+
+    .ap-status { display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700; }
+    .ap-status.analise  { background:rgba(243,156,18,.15); color:#f39c12; }
+    .ap-status.analisado{ background:rgba(39,174,96,.15);  color:#27ae60; }
+    .ap-status.ativo    { background:rgba(255,230,0,.16);  color:#e6c200;border:1px solid rgba(255,230,0,.35); }
+
+    .ap-rowbtns { display:flex;gap:6px;justify-content:flex-end; }
+    .ap-rowbtns .ap-btn { padding:6px 11px;font-size:.75rem; }
+
+    .ap-empty { text-align:center;color:var(--text-muted);padding:48px 12px; }
+    .ap-empty i { font-size:34px;opacity:.4;display:block;margin-bottom:10px; }
+
+    /* Detalhe do produto */
+    .ap-detail-hd { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px; }
+    .ap-detail-hd .info h2 { font-size:1.15rem;font-weight:800;margin-bottom:6px; }
+    .ap-meta { display:flex;flex-wrap:wrap;gap:16px;color:var(--text-muted);font-size:.8rem; }
+    .ap-meta b { color:var(--text-main,#eee); }
+    .ap-detail-actions { display:flex;gap:8px;flex-wrap:wrap; }
+
+    .ap-coleta-banner { display:flex;align-items:center;gap:10px;background:rgba(255,230,0,.08);border:1px solid rgba(255,230,0,.3);border-radius:10px;padding:10px 14px;margin:12px 0;font-size:.82rem; }
+    .ap-coleta-banner .dot { width:9px;height:9px;border-radius:50%;background:#e6c200;box-shadow:0 0 0 3px rgba(230,194,0,.2);animation:apPulse 1.4s infinite; }
+    @keyframes apPulse { 0%{opacity:1} 50%{opacity:.4} 100%{opacity:1} }
+
+    .ap-cards { display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin-top:14px; }
+    .ap-card { background:var(--bg-card2,#26272b);border:1px solid var(--border,#3a3b40);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;animation:apIn .35s ease; }
+    @keyframes apIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .ap-card .thumb { width:100%;height:150px;object-fit:contain;background:#fff; }
+    .ap-card .thumb.ph { display:flex;align-items:center;justify-content:center;color:#bbb;font-size:26px;background:var(--bg-card,#1c1d21); }
+    .ap-card .body { padding:10px 12px;display:flex;flex-direction:column;gap:6px;flex:1; }
+    .ap-card .ttl { font-size:.78rem;font-weight:600;line-height:1.3;max-height:2.6em;overflow:hidden; }
+    .ap-card .price { font-size:1.15rem;font-weight:800;color:var(--green,#27ae60); }
+    .ap-card .badges { display:flex;flex-wrap:wrap;gap:5px;margin-top:auto; }
+    .ap-badge { font-size:.66rem;font-weight:700;padding:2px 7px;border-radius:12px;display:inline-flex;align-items:center;gap:4px; }
+    .ap-badge.full { background:rgba(39,174,96,.16);color:#27ae60; }
+    .ap-badge.flex { background:rgba(52,152,219,.16);color:#3498db; }
+    .ap-badge.rep  { background:rgba(255,230,0,.14);color:#e6c200; }
+    .ap-badge.gray { background:rgba(255,255,255,.07);color:var(--text-muted); }
+    .ap-card .foot { display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-muted);border-top:1px solid rgba(255,255,255,.05);padding:7px 12px; }
+
+    /* Modal */
+    .ap-modal-bg { position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:flex-start;justify-content:center;z-index:1000;padding:40px 16px;overflow-y:auto; }
+    .ap-modal-bg.open { display:flex; }
+    .ap-modal { background:var(--surface,#1c1d21);border:1px solid var(--border,#3a3b40);border-radius:14px;width:100%;max-width:460px;padding:20px; }
+    .ap-modal h3 { font-size:1rem;font-weight:800;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between; }
+    .ap-modal h3 .x { cursor:pointer;color:var(--text-muted); }
+    .ap-field { margin-bottom:11px; }
+    .ap-field label { display:block;font-size:.74rem;color:var(--text-muted);margin-bottom:4px;font-weight:600; }
+    .ap-field input, .ap-field textarea {
+      width:100%;background:var(--bg-card2,#26272b);border:1px solid var(--border,#3a3b40);color:var(--text-main,#eee);
+      border-radius:8px;padding:9px 11px;font-size:.85rem;box-sizing:border-box;
+    }
+    .ap-field textarea { resize:vertical;min-height:52px; }
+    .ap-grid2 { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+    .ap-modal-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:8px; }
+    .ap-toast { position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;border:1px solid var(--border,#3a3b40);color:#eee;padding:10px 18px;border-radius:10px;font-size:.82rem;z-index:2000;display:none; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <!-- ═══ LISTA ═══ -->
+      <div id="viewList">
+        <div class="ap-head">
+          <h2><i class="fas fa-flask" style="color:var(--primary,#ffe600)"></i> Análise de Produtos</h2>
+          <button class="ap-btn primary" onclick="abrirNovo()"><i class="fas fa-plus"></i> Novo Produto</button>
+        </div>
+        <div class="card">
+          <div style="overflow-x:auto">
+            <table class="ap-table">
+              <thead><tr>
+                <th>Produto</th><th>Custo</th><th>Fornecedor</th><th>Taxa</th><th>Imposto</th><th>Frete</th>
+                <th style="text-align:center">Concorrentes</th><th>Status</th><th>Atualizado</th><th></th>
+              </tr></thead>
+              <tbody id="tbodyProdutos">
+                <tr><td colspan="10" class="ap-empty"><i class="fas fa-spinner fa-spin"></i>Carregando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DETALHE ═══ -->
+      <div id="viewDetail" style="display:none">
+        <button class="ap-btn ghost" onclick="voltarLista()" style="margin-bottom:14px"><i class="fas fa-arrow-left"></i> Voltar</button>
+        <div class="card">
+          <div class="ap-detail-hd">
+            <div class="info">
+              <h2 id="dNome">—</h2>
+              <div class="ap-meta">
+                <span>Preço Compra: <b id="dCusto">—</b></span>
+                <span>Fornecedor: <b id="dForn">—</b></span>
+                <span>Taxa: <b id="dTaxa">—</b></span>
+                <span>Imposto: <b id="dImp">—</b></span>
+                <span>Frete: <b id="dFrete">—</b></span>
+                <span id="dStatusWrap">Status: <span id="dStatus" class="ap-status analise">Em análise</span></span>
+              </div>
+            </div>
+            <div class="ap-detail-actions">
+              <button class="ap-btn ghost" id="btnColeta" onclick="toggleColeta()"><i class="fas fa-satellite-dish"></i> Ativar coleta</button>
+              <button class="ap-btn green" id="btnAnalisar" onclick="analisar()"><i class="fas fa-brain"></i> Analisar Produto</button>
+            </div>
+          </div>
+
+          <div class="ap-coleta-banner" id="coletaBanner" style="display:none">
+            <span class="dot"></span>
+            <span>Coleta <b>ativa</b> neste produto. Abra o Mercado Livre e use a extensão — cada anúncio coletado aparece aqui na hora.</span>
+            <button class="ap-btn ghost" style="margin-left:auto;padding:5px 12px" onclick="finalizarColeta()"><i class="fas fa-flag-checkered"></i> Finalizar coleta</button>
+          </div>
+
+          <h3 style="font-size:.9rem;font-weight:800;margin:16px 0 4px"><i class="fas fa-users"></i> Concorrentes coletados (<span id="dQtd">0</span>)</h3>
+          <div class="ap-cards" id="cardsConc"></div>
+          <div id="cardsVazio" class="ap-empty" style="display:none"><i class="fas fa-inbox"></i>Nenhum anúncio coletado ainda. Ative a coleta e use a extensão no Mercado Livre.</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Modal Novo/Editar Produto -->
+<div class="ap-modal-bg" id="modalProduto">
+  <div class="ap-modal">
+    <h3><span id="modalTitulo">Novo Produto</span><span class="x" onclick="fecharModal()"><i class="fas fa-times"></i></span></h3>
+    <input type="hidden" id="fId">
+    <div class="ap-field"><label>Produto *</label><input id="fProduto" placeholder="Ex.: Ração Quatree Supreme Gatos 4kg"></div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Fornecedor</label><input id="fFornecedor" placeholder="PetFood Brasil"></div>
+      <div class="ap-field"><label>Preço de Compra (R$) *</label><input id="fPrecoCompra" type="number" step="0.01" placeholder="42.80"></div>
+    </div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Taxa Marketplace (%)</label><input id="fTaxa" type="number" step="0.01" placeholder="16"></div>
+      <div class="ap-field"><label>Imposto (%)</label><input id="fImposto" type="number" step="0.01" placeholder="8"></div>
+    </div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Frete de Entrada (R$)</label><input id="fFrete" type="number" step="0.01" placeholder="11.50"></div>
+      <div class="ap-field"><label>Embalagem (R$)</label><input id="fEmbalagem" type="number" step="0.01" placeholder="1.50"></div>
+    </div>
+    <div class="ap-field"><label>Observações</label><textarea id="fObs" placeholder="Anotações internas..."></textarea></div>
+    <div class="ap-modal-actions">
+      <button class="ap-btn ghost" onclick="fecharModal()">Cancelar</button>
+      <button class="ap-btn primary" id="btnSalvar" onclick="salvarProduto()"><i class="fas fa-save"></i> Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="ap-toast" id="toast"></div>
+
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = (n) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+const PCT = (n) => (n == null || n === '') ? '—' : `${Number(n)}%`;
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+function toast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 3000); }
+
+let PRODUTOS = [];   // cache da lista
+let ATIVO = null;    // produto_id ativo pra coleta (global)
+let CURRENT = null;  // produto aberto no detalhe
+
+// ── Lista ────────────────────────────────────────────────────────────────
+async function loadLista() {
+  const res = await DB.getProdutosAnalise();
+  const tb = document.getElementById('tbodyProdutos');
+  if (res?.error) { tb.innerHTML = `<tr><td colspan="10" class="ap-empty"><i class="fas fa-triangle-exclamation"></i>${esc(res.error)}</td></tr>`; return; }
+  PRODUTOS = res?.rows || [];
+  ATIVO = res?.ativo_id ?? null;
+  if (!PRODUTOS.length) { tb.innerHTML = `<tr><td colspan="10" class="ap-empty"><i class="fas fa-flask"></i>Nenhum produto cadastrado. Clique em "Novo Produto".</td></tr>`; return; }
+  tb.innerHTML = PRODUTOS.map(p => {
+    const isAtivo = String(p.id) === String(ATIVO);
+    const st = p.status === 'ANALISADO'
+      ? '<span class="ap-status analisado"><i class="fas fa-check"></i> Analisado</span>'
+      : (isAtivo ? '<span class="ap-status ativo"><i class="fas fa-satellite-dish"></i> Coletando</span>'
+                 : '<span class="ap-status analise"><i class="fas fa-hourglass-half"></i> Em análise</span>');
+    return `<tr>
+      <td class="ap-prod-name">${esc(p.produto)}</td>
+      <td class="ap-money">${BRL(p.preco_compra)}</td>
+      <td>${esc(p.fornecedor || '—')}</td>
+      <td>${PCT(p.taxa_mp)}</td>
+      <td>${PCT(p.imposto)}</td>
+      <td class="ap-money">${BRL(p.frete_entrada)}</td>
+      <td style="text-align:center;font-weight:700">${p.anuncios_count ?? 0}</td>
+      <td>${st}</td>
+      <td style="color:var(--text-muted)">${p.updated_at ? new Date(p.updated_at).toLocaleDateString('pt-BR') : '—'}</td>
+      <td><div class="ap-rowbtns">
+        <button class="ap-btn ghost" onclick="abrirProduto(${p.id})"><i class="fas fa-folder-open"></i> Abrir</button>
+        <button class="ap-btn ghost" onclick="abrirEditar(${p.id})"><i class="fas fa-pen"></i></button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────
+function abrirNovo() {
+  document.getElementById('modalTitulo').textContent = 'Novo Produto';
+  ['fId','fProduto','fFornecedor','fPrecoCompra','fTaxa','fImposto','fFrete','fEmbalagem','fObs'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('modalProduto').classList.add('open');
+}
+function abrirEditar(id) {
+  const p = PRODUTOS.find(x => x.id === id); if (!p) return;
+  document.getElementById('modalTitulo').textContent = 'Editar Produto';
+  document.getElementById('fId').value = p.id;
+  document.getElementById('fProduto').value = p.produto || '';
+  document.getElementById('fFornecedor').value = p.fornecedor || '';
+  document.getElementById('fPrecoCompra').value = p.preco_compra ?? '';
+  document.getElementById('fTaxa').value = p.taxa_mp ?? '';
+  document.getElementById('fImposto').value = p.imposto ?? '';
+  document.getElementById('fFrete').value = p.frete_entrada ?? '';
+  document.getElementById('fEmbalagem').value = p.embalagem ?? '';
+  document.getElementById('fObs').value = p.observacoes || '';
+  document.getElementById('modalProduto').classList.add('open');
+}
+function fecharModal() { document.getElementById('modalProduto').classList.remove('open'); }
+
+async function salvarProduto() {
+  const nome = document.getElementById('fProduto').value.trim();
+  const preco = document.getElementById('fPrecoCompra').value;
+  if (!nome) return toast('Informe o nome do produto.');
+  if (preco === '') return toast('Informe o preço de compra.');
+  const data = {
+    produto: nome,
+    fornecedor: document.getElementById('fFornecedor').value.trim() || null,
+    preco_compra: Number(preco),
+    taxa_mp: document.getElementById('fTaxa').value === '' ? null : Number(document.getElementById('fTaxa').value),
+    imposto: document.getElementById('fImposto').value === '' ? null : Number(document.getElementById('fImposto').value),
+    frete_entrada: document.getElementById('fFrete').value === '' ? null : Number(document.getElementById('fFrete').value),
+    embalagem: document.getElementById('fEmbalagem').value === '' ? null : Number(document.getElementById('fEmbalagem').value),
+    observacoes: document.getElementById('fObs').value.trim() || null,
+  };
+  const btn = document.getElementById('btnSalvar'); btn.disabled = true;
+  const id = document.getElementById('fId').value;
+  const res = id ? await DB.editarProdutoAnalise(id, data) : await DB.criarProdutoAnalise(data);
+  btn.disabled = false;
+  if (res?.error) return toast('Erro: ' + res.error);
+  fecharModal(); toast(id ? 'Produto atualizado.' : 'Produto cadastrado.');
+  await loadLista();
+}
+
+// ── Detalhe ──────────────────────────────────────────────────────────────
+async function abrirProduto(id) {
+  const res = await DB.getProdutoAnalise(id);
+  if (res?.error) return toast('Erro: ' + res.error);
+  CURRENT = res.produto; ATIVO = res.ativo_id ?? ATIVO;
+  const p = res.produto;
+  document.getElementById('dNome').textContent = p.produto;
+  document.getElementById('dCusto').textContent = BRL(p.preco_compra);
+  document.getElementById('dForn').textContent = p.fornecedor || '—';
+  document.getElementById('dTaxa').textContent = PCT(p.taxa_mp);
+  document.getElementById('dImp').textContent = PCT(p.imposto);
+  document.getElementById('dFrete').textContent = BRL(p.frete_entrada);
+  const dst = document.getElementById('dStatus');
+  if (p.status === 'ANALISADO') { dst.className='ap-status analisado'; dst.innerHTML='<i class="fas fa-check"></i> Analisado'; }
+  else { dst.className='ap-status analise'; dst.innerHTML='<i class="fas fa-hourglass-half"></i> Em análise'; }
+  renderCards(res.anuncios || []);
+  refreshColetaUI();
+  document.getElementById('viewList').style.display = 'none';
+  document.getElementById('viewDetail').style.display = 'block';
+}
+function voltarLista() {
+  CURRENT = null;
+  document.getElementById('viewDetail').style.display = 'none';
+  document.getElementById('viewList').style.display = 'block';
+  loadLista();
+}
+function renderCards(anuncios) {
+  document.getElementById('dQtd').textContent = anuncios.length;
+  const wrap = document.getElementById('cardsConc');
+  document.getElementById('cardsVazio').style.display = anuncios.length ? 'none' : 'block';
+  wrap.innerHTML = anuncios.map(cardHtml).join('');
+}
+function cardHtml(a) {
+  const foto = a.fotos && a.fotos[0] ? `<img class="thumb" src="${esc(a.fotos[0])}" onerror="this.outerHTML='<div class=&quot;thumb ph&quot;><i class=&quot;fas fa-image&quot;></i></div>'">` : `<div class="thumb ph"><i class="fas fa-image"></i></div>`;
+  const rep = a.reputacao ? `<span class="ap-badge rep"><i class="fas fa-medal"></i> ${esc(a.reputacao)}</span>` : '';
+  const full = a.full ? '<span class="ap-badge full"><i class="fas fa-bolt"></i> FULL</span>' : '';
+  const flex = a.flex ? '<span class="ap-badge flex"><i class="fas fa-shipping-fast"></i> FLEX</span>' : '';
+  const nota = a.nota ? `<span class="ap-badge gray"><i class="fas fa-star" style="color:#e6c200"></i> ${esc(a.nota)}</span>` : '';
+  const local = [a.cidade, a.estado].filter(Boolean).join('/') || '—';
+  return `<div class="ap-card">
+    ${foto}
+    <div class="body">
+      <div class="ttl">${esc(a.titulo || '(sem título)')}</div>
+      <div class="price">${BRL(a.preco)}</div>
+      <div class="badges">${full}${flex}${nota}${rep}</div>
+    </div>
+    <div class="foot"><span><i class="fas fa-shopping-cart"></i> ${a.vendas != null ? esc(a.vendas) : '—'}</span><span><i class="fas fa-map-marker-alt"></i> ${esc(local)}</span></div>
+  </div>`;
+}
+
+// ── Coleta (ativo) ─────────────────────────────────────────────────────────
+function refreshColetaUI() {
+  if (!CURRENT) return;
+  const isAtivo = String(CURRENT.id) === String(ATIVO);
+  document.getElementById('coletaBanner').style.display = isAtivo ? 'flex' : 'none';
+  const b = document.getElementById('btnColeta');
+  b.innerHTML = isAtivo ? '<i class="fas fa-stop"></i> Coleta ativa' : '<i class="fas fa-satellite-dish"></i> Ativar coleta';
+  b.className = 'ap-btn ' + (isAtivo ? 'primary' : 'ghost');
+}
+async function toggleColeta() {
+  if (!CURRENT) return;
+  const isAtivo = String(CURRENT.id) === String(ATIVO);
+  const res = isAtivo ? await DB.finalizarColetaProduto(CURRENT.id) : await DB.ativarColetaProduto(CURRENT.id);
+  if (res?.error) return toast('Erro: ' + res.error);
+  ATIVO = isAtivo ? null : CURRENT.id;
+  refreshColetaUI();
+  toast(isAtivo ? 'Coleta finalizada.' : 'Coleta ativada — use a extensão no Mercado Livre.');
+}
+async function finalizarColeta() {
+  if (!CURRENT) return;
+  const res = await DB.finalizarColetaProduto(CURRENT.id);
+  if (res?.error) return toast('Erro: ' + res.error);
+  ATIVO = null; refreshColetaUI(); toast('Coleta finalizada.');
+}
+async function analisar() {
+  if (!CURRENT) return;
+  const btn = document.getElementById('btnAnalisar'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analisando...';
+  const res = await DB.analisarProduto(CURRENT.id);
+  btn.disabled = false; btn.innerHTML = '<i class="fas fa-brain"></i> Analisar Produto';
+  if (res?.error) return toast('Erro: ' + res.error);
+  toast(res?.message || 'Análise iniciada.');
+}
+
+// ── WebSocket: novo anúncio coletado aparece na hora ───────────────────────
+WS.on('analise_anuncio', (payload) => {
+  if (!CURRENT || String(payload?.produto_id) !== String(CURRENT.id)) { if (document.getElementById('viewList').style.display !== 'none') loadLista(); return; }
+  const wrap = document.getElementById('cardsConc');
+  wrap.insertAdjacentHTML('afterbegin', cardHtml(payload.anuncio || {}));
+  document.getElementById('cardsVazio').style.display = 'none';
+  document.getElementById('dQtd').textContent = wrap.querySelectorAll('.ap-card').length;
+  toast('Novo anúncio coletado.');
+});
+WS.on('_connected', () => { if (document.getElementById('viewList').style.display !== 'none') loadLista(); });
+
+loadLista();
+</script>
+</body>
+</html>

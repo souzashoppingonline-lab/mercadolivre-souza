@@ -547,3 +547,10 @@ Impressão automática de etiquetas (ver `.claude/print-agent.md`).
 
 - **`print_stations`** (`id` BIGSERIAL PK, `name`, `store_id`→stores, `token` UNIQUE, `printer_name`, `last_seen`, `created_at`) — cada PC/impressora da expedição. `token` é o segredo que o agente usa.
 - **`print_jobs`** (`id` BIGSERIAL PK, `station_id`→print_stations, `store_id`→stores, `shipping_id`, `label` JSONB, `status` [pending/printing/printed/error], `attempts`, `error`, `created_at`, `claimed_at`, `printed_at`) — fila de impressão. O PDF não é guardado: é regerado de `label` via `generateLabelPDF`. Índices: `(station_id,status)`, `(status)`.
+
+## Análise de Produtos — `analise_products`, `analise_product_ads`, `analise_active_collection` (v50)
+
+Ver `.claude/analise-produtos.md`.
+- **`analise_products`** — produto, fornecedor, preco_compra, taxa_mp, imposto, frete_entrada, embalagem, observacoes, status (`EM_ANALISE`/`ANALISADO`), timestamps.
+- **`analise_product_ads`** — anúncio concorrente coletado pela extensão (FK product_id ON DELETE CASCADE, `UNIQUE (product_id, ml_id)`). Colunas `is_full`/`is_flex` (não `full`/`flex` — reservado); `raw` JSONB com o payload cru. Índice `(product_id)`.
+- **`analise_active_collection`** — linha única (id=1, CHECK id=1) com `product_id` do produto ativo de coleta (a extensão lê daqui).

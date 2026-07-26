@@ -32,6 +32,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `conciliacao-bancaria.md` | Módulo financeiro Pedido→Pagamento→Liberação→Transferência→Conciliação, status por fase, API de Faturamento ML, o que depende do app Mercado Pago |
 | `embalagem.md` | Bipagem de etiqueta (FLEX/Mercado Envios), gravação de vídeo de conferência, retenção de 30 dias |
 | `print-agent.md` | Impressão automática de etiquetas (10×15 térmica) via agente local: `print_stations`/`print_jobs`, rotas `/api/print/*` (gestão) e `/print-agent/*` (agente com token), pasta `print-agent/` |
+| `analise-produtos.md` | Módulo de decisão de compra: cadastro de produto+custos, coleta de concorrentes via extensão (fila de "produto ativo"), fases 2/3 (inteligência + IA). Tabelas `analise_products`/`analise_product_ads`/`analise_active_collection`, rotas `/api/analise/*` |
 | `auth-staff.md` | Login de acesso restrito para funcionários (papéis admin/embalagem), JWT em cookie, kill switch, mudança de infraestrutura no nginx |
 | `shopee.md` | Status (não implementado) e como uma integração Shopee deveria se encaixar na arquitetura |
 | `amazon.md` | Status (não implementado) e como uma integração Amazon (SP-API) deveria se encaixar na arquitetura |

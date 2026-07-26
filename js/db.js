@@ -208,6 +208,15 @@ const DB = {
   async getShopeeChatMensagens(conversationId) { return this._get(`/shopee/chat/${encodeURIComponent(conversationId)}/mensagens`); },
   async responderShopeeChat(conversation_id, text) { return this._post('/shopee/chat/responder', { conversation_id, text }); },
 
+  // ── Análise de Produtos (Fase 1 — ver .claude/analise-produtos.md) ──
+  async getProdutosAnalise() { return this._get('/analise/produtos'); },
+  async getProdutoAnalise(id) { return this._get(`/analise/produtos/${id}`); },
+  async criarProdutoAnalise(data) { return this._post('/analise/produtos', data); },
+  async editarProdutoAnalise(id, data) { return this._post(`/analise/produtos/${id}/editar`, data); },
+  async ativarColetaProduto(id) { return this._post(`/analise/produtos/${id}/ativar`, {}); },
+  async finalizarColetaProduto(id) { return this._post(`/analise/produtos/${id}/finalizar`, {}); },
+  async analisarProduto(id) { return this._post(`/analise/produtos/${id}/analisar`, {}); },
+
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },
   async getDiasSemana(days=90)    { return this._get(`/analises/dias-semana?days=${days}`); },

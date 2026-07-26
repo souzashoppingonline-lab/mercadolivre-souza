@@ -54,6 +54,8 @@ app.use('/api/tasks', tasksRoutes);
 app.use('/api/embalagem', embalagemRoutes);
 // Print Agent — gestão (enfileirar impressão + estações). Ver .claude/print-agent.md.
 app.use('/api/print', require('./routes/print'));
+// Análise de Produtos — cadastro + fila de coleta (lado dashboard). Ver .claude/analise-produtos.md.
+app.use('/api/analise', require('./routes/analise'));
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

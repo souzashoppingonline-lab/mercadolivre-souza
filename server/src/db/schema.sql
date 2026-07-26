@@ -722,3 +722,36 @@ CREATE TABLE IF NOT EXISTS print_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_print_jobs_station_status ON print_jobs(station_id, status);
 CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status);
+
+-- v50 — Análise de Produtos. Ver .claude/analise-produtos.md.
+CREATE TABLE IF NOT EXISTS analise_products (
+  id BIGSERIAL PRIMARY KEY,
+  produto TEXT NOT NULL,
+  fornecedor TEXT,
+  preco_compra NUMERIC,
+  taxa_mp NUMERIC,
+  imposto NUMERIC,
+  frete_entrada NUMERIC,
+  embalagem NUMERIC,
+  observacoes TEXT,
+  status TEXT NOT NULL DEFAULT 'EM_ANALISE',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS analise_product_ads (
+  id BIGSERIAL PRIMARY KEY,
+  product_id BIGINT NOT NULL REFERENCES analise_products(id) ON DELETE CASCADE,
+  ml_id TEXT, titulo TEXT, preco NUMERIC, preco_original NUMERIC, nota NUMERIC,
+  vendas TEXT, perguntas INT, comentarios INT, vendedor TEXT, cidade TEXT, estado TEXT,
+  reputacao TEXT, is_full BOOLEAN, is_flex BOOLEAN, fotos JSONB, videos JSONB, raw JSONB,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (product_id, ml_id)
+);
+CREATE INDEX IF NOT EXISTS idx_analise_ads_product ON analise_product_ads(product_id);
+CREATE TABLE IF NOT EXISTS analise_active_collection (
+  id INT PRIMARY KEY DEFAULT 1,
+  product_id BIGINT REFERENCES analise_products(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT analise_active_single_row CHECK (id = 1)
+);
+INSERT INTO analise_active_collection (id, product_id) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;

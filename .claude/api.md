@@ -291,3 +291,15 @@ Ver `.claude/print-agent.md`. As rotas do agente ficam **antes** do gate de staf
 - `GET /print-agent/jobs/next` — reivindica 1 job atômico (FOR UPDATE SKIP LOCKED).
 - `GET /print-agent/jobs/:id/pdf` — PDF 10×15 regerado de `label`.
 - `POST /print-agent/jobs/:id/confirm` | `.../error` — confirma/reagenda (retry até 3x).
+
+## Análise de Produtos (`/api/analise`, staff)
+
+Ver `.claude/analise-produtos.md`. `routes/analise.js`:
+- `GET /api/analise/produtos` → `{rows, ativo_id}` (com `anuncios_count`).
+- `GET /api/analise/produtos/:id` → `{produto, anuncios, ativo_id}` (anúncios com `full`/`flex` aliasados de `is_full`/`is_flex`).
+- `POST /api/analise/produtos` → cadastrar. `POST /api/analise/produtos/:id/editar` → editar.
+- `POST /api/analise/produtos/:id/ativar` → define único produto ativo de coleta. `.../finalizar` → limpa.
+- `POST /api/analise/produtos/:id/analisar` → stub (Fase 3).
+- WS `analise_anuncio` `{produto_id, anuncio}` — card ao vivo quando a extensão salva (publicado no passo da extensão).
+
+Extensão (público, a implementar): `GET /extension/produto-ativo`, `POST /extension/anuncio`.

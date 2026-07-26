@@ -28,6 +28,7 @@ const NAV_ITEMS = [
     { href: 'estoque-parado.html', icon: 'fa-box-open', label: 'Estoque Parado' },
     { href: 'publicidade.html', icon: 'fa-bullhorn', label: 'Publicidade' },
     { href: 'concorrentes.html', icon: 'fa-users-slash', label: 'Concorrentes' },
+    { href: 'analise-produtos.html', icon: 'fa-flask', label: 'Análise de Produtos' },
   ]},
   { section: 'Comparativos', items: [
     { href: 'periodo.html', icon: 'fa-calendar-alt', label: 'Período vs Período' },

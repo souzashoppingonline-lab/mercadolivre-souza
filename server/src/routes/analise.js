@@ -6,6 +6,8 @@ const express = require('express');
 const pool = require('../db/pool');
 const wsHub = require('../ws/hub');
 const { num, mapAd, adValues, upsertAd } = require('../analise/ads');
+const llm = require('../ai/llm');
+const { analisarNucleo } = require('../ai/analiseAgents');
 
 const router = express.Router();
 
@@ -85,9 +87,32 @@ router.post('/produtos/:id/finalizar', async (req, res) => {
   } catch (e) { console.error('[api/analise] finalizar', e.message); res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/analise/produtos/:id/analisar — motor de IA (Fase 3). Stub por enquanto.
+// POST /api/analise/produtos/:id/analisar — motor de IA (Fase 3, núcleo).
+// Roda Score + Comentários + Financeiro + Decisão sobre os concorrentes coletados,
+// grava o resultado no produto e devolve. Síncrono (mesmo padrão da IA Sócio
+// Shopee) — a página mostra um spinner enquanto processa. Ver .claude/analise-produtos.md.
 router.post('/produtos/:id/analisar', async (req, res) => {
-  res.json({ ok: true, message: 'O motor de IA chega na Fase 3 — a coleta e o cadastro já estão prontos.' });
+  try {
+    if (!llm.isConfigured()) {
+      return res.status(503).json({ error: 'IA não configurada — cole a chave ANTHROPIC_API_KEY no .env do servidor e reinicie.' });
+    }
+    const { rows } = await pool.query(`SELECT * FROM analise_products WHERE id=$1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'produto não encontrado' });
+    const produto = rows[0];
+    const { rows: adRows } = await pool.query(
+      `SELECT * FROM analise_product_ads WHERE product_id=$1 ORDER BY created_at DESC`, [req.params.id]);
+    if (!adRows.length) return res.status(400).json({ error: 'colete pelo menos um concorrente antes de analisar' });
+
+    const { result, score } = await analisarNucleo(produto, adRows.map(mapAd));
+    const { rows: upd } = await pool.query(
+      `UPDATE analise_products SET ai_result=$2, ai_score=$3, ai_analyzed_at=now(),
+              status='ANALISADO', updated_at=now() WHERE id=$1 RETURNING *`,
+      [req.params.id, JSON.stringify(result), score]);
+    res.json({ ok: true, result, score, produto: upd[0] });
+  } catch (e) {
+    console.error('[api/analise] analisar', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // POST /api/analise/produtos/:id/anuncio — adiciona um concorrente MANUALMENTE.

@@ -34,6 +34,27 @@
 
     .ap-empty { text-align:center;color:var(--text-muted);padding:48px 12px; }
     .ap-empty i { font-size:34px;opacity:.4;display:block;margin-bottom:10px; }
+    .ap-muted { color:var(--text-muted,#8a8b90); }
+    /* Painel IA */
+    #iaPanel { animation:apIn .35s ease; }
+    .ia-head { display:flex;gap:18px;align-items:center;background:linear-gradient(135deg,rgba(99,102,241,.10),rgba(34,197,94,.06));border:1px solid var(--border,#3a3b40);border-radius:14px;padding:16px 18px;flex-wrap:wrap; }
+    .ia-score .ring { width:92px;height:92px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:conic-gradient(var(--c) calc(var(--c-val,0)*1%),rgba(255,255,255,.08) 0);box-shadow:inset 0 0 0 6px var(--bg-card,#1c1d21);border:2px solid var(--c); }
+    .ia-score .ring span { font-size:1.9rem;font-weight:900;color:var(--c);line-height:1; }
+    .ia-score .ring small { font-size:.62rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-top:2px; }
+    .ia-verdict { flex:1;min-width:220px; }
+    .ia-verdict .badge { display:inline-flex;align-items:center;gap:7px;color:#fff;font-weight:800;font-size:.85rem;padding:6px 13px;border-radius:999px;margin-bottom:7px; }
+    .ia-verdict p { font-size:.9rem;line-height:1.45;margin:2px 0; }
+    .ia-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px; }
+    .ia-card { background:var(--bg-card2,#26272b);border:1px solid var(--border,#3a3b40);border-radius:12px;padding:14px 15px; }
+    .ia-card h4 { font-size:.82rem;font-weight:800;margin-bottom:9px;display:flex;align-items:center;gap:7px; }
+    .ia-card p { font-size:.83rem;line-height:1.45;margin:6px 0;color:var(--text-main,#ddd); }
+    .ia-card b { display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;margin:9px 0 3px;color:var(--text-muted); }
+    .ia-card b.pos { color:#22c55e; } .ia-card b.neg { color:#ef4444; }
+    .ia-card ul { margin:0 0 4px;padding-left:17px; } .ia-card li { font-size:.83rem;line-height:1.4;margin-bottom:3px; }
+    .ia-nums { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 8px; }
+    .ia-nums div { background:var(--bg-card,#1c1d21);border-radius:9px;padding:7px 10px; }
+    .ia-nums small { display:block;font-size:.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px; }
+    .ia-nums b { display:block;font-size:1rem;font-weight:800;color:var(--green,#27ae60);text-transform:none;letter-spacing:0;margin:2px 0 0; }
 
     /* Detalhe do produto */
     .ap-detail-hd { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px; }
@@ -141,6 +162,8 @@
             <span>Coleta <b>ativa</b> neste produto. Abra o Mercado Livre e use a extensão — cada anúncio coletado aparece aqui na hora.</span>
             <button class="ap-btn ghost" style="margin-left:auto;padding:5px 12px" onclick="finalizarColeta()"><i class="fas fa-flag-checkered"></i> Finalizar coleta</button>
           </div>
+
+          <div id="iaPanel" style="display:none;margin-top:16px"></div>
 
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:16px 0 4px">
             <h3 style="font-size:.9rem;font-weight:800"><i class="fas fa-users"></i> Concorrentes coletados (<span id="dQtd">0</span>)</h3>
@@ -333,6 +356,7 @@ async function abrirProduto(id) {
   if (p.status === 'ANALISADO') { dst.className='ap-status analisado'; dst.innerHTML='<i class="fas fa-check"></i> Analisado'; }
   else { dst.className='ap-status analise'; dst.innerHTML='<i class="fas fa-hourglass-half"></i> Em análise'; }
   renderCards(res.anuncios || []);
+  renderIA(p);
   refreshColetaUI();
   document.getElementById('viewList').style.display = 'none';
   document.getElementById('viewDetail').style.display = 'block';
@@ -408,7 +432,58 @@ async function analisar() {
   const res = await DB.analisarProduto(CURRENT.id);
   btn.disabled = false; btn.innerHTML = '<i class="fas fa-brain"></i> Analisar Produto';
   if (res?.error) return toast('Erro: ' + res.error);
-  toast(res?.message || 'Análise iniciada.');
+  // atualiza o produto em memória e mostra a análise
+  CURRENT.ai_result = res.result; CURRENT.ai_score = res.score; CURRENT.status = 'ANALISADO';
+  const dst = document.getElementById('dStatus'); dst.className='ap-status analisado'; dst.innerHTML='<i class="fas fa-check"></i> Analisado';
+  renderIA(CURRENT);
+  document.getElementById('iaPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast('Análise concluída.');
+}
+
+// ── Painel de análise da IA (Fase 3, núcleo) ───────────────────────────────
+function renderIA(p) {
+  const panel = document.getElementById('iaPanel');
+  const r = p && p.ai_result;
+  if (!r) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
+  const li = (arr) => (Array.isArray(arr) && arr.length) ? '<ul>' + arr.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '<span class="ap-muted">—</span>';
+  const score = p.ai_score != null ? p.ai_score : (r.score && r.score.valor);
+  const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#eab308' : '#ef4444';
+  const dec = r.decisao || {}; const fin = r.financeiro || {}; const com = r.comentarios || {};
+  const vereditoMap = { VALE: ['#22c55e','Vale a pena','fa-circle-check'], ATENCAO: ['#eab308','Atenção','fa-triangle-exclamation'], NAO_VALE: ['#ef4444','Não vale','fa-circle-xmark'] };
+  const vd = vereditoMap[dec.veredito] || ['#94a3b8', dec.veredito || '—', 'fa-circle-question'];
+  const quando = p.ai_analyzed_at ? new Date(p.ai_analyzed_at).toLocaleString('pt-BR') : '';
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="ia-head">
+      <div class="ia-score" style="--c:${scoreColor};--c-val:${score != null ? score : 0}"><div class="ring"><span>${score != null ? score : '—'}</span><small>Score</small></div></div>
+      <div class="ia-verdict">
+        <div class="badge" style="background:${vd[0]}"><i class="fas ${vd[2]}"></i> ${esc(vd[1])}</div>
+        <p>${esc(dec.justificativa || '')}</p>
+        ${r.score && r.score.explicacao ? `<small class="ap-muted">${esc(r.score.explicacao)}</small>` : ''}
+        ${quando ? `<small class="ap-muted"> · analisado em ${quando}</small>` : ''}
+      </div>
+    </div>
+    <div class="ia-grid">
+      <div class="ia-card"><h4><i class="fas fa-comments"></i> Comentários</h4>
+        <p>${esc(com.resumo || '')}</p>
+        <b class="neg">Reclamações</b>${li(com.reclamacoes)}
+        <b class="pos">Elogios</b>${li(com.elogios)}
+        <b>Oportunidades</b>${li(com.oportunidades)}
+      </div>
+      <div class="ia-card"><h4><i class="fas fa-coins"></i> Financeiro</h4>
+        <div class="ia-nums">
+          <div><small>Custo</small><b>${fin.custo_total_rs != null ? BRL(fin.custo_total_rs) : '—'}</b></div>
+          <div><small>Preço sugerido</small><b>${fin.preco_sugerido_rs != null ? BRL(fin.preco_sugerido_rs) : '—'}</b></div>
+          <div><small>Margem líq.</small><b>${fin.margem_liquida_pct != null ? fin.margem_liquida_pct + '%' : '—'}</b></div>
+          <div><small>Lucro/un.</small><b>${fin.lucro_unitario_rs != null ? BRL(fin.lucro_unitario_rs) : '—'}</b></div>
+        </div>
+        <p>${esc(fin.resumo || '')}</p>
+      </div>
+      <div class="ia-card"><h4><i class="fas fa-scale-balanced"></i> Decisão</h4>
+        <b class="neg">Riscos</b>${li(dec.riscos)}
+        <b>Próximos passos</b>${li(dec.proximos_passos)}
+      </div>
+    </div>`;
 }
 
 // ── WebSocket: novo anúncio coletado aparece na hora ───────────────────────

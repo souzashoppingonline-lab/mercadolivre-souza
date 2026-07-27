@@ -551,6 +551,6 @@ Impressão automática de etiquetas (ver `.claude/print-agent.md`).
 ## Análise de Produtos — `analise_products`, `analise_product_ads`, `analise_active_collection` (v50)
 
 Ver `.claude/analise-produtos.md`.
-- **`analise_products`** — produto, fornecedor, preco_compra, taxa_mp, imposto, frete_entrada, embalagem, observacoes, status (`EM_ANALISE`/`ANALISADO`), timestamps.
+- **`analise_products`** — produto, fornecedor, preco_compra, taxa_mp, imposto, frete_entrada, embalagem, observacoes, status (`EM_ANALISE`/`ANALISADO`), timestamps. Fase 3 IA (v54): `ai_result` JSONB (seções comentários/financeiro/decisão), `ai_score` INT (0-100), `ai_analyzed_at`.
 - **`analise_product_ads`** — anúncio concorrente coletado pela extensão (FK product_id ON DELETE CASCADE, `UNIQUE (product_id, ml_id)`). Colunas `is_full`/`is_flex` (não `full`/`flex` — reservado); `observacoes` (v51, anotação livre); `comentarios_texto` (v52, comentários MANUAIS colados pelo operador); `comentarios_auto` (v53, comentários VISÍVEIS capturados pela extensão — distintos de `comentarios`, contagem numérica); `raw` JSONB com o payload cru. Índice `(product_id)`.
 - **`analise_active_collection`** — linha única (id=1, CHECK id=1) com `product_id` do produto ativo de coleta (a extensão lê daqui).

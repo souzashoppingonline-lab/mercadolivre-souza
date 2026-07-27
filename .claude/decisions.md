@@ -528,3 +528,22 @@ Ao adicionar a **2ª loja Shopee**, o `worker` passou a inserir com `ON CONFLICT
 4. **v44 × v48 (ordem)**: `seller_product_rebate` existia como NUMERIC em produção; o `UPDATE` do v44 gravava JSONB → erro de tipo. O v48 corrigia o tipo mas rodava **depois** do v44 e, pior, com `USING NULL` incondicional **apagaria** o que o v44 acabou de gravar. Correção: o conserto de tipo virou um `DO`-block guardado **dentro do v44, antes do UPDATE** (só age se o tipo estiver errado), e o v48 virou rede de segurança idempotente (mesmo guard, não-destrutiva).
 
 **Princípio reforçado**: `schema.sql` roda **antes** de todas as migrations e **toda vez** — ele precisa ser idempotente contra o estado antigo de produção (guard de `ADD COLUMN IF NOT EXISTS` antes de qualquer índice sobre coluna nova), senão trava a cadeia inteira. Validado com Postgres real: cadeia completa num banco novo, re-rodada (idempotência) e num banco "estilo-produção" (tabelas no formato antigo + 2 lojas) — 44/44 arquivos sem erro, backfills e `ON CONFLICT` das 2 lojas confirmados.
+
+## Análise de Produtos Fase 3 — motor de IA síncrono e barato (núcleo)
+
+**Decisão**: o motor de IA da Fase 3 começou pelo NÚCLEO (Score + Comentários +
+Financeiro + Decisão) e roda como **UMA chamada estruturada** (JSON) na própria rota
+HTTP, síncrona (spinner na tela) — mesmo padrão da IA Sócio Shopee, não uma fila/worker
+nem 9 chamadas separadas.
+
+**Por quê**: pedido explícito do usuário de gastar o MÍNIMO por consulta. Uma chamada
+Haiku com contexto compacto (campos curtos, `ANALISE_MAX_ADS=10`, comentários limitados
+a `ANALISE_MAX_COMMENT_CHARS=3500`, saída `max_tokens=1200`) fica abaixo de ~1 centavo
+por análise. Fila/worker + 1 call por agente seria mais caro (mais tokens de sistema
+repetidos) e mais código, sem ganho pro volume atual (análise sob demanda, 1 clique).
+
+**Desligado sem chave**: `server/src/ai/llm.js` central; sem `ANTHROPIC_API_KEY` a rota
+devolve 503 com mensagem clara e nada roda. Resultado gravado em `analise_products`
+(`ai_result`/`ai_score`/`ai_analyzed_at`) — 1 análise vigente por produto (reanalisar
+sobrescreve). Se um dia entrarem os 6 agentes restantes e o custo/latência crescer,
+aí sim reavaliar mover pra fila.

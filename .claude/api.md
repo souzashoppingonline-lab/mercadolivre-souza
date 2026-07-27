@@ -299,7 +299,7 @@ Ver `.claude/analise-produtos.md`. `routes/analise.js`:
 - `GET /api/analise/produtos/:id` → `{produto, anuncios, ativo_id}` (anúncios com `full`/`flex` aliasados de `is_full`/`is_flex`).
 - `POST /api/analise/produtos` → cadastrar. `POST /api/analise/produtos/:id/editar` → editar.
 - `POST /api/analise/produtos/:id/ativar` → define único produto ativo de coleta. `.../finalizar` → limpa.
-- `POST /api/analise/produtos/:id/analisar` → stub (Fase 3).
+- `POST /api/analise/produtos/:id/analisar` → **motor de IA (Fase 3 núcleo)**: Score + Comentários + Financeiro + Decisão. Grava `ai_result`/`ai_score`/`ai_analyzed_at` e devolve `{result, score, produto}`. Síncrono. `503` sem `ANTHROPIC_API_KEY`, `400` sem concorrentes.
 - WS `analise_anuncio` `{produto_id, anuncio}` — card ao vivo quando a extensão salva (publicado no passo da extensão).
 
 Extensão (público, a implementar): `GET /extension/produto-ativo`, `POST /extension/anuncio`.

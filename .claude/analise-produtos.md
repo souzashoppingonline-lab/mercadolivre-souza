@@ -9,9 +9,12 @@ Construído em **fases** (evita virar um monstro):
   coleta", página com tabela + modal + tela do produto com cards ao vivo (WS).
 - **Fase 2 (futuro):** inteligência de preço/concorrência + mapa geográfico +
   simulador preço×lucro (usa as fórmulas de `finance.md`), tudo cálculo, sem IA.
-- **Fase 3 (futuro):** 9 agentes de IA (mercado, financeiro, comercial, marketing,
-  comentários, perguntas, criativos, SEO, decisão) + Score do Produto. Precisa de
-  chave de LLM.
+- **Fase 3 — NÚCLEO (feito):** motor de IA com Score do Produto (0-100) + 3 agentes
+  de maior valor — **Comentários** (reclamações/elogios/oportunidades), **Financeiro**
+  (custo, preço sugerido, margem líquida, lucro/un.) e **Decisão** (VALE/ATENÇÃO/
+  NÃO_VALE + riscos + próximos passos). Uma única chamada estruturada (JSON), barata.
+- **Fase 3 — resto (futuro):** os outros 6 agentes (mercado, comercial, marketing,
+  perguntas, criativos, SEO).
 
 ## Fluxo (o pulo do gato)
 
@@ -40,7 +43,11 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
 - `POST /produtos` → cadastrar. `POST /produtos/:id/editar` → editar.
 - `POST /produtos/:id/ativar` → define como único ativo de coleta.
 - `POST /produtos/:id/finalizar` → limpa o ativo.
-- `POST /produtos/:id/analisar` → stub (Fase 3).
+- `POST /produtos/:id/analisar` → **motor de IA (Fase 3 núcleo)**. Roda Score +
+  Comentários + Financeiro + Decisão sobre os concorrentes coletados, grava
+  `ai_result`/`ai_score`/`ai_analyzed_at` no produto (status→`ANALISADO`) e devolve
+  `{result, score, produto}`. **Síncrono** (a página mostra spinner). 503 se a chave
+  de IA não estiver configurada; 400 se não houver concorrente coletado.
 - `POST /produtos/:id/anuncio` → **adiciona concorrente à mão** (publica WS `analise_anuncio`).
 - `POST /anuncios/:adId/editar` → completa/corrige campos que a extensão não pegou (ex.: comentários, nota). `fotos` só sobrescreve se vier nova.
 - `POST /anuncios/:adId/excluir` → remove um card.
@@ -87,8 +94,25 @@ alvo. `manifest.json` tem host_permission pro servidor. A rota antiga
 Limite do body: `express.json({ limit: '1mb' })` (o pageText cabe; o innerHTML não
 é mais enviado).
 
+## Motor de IA (Fase 3 núcleo)
+
+- `server/src/ai/llm.js` — cliente Anthropic compartilhado (Messages API, mesmo
+  padrão que a IA Sócio Shopee usava inline). `isConfigured()` = há `ANTHROPIC_API_KEY`?
+  `complete()`/`completeJson()`. **Sem chave, lança erro claro — nada de IA roda.**
+- `server/src/ai/analiseAgents.js` — `buildContext(produto, anuncios)` monta o
+  contexto REAL (custos + resumo compacto dos concorrentes + texto de comentários) e
+  `analisarNucleo()` faz **uma** chamada JSON devolvendo `{comentarios, financeiro,
+  decisao, score}`.
+- **Custo mínimo por análise** (pedido do usuário): modelo Haiku (`AI_MODEL`),
+  campos compactos, nº de concorrentes limitado (`ANALISE_MAX_ADS=10`) e teto do
+  texto de comentários (`ANALISE_MAX_COMMENT_CHARS=3500`), `max_tokens` de saída 1200.
+  Fica abaixo de ~1 centavo por clique. Ajustável por env sem deploy.
+- Frontend: painel `#iaPanel` na tela do produto — anel de Score colorido, veredito,
+  e 3 cards (Comentários/Financeiro/Decisão). Renderiza ao abrir o produto (lê
+  `ai_result`) e após clicar "Analisar Produto".
+
 ## Pendências
 
 - Enriquecer o extrator: `reputacao`, `full`/`flex`, `cidade`/`estado` ainda não
   vêm do `pageText` — o operador completa à mão (editar card). Fase futura.
-- Fases 2 e 3 (inteligência de preço/mapa/simulador + os 9 agentes de IA).
+- Fase 2 (inteligência de preço/mapa/simulador) e os outros 6 agentes de IA da Fase 3.

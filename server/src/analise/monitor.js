@@ -141,8 +141,7 @@ async function snapshotAll() {
 // reputação, cidade/estado, nota, nº de comentários/perguntas, FULL/FLEX).
 // item é obrigatório; usuário/reviews/perguntas são best-effort (não quebram).
 async function getAdDataFromMl(mlId, storeId) {
-  const item = await ml.getItem(mlId, storeId);
-  if (!item || !item.id) throw new Error('item vazio');
+  const item = await fetchItem(mlId, storeId); // usa multiget como fallback do 403
   const ship = item.shipping || {};
   const fotos = Array.isArray(item.pictures)
     ? item.pictures.map((p) => p.secure_url || p.url).filter(Boolean) : null;

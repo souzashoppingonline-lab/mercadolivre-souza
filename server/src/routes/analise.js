@@ -205,6 +205,43 @@ router.post('/anuncios/:adId/editar', async (req, res) => {
   } catch (e) { console.error('[api/analise] POST anuncio editar', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/analise/anuncios/:adId/atualizar-ml — GET completo do MLB na API do
+// ML e preenche os campos do card (título, preço, fotos, vendedor, reputação,
+// cidade/estado, nota, comentários, perguntas, FULL/FLEX) + grava um snapshot.
+// COALESCE preserva o que foi preenchido à mão quando o ML devolve null.
+router.post('/anuncios/:adId/atualizar-ml', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT id, ml_id FROM analise_product_ads WHERE id=$1`, [req.params.adId]);
+    if (!rows.length) return res.status(404).json({ error: 'anúncio não encontrado' });
+    const mlId = rows[0].ml_id;
+    if (!mlId) return res.status(400).json({ error: 'anúncio sem MLB — preencha o link ou o MLB primeiro' });
+    const storeId = await monitor.pickMlStoreId();
+    if (!storeId) return res.status(503).json({ error: 'nenhuma loja ML conectada para consultar a API' });
+
+    const d = await monitor.getAdDataFromMl(mlId, storeId);
+    const { rows: upd } = await pool.query(
+      `UPDATE analise_product_ads SET
+         link=COALESCE($2,link), titulo=COALESCE($3,titulo), preco=COALESCE($4,preco),
+         preco_original=COALESCE($5,preco_original), vendas=COALESCE($6,vendas),
+         is_full=COALESCE($7,is_full), is_flex=COALESCE($8,is_flex), fotos=COALESCE($9,fotos),
+         vendedor=COALESCE($10,vendedor), reputacao=COALESCE($11,reputacao),
+         cidade=COALESCE($12,cidade), estado=COALESCE($13,estado), nota=COALESCE($14,nota),
+         comentarios=COALESCE($15,comentarios), perguntas=COALESCE($16,perguntas)
+       WHERE id=$1 RETURNING *`,
+      [req.params.adId, d.link, d.titulo, d.preco, d.preco_original, d.vendas, d.full, d.flex,
+       d.fotos ? JSON.stringify(d.fotos) : null, d.vendedor, d.reputacao, d.cidade, d.estado, d.nota, d.comentarios, d.perguntas]);
+
+    try { await monitor.snapshotOne(mlId, storeId); } catch (_) { /* snapshot best-effort */ }
+
+    const ad = mapAd(upd[0]);
+    const { rows: snaps } = await pool.query(
+      `SELECT ml_id, snap_date, preco, preco_original, status, available_quantity, sold_quantity, sold_delta, visits_day
+         FROM analise_monitor_snapshots WHERE ml_id=$1 ORDER BY snap_date ASC`, [mlId]);
+    if (snaps.length) ad.monitor = { historico: snaps, ultimo: snaps[snaps.length - 1], count: snaps.length };
+    res.json(ad);
+  } catch (e) { console.error('[api/analise] atualizar-ml', e.message); res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/analise/anuncios/:adId/excluir — remove um card.
 router.post('/anuncios/:adId/excluir', async (req, res) => {
   try {

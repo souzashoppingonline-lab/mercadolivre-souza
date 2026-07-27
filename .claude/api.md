@@ -306,6 +306,7 @@ Ver `.claude/analise-produtos.md`. `routes/analise.js`:
 - `POST /api/analise/produtos/:id/monitorar-agora` → snapshot AGORA de cada MLB do produto (preço/estoque/vendas/visitas via API do ML) → `{ok, fail, total}`. O job diário `sync-monitor-analise` faz isso sozinho. `GET /produtos/:id` já devolve `anuncio.monitor = {historico, ultimo, count}`.
 
 Anúncios (`analise_product_ads`) agora têm `link` e `ml_id` (MLB) editáveis — o `POST /anuncios/:adId/editar` e o add manual aceitam ambos; o MLB é extraído do link se faltar.
+- `POST /api/analise/anuncios/:adId/atualizar-ml` → **GET completo do MLB** (`monitor.getAdDataFromMl`: `/items/{MLB}` + `/users/{seller}` + `/reviews/item` + `/questions/search`) e preenche os campos do card (título, preço, fotos, vendedor, reputação, cidade/estado, nota, comentários, perguntas, FULL/FLEX) via COALESCE (não apaga o manual) + grava um snapshot. Devolve o anúncio (`mapAd`) já com `.monitor`. Botão azul no topo do card. `400` sem MLB, `503` sem loja ML.
 - WS `analise_anuncio` `{produto_id, anuncio}` — card ao vivo quando a extensão salva (publicado no passo da extensão).
 
 Extensão (público, a implementar): `GET /extension/produto-ativo`, `POST /extension/anuncio`.

@@ -102,4 +102,50 @@ async function snapshotAll() {
   return snapshotMany(ids, storeId);
 }
 
-module.exports = { snapshotOne, snapshotProduct, snapshotAll, pickMlStoreId };
+// GET completo de 1 MLB → campos do card (título, preço, fotos, vendedor,
+// reputação, cidade/estado, nota, nº de comentários/perguntas, FULL/FLEX).
+// item é obrigatório; usuário/reviews/perguntas são best-effort (não quebram).
+async function getAdDataFromMl(mlId, storeId) {
+  const item = await ml.getItem(mlId, storeId);
+  if (!item || !item.id) throw new Error('item vazio');
+  const ship = item.shipping || {};
+  const fotos = Array.isArray(item.pictures)
+    ? item.pictures.map((p) => p.secure_url || p.url).filter(Boolean) : null;
+  const out = {
+    ml_id: item.id, link: item.permalink || null, titulo: item.title || null,
+    preco: num(item.price), preco_original: num(item.original_price),
+    vendas: item.sold_quantity != null ? `${item.sold_quantity} vendidos` : null,
+    full: ship.logistic_type === 'fulfillment' ? true : (ship.logistic_type ? false : null),
+    flex: ship.logistic_type === 'self_service' ? true : (ship.logistic_type ? false : null),
+    fotos: fotos && fotos.length ? fotos : null,
+  };
+  // Vendedor + reputação + cidade/estado
+  try {
+    if (item.seller_id) {
+      const u = await ml.get(`/users/${item.seller_id}`, storeId);
+      out.vendedor = u?.nickname || null;
+      const rep = u?.seller_reputation || {};
+      const pss = rep.power_seller_status
+        ? ({ platinum: 'Platinum', gold: 'Gold', silver: 'Silver' }[rep.power_seller_status] || rep.power_seller_status)
+        : '';
+      out.reputacao = [pss ? `MercadoLíder ${pss}` : '', rep.level_id || ''].filter(Boolean).join(' ') || null;
+      out.cidade = u?.address?.city || null;
+      out.estado = u?.address?.state || null;
+    }
+  } catch (_) { /* best-effort */ }
+  // Nota + nº de opiniões
+  try {
+    const rv = await ml.get(`/reviews/item/${mlId}`, storeId);
+    if (rv?.rating_average != null) out.nota = num(rv.rating_average);
+    const tot = rv?.paging?.total ?? (Array.isArray(rv?.reviews) ? rv.reviews.length : null);
+    if (tot != null) out.comentarios = num(tot);
+  } catch (_) { /* best-effort */ }
+  // Perguntas (total)
+  try {
+    const q = await ml.get(`/questions/search?item=${mlId}&limit=0`, storeId);
+    if (q?.total != null) out.perguntas = num(q.total);
+  } catch (_) { /* best-effort */ }
+  return out;
+}
+
+module.exports = { snapshotOne, snapshotProduct, snapshotAll, pickMlStoreId, getAdDataFromMl };

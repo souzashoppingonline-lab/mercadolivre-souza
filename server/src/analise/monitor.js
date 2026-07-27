@@ -5,8 +5,31 @@
 // .claude/analise-produtos.md.
 const pool = require('../db/pool');
 const ml = require('../mlClient');
+const { extractMercadoLivreData } = require('../extractors/mercadolivre');
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
+
+// Último recurso quando a API bloqueia (403): lê a PÁGINA PÚBLICA do anúncio
+// (sem token) e extrai preço/título/fotos do JSON-LD, igual a extensão faz.
+// Best-effort — o ML pode devolver uma página de desafio pra IP de servidor.
+async function scrapePermalink(link) {
+  const fetch = require('node-fetch');
+  const r = await fetch(link, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      'Accept-Language': 'pt-BR,pt;q=0.9',
+    },
+    redirect: 'follow',
+  });
+  if (!r.ok) throw new Error(`página respondeu HTTP ${r.status}`);
+  const html = await r.text();
+  const jsonLd = [...html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((m) => { try { return JSON.parse(m[1]); } catch (_) { return null; } })
+    .filter(Boolean).flat();
+  const pageText = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 20000);
+  const { extracted } = extractMercadoLivreData({ url: link, pageText, jsonLd });
+  return extracted;
+}
 
 // Escolhe uma loja ML com token OAuth pra consultar itens de terceiros (a
 // consulta é de dados públicos; qualquer token válido serve). ML tirou o acesso
@@ -29,21 +52,35 @@ async function distinctMlIds(productId) {
   return rows.map((r) => r.ml_id);
 }
 
-// Busca o item com FALLBACK: o ML costuma devolver 403 access_denied em
-// /items/{MLB} de concorrente pra este app; o multiget (/items?ids=) às vezes
-// passa com um subconjunto de atributos. Se ambos falharem, propaga o erro.
-async function fetchItem(mlId, storeId) {
-  try {
-    const it = await ml.getItem(mlId, storeId);
-    if (it && it.id) return it;
-  } catch (e) {
-    if (!String(e.message).includes('403')) throw e;
-  }
-  const attrs = 'id,title,price,original_price,available_quantity,sold_quantity,status,listing_type_id,shipping,pictures,permalink,seller_id,health,catalog_listing';
-  const arr = await ml.get(`/items?ids=${encodeURIComponent(mlId)}&attributes=${attrs}`, storeId);
-  const body = Array.isArray(arr) ? arr[0]?.body : null;
-  if (!body || !body.id) throw new Error(`ML bloqueou a leitura de ${mlId} (403 access_denied) — item único e multiget negados`);
+// GET público SEM Authorization — item de concorrente costuma dar 403
+// access_denied quando mandamos o Bearer de OUTRA conta; sem o header o ML
+// devolve o JSON público. É a tentativa mais promissora contra o 403.
+async function fetchItemNoAuth(mlId) {
+  const fetch = require('node-fetch');
+  const r = await fetch(`https://api.mercadolibre.com/items/${encodeURIComponent(mlId)}`,
+    { headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' } });
+  if (!r.ok) throw new Error(`ML API (sem auth) /items/${mlId} -> HTTP ${r.status}`);
+  const body = await r.json();
+  if (!body || !body.id) throw new Error('item vazio (sem auth)');
   return body;
+}
+
+// Busca o item tentando, em ordem: 1) autenticado (item único), 2) autenticado
+// multiget, 3) SEM auth (dados públicos — o Bearer de outra conta é o que dá 403).
+async function fetchItem(mlId, storeId) {
+  const attrs = 'id,title,price,original_price,available_quantity,sold_quantity,status,listing_type_id,shipping,pictures,permalink,seller_id,health,catalog_listing';
+  if (storeId) {
+    try {
+      const it = await ml.getItem(mlId, storeId);
+      if (it && it.id) return it;
+    } catch (e) { if (!String(e.message).includes('403')) throw e; }
+    try {
+      const arr = await ml.get(`/items?ids=${encodeURIComponent(mlId)}&attributes=${attrs}`, storeId);
+      const body = Array.isArray(arr) ? arr[0]?.body : null;
+      if (body && body.id) return body;
+    } catch (e) { if (!String(e.message).includes('403')) throw e; }
+  }
+  return await fetchItemNoAuth(mlId); // público, sem token
 }
 
 // Grava/atualiza o snapshot do dia (upsert) com os campos fornecidos. COALESCE
@@ -140,8 +177,29 @@ async function snapshotAll() {
 // GET completo de 1 MLB → campos do card (título, preço, fotos, vendedor,
 // reputação, cidade/estado, nota, nº de comentários/perguntas, FULL/FLEX).
 // item é obrigatório; usuário/reviews/perguntas são best-effort (não quebram).
-async function getAdDataFromMl(mlId, storeId) {
-  const item = await fetchItem(mlId, storeId); // usa multiget como fallback do 403
+async function getAdDataFromMl(mlId, storeId, link) {
+  let item;
+  try {
+    item = await fetchItem(mlId, storeId); // autenticado → multiget → sem auth
+  } catch (e) {
+    // API bloqueada (403): tenta a página pública pelo link (preço/título/fotos).
+    if (link) {
+      const sc = await scrapePermalink(link);
+      const promo = num(sc.price?.promotion), normal = num(sc.price?.normal);
+      return {
+        ml_id: mlId, link,
+        titulo: sc.title || null,
+        preco: promo != null ? promo : normal,
+        preco_original: (promo != null && normal != null && promo !== normal) ? normal : null,
+        nota: sc.rating?.nota ?? null,
+        comentarios: sc.rating?.opinioes ?? null,
+        vendas: sc.salesCount?.texto || null,
+        fotos: sc.images?.principal ? [sc.images.principal, ...(sc.images.secundarias || [])].filter(Boolean) : null,
+        _source: 'pagina',
+      };
+    }
+    throw e;
+  }
   const ship = item.shipping || {};
   const fotos = Array.isArray(item.pictures)
     ? item.pictures.map((p) => p.secure_url || p.url).filter(Boolean) : null;

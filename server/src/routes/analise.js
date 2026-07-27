@@ -211,14 +211,13 @@ router.post('/anuncios/:adId/editar', async (req, res) => {
 // COALESCE preserva o que foi preenchido à mão quando o ML devolve null.
 router.post('/anuncios/:adId/atualizar-ml', async (req, res) => {
   try {
-    const { rows } = await pool.query(`SELECT id, ml_id FROM analise_product_ads WHERE id=$1`, [req.params.adId]);
+    const { rows } = await pool.query(`SELECT id, ml_id, link FROM analise_product_ads WHERE id=$1`, [req.params.adId]);
     if (!rows.length) return res.status(404).json({ error: 'anúncio não encontrado' });
     const mlId = rows[0].ml_id;
     if (!mlId) return res.status(400).json({ error: 'anúncio sem MLB — preencha o link ou o MLB primeiro' });
     const storeId = await monitor.pickMlStoreId();
-    if (!storeId) return res.status(503).json({ error: 'nenhuma loja ML conectada para consultar a API' });
 
-    const d = await monitor.getAdDataFromMl(mlId, storeId);
+    const d = await monitor.getAdDataFromMl(mlId, storeId, rows[0].link);
     const { rows: upd } = await pool.query(
       `UPDATE analise_product_ads SET
          link=COALESCE($2,link), titulo=COALESCE($3,titulo), preco=COALESCE($4,preco),
@@ -231,7 +230,10 @@ router.post('/anuncios/:adId/atualizar-ml', async (req, res) => {
       [req.params.adId, d.link, d.titulo, d.preco, d.preco_original, d.vendas, d.full, d.flex,
        d.fotos ? JSON.stringify(d.fotos) : null, d.vendedor, d.reputacao, d.cidade, d.estado, d.nota, d.comentarios, d.perguntas]);
 
-    try { await monitor.snapshotOne(mlId, storeId); } catch (_) { /* snapshot best-effort */ }
+    // Grava o preço obtido no histórico (funciona mesmo se veio da página).
+    try { await monitor.recordSnapshot(mlId, { preco: d.preco, preco_original: d.preco_original }); } catch (_) { /* best-effort */ }
+    // Se a API deixar, enriquece com estoque/visitas/status.
+    if (storeId) { try { await monitor.snapshotOne(mlId, storeId); } catch (_) { /* best-effort */ } }
 
     const ad = mapAd(upd[0]);
     const { rows: snaps } = await pool.query(

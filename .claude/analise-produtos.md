@@ -167,6 +167,10 @@ desde que informou`, `est_analises = restante/custo médio` e `est_dias = restan
 
 ## Pendências
 
-- Enriquecer o extrator: `reputacao`, `full`/`flex`, `cidade`/`estado` ainda não
-  vêm do `pageText` — o operador completa à mão (editar card). Fase futura.
+- **Feito (extensão turbinada):** o extrator agora tira do `pageText` `reputation`
+  (MercadoLíder + nível), `shipping` (FULL/FLEX), `seller` (melhorado) e `location`
+  (cidade/estado, best-effort); a rota `/extension/anuncio` mapeia tudo no card. A
+  extensão é o **motor de monitoramento** — o servidor não lê concorrente (ML bloqueia
+  API 403 com/sem token + entrega página sem preço ao IP do servidor); só a extensão,
+  no navegador real, pega preço e campos. Cada coleta grava snapshot de preço.
 - Fase 2 (inteligência de preço/mapa/simulador) e os outros 6 agentes de IA da Fase 3.

@@ -2729,8 +2729,18 @@ async function runMpReports() {
   finally { scheduleAt(5, 40, runMpReports, 'mp-reports'); }
 }
 
+// Monitoramento de concorrentes (Análise de Produtos): snapshot diário de cada
+// MLB coletado. Ver server/src/analise/monitor.js e .claude/analise-produtos.md.
+const analiseMonitor = require('./analise/monitor');
+async function syncMonitorAnalise() {
+  try { await recordSync('sync-monitor-analise', '45 5 * * *', () => analiseMonitor.snapshotAll()); }
+  catch (e) { console.error('[sync-monitor-analise] erro:', e.message); }
+  finally { scheduleAt(5, 45, syncMonitorAnalise, 'sync-monitor-analise'); }
+}
+
 scheduleAt(1,  0,  syncScores,   'sync-scores');
 scheduleAt(1, 30, syncParentItems, 'sync-parent-items');
+scheduleAt(5, 45,  syncMonitorAnalise, 'sync-monitor-analise');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');

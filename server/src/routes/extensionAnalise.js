@@ -42,6 +42,7 @@ router.post('/anuncio', async (req, res) => {
       const m = String(b.rawData.url || '').match(/MLB-?(\d+)/i);
       payload = {
         ml_id: m ? ('MLB' + m[1]) : null,
+        link: b.rawData.url || null,
         titulo: extracted.title || null,
         preco, preco_original,
         nota: extracted.rating && extracted.rating.nota != null ? extracted.rating.nota : null,

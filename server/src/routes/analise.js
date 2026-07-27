@@ -8,6 +8,7 @@ const wsHub = require('../ws/hub');
 const { num, mapAd, adValues, upsertAd } = require('../analise/ads');
 const llm = require('../ai/llm');
 const { analisarNucleo, gerarCriativos } = require('../ai/analiseAgents');
+const monitor = require('../analise/monitor');
 
 const router = express.Router();
 
@@ -36,7 +37,23 @@ router.get('/produtos/:id', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'produto não encontrado' });
     const { rows: anuncios } = await pool.query(
       `SELECT * FROM analise_product_ads WHERE product_id=$1 ORDER BY created_at DESC`, [req.params.id]);
-    res.json({ produto: rows[0], anuncios: anuncios.map(mapAd), ativo_id: await getAtivoId() });
+    const mapped = anuncios.map(mapAd);
+    // Enriquece cada anúncio com o histórico de monitoramento (snapshots do MLB).
+    const mlIds = mapped.map((a) => a.ml_id).filter(Boolean);
+    if (mlIds.length) {
+      const { rows: snaps } = await pool.query(
+        `SELECT ml_id, snap_date, preco, preco_original, status, available_quantity,
+                sold_quantity, sold_delta, visits_day
+           FROM analise_monitor_snapshots
+          WHERE ml_id = ANY($1) ORDER BY snap_date ASC`, [mlIds]);
+      const byId = {};
+      for (const s of snaps) (byId[s.ml_id] = byId[s.ml_id] || []).push(s);
+      for (const a of mapped) {
+        const h = a.ml_id && byId[a.ml_id];
+        if (h && h.length) a.monitor = { historico: h, ultimo: h[h.length - 1], count: h.length };
+      }
+    }
+    res.json({ produto: rows[0], anuncios: mapped, ativo_id: await getAtivoId() });
   } catch (e) { console.error('[api/analise] GET /produtos/:id', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -115,6 +132,19 @@ router.post('/produtos/:id/analisar', async (req, res) => {
   }
 });
 
+// POST /api/analise/produtos/:id/monitorar-agora — consulta a API do ML AGORA
+// pra cada MLB deste produto e grava o snapshot do dia (preço, estoque, vendas,
+// visitas). O job diário faz isso sozinho; esta rota é o "atualizar já".
+router.post('/produtos/:id/monitorar-agora', async (req, res) => {
+  try {
+    const r = await monitor.snapshotProduct(req.params.id);
+    res.json({ ok: true, ...r });
+  } catch (e) {
+    console.error('[api/analise] monitorar-agora', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/analise/produtos/:id/criativos — gera 7 briefs de imagem (JSON) que
 // quebram objeções dos comentários, pro usuário colar no ChatGPT. On-demand
 // (mais caro que a análise) — botão separado. Ver .claude/analise-produtos.md.
@@ -162,11 +192,13 @@ router.post('/anuncios/:adId/editar', async (req, res) => {
          vendedor=$9, cidade=$10, estado=$11, reputacao=$12, is_full=$13, is_flex=$14,
          fotos=COALESCE($15, fotos), observacoes=$16, comentarios_texto=$17, comentarios_auto=$18,
          vendas_7d=$19, preco_medio_7d=$20, vendas_15d=$21, preco_medio_15d=$22,
-         vendas_21d=$23, preco_medio_21d=$24, vendas_30d=$25, preco_medio_30d=$26
+         vendas_21d=$23, preco_medio_21d=$24, vendas_30d=$25, preco_medio_30d=$26,
+         link=$27, ml_id=COALESCE($28, ml_id)
        WHERE id=$1 RETURNING *`,
       [req.params.adId, v.titulo, v.preco, v.preco_original, v.nota, v.vendas, v.perguntas, v.comentarios,
        v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.observacoes, v.comentarios_texto, v.comentarios_auto,
-       v.vendas_7d, v.preco_medio_7d, v.vendas_15d, v.preco_medio_15d, v.vendas_21d, v.preco_medio_21d, v.vendas_30d, v.preco_medio_30d]
+       v.vendas_7d, v.preco_medio_7d, v.vendas_15d, v.preco_medio_15d, v.vendas_21d, v.preco_medio_21d, v.vendas_30d, v.preco_medio_30d,
+       v.link, v.ml_id]
     );
     if (!rows.length) return res.status(404).json({ error: 'anúncio não encontrado' });
     res.json(mapAd(rows[0]));

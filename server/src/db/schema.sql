@@ -749,9 +749,20 @@ CREATE TABLE IF NOT EXISTS analise_product_ads (
   observacoes TEXT, comentarios_texto TEXT, comentarios_auto TEXT,
   vendas_7d INT, preco_medio_7d NUMERIC, vendas_15d INT, preco_medio_15d NUMERIC,
   vendas_21d INT, preco_medio_21d NUMERIC, vendas_30d INT, preco_medio_30d NUMERIC,
+  monitorar BOOLEAN DEFAULT true, link TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (product_id, ml_id)
 );
+CREATE TABLE IF NOT EXISTS analise_monitor_snapshots (
+  id BIGSERIAL PRIMARY KEY,
+  ml_id TEXT NOT NULL, snap_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  preco NUMERIC, preco_original NUMERIC, status TEXT,
+  available_quantity INT, sold_quantity INT, sold_delta INT, visits_day INT,
+  listing_type TEXT, logistic_type TEXT, free_shipping BOOLEAN, health NUMERIC,
+  catalog BOOLEAN, seller_id TEXT, raw JSONB, created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (ml_id, snap_date)
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_mlid_date ON analise_monitor_snapshots (ml_id, snap_date);
 CREATE INDEX IF NOT EXISTS idx_analise_ads_product ON analise_product_ads(product_id);
 CREATE TABLE IF NOT EXISTS analise_active_collection (
   id INT PRIMARY KEY DEFAULT 1,

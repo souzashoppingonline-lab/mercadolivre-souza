@@ -39,6 +39,22 @@
     .ap-card .vreais .jan { color:var(--text-muted);font-weight:600; }
     .vreais-box { border:1px solid var(--border,#3a3b40);border-radius:10px;padding:12px;margin-top:4px;background:rgba(39,174,96,.05); }
     .vreais-hd { font-size:.84rem;font-weight:800;display:flex;align-items:center;gap:7px;margin-bottom:2px; }
+    /* Monitoramento no card */
+    .ap-card .mlbline { display:flex;align-items:center;gap:8px;font-size:.72rem; }
+    .ap-card .mlbline .mlb { font-family:monospace;background:var(--bg-card,#1c1d21);border:1px solid var(--border,#3a3b40);border-radius:5px;padding:2px 6px;color:var(--text-muted); }
+    .ap-card .mlbline a { color:#4a9eff;text-decoration:none;font-weight:600; }
+    .ap-card .mon-empty { font-size:.72rem;color:var(--text-muted);font-style:italic; }
+    .ap-card .mon { background:var(--bg-card,#1c1d21);border:1px solid var(--border,#3a3b40);border-radius:8px;padding:8px; }
+    .ap-card .mon-top { display:flex;align-items:center;justify-content:space-between;gap:8px; }
+    .ap-card .mon-top small { font-size:.62rem;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted); }
+    .ap-card .mon-top .pv { font-size:1.05rem;font-weight:800;color:var(--green,#27ae60); }
+    .mon-delta { font-size:.72rem;font-weight:800;margin-left:3px; }
+    .mon-delta.up { color:#22c55e; } .mon-delta.down { color:#ef4444; } .mon-delta.flat { color:var(--text-muted); }
+    .spark { flex-shrink:0; }
+    .ap-card .mon-stats { display:flex;gap:10px;flex-wrap:wrap;font-size:.72rem;color:var(--text-muted);margin:6px 0; }
+    .ap-card .mon-tbl { width:100%;border-collapse:collapse;font-size:.68rem; }
+    .ap-card .mon-tbl th { text-align:left;color:var(--text-muted);font-weight:600;padding:2px 4px;border-bottom:1px solid var(--border,#3a3b40); }
+    .ap-card .mon-tbl td { padding:2px 4px;border-bottom:1px solid rgba(255,255,255,.04); }
     /* Painel IA */
     #iaPanel { animation:apIn .35s ease; }
     .ia-head { display:flex;gap:18px;align-items:center;background:linear-gradient(135deg,rgba(99,102,241,.10),rgba(34,197,94,.06));border:1px solid var(--border,#3a3b40);border-radius:14px;padding:16px 18px;flex-wrap:wrap; }
@@ -198,6 +214,7 @@
             </div>
             <div class="ap-detail-actions">
               <button class="ap-btn ghost" id="btnColeta" onclick="toggleColeta()"><i class="fas fa-satellite-dish"></i> Ativar coleta</button>
+              <button class="ap-btn ghost" id="btnMonitorar" onclick="monitorarAgora()"><i class="fas fa-satellite"></i> Monitorar agora</button>
               <button class="ap-btn green" id="btnAnalisar" onclick="analisar()"><i class="fas fa-brain"></i> Analisar Produto</button>
             </div>
           </div>
@@ -255,6 +272,10 @@
     <h3><span id="modalAnuncioTitulo">Adicionar concorrente</span><span class="x" onclick="fecharModalAnuncio()"><i class="fas fa-times"></i></span></h3>
     <input type="hidden" id="aId">
     <div class="ap-field"><label>Título do anúncio</label><input id="aTitulo" placeholder="Ração Quatree Supreme..."></div>
+    <div class="ap-grid2">
+      <div class="ap-field"><label>Link do anúncio (URL)</label><input id="aLink" placeholder="https://produto.mercadolivre.com.br/MLB-..."></div>
+      <div class="ap-field"><label>MLB (código do anúncio) — habilita o monitoramento</label><input id="aMlb" placeholder="MLB1234567890"></div>
+    </div>
     <div class="ap-grid2">
       <div class="ap-field"><label>Preço (R$)</label><input id="aPreco" type="number" step="0.01" placeholder="68.90"></div>
       <div class="ap-field"><label>Preço original (R$)</label><input id="aPrecoOrig" type="number" step="0.01" placeholder="79.90"></div>
@@ -492,10 +513,56 @@ function cardHtml(a) {
       <div class="price">${BRL(a.preco)}</div>
       <div class="badges">${full}${flex}${nota}${perg}${com}${comAuto}${comTxt}${rep}</div>
       ${vreais}
+      ${monitorHtml(a)}
       ${obs}
     </div>
     <div class="foot"><span><i class="fas fa-shopping-cart"></i> ${a.vendas != null && a.vendas !== '' ? esc(a.vendas) : '—'}</span><span><i class="fas fa-map-marker-alt"></i> ${esc(local)}</span></div>
   </div>`;
+}
+// mini-gráfico SVG de preço (linha) — sem dependência externa
+function sparkline(vals, w = 130, h = 30) {
+  const nums = (vals || []).filter((v) => v != null).map(Number);
+  if (nums.length < 2) return '';
+  const min = Math.min(...nums), max = Math.max(...nums), rng = (max - min) || 1, step = w / (nums.length - 1);
+  const pts = nums.map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / rng) * (h - 4) - 2).toFixed(1)}`).join(' ');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#4a9eff" stroke-width="2" stroke-linejoin="round"/></svg>`;
+}
+const fmtD = (d) => { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? '—' : t.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }); };
+// Bloco de monitoramento dentro do card (MLB/link + preço monitorado + tabela)
+function monitorHtml(a) {
+  const idLine = (a.ml_id || a.link)
+    ? `<div class="mlbline">${a.ml_id ? `<span class="mlb">${esc(a.ml_id)}</span>` : ''}${a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i> abrir</a>` : ''}</div>`
+    : '';
+  const m = a.monitor;
+  if (!m || !m.historico || !m.historico.length) {
+    return idLine + (a.ml_id ? `<div class="mon-empty">Sem histórico ainda — clique em <b>Monitorar agora</b>.</div>` : '');
+  }
+  const h = m.historico, last = h[h.length - 1], prev = h.length > 1 ? h[h.length - 2] : null;
+  const precos = h.map((s) => (s.preco != null ? Number(s.preco) : null));
+  const now = last.preco != null ? Number(last.preco) : null;
+  let delta = '';
+  if (prev && prev.preco != null && now != null) {
+    const d = now - Number(prev.preco);
+    delta = d === 0 ? '<span class="mon-delta flat">=</span>'
+      : `<span class="mon-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${BRL(Math.abs(d))}</span>`;
+  }
+  const linhas = h.slice(-6).reverse().map((s) =>
+    `<tr><td>${fmtD(s.snap_date)}</td><td>${s.preco != null ? BRL(s.preco) : '—'}</td><td>${s.sold_delta != null ? '+' + s.sold_delta : '—'}</td><td>${s.visits_day != null ? s.visits_day : '—'}</td></tr>`).join('');
+  const stCol = last.status === 'active' ? '🟢' : last.status === 'paused' ? '⏸️' : '⚪';
+  return idLine + `
+    <div class="mon">
+      <div class="mon-top">
+        <div><small>Preço monitorado</small><div class="pv">${now != null ? BRL(now) : '—'} ${delta}</div></div>
+        ${sparkline(precos)}
+      </div>
+      <div class="mon-stats">
+        <span title="Estoque"><i class="fas fa-box"></i> ${last.available_quantity != null ? last.available_quantity : '—'}</span>
+        <span title="Vendas no dia (Δ)"><i class="fas fa-cart-shopping"></i> ${last.sold_delta != null ? '+' + last.sold_delta : '—'}</span>
+        <span title="Visitas no dia"><i class="fas fa-eye"></i> ${last.visits_day != null ? last.visits_day : '—'}</span>
+        <span title="Status">${stCol}</span>
+      </div>
+      <table class="mon-tbl"><thead><tr><th>Data</th><th>Preço</th><th>Vend.</th><th>Visit.</th></tr></thead><tbody>${linhas}</tbody></table>
+    </div>`;
 }
 
 // ── Coleta (ativo) ─────────────────────────────────────────────────────────
@@ -541,6 +608,27 @@ async function analisar() {
     toast('Falha ao analisar: ' + e.message);
   } finally {
     btn.disabled = false; btn.innerHTML = '<i class="fas fa-brain"></i> Analisar Produto';
+  }
+}
+
+// ── Monitoramento: consulta a API do ML agora e recarrega os cards ─────────
+async function monitorarAgora() {
+  if (!CURRENT) return;
+  const btn = document.getElementById('btnMonitorar'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Consultando ML...';
+  try {
+    const r = await fetch(new URL(`${DB.BASE}/analise/produtos/${CURRENT.id}/monitorar-agora`, location.origin).toString(),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { toast('Erro: ' + (data.error || ('HTTP ' + r.status))); return; }
+    if (!data.total) { toast('Nenhum concorrente com MLB pra monitorar. Preencha o MLB no card.'); return; }
+    // recarrega o produto pra puxar os snapshots novos e redesenhar os cards
+    const res = await DB.getProdutoAnalise(CURRENT.id);
+    if (res && !res.error) renderCards(res.anuncios || []);
+    toast(`Monitorado: ${data.ok} ok${data.fail ? ', ' + data.fail + ' falhas' : ''}.`);
+  } catch (e) {
+    toast('Falha ao monitorar: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-satellite"></i> Monitorar agora';
   }
 }
 
@@ -653,7 +741,8 @@ WS.on('_connected', () => { if (document.getElementById('viewList').style.displa
 function setAnuncioForm(a) {
   a = a || {};
   const set = (id, v) => { document.getElementById(id).value = (v ?? '') === null ? '' : (v ?? ''); };
-  set('aId', a.id); set('aTitulo', a.titulo); set('aPreco', a.preco); set('aPrecoOrig', a.preco_original);
+  set('aId', a.id); set('aTitulo', a.titulo); set('aLink', a.link); set('aMlb', a.ml_id);
+  set('aPreco', a.preco); set('aPrecoOrig', a.preco_original);
   set('aNota', a.nota); set('aVendas', a.vendas); set('aPerguntas', a.perguntas); set('aComentarios', a.comentarios);
   set('aVendedor', a.vendedor); set('aCidade', a.cidade); set('aEstado', a.estado); set('aReputacao', a.reputacao);
   document.getElementById('aFull').value = a.full === true ? 'true' : (a.full === false ? 'false' : '');
@@ -682,7 +771,8 @@ async function salvarAnuncio() {
   if (!CURRENT) return;
   const g = (id) => { const v = document.getElementById(id).value.trim(); return v === '' ? null : v; };
   const data = {
-    titulo: g('aTitulo'), preco: g('aPreco'), preco_original: g('aPrecoOrig'), nota: g('aNota'),
+    titulo: g('aTitulo'), link: g('aLink'), ml_id: g('aMlb'),
+    preco: g('aPreco'), preco_original: g('aPrecoOrig'), nota: g('aNota'),
     vendas: g('aVendas'), perguntas: g('aPerguntas'), comentarios: g('aComentarios'),
     vendedor: g('aVendedor'), cidade: g('aCidade'), estado: g('aEstado'), reputacao: g('aReputacao'),
     full: g('aFull'), flex: g('aFlex'), foto: g('aFoto'), observacoes: g('aObs'),

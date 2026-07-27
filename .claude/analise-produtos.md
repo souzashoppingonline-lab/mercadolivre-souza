@@ -126,6 +126,27 @@ no painel) porque a saída é grande (`max_tokens` 4000) — mantém a análise 
 tela cada JSON vem num bloco com botão **Copiar** pro usuário colar no ChatGPT (junto
 das fotos do produto) e gerar a imagem.
 
+## Monitoramento de concorrentes (v58)
+
+Snapshot **diário** de cada MLB coletado, via API do ML (`server/src/analise/monitor.js`).
+O **preço** é o foco; também guarda estoque, `sold_quantity` (+ `sold_delta` = vendas
+do dia), visitas/dia, tipo de anúncio, frete e status. Tabela `analise_monitor_snapshots`
+(1 linha por MLB por dia, UNIQUE `ml_id+snap_date`). O anúncio ganhou `link` e `monitorar`
+(v58) — MLB e link viraram **editáveis à mão** (permite monitorar concorrentes manuais);
+o MLB é extraído do link automaticamente se faltar (`mlbFrom` em `ads.js`).
+
+- **Token**: usa o `access_token` de qualquer loja ML conectada (`pickMlStoreId`) — o ML
+  exige token mesmo pra dados públicos.
+- **Job diário**: `sync-monitor-analise` no `worker.js` (05:45), roda `snapshotAll()`.
+- **On-demand**: botão "Monitorar agora" no detalhe → `POST /produtos/:id/monitorar-agora`
+  (snapshot na hora de todos os MLBs do produto).
+- **Na tela**: tudo **dentro do card** do concorrente — MLB + link, preço monitorado atual
+  com Δ vs. dia anterior, mini-gráfico SVG de preço, estoque/vendas-dia/visitas/status e
+  uma **tabela de preços** (últimos snapshots). O GET `/produtos/:id` já devolve
+  `anuncio.monitor = {historico, ultimo, count}`.
+- **Limite honesto** (ver known-bugs/decisions): `sold_quantity` às vezes vem arredondado/
+  oculto; nesse caso o Δ estoque e as visitas indicam a demanda.
+
 ## Gastos de IA (v56)
 
 Toda chamada de IA registra tokens+custo em `ai_usage_log` (`llm.js` lê `usage` da

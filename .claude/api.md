@@ -303,6 +303,9 @@ Ver `.claude/analise-produtos.md`. `routes/analise.js`:
 - `POST /api/analise/produtos/:id/criativos` → gera **7 briefs de imagem (JSON)** que quebram objeções dos comentários (pro ChatGPT). Grava `ai_creativos`/`ai_creativos_at`, devolve `{criativos:[7]}`. On-demand (mais caro). `503` sem chave.
 - `GET /api/analise/ia/gastos` → gasto real da IA (hoje/mês/total/média por análise, via `ai_usage_log` = tokens×preço) + estimativa de saldo (`restante`/`est_analises`/`est_dias`) a partir do saldo informado.
 - `POST /api/analise/ia/saldo` `{saldo_usd}` → registra o saldo atual (a Anthropic não expõe saldo pela API; base da estimativa).
+- `POST /api/analise/produtos/:id/monitorar-agora` → snapshot AGORA de cada MLB do produto (preço/estoque/vendas/visitas via API do ML) → `{ok, fail, total}`. O job diário `sync-monitor-analise` faz isso sozinho. `GET /produtos/:id` já devolve `anuncio.monitor = {historico, ultimo, count}`.
+
+Anúncios (`analise_product_ads`) agora têm `link` e `ml_id` (MLB) editáveis — o `POST /anuncios/:adId/editar` e o add manual aceitam ambos; o MLB é extraído do link se faltar.
 - WS `analise_anuncio` `{produto_id, anuncio}` — card ao vivo quando a extensão salva (publicado no passo da extensão).
 
 Extensão (público, a implementar): `GET /extension/produto-ativo`, `POST /extension/anuncio`.

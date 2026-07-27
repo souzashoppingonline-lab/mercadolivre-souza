@@ -547,3 +547,18 @@ devolve 503 com mensagem clara e nada roda. Resultado gravado em `analise_produc
 (`ai_result`/`ai_score`/`ai_analyzed_at`) — 1 análise vigente por produto (reanalisar
 sobrescreve). Se um dia entrarem os 6 agentes restantes e o custo/latência crescer,
 aí sim reavaliar mover pra fila.
+
+## Monitoramento de concorrentes — Gateway ML público-primeiro + cache
+
+`server/src/analise/monitor.js` é o **Gateway ML**: único ponto que decide a fonte do
+dado de um MLB de concorrente, nesta ordem — **cache (12h) → API pública SEM token →
+scraping da página → banco**. A tela/rota nunca sabe de onde veio; se o ML mudar as
+regras, muda-se só aqui.
+
+**Por que público-primeiro (sem Authorization):** anúncios de concorrentes retornam
+`403 access_denied` quando lidos com o Bearer da nossa conta (Unifull) — mandar o token
+de outra conta é justamente o que o ML recusa, e ainda gasta cota. O `GET` público
+(`api.mercadolibre.com/items/{id}` sem header) devolve os dados públicos. Os endpoints
+autenticados ficam só como rede de segurança. **Visitas não entram** (métrica privada
+do dono). **Cache 12h** no job diário evita rebater a rede; o botão do card força.
+Diagnóstico confirmado com a comunidade ML e validado ao vivo (403 com token, some sem).

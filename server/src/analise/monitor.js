@@ -1,8 +1,12 @@
-// Monitoramento de concorrentes — snapshot diário de cada MLB coletado, via API
-// do Mercado Livre. O PREÇO é o dado mais importante; também guardamos estoque,
-// vendas acumuladas (+ delta do dia), visitas, tipo de anúncio e frete.
-// Usado pelo job diário do worker e pela rota "Monitorar agora". Ver
-// .claude/analise-produtos.md.
+// Gateway ML de monitoramento de concorrentes. É o ÚNICO ponto que decide a
+// fonte do dado do MLB, nesta ordem (cache → API pública SEM token → scraping da
+// página → banco). A tela nunca sabe de onde veio. Se o ML mudar as regras,
+// muda-se só aqui. O PREÇO é o dado mais importante.
+//
+// Por que público-primeiro: são anúncios de CONCORRENTES; mandar o Bearer da
+// nossa conta gera 403 access_denied e gasta cota — o GET público (sem auth)
+// devolve os dados públicos. Estoque/vendas às vezes vêm; visitas NÃO (privadas
+// do dono). Ver .claude/analise-produtos.md e known-bugs.md.
 const pool = require('../db/pool');
 const ml = require('../mlClient');
 const { extractMercadoLivreData } = require('../extractors/mercadolivre');
@@ -65,22 +69,25 @@ async function fetchItemNoAuth(mlId) {
   return body;
 }
 
-// Busca o item tentando, em ordem: 1) autenticado (item único), 2) autenticado
-// multiget, 3) SEM auth (dados públicos — o Bearer de outra conta é o que dá 403).
+// Busca o item PÚBLICO-PRIMEIRO (recomendação de arquitetura): como são anúncios
+// de CONCORRENTES, mandar o Bearer da nossa conta só gera 403 access_denied e
+// consome cota à toa. Ordem: 1) SEM token (público), 2) autenticado item único,
+// 3) autenticado multiget — os autenticados só como rede de segurança.
 async function fetchItem(mlId, storeId) {
-  const attrs = 'id,title,price,original_price,available_quantity,sold_quantity,status,listing_type_id,shipping,pictures,permalink,seller_id,health,catalog_listing';
+  try {
+    return await fetchItemNoAuth(mlId); // público, sem Authorization — o caminho certo p/ terceiros
+  } catch (_) { /* cai pros autenticados abaixo */ }
   if (storeId) {
+    const attrs = 'id,title,price,original_price,available_quantity,sold_quantity,status,listing_type_id,shipping,pictures,permalink,seller_id,health,catalog_listing';
     try {
       const it = await ml.getItem(mlId, storeId);
       if (it && it.id) return it;
     } catch (e) { if (!String(e.message).includes('403')) throw e; }
-    try {
-      const arr = await ml.get(`/items?ids=${encodeURIComponent(mlId)}&attributes=${attrs}`, storeId);
-      const body = Array.isArray(arr) ? arr[0]?.body : null;
-      if (body && body.id) return body;
-    } catch (e) { if (!String(e.message).includes('403')) throw e; }
+    const arr = await ml.get(`/items?ids=${encodeURIComponent(mlId)}&attributes=${attrs}`, storeId);
+    const body = Array.isArray(arr) ? arr[0]?.body : null;
+    if (body && body.id) return body;
   }
-  return await fetchItemNoAuth(mlId); // público, sem token
+  throw new Error(`não consegui ler ${mlId} (público e autenticado falharam)`);
 }
 
 // Grava/atualiza o snapshot do dia (upsert) com os campos fornecidos. COALESCE
@@ -125,53 +132,57 @@ async function recordSnapshot(mlId, f) {
   return { ml_id: mlId, preco: num(f.preco), sold_delta: soldDelta };
 }
 
-// Consulta 1 MLB na API do ML e grava o snapshot do dia.
+// Consulta 1 MLB (público) e grava o snapshot do dia. Visitas NÃO entram: são
+// privadas do dono do anúncio (o ML não expõe de terceiros — ver known-bugs).
 async function snapshotOne(mlId, storeId) {
   const item = await fetchItem(mlId, storeId);
   const ship = item.shipping || {};
-  let visits = null;
-  try {
-    const hoje = new Date().toISOString().slice(0, 10);
-    const v = await ml.getItemVisits(mlId, hoje, storeId);
-    visits = v?.total_visits ?? (Array.isArray(v?.results)
-      ? v.results.reduce((s, r) => s + (r.total || r.visits || 0), 0) : null);
-  } catch (_) { /* best-effort */ }
   return recordSnapshot(mlId, {
     preco: item.price, preco_original: item.original_price, status: item.status,
     available_quantity: item.available_quantity, sold_quantity: item.sold_quantity,
-    visits_day: visits, listing_type: item.listing_type_id, logistic_type: ship.logistic_type,
+    listing_type: item.listing_type_id, logistic_type: ship.logistic_type,
     free_shipping: ship.free_shipping, health: item.health, catalog: item.catalog_listing,
     seller_id: item.seller_id, raw: item,
   });
 }
 
-// Roda snapshot de vários MLBs em série, com pausa pra respeitar o rate limit.
-async function snapshotMany(mlIds, storeId) {
-  let ok = 0, fail = 0;
+// CACHE: já foi consultado nas últimas `hours`? Evita bater na rede à toa.
+async function consultadoRecente(mlId, hours) {
+  if (!hours) return false;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM analise_monitor_snapshots
+      WHERE ml_id=$1 AND created_at > now() - ($2 || ' hours')::interval LIMIT 1`,
+    [mlId, String(hours)]);
+  return rows.length > 0;
+}
+
+// Roda snapshot de vários MLBs em série, com pausa pro rate limit. `maxAgeHours`
+// pula MLBs já consultados nesse intervalo (cache — usado pelo job automático).
+async function snapshotMany(mlIds, storeId, maxAgeHours = 0) {
+  let ok = 0, fail = 0, cache = 0;
   for (const id of mlIds) {
+    if (await consultadoRecente(id, maxAgeHours)) { cache++; continue; }
     try { await snapshotOne(id, storeId); ok++; }
     catch (e) { fail++; console.error('[monitor]', id, e.message); }
-    await new Promise((r) => setTimeout(r, 800)); // pausa entre chamadas
+    await new Promise((r) => setTimeout(r, 800));
   }
-  return { ok, fail, total: mlIds.length };
+  return { ok, fail, cache, total: mlIds.length };
 }
 
-// Snapshot de todos os MLBs de UM produto (usado pela rota "Monitorar agora").
+// Snapshot de todos os MLBs de UM produto (rota "Monitorar agora" → força).
 async function snapshotProduct(productId) {
-  const storeId = await pickMlStoreId();
-  if (!storeId) throw new Error('nenhuma loja ML conectada (sem token) para consultar a API do Mercado Livre');
+  const storeId = await pickMlStoreId(); // pode ser null — o público funciona sem token
   const ids = await distinctMlIds(productId);
   if (!ids.length) return { ok: 0, fail: 0, total: 0 };
-  return snapshotMany(ids, storeId);
+  return snapshotMany(ids, storeId, 0);
 }
 
-// Snapshot de TODOS os MLBs monitorados (job diário do worker).
+// Snapshot de TODOS os MLBs monitorados (job diário) — respeita cache de 12h.
 async function snapshotAll() {
   const storeId = await pickMlStoreId();
-  if (!storeId) { console.log('[monitor] sem loja ML com token — pulando'); return { ok: 0, fail: 0, total: 0 }; }
   const ids = await distinctMlIds(null);
   console.log(`[monitor] snapshot de ${ids.length} MLBs`);
-  return snapshotMany(ids, storeId);
+  return snapshotMany(ids, storeId, 12);
 }
 
 // GET completo de 1 MLB → campos do card (título, preço, fotos, vendedor,

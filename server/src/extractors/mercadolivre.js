@@ -1,6 +1,23 @@
 // Mercado Livre extractor — interpreta dados brutos da extensão
 // Implementa os 12 pontos da especificação
 
+// Converte preço em número (ou null). Aceita "45.90" (JSON-LD, ponto decimal) e
+// "1.234,56"/"45,90" (formato BR, vírgula decimal + ponto de milhar).
+const toNum = (v) => {
+  if (v == null || v === '') return null;
+  let s = String(v).trim();
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Acha o nó "Product" no JSON-LD (fonte confiável que o ML embute na página).
+function getProductNode(jsonLd) {
+  if (!Array.isArray(jsonLd)) return null;
+  const typesOf = (n) => [].concat((n && n['@type']) || []).map(String);
+  return jsonLd.find((n) => n && (n.offers || typesOf(n).includes('Product'))) || jsonLd[0] || null;
+}
+
 const extractMercadoLivreData = (rawData) => {
   const debug = {
     titleAttempts: [],
@@ -28,18 +45,23 @@ const extractMercadoLivreData = (rawData) => {
   };
 };
 
-// 1. Título — múltiplos coletores
+// 1. Título — JSON-LD primeiro (confiável), depois <h1>, depois texto.
 function extractTitle(rawData, debug) {
+  const node = getProductNode(rawData.jsonLd);
+  // Linhas de navegação/acessibilidade que NÃO são o título do anúncio.
+  const skip = /pular para|ir para o conte|conteúdo principal|menu|entrar|cadastr|frete gr[aá]tis|mercado livre/i;
   const collectors = [
+    () => (node && node.name) || null,
     () => {
       const match = rawData.titleHtml?.match(/<h1[^>]*>([^<]+)<\/h1>/i);
       return match ? match[1].trim() : null;
     },
     () => {
-      const match = rawData.pageText?.split('\n')[0];
-      return match?.length > 10 ? match.trim() : null;
+      const line = (rawData.pageText || '').split('\n')
+        .map((s) => s.trim())
+        .find((s) => s.length > 10 && !skip.test(s));
+      return line || null;
     },
-    () => rawData.jsonLd?.[0]?.name || null,
   ];
 
   for (const collector of collectors) {
@@ -67,21 +89,33 @@ function extractPrice(rawData, debug) {
   };
 
   try {
-    // Procurar múltiplos padrões de preço em pageText
-    const allPrices = [];
-    const pricePattern = /R\$\s*(\d{1,5})[.,](\d{2})/g;
-    let match;
-    while ((match = pricePattern.exec(rawData.pageText)) !== null) {
-      allPrices.push(parseFloat(match[1] + '.' + match[2]));
+    // 1) Fonte CONFIÁVEL: JSON-LD que o ML embute (offers.price). É o preço real
+    //    do anúncio — evita pegar valor de parcela/frete do texto.
+    const node = getProductNode(rawData.jsonLd);
+    const offer = Array.isArray(node && node.offers) ? node.offers[0] : (node && node.offers);
+    if (offer) {
+      const jlNormal = toNum(offer.price != null ? offer.price : offer.highPrice);
+      const jlLow = toNum(offer.lowPrice);
+      if (jlNormal != null) prices.normal = jlNormal.toFixed(2);
+      if (jlLow != null && jlNormal != null && jlLow < jlNormal) prices.promotion = jlLow.toFixed(2);
+      debug.priceAttempts.push({ source: 'jsonLd', price: prices.normal, promotion: prices.promotion });
     }
 
-    debug.priceAttempts.push({ allPricesFound: allPrices.length, prices: allPrices });
-
-    if (allPrices.length >= 1) {
-      prices.normal = allPrices[0].toFixed(2); // Primeiro é original
-    }
-    if (allPrices.length >= 2) {
-      prices.promotion = Math.min(...allPrices).toFixed(2); // Promoção é o menor
+    // 2) Fallback: varre o texto, mas remove antes os valores de PARCELA
+    //    ("12x R$ 2,45" / "12x de R$ 2,45") pra não confundir com o preço.
+    if (prices.normal == null) {
+      const cleanText = String(rawData.pageText || '')
+        .replace(/\d+\s*x\s*(de\s*)?R\$\s*\d{1,3}(?:[.,]\d{2})?/gi, ' ');
+      const allPrices = [];
+      const pricePattern = /R\$\s*(\d{1,3}(?:\.\d{3})*|\d{1,5})[.,](\d{2})/g;
+      let match;
+      while ((match = pricePattern.exec(cleanText)) !== null) {
+        allPrices.push(toNum(match[1] + ',' + match[2]));
+      }
+      const valid = allPrices.filter((n) => n != null);
+      debug.priceAttempts.push({ source: 'pageText', allPricesFound: valid.length, prices: valid });
+      if (valid.length >= 1) prices.normal = valid[0].toFixed(2);
+      if (valid.length >= 2) prices.promotion = Math.min(...valid).toFixed(2);
     }
 
     // PIX (procurar "PIX")
@@ -129,16 +163,22 @@ function extractRating(rawData, debug) {
   };
 
   try {
-    // Procurar "X.X de 5"
-    const ratingMatch = rawData.pageText.match(/([\d.]+)\s*de\s*5/i);
-    if (ratingMatch) {
-      rating.nota = parseFloat(ratingMatch[1]);
+    // 1) JSON-LD aggregateRating (confiável)
+    const agg = getProductNode(rawData.jsonLd)?.aggregateRating;
+    if (agg) {
+      if (agg.ratingValue != null) rating.nota = toNum(agg.ratingValue);
+      const cnt = agg.reviewCount != null ? agg.reviewCount : agg.ratingCount;
+      if (cnt != null) rating.opinioes = parseInt(cnt, 10);
     }
 
-    // Procurar quantidade de opiniões
-    const opMatch = rawData.pageText.match(/\((\d+)\s*(?:opini|avalia)/i);
-    if (opMatch) {
-      rating.opinioes = parseInt(opMatch[1]);
+    // 2) Fallback pelo texto ("X.X de 5" / "(N opiniões)")
+    if (rating.nota == null) {
+      const ratingMatch = rawData.pageText.match(/([\d.]+)\s*de\s*5/i);
+      if (ratingMatch) rating.nota = parseFloat(ratingMatch[1]);
+    }
+    if (rating.opinioes == null) {
+      const opMatch = rawData.pageText.match(/\((\d+)\s*(?:opini|avalia)/i);
+      if (opMatch) rating.opinioes = parseInt(opMatch[1]);
     }
 
     debug.ratingAttempts.push({ rating });

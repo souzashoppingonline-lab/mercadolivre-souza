@@ -46,14 +46,16 @@ async function pickMlStoreId() {
   return rows[0]?.id ?? null;
 }
 
-// MLBs distintos a monitorar (só anúncios com ml_id e monitorar=true).
+// MLBs distintos a monitorar (só anúncios com ml_id e monitorar=true) + o link
+// (pro fallback de scraping quando a API bloqueia).
 async function distinctMlIds(productId) {
   const cond = productId ? 'AND product_id = $1' : '';
   const { rows } = await pool.query(
-    `SELECT DISTINCT ml_id FROM analise_product_ads
-      WHERE ml_id IS NOT NULL AND (monitorar IS NULL OR monitorar = true) ${cond}`,
+    `SELECT DISTINCT ON (ml_id) ml_id, link FROM analise_product_ads
+      WHERE ml_id IS NOT NULL AND (monitorar IS NULL OR monitorar = true) ${cond}
+      ORDER BY ml_id, link NULLS LAST`,
     productId ? [productId] : []);
-  return rows.map((r) => r.ml_id);
+  return rows; // [{ ml_id, link }]
 }
 
 // GET público SEM Authorization — item de concorrente costuma dar 403
@@ -69,25 +71,12 @@ async function fetchItemNoAuth(mlId) {
   return body;
 }
 
-// Busca o item PÚBLICO-PRIMEIRO (recomendação de arquitetura): como são anúncios
-// de CONCORRENTES, mandar o Bearer da nossa conta só gera 403 access_denied e
-// consome cota à toa. Ordem: 1) SEM token (público), 2) autenticado item único,
-// 3) autenticado multiget — os autenticados só como rede de segurança.
-async function fetchItem(mlId, storeId) {
-  try {
-    return await fetchItemNoAuth(mlId); // público, sem Authorization — o caminho certo p/ terceiros
-  } catch (_) { /* cai pros autenticados abaixo */ }
-  if (storeId) {
-    const attrs = 'id,title,price,original_price,available_quantity,sold_quantity,status,listing_type_id,shipping,pictures,permalink,seller_id,health,catalog_listing';
-    try {
-      const it = await ml.getItem(mlId, storeId);
-      if (it && it.id) return it;
-    } catch (e) { if (!String(e.message).includes('403')) throw e; }
-    const arr = await ml.get(`/items?ids=${encodeURIComponent(mlId)}&attributes=${attrs}`, storeId);
-    const body = Array.isArray(arr) ? arr[0]?.body : null;
-    if (body && body.id) return body;
-  }
-  throw new Error(`não consegui ler ${mlId} (público e autenticado falharam)`);
+// Lê o item de CONCORRENTE apenas pelo endpoint PÚBLICO (anônimo, sem o nosso
+// Bearer). NUNCA usa o token do dashboard: além de dar 403 access_denied em item
+// de terceiro, consumiria a cota do ML da operação principal e causa 429. Se o
+// público falhar (o ML tem bloqueado até o anônimo), o chamador cai no scraping.
+async function fetchItem(mlId) {
+  return fetchItemNoAuth(mlId);
 }
 
 // Grava/atualiza o snapshot do dia (upsert) com os campos fornecidos. COALESCE
@@ -132,10 +121,20 @@ async function recordSnapshot(mlId, f) {
   return { ml_id: mlId, preco: num(f.preco), sold_delta: soldDelta };
 }
 
-// Consulta 1 MLB (público) e grava o snapshot do dia. Visitas NÃO entram: são
-// privadas do dono do anúncio (o ML não expõe de terceiros — ver known-bugs).
-async function snapshotOne(mlId, storeId) {
-  const item = await fetchItem(mlId, storeId);
+// Consulta 1 MLB (público → scraping) e grava o snapshot do dia. Visitas NÃO
+// entram: são privadas do dono (o ML não expõe de terceiros — ver known-bugs).
+async function snapshotOne(mlId, storeId, link) {
+  let item;
+  try { item = await fetchItem(mlId); }
+  catch (e) {
+    if (!link) throw e;
+    const sc = await scrapePermalink(link); // API bloqueou → página pública
+    const promo = num(sc.price?.promotion), normal = num(sc.price?.normal);
+    return recordSnapshot(mlId, {
+      preco: promo != null ? promo : normal,
+      preco_original: (promo != null && normal != null && promo !== normal) ? normal : null,
+    });
+  }
   const ship = item.shipping || {};
   return recordSnapshot(mlId, {
     preco: item.price, preco_original: item.original_price, status: item.status,
@@ -156,17 +155,17 @@ async function consultadoRecente(mlId, hours) {
   return rows.length > 0;
 }
 
-// Roda snapshot de vários MLBs em série, com pausa pro rate limit. `maxAgeHours`
-// pula MLBs já consultados nesse intervalo (cache — usado pelo job automático).
-async function snapshotMany(mlIds, storeId, maxAgeHours = 0) {
+// Roda snapshot de vários MLBs (rows {ml_id, link}) em série, com pausa pro rate
+// limit. `maxAgeHours` pula MLBs já consultados nesse intervalo (cache).
+async function snapshotMany(rows, storeId, maxAgeHours = 0) {
   let ok = 0, fail = 0, cache = 0;
-  for (const id of mlIds) {
-    if (await consultadoRecente(id, maxAgeHours)) { cache++; continue; }
-    try { await snapshotOne(id, storeId); ok++; }
-    catch (e) { fail++; console.error('[monitor]', id, e.message); }
-    await new Promise((r) => setTimeout(r, 800));
+  for (const r of rows) {
+    if (await consultadoRecente(r.ml_id, maxAgeHours)) { cache++; continue; }
+    try { await snapshotOne(r.ml_id, storeId, r.link); ok++; }
+    catch (e) { fail++; console.error('[monitor]', r.ml_id, e.message); }
+    await new Promise((r2) => setTimeout(r2, 800));
   }
-  return { ok, fail, cache, total: mlIds.length };
+  return { ok, fail, cache, total: rows.length };
 }
 
 // Snapshot de todos os MLBs de UM produto (rota "Monitorar agora" → força).
@@ -191,7 +190,7 @@ async function snapshotAll() {
 async function getAdDataFromMl(mlId, storeId, link) {
   let item;
   try {
-    item = await fetchItem(mlId, storeId); // autenticado → multiget → sem auth
+    item = await fetchItem(mlId); // público (anônimo); se falhar cai no scraping
   } catch (e) {
     // API bloqueada (403): tenta a página pública pelo link (preço/título/fotos).
     if (link) {

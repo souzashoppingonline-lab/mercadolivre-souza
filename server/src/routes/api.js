@@ -1866,6 +1866,7 @@ router.get('/alertas/devolucoes', async (req, res) => {
                 r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo, r.abertura_chamado,
                 COALESCE(cr.detail, r.reason) AS reason_detail,
                 r.raw_data,
+                r.raw_data->>'id' AS claim_id,
                 r.raw_data->>'stage' AS stage,
                 r.raw_data->>'type' AS type,
                 r.raw_data->>'last_updated' AS last_updated,

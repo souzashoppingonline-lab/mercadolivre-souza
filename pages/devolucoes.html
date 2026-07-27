@@ -160,7 +160,7 @@
       <div class="card">
         <div class="card-header">
           <h3>Solicitações de Devolução</h3>
-          <input type="text" id="devTableSearch" placeholder="🔎 Filtrar aqui: pedido, comprador ou produto..." oninput="filterDevTable()"
+          <input type="text" id="devTableSearch" placeholder="🔎 Filtrar: nº reclamação, pedido, comprador ou produto..." oninput="filterDevTable()"
             style="margin-left:auto;min-width:260px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
           <button class="btn-save-note" id="btnAtualizarPendentes" onclick="atualizarPendentes(this)" style="margin-left:8px" title="Reconsulta em segundo plano todas as devoluções em análise, 1 por vez (respeita o rate limit do ML)"><i class="fas fa-arrows-rotate"></i> Atualizar pendentes</button>
           <button class="btn-save-note" id="btnMaskDev" onclick="toggleDevMask()" style="margin-left:8px" title="Oculta Pedido, Loja e Produto na tela (para print/compartilhar). Não afeta o CSV/PDF."><i class="fas fa-eye-slash"></i> Ocultar</button>
@@ -175,8 +175,8 @@
         </style>
         <div class="table-responsive">
           <table class="data-table" id="devTableEl">
-            <thead><tr><th>Pedido</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Prejuízo (R$)</th><th>Observação</th><th>Abrir chamado</th></tr></thead>
-            <tbody id="devTable"><tr><td colspan="12" class="empty-state">Carregando...</td></tr></tbody>
+            <thead><tr><th>Pedido</th><th>Nº Reclamação</th><th>Loja</th><th>Comprador</th><th>Produto</th><th>Motivo</th><th>Valor</th><th>Status</th><th>Data</th><th>Vídeo</th><th>Prejuízo (R$)</th><th>Observação</th><th>Abrir chamado</th></tr></thead>
+            <tbody id="devTable"><tr><td colspan="13" class="empty-state">Carregando...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -327,6 +327,7 @@ function renderDevRows(rows) {
           <td style="font-size:11px;white-space:nowrap">
             <span style="display:inline-flex;align-items:center;gap:6px">#${oid||'—'}${oid?`<button title="Copiar nº do pedido" onclick="event.stopPropagation();copiarPedido('${oid}',this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;font-size:12px"><i class="fas fa-copy"></i></button>`:''}</span>
           </td>
+          <td style="font-size:11px;white-space:nowrap;font-family:monospace">${r.claim_id ? `<span style="display:inline-flex;align-items:center;gap:6px">${r.claim_id}<button title="Copiar nº da reclamação" onclick="event.stopPropagation();copiarPedido('${r.claim_id}',this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;font-size:12px"><i class="fas fa-copy"></i></button></span>` : '—'}</td>
           <td style="font-size:.75rem;color:var(--text-muted)">${r.conta||'—'}</td>
           <td style="white-space:nowrap">${r.buyer_nickname||'—'}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${produto}">${produto}</td>
@@ -358,7 +359,7 @@ function renderDevRows(rows) {
           </td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="12" class="empty-state">Nenhuma devolução encontrada</td></tr>';
+    : '<tr><td colspan="13" class="empty-state">Nenhuma devolução encontrada</td></tr>';
   loadVideoLinks(rows.map(r => r.order_id).filter(Boolean));
 }
 
@@ -368,9 +369,12 @@ function filterDevTable() {
   if (!q) { renderDevRows(allDevRows); return; }
   const f = allDevRows.filter(r =>
     String(r.order_id || '').toLowerCase().includes(q) ||
+    String(r.claim_id || '').toLowerCase().includes(q) ||
     String(r.buyer_nickname || '').toLowerCase().includes(q) ||
     String(r.item_title || r.title || '').toLowerCase().includes(q) ||
-    String(r.conta || '').toLowerCase().includes(q));
+    String(r.conta || '').toLowerCase().includes(q) ||
+    // rede de segurança: acha qualquer ID dentro da claim (mediação, related, etc.)
+    (r.raw_data ? JSON.stringify(r.raw_data).toLowerCase().includes(q) : false));
   renderDevRows(f);
 }
 
@@ -733,6 +737,7 @@ function openDevDetail(id) {
       <div class="dev-detail-item"><div class="lbl">Valor do pedido</div><div class="val big">${fmt(r.order_amount ?? r.amount)}</div></div>
       <div class="dev-detail-item"><div class="lbl">Prejuízo lançado</div><div class="val big" style="color:var(--red)">${r.prejuizo != null ? fmt(r.prejuizo) : 'Não lançado'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Status</div><div class="val"><span class="badge ${st.c}">${st.l}</span></div></div>
+      <div class="dev-detail-item"><div class="lbl">Nº da Reclamação</div><div class="val" style="font-family:monospace">${(r.claim_id || (raw && raw.id)) ? `${r.claim_id || raw.id} <button title="Copiar" onclick="copiarPedido('${r.claim_id || raw.id}',this)" style="background:none;border:none;color:var(--primary);cursor:pointer;padding:2px"><i class="fas fa-copy"></i></button>` : '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Pedido</div><div class="val">#${r.order_id || '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Comprador</div><div class="val">${r.buyer_nickname || '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Loja</div><div class="val">${r.conta || '—'}</div></div>
@@ -789,14 +794,14 @@ function escapeHtmlDev(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '
 function exportDevolucoesCsv() {
   if (!allDevRows.length) return;
   const rows = [[
-    'Pedido', 'Loja', 'Comprador', 'Produto', 'Item ID', 'Motivo (código)', 'Motivo (detalhado)',
+    'Pedido', 'Nº Reclamação', 'Loja', 'Comprador', 'Produto', 'Item ID', 'Motivo (código)', 'Motivo (detalhado)',
     'Estágio', 'Tipo', 'Valor do Pedido', 'Prejuízo', 'Status', 'Logística',
     'Data Abertura', 'Última Atualização', 'Data da Venda', 'Observação',
   ]];
   allDevRows.forEach(r => {
     const st = statusMap[r.status] || { l: r.status };
     rows.push([
-      r.order_id ?? '', r.conta ?? '', r.buyer_nickname ?? '', r.item_title || r.title || '', r.item_id ?? '',
+      r.order_id ?? '', r.claim_id ?? '', r.conta ?? '', r.buyer_nickname ?? '', r.item_title || r.title || '', r.item_id ?? '',
       r.reason ?? '', r.reason_detail ?? '',
       traduzido(STAGE_LABEL, r.stage) ?? '', traduzido(TYPE_LABEL, r.type) ?? '',
       r.order_amount ?? r.amount ?? '', r.prejuizo ?? '', st.l ?? r.status ?? '', logLabel(r.shipping_type),

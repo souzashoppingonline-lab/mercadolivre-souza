@@ -95,3 +95,15 @@ impressão de que "nada acontece". Corrigido pontualmente no botão Analisar da 
 de Produtos (fetch direto pra ler a mensagem do servidor). **Correção definitiva
 pendente**: `_post` retornar `{error}` em vez de `null` (ou relançar), e auditar as
 páginas que dependem do retorno.
+
+## ML bloqueia leitura de item de concorrente via API (403 access_denied)
+
+`GET /items/{MLB}` de um anúncio que NÃO é do vendedor autenticado devolve
+`403 access_denied` para este app (mesmo motivo do `/sites/MLB/search` — o app não
+tem escopo de leitura pública ampla). Isso limita o monitoramento automático de
+concorrentes (Análise de Produtos): o job diário e o botão "Puxar dados do ML"
+funcionam só para itens acessíveis (próprios/catálogo). **Mitigação implementada**:
+o `fetchItem` tenta o multiget (`/items?ids=`) como fallback, e o histórico de preço
+do card é alimentado pela **extensão** (que lê a página renderizada e funciona) via
+`monitor.recordSnapshot` a cada coleta. **Correção real** dependeria de escopo/app com
+acesso público liberado pelo ML — fora do nosso controle.

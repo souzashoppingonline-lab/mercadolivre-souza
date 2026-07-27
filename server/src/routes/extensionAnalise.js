@@ -59,6 +59,11 @@ router.post('/anuncio', async (req, res) => {
       payload = b; // campos já prontos
     }
     const ad = await upsertAd(pid, payload);
+    // Alimenta o histórico de monitoramento com o preço lido da PÁGINA (fonte que
+    // funciona — o ML bloqueia a leitura do item de concorrente via API/403).
+    if (ad.ml_id && ad.preco != null) {
+      require('../analise/monitor').recordSnapshot(ad.ml_id, { preco: ad.preco, preco_original: ad.preco_original }).catch(() => {});
+    }
     wsHub.publish('analise_anuncio', { produto_id: pid, anuncio: ad }).catch(() => {});
     res.json({ ok: true, produto_id: pid, anuncio: ad });
   } catch (e) { console.error('[extension] POST anuncio', e.message); res.status(500).json({ error: e.message }); }

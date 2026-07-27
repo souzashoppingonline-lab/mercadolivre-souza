@@ -144,8 +144,15 @@ o MLB é extraído do link automaticamente se faltar (`mlbFrom` em `ads.js`).
   com Δ vs. dia anterior, mini-gráfico SVG de preço, estoque/vendas-dia/visitas/status e
   uma **tabela de preços** (últimos snapshots). O GET `/produtos/:id` já devolve
   `anuncio.monitor = {historico, ultimo, count}`.
-- **Limite honesto** (ver known-bugs/decisions): `sold_quantity` às vezes vem arredondado/
-  oculto; nesse caso o Δ estoque e as visitas indicam a demanda.
+- **Limite honesto** (ver known-bugs): o ML devolve **403 access_denied** ao ler item de
+  concorrente via API pra este app. `fetchItem` tenta o multiget como fallback; e o
+  histórico de preço é alimentado pela **extensão** (lê a página, funciona) via
+  `recordSnapshot` a cada coleta — por isso o `upsert` do snapshot usa COALESCE (API =
+  dados completos, extensão = só preço, sem se apagarem). `sold_quantity` às vezes vem
+  arredondado/oculto; aí o Δ estoque e as visitas indicam a demanda.
+- **Campos do Shopping de Preço (`vendas_Nd`/`preco_medio_Nd`) são EXCLUSIVAMENTE manuais**:
+  nem a extensão, nem o botão "Puxar dados do ML", nem o snapshot os alteram (só o
+  add/editar manual escreve neles).
 
 ## Gastos de IA (v56)
 

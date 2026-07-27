@@ -29,48 +29,83 @@ async function distinctMlIds(productId) {
   return rows.map((r) => r.ml_id);
 }
 
-// Consulta 1 MLB e grava o snapshot do dia (upsert). Calcula sold_delta contra o
-// último snapshot de um dia anterior.
-async function snapshotOne(mlId, storeId) {
-  const item = await ml.getItem(mlId, storeId);
-  if (!item || !item.id) throw new Error('item vazio');
-  const ship = item.shipping || {};
-
-  // Visitas do dia (best-effort — não quebra o snapshot se falhar).
-  let visits = null;
+// Busca o item com FALLBACK: o ML costuma devolver 403 access_denied em
+// /items/{MLB} de concorrente pra este app; o multiget (/items?ids=) às vezes
+// passa com um subconjunto de atributos. Se ambos falharem, propaga o erro.
+async function fetchItem(mlId, storeId) {
   try {
-    const hoje = new Date().toISOString().slice(0, 10);
-    const v = await ml.getItemVisits(mlId, hoje, storeId);
-    visits = v?.total_visits ?? (Array.isArray(v?.results)
-      ? v.results.reduce((s, r) => s + (r.total || r.visits || 0), 0) : null);
-  } catch (_) { /* ignore */ }
+    const it = await ml.getItem(mlId, storeId);
+    if (it && it.id) return it;
+  } catch (e) {
+    if (!String(e.message).includes('403')) throw e;
+  }
+  const attrs = 'id,title,price,original_price,available_quantity,sold_quantity,status,listing_type_id,shipping,pictures,permalink,seller_id,health,catalog_listing';
+  const arr = await ml.get(`/items?ids=${encodeURIComponent(mlId)}&attributes=${attrs}`, storeId);
+  const body = Array.isArray(arr) ? arr[0]?.body : null;
+  if (!body || !body.id) throw new Error(`ML bloqueou a leitura de ${mlId} (403 access_denied) — item único e multiget negados`);
+  return body;
+}
 
-  const soldNow = num(item.sold_quantity);
-  const { rows: prev } = await pool.query(
-    `SELECT sold_quantity FROM analise_monitor_snapshots
-      WHERE ml_id = $1 AND snap_date < CURRENT_DATE
-      ORDER BY snap_date DESC LIMIT 1`, [mlId]);
-  const soldDelta = (soldNow != null && prev[0]?.sold_quantity != null)
-    ? soldNow - Number(prev[0].sold_quantity) : null;
-
+// Grava/atualiza o snapshot do dia (upsert) com os campos fornecidos. COALESCE
+// preserva o que já existe quando o novo valor vier null — assim tanto a coleta
+// via API (dados completos) quanto a via EXTENSÃO (só preço) alimentam o mesmo
+// histórico sem se apagarem. Calcula sold_delta contra o último dia anterior.
+async function recordSnapshot(mlId, f) {
+  f = f || {};
+  const soldNow = num(f.sold_quantity);
+  let soldDelta = null;
+  if (soldNow != null) {
+    const { rows: prev } = await pool.query(
+      `SELECT sold_quantity FROM analise_monitor_snapshots
+        WHERE ml_id=$1 AND snap_date < CURRENT_DATE ORDER BY snap_date DESC LIMIT 1`, [mlId]);
+    if (prev[0]?.sold_quantity != null) soldDelta = soldNow - Number(prev[0].sold_quantity);
+  }
   await pool.query(
     `INSERT INTO analise_monitor_snapshots
        (ml_id, snap_date, preco, preco_original, status, available_quantity, sold_quantity,
         sold_delta, visits_day, listing_type, logistic_type, free_shipping, health, catalog, seller_id, raw)
      VALUES ($1,CURRENT_DATE,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT (ml_id, snap_date) DO UPDATE SET
-       preco=EXCLUDED.preco, preco_original=EXCLUDED.preco_original, status=EXCLUDED.status,
-       available_quantity=EXCLUDED.available_quantity, sold_quantity=EXCLUDED.sold_quantity,
-       sold_delta=EXCLUDED.sold_delta, visits_day=EXCLUDED.visits_day, listing_type=EXCLUDED.listing_type,
-       logistic_type=EXCLUDED.logistic_type, free_shipping=EXCLUDED.free_shipping, health=EXCLUDED.health,
-       catalog=EXCLUDED.catalog, seller_id=EXCLUDED.seller_id, raw=EXCLUDED.raw`,
-    [mlId, num(item.price), num(item.original_price), item.status || null,
-     num(item.available_quantity), soldNow, soldDelta, visits,
-     item.listing_type_id || null, ship.logistic_type || null,
-     ship.free_shipping ?? null, num(item.health), item.catalog_listing ?? null,
-     item.seller_id != null ? String(item.seller_id) : null, JSON.stringify(item)]);
+       preco=COALESCE(EXCLUDED.preco, analise_monitor_snapshots.preco),
+       preco_original=COALESCE(EXCLUDED.preco_original, analise_monitor_snapshots.preco_original),
+       status=COALESCE(EXCLUDED.status, analise_monitor_snapshots.status),
+       available_quantity=COALESCE(EXCLUDED.available_quantity, analise_monitor_snapshots.available_quantity),
+       sold_quantity=COALESCE(EXCLUDED.sold_quantity, analise_monitor_snapshots.sold_quantity),
+       sold_delta=COALESCE(EXCLUDED.sold_delta, analise_monitor_snapshots.sold_delta),
+       visits_day=COALESCE(EXCLUDED.visits_day, analise_monitor_snapshots.visits_day),
+       listing_type=COALESCE(EXCLUDED.listing_type, analise_monitor_snapshots.listing_type),
+       logistic_type=COALESCE(EXCLUDED.logistic_type, analise_monitor_snapshots.logistic_type),
+       free_shipping=COALESCE(EXCLUDED.free_shipping, analise_monitor_snapshots.free_shipping),
+       health=COALESCE(EXCLUDED.health, analise_monitor_snapshots.health),
+       catalog=COALESCE(EXCLUDED.catalog, analise_monitor_snapshots.catalog),
+       seller_id=COALESCE(EXCLUDED.seller_id, analise_monitor_snapshots.seller_id),
+       raw=COALESCE(EXCLUDED.raw, analise_monitor_snapshots.raw)`,
+    [mlId, num(f.preco), num(f.preco_original), f.status || null,
+     num(f.available_quantity), soldNow, soldDelta, num(f.visits_day),
+     f.listing_type || null, f.logistic_type || null, f.free_shipping ?? null,
+     num(f.health), f.catalog ?? null, f.seller_id != null ? String(f.seller_id) : null,
+     f.raw ? JSON.stringify(f.raw) : null]);
+  return { ml_id: mlId, preco: num(f.preco), sold_delta: soldDelta };
+}
 
-  return { ml_id: mlId, preco: num(item.price), sold_delta: soldDelta, visits_day: visits, status: item.status };
+// Consulta 1 MLB na API do ML e grava o snapshot do dia.
+async function snapshotOne(mlId, storeId) {
+  const item = await fetchItem(mlId, storeId);
+  const ship = item.shipping || {};
+  let visits = null;
+  try {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const v = await ml.getItemVisits(mlId, hoje, storeId);
+    visits = v?.total_visits ?? (Array.isArray(v?.results)
+      ? v.results.reduce((s, r) => s + (r.total || r.visits || 0), 0) : null);
+  } catch (_) { /* best-effort */ }
+  return recordSnapshot(mlId, {
+    preco: item.price, preco_original: item.original_price, status: item.status,
+    available_quantity: item.available_quantity, sold_quantity: item.sold_quantity,
+    visits_day: visits, listing_type: item.listing_type_id, logistic_type: ship.logistic_type,
+    free_shipping: ship.free_shipping, health: item.health, catalog: item.catalog_listing,
+    seller_id: item.seller_id, raw: item,
+  });
 }
 
 // Roda snapshot de vários MLBs em série, com pausa pra respeitar o rate limit.
@@ -148,4 +183,4 @@ async function getAdDataFromMl(mlId, storeId) {
   return out;
 }
 
-module.exports = { snapshotOne, snapshotProduct, snapshotAll, pickMlStoreId, getAdDataFromMl };
+module.exports = { snapshotOne, snapshotProduct, snapshotAll, pickMlStoreId, getAdDataFromMl, recordSnapshot };

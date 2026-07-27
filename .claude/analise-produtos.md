@@ -45,7 +45,13 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
 - `POST /anuncios/:adId/editar` → completa/corrige campos que a extensão não pegou (ex.: comentários, nota). `fotos` só sobrescreve se vier nova.
 - `POST /anuncios/:adId/excluir` → remove um card.
 
-O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou e `comentarios_texto` (v52) pra **colar o texto cru dos comentários** do concorrente (Ctrl C/Ctrl V, sem separação) — distinto de `comentarios`, que é só a contagem numérica. A IA (Fase 3) lê esse texto pra agrupar reclamações/elogios. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`.
+O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`.
+
+**Comentários — dois campos separados:**
+- `comentarios_auto` (v53) — os comentários VISÍVEIS que o extrator (`extractCommentsText`) recorta da seção "Opiniões" do `pageText`. **A extensão preenche sozinha** e atualiza a cada recoleta.
+- `comentarios_texto` (v52) — só do operador: os comentários antigos (que o ML esconde atrás de "Mostrar todas as opiniões"), colados à mão. **A extensão nunca toca** neste campo.
+
+São colunas distintas de propósito, pra a coleta automática não sobrescrever o que o operador colou. Ambos são texto cru (a IA da Fase 3 lê e agrupa reclamações/elogios) e distintos de `comentarios`, que é só a contagem numérica.
 
 **Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes do gate):**
 - `GET /extension/produto-ativo` → `{produto: {id, produto, status}|null}`.

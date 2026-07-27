@@ -36,6 +36,7 @@ const extractMercadoLivreData = (rawData) => {
       commentsCount: extractCommentsCount(rawData, debug),
       questionsCount: extractQuestionsCount(rawData, debug),
       comments: extractComments(rawData, debug),
+      commentsText: extractCommentsText(rawData, debug),
       questions: extractQuestions(rawData, debug),
       seller: extractSeller(rawData, debug),
       images: extractImages(rawData, debug),
@@ -234,6 +235,31 @@ function extractComments(rawData, debug) {
   }
 
   return comments;
+}
+
+// Comentários VISÍVEIS como texto cru — recorta a seção de "Opiniões" do
+// pageText (o que o ML mostra sem clicar em "ver todas") e limpa o ruído de UI.
+// Best-effort: os antigos, escondidos, o operador cola à mão no card.
+function extractCommentsText(rawData, debug) {
+  try {
+    const text = String(rawData.pageText || '');
+    if (!text) return null;
+    // Início: cabeçalho de opiniões/avaliações.
+    const start = text.search(/Opini(?:ões|ao)|Avalia(?:ções|coes)\b/i);
+    if (start < 0) return null;
+    const rest = text.slice(start);
+    // Fim: próxima seção conhecida da página.
+    const end = rest.search(/\n\s*(?:Perguntas e respostas|Perguntas\b|Produtos? relacionad|Quem (?:comprou|viu)|Outros produtos|Meios de pagamento|Garantia\b|Publicidade)/i);
+    let slice = end > 0 ? rest.slice(0, end) : rest.slice(0, 4000);
+    // Remove linhas que são só controle de interface (botões, ordenação, etc.).
+    const noise = /^(?:É útil|Denunciar|Ordenar|Mais recentes|Mais [úu]teis|Relevantes|\d+\s*estrelas?|Ver mais|Mostrar (?:mais|todas)[^\n]*|Compra verificada|Opini[õo]es? (?:do produto|em destaque)|M[eé]dia entre[^\n]*)$/i;
+    slice = slice.split('\n').map((l) => l.trim()).filter((l) => l && !noise.test(l)).join('\n').trim();
+    if (debug) debug.commentsAttempts.push({ commentsTextLen: slice.length });
+    return slice.length > 20 ? slice.slice(0, 5000) : null;
+  } catch (e) {
+    if (debug) debug.commentsAttempts.push({ error: e.message });
+    return null;
+  }
 }
 
 // Perguntas

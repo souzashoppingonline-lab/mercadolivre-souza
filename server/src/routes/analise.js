@@ -111,10 +111,10 @@ router.post('/anuncios/:adId/editar', async (req, res) => {
       `UPDATE analise_product_ads SET
          titulo=$2, preco=$3, preco_original=$4, nota=$5, vendas=$6, perguntas=$7, comentarios=$8,
          vendedor=$9, cidade=$10, estado=$11, reputacao=$12, is_full=$13, is_flex=$14,
-         fotos=COALESCE($15, fotos), observacoes=$16, comentarios_texto=$17
+         fotos=COALESCE($15, fotos), observacoes=$16, comentarios_texto=$17, comentarios_auto=$18
        WHERE id=$1 RETURNING *`,
       [req.params.adId, v.titulo, v.preco, v.preco_original, v.nota, v.vendas, v.perguntas, v.comentarios,
-       v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.observacoes, v.comentarios_texto]
+       v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.observacoes, v.comentarios_texto, v.comentarios_auto]
     );
     if (!rows.length) return res.status(404).json({ error: 'anúncio não encontrado' });
     res.json(mapAd(rows[0]));

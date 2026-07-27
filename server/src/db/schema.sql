@@ -744,7 +744,7 @@ CREATE TABLE IF NOT EXISTS analise_product_ads (
   ml_id TEXT, titulo TEXT, preco NUMERIC, preco_original NUMERIC, nota NUMERIC,
   vendas TEXT, perguntas INT, comentarios INT, vendedor TEXT, cidade TEXT, estado TEXT,
   reputacao TEXT, is_full BOOLEAN, is_flex BOOLEAN, fotos JSONB, videos JSONB, raw JSONB,
-  observacoes TEXT, comentarios_texto TEXT,
+  observacoes TEXT, comentarios_texto TEXT, comentarios_auto TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (product_id, ml_id)
 );

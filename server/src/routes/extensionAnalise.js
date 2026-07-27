@@ -50,6 +50,7 @@ router.post('/anuncio', async (req, res) => {
         comentarios: extracted.commentsCount != null ? extracted.commentsCount
                      : (extracted.rating && extracted.rating.opinioes != null ? extracted.rating.opinioes : null),
         vendedor: extracted.seller || null,
+        comentarios_auto: extracted.commentsText || null,
         fotos,
         raw: b.rawData,
       };

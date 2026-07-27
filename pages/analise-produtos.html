@@ -429,15 +429,23 @@ async function finalizarColeta() {
 async function analisar() {
   if (!CURRENT) return;
   const btn = document.getElementById('btnAnalisar'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analisando...';
-  const res = await DB.analisarProduto(CURRENT.id);
-  btn.disabled = false; btn.innerHTML = '<i class="fas fa-brain"></i> Analisar Produto';
-  if (res?.error) return toast('Erro: ' + res.error);
-  // atualiza o produto em memória e mostra a análise
-  CURRENT.ai_result = res.result; CURRENT.ai_score = res.score; CURRENT.status = 'ANALISADO';
-  const dst = document.getElementById('dStatus'); dst.className='ap-status analisado'; dst.innerHTML='<i class="fas fa-check"></i> Analisado';
-  renderIA(CURRENT);
-  document.getElementById('iaPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  toast('Análise concluída.');
+  // Fetch direto (não DB._post) pra capturar a MENSAGEM de erro do servidor —
+  // o _post engole erro em null e a análise falhava calada. Ver known-bugs.
+  try {
+    const r = await fetch(new URL(`${DB.BASE}/analise/produtos/${CURRENT.id}/analisar`, location.origin).toString(),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { toast('Erro: ' + (data.error || ('HTTP ' + r.status))); return; }
+    CURRENT.ai_result = data.result; CURRENT.ai_score = data.score; CURRENT.status = 'ANALISADO';
+    const dst = document.getElementById('dStatus'); dst.className='ap-status analisado'; dst.innerHTML='<i class="fas fa-check"></i> Analisado';
+    renderIA(CURRENT);
+    document.getElementById('iaPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('Análise concluída.');
+  } catch (e) {
+    toast('Falha ao analisar: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-brain"></i> Analisar Produto';
+  }
 }
 
 // ── Painel de análise da IA (Fase 3, núcleo) ───────────────────────────────

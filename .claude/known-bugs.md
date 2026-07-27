@@ -84,3 +84,14 @@ Depois que as credenciais forem configuradas, o polling retomará e sincronizar�
 **Por que não é um problema real hoje**: o `item_id` da Shopee é único por listagem no nível da plataforma (cada anúncio recebe um id global distinto), então duas lojas nunca compartilham o mesmo `item_id`. IDs ML (`MLB…`) e Shopee (numérico) também nunca colidem. O caso só aparece em teste sintético forçando o mesmo id nas duas lojas.
 
 **Correção esperada (se algum dia necessário)**: migrar `items` para `PRIMARY KEY (ml_id, store_id)` e converter as FKs de `item_seo_score`/`catalog_competition` para compostas, ou desacoplar essas tabelas de `items` via id surrogate.
+
+## `js/db.js` `_post`/`_patch`/`_delete` engolem o erro do servidor em `null`
+
+`_post` (e irmãos) fazem `catch { return null }`, então uma rota que responde 4xx/5xx
+com `{error: "..."}` chega no frontend como `null` — a mensagem some. Páginas que
+fazem `const res = await DB.xxx(); if (res?.error) toast(res.error); ... res.campo`
+falham **caladas** (e ainda estouram `TypeError` ao ler `res.campo` de null), dando a
+impressão de que "nada acontece". Corrigido pontualmente no botão Analisar da Análise
+de Produtos (fetch direto pra ler a mensagem do servidor). **Correção definitiva
+pendente**: `_post` retornar `{error}` em vez de `null` (ou relançar), e auditar as
+páginas que dependem do retorno.

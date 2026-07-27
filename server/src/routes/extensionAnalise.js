@@ -51,6 +51,11 @@ router.post('/anuncio', async (req, res) => {
         comentarios: extracted.commentsCount != null ? extracted.commentsCount
                      : (extracted.rating && extracted.rating.opinioes != null ? extracted.rating.opinioes : null),
         vendedor: extracted.seller || null,
+        reputacao: extracted.reputation || null,
+        full: extracted.shipping ? extracted.shipping.full : null,
+        flex: extracted.shipping ? extracted.shipping.flex : null,
+        cidade: extracted.location ? extracted.location.cidade : null,
+        estado: extracted.location ? extracted.location.estado : null,
         comentarios_auto: extracted.commentsText || null,
         fotos,
         raw: b.rawData,

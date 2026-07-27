@@ -39,6 +39,9 @@ const extractMercadoLivreData = (rawData) => {
       commentsText: extractCommentsText(rawData, debug),
       questions: extractQuestions(rawData, debug),
       seller: extractSeller(rawData, debug),
+      reputation: extractReputation(rawData),
+      shipping: extractFullFlex(rawData),
+      location: extractLocation(rawData),
       images: extractImages(rawData, debug),
       createdAt: extractCreatedAt(rawData, debug),
     },
@@ -268,14 +271,44 @@ function extractQuestions(rawData, debug) {
   return [];
 }
 
-// Seller
+// Seller — "Vendido por LOJA" (com ou sem "e enviado por", com ":" ou não).
 function extractSeller(rawData, debug) {
   try {
-    const match = rawData.pageText.match(/Vendido\s*(?:e\s*enviado\s*)?por:\s*(.+?)(?:\n|$)/i);
-    return match ? match[1].trim() : null;
-  } catch (e) {
+    const t = rawData.pageText || '';
+    let m = t.match(/Vendido\s*(?:e\s*enviado\s*)?por:?\s*(.+?)(?:\n|$)/i);
+    if (!m) m = t.match(/Loja oficial\s*\n?\s*(.+?)(?:\n|$)/i);
+    return m ? m[1].trim().slice(0, 80) : null;
+  } catch (e) { return null; }
+}
+
+// Reputação — "MercadoLíder", "MercadoLíder Gold/Platinum", ou nível textual.
+function extractReputation(rawData) {
+  try {
+    const t = rawData.pageText || '';
+    const m = t.match(/MercadoL[íi]der\s*(Platinum|Gold|Silver|Prata|Ouro|Platina)?/i);
+    if (m) return ('MercadoLíder ' + (m[1] || '')).trim();
+    if (/Vendedor[\s\S]{0,40}(bom|excelente|l[íi]der)/i.test(t)) return 'MercadoLíder';
     return null;
-  }
+  } catch (e) { return null; }
+}
+
+// FULL / FLEX — pelos selos/texto de logística na página.
+function extractFullFlex(rawData) {
+  const t = rawData.pageText || '';
+  const full = /\bFULL\b/.test(t) || /Enviado pelo Full/i.test(t) || /Armazenado e enviado pelo/i.test(t);
+  const flex = /\bFLEX\b/.test(t) || /Mercado Envios Flex/i.test(t) || /Enviado por Flex/i.test(t);
+  return { full: full || null, flex: flex || null };
+}
+
+// Cidade/estado do vendedor — best-effort (nem sempre aparece na página).
+function extractLocation(rawData) {
+  try {
+    const t = rawData.pageText || '';
+    // "Localização" seguido de "Cidade, Estado" ou "Cidade - UF".
+    const m = t.match(/Localiza[çc][ãa]o\s*\n?\s*(.+?)\s*[,\-]\s*(.+?)(?:\n|$)/i);
+    if (m) return { cidade: m[1].trim().slice(0, 60), estado: m[2].trim().slice(0, 30) };
+    return { cidade: null, estado: null };
+  } catch (e) { return { cidade: null, estado: null }; }
 }
 
 // 9. Fotos — principal, secundárias, 360, vídeo

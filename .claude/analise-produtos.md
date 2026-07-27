@@ -111,6 +111,17 @@ Limite do body: `express.json({ limit: '1mb' })` (o pageText cabe; o innerHTML n
   e 3 cards (Comentários/Financeiro/Decisão). Renderiza ao abrir o produto (lê
   `ai_result`) e após clicar "Analisar Produto".
 
+### Gerador de Criativos (v55)
+
+`gerarCriativos()` (em `analiseAgents.js`) faz **uma** chamada extra que devolve
+**7 briefs de imagem em JSON** (schema `composicao`/`direcao_de_arte`/
+`elementos_visual_copy`/`formato` + `objecao_quebrada`), cada um **quebrando uma
+objeção** tirada dos comentários. Rota `POST /produtos/:id/criativos` (503 sem chave),
+grava em `ai_creativos`/`ai_creativos_at`. É **on-demand** (botão "Gerar 7 criativos"
+no painel) porque a saída é grande (`max_tokens` 4000) — mantém a análise barata. Na
+tela cada JSON vem num bloco com botão **Copiar** pro usuário colar no ChatGPT (junto
+das fotos do produto) e gerar a imagem.
+
 ## Pendências
 
 - Enriquecer o extrator: `reputacao`, `full`/`flex`, `cidade`/`estado` ainda não

@@ -55,6 +55,13 @@
     .ia-nums div { background:var(--bg-card,#1c1d21);border-radius:9px;padding:7px 10px; }
     .ia-nums small { display:block;font-size:.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px; }
     .ia-nums b { display:block;font-size:1rem;font-weight:800;color:var(--green,#27ae60);text-transform:none;letter-spacing:0;margin:2px 0 0; }
+    .ia-cria { margin-top:16px;border-top:1px solid var(--border,#3a3b40);padding-top:14px; }
+    .ia-cria-hd { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
+    .ia-cria-hd h4 { font-size:.86rem;font-weight:800;display:flex;align-items:center;gap:7px; }
+    .cria-item { background:var(--bg-card,#1c1d21);border:1px solid var(--border,#3a3b40);border-radius:10px;margin-bottom:10px;overflow:hidden; }
+    .cria-hd { display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;background:var(--bg-card2,#26272b);font-size:.82rem; }
+    .cria-hd b { color:var(--green,#27ae60); }
+    .cria-item pre { margin:0;padding:12px;font-size:.74rem;line-height:1.45;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;color:var(--text-main,#ddd); }
 
     /* Detalhe do produto */
     .ap-detail-hd { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px; }
@@ -491,7 +498,55 @@ function renderIA(p) {
         <b class="neg">Riscos</b>${li(dec.riscos)}
         <b>Próximos passos</b>${li(dec.proximos_passos)}
       </div>
+    </div>
+    <div class="ia-cria">
+      <div class="ia-cria-hd">
+        <h4><i class="fas fa-wand-magic-sparkles"></i> Criativos p/ imagem (7 JSONs pro ChatGPT)</h4>
+        <button class="ap-btn primary" id="btnCriativos" onclick="gerarCriativosIA()"><i class="fas fa-wand-magic-sparkles"></i> Gerar 7 criativos</button>
+      </div>
+      <p class="ap-muted" style="font-size:.8rem;margin:2px 0 8px">Cada JSON quebra uma objeção dos comentários. Clique em <b>Copiar</b> e cole no ChatGPT (com suas fotos) pra gerar a imagem.</p>
+      <div id="criativosBox"></div>
     </div>`;
+  renderCriativos(p.ai_creativos);
+}
+let CRIATIVOS = [];
+function renderCriativos(lista) {
+  CRIATIVOS = Array.isArray(lista) ? lista : [];
+  const box = document.getElementById('criativosBox');
+  if (!box) return;
+  if (!CRIATIVOS.length) { box.innerHTML = ''; return; }
+  box.innerHTML = CRIATIVOS.map((c, i) => `
+    <div class="cria-item">
+      <div class="cria-hd">
+        <span><b>#${i + 1}</b> ${esc(c.objecao_quebrada || 'Criativo')}</span>
+        <button class="ap-btn ghost" onclick="copiarCriativo(${i}, this)"><i class="fas fa-copy"></i> Copiar</button>
+      </div>
+      <pre>${esc(JSON.stringify(c, null, 2))}</pre>
+    </div>`).join('');
+}
+function copiarCriativo(i, btn) {
+  const c = CRIATIVOS[i]; if (!c) return;
+  navigator.clipboard.writeText(JSON.stringify(c, null, 2)).then(() => {
+    const o = btn.innerHTML; btn.innerHTML = '<i class="fas fa-check"></i> Copiado';
+    setTimeout(() => { btn.innerHTML = o; }, 1500);
+  }).catch(() => toast('Não consegui copiar — selecione o texto manualmente.'));
+}
+async function gerarCriativosIA() {
+  if (!CURRENT) return;
+  const btn = document.getElementById('btnCriativos'); btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+  try {
+    const r = await fetch(new URL(`${DB.BASE}/analise/produtos/${CURRENT.id}/criativos`, location.origin).toString(),
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { toast('Erro: ' + (data.error || ('HTTP ' + r.status))); return; }
+    CURRENT.ai_creativos = data.criativos;
+    renderCriativos(data.criativos);
+    toast('7 criativos gerados.');
+  } catch (e) {
+    toast('Falha ao gerar criativos: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Gerar 7 criativos';
+  }
 }
 
 // ── WebSocket: novo anúncio coletado aparece na hora ───────────────────────

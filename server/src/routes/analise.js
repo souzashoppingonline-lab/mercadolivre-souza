@@ -7,7 +7,7 @@ const pool = require('../db/pool');
 const wsHub = require('../ws/hub');
 const { num, mapAd, adValues, upsertAd } = require('../analise/ads');
 const llm = require('../ai/llm');
-const { analisarNucleo } = require('../ai/analiseAgents');
+const { analisarNucleo, gerarCriativos } = require('../ai/analiseAgents');
 
 const router = express.Router();
 
@@ -111,6 +111,30 @@ router.post('/produtos/:id/analisar', async (req, res) => {
     res.json({ ok: true, result, score, produto: upd[0] });
   } catch (e) {
     console.error('[api/analise] analisar', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/analise/produtos/:id/criativos — gera 7 briefs de imagem (JSON) que
+// quebram objeções dos comentários, pro usuário colar no ChatGPT. On-demand
+// (mais caro que a análise) — botão separado. Ver .claude/analise-produtos.md.
+router.post('/produtos/:id/criativos', async (req, res) => {
+  try {
+    if (!llm.isConfigured()) {
+      return res.status(503).json({ error: 'IA não configurada — cole a chave ANTHROPIC_API_KEY no .env do servidor e reinicie.' });
+    }
+    const { rows } = await pool.query(`SELECT * FROM analise_products WHERE id=$1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'produto não encontrado' });
+    const { rows: adRows } = await pool.query(
+      `SELECT * FROM analise_product_ads WHERE product_id=$1 ORDER BY created_at DESC`, [req.params.id]);
+    const { criativos } = await gerarCriativos(rows[0], adRows.map(mapAd));
+    if (!criativos.length) return res.status(502).json({ error: 'a IA não devolveu criativos — tente de novo' });
+    await pool.query(
+      `UPDATE analise_products SET ai_creativos=$2, ai_creativos_at=now(), updated_at=now() WHERE id=$1`,
+      [req.params.id, JSON.stringify(criativos)]);
+    res.json({ ok: true, criativos });
+  } catch (e) {
+    console.error('[api/analise] criativos', e.message);
     res.status(500).json({ error: e.message });
   }
 });

@@ -93,4 +93,48 @@ async function analisarNucleo(produto, anuncios) {
   return { result, score, contexto: ctx };
 }
 
-module.exports = { buildContext, analisarNucleo };
+// ── Agente de Criativos ────────────────────────────────────────────────────
+// Gera 7 briefs de imagem (JSON) pro usuário colar no ChatGPT e criar as fotos.
+// Cada criativo QUEBRA UMA OBJEÇÃO real tirada dos comentários dos concorrentes.
+const CRIATIVOS_SYSTEM = `Você é diretor de arte de e-commerce. Gera BRIEFS de imagem (para outra IA de imagem, tipo ChatGPT/DALL-E) que vendem um produto no Mercado Livre. Você recebe o produto e os comentários REAIS dos concorrentes. Extraia as principais OBJEÇÕES/dúvidas/reclamações dos clientes e crie criativos que as QUEBREM visualmente (prova, comparação, selo, destaque de atributo).
+
+Responda SOMENTE com um JSON válido (sem markdown) neste formato EXATO:
+{
+  "criativos": [
+    {
+      "objecao_quebrada": "qual objeção do cliente esta imagem resolve (curto)",
+      "composicao": {
+        "cenario": "descrição do ambiente/fundo",
+        "sujeito": "o que aparece em destaque",
+        "detalhe_produto": "descrição fiel do produto (material, cor, textura, acabamento) — baseie-se no nome/tipo do produto",
+        "camera": "ângulo, lente, foco, profundidade"
+      },
+      "direcao_de_arte": {
+        "iluminacao": "esquema de luz",
+        "paleta_cores": "cores dominantes",
+        "estilo_visual": "photorealistic, 8k, sharp focus, studio lighting, premium e-commerce"
+      },
+      "elementos_visual_copy": {
+        "texto_principal": "headline curta que quebra a objeção",
+        "texto_secundario": "apoio curto",
+        "posicao_texto": "onde fica o texto sem cobrir o produto",
+        "estilo_texto": "fonte/peso/cor",
+        "grafismo": "seta/círculo/comparativo que reforça o ponto",
+        "selo": "selo/badge (ex.: 'Pronta Entrega', 'Algodão 100%', 'Garantia')"
+      },
+      "formato": "proporção da imagem (ex.: '1080:1080' pra foto principal quadrada do ML, ou '1080:1350' vertical)"
+    }
+  ]
+}
+
+Regras: EXATAMENTE 7 criativos, cada um quebrando uma objeção DIFERENTE (baseada nos comentários; se faltarem comentários, use objeções típicas do tipo de produto). Textos em português brasileiro, curtos e vendedores. NÃO invente atributos que contrariem o produto.`;
+
+async function gerarCriativos(produto, anuncios) {
+  const ctx = buildContext(produto, anuncios);
+  const user = `Gere os 7 criativos para o produto abaixo. Use as OBJEÇÕES dos comentários.\n\nDADOS:\n${JSON.stringify({ produto: ctx.produto, comentarios_texto: ctx.comentarios_texto }, null, 2)}`;
+  const data = await completeJson({ system: CRIATIVOS_SYSTEM, user, maxTokens: 4000 });
+  const criativos = Array.isArray(data?.criativos) ? data.criativos.slice(0, 7) : [];
+  return { criativos };
+}
+
+module.exports = { buildContext, analisarNucleo, gerarCriativos };

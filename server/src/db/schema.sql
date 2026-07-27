@@ -736,6 +736,7 @@ CREATE TABLE IF NOT EXISTS analise_products (
   observacoes TEXT,
   status TEXT NOT NULL DEFAULT 'EM_ANALISE',
   ai_result JSONB, ai_score INT, ai_analyzed_at TIMESTAMPTZ,
+  ai_creativos JSONB, ai_creativos_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

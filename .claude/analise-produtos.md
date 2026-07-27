@@ -122,6 +122,17 @@ no painel) porque a saída é grande (`max_tokens` 4000) — mantém a análise 
 tela cada JSON vem num bloco com botão **Copiar** pro usuário colar no ChatGPT (junto
 das fotos do produto) e gerar a imagem.
 
+## Gastos de IA (v56)
+
+Toda chamada de IA registra tokens+custo em `ai_usage_log` (`llm.js` lê `usage` da
+resposta e calcula `cost_usd` = tokens×preço; preço por env `AI_PRICE_IN_PER_MTOK`/
+`AI_PRICE_OUT_PER_MTOK`, padrão Haiku in $1 / out $5 por MTok). O card **"Gastos de
+IA"** na lista mostra hoje/mês/total + custo médio por análise. **Saldo**: a API da
+Anthropic **não expõe** o saldo da conta, então o usuário informa (`POST /ia/saldo` →
+`ai_settings`) e a estimativa (`GET /ia/gastos`) calcula `restante = saldo − gasto
+desde que informou`, `est_analises = restante/custo médio` e `est_dias = restante/
+(gasto dos últimos 7d ÷ 7)`.
+
 ## Pendências
 
 - Enriquecer o extrator: `reputacao`, `full`/`flex`, `cidade`/`estado` ainda não

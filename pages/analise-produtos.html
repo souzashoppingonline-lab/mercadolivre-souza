@@ -62,6 +62,18 @@
     .cria-hd { display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;background:var(--bg-card2,#26272b);font-size:.82rem; }
     .cria-hd b { color:var(--green,#27ae60); }
     .cria-item pre { margin:0;padding:12px;font-size:.74rem;line-height:1.45;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;color:var(--text-main,#ddd); }
+    /* Gastos de IA */
+    .gastos-card { margin-bottom:16px; }
+    .gastos-hd { font-size:.9rem;font-weight:800;display:flex;align-items:center;gap:8px;margin-bottom:12px; }
+    .gastos-nums { display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px; }
+    .gastos-nums div { background:var(--bg-card2,#26272b);border:1px solid var(--border,#3a3b40);border-radius:10px;padding:9px 12px; }
+    .gastos-nums small { display:block;font-size:.66rem;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted); }
+    .gastos-nums b { display:block;font-size:1.15rem;font-weight:800;margin-top:3px; }
+    .gastos-saldo { display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between;border-top:1px solid var(--border,#3a3b40);padding-top:12px; }
+    .saldo-linha { display:flex;align-items:center;gap:8px;margin-top:4px; }
+    .saldo-linha input { background:var(--bg-card2,#26272b);border:1px solid var(--border,#3a3b40);color:var(--text-main,#eee);border-radius:8px;padding:7px 9px;font-size:.85rem; }
+    .saldo-est { font-size:.9rem;font-weight:700;text-align:right;min-width:200px; }
+    .saldo-est .big { font-size:1.05rem;color:var(--green,#27ae60); }
 
     /* Detalhe do produto */
     .ap-detail-hd { display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px; }
@@ -127,6 +139,28 @@
           <h2><i class="fas fa-flask" style="color:var(--primary,#ffe600)"></i> Análise de Produtos</h2>
           <button class="ap-btn primary" onclick="abrirNovo()"><i class="fas fa-plus"></i> Novo Produto</button>
         </div>
+
+        <div class="card gastos-card" id="gastosCard">
+          <div class="gastos-hd"><i class="fas fa-coins" style="color:var(--primary,#ffe600)"></i> Gastos de IA <span class="ap-muted" style="font-weight:400">(Análise + Criativos)</span></div>
+          <div class="gastos-nums">
+            <div><small>Hoje</small><b id="gHoje">—</b></div>
+            <div><small>Este mês</small><b id="gMes">—</b></div>
+            <div><small>Total</small><b id="gTotal">—</b></div>
+            <div><small>Custo médio / análise</small><b id="gMedia">—</b></div>
+          </div>
+          <div class="gastos-saldo">
+            <div class="saldo-info">
+              <small class="ap-muted">Saldo (você informa — a Anthropic não expõe pela API)</small>
+              <div class="saldo-linha">
+                <span>US$</span>
+                <input id="gSaldoInput" type="number" step="0.01" placeholder="1.82" style="width:90px">
+                <button class="ap-btn ghost" onclick="salvarSaldo()"><i class="fas fa-save"></i> Salvar</button>
+              </div>
+            </div>
+            <div class="saldo-est" id="gEst"><span class="ap-muted">Informe o saldo pra estimar quanto ainda dá.</span></div>
+          </div>
+        </div>
+
         <div class="card">
           <div style="overflow-x:auto">
             <table class="ap-table">
@@ -260,6 +294,7 @@
 <script src="../js/sidebar.js"></script>
 <script>
 const BRL = (n) => (n == null || isNaN(n)) ? '—' : Number(n).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+const USD = (n) => (n == null || isNaN(n)) ? '—' : 'US$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: Math.abs(Number(n)) < 1 ? 4 : 2, maximumFractionDigits: 4 });
 const PCT = (n) => (n == null || n === '') ? '—' : `${Number(n)}%`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 function toast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 3000); }
@@ -269,8 +304,33 @@ let ATIVO = null;    // produto_id ativo pra coleta (global)
 let CURRENT = null;  // produto aberto no detalhe
 let ANUNCIOS = [];   // anúncios do produto aberto (pra editar sem re-fetch)
 
+// ── Gastos de IA ───────────────────────────────────────────────────────────
+async function loadGastos() {
+  const g = await DB._get('/analise/ia/gastos');
+  if (!g || g.error) return;
+  const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+  set('gHoje', USD(g.hoje)); set('gMes', USD(g.mes)); set('gTotal', USD(g.total));
+  set('gMedia', g.media_analise ? USD(g.media_analise) : '—');
+  const inp = document.getElementById('gSaldoInput');
+  if (inp && g.saldo != null && document.activeElement !== inp) inp.value = g.saldo;
+  const est = document.getElementById('gEst'); if (!est) return;
+  if (g.saldo == null) { est.innerHTML = '<span class="ap-muted">Informe o saldo pra estimar quanto ainda dá.</span>'; return; }
+  const partes = [`Restante: <span class="big">${USD(g.restante)}</span>`];
+  if (g.est_analises != null) partes.push(`≈ <b>${g.est_analises}</b> análises`);
+  if (g.est_dias != null) partes.push(`~<b>${g.est_dias}</b> dias no ritmo atual`);
+  est.innerHTML = partes.join(' &nbsp;·&nbsp; ');
+}
+async function salvarSaldo() {
+  const v = document.getElementById('gSaldoInput').value.trim();
+  if (v === '') return toast('Digite o saldo (US$).');
+  const r = await DB._post('/analise/ia/saldo', { saldo_usd: v });
+  if (!r) return toast('Erro ao salvar o saldo.');
+  toast('Saldo salvo.'); loadGastos();
+}
+
 // ── Lista ────────────────────────────────────────────────────────────────
 async function loadLista() {
+  loadGastos();
   const res = await DB.getProdutosAnalise();
   const tb = document.getElementById('tbodyProdutos');
   if (res?.error) { tb.innerHTML = `<tr><td colspan="10" class="ap-empty"><i class="fas fa-triangle-exclamation"></i>${esc(res.error)}</td></tr>`; return; }

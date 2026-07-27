@@ -301,6 +301,8 @@ Ver `.claude/analise-produtos.md`. `routes/analise.js`:
 - `POST /api/analise/produtos/:id/ativar` → define único produto ativo de coleta. `.../finalizar` → limpa.
 - `POST /api/analise/produtos/:id/analisar` → **motor de IA (Fase 3 núcleo)**: Score + Comentários + Financeiro + Decisão. Grava `ai_result`/`ai_score`/`ai_analyzed_at` e devolve `{result, score, produto}`. Síncrono. `503` sem `ANTHROPIC_API_KEY`, `400` sem concorrentes.
 - `POST /api/analise/produtos/:id/criativos` → gera **7 briefs de imagem (JSON)** que quebram objeções dos comentários (pro ChatGPT). Grava `ai_creativos`/`ai_creativos_at`, devolve `{criativos:[7]}`. On-demand (mais caro). `503` sem chave.
+- `GET /api/analise/ia/gastos` → gasto real da IA (hoje/mês/total/média por análise, via `ai_usage_log` = tokens×preço) + estimativa de saldo (`restante`/`est_analises`/`est_dias`) a partir do saldo informado.
+- `POST /api/analise/ia/saldo` `{saldo_usd}` → registra o saldo atual (a Anthropic não expõe saldo pela API; base da estimativa).
 - WS `analise_anuncio` `{produto_id, anuncio}` — card ao vivo quando a extensão salva (publicado no passo da extensão).
 
 Extensão (público, a implementar): `GET /extension/produto-ativo`, `POST /extension/anuncio`.

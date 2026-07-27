@@ -178,4 +178,51 @@ router.post('/anuncios/:adId/excluir', async (req, res) => {
   } catch (e) { console.error('[api/analise] POST anuncio excluir', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/analise/ia/gastos — gasto real da IA (por dia/mês/total) + estimativa
+// de saldo. A API da Anthropic não expõe o saldo, então usamos o valor que o
+// usuário informou (ai_settings) menos o que foi gasto desde então.
+router.get('/ia/gastos', async (req, res) => {
+  try {
+    const { rows: agg } = await pool.query(`
+      SELECT
+        COALESCE(SUM(cost_usd),0)::float AS total,
+        COALESCE(SUM(cost_usd) FILTER (WHERE created_at::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date),0)::float AS hoje,
+        COALESCE(SUM(cost_usd) FILTER (WHERE date_trunc('month', created_at) = date_trunc('month', now())),0)::float AS mes,
+        COALESCE(SUM(cost_usd) FILTER (WHERE created_at > now() - interval '7 days'),0)::float AS ultimos7,
+        COALESCE(AVG(cost_usd) FILTER (WHERE feature='analise'),0)::float AS media_analise,
+        COALESCE(AVG(cost_usd) FILTER (WHERE feature='criativos'),0)::float AS media_criativos,
+        COUNT(*) FILTER (WHERE feature='analise')::int AS n_analises,
+        COUNT(*) FILTER (WHERE feature='criativos')::int AS n_criativos
+      FROM ai_usage_log`);
+    const g = agg[0];
+    const { rows: st } = await pool.query(`SELECT balance_usd, balance_set_at FROM ai_settings WHERE id=1`);
+    const saldo = st[0]?.balance_usd != null ? Number(st[0].balance_usd) : null;
+    const saldoDesde = st[0]?.balance_set_at || null;
+
+    let restante = null, estAnalises = null, estDias = null, gastoDesde = 0;
+    if (saldo != null) {
+      const { rows: gd } = await pool.query(
+        `SELECT COALESCE(SUM(cost_usd),0)::float AS s FROM ai_usage_log WHERE $1::timestamptz IS NULL OR created_at >= $1`,
+        [saldoDesde]);
+      gastoDesde = gd[0].s;
+      restante = Math.max(0, saldo - gastoDesde);
+      if (g.media_analise > 0) estAnalises = Math.floor(restante / g.media_analise);
+      const porDia = g.ultimos7 / 7;
+      if (porDia > 0) estDias = Math.floor(restante / porDia);
+    }
+    res.json({ ...g, saldo, saldo_set_at: saldoDesde, gasto_desde_saldo: gastoDesde,
+               restante, est_analises: estAnalises, est_dias: estDias });
+  } catch (e) { console.error('[api/analise] gastos', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/analise/ia/saldo — usuário informa o saldo atual (US$) do console.
+router.post('/ia/saldo', async (req, res) => {
+  try {
+    const saldo = num((req.body || {}).saldo_usd);
+    if (saldo == null || saldo < 0) return res.status(400).json({ error: 'saldo inválido' });
+    await pool.query(`UPDATE ai_settings SET balance_usd=$1, balance_set_at=now() WHERE id=1`, [saldo]);
+    res.json({ ok: true });
+  } catch (e) { console.error('[api/analise] saldo', e.message); res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

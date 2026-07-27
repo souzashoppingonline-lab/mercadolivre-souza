@@ -85,7 +85,7 @@ Regras de cálculo do financeiro: margem_liquida_pct = ((preco_sugerido - custo_
 async function analisarNucleo(produto, anuncios) {
   const ctx = buildContext(produto, anuncios);
   const user = `Analise o produto abaixo e devolva o JSON.\n\nDADOS:\n${JSON.stringify(ctx, null, 2)}`;
-  const result = await completeJson({ system: SYSTEM, user, maxTokens: 1200 });
+  const result = await completeJson({ system: SYSTEM, user, maxTokens: 1200, feature: 'analise', productId: produto.id });
   // normaliza o score pra um inteiro 0-100
   let score = Number(result?.score?.valor);
   if (!Number.isFinite(score)) score = null;
@@ -132,7 +132,7 @@ Regras: EXATAMENTE 7 criativos, cada um quebrando uma objeção DIFERENTE (basea
 async function gerarCriativos(produto, anuncios) {
   const ctx = buildContext(produto, anuncios);
   const user = `Gere os 7 criativos para o produto abaixo. Use as OBJEÇÕES dos comentários.\n\nDADOS:\n${JSON.stringify({ produto: ctx.produto, comentarios_texto: ctx.comentarios_texto }, null, 2)}`;
-  const data = await completeJson({ system: CRIATIVOS_SYSTEM, user, maxTokens: 4000 });
+  const data = await completeJson({ system: CRIATIVOS_SYSTEM, user, maxTokens: 4000, feature: 'criativos', productId: produto.id });
   const criativos = Array.isArray(data?.criativos) ? data.criativos.slice(0, 7) : [];
   return { criativos };
 }

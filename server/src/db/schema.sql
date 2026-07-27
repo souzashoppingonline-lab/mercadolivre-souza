@@ -758,3 +758,18 @@ CREATE TABLE IF NOT EXISTS analise_active_collection (
   CONSTRAINT analise_active_single_row CHECK (id = 1)
 );
 INSERT INTO analise_active_collection (id, product_id) VALUES (1, NULL) ON CONFLICT (id) DO NOTHING;
+
+-- Gastos de IA (v56): log de custo por chamada + saldo informado pelo usuário.
+CREATE TABLE IF NOT EXISTS ai_usage_log (
+  id BIGSERIAL PRIMARY KEY,
+  model TEXT, feature TEXT, product_id BIGINT,
+  input_tokens INT, output_tokens INT, cost_usd NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage_log(created_at);
+CREATE TABLE IF NOT EXISTS ai_settings (
+  id INT PRIMARY KEY DEFAULT 1,
+  balance_usd NUMERIC, balance_set_at TIMESTAMPTZ,
+  CONSTRAINT ai_settings_one CHECK (id = 1)
+);
+INSERT INTO ai_settings (id) VALUES (1) ON CONFLICT DO NOTHING;

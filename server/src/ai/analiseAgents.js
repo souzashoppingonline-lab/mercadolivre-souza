@@ -23,10 +23,21 @@ function buildContext(produto, anuncios) {
     .sort((a, b) => (n(b.comentarios) || 0) - (n(a.comentarios) || 0))
     .slice(0, MAX_ADS);
   // Campos compactos (só o essencial pra análise) — nomes curtos economizam tokens.
-  const ads = escolhidos.map((a) => ({
-    t: a.titulo, p: n(a.preco), nota: n(a.nota), vend: a.vendas,
-    rep: a.reputacao, full: a.full || undefined, flex: a.flex || undefined,
-  }));
+  const ads = escolhidos.map((a) => {
+    const o = {
+      t: a.titulo, p: n(a.preco), nota: n(a.nota), vend: a.vendas,
+      rep: a.reputacao, full: a.full || undefined, flex: a.flex || undefined,
+    };
+    // Vendas REAIS por janela (Shopping de Preço) — só inclui o que foi preenchido.
+    const vr = {};
+    if (n(a.vendas_7d) != null || n(a.preco_medio_7d) != null) vr['7d'] = { un: n(a.vendas_7d), preco_medio: n(a.preco_medio_7d) };
+    if (n(a.vendas_15d) != null || n(a.preco_medio_15d) != null) vr['15d'] = { un: n(a.vendas_15d), preco_medio: n(a.preco_medio_15d) };
+    if (n(a.vendas_21d) != null || n(a.preco_medio_21d) != null) vr['21d'] = { un: n(a.vendas_21d), preco_medio: n(a.preco_medio_21d) };
+    if (n(a.vendas_30d) != null || n(a.preco_medio_30d) != null) vr['30d'] = { un: n(a.vendas_30d), preco_medio: n(a.preco_medio_30d) };
+    if (Object.keys(vr).length) o.vendas_reais = vr;
+    return o;
+  });
+  const temVendasReais = ads.some((a) => a.vendas_reais);
   // Texto de comentários (visíveis + colados) com teto rígido de caracteres.
   const comentarios = escolhidos
     .map((a) => [a.comentarios_auto, a.comentarios_texto].filter(Boolean).join('\n'))
@@ -44,6 +55,7 @@ function buildContext(produto, anuncios) {
       total: ads.length,
       preco_min: precos.length ? Math.min(...precos) : null,
       preco_max: precos.length ? Math.max(...precos) : null,
+      tem_vendas_reais: temVendasReais,
       lista: ads,
     },
     comentarios_texto: comentarios || null,
@@ -79,7 +91,9 @@ Responda SOMENTE com um JSON válido (sem markdown, sem texto fora do JSON) nest
   }
 }
 
-Regras de cálculo do financeiro: margem_liquida_pct = ((preco_sugerido - custo_total - preco_sugerido*(taxa_marketplace_pct+imposto_pct)/100) / preco_sugerido) * 100. Se faltar custo (custo_aquisicao_rs = 0 ou nulo), diga no resumo que a análise financeira é parcial e não force números.`;
+Regras de cálculo do financeiro: margem_liquida_pct = ((preco_sugerido - custo_total - preco_sugerido*(taxa_marketplace_pct+imposto_pct)/100) / preco_sugerido) * 100. Se faltar custo (custo_aquisicao_rs = 0 ou nulo), diga no resumo que a análise financeira é parcial e não force números.
+
+VENDAS REAIS (PESO MÁXIMO): quando um concorrente tiver o campo "vendas_reais" (unidades vendidas e preço médio praticado em 7/15/21/30 dias, vindos do Shopping de Preço), esse é o dado MAIS confiável que existe — dê PESO ALTO a ele. Use as unidades pra dimensionar a DEMANDA/volume real do mercado e o preço_medio pra ancorar o preço_sugerido no valor REALMENTE praticado nas vendas (não só no preço de vitrine). Cite esses números na justificativa e no financeiro. Se NENHUM concorrente tiver vendas_reais (tem_vendas_reais=false), diga explicitamente que a estimativa de demanda é fraca por falta desses dados e seja mais conservador no score/decisão.`;
 
 // Roda o núcleo e devolve { comentarios, financeiro, decisao, score }.
 async function analisarNucleo(produto, anuncios) {

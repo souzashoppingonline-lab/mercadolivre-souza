@@ -60,6 +60,10 @@ O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não cap
 
 São colunas distintas de propósito, pra a coleta automática não sobrescrever o que o operador colou. Ambos são texto cru (a IA da Fase 3 lê e agrupa reclamações/elogios) e distintos de `comentarios`, que é só a contagem numérica.
 
+### Vendas reais (Shopping de Preço, v57)
+
+Campos preenchidos **à mão** no card do concorrente: unidades vendidas e preço médio praticado em **7/15/21/30 dias** (`vendas_7d`/`preco_medio_7d`, …, `vendas_30d`/`preco_medio_30d`). Vêm da ferramenta externa "Shopping de Preço" (que só mostra anúncios com >US$300 vendidos, logo categorias novas podem não ter — deixa-se em branco). É o dado **mais relevante** pra decisão: `buildContext` inclui um objeto `vendas_reais` por concorrente (só as janelas preenchidas) + flag `tem_vendas_reais`, e o prompt manda a IA dar **PESO MÁXIMO** — usar as unidades pra dimensionar demanda e o preço médio pra ancorar o preço sugerido no valor realmente praticado; sem esses dados, ser mais conservadora. A extensão nunca sobrescreve (upsert com COALESCE).
+
 **Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes do gate):**
 - `GET /extension/produto-ativo` → `{produto: {id, produto, status}|null}`.
 - `POST /extension/anuncio` → grava no produto ATIVO (o servidor resolve; 409 se

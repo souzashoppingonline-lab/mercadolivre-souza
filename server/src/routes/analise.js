@@ -160,10 +160,13 @@ router.post('/anuncios/:adId/editar', async (req, res) => {
       `UPDATE analise_product_ads SET
          titulo=$2, preco=$3, preco_original=$4, nota=$5, vendas=$6, perguntas=$7, comentarios=$8,
          vendedor=$9, cidade=$10, estado=$11, reputacao=$12, is_full=$13, is_flex=$14,
-         fotos=COALESCE($15, fotos), observacoes=$16, comentarios_texto=$17, comentarios_auto=$18
+         fotos=COALESCE($15, fotos), observacoes=$16, comentarios_texto=$17, comentarios_auto=$18,
+         vendas_7d=$19, preco_medio_7d=$20, vendas_15d=$21, preco_medio_15d=$22,
+         vendas_21d=$23, preco_medio_21d=$24, vendas_30d=$25, preco_medio_30d=$26
        WHERE id=$1 RETURNING *`,
       [req.params.adId, v.titulo, v.preco, v.preco_original, v.nota, v.vendas, v.perguntas, v.comentarios,
-       v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.observacoes, v.comentarios_texto, v.comentarios_auto]
+       v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.observacoes, v.comentarios_texto, v.comentarios_auto,
+       v.vendas_7d, v.preco_medio_7d, v.vendas_15d, v.preco_medio_15d, v.vendas_21d, v.preco_medio_21d, v.vendas_30d, v.preco_medio_30d]
     );
     if (!rows.length) return res.status(404).json({ error: 'anúncio não encontrado' });
     res.json(mapAd(rows[0]));

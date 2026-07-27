@@ -35,6 +35,10 @@
     .ap-empty { text-align:center;color:var(--text-muted);padding:48px 12px; }
     .ap-empty i { font-size:34px;opacity:.4;display:block;margin-bottom:10px; }
     .ap-muted { color:var(--text-muted,#8a8b90); }
+    .ap-card .vreais { font-size:.76rem;font-weight:700;color:var(--green,#27ae60);background:rgba(39,174,96,.10);border-radius:6px;padding:4px 7px;display:flex;align-items:center;gap:6px; }
+    .ap-card .vreais .jan { color:var(--text-muted);font-weight:600; }
+    .vreais-box { border:1px solid var(--border,#3a3b40);border-radius:10px;padding:12px;margin-top:4px;background:rgba(39,174,96,.05); }
+    .vreais-hd { font-size:.84rem;font-weight:800;display:flex;align-items:center;gap:7px;margin-bottom:2px; }
     /* Painel IA */
     #iaPanel { animation:apIn .35s ease; }
     .ia-head { display:flex;gap:18px;align-items:center;background:linear-gradient(135deg,rgba(99,102,241,.10),rgba(34,197,94,.06));border:1px solid var(--border,#3a3b40);border-radius:14px;padding:16px 18px;flex-wrap:wrap; }
@@ -279,6 +283,26 @@
     <div class="ap-field"><label>Observações (o que a extensão não pegou — ex.: principais reclamações)</label><textarea id="aObs" placeholder="Ex.: comentários reclamam de embalagem; muitos perguntam se serve p/ filhote"></textarea></div>
     <div class="ap-field"><label>💬 Comentários capturados pela extensão (automático)</label><textarea id="aComentariosAuto" rows="4" placeholder="Preenchido sozinho na coleta com os comentários visíveis do anúncio."></textarea></div>
     <div class="ap-field"><label>✍️ Comentários manuais (cole aqui) — os antigos que a extensão não pegou</label><textarea id="aComentariosTexto" rows="4" placeholder="Clique em 'Mostrar todas as opiniões' no anúncio, copie e cole aqui. A extensão nunca sobrescreve este campo."></textarea></div>
+    <div class="vreais-box">
+      <div class="vreais-hd"><i class="fas fa-chart-line" style="color:var(--green,#27ae60)"></i> Vendas reais (Shopping de Preço) — a IA dá peso alto</div>
+      <p class="ap-muted" style="font-size:.78rem;margin:2px 0 8px">Unidades vendidas e preço médio praticado por janela. Preencha o que tiver — deixe em branco o que o Shopping de Preço não mostrar.</p>
+      <div class="ap-grid2">
+        <div class="ap-field"><label>Vendas 7 dias (un)</label><input id="aV7" type="number" placeholder="120"></div>
+        <div class="ap-field"><label>Preço médio 7d (R$)</label><input id="aP7" type="number" step="0.01" placeholder="45.90"></div>
+      </div>
+      <div class="ap-grid2">
+        <div class="ap-field"><label>Vendas 15 dias (un)</label><input id="aV15" type="number" placeholder="260"></div>
+        <div class="ap-field"><label>Preço médio 15d (R$)</label><input id="aP15" type="number" step="0.01" placeholder="45.50"></div>
+      </div>
+      <div class="ap-grid2">
+        <div class="ap-field"><label>Vendas 21 dias (un)</label><input id="aV21" type="number" placeholder="380"></div>
+        <div class="ap-field"><label>Preço médio 21d (R$)</label><input id="aP21" type="number" step="0.01" placeholder="44.90"></div>
+      </div>
+      <div class="ap-grid2">
+        <div class="ap-field"><label>Vendas 30 dias (un)</label><input id="aV30" type="number" placeholder="520"></div>
+        <div class="ap-field"><label>Preço médio 30d (R$)</label><input id="aP30" type="number" step="0.01" placeholder="44.50"></div>
+      </div>
+    </div>
     <div class="ap-modal-actions">
       <button class="ap-btn ghost" onclick="fecharModalAnuncio()">Cancelar</button>
       <button class="ap-btn primary" id="btnSalvarAnuncio" onclick="salvarAnuncio()"><i class="fas fa-save"></i> Salvar</button>
@@ -451,6 +475,10 @@ function cardHtml(a) {
   const com  = a.comentarios != null ? `<span class="ap-badge gray"><i class="fas fa-comment"></i> ${esc(a.comentarios)}</span>` : '';
   const local = [a.cidade, a.estado].filter(Boolean).join('/') || '—';
   const obs = a.observacoes ? `<div class="obs"><i class="fas fa-pen-nib"></i> ${esc(a.observacoes)}</div>` : '';
+  // Vendas reais (Shopping de Preço) — mostra a janela mais completa disponível.
+  const vr = [[30, a.vendas_30d, a.preco_medio_30d], [21, a.vendas_21d, a.preco_medio_21d], [15, a.vendas_15d, a.preco_medio_15d], [7, a.vendas_7d, a.preco_medio_7d]]
+    .find(([, v, p]) => v != null || p != null);
+  const vreais = vr ? `<div class="vreais"><i class="fas fa-chart-line"></i> ${vr[1] != null ? '<b>' + esc(vr[1]) + '</b> un' : ''}${vr[1] != null && vr[2] != null ? ' · ' : ''}${vr[2] != null ? 'R$ ' + esc(vr[2]) + ' méd' : ''} <span class="jan">(${vr[0]}d)</span></div>` : '';
   const comAuto = a.comentarios_auto ? `<span class="ap-badge gray" title="Comentários capturados pela extensão"><i class="fas fa-comment-dots"></i> auto</span>` : '';
   const comTxt = a.comentarios_texto ? `<span class="ap-badge gray" title="Comentários que você colou à mão"><i class="fas fa-clipboard"></i> manual</span>` : '';
   return `<div class="ap-card">
@@ -463,6 +491,7 @@ function cardHtml(a) {
       <div class="ttl">${esc(a.titulo || '(sem título)')}</div>
       <div class="price">${BRL(a.preco)}</div>
       <div class="badges">${full}${flex}${nota}${perg}${com}${comAuto}${comTxt}${rep}</div>
+      ${vreais}
       ${obs}
     </div>
     <div class="foot"><span><i class="fas fa-shopping-cart"></i> ${a.vendas != null && a.vendas !== '' ? esc(a.vendas) : '—'}</span><span><i class="fas fa-map-marker-alt"></i> ${esc(local)}</span></div>
@@ -631,6 +660,10 @@ function setAnuncioForm(a) {
   document.getElementById('aFlex').value = a.flex === true ? 'true' : (a.flex === false ? 'false' : '');
   set('aFoto', (a.fotos && a.fotos[0]) || ''); set('aObs', a.observacoes);
   set('aComentariosAuto', a.comentarios_auto); set('aComentariosTexto', a.comentarios_texto);
+  set('aV7', a.vendas_7d); set('aP7', a.preco_medio_7d);
+  set('aV15', a.vendas_15d); set('aP15', a.preco_medio_15d);
+  set('aV21', a.vendas_21d); set('aP21', a.preco_medio_21d);
+  set('aV30', a.vendas_30d); set('aP30', a.preco_medio_30d);
 }
 function abrirAnuncioNovo() {
   if (!CURRENT) return;
@@ -654,6 +687,8 @@ async function salvarAnuncio() {
     vendedor: g('aVendedor'), cidade: g('aCidade'), estado: g('aEstado'), reputacao: g('aReputacao'),
     full: g('aFull'), flex: g('aFlex'), foto: g('aFoto'), observacoes: g('aObs'),
     comentarios_texto: g('aComentariosTexto'), comentarios_auto: g('aComentariosAuto'),
+    vendas_7d: g('aV7'), preco_medio_7d: g('aP7'), vendas_15d: g('aV15'), preco_medio_15d: g('aP15'),
+    vendas_21d: g('aV21'), preco_medio_21d: g('aP21'), vendas_30d: g('aV30'), preco_medio_30d: g('aP30'),
   };
   const adId = document.getElementById('aId').value;
   const btn = document.getElementById('btnSalvarAnuncio'); btn.disabled = true;

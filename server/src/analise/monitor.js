@@ -192,9 +192,11 @@ async function getAdDataFromMl(mlId, storeId, link) {
   try {
     item = await fetchItem(mlId); // público (anônimo); se falhar cai no scraping
   } catch (e) {
-    // API bloqueada (403): tenta a página pública pelo link (preço/título/fotos).
+    // API bloqueada (403/PolicyAgent): tenta a página pública pelo link.
     if (link) {
-      const sc = await scrapePermalink(link);
+      let sc;
+      try { sc = await scrapePermalink(link); }
+      catch (_) { throw new Error('O Mercado Livre bloqueou a leitura deste concorrente (API e página). Atualize pela EXTENSÃO: abra o anúncio no ML e clique em "Coletar p/ análise".'); }
       const promo = num(sc.price?.promotion), normal = num(sc.price?.normal);
       return {
         ml_id: mlId, link,
@@ -208,7 +210,7 @@ async function getAdDataFromMl(mlId, storeId, link) {
         _source: 'pagina',
       };
     }
-    throw e;
+    throw new Error('O Mercado Livre bloqueou a leitura deste concorrente pela API. Preencha o LINK do anúncio (pra tentar pela página) ou atualize pela extensão.');
   }
   const ship = item.shipping || {};
   const fotos = Array.isArray(item.pictures)

@@ -536,7 +536,7 @@ async function atualizarML(id, btn) {
     const i = ANUNCIOS.findIndex((x) => String(x.id) === String(id));
     if (i >= 0) ANUNCIOS[i] = data;
     renderCards(ANUNCIOS); // redesenha (o botão antigo é substituído)
-    toast('Dados atualizados do Mercado Livre.');
+    toast(data._aviso || 'Dados atualizados do Mercado Livre.');
   } catch (e) {
     btn.disabled = false; btn.innerHTML = o; toast('Falha: ' + e.message);
   }

@@ -230,16 +230,21 @@ router.post('/anuncios/:adId/atualizar-ml', async (req, res) => {
       [req.params.adId, d.link, d.titulo, d.preco, d.preco_original, d.vendas, d.full, d.flex,
        d.fotos ? JSON.stringify(d.fotos) : null, d.vendedor, d.reputacao, d.cidade, d.estado, d.nota, d.comentarios, d.perguntas]);
 
-    // Grava o preço obtido no histórico (funciona mesmo se veio da página).
-    try { await monitor.recordSnapshot(mlId, { preco: d.preco, preco_original: d.preco_original }); } catch (_) { /* best-effort */ }
-    // Se a API deixar, enriquece com estoque/visitas/status.
-    if (storeId) { try { await monitor.snapshotOne(mlId, storeId); } catch (_) { /* best-effort */ } }
+    // Só grava snapshot se conseguiu o preço (o ML entrega ao servidor uma página
+    // sem preço → não polui o histórico com linha vazia).
+    let aviso = null;
+    if (d.preco != null) {
+      try { await monitor.recordSnapshot(mlId, { preco: d.preco, preco_original: d.preco_original }); } catch (_) { /* best-effort */ }
+    } else {
+      aviso = 'Não consegui o preço pela API/página (o Mercado Livre bloqueia o servidor). Atualize pela EXTENSÃO: abra o anúncio no ML e clique em "Coletar p/ análise".';
+    }
 
     const ad = mapAd(upd[0]);
     const { rows: snaps } = await pool.query(
       `SELECT ml_id, snap_date, preco, preco_original, status, available_quantity, sold_quantity, sold_delta, visits_day
          FROM analise_monitor_snapshots WHERE ml_id=$1 ORDER BY snap_date ASC`, [mlId]);
     if (snaps.length) ad.monitor = { historico: snaps, ultimo: snaps[snaps.length - 1], count: snaps.length };
+    if (aviso) ad._aviso = aviso;
     res.json(ad);
   } catch (e) { console.error('[api/analise] atualizar-ml', e.message); res.status(500).json({ error: e.message }); }
 });

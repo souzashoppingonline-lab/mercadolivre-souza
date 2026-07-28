@@ -328,11 +328,13 @@ router.get('/pedidos', async (req, res) => {
 
 router.get('/vendas/diarias', async (req, res) => {
   const days = Number(req.query.days) || 30;
-  // Gráfico de vendas diárias: CONSOLIDADO de todos os marketplaces (base `orders`,
-  // não vw_ml_orders) — pedido do usuário. O restante do dashboard segue ML-only.
+  // Gráfico de vendas diárias: CONSOLIDADO de ML + Shopee (base `orders`, não
+  // vw_ml_orders). A AMAZON fica de FORA (sandbox/mock inflava o gráfico) —
+  // mesmo critério do card "Vendas Hoje" e do comparativo hoje-vs-ontem.
   const { rows } = await pool.query(
     `SELECT (date_created AT TIME ZONE 'America/Sao_Paulo')::date as data, COUNT(*) pedidos, SUM(total_amount) bruto
      FROM orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - $1::int AND status != 'cancelled'
+       AND marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')
      GROUP BY 1 ORDER BY 1`,
     [days]
   );
@@ -528,15 +530,18 @@ router.get('/vendas/hoje-vs-ontem', async (req, res) => {
               WHEN o.date_created >= $3 AND o.date_created < $4 THEN 'ontem'
          END AS periodo
        -- CONSOLIDADO: tabelas base orders/stores/items (nao as views ML) pra o
-       -- comparativo somar todos os marketplaces. A tela mostra so receita
-       -- (SUM total_amount) e pedidos; os campos de lucro (ml_fee/custo/imposto)
-       -- nao sao exibidos, entao ficarem 0 no Shopee nao afeta o que aparece.
+       -- comparativo somar ML + Shopee. A AMAZON fica de FORA (pedidos de
+       -- sandbox/mock inflavam o total) — mesmo criterio do card "Vendas Hoje"
+       -- (/dashboard/kpis). A tela mostra so receita (SUM total_amount) e
+       -- pedidos; os campos de lucro (ml_fee/custo/imposto) nao sao exibidos,
+       -- entao ficarem 0 no Shopee nao afeta o que aparece.
        FROM orders o
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN items i ON i.ml_id = o.item_id
        WHERE ((o.date_created >= $1 AND o.date_created < $2)
            OR (o.date_created >= $3 AND o.date_created < $4))
          AND o.status != 'cancelled'
+         AND o.marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')
          ${storeFilter}`,
       [hojeInicio.toISOString(), hojeFim.toISOString(),
        ontemInicio.toISOString(), ontemFim.toISOString(),

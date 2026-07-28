@@ -161,9 +161,29 @@ CREATE TABLE IF NOT EXISTS returns (
   note TEXT,
   raw_data JSONB,
   prejuizo NUMERIC, -- v28: valor de prejuízo digitado manualmente pelo usuário (não vem da API do ML)
-  abertura_chamado BOOLEAN DEFAULT false -- v43: flag manual "Abrir chamado" (checkbox na página de Devoluções)
+  abertura_chamado BOOLEAN DEFAULT false, -- v43: flag manual "Abrir chamado" (checkbox na página de Devoluções)
+  claim_id TEXT, -- v59: id da reclamação ML — chave natural (uma reclamação = uma linha)
+  last_synced_at TIMESTAMPTZ -- v59: última vez que a claim foi reconsultada na API
 );
 ALTER TABLE returns ADD COLUMN IF NOT EXISTS abertura_chamado BOOLEAN DEFAULT false; -- v43 (idempotente p/ tabela já existente)
+ALTER TABLE returns ADD COLUMN IF NOT EXISTS claim_id TEXT;                            -- v59
+ALTER TABLE returns ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;               -- v59
+-- v59: uma reclamação, uma linha. Parcial pra não travar devoluções antigas sem claim_id.
+CREATE UNIQUE INDEX IF NOT EXISTS returns_claim_id_uidx ON returns (claim_id) WHERE claim_id IS NOT NULL;
+
+-- v59: histórico de TODAS as alterações de uma reclamação (a tabela `returns`
+-- guarda só o estado ATUAL; aqui fica a timeline). Um registro por transição real.
+CREATE TABLE IF NOT EXISTS claim_history (
+  id BIGSERIAL PRIMARY KEY,
+  claim_id TEXT NOT NULL,
+  event_type TEXT,          -- created | status_change | stage_change | resolution | note
+  status TEXT,
+  substatus TEXT,
+  description TEXT,
+  payload_json JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS claim_history_claim_idx ON claim_history (claim_id, created_at);
 
 CREATE TABLE IF NOT EXISTS claim_reasons (
   id TEXT PRIMARY KEY,

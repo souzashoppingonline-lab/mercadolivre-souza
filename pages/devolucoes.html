@@ -23,6 +23,17 @@
     .dev-modal h3 .close { cursor: pointer; color: var(--text-muted); }
     .dev-modal video { width: 100%; border-radius: 10px; background: #000; max-height: 70vh; }
     .dev-modal.detail { max-width: 640px; max-height: 85vh; overflow-y: auto; }
+    /* Timeline do histórico da reclamação */
+    .tl { position: relative; margin: 6px 0 4px; padding-left: 26px; }
+    .tl::before { content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px; width: 2px; background: var(--border); }
+    .tl-item { position: relative; padding: 0 0 16px 4px; }
+    .tl-item:last-child { padding-bottom: 2px; }
+    .tl-item .dot { position: absolute; left: -22px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--primary); border: 2px solid var(--bg-card); }
+    .tl-item.created .dot { background: #22c55e; }
+    .tl-item.closed .dot { background: #ef4444; }
+    .tl-date { font-size: 11px; color: var(--text-muted); font-weight: 700; }
+    .tl-desc { font-size: 13px; font-weight: 600; margin-top: 1px; }
+    .tl-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
     .dev-detail-head { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
     .dev-detail-head img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: var(--bg-card2); flex-shrink: 0; }
     .dev-detail-head .prod-title { font-size: .95rem; font-weight: 700; }
@@ -198,6 +209,13 @@
   </div>
 </div>
 
+<div class="dev-modal-backdrop" id="devHistBackdrop" onclick="if(event.target===this) closeHistorico()">
+  <div class="dev-modal detail">
+    <h3>Histórico da reclamação <span class="close" onclick="closeHistorico()"><i class="fas fa-times"></i></span></h3>
+    <div id="devHistBody"></div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
@@ -339,6 +357,7 @@ function renderDevRows(rows) {
           <td onclick="event.stopPropagation()" style="white-space:nowrap">
             <span class="badge ${st.c}">${st.l}</span>
             <button title="Atualizar status desta devolução no Mercado Livre" onclick="atualizarStatus(${r.id}, this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;margin-left:4px"><i class="fas fa-rotate"></i></button>
+            <button title="Ver histórico desta reclamação" onclick="openHistorico(${r.id})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px"><i class="fas fa-clock-rotate-left"></i></button>
           </td>
           <td style="white-space:nowrap">${fmtD(r.date)}</td>
           <td id="video-cell-${r.order_id}" style="white-space:nowrap" onclick="event.stopPropagation()">—</td>
@@ -446,7 +465,7 @@ async function atualizarStatus(id, btn) {
   if (!res || res.error) { alert('Não foi possível atualizar: ' + (res?.error || 'erro')); return; }
   // Atualiza o cache (status/stage/type) e re-renderiza a visão atual.
   const row = allDevRows.find(x => String(x.id) === String(id));
-  if (row) { row.status = res.status; if (res.stage != null) row.stage = res.stage; if (res.type != null) row.type = res.type; }
+  if (row) { row.status = res.status; if (res.stage != null) row.stage = res.stage; if (res.type != null) row.type = res.type; if (res.substatus != null) row.substatus = res.substatus; row.last_synced_at = new Date().toISOString(); }
   renderDevRows(viewDevRows);
 }
 
@@ -720,6 +739,7 @@ function openDevDetail(id) {
   const raw = r.raw_data || {};
   const players = Array.isArray(raw.players) ? raw.players : [];
   const resolution = raw.resolution;
+  const mediator = players.find(p => p.role === 'mediator');
 
   const produtoHtml = r.item_permalink
     ? `<a href="${r.item_permalink}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${escapeHtmlDev(r.item_title || r.title || 'Produto')} <i class="fas fa-external-link-alt" style="font-size:10px;color:var(--primary)"></i></a>`
@@ -743,12 +763,16 @@ function openDevDetail(id) {
       <div class="dev-detail-item"><div class="lbl">Loja</div><div class="val">${r.conta || '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Logística</div><div class="val">${logLabel(r.shipping_type)}</div></div>
       <div class="dev-detail-item"><div class="lbl">Motivo</div><div class="val">${r.reason_detail || r.reason || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Substatus</div><div class="val">${r.substatus || (raw && raw.status_detail) || '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Estágio</div><div class="val">${traduzido(STAGE_LABEL, r.stage) || '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Tipo</div><div class="val">${traduzido(TYPE_LABEL, r.type) || '—'}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Mediador</div><div class="val">${mediator?.user_id ? `ID ${mediator.user_id}` : '—'}</div></div>
       <div class="dev-detail-item"><div class="lbl">Aberta em</div><div class="val">${fmtDT(r.date)}</div></div>
       <div class="dev-detail-item"><div class="lbl">Última atualização</div><div class="val">${fmtDT(r.last_updated)}</div></div>
+      <div class="dev-detail-item"><div class="lbl">Última sincronização</div><div class="val">${fmtDT(r.last_synced_at)}</div></div>
       <div class="dev-detail-item"><div class="lbl">Data da venda</div><div class="val">${fmtDT(r.order_date)}</div></div>
-    </div>`;
+    </div>
+    <div style="margin-top:10px"><button onclick="openHistorico(${r.id})" style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer"><i class="fas fa-clock-rotate-left"></i> Ver histórico completo</button></div>`;
 
   if (resolution) {
     html += `
@@ -784,6 +808,41 @@ function openDevDetail(id) {
 }
 function closeDevDetail() { document.getElementById('devDetailBackdrop').classList.remove('open'); }
 function escapeHtmlDev(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
+
+// Histórico (timeline) de uma reclamação — busca claim_history no backend e
+// renderiza a linha do tempo. Fetch direto (o DB._post/_get engole erro → null,
+// ver known-bugs.md). Fecha o modal de detalhe se estiver aberto.
+async function openHistorico(id) {
+  closeDevDetail();
+  const body = document.getElementById('devHistBody');
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)"><i class="fas fa-spinner fa-spin"></i> Carregando histórico...</div>';
+  document.getElementById('devHistBackdrop').classList.add('open');
+  try {
+    const r = await fetch(`/api/alertas/devolucoes/${id}/historico`);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    const data = await r.json();
+    const ev = data.eventos || [];
+    if (!ev.length) {
+      body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">Sem histórico registrado para esta reclamação ainda.</div>';
+      return;
+    }
+    const stName = { opened:'Aberta', analysis:'Em análise', in_mediation:'Em mediação', closed:'Encerrada', resolved:'Resolvida', rejected:'Rejeitada', cancelled:'Cancelada', archived:'Arquivada' };
+    body.innerHTML = `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-family:monospace">Nº ${data.claim_id || '—'}</div>
+      <div class="tl">${ev.map(e => {
+        const cls = e.event_type === 'created' ? 'created' : (['closed','resolved','rejected','cancelled','archived'].includes(e.status) ? 'closed' : '');
+        const sub = [stName[e.status] || e.status, e.substatus].filter(Boolean).join(' · ');
+        return `<div class="tl-item ${cls}">
+          <span class="dot"></span>
+          <div class="tl-date">${fmtDT(e.created_at)}</div>
+          <div class="tl-desc">${escapeHtmlDev(e.description || '—')}</div>
+          ${sub ? `<div class="tl-sub">${escapeHtmlDev(sub)}</div>` : ''}
+        </div>`;
+      }).join('')}</div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red)">Erro ao carregar histórico: ${escapeHtmlDev(e.message)}</div>`;
+  }
+}
+function closeHistorico() { document.getElementById('devHistBackdrop').classList.remove('open'); }
 
 // Exporta as devoluções atualmente carregadas (mesmo filtro de período/loja/
 // busca ativo na tela) — pensado pra análise externa (ex: colar numa IA e

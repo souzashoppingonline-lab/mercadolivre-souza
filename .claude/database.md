@@ -134,7 +134,22 @@ note  -- v23 (mesma correção): usado pelo endpoint PATCH /api/alertas/devoluco
 raw_data JSONB  -- v24: claim completa da API do ML (stage/type/players/resolution/etc) — mesmo padrão de orders.raw_data
 prejuizo NUMERIC  -- v28: valor de prejuízo digitado manualmente pelo usuário (R$ perdido com a devolução) — NÃO vem da API do ML, PATCH /api/alertas/devolucoes/:id/prejuizo. NULL = ainda não avaliado (distinto de prejuízo zero)
 abertura_chamado BOOLEAN  -- v43: flag manual "Abrir chamado" (checkbox na tabela de Devoluções), PATCH /api/alertas/devolucoes/:id/abertura-chamado. Sai como Sim/Não no CSV/PDF
+claim_id TEXT  -- v59: id da reclamação ML (chave natural). ÍNDICE UNIQUE PARCIAL `returns_claim_id_uidx (claim_id) WHERE claim_id IS NOT NULL` → uma reclamação = UMA linha
+last_synced_at TIMESTAMPTZ  -- v59: última vez que a claim foi reconsultada na API do ML
 ```
+**v59 — dedup por `claim_id`:** antes desta migration os 3 pontos de gravação (`handlePostPurchase`, sync de métricas, `syncReturns`) faziam `INSERT ... ON CONFLICT DO NOTHING` sem constraint única → cada atualização da MESMA reclamação virava uma linha nova. A v59 adiciona `claim_id` + índice UNIQUE parcial, faz backfill do JSON, **colapsa as duplicatas existentes** (mantém a linha mais recente por `updated_at/date`, mesclando `prejuizo`/`note`/`abertura_chamado` de todas as cópias) e semeia `claim_history`. Toda gravação passou a ser upsert por `claim_id` via `server/src/claims.js`. Ver `decisions.md`.
+
+### `claim_history` — v59: timeline das reclamações
+```
+id BIGSERIAL PK
+claim_id TEXT NOT NULL   -- índice claim_history_claim_idx (claim_id, created_at)
+event_type TEXT          -- created | status_change | stage_change | resolution | note
+status, substatus TEXT
+description TEXT          -- texto legível pra timeline ("Reclamação encerrada")
+payload_json JSONB       -- snapshot da claim naquele momento
+created_at TIMESTAMPTZ
+```
+A tabela `returns` guarda só o **estado ATUAL** de cada reclamação; `claim_history` guarda **todas as transições** desde a criação. `upsertClaim()` (`claims.js`) grava um registro aqui só quando há transição real (status/stage/substatus muda) — não a cada poll idêntico, pra não crescer sem informação. Lido por `GET /api/alertas/devolucoes/:id/historico` (modal timeline na página de Devoluções).
 
 ### `claim_reasons` — v24: cache de tradução de reason_id
 ```

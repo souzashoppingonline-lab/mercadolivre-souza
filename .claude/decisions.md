@@ -2,6 +2,15 @@
 
 > Escopo: registro histórico de "por que fizemos assim e não de outro jeito". Não repita a mecânica atual (isso já está em `workers.md`/`mercadolivre.md`/etc.) — aqui só o racional e o antes/depois quando existir. **Toda decisão arquitetural nova (escolha entre duas abordagens, correção de um bug de design, trade-off aceito conscientemente) deve ser registrada aqui na mesma tarefa em que for tomada.**
 
+## Reclamações — `claim_id` como chave natural + histórico separado (v59)
+**Antes:** os 3 pontos que gravavam devoluções faziam `INSERT ... ON CONFLICT DO NOTHING`, mas a tabela `returns` não tinha nenhuma constraint única — o `ON CONFLICT` nunca disparava, então cada atualização da MESMA reclamação (a API do ML manda várias por claim ao longo da vida dela) virava uma **linha nova**. Resultado: dezenas de linhas repetidas por reclamação, tabela inchando e listagem poluída.
+**Depois (v59):** `returns.claim_id` (id da reclamação ML) vira **chave natural** com índice UNIQUE parcial (`WHERE claim_id IS NOT NULL`, pra não travar devoluções antigas sem claim resolvido). Toda gravação passou por um **ponto único** — `server/src/claims.js::upsertClaim()` — que faz `INSERT ... ON CONFLICT (claim_id) DO UPDATE`. A tabela `returns` representa o **estado ATUAL**; um novo `claim_history` guarda **todas as transições** (timeline).
+**Trade-offs conscientes:**
+- **Histórico = transições, não polls.** `upsertClaim` só grava em `claim_history` quando status/stage/substatus muda de verdade — não a cada reconsulta idêntica. Senão o histórico cresceria sem informação (a spec pedia "um registro por atualização", mas isso encheria de linhas "ainda aberta" iguais). Uma reclamação com 10 atualizações vira 1 linha em `returns` + N eventos reais em `claim_history`.
+- **Campos manuais preservados.** `prejuizo`/`note`/`abertura_chamado` não entram no `SET` do upsert (o worker nunca os toca) e a migration os **mescla** ao colapsar duplicatas (mantém o não-nulo de qualquer cópia) antes de deletar as linhas extras.
+- **Sem tabela de mensagens.** A timeline é construída do estado da claim (sem custo de API); trazer o thread de mensagens (`/claims/:id/messages`) exigiria chamadas extras e o módulo já é rate-limit-constrained — ficou fora.
+- **`amount` só sobrescreve se > 0** (`COALESCE(NULLIF(EXCLUDED.amount,0), returns.amount)`) — não zera um valor bom quando o pedido ainda não foi importado.
+
 ## Relatórios de conciliação do Mercado Pago — o token do ML autentica em `api.mercadopago.com` (confirmado ao vivo)
 
 **Contexto**: a etapa 4 da Conciliação Bancária (Transferência bancária / "o dinheiro caiu na conta de verdade") estava documentada como gap que "pode exigir app Mercado Pago separado". Igual à suposição inicial do `/collections/:id` (que se provou errada), decidiu-se **testar antes de assumir** — script `server/test-mp-account.js` (read-only, só GET), rodado em produção (18/07/2026) nas 3 contas ML.

@@ -1872,9 +1872,11 @@ router.get('/alertas/devolucoes', async (req, res) => {
                 r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo, r.abertura_chamado,
                 COALESCE(cr.detail, r.reason) AS reason_detail,
                 r.raw_data,
-                r.raw_data->>'id' AS claim_id,
+                COALESCE(r.claim_id, r.raw_data->>'id') AS claim_id,
+                r.last_synced_at,
                 r.raw_data->>'stage' AS stage,
                 r.raw_data->>'type' AS type,
+                r.raw_data->>'status_detail' AS substatus,
                 r.raw_data->>'last_updated' AS last_updated,
                 o.item_id, o.quantity AS order_quantity, o.unit_price, o.total_amount AS order_amount,
                 o.shipping_type, o.date_created AS order_date,
@@ -2038,22 +2040,23 @@ router.patch('/alertas/devolucoes/:id/note', async (req, res) => {
 // mlClient da rota (exceção documentada em architecture.md, igual answerQuestion).
 router.post('/alertas/devolucoes/:id/atualizar-status', async (req, res) => {
   try {
-    const { rows } = await pool.query(`SELECT store_id, raw_data FROM returns WHERE id = $1`, [req.params.id]);
+    const { rows } = await pool.query(`SELECT store_id, order_id, amount, claim_id, raw_data FROM returns WHERE id = $1`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'devolução não encontrada' });
     const storeId = rows[0].store_id;
     const raw = rows[0].raw_data || {};
-    const claimId = raw.id || raw.claim_id;
+    const claimId = rows[0].claim_id || raw.id || raw.claim_id;
     if (!storeId || !claimId) return res.status(422).json({ error: 'sem claim_id/loja pra reconsultar esta devolução' });
 
     const ml = require('../mlClient');
+    const { upsertClaim } = require('../claims');
     const claim = await ml.getClaim(claimId, storeId); // GET só desta claim
 
-    const upd = await pool.query(
-      `UPDATE returns SET status = $1, reason = COALESCE($2, reason), raw_data = $3, updated_at = now()
-       WHERE id = $4 RETURNING id, status`,
-      [claim.status, claim.reason_id || null, JSON.stringify(claim), req.params.id]
-    );
-    res.json({ ok: true, id: upd.rows[0].id, status: claim.status, stage: claim.stage || null, type: claim.type || null });
+    // Upsert por claim_id (grava a transição no histórico) — mesmo ponto único
+    // de gravação usado pelo worker; nunca cria linha nova. Ver claims.js.
+    const up = await upsertClaim({
+      storeId, orderId: rows[0].order_id, buyerNickname: null, amount: rows[0].amount, claim,
+    });
+    res.json({ ok: true, id: up.id, status: claim.status, substatus: claim.status_detail || null, stage: claim.stage || null, type: claim.type || null });
   } catch (e) {
     console.error('[/alertas/devolucoes/:id/atualizar-status]', e.message);
     // A API de claims do ML tem rate limit apertado — mensagem clara pro usuário
@@ -2061,6 +2064,26 @@ router.post('/alertas/devolucoes/:id/atualizar-status', async (req, res) => {
     if (/429|rate limit/i.test(e.message)) {
       return res.status(429).json({ error: 'O Mercado Livre limitou as consultas (rate limit). Aguarde ~1 minuto e atualize uma devolução por vez.' });
     }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Timeline de uma reclamação — todos os eventos (transições de estado)
+// registrados em claim_history desde a criação. Só leitura no Postgres.
+router.get('/alertas/devolucoes/:id/historico', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT claim_id FROM returns WHERE id = $1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'devolução não encontrada' });
+    const claimId = rows[0].claim_id;
+    if (!claimId) return res.json({ claim_id: null, eventos: [] });
+    const { rows: hist } = await pool.query(
+      `SELECT id, event_type, status, substatus, description, created_at
+         FROM claim_history WHERE claim_id = $1 ORDER BY created_at ASC, id ASC`,
+      [claimId]
+    );
+    res.json({ claim_id: claimId, eventos: hist });
+  } catch (e) {
+    console.error('[/alertas/devolucoes/:id/historico]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

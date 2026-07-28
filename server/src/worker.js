@@ -47,6 +47,7 @@ function fmtLogistica(raw) {
 // marketplaceEventWorker (vendas Amazon/Shopee) — mesma lógica de
 // token/chat/silêncio/throttle, sem duplicar.
 const { tgNotify, tgNotifyForce } = require('./notify');
+const { upsertClaim } = require('./claims');
 
 const noop = () => {};  // topics we receive but don't need to process
 
@@ -516,15 +517,13 @@ async function handlePostPurchase({ resource, storeId }) {
     const itemTitle = claim.resolution?.description || null;
     const reasonText = await resolveClaimReason(claim.reason_id, storeId);
     const amount = await resolveReturnAmount(orderId);
-    await pool.query(
-      `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9)
-       ON CONFLICT DO NOTHING`,
-      [storeId, orderId, buyerNickname, itemTitle || claim.reason_id,
-       claim.reason_id || null, amount, claim.status, claim.date_created, JSON.stringify(claim)]
-    );
+    // Upsert por claim_id — nunca cria linha duplicada; registra a transição
+    // no histórico. Ver server/src/claims.js e .claude/decisions.md.
+    const up = await upsertClaim({ storeId, orderId, buyerNickname, amount, claim });
     await publish('devolucao_recebida', { store_id: storeId, claim_id: claimId, status: claim.status });
-    if (claim.status === 'opened') {
+    // Notifica "nova devolução" só quando é reclamação nova (ou reabriu) e está
+    // aberta — evita re-notificar a cada webhook de atualização da mesma claim.
+    if (claim.status === 'opened' && (up.isNew || up.statusChanged)) {
       const loja = await getStoreName(storeId);
       const { rows: od } = await pool.query(
         `SELECT o.title, o.item_id, i.permalink
@@ -1092,15 +1091,8 @@ async function syncMetricas() {
               const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
               await resolveClaimReason(claim.reason_id, store.id);
               const amount = await resolveReturnAmount(orderId);
-              const { rowCount } = await pool.query(
-                `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9) ON CONFLICT DO NOTHING`,
-                [store.id, orderId, buyerNickname,
-                 claim.resolution?.description || claim.reason_id || null,
-                 claim.reason_id || null, amount,
-                 claim.status, claim.date_created, JSON.stringify(claim)]
-              );
-              if (rowCount) claimsNew++;
+              const up = await upsertClaim({ storeId: store.id, orderId, buyerNickname, amount, claim });
+              if (up.isNew) claimsNew++;
             } catch (e) { console.warn(`[sync-metricas] claim=${c.id}: ${e.message}`); }
           }
         } catch (e) { console.warn(`[sync-metricas] devoluções ${store.nickname}: ${e.message}`); }
@@ -1646,10 +1638,10 @@ async function syncClaimsStatus(manual = false) {
       let waitMs = 8000; // intervalo base entre chamadas (conservador — token compartilhado com webhooks)
       try {
         const claim = await ml.getClaim(r.claim_id, r.store_id);
-        await pool.query(
-          `UPDATE returns SET status=$1, reason=COALESCE($2,reason), raw_data=$3, updated_at=now() WHERE id=$4`,
-          [claim.status, claim.reason_id || null, JSON.stringify(claim), r.id]
-        );
+        // Upsert por claim_id (grava a transição no histórico) em vez de UPDATE
+        // por id — mantém o ponto único de gravação. orderId/amount vêm do que
+        // já está na linha (r.order_id/r.amount); não recalcula (evita query extra).
+        await upsertClaim({ storeId: r.store_id, orderId: r.order_id, buyerNickname: null, amount: r.amount, claim });
         updated++;
         streak.set(r.store_id, 0);
         // Saiu do estado pendente → devolução encerrada. Notifica UMA vez (na
@@ -1810,16 +1802,8 @@ async function syncReturns() {
             const buyerNickname = claim.players?.find(p => p.role === 'complainant')?.user_id?.toString() || null;
             await resolveClaimReason(claim.reason_id, store.id);
             const amount = await resolveReturnAmount(orderId);
-            const { rowCount } = await pool.query(
-              `INSERT INTO returns (store_id, order_id, buyer_nickname, title, reason, amount, status, date, updated_at, raw_data)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),$9)
-               ON CONFLICT DO NOTHING`,
-              [store.id, orderId, buyerNickname,
-               claim.resolution?.description || claim.reason_id || null,
-               claim.reason_id || null, amount,
-               claim.status, claim.date_created, JSON.stringify(claim)]
-            );
-            if (rowCount) total++;
+            const up = await upsertClaim({ storeId: store.id, orderId, buyerNickname, amount, claim });
+            if (up.isNew) total++;
           } catch (e) {
             console.warn(`[syncReturns] claim=${c.id}:`, e.message);
           }

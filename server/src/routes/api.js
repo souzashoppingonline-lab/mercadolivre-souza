@@ -20,13 +20,19 @@ async function cached(key, ttlSeconds, fn) {
 // ── Dashboard ──────────────────────────────────────────────
 router.get('/dashboard/kpis', async (req, res) => {
   const data = await cached('kpis:summary', 30, async () => {
-    // Vendas/Pedidos Hoje: CONSOLIDADO de todos os marketplaces (ML+Shopee+Amazon)
-    // — pedido do usuário pra ver o total geral no dashboard. Usa a tabela base
-    // `orders` (não a view vw_ml_orders) de propósito. perguntas/anúncios abaixo
-    // continuam ML-only. Cache kpis:summary já é invalidado pelos workers ML e Shopee.
+    // Vendas/Pedidos Hoje: CONSOLIDADO de ML + Shopee. A Amazon fica de FORA
+    // enquanto a integração não estiver em produção (pedidos de sandbox/mock
+    // inflavam o KPI). Excluir por marketplace_id=AMAZON — pedidos ML antigos
+    // têm marketplace_id NULL, então IS DISTINCT FROM mantém eles (NULL=ML) e
+    // bate com os cards de /dashboard/por-marketplace (ML+SHOPEE). Usa a tabela
+    // base `orders` de propósito. perguntas/anúncios abaixo continuam ML-only.
+    // Cache kpis:summary já é invalidado pelos workers ML e Shopee.
     const today = await pool.query(
       `SELECT COUNT(*) pedidos, COALESCE(SUM(total_amount),0) vendas
-       FROM orders WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date AND status != 'cancelled'`
+       FROM orders
+       WHERE (date_created AT TIME ZONE 'America/Sao_Paulo')::date = (now() AT TIME ZONE 'America/Sao_Paulo')::date
+         AND status != 'cancelled'
+         AND marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')`
     );
     const perguntas = await pool.query(`SELECT COUNT(*) n FROM questions WHERE status='UNANSWERED'`);
     const anuncios = await pool.query(`SELECT COUNT(*) n FROM vw_ml_items WHERE status='active'`);

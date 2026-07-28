@@ -8,7 +8,7 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 | Rota | Descrição |
 |---|---|
 | `GET /api/dashboard/por-marketplace` | vendas/pedidos de **hoje quebrados por marketplace** (ML/Shopee) — cards no dashboard. `{marketplaces:[{code,name,pedidos,vendas}]}`. `COALESCE(marketplace_id, ML)` trata pedido ML antigo sem marketplace como ML, pro somatório bater com o KPI consolidado |
-| `GET /api/dashboard/kpis` | vendas/pedidos de hoje **(consolidado — todos os marketplaces, tabela base `orders`)**, perguntas pendentes + anúncios ativos (esses seguem ML-only via `vw_ml_*`). Cache Redis 30s (`kpis:summary`, invalidado pelos workers ML e Shopee). Ver `decisions.md` (exceção consciente ao isolamento ML-only) |
+| `GET /api/dashboard/kpis` | vendas/pedidos de hoje **(consolidado ML + Shopee, tabela base `orders`)** — Amazon fica de FORA (`marketplace_id IS DISTINCT FROM AMAZON`) enquanto a integração não está em produção, pra pedidos de sandbox/mock não inflarem o KPI; bate com os cards de `/dashboard/por-marketplace`. Perguntas pendentes + anúncios ativos seguem ML-only via `vw_ml_*`. Cache Redis 30s (`kpis:summary`, invalidado pelos workers ML e Shopee). Ver `decisions.md` |
 | `GET /api/dashboard/chart?period=N` | série diária de pedidos/receita, últimos N dias |
 | `GET /api/dashboard/top-products?limit=N` | produtos mais vendidos por receita |
 | `GET /api/dashboard/alerts` | itens com estoque ≤ 5 |

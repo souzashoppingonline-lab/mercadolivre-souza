@@ -784,6 +784,16 @@ CREATE TABLE IF NOT EXISTS analise_monitor_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_mlid_date ON analise_monitor_snapshots (ml_id, snap_date);
 CREATE INDEX IF NOT EXISTS idx_analise_ads_product ON analise_product_ads(product_id);
+-- Alertas de mudança detectados sobre os snapshots (v60) — alimenta Telegram + relatório no card.
+CREATE TABLE IF NOT EXISTS analise_monitor_alerts (
+  id BIGSERIAL PRIMARY KEY,
+  ml_id TEXT NOT NULL, product_id BIGINT,
+  alert_type TEXT NOT NULL,          -- price_up|price_down|stock_out|stock_back|paused|closed|sales_spike
+  old_value TEXT, new_value TEXT, delta_pct NUMERIC,
+  message TEXT, notified BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_alerts_mlid ON analise_monitor_alerts (ml_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_monitor_alerts_product ON analise_monitor_alerts (product_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS analise_active_collection (
   id INT PRIMARY KEY DEFAULT 1,
   product_id BIGINT REFERENCES analise_products(id) ON DELETE SET NULL,

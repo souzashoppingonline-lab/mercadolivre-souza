@@ -48,9 +48,23 @@ router.get('/produtos/:id', async (req, res) => {
           WHERE ml_id = ANY($1) ORDER BY snap_date ASC`, [mlIds]);
       const byId = {};
       for (const s of snaps) (byId[s.ml_id] = byId[s.ml_id] || []).push(s);
+      // Alertas de mudança detectados (v60) — últimos 20 por MLB, mais recentes primeiro.
+      const { rows: alerts } = await pool.query(
+        `SELECT ml_id, alert_type, old_value, new_value, delta_pct, message, created_at
+           FROM analise_monitor_alerts WHERE ml_id = ANY($1)
+          ORDER BY created_at DESC LIMIT 200`, [mlIds]);
+      const alertsById = {};
+      for (const al of alerts) {
+        const arr = (alertsById[al.ml_id] = alertsById[al.ml_id] || []);
+        if (arr.length < 20) arr.push(al);
+      }
       for (const a of mapped) {
         const h = a.ml_id && byId[a.ml_id];
         if (h && h.length) a.monitor = { historico: h, ultimo: h[h.length - 1], count: h.length };
+        if (a.ml_id && alertsById[a.ml_id]) {
+          a.monitor = a.monitor || { historico: [], ultimo: null, count: 0 };
+          a.monitor.alertas = alertsById[a.ml_id];
+        }
       }
     }
     res.json({ produto: rows[0], anuncios: mapped, ativo_id: await getAtivoId() });

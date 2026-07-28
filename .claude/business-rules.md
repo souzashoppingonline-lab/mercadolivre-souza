@@ -218,3 +218,18 @@ Status cru de `/shipments/:id` (campo `status` — confirmado ao vivo pra `pendi
 | `not_delivered` | `nao_entregue` | Não entregue | 🟠 (tag amarela) |
 
 `not_delivered` é um bucket extra, não fazia parte do pedido original — adicionado porque é um status real do vocabulário da API do ML que não se encaixava nos outros 5 (tentativa de entrega falhou, sem ser necessariamente cancelamento). Tabela replicada em dois lugares por não haver runtime compartilhado entre a página estática e o Node: `SHIPPING_STATUS_MAP` (`pages/conciliacao-bancaria.html`, pra badge/tooltip) e `SHIPPING_STATUS_BUCKETS` (`routes/api.js`, pra traduzir o filtro `entrega` em lista de status crus no `WHERE`). Ver `conciliacao-bancaria.md`.
+
+## Alertas de monitoramento de concorrente — limiares (v60)
+
+Quando um snapshot de concorrente (Análise de Produtos) muda em relação ao último estado conhecido, dispara alerta (Telegram + relatório no card). Limiares, todos ajustáveis por env sem deploy (`server/src/analise/monitor.js`):
+
+| Gatilho | Condição | Env (padrão) |
+|---|---|---|
+| Preço subiu/caiu | variação `|Δ%|` ≥ limiar | `ANALISE_ALERT_PRICE_PCT` (**3**) |
+| Estoque zerou | `available_quantity`: era > 0 → 0 | — |
+| Estoque voltou | era 0 → > 0 | — |
+| Pausou | `status` → `paused` | — |
+| Encerrou | `status` → `closed`/`under_review` | — |
+| Disparada de vendas | `sold_delta` do dia ≥ limiar | `ANALISE_SALES_SPIKE_MIN` (**15**) |
+
+Regras: **só transição real** dispara (nunca a cada snapshot idêntico); **dedup** por `(ml_id, tipo, novo valor)` nas últimas **20h** evita o job diário e o "Monitorar agora" avisarem a mesma mudança duas vezes; o Telegram usa `tgNotifyForce` (ignora throttle/silêncio — o dedup já contém o volume) e pode ser desligado com `app_config.tg_monitor_analise='false'`. Ver `analise-produtos.md`.

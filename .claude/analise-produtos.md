@@ -154,6 +154,29 @@ o MLB é extraído do link automaticamente se faltar (`mlbFrom` em `ads.js`).
   nem a extensão, nem o botão "Puxar dados do ML", nem o snapshot os alteram (só o
   add/editar manual escreve neles).
 
+## Alertas de mudança do concorrente (v60)
+
+Camada de **aviso** por cima do snapshot: a v58 já guardava o histórico, mas não
+avisava. Agora, toda vez que um snapshot é gravado (`recordSnapshot`), o
+`detectAndAlert` compara o valor NOVO com o **último estado conhecido** e, se
+cruzou um limiar, grava um alerta em `analise_monitor_alerts` **e dispara Telegram**.
+
+- **4 gatilhos**: preço subiu/caiu (≥ `ANALISE_ALERT_PRICE_PCT`, padrão 3%),
+  estoque zerou/voltou, anúncio pausou/encerrou (`status`), disparada de vendas
+  (Δ vendas do dia ≥ `ANALISE_SALES_SPIKE_MIN`, padrão 15). Limiares em
+  `business-rules.md`.
+- **Só transição real dispara** (nunca a cada snapshot idêntico) e há **dedup**
+  por `(ml_id, tipo, novo valor)` nas últimas 20h — o job diário e o "Monitorar
+  agora" não avisam a mesma mudança duas vezes.
+- **Telegram**: `tgNotifyForce('tg_monitor_analise', …)` (sem throttle; o dedup já
+  evita spam). Pode ser desligado com `app_config.tg_monitor_analise='false'`.
+- **Relatório no card**: `GET /produtos/:id` devolve `anuncio.monitor.alertas`
+  (últimos 20 por MLB); a página renderiza o bloco **"Relatório de mudanças"**
+  dentro do card do concorrente (`alertasHtml`), com ícone por tipo e data/hora.
+- **Origem do dado**: como o snapshot é alimentado pela API pública/scraping (job
+  diário) **e pela extensão** (a cada coleta), o alerta cobre as duas fontes — o
+  preço mudado que a extensão captura no navegador real também vira alerta.
+
 ## Gastos de IA (v56)
 
 Toda chamada de IA registra tokens+custo em `ai_usage_log` (`llm.js` lê `usage` da

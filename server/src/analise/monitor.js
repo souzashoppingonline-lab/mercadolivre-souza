@@ -10,8 +10,16 @@
 const pool = require('../db/pool');
 const ml = require('../mlClient');
 const { extractMercadoLivreData } = require('../extractors/mercadolivre');
+const { tgNotifyForce } = require('../notify');
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
+
+// Limiares dos alertas de monitoramento (ver .claude/business-rules.md).
+// Ajustáveis por env sem deploy. Preço: variação mínima (%) que dispara alerta.
+// Vendas: Δ de vendas em 1 dia acima do qual consideramos "disparada".
+const ALERT_PRICE_PCT = Number(process.env.ANALISE_ALERT_PRICE_PCT || 3);
+const SALES_SPIKE_MIN = Number(process.env.ANALISE_SALES_SPIKE_MIN || 15);
+const BRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 
 // Último recurso quando a API bloqueia (403): lê a PÁGINA PÚBLICA do anúncio
 // (sem token) e extrai preço/título/fotos do JSON-LD, igual a extensão faz.
@@ -93,6 +101,13 @@ async function recordSnapshot(mlId, f) {
         WHERE ml_id=$1 AND snap_date < CURRENT_DATE ORDER BY snap_date DESC LIMIT 1`, [mlId]);
     if (prev[0]?.sold_quantity != null) soldDelta = soldNow - Number(prev[0].sold_quantity);
   }
+  // Último estado conhecido (a linha mais recente, inclusive a de hoje se já
+  // existir — é justamente o valor que estamos prestes a sobrescrever). É a base
+  // de comparação da detecção de alertas, que roda ANTES do upsert.
+  const { rows: lastRows } = await pool.query(
+    `SELECT preco, available_quantity, status FROM analise_monitor_snapshots
+      WHERE ml_id=$1 ORDER BY snap_date DESC, id DESC LIMIT 1`, [mlId]);
+  const before = lastRows[0] || null;
   await pool.query(
     `INSERT INTO analise_monitor_snapshots
        (ml_id, snap_date, preco, preco_original, status, available_quantity, sold_quantity,
@@ -118,7 +133,93 @@ async function recordSnapshot(mlId, f) {
      f.listing_type || null, f.logistic_type || null, f.free_shipping ?? null,
      num(f.health), f.catalog ?? null, f.seller_id != null ? String(f.seller_id) : null,
      f.raw ? JSON.stringify(f.raw) : null]);
+  // Detecção de mudanças (não pode quebrar a gravação do snapshot).
+  try { await detectAndAlert(mlId, before, f, soldDelta); }
+  catch (e) { console.error('[monitor-alert]', mlId, e.message); }
   return { ml_id: mlId, preco: num(f.preco), sold_delta: soldDelta };
+}
+
+// Compara o estado NOVO (f) com o último conhecido (before) e, para cada mudança
+// relevante, grava um alerta em analise_monitor_alerts e dispara Telegram. Só
+// avisa quando há transição real — nada de spam a cada snapshot idêntico. Dedup
+// por (ml_id, tipo, novo valor) nas últimas 20h evita o job diário e o
+// "Monitorar agora" avisarem duas vezes a mesma mudança. before pode ser null
+// (1º snapshot do MLB) → nada a comparar.
+async function detectAndAlert(mlId, before, f, soldDelta) {
+  if (!before) return;
+  const alerts = [];
+  const newPreco = num(f.preco), oldPreco = before.preco != null ? Number(before.preco) : null;
+  const newStock = num(f.available_quantity), oldStock = before.available_quantity;
+  const newStatus = f.status || null, oldStatus = before.status || null;
+
+  // Preço subiu/caiu além do limiar.
+  if (newPreco != null && oldPreco != null && oldPreco > 0 && newPreco !== oldPreco) {
+    const pct = ((newPreco - oldPreco) / oldPreco) * 100;
+    if (Math.abs(pct) >= ALERT_PRICE_PCT) {
+      const up = newPreco > oldPreco;
+      alerts.push({
+        type: up ? 'price_up' : 'price_down', old: BRL(oldPreco), new: BRL(newPreco),
+        delta_pct: Number(pct.toFixed(1)),
+        emoji: up ? '📈' : '📉', label: up ? 'subiu o preço' : 'baixou o preço',
+        detail: `De ${BRL(oldPreco)} → ${BRL(newPreco)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`,
+      });
+    }
+  }
+  // Estoque zerou / voltou.
+  if (newStock === 0 && oldStock != null && Number(oldStock) > 0) {
+    alerts.push({ type: 'stock_out', old: String(oldStock), new: '0', emoji: '📦',
+      label: 'ficou SEM estoque', detail: `Estoque zerou (era ${oldStock}) — possível oportunidade` });
+  } else if (newStock != null && newStock > 0 && oldStock != null && Number(oldStock) === 0) {
+    alerts.push({ type: 'stock_back', old: '0', new: String(newStock), emoji: '🔄',
+      label: 'reabasteceu o estoque', detail: `Estoque voltou (${newStock} un.)` });
+  }
+  // Anúncio pausou / encerrou.
+  if (newStatus && newStatus !== oldStatus) {
+    if (newStatus === 'paused') {
+      alerts.push({ type: 'paused', old: oldStatus, new: newStatus, emoji: '⏸️',
+        label: 'PAUSOU o anúncio', detail: 'O anúncio saiu do ar (pausado)' });
+    } else if (newStatus === 'closed' || newStatus === 'under_review') {
+      alerts.push({ type: 'closed', old: oldStatus, new: newStatus, emoji: '🚫',
+        label: 'anúncio ENCERRADO', detail: `Status mudou para "${newStatus}"` });
+    }
+  }
+  // Disparada de vendas (Δ vendas no dia acima do limiar).
+  if (soldDelta != null && soldDelta >= SALES_SPIKE_MIN) {
+    alerts.push({ type: 'sales_spike', old: null, new: String(soldDelta), emoji: '🔥',
+      label: 'está vendendo muito', detail: `+${soldDelta} vendas em ~1 dia` });
+  }
+
+  if (!alerts.length) return;
+
+  // Dados do anúncio (título/link/produto) pra deixar a mensagem legível — 1 query.
+  const { rows: adRows } = await pool.query(
+    `SELECT a.titulo, a.link, a.product_id, p.produto AS product_name
+       FROM analise_product_ads a LEFT JOIN analise_products p ON p.id = a.product_id
+      WHERE a.ml_id = $1 ORDER BY a.id LIMIT 1`, [mlId]);
+  const ad = adRows[0] || {};
+  const titulo = ad.titulo || mlId;
+
+  for (const al of alerts) {
+    // Dedup: mesma mudança já avisada nas últimas 20h? Não repete.
+    const { rows: dup } = await pool.query(
+      `SELECT 1 FROM analise_monitor_alerts
+        WHERE ml_id=$1 AND alert_type=$2 AND COALESCE(new_value,'')=COALESCE($3,'')
+          AND created_at > now() - interval '20 hours' LIMIT 1`,
+      [mlId, al.type, al.new]);
+    if (dup.length) continue;
+
+    const msg = `Concorrente ${al.label}: ${titulo}. ${al.detail}`;
+    await pool.query(
+      `INSERT INTO analise_monitor_alerts (ml_id, product_id, alert_type, old_value, new_value, delta_pct, message, notified)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true)`,
+      [mlId, ad.product_id || null, al.type, al.old, al.new, al.delta_pct ?? null, msg]);
+
+    const html = `${al.emoji} <b>Concorrente ${al.label}</b>\n` +
+      `${titulo}\n${al.detail}` +
+      (ad.product_name ? `\n📦 Produto: ${ad.product_name}` : '') +
+      (ad.link ? `\n${ad.link}` : '');
+    await tgNotifyForce('tg_monitor_analise', html);
+  }
 }
 
 // Consulta 1 MLB (público → scraping) e grava o snapshot do dia. Visitas NÃO

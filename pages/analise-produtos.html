@@ -58,6 +58,19 @@
     .ap-card .mon-tbl { width:100%;border-collapse:collapse;font-size:.68rem; }
     .ap-card .mon-tbl th { text-align:left;color:var(--text-muted);font-weight:600;padding:2px 4px;border-bottom:1px solid var(--border,#3a3b40); }
     .ap-card .mon-tbl td { padding:2px 4px;border-bottom:1px solid rgba(255,255,255,.04); }
+    /* Relatório de mudanças (alertas de monitoramento) */
+    .ap-card .mon-alerts { margin:8px 0;border:1px solid var(--border,#3a3b40);border-radius:8px;overflow:hidden; }
+    .ap-card .mon-alerts-h { display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;color:var(--text,#e6e6e6);background:rgba(250,204,21,.10);padding:6px 8px;border-bottom:1px solid var(--border,#3a3b40); }
+    .ap-card .mon-alerts-h .cnt { margin-left:auto;background:#facc15;color:#111;border-radius:10px;padding:0 7px;font-size:.66rem; }
+    .ap-card .mon-alert { display:flex;align-items:flex-start;gap:7px;padding:5px 8px;font-size:.7rem;border-bottom:1px solid rgba(255,255,255,.04);border-left:3px solid var(--border,#3a3b40); }
+    .ap-card .mon-alert:last-child { border-bottom:none; }
+    .ap-card .mon-alert .ic { flex:none; }
+    .ap-card .mon-alert .txt { flex:1;color:var(--text,#e6e6e6);line-height:1.3; }
+    .ap-card .mon-alert .dt { flex:none;color:var(--text-muted);font-size:.62rem;white-space:nowrap; }
+    .ap-card .mon-alert.up   { border-left-color:#ef4444; }
+    .ap-card .mon-alert.down { border-left-color:#22c55e; }
+    .ap-card .mon-alert.warn { border-left-color:#facc15; }
+    .ap-card .mon-alert.ok   { border-left-color:#3b82f6; }
     /* Painel IA */
     #iaPanel { animation:apIn .35s ease; }
     .ia-head { display:flex;gap:18px;align-items:center;background:linear-gradient(135deg,rgba(99,102,241,.10),rgba(34,197,94,.06));border:1px solid var(--border,#3a3b40);border-radius:14px;padding:16px 18px;flex-wrap:wrap; }
@@ -550,6 +563,26 @@ function sparkline(vals, w = 130, h = 30) {
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#4a9eff" stroke-width="2" stroke-linejoin="round"/></svg>`;
 }
 const fmtD = (d) => { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? '—' : t.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }); };
+const fmtDT = (d) => { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? '—' : t.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
+// Metadados por tipo de alerta (ícone + classe de cor)
+const ALERT_META = {
+  price_up:    { ic: '📈', cls: 'up'   }, price_down:  { ic: '📉', cls: 'down' },
+  stock_out:   { ic: '📦', cls: 'warn' }, stock_back:  { ic: '🔄', cls: 'ok'   },
+  paused:      { ic: '⏸️', cls: 'warn' }, closed:      { ic: '🚫', cls: 'down' },
+  sales_spike: { ic: '🔥', cls: 'warn' },
+};
+// Relatório de mudanças detectadas (v60) — dentro do card do concorrente.
+function alertasHtml(m) {
+  const al = m && m.alertas;
+  if (!al || !al.length) return '';
+  const linhas = al.map((x) => {
+    const meta = ALERT_META[x.alert_type] || { ic: '•', cls: '' };
+    return `<div class="mon-alert ${meta.cls}"><span class="ic">${meta.ic}</span>
+      <span class="txt">${esc(x.message || x.alert_type)}</span>
+      <span class="dt">${fmtDT(x.created_at)}</span></div>`;
+  }).join('');
+  return `<div class="mon-alerts"><div class="mon-alerts-h"><i class="fas fa-bell"></i> Relatório de mudanças <span class="cnt">${al.length}</span></div>${linhas}</div>`;
+}
 // Bloco de monitoramento dentro do card (MLB/link + preço monitorado + tabela)
 function monitorHtml(a) {
   const idLine = (a.ml_id || a.link)
@@ -557,7 +590,7 @@ function monitorHtml(a) {
     : '';
   const m = a.monitor;
   if (!m || !m.historico || !m.historico.length) {
-    return idLine + (a.ml_id ? `<div class="mon-empty">Sem histórico ainda — clique em <b>Monitorar agora</b>.</div>` : '');
+    return idLine + alertasHtml(m) + (a.ml_id ? `<div class="mon-empty">Sem histórico de preço ainda — clique em <b>Monitorar agora</b>.</div>` : '');
   }
   const h = m.historico, last = h[h.length - 1], prev = h.length > 1 ? h[h.length - 2] : null;
   const precos = h.map((s) => (s.preco != null ? Number(s.preco) : null));

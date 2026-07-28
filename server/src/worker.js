@@ -585,18 +585,29 @@ async function handleOffer({ resource, storeId }) {
   let originalPrice = 0, promoPrice = 0, discountPct = 0;
   let rawData = { offer_id: offerId, resource };
 
-  // Get current and historical prices from local DB — zero extra API calls
+  // Get current price + estoque/link/vendas from local DB — zero extra API calls
+  let availableQty = null, permalink = null, sold30d = 0;
   if (itemId) {
     const itemRow = await pool.query(
-      `SELECT price FROM items WHERE ml_id=$1 LIMIT 1`, [itemId]
+      `SELECT price, available_quantity, permalink FROM items WHERE ml_id=$1 LIMIT 1`, [itemId]
     );
-    promoPrice = Number(itemRow.rows[0]?.price || 0);
+    promoPrice   = Number(itemRow.rows[0]?.price || 0);
+    availableQty = itemRow.rows[0]?.available_quantity ?? null;
+    permalink    = itemRow.rows[0]?.permalink || null;
 
     // Use price_history to get the pre-promo (original) price
     const histRow = await pool.query(
       `SELECT old_price FROM price_history WHERE item_id=$1 ORDER BY changed_at DESC LIMIT 1`, [itemId]
     );
     originalPrice = Number(histRow.rows[0]?.old_price || promoPrice);
+
+    // Unidades vendidas nos últimos 30 dias (mostra se o item gira) — 1 query barata.
+    const soldRow = await pool.query(
+      `SELECT COALESCE(SUM(quantity),0) q FROM orders
+       WHERE item_id=$1 AND status<>'cancelled' AND date_created >= now() - INTERVAL '30 days'`,
+      [itemId]
+    );
+    sold30d = Number(soldRow.rows[0]?.q || 0);
   }
 
   if (originalPrice > 0 && promoPrice > 0 && originalPrice > promoPrice) {
@@ -636,12 +647,26 @@ async function handleOffer({ resource, storeId }) {
   const storeName = storeRows[0]?.nickname || `Loja ${storeId}`;
   const storeLabel = `\n🏪 <i>${storeName}</i>`;
 
+  // Linha de preço: "de → por (X% off)" quando há preço original maior; senão só o preço.
+  const priceLine = (originalPrice > promoPrice && promoPrice > 0)
+    ? `💰 ${Rfmt(originalPrice)} → ${Rfmt(promoPrice)}${discountPct > 0 ? `  (${discountPct.toFixed(0)}% off)` : ''}`
+    : `💰 ${Rfmt(promoPrice)}`;
+
+  // Linha de estoque + vendas 30d (só as partes que existem).
+  const estoqueParts = [];
+  if (availableQty != null) estoqueParts.push(`Estoque: ${availableQty} un`);
+  if (sold30d > 0) estoqueParts.push(`vendeu ${sold30d} em 30d`);
+  const estoqueLine = estoqueParts.length ? `\n📦 ${estoqueParts.join(' · ')}` : '';
+
+  // Link clicável do anúncio (permalink já está no banco).
+  const linkLine = permalink ? `\n🔗 <a href="${permalink}">Ver anúncio</a>` : '';
+
   if (previousStatus === 'active' && currentStatus !== 'active') {
-    await tgNotify('tg_promocoes', `🔴 <b>Saiu da promoção!</b>\n📦 ${itemTitle || itemId}\n💰 Preço voltou para ${Rfmt(originalPrice)}\n⚠️ Reative a promoção${storeLabel}`);
+    await tgNotify('tg_promocoes', `🔴 <b>Saiu da promoção!</b>\n📦 ${itemTitle || itemId}\n💰 Preço voltou para ${Rfmt(originalPrice)}\n⚠️ Reative a promoção${estoqueLine}${storeLabel}${linkLine}`);
   } else if (!previousStatus || (previousStatus !== 'active' && currentStatus === 'active')) {
-    await tgNotify('tg_promocoes', `🟢 <b>Entrou em promoção!</b>\n📦 ${itemTitle || itemId}\n💰 ${Rfmt(promoPrice)}${discountPct > 0 ? ` (${discountPct.toFixed(0)}% off)` : ''}${storeLabel}`);
+    await tgNotify('tg_promocoes', `🟢 <b>Entrou em promoção!</b>\n📦 ${itemTitle || itemId}\n${priceLine}${estoqueLine}${storeLabel}${linkLine}`);
   } else {
-    await tgNotify('tg_promocoes', `🏷️ <b>Promoção alterada</b>\n📦 ${itemTitle || itemId}\n💰 ${Rfmt(promoPrice)}${discountPct > 0 ? ` (${discountPct.toFixed(0)}% off)` : ''}${storeLabel}`);
+    await tgNotify('tg_promocoes', `🏷️ <b>Promoção alterada</b>\n📦 ${itemTitle || itemId}\n${priceLine}${estoqueLine}${storeLabel}${linkLine}`);
   }
 }
 

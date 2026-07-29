@@ -203,14 +203,28 @@ function hiRes(u) {
   return u.replace(/D_NQ_NP_(?!2X_)/, 'D_NQ_NP_2X_').replace(/-[A-Z]\.(webp|jpg|jpeg|png)/i, '-O.$1');
 }
 
-// Vídeos: best-effort. JSON-LD (video), <video src>, e clipes do ML (thumb com data-clip).
+// Vídeos do ANÚNCIO, separando o que é baixável do que não é:
+//  - direct: mp4/webm nativos do ML (clips/mlstatic) e <video>/JSON-LD → baixáveis.
+//  - youtube: só o vídeo DO PRODUTO (video_id embutido / embed do próprio anúncio)
+//    → NÃO é baixável (é do YouTube), só abre em aba. NÃO varremos <a> soltos da
+//    página (pegava links de YouTube que não são do anúncio).
 function extractVideos(p) {
-  const urls = new Set();
+  const direct = new Set(), youtube = new Set();
+  const add = (u) => {
+    if (!u) return;
+    const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+    if (yt) youtube.add('https://www.youtube.com/watch?v=' + yt[1]);
+    else if (/\.(mp4|webm|mov)(\?|$)/i.test(u)) direct.add(u.split('&')[0]);
+  };
   const v = p.video;
-  if (v) (Array.isArray(v) ? v : [v]).forEach((x) => { const u = typeof x === 'string' ? x : (x.contentUrl || x.embedUrl); if (u) urls.add(u); });
-  document.querySelectorAll('video source[src], video[src]').forEach((el) => urls.add(el.src));
-  document.querySelectorAll('a[href*="youtube.com"], a[href*="youtu.be"]').forEach((el) => urls.add(el.href));
-  return [...urls].filter(Boolean);
+  if (v) (Array.isArray(v) ? v : [v]).forEach((x) => add(typeof x === 'string' ? x : (x && (x.contentUrl || x.embedUrl))));
+  document.querySelectorAll('video source[src], video[src]').forEach((el) => add(el.getAttribute('src') || el.src));
+  // Estado embutido do ML: mp4/webm nativos + o video_id do YouTube do próprio anúncio
+  const blob = pageState();
+  (blob.match(/https?:\/\/[^"'\\ ]+\.(?:mp4|webm)/gi) || []).forEach((u) => add(u));
+  const yid = blob.match(/"(?:video_id|youtube_id|youtubeId)":"([A-Za-z0-9_-]{11})"/);
+  if (yid) youtube.add('https://www.youtube.com/watch?v=' + yid[1]);
+  return { direct: [...direct], youtube: [...youtube] };
 }
 
 function collectAll() {
@@ -291,7 +305,7 @@ function injectPanel() {
         <div class="fe-desc">${esc(d.description)}</div></details>` : ''}
       <div class="fe-dl">
         <button class="fe-b-img" id="fe-dl-img" ${d.images.length ? '' : 'disabled'}>⬇ Fotos (${d.images.length})</button>
-        <button class="fe-b-vid" id="fe-dl-vid" ${d.videos.length ? '' : 'disabled'}>⬇ Vídeos (${d.videos.length})</button>
+        <button class="fe-b-vid" id="fe-dl-vid" ${(d.videos.direct.length + d.videos.youtube.length) ? '' : 'disabled'}>⬇ Vídeos (${d.videos.direct.length + d.videos.youtube.length})</button>
       </div>
       <button class="fe-save" id="fe-save">＋ Salvar na análise</button>
       <div class="fe-status" id="fe-status"></div>
@@ -307,8 +321,30 @@ function injectPanel() {
     navigator.clipboard.writeText(d.mlb).then(() => { copyBtn.textContent = '✓'; setTimeout(() => copyBtn.textContent = '⧉', 1500); });
   };
   document.getElementById('fe-dl-img').onclick = () => downloadMedia(d.images, d.mlb || 'anuncio', 'foto', 'fe-dl-img');
-  document.getElementById('fe-dl-vid').onclick = () => downloadMedia(d.videos, d.mlb || 'anuncio', 'video', 'fe-dl-vid');
+  document.getElementById('fe-dl-vid').onclick = () => downloadVideos(d.videos, d.mlb || 'anuncio');
   document.getElementById('fe-save').onclick = () => saveToAnalysis(d);
+}
+
+// Vídeos: baixa os mp4 nativos do ML; o do YouTube (colado pelo vendedor) só
+// abre em aba — YouTube não permite download pela extensão.
+function downloadVideos(v, mlb) {
+  const btn = document.getElementById('fe-dl-vid');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '⏳ Baixando...';
+  v.youtube.forEach((u) => window.open(u, '_blank'));
+  if (!v.direct.length) {
+    btn.innerHTML = v.youtube.length ? '↗ YouTube (não baixável)' : 'sem vídeo';
+    setTimeout(() => { btn.disabled = false; btn.innerHTML = orig; }, 3000);
+    return;
+  }
+  chrome.runtime.sendMessage(
+    { action: 'download_files', files: v.direct, folder: `financeecom/${mlb}`, prefix: 'video' },
+    (res) => {
+      const ok = res && res.success;
+      btn.innerHTML = ok ? `✓ ${v.direct.length} baixado(s)${v.youtube.length ? ' + YouTube' : ''}` : '❌ Falhou';
+      setTimeout(() => { btn.disabled = false; btn.innerHTML = orig; }, 3000);
+    }
+  );
 }
 
 // Ícone flutuante no canto (aparece quando o painel é minimizado/fechado).

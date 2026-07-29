@@ -40,6 +40,7 @@ router.post('/anuncio', async (req, res) => {
       const imgs = extracted.images || {};
       const fotos = [imgs.principal, ...(imgs.secundarias || [])].filter(Boolean);
       const m = String(b.rawData.url || '').match(/MLB-?(\d+)/i);
+      const exLoc = b.rawData.extracted && b.rawData.extracted.location; // {cidade, estado} da extensão v2
       payload = {
         ml_id: m ? ('MLB' + m[1]) : null,
         link: b.rawData.url || null,
@@ -54,8 +55,11 @@ router.post('/anuncio', async (req, res) => {
         reputacao: extracted.reputation || null,
         full: extracted.shipping ? extracted.shipping.full : null,
         flex: extracted.shipping ? extracted.shipping.flex : null,
-        cidade: extracted.location ? extracted.location.cidade : null,
-        estado: extracted.location ? extracted.location.estado : null,
+        // Localização: a extensão v2 lê city/state (nome) do estado embutido do
+        // ML e manda em extracted.location {cidade, estado} — mais confiável que
+        // o pageText. Fallback pro extrator do servidor.
+        cidade: (exLoc && exLoc.cidade) || (extracted.location ? extracted.location.cidade : null),
+        estado: (exLoc && exLoc.estado) || (extracted.location ? extracted.location.estado : null),
         comentarios_auto: extracted.commentsText || null,
         // Descrição vem da extensão v2 (rawData.extracted.description) — o extrator
         // do servidor não a lê da pageText.

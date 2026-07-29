@@ -136,6 +136,7 @@
     .ap-badge.flex { background:rgba(52,152,219,.16);color:#3498db; }
     .ap-badge.rep  { background:rgba(255,230,0,.14);color:#e6c200; }
     .ap-badge.gray { background:rgba(255,255,255,.07);color:var(--text-muted); }
+    .ap-badge.loc  { background:rgba(155,89,182,.16);color:#c39bd3; }
     .ap-card .foot { display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-muted);border-top:1px solid rgba(255,255,255,.05);padding:7px 12px; }
     .ap-card { position:relative; }
     .ap-card .acts { position:absolute;top:44px;right:6px;display:flex;gap:5px;opacity:0;transition:opacity .15s;z-index:2; }
@@ -524,6 +525,7 @@ function cardHtml(a) {
   const perg = a.perguntas != null ? `<span class="ap-badge gray"><i class="fas fa-question"></i> ${esc(a.perguntas)}</span>` : '';
   const com  = a.comentarios != null ? `<span class="ap-badge gray"><i class="fas fa-comment"></i> ${esc(a.comentarios)}</span>` : '';
   const local = [a.cidade, a.estado].filter(Boolean).join('/') || '—';
+  const locBadge = (a.cidade || a.estado) ? `<span class="ap-badge loc"><i class="fas fa-map-marker-alt"></i> ${esc([a.cidade, a.estado].filter(Boolean).join(', '))}</span>` : '';
   const obs = a.observacoes ? `<div class="obs"><i class="fas fa-pen-nib"></i> ${esc(a.observacoes)}</div>` : '';
   // Vendas reais (Shopping de Preço) — mostra a janela mais completa disponível.
   const vr = [[30, a.vendas_30d, a.preco_medio_30d], [21, a.vendas_21d, a.preco_medio_21d], [15, a.vendas_15d, a.preco_medio_15d], [7, a.vendas_7d, a.preco_medio_7d]]
@@ -544,7 +546,7 @@ function cardHtml(a) {
     <div class="body">
       <div class="ttl">${esc(a.titulo || '(sem título)')}</div>
       <div class="price">${BRL(a.preco)}</div>
-      <div class="badges">${full}${flex}${nota}${perg}${com}${comAuto}${comTxt}${rep}</div>
+      <div class="badges">${full}${flex}${nota}${perg}${com}${comAuto}${comTxt}${rep}${locBadge}</div>
       ${vreais}
       ${monitorHtml(a)}
       ${a.descricao ? `<details class="ap-desc"><summary><i class="fas fa-align-left"></i> Descrição</summary><div>${esc(a.descricao)}</div></details>` : ''}

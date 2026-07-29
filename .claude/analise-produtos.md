@@ -121,6 +121,13 @@ ativo), **Baixar fotos** e **Baixar vídeos**.
     `GET /extension/monitor/:mlb` (snapshots v58 do servidor) e desenha a linha +
     "▼ X% em ~30d". Só aparece se o MLB já tiver histórico.
   Vídeo: só mp4 nativo do ML baixa; YouTube do anúncio só abre em aba.
+- **v2.3 — localização correta:** o ML guarda geolocalização como
+  `state:{id:"BR-SP",name:"São Paulo"}` / `city:{id:"BR-SP-31",name:"Osasco"}`.
+  Antes o extrator pegava o `id` (mostrava "BR-SP-31, BR-SP"); agora pega o
+  **name** da cidade e a **UF do código `BR-<UF>`** (cobre os 27 estados), devolve
+  `{cidade, estado}`. A rota `/extension/anuncio` salva `extracted.location` em
+  `cidade`/`estado`, e o **card** mostra um badge 📍 na linha de badges (visível
+  sem abrir). Só preenche em anúncios recoletados pela extensão v2.3+.
 - **Campos que NÃO entram** (fase seguinte): Frete/Tarifa/"você recebe" e as
   estimativas em faixa de visitas/vendas/faturamento (o ML esconde de terceiros).
   Cada linha do painel só renderiza se o valor existe — nada de campo vazio; tudo

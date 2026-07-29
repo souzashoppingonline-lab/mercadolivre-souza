@@ -98,14 +98,29 @@ function extractReputation() {
   return null;
 }
 
+// Localização do vendedor. O ML guarda geolocalização como
+// state:{id:"BR-SP", name:"São Paulo"} e city:{id:"BR-SP-31", name:"Osasco"} —
+// precisa pegar o "name", não o "id" (o id "BR-SP-31" não é o nome da cidade).
+// O código do estado já é "BR-<UF>", então a UF sai direto dele. Devolve
+// {cidade, estado} (estado = sigla UF).
 function extractLocation() {
-  // JSON embutido do endereço (mais confiável): city + state
-  const city = jsonVal(/"city":\s*\{\s*"[^"]*":\s*"([^"]{2,40})"/i) || jsonVal(/"city_name":"([^"]{2,40})"/i);
-  const state = jsonVal(/"state":\s*\{\s*"[^"]*":\s*"([^"]{2,40})"/i) || jsonVal(/"state_name":"([^"]{2,40})"/i);
-  if (city) return state ? `${city}, ${uf(state)}` : city;
-  // Texto "Cidade - UF"
-  const m = txt().match(/\b([A-ZÀ-Ú][a-zà-ú]+(?:\s[A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})\b/);
-  return m ? `${m[1]}, ${m[2]}` : null;
+  const blob = pageState();
+  const nameIn = (key) => {
+    const m = blob.match(new RegExp('"' + key + '"\\s*:\\s*\\{[^}]{0,240}?"name"\\s*:\\s*"([^"]{2,40})"', 'i'));
+    return m ? m[1] : null;
+  };
+  const cidade = nameIn('city');
+  const stateName = nameIn('state');
+  // código "BR-SP" → SP (id do estado ou city_id "BR-SP-31" → SP)
+  const codeUf = (blob.match(/"(?:state|state_id|id|city_id)"\s*:\s*"BR-([A-Z]{2})/i) || [])[1] || null;
+  // O código "BR-<UF>" cobre os 27 estados — prioriza ele; nome como fallback.
+  let estado = (codeUf && codeUf.toUpperCase()) || (stateName ? uf(stateName) : null);
+  if (!cidade && !estado) {
+    const m = txt().match(/\b([A-ZÀ-Ú][a-zà-ú]+(?:\s[A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})\b/);
+    if (m) return { cidade: m[1], estado: m[2] };
+    return null;
+  }
+  return { cidade: cidade || null, estado: estado || null };
 }
 // "São Paulo" → SP quando vier o nome por extenso
 function uf(s) {
@@ -376,7 +391,7 @@ function injectPanel() {
       <div id="fe-pricehist" class="fe-ph" style="display:none"></div>
       ${row('🏪', 'Loja',
             (d.seller ? esc(d.seller) : '—') + (d.reputation ? ` <span class="fe-pill">${esc(medalha(d.reputation))}</span>` : ''),
-            d.location ? `<span class="fe-pill loc">${esc(d.location)}</span>` : '')}
+            (d.location && (d.location.cidade || d.location.estado)) ? `<span class="fe-pill loc">📍 ${esc([d.location.cidade, d.location.estado].filter(Boolean).join(', '))}</span>` : '')}
       ${(d.followers || d.products) ? row('👥', 'Loja oficial',
             [d.followers ? `${esc(d.followers)} seguidores` : '', d.products ? `${esc(d.products)} produtos` : ''].filter(Boolean).join(' · ')) : ''}
       ${row('🗓️', 'Data de criação', d.creation ? `${esc(d.creation.data)} · ${d.creation.dias} dias` : null)}

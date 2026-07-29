@@ -3,220 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FinanceEcom Monitor</title>
+  <title>FinanceEcom</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      width: 350px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f5f5;
-      color: #333;
+      width: 340px;
+      font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+      background: #141519; color: #e8eaed; font-size: 13px;
     }
-
     .header {
-      background: linear-gradient(135deg, #FFE600 0%, #FFC107 100%);
-      color: #333;
-      padding: 20px 16px;
-      text-align: center;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      display: flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, #16b364 0%, #0b8a4d 100%);
+      color: #fff; padding: 15px 16px;
     }
-
-    .header h1 {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-
-    .header p {
-      font-size: 12px;
-      color: #666;
-    }
-
-    .content {
-      padding: 20px 16px;
-    }
-
-    .section {
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-
-    .section-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #666;
-      margin-bottom: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    label {
-      display: block;
-      font-size: 12px;
-      font-weight: 500;
-      margin-bottom: 6px;
-      color: #555;
-    }
-
+    .header .logo { width: 30px; height: 30px; border-radius: 8px; background: rgba(255,255,255,.18);
+      display: flex; align-items: center; justify-content: center; font-size: 1.05rem; }
+    .header h1 { font-size: 16px; font-weight: 800; }
+    .header p { font-size: 11px; opacity: .9; }
+    .content { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .section { background: #1c1d21; border: 1px solid #2c313a; border-radius: 12px; padding: 14px; }
+    .section-title { font-size: 11px; font-weight: 800; color: #8b929e; margin-bottom: 10px;
+      text-transform: uppercase; letter-spacing: .06em; }
+    #ativoBox { font-size: 13px; line-height: 1.5; }
+    label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: #b9bec7; }
     input {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      font-size: 12px;
-      font-family: "Courier New", monospace;
-      transition: all 0.2s;
+      width: 100%; padding: 10px; border: 1px solid #2c313a; border-radius: 8px;
+      font-size: 12px; font-family: ui-monospace, Menlo, Consolas, monospace;
+      background: #20242b; color: #e8eaed;
     }
-
-    input:focus {
-      outline: none;
-      border-color: #FFE600;
-      box-shadow: 0 0 0 3px rgba(255, 230, 0, 0.1);
-    }
-
-    .controls {
-      display: flex;
-      gap: 8px;
-      margin-top: 16px;
-    }
-
-    button {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .btn-primary {
-      background: #FFE600;
-      color: #333;
-    }
-
-    .btn-primary:hover {
-      background: #FFC107;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    }
-
-    .btn-secondary {
-      background: #f0f0f0;
-      color: #333;
-      border: 1px solid #ddd;
-    }
-
-    .btn-secondary:hover {
-      background: #e8e8e8;
-    }
-
-    .status {
-      padding: 10px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      text-align: center;
-      margin-top: 12px;
-      display: none;
-      font-weight: 500;
-    }
-
-    .status.success {
-      background: #e8f5e9;
-      border: 1px solid #4CAF50;
-      color: #2e7d32;
-    }
-
-    .status.error {
-      background: #ffebee;
-      border: 1px solid #f44336;
-      color: #c62828;
-    }
-
-    .info {
-      background: #e3f2fd;
-      border: 1px solid #2196F3;
-      border-radius: 6px;
-      padding: 12px;
-      font-size: 11px;
-      color: #1565c0;
-      line-height: 1.5;
-      margin-top: 16px;
-    }
-
-    .info strong {
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    .status-indicator {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 6px;
-    }
-
-    .status-indicator.connected {
-      background: #4CAF50;
-    }
-
-    .status-indicator.disconnected {
-      background: #f44336;
-    }
+    input:focus { outline: none; border-color: #16b364; box-shadow: 0 0 0 3px rgba(22,179,100,.15); }
+    .controls { display: flex; gap: 8px; margin-top: 12px; }
+    button { flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 12px;
+      font-weight: 700; cursor: pointer; }
+    .btn-primary { background: linear-gradient(135deg, #16b364, #0b8a4d); color: #fff; }
+    .btn-secondary { background: #20242b; color: #b9bec7; border: 1px solid #2c313a; }
+    .btn-secondary:hover { background: #262b33; }
+    .status { padding: 9px 12px; border-radius: 8px; font-size: 12px; text-align: center;
+      margin-top: 10px; display: none; font-weight: 700; }
+    .status.success { background: rgba(22,179,100,.16); color: #4ade80; }
+    .status.error { background: rgba(239,68,68,.16); color: #fca5a5; }
+    .info { background: rgba(37,99,235,.12); border: 1px solid rgba(37,99,235,.3); border-radius: 8px;
+      padding: 11px; font-size: 11px; color: #93c5fd; line-height: 1.5; }
+    .info strong { display: block; margin-bottom: 4px; color: #bfdbfe; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>📊 FinanceEcom Monitor</h1>
-    <p>Coleta de dados Mercado Livre</p>
+    <div class="logo">◆</div>
+    <div>
+      <h1>FinanceEcom</h1>
+      <p>Análise de anúncios · Mercado Livre</p>
+    </div>
   </div>
 
   <div class="content">
-    <!-- Produto ativo (pra onde a coleta vai) -->
     <div class="section">
       <div class="section-title">🎯 Produto em análise</div>
-      <div id="ativoBox" style="font-size:13px;color:#333;line-height:1.5;">Carregando...</div>
-      <div class="info" style="margin-top:10px;">
-        <strong>Como coletar:</strong>
+      <div id="ativoBox">Carregando...</div>
+      <div class="info" style="margin-top:11px;">
+        <strong>Como usar:</strong>
         Ative a coleta de um produto no dashboard, abra o anúncio do concorrente no
-        Mercado Livre e clique no botão amarelo <b>“Coletar p/ análise”</b> na página.
+        Mercado Livre e use o painel <b>FinanceEcom</b> que aparece na página (botão
+        <b>Salvar na análise</b>).
       </div>
     </div>
 
-    <!-- Configuração da API -->
     <div class="section">
-      <div class="section-title">⚙️ Configuração da API</div>
-      <label for="apiUrl">URL do Servidor:</label>
-      <input
-        type="text"
-        id="apiUrl"
-        placeholder="http://207.180.194.61:3000"
-        value=""
-      >
+      <div class="section-title">⚙️ Servidor</div>
+      <label for="apiUrl">URL do servidor:</label>
+      <input type="text" id="apiUrl" placeholder="https://multimixvendas.duckdns.org" value="">
       <div class="controls">
         <button class="btn-primary" id="saveBtn">💾 Salvar</button>
         <button class="btn-secondary" id="clearBtn">🗑️ Limpar</button>
       </div>
       <div id="status" class="status"></div>
-    </div>
-
-    <!-- Informações -->
-    <div class="info">
-      <strong>Como usar:</strong>
-      1. Insira a URL do servidor acima<br>
-      2. Clique em "Salvar"<br>
-      3. Vá para um produto do Mercado Livre<br>
-      4. Clique no botão amarelo "📊 Coletar Dados"<br>
-      5. Aguarde a sincronização
     </div>
   </div>
 

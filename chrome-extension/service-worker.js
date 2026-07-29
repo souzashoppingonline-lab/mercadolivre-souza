@@ -17,7 +17,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === 'download_files') {
+    handleDownloadFiles(request, sendResponse);
+    return true; // resposta assíncrona
+  }
 });
+
+// Baixa uma lista de URLs (fotos/vídeos do anúncio) via chrome.downloads.
+// Cada arquivo vai pra subpasta financeecom/<MLB>/ com nome sequencial. Ignora
+// falhas individuais (retorna quantas foram aceitas).
+async function handleDownloadFiles(request, sendResponse) {
+  try {
+    const { files = [], folder = 'financeecom', prefix = 'arquivo' } = request;
+    let ok = 0;
+    for (let i = 0; i < files.length; i++) {
+      const url = files[i];
+      const ext = (url.split('?')[0].match(/\.(webp|jpg|jpeg|png|mp4|webm|mov)$/i) || [, 'jpg'])[1];
+      const filename = `${folder}/${prefix}-${String(i + 1).padStart(2, '0')}.${ext}`.replace(/[^\w\-\/.]/g, '_');
+      try {
+        await new Promise((resolve, reject) => {
+          chrome.downloads.download({ url, filename, conflictAction: 'uniquify' }, (id) => {
+            if (chrome.runtime.lastError || id == null) reject(chrome.runtime.lastError || new Error('sem id'));
+            else resolve(id);
+          });
+        });
+        ok++;
+      } catch (e) { console.warn('[SW] download falhou:', url, e.message); }
+    }
+    sendResponse({ success: ok > 0, downloaded: ok, total: files.length });
+  } catch (e) {
+    console.error('[SW] handleDownloadFiles erro:', e);
+    sendResponse({ success: false, error: e.message });
+  }
+}
 
 // Coletar dados e enviar ao backend
 async function handleCollectData(data, sendResponse) {

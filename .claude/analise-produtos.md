@@ -87,16 +87,33 @@ coleta + Analisar). Métodos em `js/db.js` (`getProdutosAnalise`, `criarProdutoA
 
 ## Extensão Chrome (`chrome-extension/`)
 
-`content.js` injeta um botão "Coletar p/ análise" na página do ML, coleta
-`pageText` + `jsonLd` (não o innerHTML — grande demais) e manda pro
-`service-worker.js`, que faz `POST /extension/anuncio` (padrão apiUrl
-`https://multimixvendas.duckdns.org`, configurável no popup). O `popup.js` mostra
-o **produto ativo** (`GET /extension/produto-ativo`) — a extensão nunca pergunta o
-alvo. `manifest.json` tem host_permission pro servidor. A rota antiga
-`/extension/collect` (`extensionCollect.js`) virou legado.
+**v2 — painel DARK na página (estilo Metrizap).** `content.js` detecta página de
+anúncio (MLB no path ou JSON-LD de Produto) e injeta um **card fixo escuro** no
+canto, preenchido com o que dá pra extrair da própria página: título, preço
+(+ original/% OFF), **loja + medalha** (Platinum/Gold/Silver, encurtada de
+"MercadoLíder X"), **cidade/estado**, **data de criação** (de "Publicado há X
+dias" ou do `date_created`/`start_time` embutido nos scripts do ML), avaliação,
+estoque, vendas e MLB. Botões: **Salvar na análise** (fluxo antigo —
+`collect_data` → `service-worker` → `POST /extension/anuncio`, grava no produto
+ativo), **Baixar fotos** e **Baixar vídeos**.
+
+- **Download de mídia**: `content.js` junta as URLs de fotos (JSON-LD `image` +
+  galeria do DOM, elevadas a alta-res via `hiRes`) e vídeos (JSON-LD `video`,
+  `<video src>`, links YouTube) e manda pro `service-worker`, que usa
+  `chrome.downloads` (permissão nova no manifest) pra baixar cada uma em
+  `financeecom/<MLB>/`. YouTube abre em aba (não é baixável direto).
+- **Campos que NÃO entram na v2** (fase seguinte): Frete/Tarifa/"você recebe" e
+  as estimativas de visitas/vendas/faturamento (o ML esconde de terceiros; a
+  Metrizap mostra em faixa). Cada linha do painel só renderiza se o valor existe
+  — nada de campo vazio.
+
+`popup.js` mostra o **produto ativo** (`GET /extension/produto-ativo`) — a
+extensão nunca pergunta o alvo; o popup também é dark (v2). `manifest.json` tem
+host_permission pro servidor + permissão `downloads`. Rota antiga
+`/extension/collect` (`extensionCollect.js`) é legado.
 
 Limite do body: `express.json({ limit: '1mb' })` (o pageText cabe; o innerHTML não
-é mais enviado).
+é enviado).
 
 ## Motor de IA (Fase 3 núcleo)
 

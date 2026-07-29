@@ -108,10 +108,21 @@ ativo), **Baixar fotos** e **Baixar vídeos**.
   `uf()` pra sigla); **seguidores/produtos** de loja oficial; **botão copiar MLB**;
   seções `<details>` **"O que você precisa saber"** (highlights) e **Descrição**.
   Tudo extraído vai também no payload de "Salvar na análise" (`rawData.extracted`).
-- **Campos que NÃO entram na v2** (fase 2): Frete/Tarifa/"você recebe" e as
-  estimativas de visitas/vendas/faturamento (o ML esconde de terceiros; a Metrizap
-  mostra em faixa). Cada linha do painel só renderiza se o valor existe — nada de
-  campo vazio.
+- **v2.2 (pacote Demanda):** o painel ganhou:
+  - **📈 Demanda estimada** (card): vendas/dia = vendidos ÷ dias no ar, projeção/mês
+    e "estoque acaba em ~Nd" (estoque ÷ vendas-dia). "Vendidos" é piso → mostra ≥.
+  - **❓ Perguntas** (últimas + contagem) — dúvidas/objeções reais dos clientes.
+  - **🎨 Variações** (total + quantas esgotadas = demanda não atendida).
+  - **🏆 Catálogo** (nº de vendedores + menor preço, quando é anúncio de catálogo).
+  - **🔧 Ficha técnica** (marca/modelo/GTIN).
+  - **📉 Histórico de preço** (mini-gráfico): `content.js` busca
+    `GET /extension/monitor/:mlb` (snapshots v58 do servidor) e desenha a linha +
+    "▼ X% em ~30d". Só aparece se o MLB já tiver histórico.
+  Vídeo: só mp4 nativo do ML baixa; YouTube do anúncio só abre em aba.
+- **Campos que NÃO entram** (fase seguinte): Frete/Tarifa/"você recebe" e as
+  estimativas em faixa de visitas/vendas/faturamento (o ML esconde de terceiros).
+  Cada linha do painel só renderiza se o valor existe — nada de campo vazio; tudo
+  best-effort no HTML do ML (seletor pode precisar de ajuste quando o ML muda).
 
 `popup.js` mostra o **produto ativo** (`GET /extension/produto-ativo`) — a
 extensão nunca pergunta o alvo; o popup também é dark (v2). `manifest.json` tem

@@ -310,4 +310,4 @@ Anúncios (`analise_product_ads`) agora têm `link` e `ml_id` (MLB) editáveis �
 - `POST /api/analise/anuncios/:adId/atualizar-ml` → **GET completo do MLB** (`monitor.getAdDataFromMl`: `/items/{MLB}` + `/users/{seller}` + `/reviews/item` + `/questions/search`) e preenche os campos do card (título, preço, fotos, vendedor, reputação, cidade/estado, nota, comentários, perguntas, FULL/FLEX) via COALESCE (não apaga o manual) + grava um snapshot. Devolve o anúncio (`mapAd`) já com `.monitor`. Botão azul no topo do card. `400` sem MLB, `503` sem loja ML.
 - WS `analise_anuncio` `{produto_id, anuncio}` — card ao vivo quando a extensão salva (publicado no passo da extensão).
 
-Extensão (público, a implementar): `GET /extension/produto-ativo`, `POST /extension/anuncio`.
+Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes do gate): `GET /extension/produto-ativo`, `POST /extension/anuncio`, `GET /extension/monitor/:mlb` (histórico de preço do MLB pro mini-gráfico do painel — `{historico, delta30d, count}`, read-only).

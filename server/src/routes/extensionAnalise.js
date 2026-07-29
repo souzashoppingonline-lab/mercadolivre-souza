@@ -74,4 +74,28 @@ router.post('/anuncio', async (req, res) => {
   } catch (e) { console.error('[extension] POST anuncio', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// GET /extension/monitor/:mlb — histórico de preço do MLB (pro mini-gráfico no
+// painel da extensão). Só leitura; devolve os últimos ~60 snapshots + a variação
+// 30d já calculada. Público (a extensão é externa), read-only, sem dado sensível.
+router.get('/monitor/:mlb', async (req, res) => {
+  try {
+    const mlb = String(req.params.mlb || '').match(/MLB\d+/i)?.[0];
+    if (!mlb) return res.json({ historico: [], delta30d: null });
+    const { rows } = await pool.query(
+      `SELECT snap_date, preco FROM analise_monitor_snapshots
+        WHERE ml_id = $1 AND preco IS NOT NULL
+        ORDER BY snap_date DESC LIMIT 60`, [mlb]);
+    const hist = rows.reverse(); // cronológico
+    let delta30d = null;
+    if (hist.length >= 2) {
+      const hoje = Number(hist[hist.length - 1].preco);
+      // 1º snapshot com >= 30 dias de diferença (ou o mais antigo que temos)
+      const alvo = hist.find((h) => (Date.now() - new Date(h.snap_date)) >= 30 * 86400000) || hist[0];
+      const base = Number(alvo.preco);
+      if (base > 0) delta30d = Number((((hoje - base) / base) * 100).toFixed(1));
+    }
+    res.json({ historico: hist, delta30d, count: hist.length });
+  } catch (e) { console.error('[extension] monitor', e.message); res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

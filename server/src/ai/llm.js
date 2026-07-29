@@ -44,16 +44,27 @@ async function complete({ system, user, maxTokens = 1500, model = DEFAULT_MODEL,
     throw err;
   }
   const fetch = require('node-fetch');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model, max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content: user }],
-    }),
-  });
-  const data = await res.json();
+  // Timeout duro: sem isto, uma chamada pendurada (rede do servidor sem alcançar
+  // a API, resposta lenta) deixaria a rota /analisar girando pra sempre. Ajustável
+  // por AI_TIMEOUT_MS. Aborta e devolve erro claro em vez de travar o spinner.
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.AI_TIMEOUT_MS || 90000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res, data;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+      signal: controller.signal,
+    });
+    data = await res.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`A IA não respondeu em ${Math.round(timeoutMs / 1000)}s (timeout). Verifique se o servidor alcança api.anthropic.com e se a chave/saldo estão ok.`);
+    throw new Error('Falha ao chamar a IA: ' + e.message);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(data?.error?.message || `Anthropic API ${res.status}`);
   await logUsage({ model, feature, productId, usage: data.usage });
   return data.content?.[0]?.text || '';

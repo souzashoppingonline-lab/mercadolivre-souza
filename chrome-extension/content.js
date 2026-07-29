@@ -140,6 +140,13 @@ function uf(s) {
   return /^[A-Z]{2}$/.test(s) ? s : (map[s.toLowerCase()] || s);
 }
 
+// id numérico do vendedor (pro servidor buscar a localização autoritativa em /users/:id)
+function extractSellerId() {
+  const blob = pageState();
+  const m = blob.match(/"seller"\s*:\s*\{[^}]{0,300}?"id"\s*:\s*(\d{4,})/i) || blob.match(/"seller_id"\s*:\s*(\d{4,})/i);
+  return m ? m[1] : null;
+}
+
 // Loja oficial: nº de seguidores e de produtos ("+6.300 Seguidores", "+50 Produtos")
 function extractFollowers() { const m = txt().match(/([\d.]+\+?|\+[\d.]+)\s*Seguidores/i); return m ? m[1] : null; }
 function extractProductsCount() { const m = txt().match(/([\d.]+\+?|\+[\d.]+)\s*Produtos/i); return m ? m[1] : null; }
@@ -316,7 +323,7 @@ function collectAll() {
     price: extractPrice(p), original: extractOriginalPrice(),
     seller: extractSeller(), reputation: extractReputation(), location: extractLocation(),
     full: extractFull(), rating: extractRating(p), stock: extractStock(), sold: extractSold(),
-    creation: extractCreation(),
+    creation: extractCreation(), sellerId: extractSellerId(),
     followers: extractFollowers(), products: extractProductsCount(),
     highlights: extractHighlights(), description: extractDescription(),
     questions: extractQuestions(), variations: extractVariations(),

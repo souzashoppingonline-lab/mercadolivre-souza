@@ -6,6 +6,23 @@ const pool = require('../db/pool');
 const wsHub = require('../ws/hub');
 const { num, upsertAd } = require('../analise/ads');
 const { extractMercadoLivreData } = require('../extractors/mercadolivre');
+const ml = require('../mlClient');
+const { pickMlStoreId } = require('../analise/monitor');
+
+// Localização autoritativa do vendedor via API do ML (/users/:id). O endereço do
+// vendedor é dado público; qualquer token serve. state vem como "BR-<UF>".
+async function sellerLocation(sellerId) {
+  try {
+    if (!sellerId) return null;
+    const storeId = await pickMlStoreId();
+    const u = await ml.get(`/users/${sellerId}`, storeId);
+    const a = (u && u.address) || {};
+    const cidade = (a.city && (a.city.name || a.city)) || null;
+    let estado = (a.state && (a.state.id || a.state.name || a.state)) || null;
+    if (estado && /^BR-/i.test(estado)) estado = estado.slice(3).toUpperCase();
+    return (cidade || estado) ? { cidade, estado } : null;
+  } catch (_) { return null; }
+}
 
 const router = express.Router();
 
@@ -68,6 +85,12 @@ router.post('/anuncio', async (req, res) => {
       };
     } else {
       payload = b; // campos já prontos
+    }
+    // Se ainda faltar cidade/estado, busca a localização autoritativa do vendedor
+    // na API do ML (mais confiável que o parse da página).
+    if ((!payload.cidade || !payload.estado) && b.rawData && b.rawData.extracted && b.rawData.extracted.sellerId) {
+      const loc = await sellerLocation(b.rawData.extracted.sellerId);
+      if (loc) { payload.cidade = payload.cidade || loc.cidade; payload.estado = payload.estado || loc.estado; }
     }
     const ad = await upsertAd(pid, payload);
     // Alimenta o histórico de monitoramento com o preço lido da PÁGINA (fonte que

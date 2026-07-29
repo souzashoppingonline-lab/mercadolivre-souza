@@ -143,8 +143,14 @@ function uf(s) {
 // id numérico do vendedor (pro servidor buscar a localização autoritativa em /users/:id)
 function extractSellerId() {
   const blob = pageState();
-  const m = blob.match(/"seller"\s*:\s*\{[^}]{0,300}?"id"\s*:\s*(\d{4,})/i) || blob.match(/"seller_id"\s*:\s*(\d{4,})/i);
-  return m ? m[1] : null;
+  const pats = [
+    /"seller_id"\s*:\s*"?(\d{4,})"?/i,
+    /"sellerId"\s*:\s*"?(\d{4,})"?/i,
+    /"seller"\s*:\s*\{[\s\S]{0,500}?"id"\s*:\s*"?(\d{4,})"?/i,
+    /"official_store"[\s\S]{0,120}?"id"\s*:\s*"?(\d{3,})"?/i,
+  ];
+  for (const re of pats) { const m = blob.match(re); if (m) return m[1]; }
+  return null;
 }
 
 // Loja oficial: nº de seguidores e de produtos ("+6.300 Seguidores", "+50 Produtos")

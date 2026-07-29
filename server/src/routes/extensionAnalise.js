@@ -21,7 +21,18 @@ async function sellerLocation(sellerId) {
     let estado = (a.state && (a.state.id || a.state.name || a.state)) || null;
     if (estado && /^BR-/i.test(estado)) estado = estado.slice(3).toUpperCase();
     return (cidade || estado) ? { cidade, estado } : null;
-  } catch (_) { return null; }
+  } catch (e) { console.error('[extension] sellerLocation', e.message); return null; }
+}
+
+// Resolve o id do vendedor pelo APELIDO (nickname) via busca do ML — fonte
+// confiável quando o seller_id não veio da página. Devolve id numérico ou null.
+async function sellerIdByNickname(nick) {
+  try {
+    if (!nick) return null;
+    const storeId = await pickMlStoreId();
+    const r = await ml.get(`/sites/MLB/search?nickname=${encodeURIComponent(nick)}&limit=1`, storeId);
+    return (r && r.seller && r.seller.id) || (r && r.results && r.results[0] && r.results[0].seller && r.results[0].seller.id) || null;
+  } catch (e) { console.error('[extension] sellerIdByNickname', e.message); return null; }
 }
 
 const router = express.Router();
@@ -88,11 +99,18 @@ router.post('/anuncio', async (req, res) => {
       payload = b; // campos já prontos
     }
     // Se ainda faltar cidade/estado, busca a localização autoritativa do vendedor
-    // na API do ML (mais confiável que o parse da página).
-    if ((!payload.cidade || !payload.estado) && b.rawData && b.rawData.extracted && b.rawData.extracted.sellerId) {
-      const loc = await sellerLocation(b.rawData.extracted.sellerId);
-      if (loc) { payload.cidade = payload.cidade || loc.cidade; payload.estado = payload.estado || loc.estado; }
+    // na API do ML: 1º pelo seller_id (se veio da página), senão pelo APELIDO.
+    let via = (payload.cidade || payload.estado) ? 'pagina' : null;
+    if (!payload.cidade || !payload.estado) {
+      const ex2 = (b.rawData && b.rawData.extracted) || {};
+      let sid = ex2.sellerId;
+      if (!sid && payload.vendedor) sid = await sellerIdByNickname(payload.vendedor);
+      if (sid) {
+        const loc = await sellerLocation(sid);
+        if (loc) { payload.cidade = payload.cidade || loc.cidade; payload.estado = payload.estado || loc.estado; via = 'api'; }
+      }
     }
+    console.log('[extension] loc:', JSON.stringify({ ml_id: payload.ml_id, cidade: payload.cidade, estado: payload.estado, via, sellerId: (b.rawData?.extracted?.sellerId) || null, vendedor: payload.vendedor }));
     const ad = await upsertAd(pid, payload);
     // Alimenta o histórico de monitoramento com o preço lido da PÁGINA (fonte que
     // funciona — o ML bloqueia a leitura do item de concorrente via API/403).

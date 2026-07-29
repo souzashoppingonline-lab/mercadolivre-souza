@@ -102,10 +102,16 @@ ativo), **Baixar fotos** e **Baixar vídeos**.
   `<video src>`, links YouTube) e manda pro `service-worker`, que usa
   `chrome.downloads` (permissão nova no manifest) pra baixar cada uma em
   `financeecom/<MLB>/`. YouTube abre em aba (não é baixável direto).
-- **Campos que NÃO entram na v2** (fase seguinte): Frete/Tarifa/"você recebe" e
-  as estimativas de visitas/vendas/faturamento (o ML esconde de terceiros; a
-  Metrizap mostra em faixa). Cada linha do painel só renderiza se o valor existe
-  — nada de campo vazio.
+- **v2.1 (ajustes do teste):** painel maior (360px, fontes maiores); **minimizar
+  → ícone flutuante** no canto (`#fe-launcher`) que reabre; extração de loja e
+  cidade/estado reforçada (via `pageState()` — texto dos `<script>` embutidos, +
+  `uf()` pra sigla); **seguidores/produtos** de loja oficial; **botão copiar MLB**;
+  seções `<details>` **"O que você precisa saber"** (highlights) e **Descrição**.
+  Tudo extraído vai também no payload de "Salvar na análise" (`rawData.extracted`).
+- **Campos que NÃO entram na v2** (fase 2): Frete/Tarifa/"você recebe" e as
+  estimativas de visitas/vendas/faturamento (o ML esconde de terceiros; a Metrizap
+  mostra em faixa). Cada linha do painel só renderiza se o valor existe — nada de
+  campo vazio.
 
 `popup.js` mostra o **produto ativo** (`GET /extension/produto-ativo`) — a
 extensão nunca pergunta o alvo; o popup também é dark (v2). `manifest.json` tem

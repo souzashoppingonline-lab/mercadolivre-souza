@@ -15,7 +15,7 @@ function mapAd(r) {
     cidade: r.cidade, estado: r.estado, reputacao: r.reputacao,
     full: r.is_full, flex: r.is_flex, fotos: r.fotos, videos: r.videos,
     observacoes: r.observacoes, comentarios_texto: r.comentarios_texto,
-    comentarios_auto: r.comentarios_auto,
+    comentarios_auto: r.comentarios_auto, descricao: r.descricao,
     vendas_7d: r.vendas_7d, preco_medio_7d: r.preco_medio_7d,
     vendas_15d: r.vendas_15d, preco_medio_15d: r.preco_medio_15d,
     vendas_21d: r.vendas_21d, preco_medio_21d: r.preco_medio_21d,
@@ -46,7 +46,7 @@ function adValues(b) {
     fotos: fotos && fotos.length ? JSON.stringify(fotos) : null,
     videos: videos && videos.length ? JSON.stringify(videos) : null,
     observacoes: b.observacoes || null, comentarios_texto: b.comentarios_texto || null,
-    comentarios_auto: b.comentarios_auto || null,
+    comentarios_auto: b.comentarios_auto || null, descricao: b.descricao || null,
     vendas_7d: num(b.vendas_7d), preco_medio_7d: num(b.preco_medio_7d),
     vendas_15d: num(b.vendas_15d), preco_medio_15d: num(b.preco_medio_15d),
     vendas_21d: num(b.vendas_21d), preco_medio_21d: num(b.preco_medio_21d),
@@ -60,9 +60,9 @@ async function upsertAd(productId, b) {
   b = b || {};
   const v = adValues(b);
   const raw = b.raw != null ? (typeof b.raw === 'string' ? b.raw : JSON.stringify(b.raw)) : null;
-  const cols = 'product_id, ml_id, link, titulo, preco, preco_original, nota, vendas, perguntas, comentarios, vendedor, cidade, estado, reputacao, is_full, is_flex, fotos, videos, observacoes, comentarios_texto, comentarios_auto, vendas_7d, preco_medio_7d, vendas_15d, preco_medio_15d, vendas_21d, preco_medio_21d, vendas_30d, preco_medio_30d, raw';
+  const cols = 'product_id, ml_id, link, titulo, preco, preco_original, nota, vendas, perguntas, comentarios, vendedor, cidade, estado, reputacao, is_full, is_flex, fotos, videos, observacoes, comentarios_texto, comentarios_auto, descricao, vendas_7d, preco_medio_7d, vendas_15d, preco_medio_15d, vendas_21d, preco_medio_21d, vendas_30d, preco_medio_30d, raw';
   const vals = [productId, v.ml_id, v.link, v.titulo, v.preco, v.preco_original, v.nota, v.vendas, v.perguntas,
-                v.comentarios, v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.videos, v.observacoes, v.comentarios_texto, v.comentarios_auto,
+                v.comentarios, v.vendedor, v.cidade, v.estado, v.reputacao, v.is_full, v.is_flex, v.fotos, v.videos, v.observacoes, v.comentarios_texto, v.comentarios_auto, v.descricao,
                 v.vendas_7d, v.preco_medio_7d, v.vendas_15d, v.preco_medio_15d, v.vendas_21d, v.preco_medio_21d, v.vendas_30d, v.preco_medio_30d, raw];
   const ph = vals.map((_, i) => `$${i + 1}`).join(',');
   let sql = `INSERT INTO analise_product_ads (${cols}) VALUES (${ph})`;
@@ -78,6 +78,7 @@ async function upsertAd(productId, b) {
                observacoes=COALESCE(EXCLUDED.observacoes, analise_product_ads.observacoes),
                comentarios_texto=COALESCE(EXCLUDED.comentarios_texto, analise_product_ads.comentarios_texto),
                comentarios_auto=COALESCE(EXCLUDED.comentarios_auto, analise_product_ads.comentarios_auto),
+               descricao=COALESCE(EXCLUDED.descricao, analise_product_ads.descricao),
                vendas_7d=COALESCE(EXCLUDED.vendas_7d, analise_product_ads.vendas_7d),
                preco_medio_7d=COALESCE(EXCLUDED.preco_medio_7d, analise_product_ads.preco_medio_7d),
                vendas_15d=COALESCE(EXCLUDED.vendas_15d, analise_product_ads.vendas_15d),

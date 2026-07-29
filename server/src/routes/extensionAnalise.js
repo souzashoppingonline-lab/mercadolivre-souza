@@ -57,6 +57,9 @@ router.post('/anuncio', async (req, res) => {
         cidade: extracted.location ? extracted.location.cidade : null,
         estado: extracted.location ? extracted.location.estado : null,
         comentarios_auto: extracted.commentsText || null,
+        // Descrição vem da extensão v2 (rawData.extracted.description) — o extrator
+        // do servidor não a lê da pageText.
+        descricao: (b.rawData.extracted && b.rawData.extracted.description) || null,
         fotos,
         raw: b.rawData,
       };

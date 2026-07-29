@@ -143,6 +143,11 @@
     .ap-card .acts button { border:none;width:27px;height:27px;border-radius:7px;cursor:pointer;font-size:12px;background:rgba(0,0,0,.6);color:#fff; }
     .ap-card .acts button:hover { background:rgba(0,0,0,.85); }
     .ap-card .obs { font-size:.7rem;color:#e6c200;background:rgba(255,230,0,.08);border-radius:6px;padding:4px 7px;line-height:1.35; }
+    .ap-card .ap-desc { font-size:.72rem;background:var(--bg-card,#1c1d21);border:1px solid var(--border,#3a3b40);border-radius:8px;padding:0 8px; }
+    .ap-card .ap-desc summary { cursor:pointer;font-weight:600;color:var(--text-muted);padding:6px 0;list-style:none; }
+    .ap-card .ap-desc summary::-webkit-details-marker { display:none; }
+    .ap-card .ap-desc[open] summary { border-bottom:1px solid var(--border,#3a3b40);margin-bottom:6px; }
+    .ap-card .ap-desc > div { font-size:.7rem;color:var(--text-muted);line-height:1.5;max-height:180px;overflow:auto;padding-bottom:8px;white-space:pre-line; }
 
     /* Modal */
     .ap-modal-bg { position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:flex-start;justify-content:center;z-index:1000;padding:40px 16px;overflow-y:auto; }
@@ -349,6 +354,14 @@
 
 <div class="ap-toast" id="toast"></div>
 
+<!-- Modal do gráfico de preços coletados (abre só o gráfico, sem expandir o card) -->
+<div class="ap-modal-bg" id="modalGrafico">
+  <div class="ap-modal" style="max-width:640px">
+    <h3><span id="gTitulo">Preços coletados</span><span class="x" onclick="fecharGrafico()"><i class="fas fa-times"></i></span></h3>
+    <div id="gBody" style="min-height:220px"></div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
@@ -523,6 +536,7 @@ function cardHtml(a) {
       <i class="fas fa-cloud-arrow-down"></i> Puxar dados do Mercado Livre
     </button>
     <div class="acts">
+      <button title="Gráfico de preços coletados" onclick="abrirGraficoPreco(${a.id})"><i class="fas fa-chart-line"></i></button>
       <button title="Editar / completar à mão" onclick="abrirAnuncioEditar(${a.id})"><i class="fas fa-pen"></i></button>
       <button title="Excluir" onclick="excluirAnuncio(${a.id})"><i class="fas fa-trash"></i></button>
     </div>
@@ -533,6 +547,7 @@ function cardHtml(a) {
       <div class="badges">${full}${flex}${nota}${perg}${com}${comAuto}${comTxt}${rep}</div>
       ${vreais}
       ${monitorHtml(a)}
+      ${a.descricao ? `<details class="ap-desc"><summary><i class="fas fa-align-left"></i> Descrição</summary><div>${esc(a.descricao)}</div></details>` : ''}
       ${obs}
     </div>
     <div class="foot"><span><i class="fas fa-shopping-cart"></i> ${a.vendas != null && a.vendas !== '' ? esc(a.vendas) : '—'}</span><span><i class="fas fa-map-marker-alt"></i> ${esc(local)}</span></div>
@@ -582,6 +597,43 @@ function alertasHtml(m) {
       <span class="dt">${fmtDT(x.created_at)}</span></div>`;
   }).join('');
   return `<div class="mon-alerts"><div class="mon-alerts-h"><i class="fas fa-bell"></i> Relatório de mudanças <span class="cnt">${al.length}</span></div>${linhas}</div>`;
+}
+// ── Gráfico de preços coletados (modal) ────────────────────────────────────
+function abrirGraficoPreco(id) {
+  const a = ANUNCIOS.find((x) => String(x.id) === String(id));
+  document.getElementById('gTitulo').textContent = 'Preços coletados — ' + (a?.titulo || a?.ml_id || 'anúncio');
+  const h = (a && a.monitor && a.monitor.historico) ? a.monitor.historico.filter((s) => s.preco != null) : [];
+  document.getElementById('gBody').innerHTML = h.length >= 2 ? bigChart(h)
+    : `<div style="padding:34px;text-align:center;color:var(--text-muted)">Ainda não há coletas suficientes para o gráfico.<br>Ele se preenche conforme os dados são coletados (extensão ou <b>Monitorar agora</b>).</div>`;
+  document.getElementById('modalGrafico').classList.add('open');
+}
+function fecharGrafico() { document.getElementById('modalGrafico').classList.remove('open'); }
+// Gráfico de linha SVG (sem dependência) com eixos e rótulos.
+function bigChart(h) {
+  const W = 600, H = 280, pl = 56, pr = 16, pt = 18, pb = 34;
+  const iw = W - pl - pr, ih = H - pt - pb;
+  const pts = h.map((s) => ({ d: s.snap_date, v: Number(s.preco) }));
+  const vals = pts.map((p) => p.v);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if (min === max) { min *= 0.98; max *= 1.02; }
+  const X = (i) => pl + (pts.length === 1 ? iw / 2 : i * (iw / (pts.length - 1)));
+  const Y = (v) => pt + ih - ((v - min) / (max - min)) * ih;
+  const line = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+  const dots = pts.map((p, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3" fill="#4a9eff"/>`).join('');
+  const yticks = [min, (min + max) / 2, max].map((v) =>
+    `<line x1="${pl}" y1="${Y(v).toFixed(1)}" x2="${W - pr}" y2="${Y(v).toFixed(1)}" stroke="rgba(255,255,255,.07)"/>` +
+    `<text x="${pl - 8}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--text-muted)">${BRL(v)}</text>`).join('');
+  const now = pts[pts.length - 1].v, base = pts[0].v;
+  const delta = base > 0 ? ((now - base) / base * 100) : 0;
+  const dcol = delta > 0 ? '#ff6b6b' : delta < 0 ? '#22c55e' : 'inherit';
+  return `<div style="margin-bottom:10px;font-size:.9rem;color:var(--text-muted)">Atual <b style="color:var(--text-primary)">${BRL(now)}</b> · ${pts.length} coletas · <span style="color:${dcol};font-weight:700">${delta > 0 ? '▲' : delta < 0 ? '▼' : ''} ${Math.abs(delta).toFixed(1)}%</span> no período</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
+      ${yticks}
+      <polyline points="${line}" fill="none" stroke="#4a9eff" stroke-width="2.5" stroke-linejoin="round"/>
+      ${dots}
+      <text x="${pl}" y="${H - 10}" font-size="11" fill="var(--text-muted)">${fmtD(pts[0].d)}</text>
+      <text x="${W - pr}" y="${H - 10}" text-anchor="end" font-size="11" fill="var(--text-muted)">${fmtD(pts[pts.length - 1].d)}</text>
+    </svg>`;
 }
 // Bloco de monitoramento dentro do card (MLB/link + preço monitorado + tabela)
 function monitorHtml(a) {

@@ -52,7 +52,9 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
 - `POST /anuncios/:adId/editar` → completa/corrige campos que a extensão não pegou (ex.: comentários, nota). `fotos` só sobrescreve se vier nova.
 - `POST /anuncios/:adId/excluir` → remove um card.
 
-O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`.
+O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`. **`descricao` (v61)**: descrição do anúncio, capturada pela extensão (`rawData.extracted.description`) e salva por `ads.js`; aparece num `<details>` no card e no payload da IA.
+
+**Gráfico de preços no card (v61):** botão 📈 no card (`abrirGraficoPreco`) abre um **modal** com gráfico de linha SVG (`bigChart`) do histórico de preço coletado (`anuncio.monitor.historico`) — sem expandir o card. Só leitura do que já vem no `GET /produtos/:id`.
 
 **Comentários — dois campos separados:**
 - `comentarios_auto` (v53) — os comentários VISÍVEIS que o extrator (`extractCommentsText`) recorta da seção "Opiniões" do `pageText`. **A extensão preenche sozinha** e atualiza a cada recoleta.

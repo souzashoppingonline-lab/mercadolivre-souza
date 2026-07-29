@@ -14,6 +14,9 @@ const money = (v) => (n(v) == null ? 0 : Number(v));
 // Ajustáveis por env sem tocar no código.
 const MAX_ADS = Number(process.env.ANALISE_MAX_ADS || 10);          // nº de concorrentes enviados
 const MAX_COMMENT_CHARS = Number(process.env.ANALISE_MAX_COMMENT_CHARS || 3500); // teto do texto de comentários
+// Teto de SAÍDA da análise. 1200 truncava o JSON com muitos concorrentes (JSON
+// cortado → erro de parse). 3000 dá folga; ajustável por env.
+const CORE_MAX_TOKENS = Number(process.env.ANALISE_MAX_TOKENS || 3000);
 
 function buildContext(produto, anuncios) {
   const custoAquisicao = money(produto.preco_compra) + money(produto.frete_entrada) + money(produto.embalagem);
@@ -99,7 +102,7 @@ VENDAS REAIS (PESO MÁXIMO): quando um concorrente tiver o campo "vendas_reais" 
 async function analisarNucleo(produto, anuncios) {
   const ctx = buildContext(produto, anuncios);
   const user = `Analise o produto abaixo e devolva o JSON.\n\nDADOS:\n${JSON.stringify(ctx, null, 2)}`;
-  const result = await completeJson({ system: SYSTEM, user, maxTokens: 1200, feature: 'analise', productId: produto.id });
+  const result = await completeJson({ system: SYSTEM, user, maxTokens: CORE_MAX_TOKENS, feature: 'analise', productId: produto.id });
   // normaliza o score pra um inteiro 0-100
   let score = Number(result?.score?.valor);
   if (!Number.isFinite(score)) score = null;

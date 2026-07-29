@@ -75,7 +75,13 @@ async function completeJson(opts) {
   const text = await complete(opts);
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('IA não devolveu JSON válido.');
-  return JSON.parse(m[0]);
+  try {
+    return JSON.parse(m[0]);
+  } catch (e) {
+    // Quase sempre é JSON truncado (max_tokens estourou). Erro claro em vez do
+    // "Expected ',' or '}'" cru — a saída fica maior com AI_MODEL/ANALISE_MAX_TOKENS.
+    throw new Error('A IA devolveu um JSON incompleto (provável limite de tokens). Aumente ANALISE_MAX_TOKENS no .env e tente de novo.');
+  }
 }
 
 module.exports = { isConfigured, complete, completeJson, DEFAULT_MODEL };

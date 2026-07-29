@@ -135,7 +135,9 @@
     .ap-badge.full { background:rgba(39,174,96,.16);color:#27ae60; }
     .ap-badge.flex { background:rgba(52,152,219,.16);color:#3498db; }
     .ap-badge.rep  { background:rgba(255,230,0,.14);color:#e6c200; }
+    .ap-badge.rep.gold { background:rgba(255,230,0,.14);color:#e6c200; }
     .ap-badge.rep.plat { background:rgba(52,152,219,.16);color:#5dade2; }
+    .ap-badge.rep.base { background:rgba(39,174,96,.14);color:#2ecc71; }
     .ap-badge.gray { background:rgba(255,255,255,.07);color:var(--text-muted); }
     .ap-badge.loc  { background:rgba(155,89,182,.16);color:#c39bd3; }
     .ap-card .foot { display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-muted);border-top:1px solid rgba(255,255,255,.05);padding:7px 12px; }
@@ -519,13 +521,16 @@ function renderCards(anuncios) {
 }
 function cardHtml(a) {
   const foto = a.fotos && a.fotos[0] ? `<img class="thumb" src="${esc(a.fotos[0])}" onerror="this.outerHTML='<div class=&quot;thumb ph&quot;><i class=&quot;fas fa-image&quot;></i></div>'">` : `<div class="thumb ph"><i class="fas fa-image"></i></div>`;
-  // Medalha: só destaca Gold/Platinum (as que importam); o resto = "Sem medalha".
+  // Medalha MercadoLíder: 3 níveis (MercadoLíder, Gold, Platinum) + "Sem medalha"
+  // pra quem não é líder. Cada nível com sua cor.
   const repLc = (a.reputacao || '').toLowerCase();
   const rep = /platinum|platina/.test(repLc)
     ? `<span class="ap-badge rep plat"><i class="fas fa-medal"></i> MercadoLíder Platinum</span>`
     : /gold|ouro/.test(repLc)
-      ? `<span class="ap-badge rep"><i class="fas fa-medal"></i> MercadoLíder Gold</span>`
-      : `<span class="ap-badge gray"><i class="fas fa-medal"></i> Sem medalha</span>`;
+      ? `<span class="ap-badge rep gold"><i class="fas fa-medal"></i> MercadoLíder Gold</span>`
+      : /mercadol[íi]der|l[íi]der/.test(repLc)
+        ? `<span class="ap-badge rep base"><i class="fas fa-medal"></i> MercadoLíder</span>`
+        : `<span class="ap-badge gray"><i class="fas fa-medal"></i> Sem medalha</span>`;
   const full = a.full ? '<span class="ap-badge full"><i class="fas fa-bolt"></i> FULL</span>' : '';
   const flex = a.flex ? '<span class="ap-badge flex"><i class="fas fa-shipping-fast"></i> FLEX</span>' : '';
   const nota = a.nota ? `<span class="ap-badge gray"><i class="fas fa-star" style="color:#e6c200"></i> ${esc(a.nota)}</span>` : '';

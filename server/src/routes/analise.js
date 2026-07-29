@@ -48,16 +48,20 @@ router.get('/produtos/:id', async (req, res) => {
           WHERE ml_id = ANY($1) ORDER BY snap_date ASC`, [mlIds]);
       const byId = {};
       for (const s of snaps) (byId[s.ml_id] = byId[s.ml_id] || []).push(s);
-      // Alertas de mudança detectados (v60) — últimos 20 por MLB, mais recentes primeiro.
-      const { rows: alerts } = await pool.query(
-        `SELECT ml_id, alert_type, old_value, new_value, delta_pct, message, created_at
-           FROM analise_monitor_alerts WHERE ml_id = ANY($1)
-          ORDER BY created_at DESC LIMIT 200`, [mlIds]);
+      // Alertas de mudança detectados (v60) — últimos 20 por MLB, mais recentes
+      // primeiro. Defensivo: se a migration v60 ainda não rodou, a tabela não
+      // existe — não pode derrubar a listagem inteira (só fica sem alertas).
       const alertsById = {};
-      for (const al of alerts) {
-        const arr = (alertsById[al.ml_id] = alertsById[al.ml_id] || []);
-        if (arr.length < 20) arr.push(al);
-      }
+      try {
+        const { rows: alerts } = await pool.query(
+          `SELECT ml_id, alert_type, old_value, new_value, delta_pct, message, created_at
+             FROM analise_monitor_alerts WHERE ml_id = ANY($1)
+            ORDER BY created_at DESC LIMIT 200`, [mlIds]);
+        for (const al of alerts) {
+          const arr = (alertsById[al.ml_id] = alertsById[al.ml_id] || []);
+          if (arr.length < 20) arr.push(al);
+        }
+      } catch (e) { console.warn('[api/analise] alertas indisponíveis (rode migrate v60):', e.message); }
       for (const a of mapped) {
         const h = a.ml_id && byId[a.ml_id];
         if (h && h.length) a.monitor = { historico: h, ultimo: h[h.length - 1], count: h.length };

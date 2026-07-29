@@ -90,37 +90,46 @@ function extractSeller() {
 }
 
 function extractReputation() {
+  // Campo canônico do ML no estado embutido: "power_seller_status":"platinum".
+  const pss = (pageState().match(/"power_seller_status"\s*:\s*"(platinum|gold|silver)"/i) || [])[1];
+  if (pss) return 'MercadoLíder ' + ({ platinum: 'Platinum', gold: 'Gold', silver: 'Silver' }[pss.toLowerCase()]);
   const t = txt();
-  const m = t.match(/MercadoL[íi]der\s*(Platinum|Gold|Silver|Prata|Ouro|Platina)?/i);
-  if (m) return ('MercadoLíder ' + (m[1] || '')).trim();
+  const m = t.match(/MercadoL[íi]der\s+(Platinum|Gold|Silver|Prata|Ouro|Platina)/i);
+  if (m) return 'MercadoLíder ' + m[1];
+  if (/MercadoL[íi]der/i.test(t)) return 'MercadoLíder';
   if (/Loja oficial/i.test(t)) return 'Loja oficial';
   if (/Vendedor Oficial/i.test(t)) return 'Vendedor Oficial';
   return null;
 }
 
-// Localização do vendedor. O ML guarda geolocalização como
-// state:{id:"BR-SP", name:"São Paulo"} e city:{id:"BR-SP-31", name:"Osasco"} —
-// precisa pegar o "name", não o "id" (o id "BR-SP-31" não é o nome da cidade).
-// O código do estado já é "BR-<UF>", então a UF sai direto dele. Devolve
-// {cidade, estado} (estado = sigla UF).
+// Localização do VENDEDOR do anúncio (NÃO a do comprador — o ML embute a cidade
+// do usuário logado na página pra calcular frete; pegar a 1ª city/state do JSON
+// traz a SUA localização, errado). Fontes, nesta ordem:
+//  1) bloco "seller_address" do estado embutido (city.name + state.id "BR-<UF>");
+//  2) texto "Local: Cidade - UF" que o anúncio mostra na ficha do vendedor;
+//  3) city/state cujo contexto imediato cite seller/address (não destination/user).
+// Se nada disso achar, devolve null (melhor vazio do que a localização errada).
 function extractLocation() {
   const blob = pageState();
-  const nameIn = (key) => {
-    const m = blob.match(new RegExp('"' + key + '"\\s*:\\s*\\{[^}]{0,240}?"name"\\s*:\\s*"([^"]{2,40})"', 'i'));
-    return m ? m[1] : null;
+  const parseSeg = (seg) => {
+    if (!seg) return null;
+    const city = (seg.match(/"city"\s*:\s*\{[^}]{0,200}?"name"\s*:\s*"([^"]{2,40})"/i) || [])[1] || null;
+    const stCode = (seg.match(/"(?:state|state_id)"\s*:\s*(?:"BR-|\{[^}]{0,120}?"id"\s*:\s*"BR-)([A-Z]{2})/i) || [])[1] || null;
+    const stName = (seg.match(/"state"\s*:\s*\{[^}]{0,200}?"name"\s*:\s*"([^"]{2,40})"/i) || [])[1] || null;
+    const estado = stCode || (stName ? uf(stName) : null);
+    return (city || estado) ? { cidade: city, estado: estado || null } : null;
   };
-  const cidade = nameIn('city');
-  const stateName = nameIn('state');
-  // código "BR-SP" → SP (id do estado ou city_id "BR-SP-31" → SP)
-  const codeUf = (blob.match(/"(?:state|state_id|id|city_id)"\s*:\s*"BR-([A-Z]{2})/i) || [])[1] || null;
-  // O código "BR-<UF>" cobre os 27 estados — prioriza ele; nome como fallback.
-  let estado = (codeUf && codeUf.toUpperCase()) || (stateName ? uf(stateName) : null);
-  if (!cidade && !estado) {
-    const m = txt().match(/\b([A-ZÀ-Ú][a-zà-ú]+(?:\s[A-ZÀ-Ú][a-zà-ú]+)*)\s*[-–]\s*([A-Z]{2})\b/);
-    if (m) return { cidade: m[1], estado: m[2] };
-    return null;
-  }
-  return { cidade: cidade || null, estado: estado || null };
+  // 1) seller_address (campo canônico do vendedor no item do ML)
+  let m = blob.match(/"seller_address"\s*:\s*\{([\s\S]{0,500}?)\}\s*[,}]/i);
+  let loc = m && parseSeg(m[1]);
+  if (loc) return loc;
+  // 2) "Local: Cidade - UF" / "Localização: Cidade - UF" (mostrado na ficha do vendedor)
+  const mt = txt().match(/Local(?:iza[çc][ãa]o)?\s*:?\s*([A-Za-zÀ-ú.\s]{2,40}?)\s*[-–]\s*([A-Z]{2})\b/i);
+  if (mt) return { cidade: mt[1].trim(), estado: mt[2].toUpperCase() };
+  // 3) city/state num contexto de vendedor (janela após "seller"/"address"), evitando comprador
+  const idx = blob.search(/"seller[_"]|"address"/i);
+  if (idx >= 0) { loc = parseSeg(blob.slice(idx, idx + 600)); if (loc) return loc; }
+  return null;
 }
 // "São Paulo" → SP quando vier o nome por extenso
 function uf(s) {

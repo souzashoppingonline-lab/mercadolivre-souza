@@ -300,13 +300,14 @@ function extractFullFlex(rawData) {
   return { full: full || null, flex: flex || null };
 }
 
-// Cidade/estado do vendedor — best-effort (nem sempre aparece na página).
+// Cidade/estado do VENDEDOR — best-effort (fallback; a extensão v2.3 manda a
+// localização já parseada do seller_address em rawData.extracted.location, que a
+// rota prioriza). Aqui: "Local: Cidade - UF" ou "Localização: Cidade - UF".
 function extractLocation(rawData) {
   try {
     const t = rawData.pageText || '';
-    // "Localização" seguido de "Cidade, Estado" ou "Cidade - UF".
-    const m = t.match(/Localiza[çc][ãa]o\s*\n?\s*(.+?)\s*[,\-]\s*(.+?)(?:\n|$)/i);
-    if (m) return { cidade: m[1].trim().slice(0, 60), estado: m[2].trim().slice(0, 30) };
+    const m = t.match(/Local(?:iza[çc][ãa]o)?\s*:?\s*([A-Za-zÀ-ú.\s]{2,40}?)\s*[-–]\s*([A-Z]{2})\b/i);
+    if (m) return { cidade: m[1].trim().slice(0, 60), estado: m[2].trim().toUpperCase() };
     return { cidade: null, estado: null };
   } catch (e) { return { cidade: null, estado: null }; }
 }

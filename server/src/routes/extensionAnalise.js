@@ -40,7 +40,8 @@ router.post('/anuncio', async (req, res) => {
       const imgs = extracted.images || {};
       const fotos = [imgs.principal, ...(imgs.secundarias || [])].filter(Boolean);
       const m = String(b.rawData.url || '').match(/MLB-?(\d+)/i);
-      const exLoc = b.rawData.extracted && b.rawData.extracted.location; // {cidade, estado} da extensão v2
+      const ex = b.rawData.extracted || {};        // campos já parseados pela extensão v2
+      const exLoc = ex.location || null;           // {cidade, estado} do seller_address
       payload = {
         ml_id: m ? ('MLB' + m[1]) : null,
         link: b.rawData.url || null,
@@ -51,9 +52,10 @@ router.post('/anuncio', async (req, res) => {
         perguntas: extracted.questionsCount != null ? extracted.questionsCount : null,
         comentarios: extracted.commentsCount != null ? extracted.commentsCount
                      : (extracted.rating && extracted.rating.opinioes != null ? extracted.rating.opinioes : null),
-        vendedor: extracted.seller || null,
-        reputacao: extracted.reputation || null,
-        full: extracted.shipping ? extracted.shipping.full : null,
+        vendedor: ex.seller || extracted.seller || null,
+        reputacao: ex.reputation || extracted.reputation || null,
+        descricao: ex.description || null,
+        full: (ex.full != null ? ex.full : (extracted.shipping ? extracted.shipping.full : null)),
         flex: extracted.shipping ? extracted.shipping.flex : null,
         // Localização: a extensão v2 lê city/state (nome) do estado embutido do
         // ML e manda em extracted.location {cidade, estado} — mais confiável que
@@ -61,9 +63,6 @@ router.post('/anuncio', async (req, res) => {
         cidade: (exLoc && exLoc.cidade) || (extracted.location ? extracted.location.cidade : null),
         estado: (exLoc && exLoc.estado) || (extracted.location ? extracted.location.estado : null),
         comentarios_auto: extracted.commentsText || null,
-        // Descrição vem da extensão v2 (rawData.extracted.description) — o extrator
-        // do servidor não a lê da pageText.
-        descricao: (b.rawData.extracted && b.rawData.extracted.description) || null,
         fotos,
         raw: b.rawData,
       };

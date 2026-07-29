@@ -769,7 +769,7 @@ CREATE TABLE IF NOT EXISTS analise_product_ads (
   observacoes TEXT, comentarios_texto TEXT, comentarios_auto TEXT,
   vendas_7d INT, preco_medio_7d NUMERIC, vendas_15d INT, preco_medio_15d NUMERIC,
   vendas_21d INT, preco_medio_21d NUMERIC, vendas_30d INT, preco_medio_30d NUMERIC,
-  monitorar BOOLEAN DEFAULT true, link TEXT, descricao TEXT,
+  monitorar BOOLEAN DEFAULT true, link TEXT, descricao TEXT, highlights JSONB,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE (product_id, ml_id)
 );

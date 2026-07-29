@@ -61,6 +61,7 @@ async function migrate() {
     'migrate-v59.sql',
     'migrate-v60.sql',
     'migrate-v61.sql',
+    'migrate-v62.sql',
   ];
   for (const f of files) {
     const filePath = path.join(__dirname, f);

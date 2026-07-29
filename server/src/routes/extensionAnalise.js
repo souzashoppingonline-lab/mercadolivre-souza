@@ -72,6 +72,7 @@ router.post('/anuncio', async (req, res) => {
         vendedor: ex.seller || extracted.seller || null,
         reputacao: ex.reputation || extracted.reputation || null,
         descricao: ex.description || null,
+        highlights: Array.isArray(ex.highlights) ? ex.highlights : null,
         full: (ex.full != null ? ex.full : (extracted.shipping ? extracted.shipping.full : null)),
         flex: extracted.shipping ? extracted.shipping.flex : null,
         // Localização: a extensão v2 lê city/state (nome) do estado embutido do

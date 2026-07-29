@@ -54,6 +54,10 @@ pergunta ao usuário) → cada anúncio coletado vira um card na hora (WebSocket
 
 O anúncio tem `observacoes` (v51) pra anotar à mão o que a extensão não capturou. `is_full`/`is_flex` no banco viram `full`/`flex` na API via `mapAd`. **`descricao` (v61)**: descrição do anúncio, capturada pela extensão (`rawData.extracted.description`) e salva por `ads.js`; aparece num `<details>` no card e no payload da IA.
 
+**`highlights` (v62)**: bullets "O que você precisa saber sobre este produto",
+capturados pela extensão (`extracted.highlights`), salvos como JSONB por `ads.js`
+e mostrados num `<details>` no card.
+
 **Gráfico de preços no card (v61):** botão 📈 no card (`abrirGraficoPreco`) abre um **modal** com gráfico de linha SVG (`bigChart`) do histórico de preço coletado (`anuncio.monitor.historico`) — sem expandir o card. Só leitura do que já vem no `GET /produtos/:id`.
 
 **Comentários — dois campos separados:**

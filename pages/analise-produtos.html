@@ -549,6 +549,7 @@ function cardHtml(a) {
       <div class="badges">${full}${flex}${nota}${perg}${com}${comAuto}${comTxt}${rep}${locBadge}</div>
       ${vreais}
       ${monitorHtml(a)}
+      ${(Array.isArray(a.highlights) && a.highlights.length) ? `<details class="ap-desc"><summary><i class="fas fa-list-check"></i> O que você precisa saber</summary><ul style="margin:0;padding-left:18px">${a.highlights.map((h) => `<li>${esc(h)}</li>`).join('')}</ul></details>` : ''}
       ${a.descricao ? `<details class="ap-desc"><summary><i class="fas fa-align-left"></i> Descrição</summary><div>${esc(a.descricao)}</div></details>` : ''}
       ${obs}
     </div>

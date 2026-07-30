@@ -30,6 +30,27 @@ mc_pct  = margem / total_amount × 100
 
 `GET /api/vendas/diarias` usa uma **aproximação diferente e mais simples**, sem custo real por pedido: `liquido = bruto × 0.88` e `taxas = bruto × 0.12` — é uma estimativa grosseira para gráfico rápido, não usar como referência de margem real.
 
+## Margem de Contribuição por loja — reproduz o Mercado Turbo (`GET /api/vendas/margem`)
+
+Página **Vendas por Loja**. Fórmula idêntica à do Mercado Turbo (validada contra os dois números reais das lojas Ricopi e Unifull):
+
+```
+aprovadas       = SUM(total_amount) onde status <> 'cancelled'
+custo           = items.cost × quantity
+imposto         = total_amount × (stores.imposto_pct / 100)
+tarifa          = mp_fee_amount        (Conciliação MP) — fallback orders.ml_fee
+frete_vendedor  = shipping_fee_amount  (Conciliação MP) — fallback 0
+
+margem  = aprovadas − custo − imposto − tarifa − frete_vendedor   [− frete_comprador só se ?frete_comprador=1]
+margem_pct = margem / aprovadas × 100
+```
+
+Diferença-chave para a fórmula de `orders` acima: **tarifa e frete do vendedor NÃO saem do pedido** (o worker nunca populou `shipping_seller_cost` de verdade — sempre 0). Saem da **Conciliação Bancária** (`mp_account_movements`, `description='Payment'`, casado por `order_id`), que é a mesma fonte que o Mercado Turbo usa — o relatório de liberações do Mercado Pago. Sem relatório no período, `tem_conciliacao=false` e a tarifa cai para `orders.ml_fee`.
+
+**Por que a tarifa não é % fixo:** a tarifa do ML = comissão (% por categoria/tipo de anúncio, ~11–19%) **+ custo fixo por unidade** para itens abaixo de um limiar de preço. Por isso não se estima por percentual — usa-se o valor real cobrado (`mp_fee_amount`), que já soma comissão + fixo.
+
+**Frete do comprador** só é abatido com o toggle `frete_comprador=1` (padrão desligado, igual ao Turbo: frete que o comprador paga não é custo do vendedor).
+
 ## Fórmula de margem/ROI — planilha Turbo (`ml_turbo_sales`)
 
 A margem (`margin`, `margin_pct`) já vem calculada na própria planilha exportada pelo ML — o sistema não recalcula, só agrega (`SUM(margin)`, `SUM(margin)/SUM(revenue)*100`).

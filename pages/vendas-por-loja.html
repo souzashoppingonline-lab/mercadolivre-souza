@@ -112,6 +112,41 @@
         </div>
       </div>
 
+      <div class="card" style="margin-top:18px">
+        <div class="card-header">
+          <h3><i class="fas fa-hand-holding-dollar" style="color:var(--green)"></i> Margem de Contribuição por Loja</h3>
+          <span id="margemSubtitle" style="font-size:12px;color:var(--text-muted)"></span>
+          <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-left:auto;cursor:pointer">
+            <input type="checkbox" id="chkFreteComprador"> considerar frete do comprador
+          </label>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('margemTbody').closest('table'), 'margem-contribuicao.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);padding:0 4px 10px">
+          Fórmula: <b>Aprovadas − Custo − Imposto − Tarifa − Frete Vendedor</b>. Tarifa e frete do vendedor vêm da
+          <b>Conciliação Bancária</b> (relatório Mercado Pago); quando não há relatório no período, cai para a tarifa do próprio pedido.
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="margemTable">
+            <thead>
+              <tr>
+                <th>Loja</th>
+                <th class="tbl-num" title="Vendas não canceladas">Aprovadas</th>
+                <th class="tbl-num">Custo</th>
+                <th class="tbl-num">Imposto</th>
+                <th class="tbl-num" title="Tarifa de venda (Mercado Pago)">Tarifa</th>
+                <th class="tbl-num" title="Frete pago pelo vendedor">Frete Vend.</th>
+                <th class="tbl-num">Margem</th>
+                <th class="tbl-num">Margem %</th>
+                <th class="tbl-num" title="Pedidos com dados da Conciliação Bancária no período">Conciliados</th>
+              </tr>
+            </thead>
+            <tbody id="margemTbody">
+              <tr><td colspan="9" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </main>
 </div>
@@ -329,17 +364,58 @@ async function load() {
   }).join('') : '<tr><td colspan="7" class="empty-state">Nenhuma venda encontrada</td></tr>';
 }
 
-document.getElementById('btnLoad').addEventListener('click', load);
+async function loadMargem() {
+  const days = parseInt(document.getElementById('filterDays').value) || 30;
+  const dateFrom = document.getElementById('filterDateFrom').value;
+  const dateTo = document.getElementById('filterDateTo').value;
+  const usaRange = dateFrom && dateTo;
+  const freteComprador = document.getElementById('chkFreteComprador').checked;
+  const tbody = document.getElementById('margemTbody');
+  tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
+
+  const params = usaRange ? { date_from: dateFrom, date_to: dateTo } : { days };
+  if (freteComprador) params.frete_comprador = '1';
+  const data = await DB.getMargemContribuicao(params);
+  if (!data || data.error) {
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-state" style="color:var(--red)">${data?.error || 'Erro ao carregar margem'}</td></tr>`;
+    return;
+  }
+  const lojas = data.lojas || [];
+  const semConcil = lojas.some(l => !l.tem_conciliacao);
+  set('margemSubtitle', `${lojas.length} lojas${semConcil ? ' · algumas sem conciliação no período (tarifa do pedido)' : ''}`);
+
+  tbody.innerHTML = lojas.length ? lojas.map(l => {
+    const pctCls = l.margem >= 0 ? 'var-pos' : 'var-neg';
+    const conc = l.tem_conciliacao
+      ? `${l.pedidos_conciliados}`
+      : `<span title="Sem relatório MP no período — tarifa estimada pelo pedido" style="color:var(--primary)">estimado</span>`;
+    return `<tr>
+      <td>${l.loja}</td>
+      <td class="tbl-num">${R(l.aprovadas)}</td>
+      <td class="tbl-num" style="color:var(--text-muted)">−${R(l.custo)}</td>
+      <td class="tbl-num" style="color:var(--text-muted)">−${R(l.imposto)}</td>
+      <td class="tbl-num" style="color:var(--text-muted)">−${R(l.tarifa)}</td>
+      <td class="tbl-num" style="color:var(--text-muted)">−${R(l.frete_vendedor)}</td>
+      <td class="tbl-num" style="font-weight:700;color:${l.margem >= 0 ? 'var(--green)' : 'var(--red)'}">${R(l.margem)}</td>
+      <td class="tbl-num ${pctCls}">${l.margem_pct.toFixed(1)}%</td>
+      <td class="tbl-num" style="color:var(--text-muted)">${conc}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="9" class="empty-state">Nenhuma venda no período</td></tr>';
+}
+
+const loadAll = () => { load(); loadMargem(); };
+document.getElementById('chkFreteComprador').addEventListener('change', loadMargem);
+document.getElementById('btnLoad').addEventListener('click', loadAll);
 document.getElementById('filterDays').addEventListener('change', () => {
   document.getElementById('filterDateFrom').value = '';
   document.getElementById('filterDateTo').value = '';
-  load();
+  loadAll();
 });
-document.getElementById('filterDateFrom').addEventListener('change', load);
-document.getElementById('filterDateTo').addEventListener('change', load);
-WS.on('order_updated', load);
+document.getElementById('filterDateFrom').addEventListener('change', loadAll);
+document.getElementById('filterDateTo').addEventListener('change', loadAll);
+WS.on('order_updated', loadAll);
 
-load();
+loadAll();
 </script>
 </body>
 </html>

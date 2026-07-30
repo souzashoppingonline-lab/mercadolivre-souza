@@ -2652,6 +2652,83 @@ router.get('/vendas/por-loja', async (req, res) => {
   }
 });
 
+// Margem de Contribuição por loja (funil igual ao Mercado Turbo). Tarifa e frete
+// VENDEDOR vêm do relatório do Mercado Pago já importado (mp_account_movements —
+// mp_fee_amount / shipping_fee_amount), casados por order_id; é a fonte fiel (o
+// que o ML realmente descontou). Sem relatório no período, a tarifa cai pro
+// ml_fee do pedido e o frete fica 0 (sinalizado por tem_conciliacao). Custo =
+// items.cost×qtd; Imposto = total×imposto_pct. Ver .claude/conciliacao-bancaria.md
+// e finance.md. Frete comprador só é abatido se ?frete_comprador=1 (igual ao Turbo).
+router.get('/vendas/margem', async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+    const considerarFC = req.query.frete_comprador === '1' || req.query.frete_comprador === 'true';
+    let periodo, params;
+    if (date_from && date_to) {
+      periodo = `o.date_created >= $1::timestamptz AND o.date_created <= $2::timestamptz`;
+      params = [date_from, `${date_to} 23:59:59`];
+    } else {
+      const days = Math.min(parseInt(req.query.days) || 30, 90);
+      periodo = `o.date_created >= CURRENT_DATE - ($1::int)`;
+      params = [days];
+    }
+    const { rows } = await pool.query(`
+      WITH vendas AS (
+        SELECT o.store_id, s.nickname AS loja,
+          SUM(o.total_amount) AS faturamento,
+          COALESCE(SUM(o.total_amount) FILTER (WHERE o.status='cancelled'),0) AS canceladas,
+          COALESCE(SUM(o.total_amount) FILTER (WHERE o.status<>'cancelled'),0) AS aprovadas,
+          COUNT(*) FILTER (WHERE o.status<>'cancelled') AS qtd_aprovadas,
+          COALESCE(SUM(COALESCE(i.cost,0)*o.quantity) FILTER (WHERE o.status<>'cancelled'),0) AS custo,
+          COALESCE(SUM(o.total_amount*COALESCE(s.imposto_pct,0)/100) FILTER (WHERE o.status<>'cancelled'),0) AS imposto,
+          COALESCE(SUM(o.ml_fee) FILTER (WHERE o.status<>'cancelled'),0) AS tarifa_pedido,
+          COALESCE(SUM(o.shipping_cost) FILTER (WHERE o.status<>'cancelled'),0) AS frete_comprador
+        FROM vw_ml_orders o
+        JOIN vw_ml_stores s ON s.id=o.store_id
+        LEFT JOIN items i ON i.ml_id=o.item_id
+        WHERE ${periodo}
+        GROUP BY 1,2
+      ),
+      concil AS (
+        SELECT o.store_id,
+          ABS(COALESCE(SUM(m.mp_fee_amount),0)) AS tarifa_real,
+          ABS(COALESCE(SUM(m.shipping_fee_amount),0)) AS frete_vendedor,
+          COUNT(DISTINCT m.order_id) AS pedidos_conciliados
+        FROM mp_account_movements m
+        JOIN vw_ml_orders o ON o.ml_id = m.order_id
+        WHERE ${periodo} AND o.status <> 'cancelled' AND m.description = 'Payment'
+        GROUP BY 1
+      )
+      SELECT v.store_id, v.loja, v.faturamento, v.canceladas, v.aprovadas, v.qtd_aprovadas,
+             v.custo, v.imposto, v.frete_comprador,
+             COALESCE(c.tarifa_real, v.tarifa_pedido) AS tarifa,
+             COALESCE(c.frete_vendedor, 0) AS frete_vendedor,
+             COALESCE(c.pedidos_conciliados, 0) AS pedidos_conciliados,
+             (c.tarifa_real IS NOT NULL) AS tem_conciliacao
+      FROM vendas v LEFT JOIN concil c ON c.store_id = v.store_id
+      ORDER BY v.aprovadas DESC
+    `, params);
+    const lojas = rows.map(r => {
+      const n = (x) => Number(x) || 0;
+      const aprovadas = n(r.aprovadas), custo = n(r.custo), imposto = n(r.imposto),
+            tarifa = n(r.tarifa), freteV = n(r.frete_vendedor), freteC = n(r.frete_comprador);
+      const margem = aprovadas - custo - imposto - tarifa - freteV - (considerarFC ? freteC : 0);
+      return {
+        store_id: r.store_id, loja: r.loja,
+        faturamento: n(r.faturamento), canceladas: n(r.canceladas), aprovadas,
+        qtd_aprovadas: n(r.qtd_aprovadas), custo, imposto, tarifa,
+        frete_vendedor: freteV, frete_comprador: freteC,
+        pedidos_conciliados: n(r.pedidos_conciliados), tem_conciliacao: r.tem_conciliacao,
+        margem, margem_pct: aprovadas > 0 ? Number((margem / aprovadas * 100).toFixed(2)) : 0,
+      };
+    });
+    res.json({ lojas, considerar_frete_comprador: considerarFC });
+  } catch (e) {
+    console.error('[api] /vendas/margem', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/anuncios/:id/visitas', async (req, res) => {
   const { days = 30 } = req.query;
   const { rows } = await pool.query(

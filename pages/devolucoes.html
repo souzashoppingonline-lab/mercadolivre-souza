@@ -19,6 +19,9 @@
     .sit-tag { width:24px; height:24px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:11px; padding:0; transition:all .12s; }
     .sit-tag:hover { filter:brightness(1.2); transform:translateY(-1px); }
     .sit-tag.on { box-shadow:0 0 0 2px rgba(255,255,255,.15); }
+    /* Linha "pendente de tratamento" (sem estágio ou sem observação): leve destaque */
+    #devTableEl tr.dev-pendente > td { background:rgba(230,194,0,.06); }
+    #devTableEl tr.dev-pendente > td:first-child { box-shadow:inset 3px 0 0 var(--primary,#e6c200); }
     .periodo-btn.active { background:var(--primary) !important; color:#000 !important; border-color:var(--primary) !important; }
     .dev-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
     .dev-modal-backdrop.open { display: flex; }
@@ -276,6 +279,18 @@ const DEFAULT_SITUACOES = [
 let SITUACOES = DEFAULT_SITUACOES.slice();
 const sitByKey = (k) => SITUACOES.find(s => s.key === k) || null;
 
+// "Pendente de tratamento": sem estágio escolhido OU sem observação preenchida.
+// Recebe um leve destaque na linha pra ser notada.
+function devPendente(r) {
+  return !r.situacao || !(r.note && String(r.note).trim());
+}
+// Reaplica o destaque numa linha após salvar nota/estágio (sem re-render geral).
+function refreshRowPendente(id) {
+  const row = allDevRows.find(r => String(r.id) === String(id));
+  const tr = document.querySelector(`tr[data-devid="${id}"]`);
+  if (row && tr) tr.classList.toggle('dev-pendente', devPendente(row));
+}
+
 // Carrega os estágios customizados e popula o dropdown de filtro.
 async function loadSituacoes() {
   try {
@@ -313,6 +328,7 @@ async function setSituacao(id, key) {
     if (row) row.situacao = novo || null;
     const cell = document.getElementById(`sit-${id}`);
     if (cell) cell.innerHTML = situacaoTags(id, novo || null);
+    refreshRowPendente(id);           // atualiza o destaque da linha
     toastDev(novo ? `Estágio: ${s ? s.label : novo}` : 'Estágio removido');
   } else {
     toastDev('Erro ao salvar estágio' + (res && res.error ? ': ' + res.error : ''));
@@ -342,6 +358,9 @@ async function saveNote(id, btn) {
   btn.textContent = '...';
   const r = await DB.saveDevolucaoNote(id, note);
   if (r) {
+    const row = allDevRows.find(x => String(x.id) === String(id));
+    if (row) row.note = note;
+    refreshRowPendente(id);           // atualiza o destaque da linha
     btn.textContent = '✓';
     btn.style.background = 'var(--green)';
     setTimeout(() => { btn.textContent = 'Salvar'; btn.style.background = ''; btn.disabled = false; }, 1500);
@@ -432,7 +451,7 @@ function renderDevRows(rows) {
         const st = statusMap[r.status] || { l: r.status, c: '' };
         const produto = r.item_title || r.title || '—';
         const oid = r.order_id || '';
-        return `<tr onclick="openDevDetail(${r.id})" style="cursor:pointer">
+        return `<tr onclick="openDevDetail(${r.id})" data-devid="${r.id}" class="${devPendente(r) ? 'dev-pendente' : ''}" style="cursor:pointer">
           <td style="font-size:11px;white-space:nowrap">
             <span style="display:inline-flex;align-items:center;gap:6px">#${oid||'—'}${oid?`<button title="Copiar nº do pedido" onclick="event.stopPropagation();copiarPedido('${oid}',this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;font-size:12px"><i class="fas fa-copy"></i></button>`:''}</span>
           </td>

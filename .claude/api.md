@@ -52,7 +52,7 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/vendas/detalhado?store_id&status&days&search&date_from&date_to` | linha a linha com margem calculada por pedido — fórmula em `finance.md` |
 | `GET /api/vendas/hoje` | KPI do dia (sempre `CURRENT_DATE`, independe de filtro de período) + `projecao_mes` (run-rate simples: receita acumulada do mês ÷ dias decorridos × dias no mês), `receita_mes`, `dias_decorridos`, `dias_no_mes` |
 | `GET /api/vendas/hoje-vs-ontem?store_id` | comparação até o mesmo horário do dia anterior (aritmética em UTC ajustada para BRT) **(consolidado — todos os marketplaces, base `orders`/`stores`/`items`)**. A tela mostra só receita+pedidos; o `lucro` calculado usa campos ML (0 no Shopee) mas não é exibido |
-| `GET /api/vendas/por-loja?days` | receita diária por loja, período atual vs período anterior equivalente |
+| `GET /api/vendas/por-loja?days` | receita diária por loja, período atual vs anterior equivalente. Também devolve `devolucoes:[{store_id,loja,devolucoes,qtd}]` — devoluções casadas com a VENDA do período (pedido não cancelado), valor = `COALESCE(NULLIF(returns.amount,0), total_amount)`. A página mostra Bruto / Devoluções / Líquido |
 | `GET /api/analises/estoque-parado?store_id&days&modo` | itens ativos sem venda no período (`modo=parado`) ou todos com contagem de vendas |
 | `GET /api/analises/horarios?store_id&period` | pedidos/receita por hora do dia (fuso America/Sao_Paulo) |
 | `GET /api/analises/dias-semana?store_id&days` | pedidos/receita por dia da semana |

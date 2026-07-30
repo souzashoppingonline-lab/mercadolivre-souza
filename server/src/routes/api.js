@@ -2587,7 +2587,21 @@ router.get('/vendas/por-loja', async (req, res) => {
           GROUP BY 1, 2
         `, [date_from, dateToEnd]),
       ]);
-      return res.json({ current, previous });
+      // Devoluções por loja no período (casadas com a VENDA — data do pedido),
+      // só de pedidos NÃO cancelados (o cancelado já saiu do bruto). Valor
+      // abatido = reclamação (returns.amount) quando > 0, senão o pedido cheio.
+      const { rows: devolucoes } = await pool.query(`
+        SELECT o.store_id, s.nickname AS loja,
+               COALESCE(SUM(COALESCE(NULLIF(r.amount,0), o.total_amount)),0) AS devolucoes,
+               COUNT(*) AS qtd
+        FROM returns r
+        JOIN vw_ml_orders o ON o.ml_id = r.order_id
+        JOIN vw_ml_stores s ON s.id = o.store_id
+        WHERE o.date_created >= $1::timestamptz AND o.date_created <= $2::timestamptz
+          AND o.status != 'cancelled'
+        GROUP BY 1, 2
+      `, [date_from, dateToEnd]);
+      return res.json({ current, previous, devolucoes });
     }
 
     const days = Math.min(parseInt(req.query.days) || 30, 90);
@@ -2619,7 +2633,20 @@ router.get('/vendas/por-loja', async (req, res) => {
       GROUP BY 1, 2
     `, [days + 30]);
 
-    res.json({ current, previous });
+    // Devoluções por loja no período (mesma regra do modo range).
+    const { rows: devolucoes } = await pool.query(`
+      SELECT o.store_id, s.nickname AS loja,
+             COALESCE(SUM(COALESCE(NULLIF(r.amount,0), o.total_amount)),0) AS devolucoes,
+             COUNT(*) AS qtd
+      FROM returns r
+      JOIN vw_ml_orders o ON o.ml_id = r.order_id
+      JOIN vw_ml_stores s ON s.id = o.store_id
+      WHERE o.date_created >= CURRENT_DATE - ($1::int)
+        AND o.status != 'cancelled'
+      GROUP BY 1, 2
+    `, [days]);
+
+    res.json({ current, previous, devolucoes });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }

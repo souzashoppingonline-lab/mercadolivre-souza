@@ -233,3 +233,11 @@ Quando um snapshot de concorrente (Análise de Produtos) muda em relação ao ú
 | Disparada de vendas | `sold_delta` do dia ≥ limiar | `ANALISE_SALES_SPIKE_MIN` (**15**) |
 
 Regras: **só transição real** dispara (nunca a cada snapshot idêntico); **dedup** por `(ml_id, tipo, novo valor)` nas últimas **20h** evita o job diário e o "Monitorar agora" avisarem a mesma mudança duas vezes; o Telegram usa `tgNotifyForce` (ignora throttle/silêncio — o dedup já contém o volume) e pode ser desligado com `app_config.tg_monitor_analise='false'`. Ver `analise-produtos.md`.
+
+## Vendas por Loja — Bruto vs. Líquido de devoluções (`/vendas/por-loja`)
+
+A "Receita" da página é **bruta**: `SUM(total_amount)` de pedidos **não cancelados** (cancelado sai; devolução **não** sai sozinha, pois vive em `returns`, tabela separada, e o pedido continua pago). Para dar o **líquido**, a rota devolve `devolucoes` por loja e a página mostra **Bruto − Devoluções = Líquido**. Regras da devolução abatida:
+- **Valor** = `COALESCE(NULLIF(returns.amount,0), orders.total_amount)` — valor da reclamação do ML quando > 0, senão o pedido cheio (decisão do usuário).
+- **Casada com a VENDA** (data do pedido no período), não com a data da devolução — pra o líquido bater com as vendas daquele range. Consequência aceita: uma devolução que chega depois muda retroativamente o líquido do período da venda.
+- **Só pedidos não cancelados** (o cancelado já saiu do bruto — evita dupla baixa).
+- Segue sendo **bruto de tarifa/frete/imposto/custo** — líquido aqui é só "menos devoluções", não é lucro. Lucro real fica em Conciliação / Análise de Vendas do Mês (`finance.md`).

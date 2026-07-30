@@ -74,6 +74,21 @@ async function handleShipment({ resource, storeId }) {
   const shipmentId = resource.split('/').pop();
   const ship = await ml.getShipment(shipmentId, storeId);
   const sh = ship?.status_history || {};
+
+  // Frete do vendedor em tempo real: /shipments/:id/costs → senders_cost (o que o
+  // vendedor paga). Grava como fallback em orders.shipping_seller_cost; a Conciliação
+  // MP das 05:40 continua sendo a fonte oficial e sobrepõe na leitura. Alguns tipos de
+  // logística (ex: coleta/flex) podem não expor custos — nesse caso deixa a coluna intacta.
+  let sellerCost = null;
+  try {
+    const costs = await ml.getShipmentCosts(shipmentId, storeId);
+    const senders = costs?.senders;
+    if (Array.isArray(senders)) sellerCost = senders.reduce((a, s) => a + (Number(s?.cost) || 0), 0);
+    else if (senders && senders.cost != null) sellerCost = Number(senders.cost) || 0;
+  } catch (e) {
+    // 404/403 em alguns envios — não é erro fatal, só não temos o custo em tempo real
+  }
+
   const { rows } = await pool.query(
     `UPDATE orders SET
        shipping_status = $1,
@@ -82,6 +97,7 @@ async function handleShipment({ resource, storeId }) {
        date_shipped = $4,
        date_delivered = $5,
        shipping_last_updated = $6,
+       shipping_seller_cost = COALESCE($9, shipping_seller_cost),
        updated_at = now()
      WHERE store_id = $7 AND shipping_id = $8
      RETURNING ml_id`,
@@ -94,6 +110,7 @@ async function handleShipment({ resource, storeId }) {
       ship?.last_updated || null,
       storeId,
       String(shipmentId),
+      sellerCost,
     ]
   );
   if (!rows.length) return;

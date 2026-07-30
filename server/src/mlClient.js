@@ -244,6 +244,9 @@ module.exports = {
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}?tag=post_sale&seller_id=${storeId}`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
   getShipment:         (shipmentId, storeId) => get(`/shipments/${shipmentId}`, storeId),
+  // Custos do envio: senders_cost = quanto o VENDEDOR paga de frete; receiver_cost = comprador.
+  // Fonte em tempo real do frete do vendedor (a Conciliação MP das 05:40 é a oficial e sobrepõe).
+  getShipmentCosts:    (shipmentId, storeId) => get(`/shipments/${shipmentId}/costs`, storeId),
   // Endpoint correto tem o segmento /v1/ — a API antiga sem versão (/post-purchase/claims/...)
   // foi descontinuada pelo ML em 2024 e devolve 404 (confirmado em produção — ver decisions.md).
   // Nomes de filtro exatos confirmados testando direto contra a API real

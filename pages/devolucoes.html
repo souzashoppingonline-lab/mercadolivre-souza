@@ -189,10 +189,13 @@
           <button class="btn-save-note" onclick="exportDevPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <style>
-          /* Máscara de privacidade: borra Pedido(1), Loja(2), Produto(4) na tela */
+          /* Máscara de privacidade (print/compartilhar): borra Pedido(1),
+             Nº Reclamação(2), Loja(3), Comprador(4) e Produto(5). */
           #devTableEl.masked td:nth-child(1),
           #devTableEl.masked td:nth-child(2),
-          #devTableEl.masked td:nth-child(4) { filter: blur(6px); user-select: none; }
+          #devTableEl.masked td:nth-child(3),
+          #devTableEl.masked td:nth-child(4),
+          #devTableEl.masked td:nth-child(5) { filter: blur(6px); user-select: none; }
         </style>
         <div class="table-responsive">
           <table class="data-table" id="devTableEl">

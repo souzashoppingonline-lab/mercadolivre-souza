@@ -15,6 +15,10 @@
     .btn-save-note { background:var(--primary); color:#000; border:none; border-radius:6px; padding:4px 10px; font-size:.75rem; font-weight:700; cursor:pointer; white-space:nowrap; }
     .btn-save-note:hover { opacity:.85; }
     .saved-note { font-size:.78rem; color:var(--text-muted); font-style:italic; }
+    .sit-tags { display:flex; flex-wrap:wrap; gap:3px; margin-top:5px; max-width:220px; }
+    .sit-tag { width:24px; height:24px; border-radius:6px; border:1px solid var(--border); background:var(--bg-card); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:11px; padding:0; transition:all .12s; }
+    .sit-tag:hover { filter:brightness(1.2); transform:translateY(-1px); }
+    .sit-tag.on { box-shadow:0 0 0 2px rgba(255,255,255,.15); }
     .periodo-btn.active { background:var(--primary) !important; color:#000 !important; border-color:var(--primary) !important; }
     .dev-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
     .dev-modal-backdrop.open { display: flex; }
@@ -173,6 +177,12 @@
           <h3>Solicitações de Devolução</h3>
           <input type="text" id="devTableSearch" placeholder="🔎 Filtrar: nº reclamação, pedido, comprador ou produto..." oninput="filterDevTable()"
             style="margin-left:auto;min-width:260px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px">
+          <select id="filtroSituacao" onchange="filterDevTable()" title="Filtrar por estágio da observação"
+            style="margin-left:8px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px">
+            <option value="">Todos os estágios</option>
+            <option value="__none__">Sem estágio</option>
+          </select>
+          <button class="btn-save-note" onclick="novoEstagio()" style="margin-left:8px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border)" title="Criar um novo estágio de observação"><i class="fas fa-plus"></i> Estágio</button>
           <button class="btn-save-note" id="btnAtualizarPendentes" onclick="atualizarPendentes(this)" style="margin-left:8px" title="Reconsulta em segundo plano todas as devoluções em análise, 1 por vez (respeita o rate limit do ML)"><i class="fas fa-arrows-rotate"></i> Atualizar pendentes</button>
           <button class="btn-save-note" id="btnMaskDev" onclick="toggleDevMask()" style="margin-left:8px" title="Oculta Pedido, Loja e Produto na tela (para print/compartilhar). Não afeta o CSV/PDF."><i class="fas fa-eye-slash"></i> Ocultar</button>
           <button class="btn-save-note" onclick="exportDevCSV()" style="margin-left:8px"><i class="fas fa-file-csv"></i> CSV</button>
@@ -243,6 +253,84 @@ const statusMap = {
   rejected: { l:'Rejeitada',  c:'closed' },
   closed:   { l:'Encerrada',  c:'closed' },
 };
+
+// ── Estágios da observação (etiquetas com ícone, salvas no histórico) ───────
+// Fixos + customizados (carregados do servidor). Cada escolha grava em
+// returns.situacao E vira um evento na timeline da reclamação.
+const DEFAULT_SITUACOES = [
+  { key:'mediacao',           label:'Mediação / Acompanhar', icon:'fa-scale-balanced',        color:'#e67e22' },
+  { key:'devolucao',          label:'Devolução / Acompanhar', icon:'fa-rotate-left',          color:'#f39c12' },
+  { key:'encerrada',          label:'Encerrada',              icon:'fa-circle-check',          color:'#27ae60' },
+  { key:'dinheiro_liberado',  label:'Dinheiro liberado',      icon:'fa-sack-dollar',           color:'#2ecc71' },
+  { key:'troca_caminho',      label:'Troca a caminho',        icon:'fa-truck',                 color:'#3498db' },
+  { key:'verificar_pagamento',label:'Verificar pagamento',    icon:'fa-magnifying-glass-dollar',color:'#9b59b6' },
+  // sugestões extras:
+  { key:'aguardando_cliente', label:'Aguardando cliente',     icon:'fa-hourglass-half',        color:'#95a5a6' },
+  { key:'produto_recebido',   label:'Produto recebido',       icon:'fa-inbox',                 color:'#16a085' },
+  { key:'reembolso_solicitado',label:'Reembolso solicitado',  icon:'fa-hand-holding-dollar',   color:'#e74c3c' },
+  { key:'prejuizo_assumido',  label:'Prejuízo assumido',      icon:'fa-triangle-exclamation',  color:'#c0392b' },
+];
+let SITUACOES = DEFAULT_SITUACOES.slice();
+const sitByKey = (k) => SITUACOES.find(s => s.key === k) || null;
+
+// Carrega os estágios customizados e popula o dropdown de filtro.
+async function loadSituacoes() {
+  try {
+    const r = await fetch(`${DB.BASE}/alertas/devolucoes/situacoes`).then(x => x.json()).catch(() => null);
+    const custom = (r && Array.isArray(r.custom)) ? r.custom : [];
+    SITUACOES = DEFAULT_SITUACOES.concat(custom.filter(c => c && c.key && !DEFAULT_SITUACOES.some(d => d.key === c.key)));
+  } catch (_) { SITUACOES = DEFAULT_SITUACOES.slice(); }
+  const sel = document.getElementById('filtroSituacao');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Todos os estágios</option><option value="__none__">Sem estágio</option>'
+      + SITUACOES.map(s => `<option value="${s.key}">${escapeHtmlDev(s.label)}</option>`).join('');
+    sel.value = cur;
+  }
+}
+
+// Renderiza os botões-ícone de estágio pra uma linha (o selecionado fica aceso).
+function situacaoTags(id, current) {
+  return SITUACOES.map(s => {
+    const on = s.key === current;
+    return `<button class="sit-tag${on ? ' on' : ''}" title="${escapeHtmlDev(s.label)}"
+      style="${on ? `background:${s.color};border-color:${s.color};color:#fff` : `color:${s.color}`}"
+      onclick="event.stopPropagation();setSituacao(${id},'${s.key}')"><i class="fas ${s.icon}"></i></button>`;
+  }).join('');
+}
+
+// Salva o estágio escolhido (toggle: clicar no aceso remove). Atualiza a linha
+// e o histórico. O card também guarda em allDevRows/viewDevRows pro filtro.
+async function setSituacao(id, key) {
+  const row = allDevRows.find(r => String(r.id) === String(id));
+  const novo = (row && row.situacao === key) ? '' : key;      // clicar no mesmo remove
+  const s = sitByKey(key);
+  const res = await DB.saveDevolucaoSituacao(id, novo, s ? s.label : '');
+  if (res && !res.error) {
+    if (row) row.situacao = novo || null;
+    const cell = document.getElementById(`sit-${id}`);
+    if (cell) cell.innerHTML = situacaoTags(id, novo || null);
+    toastDev(novo ? `Estágio: ${s ? s.label : novo}` : 'Estágio removido');
+  } else {
+    toastDev('Erro ao salvar estágio' + (res && res.error ? ': ' + res.error : ''));
+  }
+}
+
+// Cria um novo estágio customizado (salvo no servidor pra todos).
+async function novoEstagio() {
+  const nome = (prompt('Nome do novo estágio (ex.: "Aguardando coleta"):') || '').trim();
+  if (!nome) return;
+  const res = await fetch(`${DB.BASE}/alertas/devolucoes/situacoes`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label: nome })
+  }).then(x => x.json()).catch(() => null);
+  if (res && res.custom) {
+    await loadSituacoes();
+    renderDevRows(viewDevRows);   // re-render pra os novos tags aparecerem
+    toastDev(`Estágio "${nome}" criado.`);
+  } else {
+    toastDev('Erro ao criar estágio' + (res && res.error ? ': ' + res.error : ''));
+  }
+}
 
 async function saveNote(id, btn) {
   const input = document.getElementById(`note-${id}`);
@@ -372,6 +460,7 @@ function renderDevRows(rows) {
               <input class="note-input" id="note-${r.id}" value="${(r.note||'').replace(/"/g,'&quot;')}" placeholder="Adicionar observação...">
               <button class="btn-save-note" onclick="saveNote(${r.id}, this)">Salvar</button>
             </div>
+            <div class="sit-tags" id="sit-${r.id}">${situacaoTags(r.id, r.situacao)}</div>
           </td>
           <td style="text-align:center" onclick="event.stopPropagation()" title="Marcar se foi aberto chamado nesta devolução">
             <input type="checkbox" id="chamado-${r.id}" ${r.abertura_chamado ? 'checked' : ''} onchange="saveChamado(${r.id}, this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--primary)">
@@ -385,14 +474,17 @@ function renderDevRows(rows) {
 // Filtro local (instantâneo) da tabela — sobre os dados já carregados.
 function filterDevTable() {
   const q = (document.getElementById('devTableSearch').value || '').trim().toLowerCase();
-  if (!q) { renderDevRows(allDevRows); return; }
-  const f = allDevRows.filter(r =>
+  const sf = (document.getElementById('filtroSituacao') || {}).value || '';
+  let f = allDevRows;
+  // Filtro por estágio (situação): '' = todos, '__none__' = sem estágio, senão a key.
+  if (sf === '__none__') f = f.filter(r => !r.situacao);
+  else if (sf) f = f.filter(r => r.situacao === sf);
+  if (q) f = f.filter(r =>
     String(r.order_id || '').toLowerCase().includes(q) ||
     String(r.claim_id || '').toLowerCase().includes(q) ||
     String(r.buyer_nickname || '').toLowerCase().includes(q) ||
     String(r.item_title || r.title || '').toLowerCase().includes(q) ||
     String(r.conta || '').toLowerCase().includes(q) ||
-    // rede de segurança: acha qualquer ID dentro da claim (mediação, related, etc.)
     (r.raw_data ? JSON.stringify(r.raw_data).toLowerCase().includes(q) : false));
   renderDevRows(f);
 }
@@ -514,8 +606,10 @@ async function copiarPedido(oid, btn) {
   if (i) { const old = i.className; i.className = 'fas fa-check'; btn.style.color = 'var(--green)'; setTimeout(() => { i.className = old; btn.style.color = ''; }, 1200); }
 }
 
+let _sitLoaded = false;
 async function load() {
   await loadLojasFiltro();
+  if (!_sitLoaded) { await loadSituacoes(); _sitLoaded = true; } // estágios (uma vez)
   const q = document.getElementById('searchInput').value.trim();
   const storeId = document.getElementById('filtroLoja').value;
   const params = { q, store_id: storeId || undefined };

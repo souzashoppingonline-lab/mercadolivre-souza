@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS returns (
 );
 ALTER TABLE returns ADD COLUMN IF NOT EXISTS abertura_chamado BOOLEAN DEFAULT false; -- v43 (idempotente p/ tabela já existente)
 ALTER TABLE returns ADD COLUMN IF NOT EXISTS claim_id TEXT;                            -- v59
+ALTER TABLE returns ADD COLUMN IF NOT EXISTS situacao TEXT;                             -- v63: etiqueta de estágio manual
 ALTER TABLE returns ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;               -- v59
 -- v59: uma reclamação, uma linha. Parcial pra não travar devoluções antigas sem claim_id.
 CREATE UNIQUE INDEX IF NOT EXISTS returns_claim_id_uidx ON returns (claim_id) WHERE claim_id IS NOT NULL;

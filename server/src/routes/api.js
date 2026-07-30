@@ -1874,7 +1874,7 @@ router.get('/alertas/devolucoes', async (req, res) => {
     const [{ rows }, { rows: pedidosPorLojaRows }, { rows: pedidosPorLogisticaRows }] = await Promise.all([
       pool.query(
         `SELECT r.id, r.store_id, s.nickname as conta, r.order_id,
-                r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo, r.abertura_chamado,
+                r.buyer_nickname, r.title, r.reason, r.amount, r.status, r.date, r.note, r.prejuizo, r.abertura_chamado, r.situacao,
                 COALESCE(cr.detail, r.reason) AS reason_detail,
                 r.raw_data,
                 COALESCE(r.claim_id, r.raw_data->>'id') AS claim_id,
@@ -2036,6 +2036,61 @@ router.patch('/alertas/devolucoes/:id/note', async (req, res) => {
     res.json(rows[0]);
   } catch (e) {
     console.error('[/alertas/devolucoes/:id/note]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Estágios CUSTOMIZADOS da situação (além dos fixos do frontend). Guardados em
+// app_config como JSON. GET lista; POST adiciona um novo {key,label,icon,color}.
+router.get('/alertas/devolucoes/situacoes', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT value FROM app_config WHERE key='devolucao_situacoes'`);
+    let custom = [];
+    try { custom = JSON.parse(rows[0]?.value || '[]'); } catch (_) { custom = []; }
+    res.json({ custom: Array.isArray(custom) ? custom : [] });
+  } catch (e) { console.error('[situacoes GET]', e.message); res.status(500).json({ error: e.message }); }
+});
+router.post('/alertas/devolucoes/situacoes', async (req, res) => {
+  try {
+    const label = (req.body.label || '').trim();
+    if (!label) return res.status(400).json({ error: 'informe o nome do estágio' });
+    const key = 'c_' + label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+    const icon = (req.body.icon || 'fa-tag').trim();
+    const color = (req.body.color || '#7f8c8d').trim();
+    const { rows } = await pool.query(`SELECT value FROM app_config WHERE key='devolucao_situacoes'`);
+    let custom = [];
+    try { custom = JSON.parse(rows[0]?.value || '[]'); } catch (_) { custom = []; }
+    if (!Array.isArray(custom)) custom = [];
+    if (!custom.some((s) => s.key === key)) custom.push({ key, label, icon, color });
+    await pool.query(
+      `INSERT INTO app_config (key, value) VALUES ('devolucao_situacoes', $1)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(custom)]);
+    res.json({ custom });
+  } catch (e) { console.error('[situacoes POST]', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Define a SITUAÇÃO manual (etiqueta de estágio) de uma devolução. Grava em
+// returns.situacao E registra no histórico da reclamação (claim_history), pra
+// ficar na timeline. `situacao` = chave da lista (ver SITUACOES no frontend);
+// `label` = texto legível pro histórico. Enviar situacao vazia limpa a etiqueta.
+router.post('/alertas/devolucoes/:id/situacao', async (req, res) => {
+  try {
+    const situacao = (req.body.situacao || '').trim() || null;
+    const label = (req.body.label || situacao || '').trim();
+    const { rows } = await pool.query(
+      `UPDATE returns SET situacao = $1, updated_at = now() WHERE id = $2 RETURNING id, claim_id, situacao`,
+      [situacao, req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'devolução não encontrada' });
+    // Registra na timeline (só se a reclamação tem claim_id e há uma etiqueta).
+    if (rows[0].claim_id && situacao) {
+      const { recordClaimEvent } = require('../claims');
+      await recordClaimEvent(rows[0].claim_id, {
+        event_type: 'situacao', description: `Situação: ${label}`,
+      }).catch((e) => console.error('[situacao] histórico', e.message));
+    }
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[/alertas/devolucoes/:id/situacao]', e.message);
     res.status(500).json({ error: e.message });
   }
 });

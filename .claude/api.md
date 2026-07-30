@@ -311,3 +311,8 @@ Anúncios (`analise_product_ads`) agora têm `link` e `ml_id` (MLB) editáveis �
 - WS `analise_anuncio` `{produto_id, anuncio}` — card ao vivo quando a extensão salva (publicado no passo da extensão).
 
 Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes do gate): `GET /extension/produto-ativo`, `POST /extension/anuncio`, `GET /extension/monitor/:mlb` (histórico de preço do MLB pro mini-gráfico do painel — `{historico, delta30d, count}`, read-only).
+
+**Devoluções — situação/estágio manual (v63):**
+- `POST /alertas/devolucoes/:id/situacao` `{situacao, label}` → grava `returns.situacao` e registra um evento na timeline (`claim_history`, `event_type='situacao'`). Situação vazia limpa a etiqueta.
+- `GET /alertas/devolucoes/situacoes` → `{custom:[{key,label,icon,color}]}` (estágios customizados, guardados em `app_config.devolucao_situacoes`).
+- `POST /alertas/devolucoes/situacoes` `{label,icon?,color?}` → adiciona um estágio customizado. A listagem `GET /alertas/devolucoes` passou a devolver `r.situacao`.

@@ -152,7 +152,7 @@
         <div class="sum-card yellow">
           <div class="sum-label"><i class="fas fa-percentage"></i> Tarifa de Venda</div>
           <div class="sum-value" id="s-tar">R$ 0,00</div>
-          <div class="sum-sub"><span><span>Taxa cobrada pelo ML</span><span></span></span></div>
+          <div class="sum-sub"><span><span>Taxa cobrada pelo ML</span><span id="s-tarsub" style="color:var(--text-muted)"></span></span></div>
         </div>
         <div class="sum-card blue">
           <div class="sum-label"><i class="fas fa-truck"></i> Frete Total</div>
@@ -317,6 +317,9 @@ async function load() {
   set('s-custo', R(s.custo_total));
   set('s-imp',   R(s.imposto_total));
   set('s-tar',   R(s.tarifa_total));
+  set('s-tarsub', s.pedidos_aprovados > 0
+    ? `${s.pedidos_conciliados||0}/${s.pedidos_aprovados} conciliados`
+    : '');
   set('s-frete', R((s.frete_comprador_total||0)+(s.frete_vendedor_total||0)));
   set('s-fc',    R(s.frete_comprador_total));
   set('s-fv',    R(s.frete_vendedor_total));

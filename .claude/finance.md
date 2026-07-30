@@ -20,13 +20,15 @@ Usada em `GET /api/vendas/detalhado`, `GET /api/vendas/hoje`, `GET /api/vendas/h
 ```
 custo        = items.cost × quantity
 imposto      = total_amount × (stores.imposto_pct / 100)
-tarifa       = orders.ml_fee
+tarifa       = mp_fee_amount (Conciliação) — fallback orders.ml_fee
 frete_comprador = orders.shipping_cost
-frete_vendedor  = orders.shipping_seller_cost   (entrada manual, 0 por padrão)
+frete_vendedor  = shipping_fee_amount (Conciliação) — fallback orders.shipping_seller_cost
 
 margem  = total_amount − custo − imposto − tarifa − frete_comprador − frete_vendedor
 mc_pct  = margem / total_amount × 100
 ```
+
+**`GET /api/vendas/detalhado` puxa tarifa e frete do vendedor da Conciliação Bancária** (`mp_account_movements`, `description='Payment'`, casado por `order_id` via `LEFT JOIN LATERAL` — usa o índice `idx_mp_mov_order`, sem materializar a tabela toda), tanto por linha quanto nos cards de total. Motivo: `orders.shipping_seller_cost` nunca foi populado pelo worker (sempre 0) e `orders.ml_fee` só entra dias depois; a Conciliação (relatório de liberações do MP) já tem os dois valores reais no ato. Fallback pro valor do próprio pedido quando não há relatório no período. Ver `conciliacao-bancaria.md`. As demais rotas dessa lista ainda usam só os campos do pedido.
 
 `GET /api/vendas/diarias` usa uma **aproximação diferente e mais simples**, sem custo real por pedido: `liquido = bruto × 0.88` e `taxas = bruto × 0.12` — é uma estimativa grosseira para gráfico rápido, não usar como referência de margem real.
 

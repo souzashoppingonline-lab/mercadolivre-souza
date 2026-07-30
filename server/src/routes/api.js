@@ -356,21 +356,31 @@ router.get('/vendas/detalhado', async (req, res) => {
        AND ($4 = '' OR o.title ILIKE '%'||$4||'%')`;
 
   // Linhas para a tabela — cap de 1000 (payload/render), não usado para os totais.
+  // Tarifa e frete do vendedor vêm da Conciliação Bancária (mp_account_movements,
+  // description='Payment', casado por order_id via LATERAL c/ índice idx_mp_mov_order).
+  // Fallback: ml_fee / shipping_seller_cost do próprio pedido quando não há relatório.
   const { rows } = await pool.query(
     `SELECT
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
        o.title, o.quantity, o.unit_price,
        o.total_amount as faturamento,
-       o.ml_fee as tarifa,
+       COALESCE(c.tarifa_real, o.ml_fee) as tarifa,
        o.shipping_type as frete_tipo,
        o.shipping_cost as frete_comprador,
-       COALESCE(o.shipping_seller_cost, 0) as frete_vendedor,
+       COALESCE(c.frete_vend_real, o.shipping_seller_cost, 0) as frete_vendedor,
+       (c.tarifa_real IS NOT NULL) as tem_conciliacao,
        o.status, o.date_created,
        COALESCE(i.cost, 0) as custo,
        COALESCE(s.imposto_pct, 0) as imposto_pct
      FROM vw_ml_orders o
      JOIN vw_ml_stores s ON s.id = o.store_id
      LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+     LEFT JOIN LATERAL (
+       SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
+              ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
+       FROM mp_account_movements m
+       WHERE m.order_id = o.ml_id AND m.description = 'Payment'
+     ) c ON true
      ${whereClause}
      ORDER BY o.date_created DESC LIMIT 1000`,
     params
@@ -385,7 +395,7 @@ router.get('/vendas/detalhado', async (req, res) => {
     const freteComp = Number(r.frete_comprador) || 0;
     const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
     const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
-    return { ...r, custo, imposto, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
+    return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
   });
 
   // Totais — agregados no banco sobre TODO o range filtrado (sem LIMIT), agrupados
@@ -398,14 +408,21 @@ router.get('/vendas/detalhado', async (req, res) => {
        COALESCE(SUM(o.total_amount), 0) AS faturamento,
        COALESCE(SUM(COALESCE(i.cost, 0) * o.quantity), 0) AS custo,
        COALESCE(SUM(o.total_amount * COALESCE(s.imposto_pct, 0) / 100), 0) AS imposto,
-       COALESCE(SUM(o.ml_fee), 0) AS tarifa,
+       COALESCE(SUM(COALESCE(c.tarifa_real, o.ml_fee)), 0) AS tarifa,
        COALESCE(SUM(o.shipping_cost), 0) AS frete_comprador,
-       COALESCE(SUM(o.shipping_seller_cost), 0) AS frete_vendedor,
+       COALESCE(SUM(COALESCE(c.frete_vend_real, o.shipping_seller_cost)), 0) AS frete_vendedor,
+       COUNT(*) FILTER (WHERE c.tarifa_real IS NOT NULL) AS pedidos_conciliados,
        COALESCE(SUM(o.quantity), 0) AS qtd,
        COUNT(*) AS pedidos
      FROM vw_ml_orders o
      JOIN vw_ml_stores s ON s.id = o.store_id
      LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+     LEFT JOIN LATERAL (
+       SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
+              ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
+       FROM mp_account_movements m
+       WHERE m.order_id = o.ml_id AND m.description = 'Payment'
+     ) c ON true
      ${whereClause}
      GROUP BY o.status`,
     params
@@ -435,6 +452,7 @@ router.get('/vendas/detalhado', async (req, res) => {
     qtd_canceladas: sumField(cancelledAgg, 'qtd'),
     pedidos_aprovados: pedidosAprovados,
     pedidos_cancelados: cancelledAgg.reduce((a, r) => a + Number(r.pedidos || 0), 0),
+    pedidos_conciliados: sumField(approvedAgg, 'pedidos_conciliados'),
     ticket_medio: pedidosAprovados > 0 ? vendasAprovadas / pedidosAprovados : 0,
   };
   summary.mc_pct = summary.vendas_aprovadas > 0 ? (summary.margem_total / summary.vendas_aprovadas) * 100 : 0;

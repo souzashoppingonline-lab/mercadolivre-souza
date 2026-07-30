@@ -732,6 +732,28 @@ router.post('/perguntas/:id/responder', express.json(), async (req, res) => {
   }
 });
 
+// Exclui uma pergunta. Tenta apagar no ML (o vendedor pode excluir perguntas —
+// ação pontual explícita, exceção documentada em architecture.md) e remove a
+// linha local. Se o ML recusar (ex.: já respondida), remove só localmente com
+// aviso, pra a pergunta sair da lista mesmo assim.
+router.delete('/perguntas/:id', async (req, res) => {
+  try {
+    const questionId = req.params.id;
+    const { rows } = await pool.query(`SELECT store_id FROM questions WHERE ml_id=$1 LIMIT 1`, [questionId]);
+    if (!rows.length) return res.status(404).json({ error: 'pergunta não encontrada' });
+    const storeId = rows[0].store_id;
+    const ml = require('../mlClient');
+    let mlOk = true, mlMsg = null;
+    try { await ml.deleteQuestion(questionId, storeId); }
+    catch (e) { mlOk = false; mlMsg = e.message; console.error('[perguntas delete ML]', e.message); }
+    await pool.query(`DELETE FROM questions WHERE ml_id=$1`, [questionId]);
+    res.json({ ok: true, ml_deleted: mlOk, ml_error: mlOk ? null : mlMsg });
+  } catch (e) {
+    console.error('[api] excluir pergunta', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/mensagens', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT m.pack_id, m.buyer_nickname, m.last_message, m.unread, m.last_message_date, s.nickname as loja

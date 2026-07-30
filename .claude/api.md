@@ -74,6 +74,7 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 |---|---|
 | `GET /api/perguntas?status&store_id` | lista + summary (não respondidas, respondidas hoje, tempo médio de resposta) |
 | `POST /api/perguntas/:id/responder { text }` | **chama a API do ML** (`mlClient.answerQuestion`) e atualiza `questions` |
+| `DELETE /api/perguntas/:id` | exclui a pergunta: tenta `mlClient.deleteQuestion` (o ML só deixa apagar não respondidas) e remove a linha local. Se o ML recusar, remove só localmente com `ml_deleted:false` + `ml_error`. `:id` é o `ml_id` |
 | `GET /api/mensagens` | últimas 50 conversas (`messages`) |
 
 ## Clientes

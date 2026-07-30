@@ -180,6 +180,18 @@ async function post(path, storeId, body) {
   return res.json();
 }
 
+async function del(path, storeId) {
+  const token = await getAccessToken(storeId);
+  await acquireToken(storeId);
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 429) rlPenalize(storeId);
+  if (!res.ok) throw new Error(`ML API DELETE ${path} -> HTTP ${res.status}: ${await res.text()}`);
+  return res.text().then((t) => { try { return JSON.parse(t); } catch (_) { return { ok: true }; } });
+}
+
 // ── Mercado Pago (api.mercadopago.com) — mesmo token OAuth do ML autentica
 // aqui (confirmado ao vivo, ver decisions.md). Usado só pelos Relatórios de
 // Conciliação. `mpDownload` devolve Buffer (o arquivo é XLSX binário).
@@ -227,6 +239,7 @@ module.exports = {
   getPayment:          (id, storeId)     => get(`/collections/${id}`, storeId),
   getQuestion:         (id, storeId)     => get(`/questions/${id}`, storeId),
   answerQuestion:      (questionId, text, storeId) => post('/answers', storeId, { question_id: questionId, text }),
+  deleteQuestion:      (questionId, storeId) => del(`/questions/${questionId}`, storeId),
   getMessage:          (msgId, storeId)  => get(`/messages/${msgId}?tag=post_sale&seller_id=${storeId}`, storeId),
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}?tag=post_sale&seller_id=${storeId}`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),

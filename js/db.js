@@ -129,6 +129,7 @@ const DB = {
   // ── Perguntas ──────────────────────────────────────────────
   async getPerguntas(params = {}) { return this._get('/perguntas', params); },
   async responderPergunta(id, text) { return this._post(`/perguntas/${id}/responder`, { text }); },
+  async excluirPergunta(id) { return this._delete(`/perguntas/${id}`); },
 
   // ── Mensagens ──────────────────────────────────────────────
   async getMensagens(params = {}) { return this._get('/mensagens', params); },

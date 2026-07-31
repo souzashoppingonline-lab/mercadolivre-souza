@@ -4,8 +4,8 @@
 // renderiza um card fixo. Continua salvando o anúncio na análise (produto
 // ativo) via service-worker, e permite BAIXAR as fotos/vídeos do anúncio.
 //
-// Parts 1+2 (painel + dark) + download de mídia. Frete/Tarifa/"você recebe" e
-// estimativas de visitas/vendas ficam pra uma fase seguinte (ver .claude).
+// Parts 1+2 (painel + dark) + download de mídia + card "Você recebe" (estimativa
+// de tarifa/frete do concorrente, comissão/frete ajustáveis e salvos).
 
 console.log('[content] FinanceEcom v2 carregado');
 
@@ -183,6 +183,12 @@ function extractFull() {
   return /\bFULL\b/.test(txt()) && /Enviado pelo Full|chega grátis|Full/i.test(txt());
 }
 
+// Frete grátis = quem paga o envio é o VENDEDOR (entra na conta de "você recebe").
+function extractFreteGratis() {
+  const t = (qt('.ui-pdp-shipping, .ui-pdp-media__title, [class*="shipping"]') || '') + ' ' + txt().slice(0, 4000);
+  return /frete\s*gr[áa]tis|chega\s*gr[áa]tis|env[íi]o\s*gr[áa]tis/i.test(t);
+}
+
 function extractRating(p) {
   const agg = p.aggregateRating || {};
   const nota = agg.ratingValue != null ? Number(agg.ratingValue)
@@ -328,7 +334,8 @@ function collectAll() {
     mlb: extractMlb(), title: extractTitle(p),
     price: extractPrice(p), original: extractOriginalPrice(),
     seller: extractSeller(), reputation: extractReputation(), location: extractLocation(),
-    full: extractFull(), rating: extractRating(p), stock: extractStock(), sold: extractSold(),
+    full: extractFull(), freteGratis: extractFreteGratis(),
+    rating: extractRating(p), stock: extractStock(), sold: extractSold(),
     creation: extractCreation(), sellerId: extractSellerId(),
     followers: extractFollowers(), products: extractProductsCount(),
     highlights: extractHighlights(), description: extractDescription(),
@@ -346,6 +353,22 @@ function medalha(rep) {
   const m = String(rep).match(/Platinum|Platina|Gold|Ouro|Silver|Prata/i);
   const map = { platina: 'Platinum', ouro: 'Gold', prata: 'Silver' };
   return m ? (map[m[0].toLowerCase()] || m[0]) : rep;
+}
+
+// "Você recebe" (estimado) — o concorrente não expõe tarifa/frete reais, então
+// estimamos: tarifa = preço×comissão% + custo fixo (itens abaixo do limiar),
+// frete = o que o vendedor paga (só se frete grátis). Comissão e frete são
+// ajustáveis pelo usuário (salvos em chrome.storage) porque variam por
+// categoria/tipo de anúncio.
+const FE_CALC = { comissao: 13, custoFixo: 6.75, limiar: 79 };
+function calcRecebe(price, comissao, frete) {
+  const p = Number(price) || 0;
+  const com = p * (Number(comissao) || 0) / 100;
+  const fixo = p > 0 && p < FE_CALC.limiar ? FE_CALC.custoFixo : 0;
+  const tarifa = com + fixo;
+  const fr = Number(frete) || 0;
+  const recebe = p - tarifa - fr;
+  return { tarifa, frete: fr, recebe, pct: p > 0 ? recebe / p * 100 : 0 };
 }
 
 function row(icon, label, value, right) {
@@ -380,6 +403,16 @@ function injectPanel() {
         ${dem.cobertura != null ? `<div><small>Estoque acaba em</small><b>~${nf(Math.round(dem.cobertura), 0)}d</b></div>` : ''}
       </div>
     </div>` : '';
+  // "Você recebe" (estimado) — card com comissão/frete editáveis
+  const recebeHtml = d.price ? `
+    <div class="fe-recebe">
+      <div class="fe-dem-h">💰 Você recebe <small>(estimado)</small></div>
+      <div class="fe-rc-line"><span>Preço</span><b>${BRL(d.price)}</b></div>
+      <div class="fe-rc-line"><span>Comissão <input id="fe-com" class="fe-inp" type="number" step="0.5" min="0">%</span><b id="fe-tarifa" class="fe-neg">—</b></div>
+      <div class="fe-rc-line"><span>Frete vend. ${d.freteGratis ? '<small class="fe-fg">frete grátis</small>' : ''} R$<input id="fe-frete" class="fe-inp" type="number" step="0.5" min="0"></span><b id="fe-frete-v" class="fe-neg">—</b></div>
+      <div class="fe-rc-total"><span>Você recebe</span><b id="fe-recebe">—</b></div>
+      <div class="fe-rc-note">≈ <span id="fe-recebe-pct">—</span>% do preço · ajuste a comissão/frete da sua categoria</div>
+    </div>` : '';
   // #3 Variações · #4 Catálogo (linhas)
   const varHtml = d.variations ? row('🎨', 'Variações',
     `${d.variations.total} opções${d.variations.esgotadas ? ` · <span class="fe-warn">${d.variations.esgotadas} esgotada(s)</span>` : ''}`) : '';
@@ -409,6 +442,7 @@ function injectPanel() {
         <div class="fe-pv">${BRL(d.price)}</div>
         ${d.original && d.price && d.original > d.price ? `<div class="fe-po">${BRL(d.original)}</div>` : ''}
       </div>
+      ${recebeHtml}
       ${demHtml}
       <div id="fe-pricehist" class="fe-ph" style="display:none"></div>
       ${row('🏪', 'Loja',
@@ -450,6 +484,29 @@ function injectPanel() {
   };
   document.getElementById('fe-dl-img').onclick = () => downloadMedia(d.images, d.mlb || 'anuncio', 'foto', 'fe-dl-img');
   document.getElementById('fe-dl-vid').onclick = () => downloadVideos(d.videos, d.mlb || 'anuncio');
+
+  // "Você recebe" — carrega comissão/frete salvos, recalcula ao vivo e persiste.
+  (function () {
+    const comI = document.getElementById('fe-com'), freteI = document.getElementById('fe-frete');
+    if (!comI || !freteI) return;
+    const recalc = () => {
+      const r = calcRecebe(d.price, parseFloat(comI.value) || 0, parseFloat(freteI.value) || 0);
+      document.getElementById('fe-tarifa').textContent = '− ' + BRL(r.tarifa);
+      document.getElementById('fe-frete-v').textContent = '− ' + BRL(r.frete);
+      document.getElementById('fe-recebe').textContent = BRL(r.recebe);
+      document.getElementById('fe-recebe-pct').textContent = r.pct.toFixed(0);
+      try { chrome.storage && chrome.storage.local.set({ fe_calc: { comissao: parseFloat(comI.value) || 0, frete: parseFloat(freteI.value) || 0 } }); } catch (_) {}
+    };
+    const apply = (saved) => {
+      comI.value = (saved && saved.comissao != null) ? saved.comissao : FE_CALC.comissao;
+      freteI.value = (saved && saved.frete != null) ? saved.frete : (d.freteGratis ? 20 : 0);
+      recalc();
+    };
+    try { chrome.storage ? chrome.storage.local.get(['fe_calc'], (o) => apply(o && o.fe_calc)) : apply(null); }
+    catch (_) { apply(null); }
+    comI.addEventListener('input', recalc);
+    freteI.addEventListener('input', recalc);
+  })();
   document.getElementById('fe-save').onclick = () => saveToAnalysis(d);
   if (d.mlb) loadPriceHistory(d.mlb);
 }
@@ -618,6 +675,16 @@ function injectStyle() {
   #${PANEL_ID} .fe-dem-grid > div{flex:1;background:#181b20;border:1px solid #2c313a;border-radius:9px;padding:7px;text-align:center;}
   #${PANEL_ID} .fe-dem-grid small{display:block;font-size:.62rem;color:#8b929e;margin-bottom:3px;}
   #${PANEL_ID} .fe-dem-grid b{font-size:1.05rem;font-weight:800;font-variant-numeric:tabular-nums;}
+  #${PANEL_ID} .fe-recebe{background:linear-gradient(135deg,rgba(230,194,0,.14),rgba(230,194,0,.04));border:1px solid #6b5e1f;border-radius:12px;padding:11px 13px;}
+  #${PANEL_ID} .fe-recebe .fe-dem-h{color:#facc15;}
+  #${PANEL_ID} .fe-rc-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.8rem;padding:3px 0;color:#c7ccd4;}
+  #${PANEL_ID} .fe-rc-line span{display:flex;align-items:center;gap:5px;}
+  #${PANEL_ID} .fe-rc-total{display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding-top:8px;border-top:1px solid #3a3f49;font-size:.86rem;font-weight:800;}
+  #${PANEL_ID} .fe-rc-total b{color:#4ade80;font-size:1.1rem;font-variant-numeric:tabular-nums;}
+  #${PANEL_ID} .fe-neg{color:#fca5a5;font-variant-numeric:tabular-nums;}
+  #${PANEL_ID} .fe-rc-note{font-size:.64rem;color:#8b929e;margin-top:6px;}
+  #${PANEL_ID} .fe-fg{color:#facc15;font-size:.62rem;}
+  #${PANEL_ID} .fe-inp{width:52px;background:#181b20;border:1px solid #2c313a;border-radius:6px;color:#eaecef;padding:2px 5px;font-size:.78rem;font-variant-numeric:tabular-nums;}
   #${PANEL_ID} .fe-ph{background:#20242b;border:1px solid #2c313a;border-radius:12px;padding:9px 12px;}
   #${PANEL_ID} .fe-ph-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;}
   #${PANEL_ID} .fe-ph-top small{font-size:.68rem;color:#8b929e;}

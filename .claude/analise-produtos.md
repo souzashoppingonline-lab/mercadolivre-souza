@@ -70,6 +70,8 @@ São colunas distintas de propósito, pra a coleta automática não sobrescrever
 
 Campos preenchidos **à mão** no card do concorrente: unidades vendidas e preço médio praticado em **7/15/21/30 dias** (`vendas_7d`/`preco_medio_7d`, …, `vendas_30d`/`preco_medio_30d`). Vêm da ferramenta externa "Shopping de Preço" (que só mostra anúncios com >US$300 vendidos, logo categorias novas podem não ter — deixa-se em branco). É o dado **mais relevante** pra decisão: `buildContext` inclui um objeto `vendas_reais` por concorrente (só as janelas preenchidas) + flag `tem_vendas_reais`, e o prompt manda a IA dar **PESO MÁXIMO** — usar as unidades pra dimensionar demanda e o preço médio pra ancorar o preço sugerido no valor realmente praticado; sem esses dados, ser mais conservadora. A extensão nunca sobrescreve (upsert com COALESCE).
 
+**Extensão — card "Você recebe" (estimado, v1.1.0, só no painel, não vai pro banco):** como o concorrente não expõe tarifa/frete reais, a extensão estima no painel: `tarifa = preço×comissão% + custo fixo` (R$6,75 para preço < R$79) e `frete` = o que o vendedor paga (só quando detecta "frete grátis" na página, via `extractFreteGratis`). `você recebe = preço − tarifa − frete`. **Comissão% e frete são editáveis** e salvos em `chrome.storage.local` (`fe_calc`), porque variam por categoria/tipo de anúncio — recalcula ao vivo. É ferramenta de leitura rápida, não persiste no dashboard.
+
 **Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes do gate):**
 - `GET /extension/produto-ativo` → `{produto: {id, produto, status}|null}`.
 - `POST /extension/anuncio` → grava no produto ATIVO (o servidor resolve; 409 se

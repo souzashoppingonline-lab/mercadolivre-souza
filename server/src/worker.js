@@ -1514,7 +1514,13 @@ async function syncPaymentReleases() {
          LIMIT 200`
       );
       let updated = 0, errors = 0;
+      // Circuit breaker POR LOJA (mesmo padrão de syncShippingStatus, ver
+      // decisions.md/known-bugs #10): um 429 de uma loja não pode abortar o lote
+      // inteiro — só pausa a loja rate-limited (3x 429 seguidos), as outras seguem.
+      const blockedStores = new Set();
+      const store429 = new Map();
       for (const p of pending) {
+        if (blockedStores.has(p.store_id)) continue;
         try {
           const payment = await ml.getPayment(p.payment_id, p.store_id);
           const c = payment?.collection || payment;
@@ -1533,10 +1539,17 @@ async function syncPaymentReleases() {
             ]
           );
           updated++;
+          store429.set(p.store_id, 0); // sucesso reseta o contador da loja
         } catch (e) {
-          console.warn(`[sync-payment-releases] erro payment=${p.payment_id}: ${e.message}`);
           errors++;
-          if (e.message?.includes('429')) break; // para a loja/lote se entrou em rate limit
+          if (e.message?.includes('429')) {
+            const n = (store429.get(p.store_id) || 0) + 1;
+            store429.set(p.store_id, n);
+            console.warn(`[sync-payment-releases] 429 loja ${p.store_id} (${n}/3): ${e.message}`);
+            if (n >= 3) { blockedStores.add(p.store_id); console.warn(`[sync-payment-releases] loja ${p.store_id} pausada nesta execução (3x 429) — demais lojas seguem`); }
+          } else {
+            console.warn(`[sync-payment-releases] erro payment=${p.payment_id}: ${e.message}`);
+          }
         }
         await new Promise(r => setTimeout(r, 1000));
       }
@@ -2881,7 +2894,24 @@ const cmdSub = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive
 cmdSub.subscribe('worker:cmd');
 cmdSub.on('message', (channel, msg) => {
   try {
-    const { cmd } = JSON.parse(msg);
+    // known-bugs #9: o botão "▶ Executar" de schedule.html manda o nome kebab
+    // de schedule_jobs.name (ex.: 'sync-vendas'), mas o encadeamento abaixo só
+    // reconhece camelCase. Traduz pros nomes que os handlers já tratam (que já
+    // chamam a função INTERNA, não a que se reagenda). Jobs que se auto-reagendam
+    // e não têm handler interno (resumo-diario, fechamento-diario) ficam de fora
+    // de propósito — dispará-los aqui duplicaria o timer.
+    const CMD_ALIASES = {
+      'sync-vendas': 'syncVendas', 'sync-metricas': 'syncMetricas', 'sync-visitas': 'syncVisitas',
+      'sync-precos': 'syncPrecos', 'sync-scores': 'syncScores', 'sync-parent-items': 'syncParentItems',
+      'top-vendas': 'syncTopVendas', 'email-diario': 'emailDailyReports', 'email-semanal': 'emailRelatorioSemanal',
+      'outlier-check': 'checkOutlierEstatistico', 'taxa-devolucao': 'checkTaxaDevolucaoAlta',
+      'tarefas-atrasadas': 'checkTarefasAtrasadas',
+      // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
+      // sync-catalog-competition, sync-payment-releases, sync-shipping-status,
+      // sync-claims-status, mp-reports, conciliacao-divergencias.
+    };
+    const parsed = JSON.parse(msg);
+    const cmd = CMD_ALIASES[parsed.cmd] || parsed.cmd;
     if (cmd === 'dailySync' || cmd === 'syncVendas') {
       console.log('[worker] syncVendas disparado manualmente');
       syncVendas().catch(e => console.error('[worker] syncVendas manual erro:', e.message));

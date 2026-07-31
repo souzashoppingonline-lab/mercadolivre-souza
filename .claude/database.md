@@ -106,15 +106,14 @@ ml_id BIGINT PK
 store_id BIGINT FK stores
 item_id, item_title, text, answer_text, status TEXT
 date_created, updated_at TIMESTAMPTZ
-tg_message_id  -- referenciado em worker.js para permitir responder via reply no Telegram,
-               -- MAS NÃO EXISTE em nenhuma migration. Ver known-bugs.md.
+tg_message_id BIGINT  -- message_id do Telegram, casa respostas via reply (v64; antes faltava — era known-bugs #1)
 ```
 
 ### `messages` — mensagens pós-venda
 ```
 id BIGSERIAL PK
 store_id BIGINT FK stores
-pack_id TEXT              -- índice único (v10: messages_pack_id_unique)
+pack_id TEXT              -- índice único messages_pack_id_unique (v64, com dedupe antes; exigido pelo ON CONFLICT do handleMessage. v10 original ficou fora da lista de migrate.js — era known-bugs #4)
 buyer_nickname, last_message TEXT
 unread INT DEFAULT 0      -- incrementado a cada mensagem nova do mesmo pack
 marketplace_id INT FK marketplaces -- v15

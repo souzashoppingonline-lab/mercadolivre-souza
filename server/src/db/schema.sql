@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS questions (
   answer_text TEXT,
   status TEXT,
   date_created TIMESTAMPTZ,
+  tg_message_id BIGINT,   -- message_id do Telegram, pra casar respostas via reply (ver migrate-v64)
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -146,6 +147,9 @@ CREATE TABLE IF NOT EXISTS messages (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
+-- Índice único de pack_id (exigido pelo ON CONFLICT (pack_id) do handleMessage) é
+-- criado em migrate-v64.sql — lá com dedupe antes, o que não caberia aqui (schema.sql
+-- roda antes das migrations e falharia num banco que já tenha duplicatas).
 
 CREATE TABLE IF NOT EXISTS returns (
   id BIGSERIAL PRIMARY KEY,

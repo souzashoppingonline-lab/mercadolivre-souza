@@ -9,8 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelector('.btn-refresh')?.addEventListener('click', loadDashboard);
 
   WS.on('kpis_updated', () => { loadKPIs(); loadMktCards(); });
-  WS.on('order_updated', () => { loadKPIs(); loadMktCards(); loadComparativo(); renderPedidosChart(); });
-  WS.on('stock_alert', () => { loadKPIs(); loadAlertas(); });
+  WS.on('order_updated', () => { loadKPIs(); loadMktCards(); loadComparativo(); renderPedidosChart(); loadGlance(); });
+  WS.on('stock_alert', () => { loadKPIs(); loadAlertas(); loadGlance(); });
+  WS.on('question_received', loadGlance);
   // Ao reconectar, recarrega tudo — garante dados atualizados mesmo após WS cair
   WS.on('_connected', () => { loadKPIs(); loadMktCards(); loadComparativo(); });
   // Polling a cada 60s como fallback para quando eventos WS são perdidos
@@ -18,7 +19,39 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadDashboard() {
-  await Promise.all([loadKPIs(), loadMktCards(), loadComparativo(), loadAlertas(), renderVendasChart(), renderPedidosChart(), loadTopProdutos()]);
+  await Promise.all([loadKPIs(), loadMktCards(), loadComparativo(), loadAlertas(), renderVendasChart(), renderPedidosChart(), loadTopProdutos(), loadGlance()]);
+}
+
+// Visão rápida (celular): A fazer + Alertas + Top 3 vendendo hoje.
+// Cada item de "A fazer"/"Alertas" abre a página completa ao tocar.
+async function loadGlance() {
+  const d = await DB.getDashboardGlance().catch(() => null);
+  if (!d) return;
+  const R = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+  const row = (icon, cor, label, valor, href, alerta) => `
+    <a href="${href}" style="display:flex;align-items:center;gap:10px;padding:8px 4px;text-decoration:none;color:var(--text-main,#eee);border-radius:8px">
+      <i class="fas ${icon}" style="color:${cor};width:18px;text-align:center"></i>
+      <span style="flex:1;font-size:14px">${label}</span>
+      <span style="font-weight:700;font-size:16px;color:${valor > 0 && alerta ? cor : 'var(--text-main,#eee)'}">${valor}</span>
+      <i class="fas fa-chevron-right" style="color:var(--text-muted);font-size:11px"></i>
+    </a>`;
+  const af = d.afazer || {}, al = d.alertas || {};
+  document.getElementById('glanceAfazer').innerHTML =
+    row('fa-box', '#3B82F6', 'Pedidos a enviar', af.enviar || 0, 'pages/embalagem.html', true) +
+    row('fa-circle-question', '#e67e22', 'Perguntas sem resposta', af.perguntas || 0, 'pages/perguntas.html', true) +
+    row('fa-comment', '#9b59b6', 'Mensagens não lidas', af.mensagens || 0, 'pages/mensagens.html', true) +
+    row('fa-rotate-left', '#e74c3c', 'Devoluções em aberto', af.devolucoes || 0, 'pages/devolucoes.html', true);
+  document.getElementById('glanceAlertas').innerHTML =
+    row('fa-fire', '#e74c3c', 'Ruptura iminente', al.ruptura || 0, 'pages/reposicao.html', true) +
+    row('fa-battery-empty', '#c0392b', 'Estoque zerado', al.zerados || 0, 'pages/reposicao.html', true) +
+    row('fa-database', al.backup_due ? '#e74c3c' : '#2ecc71', 'Backup', al.backup_due ? 'fazer!' : 'em dia', 'pages/saude-sistema.html', al.backup_due);
+  const top = d.top || [];
+  document.getElementById('glanceTop').innerHTML = top.length ? top.map((t, i) => `
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <span style="font-weight:700;color:#f39c12;width:16px">${i + 1}º</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(t.title || '').replace(/"/g, '&quot;')}">${t.title || '—'}</span>
+      <span style="color:var(--text-muted);white-space:nowrap">${t.qtd} un · ${R(t.receita)}</span>
+    </div>`).join('') : '<div style="color:var(--text-muted);font-size:13px">Nenhuma venda hoje ainda</div>';
 }
 
 // Cards de vendas de hoje por marketplace (ML / Shopee).

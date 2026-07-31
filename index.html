@@ -132,6 +132,22 @@
           </div>
         </section>
 
+        <!-- Visão rápida (celular): A fazer + Alertas + Top 3 vendendo hoje -->
+        <section id="glance" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:16px">
+          <div class="glance-card" style="background:var(--bg-card,#1a1d24);border:1px solid var(--border,#333);border-radius:12px;padding:14px 16px">
+            <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px"><i class="fas fa-list-check" style="color:#3B82F6"></i> A fazer agora</div>
+            <div id="glanceAfazer" style="display:flex;flex-direction:column;gap:2px"></div>
+          </div>
+          <div class="glance-card" style="background:var(--bg-card,#1a1d24);border:1px solid var(--border,#333);border-radius:12px;padding:14px 16px">
+            <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px"><i class="fas fa-triangle-exclamation" style="color:#e74c3c"></i> Alertas</div>
+            <div id="glanceAlertas" style="display:flex;flex-direction:column;gap:2px"></div>
+          </div>
+          <div class="glance-card" style="background:var(--bg-card,#1a1d24);border:1px solid var(--border,#333);border-radius:12px;padding:14px 16px">
+            <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px"><i class="fas fa-fire" style="color:#f39c12"></i> Vendendo agora (hoje)</div>
+            <div id="glanceTop" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+        </section>
+
         <!-- Comparativo hoje vs ontem -->
         <div id="comparativoHoje" style="display:none;background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:14px 20px;margin-bottom:16px"></div>
 

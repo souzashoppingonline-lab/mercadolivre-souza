@@ -322,6 +322,7 @@ const DB = {
   async getTasks(params={})            { return this._get('/tasks', params); },
   async getTasksSummary()              { return this._get('/tasks/summary'); },
   async getSaudeSistema()              { return this._get('/sistema/saude'); },
+  async getDashboardGlance()           { return this._get('/dashboard/glance'); },
   async getBackupStatus()              { return this._get('/sistema/backup'); },
   async runBackupNow()                 { return this._post('/sistema/backup/run', {}); },
   backupDownloadUrl(file)              { return `${this.BASE}/sistema/backup/${encodeURIComponent(file)}/download`; },

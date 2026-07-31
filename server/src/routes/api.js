@@ -3625,4 +3625,49 @@ router.get('/sistema/backup/:file/download', (req, res) => {
   res.download(fp);
 });
 
+// Visão rápida do Dashboard (celular) — 1 chamada com: A fazer (ações
+// pendentes), Alertas (o que custa dinheiro) e Top 3 vendendo hoje. Tudo ML.
+router.get('/dashboard/glance', async (req, res) => {
+  try {
+    const [afazer, alertas, top, ruptura, backup] = await Promise.all([
+      pool.query(`
+        SELECT
+          (SELECT COUNT(*) FROM vw_ml_orders WHERE status<>'cancelled'
+             AND COALESCE(shipping_status,'') IN ('ready_to_ship','pending','handling')) AS enviar,
+          (SELECT COUNT(*) FROM questions WHERE status='UNANSWERED') AS perguntas,
+          (SELECT COUNT(*) FROM messages WHERE COALESCE(unread,0) > 0) AS mensagens,
+          (SELECT COUNT(*) FROM returns WHERE COALESCE(status,'') NOT IN ('closed','resolved')
+             AND COALESCE(situacao,'') <> 'resolvido') AS devolucoes
+      `),
+      pool.query(`
+        SELECT (SELECT COUNT(*) FROM vw_ml_items WHERE status='active' AND available_quantity=0) AS zerados
+      `),
+      pool.query(`
+        SELECT title, SUM(quantity)::int AS qtd, SUM(total_amount) AS receita
+        FROM vw_ml_orders
+        WHERE status<>'cancelled' AND date_created::date = CURRENT_DATE
+        GROUP BY title ORDER BY qtd DESC LIMIT 3
+      `),
+      getRupturaEstoque({ dias: 7 }).catch(() => ({ items: [] })),
+      require('../backup').getStatus().catch(() => ({ due: false })),
+    ]);
+    const a = afazer.rows[0] || {};
+    res.json({
+      afazer: {
+        enviar: Number(a.enviar) || 0, perguntas: Number(a.perguntas) || 0,
+        mensagens: Number(a.mensagens) || 0, devolucoes: Number(a.devolucoes) || 0,
+      },
+      alertas: {
+        ruptura: (ruptura.items || []).length,
+        zerados: Number(alertas.rows[0]?.zerados) || 0,
+        backup_due: !!backup.due,
+      },
+      top: top.rows.map(r => ({ title: r.title, qtd: Number(r.qtd) || 0, receita: Number(r.receita) || 0 })),
+    });
+  } catch (e) {
+    console.error('[api] /dashboard/glance', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

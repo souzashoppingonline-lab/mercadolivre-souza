@@ -165,6 +165,7 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/schedule/worker-logs` | **SSE** — stream de `journalctl -u ml-worker-novo -f` (produção; depende do ambiente ter systemd/journalctl) |
 | `GET /api/schedule/runs?job&limit` | histórico de execuções (`schedule_runs`) |
 | `GET /api/schedule/logs?limit` | alias de leitura crua de `webhook_logs` |
+| `GET /api/dashboard/glance` | **Visão rápida** do Dashboard (celular), 1 chamada (`Promise.all`): `{afazer:{enviar,perguntas,mensagens,devolucoes}, alertas:{ruptura,zerados,backup_due}, top:[{title,qtd,receita} ×3]}`. `enviar`=pedidos com `shipping_status` a despachar; `devolucoes`=reclamações não fechadas/resolvidas; `ruptura`=itens de `getRupturaEstoque(7d)`; `zerados`=itens ativos com estoque 0; `backup_due` de `backup.getStatus()`; `top`=3 mais vendidos hoje (unidades). Tudo ML |
 | `GET /api/sistema/backup` | status do backup pro sino do topbar: `{last:{ts,ok,file,size,error}, files:[{name,size,mtime}], due, retention_days}`. `due`=nunca fez / último falhou / +26h. Ver `backup.js`/`workers.md` |
 | `POST /api/sistema/backup/run` | dispara um backup **manual** agora (pg_dump inline no processo do server); retorna o status. Trava anti-duplo-clique |
 | `GET /api/sistema/backup/:file/download` | baixa um `.sql.gz` (nome validado por regex anti path-traversal; arquivos ficam fora da pasta servida, download só aqui atrás do gate de auth) |

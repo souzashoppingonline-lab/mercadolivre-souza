@@ -22,6 +22,9 @@
     /* Linha "pendente de tratamento" (sem estágio ou sem observação): leve destaque */
     #devTableEl tr.dev-pendente > td { background:rgba(230,194,0,.06); }
     #devTableEl tr.dev-pendente > td:first-child { box-shadow:inset 3px 0 0 var(--primary,#e6c200); }
+    #devTableEl tr.dev-resolvido > td { background:rgba(46,204,113,.10); }
+    #devTableEl tr.dev-resolvido > td:first-child { box-shadow:inset 3px 0 0 #2ecc71; }
+    #devTableEl tr.dev-resolvido > td { opacity:.85; }
     .periodo-btn.active { background:var(--primary) !important; color:#000 !important; border-color:var(--primary) !important; }
     .dev-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
     .dev-modal-backdrop.open { display: flex; }
@@ -275,7 +278,11 @@ const DEFAULT_SITUACOES = [
   { key:'produto_recebido',   label:'Produto recebido',       icon:'fa-inbox',                 color:'#16a085' },
   { key:'reembolso_solicitado',label:'Reembolso solicitado',  icon:'fa-hand-holding-dollar',   color:'#e74c3c' },
   { key:'prejuizo_assumido',  label:'Prejuízo assumido',      icon:'fa-triangle-exclamation',  color:'#c0392b' },
+  { key:'resolvido',          label:'Resolvido',              icon:'fa-check-double',          color:'#2ecc71' },
 ];
+// Estágios que marcam a reclamação como RESOLVIDA — a linha fica verde.
+const RESOLVIDO_KEYS = new Set(['resolvido']);
+const devResolvido = (r) => r && RESOLVIDO_KEYS.has(r.situacao);
 let SITUACOES = DEFAULT_SITUACOES.slice();
 const sitByKey = (k) => SITUACOES.find(s => s.key === k) || null;
 
@@ -285,10 +292,14 @@ function devPendente(r) {
   return !r.situacao || !(r.note && String(r.note).trim());
 }
 // Reaplica o destaque numa linha após salvar nota/estágio (sem re-render geral).
+// Resolvido (verde) tem prioridade sobre pendente (amarelo).
 function refreshRowPendente(id) {
   const row = allDevRows.find(r => String(r.id) === String(id));
   const tr = document.querySelector(`tr[data-devid="${id}"]`);
-  if (row && tr) tr.classList.toggle('dev-pendente', devPendente(row));
+  if (!row || !tr) return;
+  const resolvido = devResolvido(row);
+  tr.classList.toggle('dev-resolvido', resolvido);
+  tr.classList.toggle('dev-pendente', !resolvido && devPendente(row));
 }
 
 // Carrega os estágios customizados e popula o dropdown de filtro.
@@ -451,7 +462,8 @@ function renderDevRows(rows) {
         const st = statusMap[r.status] || { l: r.status, c: '' };
         const produto = r.item_title || r.title || '—';
         const oid = r.order_id || '';
-        return `<tr onclick="openDevDetail(${r.id})" data-devid="${r.id}" class="${devPendente(r) ? 'dev-pendente' : ''}" style="cursor:pointer">
+        const rowCls = devResolvido(r) ? 'dev-resolvido' : (devPendente(r) ? 'dev-pendente' : '');
+        return `<tr onclick="openDevDetail(${r.id})" data-devid="${r.id}" class="${rowCls}" style="cursor:pointer">
           <td style="font-size:11px;white-space:nowrap">
             <span style="display:inline-flex;align-items:center;gap:6px">#${oid||'—'}${oid?`<button title="Copiar nº do pedido" onclick="event.stopPropagation();copiarPedido('${oid}',this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px;font-size:12px"><i class="fas fa-copy"></i></button>`:''}</span>
           </td>

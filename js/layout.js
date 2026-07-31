@@ -156,6 +156,13 @@ function buildTopbar(title, staffUser) {
         <span id="wsStatus" style="font-size:12px;color:var(--text-muted)">
           <i class="fas fa-circle" style="color:var(--orange);font-size:8px"></i> conectando
         </span>
+        <div class="backup-bell" id="backupBell" style="position:relative;display:inline-block">
+          <button class="btn-refresh" id="btnBackup" title="Backup do banco">
+            <i class="fas fa-bell"></i>
+            <span id="backupDot" style="display:none;position:absolute;top:1px;right:1px;width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 2px var(--bg-card,#1a1d24)"></span>
+          </button>
+          <div id="backupDropdown" style="display:none;position:absolute;right:0;top:120%;z-index:1200;background:var(--bg-card,#1a1d24);border:1px solid var(--border,#333);border-radius:10px;padding:12px;min-width:290px;box-shadow:0 10px 28px rgba(0,0,0,.45)"></div>
+        </div>
         <button class="btn-refresh" id="btnSomAlerta" title="Ativar som de alertas de venda"><i class="fas fa-bell-slash"></i></button>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
         ${buildLogoutButton(staffUser)}
@@ -235,7 +242,64 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAlerts();
   initLogout();
   initSidebarToggles();
+  initBackupBell();
 });
+
+// ── Sino de Backup do banco (automático 02:30 + manual sob demanda) ──────────
+// Ponto vermelho quando "due" (nunca fez / último falhou / +26h). Dropdown com
+// status, botão "Fazer backup agora" e download dos últimos arquivos (.sql.gz)
+// pra você levar pro seu servidor de backup. Ver .claude/workers.md.
+function initBackupBell() {
+  const btn = document.getElementById('btnBackup');
+  const dd  = document.getElementById('backupDropdown');
+  const dot = document.getElementById('backupDot');
+  if (!btn || !dd || typeof DB === 'undefined' || !DB.getBackupStatus) return;
+
+  const fmtBytes = (b) => !b ? '—' : (b < 1e6 ? (b/1e3).toFixed(0)+' KB' : (b/1e6).toFixed(1)+' MB');
+  const rel = (ts) => {
+    if (!ts) return 'nunca';
+    const m = Math.floor((Date.now() - ts) / 60000);
+    if (m < 1) return 'agora'; if (m < 60) return m+'min atrás';
+    const h = Math.floor(m/60); if (h < 24) return h+'h atrás';
+    return Math.floor(h/24)+'d atrás';
+  };
+
+  async function render() {
+    const s = await DB.getBackupStatus().catch(() => null);
+    if (!s) { dd.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Backup indisponível</div>'; return; }
+    dot.style.display = s.due ? 'block' : 'none';
+    const last = s.last;
+    const statusLine = !last ? '<span style="color:#ef4444">Nenhum backup feito ainda</span>'
+      : last.ok ? `<span style="color:#2ecc71">✓ Último: ${rel(last.ts)}</span> · ${fmtBytes(last.size)}`
+      : `<span style="color:#ef4444">✗ Último falhou: ${(last.error||'').slice(0,60)}</span>`;
+    const files = (s.files || []).slice(0, 8).map(f =>
+      `<a href="${DB.backupDownloadUrl(f.name)}" download style="display:flex;justify-content:space-between;gap:8px;padding:6px 4px;border-top:1px solid var(--border,#333);font-size:12px;color:var(--text-main,#eee);text-decoration:none">
+         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="fas fa-download" style="color:var(--primary,#e6c200);margin-right:6px"></i>${f.name.replace('ml-backup-','').replace('.sql.gz','')}</span>
+         <span style="color:var(--text-muted);white-space:nowrap">${fmtBytes(f.size)}</span>
+       </a>`).join('') || '<div style="color:var(--text-muted);font-size:12px;padding:6px 0">Sem arquivos ainda</div>';
+    dd.innerHTML = `
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px"><i class="fas fa-database" style="color:var(--primary,#e6c200)"></i> Backup do banco</div>
+      <div style="font-size:12px;margin-bottom:10px">${statusLine}</div>
+      <button id="btnBackupRun" style="width:100%;background:var(--primary,#e6c200);border:none;border-radius:8px;padding:8px;font-weight:700;cursor:pointer;color:#000;margin-bottom:8px"><i class="fas fa-play"></i> Fazer backup agora</button>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">Automático diário 02:30 · retém ${s.retention_days||14} dias · baixe pra levar ao seu servidor:</div>
+      ${files}`;
+    document.getElementById('btnBackupRun')?.addEventListener('click', async (e) => {
+      const b = e.currentTarget; b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando backup...';
+      const r = await DB.runBackupNow().catch(() => null);
+      if (r && r.ok) { await render(); }
+      else { b.innerHTML = '<i class="fas fa-triangle-exclamation"></i> ' + (r?.error || 'Falhou'); b.disabled = false; }
+    });
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = dd.style.display === 'block';
+    dd.style.display = open ? 'none' : 'block';
+    if (!open) render();
+  });
+  document.addEventListener('click', (e) => { if (!document.getElementById('backupBell')?.contains(e.target)) dd.style.display = 'none'; });
+  render(); // 1ª carga só pra acender o ponto vermelho se estiver "due"
+}
 
 // Recolher (desktop) / abrir-fechar (mobile) a sidebar. Precisa rodar DEPOIS de
 // montar o topbar+sidebar acima — o sidebar.js rodava no DOMContentLoaded, antes

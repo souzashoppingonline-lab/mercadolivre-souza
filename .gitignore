@@ -3,3 +3,5 @@ server/.env
 server/storage/
 .env
 .claude/worktrees/
+ml-backups/
+server/../ml-backups/

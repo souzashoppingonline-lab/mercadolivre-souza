@@ -3594,4 +3594,20 @@ router.get('/sistema/saude', async (req, res) => {
   }
 });
 
+// Backup do Postgres — status pro sino, rodar sob demanda e baixar o .sql.gz.
+// Arquivos ficam FORA da pasta servida; download só aqui (atrás do gate de auth).
+router.get('/sistema/backup', async (req, res) => {
+  try { res.json(await require('../backup').getStatus()); }
+  catch (e) { console.error('[api] /sistema/backup', e.message); res.status(500).json({ error: e.message }); }
+});
+router.post('/sistema/backup/run', async (req, res) => {
+  try { res.json(await require('../backup').runBackup()); }
+  catch (e) { console.error('[api] /sistema/backup/run', e.message); res.status(500).json({ error: e.message }); }
+});
+router.get('/sistema/backup/:file/download', (req, res) => {
+  const fp = require('../backup').filePathIfValid(req.params.file);
+  if (!fp) return res.status(404).json({ error: 'arquivo não encontrado' });
+  res.download(fp);
+});
+
 module.exports = router;

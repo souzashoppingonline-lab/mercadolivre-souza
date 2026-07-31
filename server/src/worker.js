@@ -1756,6 +1756,23 @@ async function cleanupWebhookLogs() {
   }
 }
 
+// Backup do Postgres — pg_dump diário 02:30 (ver backup.js). Alerta Telegram
+// (tg_backup, força) se falhar; o sino do topbar mostra o status/último arquivo.
+const { runBackup: runDbBackup } = require('./backup');
+async function backupDatabase() {
+  try {
+    return await recordSync('backup-database', '30 2 * * *', async () => {
+      const st = await runDbBackup();
+      if (!st.ok) {
+        await tgNotifyForce('tg_backup', `🚨 <b>Backup do banco FALHOU</b>\n${st.error || 'erro desconhecido'}\nVerifique o servidor (pg_dump/espaço em disco).`).catch(() => {});
+      }
+      return st;
+    });
+  } finally {
+    scheduleAt(2, 30, backupDatabase, 'backup-database');
+  }
+}
+
 async function syncParentItems() {
   console.log('[syncParentItems] preenchendo parent_item_id via multiget...');
   // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
@@ -2863,6 +2880,7 @@ scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');
 scheduleAt(3, 45,  cleanupWebhookLogs, 'cleanup-webhook-logs');
+scheduleAt(2, 30,  backupDatabase, 'backup-database');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
 scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');

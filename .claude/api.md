@@ -164,6 +164,9 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/schedule/worker-logs` | **SSE** — stream de `journalctl -u ml-worker-novo -f` (produção; depende do ambiente ter systemd/journalctl) |
 | `GET /api/schedule/runs?job&limit` | histórico de execuções (`schedule_runs`) |
 | `GET /api/schedule/logs?limit` | alias de leitura crua de `webhook_logs` |
+| `GET /api/sistema/backup` | status do backup pro sino do topbar: `{last:{ts,ok,file,size,error}, files:[{name,size,mtime}], due, retention_days}`. `due`=nunca fez / último falhou / +26h. Ver `backup.js`/`workers.md` |
+| `POST /api/sistema/backup/run` | dispara um backup **manual** agora (pg_dump inline no processo do server); retorna o status. Trava anti-duplo-clique |
+| `GET /api/sistema/backup/:file/download` | baixa um `.sql.gz` (nome validado por regex anti path-traversal; arquivos ficam fora da pasta servida, download só aqui atrás do gate de auth) |
 | `GET /api/sistema/saude` | **Saúde do Sistema** (`health.js`): `{filas:{waiting,active,delayed,failed,backlog}, ultimo_webhook, syncs:[schedule_jobs], processos:{worker,server:{up,down,last_beat,boots_10min,restart_loop}}, limites, ts}`. Só leitura (Redis + `webhook_logs` + `schedule_jobs`). O sinal de webhook empilhando é `filas.backlog` (BullMQ) — `webhook_logs pending` NÃO é usado (log deduplicado acumula `pending`, ver `decisions.md`). Página `saude-sistema.html`; alertas `tg_saude` disparados pelo worker. Ver `workers.md` |
 
 ## Configuração Telegram

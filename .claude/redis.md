@@ -15,8 +15,12 @@ Chaves em uso hoje:
 |---|---|---|
 | `kpis:summary` | 30s | `handleOrder` (worker) via `redis.del('kpis:summary')` após todo insert/update de pedido |
 | `kpis:{storeId}` | — | referenciada em `handleOrder` (`redis.del`) mas **nenhuma rota GET escreve/lê essa chave hoje** — ver `known-bugs.md` |
+| `vendas:margem:<from>:<to>:<days>:<fc>` | 60s | **só TTL** — não invalida por `order_updated` (ver exceção abaixo) |
+| `vendas:detalhado:<store>:<status>:<days>:<search>:<from>:<to>` | 60s | **só TTL** — idem |
 
-**Regra do projeto**: sempre que um worker gravar em uma tabela que alimenta um endpoint cacheado, ele deve invalidar (`redis.del`) a chave correspondente logo após o `INSERT`/`UPDATE`. Ao adicionar um novo `cached(...)` em `routes/api.js`, adicione também o `redis.del` correspondente no handler do worker que altera aquele dado, e registre a nova chave nesta tabela.
+**Exceção consciente (cache só por TTL):** `vendas/margem` e `vendas/detalhado` fazem `LATERAL` por pedido em `mp_account_movements`+`ml_payments`; o cache de 60s existe pra limitar carga sob range grande. Eles **não** são invalidados no `order_updated` de propósito — esse evento é frequente demais e zeraria o cache justamente sob carga (quando ele mais importa). 60s limita a defasagem a no máximo 1 minuto, aceitável para uma visão de margem. Ver `decisions.md`.
+
+**Regra do projeto**: sempre que um worker gravar em uma tabela que alimenta um endpoint cacheado, ele deve invalidar (`redis.del`) a chave correspondente logo após o `INSERT`/`UPDATE` — salvo a exceção "só TTL" acima, deliberada. Ao adicionar um novo `cached(...)` em `routes/api.js`, registre a chave nesta tabela.
 
 ## Uso 2 — pub/sub para WebSocket
 

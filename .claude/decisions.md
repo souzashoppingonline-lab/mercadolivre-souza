@@ -596,3 +596,11 @@ Diagnóstico confirmado com a comunidade ML e validado ao vivo (403 com token, s
 - **Idade do timestamp, não existência da chave:** a chave de heartbeat tem TTL de 1 dia e guarda o epoch; "fora do ar" = idade ≥2min. Isso distingue "nunca subiu" (chave ausente) de "parou de bater" (chave velha) — importante para não alertar servidor recém-iniciado como caído.
 - **Alerta no worker, não no server:** um processo caído não consegue se auto-alertar; o worker vigia o server (lê o heartbeat dele) e a si mesmo via contagem de boots (funciona mesmo num loop, porque cada boot registra e a checagem de 90s roda antes do próximo crash). Limitação consciente: worker morto de vez (sem loop) não se auto-alerta — aparece na página e o `resumo-diario` cobre o resto.
 - **Sem migration, sem tocar handlers:** puramente aditivo (2 linhas de bootstrap em cada processo + 1 rota de leitura), risco mínimo no pipeline que já funciona.
+
+## Cache de `vendas/margem` e `vendas/detalhado` — só TTL, sem invalidação por `order_updated`
+
+**Contexto:** as duas rotas calculam a taxa por pedido com `LEFT JOIN LATERAL` em `mp_account_movements` + `ml_payments`; sob range grande (90 dias, muitas vendas) a query pesa.
+
+**Decisão:** cache Redis de **60s** por combinação de filtros, **sem** invalidação no `order_updated`.
+
+**Por que não invalidar no `order_updated`:** esse evento dispara a cada webhook de pedido/pagamento/envio — em horário de pico, dezenas por minuto. Invalidar a cada um deixaria o cache permanentemente frio **justamente sob carga**, que é quando ele deveria proteger o banco. Um TTL curto (60s) limita ao mesmo tempo a defasagem (≤1min, aceitável para margem) e o custo (no máximo 1 execução por minuto por combinação de filtro), independente do volume de tráfego. É o oposto do padrão `kpis:summary` (invalidação explícita), e a diferença é intencional — `kpis:summary` é barato de recomputar e quer ser sempre fresco; estas rotas são caras e toleram 1min de atraso.

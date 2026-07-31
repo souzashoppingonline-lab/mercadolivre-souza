@@ -347,6 +347,12 @@ router.get('/vendas/detalhado', async (req, res) => {
   const dateFrom = date_from || null;
   const dateTo   = date_to   || null;
   const params = [store_id, status, Number(days), search, dateFrom, dateTo];
+  // Cache curto (60s) — LATERAL por pedido em 2 tabelas (conciliação + pagamento)
+  // + agregação; bounda a carga sob range grande. Sem invalidação por
+  // order_updated de propósito (evento frequente demais). Ver decisions.md.
+  const cacheKey = `vendas:detalhado:${store_id}:${status}:${days}:${search}:${dateFrom||''}:${dateTo||''}`;
+  const cachedHit = await redis.get(cacheKey);
+  if (cachedHit) return res.json(JSON.parse(cachedHit));
   const whereClause = `
      WHERE ($1 = '' OR o.store_id = $1::bigint)
        AND ($2 = '' OR o.status = $2)
@@ -478,7 +484,9 @@ router.get('/vendas/detalhado', async (req, res) => {
   };
   summary.mc_pct = summary.vendas_aprovadas > 0 ? (summary.margem_total / summary.vendas_aprovadas) * 100 : 0;
 
-  res.json({ rows: result, summary });
+  const payload = { rows: result, summary };
+  await redis.set(cacheKey, JSON.stringify(payload), 'EX', 60);
+  res.json(payload);
   } catch (e) {
     console.error('[api] /vendas/detalhado error:', e.message);
     res.status(500).json({ error: e.message });
@@ -2702,7 +2710,12 @@ router.get('/vendas/margem', async (req, res) => {
   try {
     const { date_from, date_to } = req.query;
     const considerarFC = req.query.frete_comprador === '1' || req.query.frete_comprador === 'true';
-    const lojas = await getMargemPorLoja({ dateFrom: date_from, dateTo: date_to, days: req.query.days, considerarFC });
+    // Cache curto (60s): a query faz LATERAL por pedido em 2 tabelas; sob range
+    // grande pesa. Não invalida no order_updated de propósito — esse evento é
+    // frequente demais e zeraria o cache justamente sob carga; 60s limita tanto
+    // a defasagem quanto o custo. Ver decisions.md.
+    const key = `vendas:margem:${date_from||''}:${date_to||''}:${req.query.days||''}:${considerarFC?1:0}`;
+    const lojas = await cached(key, 60, () => getMargemPorLoja({ dateFrom: date_from, dateTo: date_to, days: req.query.days, considerarFC }));
     res.json({ lojas, considerar_frete_comprador: considerarFC });
   } catch (e) {
     console.error('[api] /vendas/margem', e.message);

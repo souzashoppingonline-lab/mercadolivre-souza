@@ -632,3 +632,7 @@ Pedido do usuário: proteção contra perda total + poder baixar um dump pra gua
 - **`--no-owner --no-privileges`**: deixa o dump restaurável em qualquer banco/usuário — casa com o plano de clonar o projeto pra outro servidor.
 - **Status em `app_config.backup_status`** (não tabela nova): é 1 registro, o sino só precisa do último. `due` (ponto vermelho) = nunca fez / último falhou / +26h.
 - **`pg_dump` pode não existir** no PATH: falha tratada (status `ok:false`, mensagem "pg_dump não encontrado"), o sino fica vermelho e o Telegram avisa — não quebra nada.
+
+## PWA — instalável no celular sem cachear dados ao vivo
+
+Pedido: usar o painel como app no celular (Dashboard + Vendas Totais). Implementado `manifest.webmanifest` + `sw.js` (raiz) + metatags nas duas páginas. **Decisão central do service worker**: rede-primeiro só pra "casca" estática (HTML/CSS/JS), e **bypass total** de `/api`/`/webhooks`/`/auth`/`/ws`/`/print-agent`/`/extension`. Motivo: o dashboard é event-driven e mostra venda/estoque/margem ao vivo — cachear dados deixaria o app mostrando número velho, que é pior que não instalar. Assim ganha-se a instalação (ícone, standalone) e o offline da casca, sem nunca servir dado defasado. Ícone reaproveita `assets/logo.svg` (SVG `sizes:any` — o Chrome aceita pra instalar) + o PNG 128 da extensão pro apple-touch do iOS, evitando gerar assets binários novos. SW com `scope:/` registrado a partir das duas páginas cobre o site inteiro.

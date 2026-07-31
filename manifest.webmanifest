@@ -1,0 +1,15 @@
+{
+  "name": "ML Dashboard Multimarcas",
+  "short_name": "ML Dashboard",
+  "description": "Painel de vendas Mercado Livre / Shopee / Amazon",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f1115",
+  "theme_color": "#e6c200",
+  "icons": [
+    { "src": "/assets/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/assets/icon-128.png", "sizes": "128x128", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -44,6 +44,12 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 
 Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js`/`js/layout-shopee.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee`, `shopee-vendas`, `shopee-anuncios`, `shopee-score`, `shopee-precos-estoque`, `shopee-precificador`, `shopee-promocoes`, `shopee-problemas`, `shopee-devolucoes`, `shopee-performance`, `shopee-ia-socio`, `shopee-financeiro`, `shopee-chat`, `shopee-lojas` (dashboards dedicados da Shopee, mesmo padrão — ver `shopee.md`).
 
+## PWA (instalável no celular)
+
+`manifest.webmanifest` + `sw.js` na raiz (servidos estáticos). Metatags de PWA (`<link rel=manifest>`, `theme-color`, `apple-touch-icon`, registro do SW) estão em `index.html` e `pages/vendas.html` — como o `scope` do SW é `/`, instalar por qualquer uma das duas cobre o site todo (ícone na tela inicial, abre em `standalone` sem barra do navegador). Ícone: `assets/logo.svg` (`sizes:any`, maskable) + `assets/icon-128.png` (apple-touch/iOS).
+
+**Regra do `sw.js`**: NUNCA cacheia `/api`, `/webhooks`, `/auth`, `/ws`, `/print-agent`, `/extension` — são dados ao vivo (venda/estoque/margem), passam direto pela rede. Só a "casca" estática (HTML/CSS/JS/logo) é cacheada, com estratégia **rede-primeiro** (cai pro cache só se a rede falhar) — instala e abre offline sem risco de mostrar venda velha. Bump `CACHE` (`ml-shell-vN`) ao mudar o shell.
+
 ## Padrão de nova página (contrato)
 
 1. Copiar a estrutura de uma página existente (ex.: `pages/pedidos.html`).

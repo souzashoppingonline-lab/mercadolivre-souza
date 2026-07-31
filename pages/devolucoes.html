@@ -280,9 +280,10 @@ const DEFAULT_SITUACOES = [
   { key:'prejuizo_assumido',  label:'Prejuízo assumido',      icon:'fa-triangle-exclamation',  color:'#c0392b' },
   { key:'resolvido',          label:'Resolvido',              icon:'fa-check-double',          color:'#2ecc71' },
 ];
-// Estágios que marcam a reclamação como RESOLVIDA — a linha fica verde.
+// Linha VERDE CLARO quando a reclamação está resolvida: status 'closed'
+// (selo "Encerrada", vem do ML — automático) OU estágio manual 'resolvido'.
 const RESOLVIDO_KEYS = new Set(['resolvido']);
-const devResolvido = (r) => r && RESOLVIDO_KEYS.has(r.situacao);
+const devResolvido = (r) => !!r && (r.status === 'closed' || RESOLVIDO_KEYS.has(r.situacao));
 let SITUACOES = DEFAULT_SITUACOES.slice();
 const sitByKey = (k) => SITUACOES.find(s => s.key === k) || null;
 

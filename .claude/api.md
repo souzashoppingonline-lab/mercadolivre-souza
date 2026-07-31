@@ -319,4 +319,4 @@ Extensão (público, `routes/extensionAnalise.js`, montado em `/extension` antes
 - `POST /alertas/devolucoes/:id/situacao` `{situacao, label}` → grava `returns.situacao` e registra um evento na timeline (`claim_history`, `event_type='situacao'`). Situação vazia limpa a etiqueta.
 - `GET /alertas/devolucoes/situacoes` → `{custom:[{key,label,icon,color}]}` (estágios customizados, guardados em `app_config.devolucao_situacoes`).
 - `POST /alertas/devolucoes/situacoes` `{label,icon?,color?}` → adiciona um estágio customizado. A listagem `GET /alertas/devolucoes` passou a devolver `r.situacao`.
-- Destaque de linha (só frontend, `pages/devolucoes.html`): linha **sem estágio OU sem observação** fica com destaque amarelo (`dev-pendente`); linha no estágio **`resolvido`** (`RESOLVIDO_KEYS`) fica **verde** (`dev-resolvido`), que tem prioridade sobre o amarelo.
+- Destaque de linha (só frontend, `pages/devolucoes.html`): linha **sem estágio OU sem observação** fica com destaque amarelo (`dev-pendente`); linha com **status `closed`** (selo "Encerrada", do ML) **ou** estágio manual **`resolvido`** fica **verde claro** (`dev-resolvido`), que tem prioridade sobre o amarelo.

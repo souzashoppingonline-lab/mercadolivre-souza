@@ -63,6 +63,10 @@ Só depois disso, implemente. Isso vale mesmo quando a tarefa parece pequena —
 - Posso reduzir CPU (evitar recomputar o mesmo agregado em cada request quando cache/`cached()` resolveria — ver `redis.md`)?
 - Posso reduzir o número de arquivos?
 
+## Testes de fumaça — `cd server && npm test`
+
+Suíte estática (`server/test/smoke.test.js`, runner nativo do Node 22, sem dependência nova, sem banco): valida que cada arquivo crítico **parseia** (pega a classe de erro que já causou crash-loop no boot), que as **rotas críticas** (`vendas/margem`, `vendas/detalhado`, `vendas/por-loja`, `sistema/saude`, `conciliacao/pagamentos`) seguem registradas, e o **contrato** rota↔`js/db.js`. Rode antes de commitar mudança em rota/`db.js`/worker. **Não** cobre integração HTTP com banco (precisaria de um Postgres de teste — gap conhecido em `todo.md`). Ao criar/renomear uma rota ou método de `db.js` crítico, atualize a lista no teste.
+
 ## Objetivos do projeto
 
 - Dashboard em tempo real.

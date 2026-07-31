@@ -1732,6 +1732,30 @@ async function cleanupPackingVideos() {
   }
 }
 
+// Limpeza de webhook_logs — a tabela cresce sem limite (1 linha por webhook
+// recebido; duplicados deduplicados pelo jobId ficam 'pending' pra sempre e
+// nunca são processados). É só log/auditoria, então poda o que passou de 14
+// dias em lotes (não trava a tabela). 03:45 diário. Ver decisions.md.
+async function cleanupWebhookLogs() {
+  try {
+    return await recordSync('cleanup-webhook-logs', '45 3 * * *', async () => {
+      let total = 0, r;
+      do {
+        r = await pool.query(
+          `DELETE FROM webhook_logs WHERE id IN (
+             SELECT id FROM webhook_logs WHERE received_at < now() - interval '14 days' LIMIT 20000
+           )`
+        );
+        total += r.rowCount;
+      } while (r.rowCount > 0);
+      console.log(`[cleanup-webhook-logs] ${total} linha(s) antiga(s) removida(s)`);
+      return { deleted: total };
+    });
+  } finally {
+    scheduleAt(3, 45, cleanupWebhookLogs, 'cleanup-webhook-logs');
+  }
+}
+
 async function syncParentItems() {
   console.log('[syncParentItems] preenchendo parent_item_id via multiget...');
   // Exclui contas de outros marketplaces (Amazon/Shopee) — não têm token OAuth do ML.
@@ -2838,6 +2862,7 @@ scheduleAt(5, 45,  syncMonitorAnalise, 'sync-monitor-analise');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');
+scheduleAt(3, 45,  cleanupWebhookLogs, 'cleanup-webhook-logs');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
 scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');

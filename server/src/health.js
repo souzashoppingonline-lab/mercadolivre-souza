@@ -19,7 +19,6 @@ const BOOT_WINDOW_MS = 10 * 60 * 1000;     // janela para contar reinícios (res
 const BOOT_LOOP_THRESHOLD = Number(process.env.HEALTH_BOOT_LOOP || 5);
 const QUEUE_BACKLOG_MAX  = Number(process.env.HEALTH_QUEUE_MAX || 300);
 const FAILED_MAX         = Number(process.env.HEALTH_FAILED_MAX || 50);
-const WEBHOOK_STUCK_MAX  = Number(process.env.HEALTH_WEBHOOK_STUCK_MAX || 30);
 
 // ── Heartbeat + reinícios ──────────────────────────────────
 async function recordBoot(proc) {
@@ -99,26 +98,25 @@ async function getSnapshot() {
   const { rows: whRows } = await pool.query(
     `SELECT topic, received_at, status FROM webhook_logs ORDER BY id DESC LIMIT 1`
   );
-  const { rows: stuckRows } = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM webhook_logs
-     WHERE status='pending' AND received_at < now() - interval '10 minutes'`
-  );
   const { rows: syncs } = await pool.query(
     `SELECT name, cron, last_run, duration_ms, status FROM schedule_jobs ORDER BY last_run DESC NULLS LAST`
   );
 
+  // Nota: NÃO usamos COUNT(webhook_logs WHERE status='pending') como sinal de
+  // "travado" — o gateway grava 1 linha 'pending' por webhook recebido, mas o
+  // jobId estável deduplica no BullMQ e os duplicados nunca viram job (nem
+  // 'processed'), então acumulam 'pending' pra sempre (log, não fila parada). O
+  // sinal real de webhook empilhando é o backlog do BullMQ (filas.backlog).
   return {
     filas,
     ultimo_webhook: whRows[0] || null,
-    webhooks_travados: stuckRows[0]?.n || 0,
     syncs,
     processos: {
       worker: procStatus(hbWorker, bootsWorker),
       server: procStatus(hbServer, bootsServer),
     },
     limites: {
-      backlog: QUEUE_BACKLOG_MAX, failed: FAILED_MAX,
-      webhook_travado: WEBHOOK_STUCK_MAX, boot_loop: BOOT_LOOP_THRESHOLD,
+      backlog: QUEUE_BACKLOG_MAX, failed: FAILED_MAX, boot_loop: BOOT_LOOP_THRESHOLD,
     },
     ts: Date.now(),
   };
@@ -147,8 +145,6 @@ async function checkAndAlert() {
       `⚠️ <b>Fila acumulando</b>\n${f.backlog} jobs na fila (aguardando+atrasados). Limite ${QUEUE_BACKLOG_MAX}.\nVer Saúde do Sistema.`);
     await alertOnce('failed', (f.failed || 0) > FAILED_MAX,
       `🚨 <b>Jobs em dead-letter</b>\n${f.failed} jobs na fila de falha. Limite ${FAILED_MAX}.\n<code>journalctl -u ml-worker-novo -n 80</code>`);
-    await alertOnce('webhook_stuck', (snap.webhooks_travados || 0) > WEBHOOK_STUCK_MAX,
-      `⚠️ <b>Webhooks travados</b>\n${snap.webhooks_travados} webhooks pendentes há +10min sem processar.`);
     await alertOnce('boot_worker', snap.processos.worker.restart_loop,
       `🚨 <b>Worker reiniciando em loop</b>\n${snap.processos.worker.boots_10min} reinícios em 10min — provável crash-loop.\n<code>systemctl status ml-worker-novo</code>`);
     await alertOnce('boot_server', snap.processos.server.restart_loop,

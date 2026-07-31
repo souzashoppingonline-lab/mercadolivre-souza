@@ -614,3 +614,9 @@ Fechados quatro defeitos reais que, em especial, quebravam um **banco criado do 
 - **#10 `syncPaymentReleases` abortava o lote inteiro no 1º 429** → circuit breaker **por loja** (`Set`/`Map` locais, 3× 429 seguidos pausam só aquela loja), idêntico ao já aplicado em `syncShippingStatus`. Antes, um 429 de qualquer loja travava a reconsulta de `released`/`net_received_amount` de todas até o dia seguinte.
 
 Mantidos em `known-bugs.md` (não fechados nesta varredura, com motivo): #7 (sweep cosmético de `var(--text-primary)`/`--text` — baixo valor, muitos arquivos), o `_post/_patch/_delete` que engole erro em `null` (mudança de contrato arriscada em muitas telas, exige auditoria), e os itens que são limitação de design consciente (#3, #5, #12) ou ação do usuário/fora de controle (#11, 403 de concorrente).
+
+## Saúde do Sistema — `webhook_logs pending` não é sinal de "travado" (correção pós-deploy)
+
+Ao subir a Saúde do Sistema, o card "Webhooks travados" mostrou **260 mil** pendentes — falso alarme. Causa: o gateway grava 1 linha `webhook_logs` (`status='pending'`) por webhook recebido, mas usa um `jobId` estável (`topic:resource:storeId`) pra deduplicar no BullMQ. Quando o ML manda vários webhooks do mesmo recurso, o `queue.add` com `jobId` repetido é ignorado — **nenhum job novo é criado**, então aquela linha de log nunca é processada e fica `pending` pra sempre. Somado ao acúmulo da época do crash-loop, deu centenas de milhares de linhas órfãs.
+
+**Decisão:** o sinal de "webhook empilhando" passa a ser **exclusivamente o backlog do BullMQ** (`waiting+delayed`, que reflete trabalho real não processado). Removidos a métrica `webhooks_travados` e o alerta correspondente do `health.js`/página. Adicionado `cleanupWebhookLogs` (03:45 diário, poda >14 dias em lotes) pra a tabela não crescer sem limite — ela é só log/auditoria. Lição: contar linhas de uma tabela de log como se fossem fila de trabalho é enganoso quando há dedup na camada de fila.

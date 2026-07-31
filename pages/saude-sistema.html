@@ -118,7 +118,6 @@ async function load() {
   document.getElementById('filaGrid').innerHTML =
     filaCard('Fila — backlog', f.backlog ?? 0, lim.backlog, 'fa-layer-group') +
     filaCard('Fila — dead-letter', f.failed ?? 0, lim.failed, 'fa-triangle-exclamation') +
-    filaCard('Webhooks travados', d.webhooks_travados ?? 0, lim.webhook_travado, 'fa-plug-circle-xmark') +
     `<div class="h-card ok"><div class="h-label"><i class="fas fa-bolt"></i> Fila — ativos/aguardando</div>
        <div class="h-value">${f.active ?? 0}<span style="font-size:13px;color:var(--text-muted)"> ativos</span></div>
        <div class="h-sub">${f.waiting ?? 0} aguardando · ${f.delayed ?? 0} atrasados</div></div>` +

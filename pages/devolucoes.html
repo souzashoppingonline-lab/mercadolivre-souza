@@ -196,6 +196,11 @@
           <button class="btn-save-note" onclick="exportDevCSV()" style="margin-left:8px"><i class="fas fa-file-csv"></i> CSV</button>
           <button class="btn-save-note" onclick="exportDevPDF()"><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;padding:8px 4px 12px;font-size:12px;color:var(--text-muted)">
+          <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(46,204,113,.6);border-left:3px solid #2ecc71"></span> <b style="color:var(--text-main)">Verde</b> — Resolvido / Encerrada (fechado)</span>
+          <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(231,76,60,.5);border-left:3px solid #e74c3c"></span> <b style="color:var(--text-main)">Vermelho</b> — Acompanhar (precisa de atenção)</span>
+          <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:rgba(230,194,0,.35);border-left:3px solid #e6c200"></span> <b style="color:var(--text-main)">Amarelo</b> — sem estágio ou sem observação (pendente)</span>
+        </div>
         <style>
           /* Máscara de privacidade (print/compartilhar): borra Pedido(1),
              Nº Reclamação(2), Loja(3), Comprador(4) e Produto(5). */

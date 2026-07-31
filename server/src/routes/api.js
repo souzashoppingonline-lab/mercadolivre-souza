@@ -5,7 +5,7 @@ const express = require('express');
 const { spawn } = require('child_process');
 const pool = require('../db/pool');
 const redis = require('../db/redis');
-const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas, getMargemPorLoja } = require('../reports');
+const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas, getMargemPorLoja, getRupturaEstoque } = require('../reports');
 
 const router = express.Router();
 
@@ -902,6 +902,21 @@ router.get('/alertas/reposicao', async (req, res) => {
   } catch(e) {
     console.error('[reposicao]', e.message);
     res.status(500).json({ error: e.message, items: [], summary: {} });
+  }
+});
+
+// Ruptura iminente — item que VENDE BEM e vai acabar. dias_restantes =
+// estoque ÷ (unidades vendidas na janela ÷ dias da janela). Usa a velocidade
+// REAL de vw_ml_orders (não sold_quantity histórico). Ver business-rules.md.
+router.get('/alertas/ruptura', async (req, res) => {
+  try {
+    res.json(await getRupturaEstoque({
+      janela: req.query.janela, dias: req.query.dias,
+      minVendaDia: req.query.min_venda_dia, storeId: req.query.store_id || '',
+    }));
+  } catch(e) {
+    console.error('[ruptura]', e.message);
+    res.status(500).json({ error: e.message, items: [] });
   }
 });
 

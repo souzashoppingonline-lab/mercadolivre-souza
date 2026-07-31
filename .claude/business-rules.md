@@ -135,6 +135,10 @@ Relatório operacional matinal (`tg_fechamento`, `tgNotifyForce` — não respei
 
 Uma notificação Telegram de nova venda só dispara na **transição real** de status para `paid` (`previousStatus !== 'paid' && order.status === 'paid'`). Um webhook tardio de `shipments`/`payments` que reprocessa um pedido já pago não gera notificação duplicada. Syncs agendados (`syncVendas`) chamam `handleOrder` com `silent: true` para nunca notificar em reconciliação retroativa.
 
+## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)
+
+Diferente do alerta de estoque fixo (`≤5`/`≤15`): mede **quando** o item acaba, não só quanto tem. `dias_restantes = available_quantity ÷ (unidades vendidas na janela ÷ dias da janela)`, com a **velocidade real** de `vw_ml_orders` (não `sold_quantity` histórico). Entra na lista só quem **vende bem** (`venda_dia ≥ min_venda_dia`, default 0.2 = ≥1 venda a cada 5 dias) **e** tem `dias_restantes < dias` (default 7, janela 30d). `sugestao_compra = ceil(venda_dia × janela) − estoque` (repor pra cobrir 1 janela). Job `checkRupturaEstoque` (07:30) manda os 12 mais urgentes no Telegram (`tg_reposicao`, respeita silêncio). Objetivo: reagir antes de perder venda por ruptura — complementa a página Reposição (que olha estoque baixo em geral) com "vende bem E vai acabar".
+
 ## Estoque — thresholds diferentes por contexto
 
 - **Alerta em tempo real** (worker, tópico `stock_alert`, notificação Telegram `tg_reposicao`): dispara quando `available_quantity <= 5`.

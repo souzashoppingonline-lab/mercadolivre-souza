@@ -13,7 +13,7 @@ const redis = require('./db/redis');
 const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
-const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getMargemPorLoja } = require('./reports');
+const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getMargemPorLoja, getRupturaEstoque } = require('./reports');
 const taskEngine = require('./taskEngine');
 const { computeSeoScore } = require('./seoScore');
 const { syncMpAccountReports, backfillMpReports } = require('./mpReports');
@@ -2393,6 +2393,29 @@ async function fechamentoDiario() {
   scheduleAt(6, 5, fechamentoDiario, 'fechamento-diario');
 }
 
+// ── Ruptura iminente — alerta diário (07:30) ────────────────────────────────
+// Item que vende bem e vai acabar (dias_restantes < 7). Reaproveita
+// getRupturaEstoque (mesma fonte da página Reposição). Ver business-rules.md.
+async function checkRupturaEstoque() {
+  try {
+    return await recordSync('ruptura-estoque', '30 7 * * *', async () => {
+      const { items } = await getRupturaEstoque({ dias: 7 });
+      if (!items.length) return { alertados: 0 };
+      const top = items.slice(0, 12);
+      let msg = `🔥 <b>Ruptura iminente</b> — vende bem e vai acabar:\n\n`;
+      for (const it of top) {
+        const t = (it.title || it.ml_id).slice(0, 45);
+        msg += `⏳ <b>${it.dias_restantes}d</b> · ${it.stock} un · ${it.venda_dia}/dia\n${t}${it.sugestao_compra > 0 ? ` · comprar +${it.sugestao_compra}` : ''}\n`;
+      }
+      if (items.length > top.length) msg += `\n… e mais ${items.length - top.length} anúncio(s).`;
+      await tgNotify('tg_reposicao', msg);
+      return { alertados: items.length };
+    });
+  } finally {
+    scheduleAt(7, 30, checkRupturaEstoque, 'ruptura-estoque');
+  }
+}
+
 // ── Relatórios por e-mail (Resend) ────────────────────────────────────────
 // Credencial só via .env (RESEND_API_KEY/RESEND_FROM_EMAIL/RESEND_TO_EMAIL,
 // ver resendClient.js) — o que é configurável pela UI (Monitor) é só o
@@ -2895,6 +2918,7 @@ scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');
 scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
+scheduleAt(7, 30,  checkRupturaEstoque, 'ruptura-estoque');
 scheduleAt(7,  0,  () => syncClaimsStatus(false), 'sync-claims-status'); // reconsulta devoluções → alerta quando encerra
 scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');

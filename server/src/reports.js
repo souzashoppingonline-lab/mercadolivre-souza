@@ -276,4 +276,47 @@ async function getMargemPorLoja({ dateFrom, dateTo, days, considerarFC = false }
   });
 }
 
-module.exports = { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas, getMargemPorLoja };
+// Ruptura iminente — item que VENDE BEM e vai acabar. Fonte única usada pela
+// rota /api/alertas/ruptura e pelo alerta Telegram diário. dias_restantes =
+// estoque ÷ (unidades vendidas na janela ÷ dias), velocidade REAL de
+// vw_ml_orders. Ver business-rules.md.
+async function getRupturaEstoque({ janela = 30, dias = 7, minVendaDia = 0.2, storeId = '' } = {}) {
+  janela = Math.min(Math.max(parseInt(janela) || 30, 7), 90);
+  dias = Math.min(Math.max(parseInt(dias) || 7, 1), 60);
+  minVendaDia = Number(minVendaDia ?? 0.2);
+  const params = [janela, dias, minVendaDia];
+  let storeFilter = '';
+  if (storeId) { params.push(storeId); storeFilter = `AND i.store_id = $${params.length}::bigint`; }
+  const { rows } = await pool.query(`
+    WITH vendas AS (
+      SELECT o.item_id, SUM(o.quantity)::float AS un
+      FROM vw_ml_orders o
+      WHERE o.status <> 'cancelled' AND o.date_created >= CURRENT_DATE - ($1::int)
+      GROUP BY o.item_id
+    )
+    SELECT i.ml_id, i.store_id, COALESCE(s.nickname,'—') AS loja, i.title, i.price,
+           i.available_quantity AS stock, i.permalink, i.thumbnail,
+           (v.un / $1::float) AS venda_dia,
+           (i.available_quantity / (v.un / $1::float)) AS dias_restantes
+    FROM vw_ml_items i
+    JOIN vendas v ON v.item_id = i.ml_id
+    LEFT JOIN vw_ml_stores s ON s.id = i.store_id
+    WHERE i.status='active' AND v.un > 0
+      AND (v.un / $1::float) >= $3::float
+      AND (i.available_quantity / (v.un / $1::float)) < $2::float
+      ${storeFilter}
+    ORDER BY dias_restantes ASC
+    LIMIT 200
+  `, params);
+  return {
+    janela, dias, min_venda_dia: minVendaDia,
+    items: rows.map(r => ({
+      ...r,
+      venda_dia: Number(Number(r.venda_dia).toFixed(2)),
+      dias_restantes: Math.floor(Number(r.dias_restantes)),
+      sugestao_compra: Math.max(0, Math.ceil(Number(r.venda_dia) * janela) - Number(r.stock)),
+    })),
+  };
+}
+
+module.exports = { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas, getMargemPorLoja, getRupturaEstoque };

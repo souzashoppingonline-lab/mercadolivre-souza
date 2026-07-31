@@ -28,7 +28,16 @@ margem  = total_amount − custo − imposto − tarifa − frete_comprador − 
 mc_pct  = margem / total_amount × 100
 ```
 
-**`GET /api/vendas/detalhado` puxa tarifa e frete do vendedor da Conciliação Bancária** (`mp_account_movements`, `description='Payment'`, casado por `order_id` via `LEFT JOIN LATERAL` — usa o índice `idx_mp_mov_order`, sem materializar a tabela toda), tanto por linha quanto nos cards de total. Motivo: historicamente `orders.shipping_seller_cost` nunca era populado pelo worker (sempre 0) e `orders.ml_fee` entra dias depois; a Conciliação (relatório de liberações do MP) já tem os dois valores reais. **Desde então o `handleShipment` passou a gravar `shipping_seller_cost` em tempo real** (do `/shipments/:id/costs`, `senders_cost`) quando o webhook de envio chega — então o fallback de frete do vendedor já não é mais 0 pra vendas novas, mesmo antes do relatório das 05:40. A tarifa (`orders.ml_fee`) vem de `item.sale_fee` no ato do pedido (pode vir 0 num pedido recém-criado e o ML corrige depois). Fallback pro valor do próprio pedido quando não há relatório no período. Ver `conciliacao-bancaria.md`. As demais rotas dessa lista ainda usam só os campos do pedido.
+### Precedência da taxa por pedido (Tarifa + Frete Vendedor) — `/vendas/detalhado` e `/vendas/margem`
+
+Ambas calculam a taxa **por pedido** (`LEFT JOIN LATERAL` por `order_id`, some por loja/status depois) nesta ordem:
+
+1. **Conciliação Bancária** (`mp_account_movements`, `description='Payment'`, índice `idx_mp_mov_order`) — fonte oficial das 05:40, **separa** `mp_fee_amount` (Tarifa) de `shipping_fee_amount` (Frete Vendedor).
+2. **`ml_payments`** (webhook `payments`, tempo real, por venda) — `taxa = transaction_amount − net_received_amount` (só `status='approved'`, `net_received_amount` não nulo). É o **total** ML descontado (comissão + frete + taxas juntos), **não separa**: joga tudo em **Tarifa** e **Frete Vendedor = 0** (não conta o frete 2×; a Margem/MC% fica idêntica). Cobre a venda nova antes do relatório chegar.
+3. **`orders.ml_fee` / `orders.shipping_seller_cost`** — `ml_fee`=`item.sale_fee` gravado no ato do pedido (pode vir 0 num pedido recém-criado, o ML corrige depois); `shipping_seller_cost` é populado em tempo real pelo `handleShipment` via `/shipments/:id/costs` (`senders_cost`).
+4. Nada → 0.
+
+Cada linha do `/detalhado` traz `fonte_taxa` (`conciliacao`|`pagamento`|`pedido`) e `tem_conciliacao`; os totais/lojas trazem `pedidos_conciliados` (pedidos com taxa real, fonte 1 **ou** 2). A coluna Frete Vendedor pode mostrar 0 quando a fonte é o pagamento (valor embutido na Tarifa) — proposital, a conta bate. Ver `conciliacao-bancaria.md`. As demais rotas da lista acima ainda usam só os campos do pedido.
 
 `GET /api/vendas/diarias` usa uma **aproximação diferente e mais simples**, sem custo real por pedido: `liquido = bruto × 0.88` e `taxas = bruto × 0.12` — é uma estimativa grosseira para gráfico rápido, não usar como referência de margem real.
 

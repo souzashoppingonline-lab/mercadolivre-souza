@@ -356,19 +356,26 @@ router.get('/vendas/detalhado', async (req, res) => {
        AND ($4 = '' OR o.title ILIKE '%'||$4||'%')`;
 
   // Linhas para a tabela — cap de 1000 (payload/render), não usado para os totais.
-  // Tarifa e frete do vendedor vêm da Conciliação Bancária (mp_account_movements,
-  // description='Payment', casado por order_id via LATERAL c/ índice idx_mp_mov_order).
-  // Fallback: ml_fee / shipping_seller_cost do próprio pedido quando não há relatório.
+  // Precedência da taxa por pedido (ver finance.md):
+  //  1. Conciliação Bancária (mp_account_movements) — separa Tarifa e Frete Vendedor.
+  //  2. ml_payments (tempo real, por venda): taxa = transaction_amount − net_received_amount
+  //     (comissão + frete juntos) → tudo em `tarifa`, frete_vendedor=0 (evita contar 2x).
+  //  3. ml_fee / shipping_seller_cost do próprio pedido.
   const { rows } = await pool.query(
     `SELECT
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
        o.title, o.quantity, o.unit_price,
        o.total_amount as faturamento,
-       COALESCE(c.tarifa_real, o.ml_fee) as tarifa,
+       COALESCE(c.tarifa_real, pg.taxa_pgto, o.ml_fee, 0) as tarifa,
        o.shipping_type as frete_tipo,
        o.shipping_cost as frete_comprador,
-       COALESCE(c.frete_vend_real, o.shipping_seller_cost, 0) as frete_vendedor,
+       CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real, 0)
+            WHEN pg.taxa_pgto IS NOT NULL THEN 0
+            ELSE COALESCE(o.shipping_seller_cost, 0) END as frete_vendedor,
        (c.tarifa_real IS NOT NULL) as tem_conciliacao,
+       CASE WHEN c.tarifa_real IS NOT NULL THEN 'conciliacao'
+            WHEN pg.taxa_pgto IS NOT NULL THEN 'pagamento'
+            ELSE 'pedido' END as fonte_taxa,
        o.status, o.date_created,
        COALESCE(i.cost, 0) as custo,
        COALESCE(s.imposto_pct, 0) as imposto_pct
@@ -381,6 +388,12 @@ router.get('/vendas/detalhado', async (req, res) => {
        FROM mp_account_movements m
        WHERE m.order_id = o.ml_id AND m.description = 'Payment'
      ) c ON true
+     LEFT JOIN LATERAL (
+       SELECT SUM(p.transaction_amount) - SUM(p.net_received_amount) AS taxa_pgto
+       FROM ml_payments p
+       WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
+         AND p.status = 'approved'
+     ) pg ON true
      ${whereClause}
      ORDER BY o.date_created DESC LIMIT 1000`,
     params
@@ -408,10 +421,12 @@ router.get('/vendas/detalhado', async (req, res) => {
        COALESCE(SUM(o.total_amount), 0) AS faturamento,
        COALESCE(SUM(COALESCE(i.cost, 0) * o.quantity), 0) AS custo,
        COALESCE(SUM(o.total_amount * COALESCE(s.imposto_pct, 0) / 100), 0) AS imposto,
-       COALESCE(SUM(COALESCE(c.tarifa_real, o.ml_fee)), 0) AS tarifa,
+       COALESCE(SUM(COALESCE(c.tarifa_real, pg.taxa_pgto, o.ml_fee)), 0) AS tarifa,
        COALESCE(SUM(o.shipping_cost), 0) AS frete_comprador,
-       COALESCE(SUM(COALESCE(c.frete_vend_real, o.shipping_seller_cost)), 0) AS frete_vendedor,
-       COUNT(*) FILTER (WHERE c.tarifa_real IS NOT NULL) AS pedidos_conciliados,
+       COALESCE(SUM(CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
+                         WHEN pg.taxa_pgto IS NOT NULL THEN 0
+                         ELSE COALESCE(o.shipping_seller_cost,0) END), 0) AS frete_vendedor,
+       COUNT(*) FILTER (WHERE c.tarifa_real IS NOT NULL OR pg.taxa_pgto IS NOT NULL) AS pedidos_conciliados,
        COALESCE(SUM(o.quantity), 0) AS qtd,
        COUNT(*) AS pedidos
      FROM vw_ml_orders o
@@ -423,6 +438,12 @@ router.get('/vendas/detalhado', async (req, res) => {
        FROM mp_account_movements m
        WHERE m.order_id = o.ml_id AND m.description = 'Payment'
      ) c ON true
+     LEFT JOIN LATERAL (
+       SELECT SUM(p.transaction_amount) - SUM(p.net_received_amount) AS taxa_pgto
+       FROM ml_payments p
+       WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
+         AND p.status = 'approved'
+     ) pg ON true
      ${whereClause}
      GROUP BY o.status`,
     params
@@ -2691,40 +2712,48 @@ router.get('/vendas/margem', async (req, res) => {
       params = [days];
     }
     const { rows } = await pool.query(`
-      WITH vendas AS (
-        SELECT o.store_id, s.nickname AS loja,
-          SUM(o.total_amount) AS faturamento,
-          COALESCE(SUM(o.total_amount) FILTER (WHERE o.status='cancelled'),0) AS canceladas,
-          COALESCE(SUM(o.total_amount) FILTER (WHERE o.status<>'cancelled'),0) AS aprovadas,
-          COUNT(*) FILTER (WHERE o.status<>'cancelled') AS qtd_aprovadas,
-          COALESCE(SUM(COALESCE(i.cost,0)*o.quantity) FILTER (WHERE o.status<>'cancelled'),0) AS custo,
-          COALESCE(SUM(o.total_amount*COALESCE(s.imposto_pct,0)/100) FILTER (WHERE o.status<>'cancelled'),0) AS imposto,
-          COALESCE(SUM(o.ml_fee) FILTER (WHERE o.status<>'cancelled'),0) AS tarifa_pedido,
-          COALESCE(SUM(o.shipping_cost) FILTER (WHERE o.status<>'cancelled'),0) AS frete_comprador
+      WITH per_order AS (
+        SELECT o.store_id, s.nickname AS loja, o.status, o.total_amount,
+          COALESCE(i.cost,0)*o.quantity AS custo,
+          o.total_amount*COALESCE(s.imposto_pct,0)/100 AS imposto,
+          o.shipping_cost AS frete_comprador,
+          COALESCE(c.tarifa_real, pg.taxa_pgto, o.ml_fee, 0) AS tarifa,
+          CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
+               WHEN pg.taxa_pgto IS NOT NULL THEN 0
+               ELSE COALESCE(o.shipping_seller_cost,0) END AS frete_vendedor,
+          (c.tarifa_real IS NOT NULL OR pg.taxa_pgto IS NOT NULL) AS tem_taxa_real
         FROM vw_ml_orders o
         JOIN vw_ml_stores s ON s.id=o.store_id
         LEFT JOIN items i ON i.ml_id=o.item_id
+        LEFT JOIN LATERAL (
+          SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
+                 ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
+          FROM mp_account_movements m
+          WHERE m.order_id = o.ml_id AND m.description = 'Payment'
+        ) c ON true
+        LEFT JOIN LATERAL (
+          SELECT SUM(p.transaction_amount) - SUM(p.net_received_amount) AS taxa_pgto
+          FROM ml_payments p
+          WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
+            AND p.status = 'approved'
+        ) pg ON true
         WHERE ${periodo}
-        GROUP BY 1,2
-      ),
-      concil AS (
-        SELECT o.store_id,
-          ABS(COALESCE(SUM(m.mp_fee_amount),0)) AS tarifa_real,
-          ABS(COALESCE(SUM(m.shipping_fee_amount),0)) AS frete_vendedor,
-          COUNT(DISTINCT m.order_id) AS pedidos_conciliados
-        FROM mp_account_movements m
-        JOIN vw_ml_orders o ON o.ml_id = m.order_id
-        WHERE ${periodo} AND o.status <> 'cancelled' AND m.description = 'Payment'
-        GROUP BY 1
       )
-      SELECT v.store_id, v.loja, v.faturamento, v.canceladas, v.aprovadas, v.qtd_aprovadas,
-             v.custo, v.imposto, v.frete_comprador,
-             COALESCE(c.tarifa_real, v.tarifa_pedido) AS tarifa,
-             COALESCE(c.frete_vendedor, 0) AS frete_vendedor,
-             COALESCE(c.pedidos_conciliados, 0) AS pedidos_conciliados,
-             (c.tarifa_real IS NOT NULL) AS tem_conciliacao
-      FROM vendas v LEFT JOIN concil c ON c.store_id = v.store_id
-      ORDER BY v.aprovadas DESC
+      SELECT store_id, loja,
+        SUM(total_amount) AS faturamento,
+        COALESCE(SUM(total_amount) FILTER (WHERE status='cancelled'),0) AS canceladas,
+        COALESCE(SUM(total_amount) FILTER (WHERE status<>'cancelled'),0) AS aprovadas,
+        COUNT(*) FILTER (WHERE status<>'cancelled') AS qtd_aprovadas,
+        COALESCE(SUM(custo) FILTER (WHERE status<>'cancelled'),0) AS custo,
+        COALESCE(SUM(imposto) FILTER (WHERE status<>'cancelled'),0) AS imposto,
+        COALESCE(SUM(tarifa) FILTER (WHERE status<>'cancelled'),0) AS tarifa,
+        COALESCE(SUM(frete_vendedor) FILTER (WHERE status<>'cancelled'),0) AS frete_vendedor,
+        COALESCE(SUM(frete_comprador) FILTER (WHERE status<>'cancelled'),0) AS frete_comprador,
+        COUNT(*) FILTER (WHERE status<>'cancelled' AND tem_taxa_real) AS pedidos_conciliados,
+        bool_or(tem_taxa_real) AS tem_conciliacao
+      FROM per_order
+      GROUP BY store_id, loja
+      ORDER BY aprovadas DESC
     `, params);
     const lojas = rows.map(r => {
       const n = (x) => Number(x) || 0;

@@ -123,7 +123,8 @@
         </div>
         <div style="font-size:12px;color:var(--text-muted);padding:0 4px 10px">
           Fórmula: <b>Aprovadas − Custo − Imposto − Tarifa − Frete Vendedor</b>. Tarifa e frete do vendedor vêm da
-          <b>Conciliação Bancária</b> (relatório Mercado Pago); quando não há relatório no período, cai para a tarifa do próprio pedido.
+          <b>Conciliação Bancária</b> (relatório Mercado Pago, separa os dois); sem relatório no período, usa a taxa real do
+          <b>pagamento</b> em tempo real (<i>valor da venda − líquido recebido</i>, tudo na Tarifa) — a margem final é a mesma.
         </div>
         <div class="table-responsive">
           <table class="data-table" id="margemTable">

@@ -2802,6 +2802,13 @@ setTimeout(() => syncNotionTarefas().catch(e => console.error('[notion] boot err
 tokenRefreshLoop(); // roda imediatamente no start
 setInterval(tokenRefreshLoop, 30 * 60 * 1000);
 
+// Saúde do Sistema — heartbeat 'worker' + checagem de alertas (fila, dead-letter,
+// restart-loop, webhooks travados). Ver health.js e .claude/workers.md.
+const health = require('./health');
+health.startHeartbeat('worker');
+setTimeout(() => health.checkAndAlert(), 90 * 1000);           // pega crash-loop cedo
+setInterval(() => health.checkAndAlert(), 5 * 60 * 1000);      // depois a cada 5 min
+
 // Ao iniciar o worker, roda syncVendas após 2 min SOMENTE fora do horário de pico (22h–08h)
 setTimeout(() => {
   const h = new Date().getHours();

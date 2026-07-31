@@ -320,6 +320,7 @@ const DB = {
   // ── Agenda Trello ──────────────────────────────────────────
   async getTasks(params={})            { return this._get('/tasks', params); },
   async getTasksSummary()              { return this._get('/tasks/summary'); },
+  async getSaudeSistema()              { return this._get('/sistema/saude'); },
   async createTask(body)               { return this._post('/tasks', body); },
   async updateTask(id, body)           { return this._patch(`/tasks/${id}`, body); },
   async deleteTask(id)                 { return this._delete(`/tasks/${id}`); },

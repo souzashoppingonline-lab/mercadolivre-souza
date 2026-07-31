@@ -584,3 +584,15 @@ de outra conta é justamente o que o ML recusa, e ainda gasta cota. O `GET` púb
 autenticados ficam só como rede de segurança. **Visitas não entram** (métrica privada
 do dono). **Cache 12h** no job diário evita rebater a rede; o botão do card força.
 Diagnóstico confirmado com a comunidade ML e validado ao vivo (403 com token, some sem).
+
+## Saúde do Sistema — heartbeat em Redis + alerta de crash-loop (`health.js`)
+
+**Contexto:** um crash-loop real (EADDRINUSE na porta 3000, contador de restart em 2426) passou dias despercebido servindo código velho — todo deploy "não pegava" e ninguém era avisado. Faltava observabilidade.
+
+**Decisão:** módulo `health.js` com heartbeat por processo no Redis (`health:hb:<proc>` a cada 30s) + histórico de boots (`health:boots:<proc>`) para detectar reinício em loop. Alertas `tg_saude` (backlog de fila, dead-letter, webhooks travados, restart-loop, servidor sem heartbeat) rodam **só no worker** (90s após boot + a cada 5min), com dedup no Redis (`health:alerted:<kind>`, só transição bom→ruim).
+
+**Por que assim (e não de outro jeito):**
+- **Redis, não tabela nova:** heartbeat/boots/dedup são efêmeros por natureza; TTL faz a limpeza sozinho, e evita migration. Último webhook/sync já vêm de `webhook_logs`/`schedule_jobs` existentes.
+- **Idade do timestamp, não existência da chave:** a chave de heartbeat tem TTL de 1 dia e guarda o epoch; "fora do ar" = idade ≥2min. Isso distingue "nunca subiu" (chave ausente) de "parou de bater" (chave velha) — importante para não alertar servidor recém-iniciado como caído.
+- **Alerta no worker, não no server:** um processo caído não consegue se auto-alertar; o worker vigia o server (lê o heartbeat dele) e a si mesmo via contagem de boots (funciona mesmo num loop, porque cada boot registra e a checagem de 90s roda antes do próximo crash). Limitação consciente: worker morto de vez (sem loop) não se auto-alerta — aparece na página e o `resumo-diario` cobre o resto.
+- **Sem migration, sem tocar handlers:** puramente aditivo (2 linhas de bootstrap em cada processo + 1 rota de leitura), risco mínimo no pipeline que já funciona.

@@ -101,6 +101,8 @@ server.listen(env.port, () => {
   console.log(`[server] REST API:    http://localhost:${env.port}/api`);
   console.log(`[server] Webhook URL: http://localhost:${env.port}/webhooks/ml`);
   console.log(`[server] WebSocket:   ws://localhost:${env.port}/ws`);
+  // Saúde do Sistema — heartbeat 'server' (o worker é quem alerta). Ver health.js.
+  try { require('./health').startHeartbeat('server'); } catch (e) { console.warn('[health] heartbeat server falhou:', e.message); }
 });
 
 server.keepAliveTimeout = 3600000;

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saúde do Sistema — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Saúde do Sistema'; window.ACTIVE_NAV='saude-sistema.html';</script>
+  <style>
+    .h-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin-bottom:18px; }
+    .h-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; }
+    .h-card.ok   { border-left:3px solid var(--green); }
+    .h-card.warn { border-left:3px solid var(--primary); }
+    .h-card.bad  { border-left:3px solid var(--red); }
+    .h-label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .h-value { font-size:22px; font-weight:700; }
+    .h-sub   { font-size:12px; color:var(--text-muted); margin-top:4px; }
+    .pill { display:inline-block; font-size:11px; font-weight:700; padding:2px 10px; border-radius:20px; }
+    .pill.ok  { background:rgba(48,209,88,.15); color:var(--green); }
+    .pill.bad { background:rgba(255,69,58,.15); color:var(--red); }
+    .pill.warn{ background:rgba(255,214,10,.15); color:var(--primary); }
+    th { white-space:nowrap; font-size:11px; }
+    .tbl-num { text-align:right; white-space:nowrap; }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+    .refresh-note { font-size:12px; color:var(--text-muted); }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <button class="btn-primary" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        <span class="refresh-note" id="lastUpdate">—</span>
+        <span class="refresh-note" style="margin-left:auto">Atualiza sozinho a cada 15s</span>
+      </div>
+
+      <div class="h-grid" id="procGrid"></div>
+
+      <div class="h-grid" id="filaGrid"></div>
+
+      <div class="card">
+        <div class="card-header"><h3>Jobs agendados (último sync)</h3></div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead><tr><th>Job</th><th>Cron</th><th>Última execução</th><th>Status</th><th class="tbl-num">Duração</th></tr></thead>
+            <tbody id="syncsBody"><tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const fmtHora = ts => ts ? new Date(Number(ts)).toLocaleString('pt-BR') : '—';
+const fmtData = d => d ? new Date(d).toLocaleString('pt-BR') : '—';
+const relTime = d => {
+  if (!d) return 'nunca';
+  const m = Math.floor((Date.now() - new Date(d)) / 60000);
+  if (m < 1) return 'agora';
+  if (m < 60) return m + 'min atrás';
+  const h = Math.floor(m/60);
+  if (h < 24) return h + 'h atrás';
+  return Math.floor(h/24) + 'd atrás';
+};
+const fmtDur = ms => ms == null ? '—' : (ms < 1000 ? ms+'ms' : (ms/1000).toFixed(1)+'s');
+
+function procCard(nome, servico, p) {
+  const looping = p.restart_loop;
+  const cls = looping ? 'bad' : (p.up ? 'ok' : (p.down ? 'bad' : 'warn'));
+  const status = looping ? '<span class="pill bad">RESTART LOOP</span>'
+    : p.up ? '<span class="pill ok">no ar</span>'
+    : p.down ? '<span class="pill bad">fora do ar</span>'
+    : '<span class="pill warn">sem dados</span>';
+  return `<div class="h-card ${cls}">
+    <div class="h-label"><i class="fas fa-microchip"></i> ${nome}</div>
+    <div class="h-value" style="font-size:16px">${status}</div>
+    <div class="h-sub">último sinal: ${relTime(p.last_beat)}</div>
+    <div class="h-sub">reinícios (10min): <b style="color:${looping?'var(--red)':'inherit'}">${p.boots_10min}</b></div>
+    <div class="h-sub" style="opacity:.7">${servico}</div>
+  </div>`;
+}
+
+function filaCard(label, valor, limite, icon) {
+  const bad = limite != null && valor > limite;
+  return `<div class="h-card ${bad?'bad':'ok'}">
+    <div class="h-label"><i class="fas ${icon}"></i> ${label}</div>
+    <div class="h-value" style="color:${bad?'var(--red)':'inherit'}">${valor}</div>
+    ${limite!=null ? `<div class="h-sub">limite ${limite}</div>` : ''}
+  </div>`;
+}
+
+async function load() {
+  const d = await DB.getSaudeSistema();
+  if (!d || d.error) {
+    document.getElementById('procGrid').innerHTML = `<div class="h-card bad"><div class="h-label">Erro</div><div class="h-value" style="font-size:14px">${d?.error||'falha ao carregar'}</div></div>`;
+    return;
+  }
+  document.getElementById('lastUpdate').textContent = 'Atualizado ' + fmtHora(d.ts);
+
+  document.getElementById('procGrid').innerHTML =
+    procCard('Worker', 'ml-worker-novo', d.processos.worker) +
+    procCard('Servidor', 'ml-dashboard-novo', d.processos.server);
+
+  const f = d.filas || {};
+  const lim = d.limites || {};
+  const whMsg = d.ultimo_webhook ? `${d.ultimo_webhook.topic} · ${relTime(d.ultimo_webhook.received_at)}` : 'nenhum';
+  document.getElementById('filaGrid').innerHTML =
+    filaCard('Fila — backlog', f.backlog ?? 0, lim.backlog, 'fa-layer-group') +
+    filaCard('Fila — dead-letter', f.failed ?? 0, lim.failed, 'fa-triangle-exclamation') +
+    filaCard('Webhooks travados', d.webhooks_travados ?? 0, lim.webhook_travado, 'fa-plug-circle-xmark') +
+    `<div class="h-card ok"><div class="h-label"><i class="fas fa-bolt"></i> Fila — ativos/aguardando</div>
+       <div class="h-value">${f.active ?? 0}<span style="font-size:13px;color:var(--text-muted)"> ativos</span></div>
+       <div class="h-sub">${f.waiting ?? 0} aguardando · ${f.delayed ?? 0} atrasados</div></div>` +
+    `<div class="h-card ok"><div class="h-label"><i class="fas fa-satellite-dish"></i> Último webhook</div>
+       <div class="h-value" style="font-size:15px">${whMsg}</div></div>`;
+
+  const syncs = d.syncs || [];
+  document.getElementById('syncsBody').innerHTML = syncs.length ? syncs.map(s => {
+    const cor = s.status === 'error' ? 'var(--red)' : s.status === 'running' ? 'var(--primary)' : 'var(--green)';
+    return `<tr>
+      <td>${s.name}</td>
+      <td style="color:var(--text-muted);font-size:12px">${s.cron||'—'}</td>
+      <td>${fmtData(s.last_run)} <span style="color:var(--text-muted);font-size:11px">(${relTime(s.last_run)})</span></td>
+      <td><span class="dot" style="background:${cor}"></span>${s.status||'—'}</td>
+      <td class="tbl-num">${fmtDur(s.duration_ms)}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" class="empty-state">Nenhum job registrado ainda</td></tr>';
+}
+
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

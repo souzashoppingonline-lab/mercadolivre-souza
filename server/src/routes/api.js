@@ -3636,4 +3636,15 @@ router.post('/marketplace-events/collect', async (req, res) => {
   }
 });
 
+// Saúde do Sistema — filas BullMQ, heartbeat dos processos, último webhook/sync.
+// Só leitura (Redis + webhook_logs + schedule_jobs). Ver health.js e workers.md.
+router.get('/sistema/saude', async (req, res) => {
+  try {
+    res.json(await require('../health').getSnapshot());
+  } catch (e) {
+    console.error('[api] /sistema/saude', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

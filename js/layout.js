@@ -53,6 +53,7 @@ const NAV_ITEMS = [
     { href: 'monitor.html', icon: 'fa-telegram fab', label: 'Monitor & Telegram', brand: true },
     { href: 'schedule.html', icon: 'fa-calendar-check', label: 'Schedule' },
     { href: 'webhook.html', icon: 'fa-plug', label: 'Webhooks' },
+    { href: 'saude-sistema.html', icon: 'fa-heart-pulse', label: 'Saúde do Sistema' },
   ]},
 ];
 

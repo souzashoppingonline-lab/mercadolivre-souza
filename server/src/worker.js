@@ -13,7 +13,7 @@ const redis = require('./db/redis');
 const ml = require('./mlClient');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
-const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem } = require('./reports');
+const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getMargemPorLoja } = require('./reports');
 const taskEngine = require('./taskEngine');
 const { computeSeoScore } = require('./seoScore');
 const { syncMpAccountReports, backfillMpReports } = require('./mpReports');
@@ -2284,6 +2284,61 @@ async function resumoDiario() {
   scheduleAt(6, 0, resumoDiario, 'resumo-diario');
 }
 
+// ── Fechamento financeiro diário — lucro REAL (Margem de Contribuição) ──────
+// 06:05, depois do mp-reports (05:40) pra pegar a conciliação fresca do dia
+// anterior. Manda por loja: Aprovadas, Custos, Margem e MC%. Alerta (⚠️) as
+// lojas com MC% abaixo do limite (app_config 'mc_pct_min', fallback env
+// MC_PCT_MIN, default 8%). Usa getMargemPorLoja (mesma fonte da tela). Ver
+// finance.md e business-rules.md.
+async function fechamentoDiario() {
+  console.log('[fechamento-diario] gerando fechamento de ontem...');
+  try {
+    const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+    const y = new Date(Date.now() - 86400000);
+    const yStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+    const ontem = y.toLocaleDateString('pt-BR');
+
+    const lojas = (await getMargemPorLoja({ dateFrom: yStr, dateTo: yStr }))
+      .filter(l => l.aprovadas > 0);
+
+    if (!lojas.length) {
+      await tgNotifyForce('tg_fechamento', `💵 <b>Fechamento — ${ontem}</b>\n\nNenhuma venda aprovada ontem.`);
+      scheduleAt(6, 5, fechamentoDiario, 'fechamento-diario');
+      return;
+    }
+
+    const { rows: cfgRows } = await pool.query(`SELECT value FROM app_config WHERE key='mc_pct_min'`);
+    const mcMin = Number(cfgRows[0]?.value ?? process.env.MC_PCT_MIN ?? 8);
+
+    const totAprov = lojas.reduce((a, l) => a + l.aprovadas, 0);
+    const totMargem = lojas.reduce((a, l) => a + l.margem, 0);
+    const totPct = totAprov > 0 ? (totMargem / totAprov * 100) : 0;
+
+    let msg = `💵 <b>Fechamento — ${ontem}</b>\n`;
+    msg += `Lucro real (Margem de Contribuição), por loja:\n\n`;
+    msg += `📊 <b>Consolidado:</b> ${Rfmt(totAprov)} aprovado → <b>${Rfmt(totMargem)}</b> (${totPct.toFixed(1)}%)\n\n`;
+
+    const baixas = [];
+    for (const l of lojas) {
+      const custos = l.custo + l.imposto + l.tarifa + l.frete_vendedor;
+      const alerta = l.margem_pct < mcMin;
+      if (alerta) baixas.push(l);
+      msg += `${alerta ? '⚠️ ' : '🏪 '}<b>${l.loja}</b>\n`;
+      msg += `   Aprovadas ${Rfmt(l.aprovadas)} · Custos ${Rfmt(custos)}\n`;
+      msg += `   Margem <b>${Rfmt(l.margem)}</b> (${l.margem_pct.toFixed(1)}%)${!l.tem_conciliacao ? ' · <i>taxa estimada</i>' : ''}\n`;
+    }
+    if (baixas.length) {
+      msg += `\n⚠️ <b>MC% abaixo de ${mcMin}%:</b> ${baixas.map(l => `${l.loja} (${l.margem_pct.toFixed(1)}%)`).join(', ')}`;
+    }
+
+    await tgNotifyForce('tg_fechamento', msg);
+    console.log('[fechamento-diario] enviado');
+  } catch (e) {
+    console.error('[fechamento-diario] erro:', e.message);
+  }
+  scheduleAt(6, 5, fechamentoDiario, 'fechamento-diario');
+}
+
 // ── Relatórios por e-mail (Resend) ────────────────────────────────────────
 // Credencial só via .env (RESEND_API_KEY/RESEND_FROM_EMAIL/RESEND_TO_EMAIL,
 // ver resendClient.js) — o que é configurável pela UI (Monitor) é só o
@@ -2779,6 +2834,7 @@ scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
 scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
+scheduleAt(6,  5,  fechamentoDiario, 'fechamento-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');

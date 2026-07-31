@@ -200,4 +200,80 @@ async function getEstoqueCriticoTopVendas({ hours = 24, estoqueMax = 15, limit =
     .slice(0, limit);
 }
 
-module.exports = { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas };
+// Margem de Contribuição por loja (funil do Mercado Turbo). Fonte única usada
+// pela rota /api/vendas/margem e pelo fechamento diário no worker. Precedência
+// da taxa por pedido (ver finance.md): Conciliação (mp_account_movements) →
+// pagamento em tempo real (ml_payments: transaction_amount − net_received_amount)
+// → ml_fee/shipping_seller_cost do pedido. Frete do comprador só entra se
+// considerarFC=true. Aceita {dateFrom,dateTo} OU {days} (default 30, máx 90).
+async function getMargemPorLoja({ dateFrom, dateTo, days, considerarFC = false } = {}) {
+  let periodo, params;
+  if (dateFrom && dateTo) {
+    periodo = `o.date_created >= $1::timestamptz AND o.date_created <= $2::timestamptz`;
+    params = [dateFrom, `${dateTo} 23:59:59`];
+  } else {
+    const d = Math.min(parseInt(days) || 30, 90);
+    periodo = `o.date_created >= CURRENT_DATE - ($1::int)`;
+    params = [d];
+  }
+  const { rows } = await pool.query(`
+    WITH per_order AS (
+      SELECT o.store_id, s.nickname AS loja, o.status, o.total_amount,
+        COALESCE(i.cost,0)*o.quantity AS custo,
+        o.total_amount*COALESCE(s.imposto_pct,0)/100 AS imposto,
+        o.shipping_cost AS frete_comprador,
+        COALESCE(c.tarifa_real, pg.taxa_pgto, o.ml_fee, 0) AS tarifa,
+        CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
+             WHEN pg.taxa_pgto IS NOT NULL THEN 0
+             ELSE COALESCE(o.shipping_seller_cost,0) END AS frete_vendedor,
+        (c.tarifa_real IS NOT NULL OR pg.taxa_pgto IS NOT NULL) AS tem_taxa_real
+      FROM vw_ml_orders o
+      JOIN vw_ml_stores s ON s.id=o.store_id
+      LEFT JOIN items i ON i.ml_id=o.item_id
+      LEFT JOIN LATERAL (
+        SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
+               ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
+        FROM mp_account_movements m
+        WHERE m.order_id = o.ml_id AND m.description = 'Payment'
+      ) c ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(p.transaction_amount) - SUM(p.net_received_amount) AS taxa_pgto
+        FROM ml_payments p
+        WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
+          AND p.status = 'approved'
+      ) pg ON true
+      WHERE ${periodo}
+    )
+    SELECT store_id, loja,
+      SUM(total_amount) AS faturamento,
+      COALESCE(SUM(total_amount) FILTER (WHERE status='cancelled'),0) AS canceladas,
+      COALESCE(SUM(total_amount) FILTER (WHERE status<>'cancelled'),0) AS aprovadas,
+      COUNT(*) FILTER (WHERE status<>'cancelled') AS qtd_aprovadas,
+      COALESCE(SUM(custo) FILTER (WHERE status<>'cancelled'),0) AS custo,
+      COALESCE(SUM(imposto) FILTER (WHERE status<>'cancelled'),0) AS imposto,
+      COALESCE(SUM(tarifa) FILTER (WHERE status<>'cancelled'),0) AS tarifa,
+      COALESCE(SUM(frete_vendedor) FILTER (WHERE status<>'cancelled'),0) AS frete_vendedor,
+      COALESCE(SUM(frete_comprador) FILTER (WHERE status<>'cancelled'),0) AS frete_comprador,
+      COUNT(*) FILTER (WHERE status<>'cancelled' AND tem_taxa_real) AS pedidos_conciliados,
+      bool_or(tem_taxa_real) AS tem_conciliacao
+    FROM per_order
+    GROUP BY store_id, loja
+    ORDER BY aprovadas DESC
+  `, params);
+  const n = (x) => Number(x) || 0;
+  return rows.map(r => {
+    const aprovadas = n(r.aprovadas), custo = n(r.custo), imposto = n(r.imposto),
+          tarifa = n(r.tarifa), freteV = n(r.frete_vendedor), freteC = n(r.frete_comprador);
+    const margem = aprovadas - custo - imposto - tarifa - freteV - (considerarFC ? freteC : 0);
+    return {
+      store_id: r.store_id, loja: r.loja,
+      faturamento: n(r.faturamento), canceladas: n(r.canceladas), aprovadas,
+      qtd_aprovadas: n(r.qtd_aprovadas), custo, imposto, tarifa,
+      frete_vendedor: freteV, frete_comprador: freteC,
+      pedidos_conciliados: n(r.pedidos_conciliados), tem_conciliacao: r.tem_conciliacao,
+      margem, margem_pct: aprovadas > 0 ? Number((margem / aprovadas * 100).toFixed(2)) : 0,
+    };
+  });
+}
+
+module.exports = { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas, getMargemPorLoja };

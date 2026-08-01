@@ -6,6 +6,8 @@
 // existem (webhook_logs, schedule_jobs). Compartilhado entre worker.js (grava
 // heartbeat 'worker' + roda checkAndAlert) e server.js (heartbeat 'server').
 // A rota GET /api/sistema/saude lê o snapshot. Ver .claude/workers.md.
+const os = require('os');
+const fs = require('fs');
 const redis = require('./db/redis');
 const pool = require('./db/pool');
 const { Queue } = require('bullmq');
@@ -19,6 +21,32 @@ const BOOT_WINDOW_MS = 10 * 60 * 1000;     // janela para contar reinícios (res
 const BOOT_LOOP_THRESHOLD = Number(process.env.HEALTH_BOOT_LOOP || 5);
 const QUEUE_BACKLOG_MAX  = Number(process.env.HEALTH_QUEUE_MAX || 300);
 const FAILED_MAX         = Number(process.env.HEALTH_FAILED_MAX || 50);
+const DISK_MAX_PCT       = Number(process.env.HEALTH_DISK_MAX || 90);
+const MEM_MAX_PCT        = Number(process.env.HEALTH_MEM_MAX || 92);
+
+// Métricas do servidor Linux — só `os` + fs.statfs (sem dependência/binário).
+function serverMetrics() {
+  const cores = os.cpus()?.length || 1;
+  const [l1, l5, l15] = os.loadavg();       // média de carga 1/5/15 min
+  const total = os.totalmem(), free = os.freemem();
+  let disk = null;
+  try {
+    const st = fs.statfsSync(process.cwd());  // partição onde o app roda
+    const dTotal = st.blocks * st.bsize;
+    const dFree = st.bavail * st.bsize;        // espaço livre pra usuário (não-root)
+    const dUsed = dTotal - (st.bfree * st.bsize);
+    disk = { total: dTotal, free: dFree, used: dUsed, used_pct: dTotal ? Math.round(dUsed / dTotal * 100) : 0 };
+  } catch (_) { /* statfs indisponível — disco fica null */ }
+  return {
+    hostname: os.hostname(), node: process.version, platform: `${os.type()} ${os.release()}`,
+    cpu: { cores, load1: +l1.toFixed(2), load5: +l5.toFixed(2), load15: +l15.toFixed(2),
+           load_pct: Math.round(l1 / cores * 100) },
+    mem: { total, free, used: total - free, used_pct: total ? Math.round((total - free) / total * 100) : 0 },
+    disk,
+    uptime_server_s: Math.round(os.uptime()),
+    uptime_process_s: Math.round(process.uptime()),
+  };
+}
 
 // ── Heartbeat + reinícios ──────────────────────────────────
 async function recordBoot(proc) {
@@ -115,8 +143,10 @@ async function getSnapshot() {
       worker: procStatus(hbWorker, bootsWorker),
       server: procStatus(hbServer, bootsServer),
     },
+    servidor: (() => { try { return serverMetrics(); } catch (_) { return null; } })(),
     limites: {
       backlog: QUEUE_BACKLOG_MAX, failed: FAILED_MAX, boot_loop: BOOT_LOOP_THRESHOLD,
+      disk: DISK_MAX_PCT, mem: MEM_MAX_PCT,
     },
     ts: Date.now(),
   };
@@ -151,6 +181,11 @@ async function checkAndAlert() {
       `🚨 <b>Servidor reiniciando em loop</b>\n${snap.processos.server.boots_10min} reinícios em 10min.\n<code>systemctl status ml-dashboard-novo</code>`);
     await alertOnce('server_down', snap.processos.server.down,
       `🚨 <b>Servidor sem heartbeat</b>\nml-dashboard-novo parou de responder há +2min. Pode estar fora do ar.`);
+    const sv = snap.servidor || {};
+    await alertOnce('disk', sv.disk && sv.disk.used_pct > DISK_MAX_PCT,
+      `🚨 <b>Disco quase cheio</b>\n${sv.disk?.used_pct}% usado (livre ${sv.disk ? (sv.disk.free / 1e9).toFixed(1) : '?'} GB). Limpe vídeos/backups/logs antes de encher — disco cheio derruba o serviço.`);
+    await alertOnce('mem', sv.mem && sv.mem.used_pct > MEM_MAX_PCT,
+      `⚠️ <b>Memória alta</b>\nRAM em ${sv.mem?.used_pct}% (livre ${sv.mem ? (sv.mem.free / 1e9).toFixed(1) : '?'} GB).`);
   } catch (e) {
     console.error('[health] checkAndAlert erro:', e.message);
   }

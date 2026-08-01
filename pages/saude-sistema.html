@@ -42,6 +42,9 @@
 
       <div class="h-grid" id="procGrid"></div>
 
+      <div style="font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:4px 2px 8px"><i class="fas fa-server"></i> Servidor <span id="svHost" style="text-transform:none;font-weight:400"></span></div>
+      <div class="h-grid" id="servidorGrid"></div>
+
       <div class="h-grid" id="filaGrid"></div>
 
       <div class="card">
@@ -100,6 +103,42 @@ function filaCard(label, valor, limite, icon) {
   </div>`;
 }
 
+const fmtGB = b => b == null ? '—' : (b / 1e9).toFixed(1) + ' GB';
+const fmtUptime = s => {
+  if (!s) return '—';
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h` : (h ? `${h}h ${m}min` : `${m}min`);
+};
+function gaugeCard(label, icon, pct, sub, limite) {
+  const bad = limite != null && pct > limite;
+  const warn = limite != null && !bad && pct > limite * 0.85;
+  const cor = bad ? 'var(--red)' : (warn ? 'var(--primary)' : 'var(--green)');
+  const cls = bad ? 'bad' : (warn ? 'warn' : 'ok');
+  return `<div class="h-card ${cls}">
+    <div class="h-label"><i class="fas ${icon}"></i> ${label}</div>
+    <div class="h-value" style="color:${cor}">${pct}%</div>
+    <div style="height:6px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin:6px 0 4px">
+      <div style="height:100%;width:${Math.min(100, pct)}%;background:${cor}"></div>
+    </div>
+    <div class="h-sub">${sub}</div>
+  </div>`;
+}
+function renderServidor(sv, lim) {
+  const grid = document.getElementById('servidorGrid');
+  const hostEl = document.getElementById('svHost');
+  if (!sv) { grid.innerHTML = '<div class="h-card"><div class="h-sub">Métricas do servidor indisponíveis</div></div>'; hostEl.textContent = ''; return; }
+  hostEl.textContent = `· ${sv.hostname || ''} · ${sv.platform || ''} · Node ${sv.node || ''}`;
+  const cards = [
+    gaugeCard('CPU', 'fa-microchip', sv.cpu.load_pct, `carga ${sv.cpu.load1} · ${sv.cpu.cores} núcleos`, 90),
+    gaugeCard('Memória (RAM)', 'fa-memory', sv.mem.used_pct, `${fmtGB(sv.mem.used)} de ${fmtGB(sv.mem.total)} · livre ${fmtGB(sv.mem.free)}`, lim.mem || 92),
+  ];
+  if (sv.disk) cards.push(gaugeCard('Disco', 'fa-hard-drive', sv.disk.used_pct, `${fmtGB(sv.disk.used)} de ${fmtGB(sv.disk.total)} · livre ${fmtGB(sv.disk.free)}`, lim.disk || 90));
+  cards.push(`<div class="h-card ok"><div class="h-label"><i class="fas fa-clock"></i> Uptime</div>
+    <div class="h-value" style="font-size:17px">${fmtUptime(sv.uptime_server_s)}</div>
+    <div class="h-sub">servidor · processo ${fmtUptime(sv.uptime_process_s)}</div></div>`);
+  grid.innerHTML = cards.join('');
+}
+
 async function load() {
   const d = await DB.getSaudeSistema();
   if (!d || d.error) {
@@ -111,6 +150,9 @@ async function load() {
   document.getElementById('procGrid').innerHTML =
     procCard('Worker', 'ml-worker-novo', d.processos.worker) +
     procCard('Servidor', 'ml-dashboard-novo', d.processos.server);
+
+  // --- Servidor Linux (CPU/RAM/Disco/Uptime) ---
+  renderServidor(d.servidor, d.limites || {});
 
   const f = d.filas || {};
   const lim = d.limites || {};

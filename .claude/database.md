@@ -572,3 +572,12 @@ Ver `.claude/analise-produtos.md`.
 - **`analise_monitor_snapshots`** (v58) — snapshot diário de cada MLB concorrente (monitoramento): `ml_id`, `snap_date` (UNIQUE `ml_id+snap_date`), `preco`, `preco_original`, `status`, `available_quantity`, `sold_quantity`, `sold_delta`, `visits_day`, `listing_type`, `logistic_type`, `free_shipping`, `health`, `catalog`, `seller_id`, `raw`. Índice `(ml_id, snap_date)`.
 - **`analise_monitor_alerts`** (v60) — mudanças detectadas sobre os snapshots (camada de aviso): `ml_id`, `product_id`, `alert_type` (`price_up`/`price_down`/`stock_out`/`stock_back`/`paused`/`closed`/`sales_spike`), `old_value`, `new_value`, `delta_pct`, `message`, `notified`, `created_at`. Índices `(ml_id, created_at DESC)` e `(product_id, created_at DESC)`. Gravada por `detectAndAlert` em `analise/monitor.js`; lida em `GET /produtos/:id` (`anuncio.monitor.alertas`). Ver `analise-produtos.md`.
 - **`analise_active_collection`** — linha única (id=1, CHECK id=1) com `product_id` do produto ativo de coleta (a extensão lê daqui).
+
+## `embalagem_errors` — erros de embalagem (v65)
+```
+id BIGSERIAL PK
+error_type TEXT           -- upload|video_grande|arquivo_ausente|sem_shipping_id|db_insert
+shipping_id TEXT, order_ids TEXT[], store_id BIGINT, store_nickname TEXT
+staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
+```
+Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).

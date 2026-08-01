@@ -172,3 +172,7 @@ Ao confirmar, o navegador dispara um download automático (`etiqueta-{shipping_i
 
 - Backfill de `shipping_id` para pedidos antigos.
 - Suporte a múltiplas câmeras/seleção de dispositivo — usa a câmera padrão do navegador (`getUserMedia` sem `deviceId`).
+
+## Relatório de erros (v65)
+
+Toda falha ao salvar o vídeo de conferência (`POST /finalizar`) é registrada em `embalagem_errors` por `logEmbalagemError` (nunca lança): upload/disco (`uploadVideo` embrulha o multer e captura `LIMIT_FILE_SIZE`/erro de disco), arquivo ausente, `shipping_id` faltando, ou falha no INSERT em `packing_videos`. O arquivo em disco (a gravação real) NÃO é apagado numa falha de banco — o `file_path` é logado pra recuperação manual. Aba **"Erros"** na página (`GET /embalagem/erros?days`) lista tipo, pedido(s), loja, embalador e data/hora; badge vermelho no topo mostra a contagem. Ao falhar um salvamento, o front mostra a mensagem apontando pra aba e atualiza o badge.

@@ -126,6 +126,7 @@
         <button class="emb-tab-btn" id="tabBtnConferencia" onclick="switchTab('conferencia')"><i class="fas fa-clipboard-check"></i> Conferência do Dia</button>
         <button class="emb-tab-btn" id="tabBtnHistorico" onclick="switchTab('historico')"><i class="fas fa-chart-line"></i> Histórico</button>
         <button class="emb-tab-btn" id="tabBtnRelatorios" onclick="switchTab('relatorios')"><i class="fas fa-file-chart-bar"></i> Relatórios</button>
+        <button class="emb-tab-btn" id="tabBtnErros" onclick="switchTab('erros')"><i class="fas fa-triangle-exclamation"></i> Erros <span id="errosBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
       </div>
 
       <!-- ═══ ABA: BIPAR ═══ -->
@@ -255,6 +256,23 @@
         </div>
       </div>
 
+      <div class="emb-panel" id="panelErros">
+        <div class="emb-card">
+          <p class="emb-subtitle" style="margin-top:0">Falhas ao salvar o vídeo de conferência — tipo do erro, pedido, loja e data/hora. Se aparecer algo aqui, aquele envio pode ter ficado sem vídeo gravado.</p>
+          <div class="emb-filters">
+            <div class="emb-field"><label>Período</label>
+              <select id="fErrosDias" onchange="loadErros()">
+                <option value="7">Últimos 7 dias</option>
+                <option value="30" selected>Últimos 30 dias</option>
+                <option value="90">Últimos 90 dias</option>
+              </select>
+            </div>
+            <button class="emb-btn" onclick="loadErros()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+          </div>
+          <div class="emb-video-list" id="errosList"><div class="emb-placeholder">Carregando...</div></div>
+        </div>
+      </div>
+
     </div>
   </main>
 </div>
@@ -281,6 +299,7 @@
 // Reset modal na inicialização (evita exibir modal de uma sessão anterior)
 document.addEventListener('DOMContentLoaded', () => {
   loadPrintStations();
+  loadErros(); // prime o badge de erros (fica visível mesmo sem abrir a aba)
 });
 
 // Print Agent — carrega as estações e deixa cada PC escolher a sua (guardado em
@@ -587,12 +606,14 @@ async function uploadPackingVideo(session, blob, durationSeconds) {
   try {
     const res = await DB.finalizarEmbalagem(fd);
     if (!res || res.error) {
-      showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${res?.error || 'erro desconhecido'}`, 'error');
+      showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${res?.error || 'erro desconhecido'}. Veja a aba "Erros".`, 'error');
+      loadErros(); // atualiza o contador do sino/badge de erros
     } else {
       console.log('[thermal] ✓ vídeo salvo com sucesso:', session.shippingId);
     }
   } catch (e) {
-    showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${e.message}`, 'error');
+    showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${e.message}. Veja a aba "Erros".`, 'error');
+    loadErros();
   }
 }
 
@@ -735,15 +756,48 @@ function switchTab(tab) {
   document.getElementById('panelConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('panelHistorico').classList.toggle('active', tab === 'historico');
   document.getElementById('panelRelatorios').classList.toggle('active', tab === 'relatorios');
+  document.getElementById('panelErros').classList.toggle('active', tab === 'erros');
   document.getElementById('tabBtnBipar').classList.toggle('active', tab === 'bipar');
   document.getElementById('tabBtnBuscar').classList.toggle('active', tab === 'buscar');
   document.getElementById('tabBtnConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('tabBtnHistorico').classList.toggle('active', tab === 'historico');
   document.getElementById('tabBtnRelatorios').classList.toggle('active', tab === 'relatorios');
+  document.getElementById('tabBtnErros').classList.toggle('active', tab === 'erros');
   if (tab === 'bipar') refocusScan();
   if (tab === 'conferencia') loadConferenciaDia();
   if (tab === 'historico') loadHistorico();
   if (tab === 'relatorios') loadRelatorios();
+  if (tab === 'erros') loadErros();
+}
+
+// ── Aba: Erros de embalagem (falha ao salvar vídeo) ──────────
+const ERR_LABEL = {
+  upload: 'Falha no upload', video_grande: 'Vídeo grande demais',
+  arquivo_ausente: 'Vídeo não chegou', sem_shipping_id: 'Sem etiqueta',
+  db_insert: 'Falha ao gravar no banco', desconhecido: 'Erro',
+};
+async function loadErros() {
+  const dias = document.getElementById('fErrosDias').value;
+  const box = document.getElementById('errosList');
+  box.innerHTML = '<div class="emb-placeholder">Carregando...</div>';
+  const data = await DB.getEmbalagemErros(dias);
+  const errs = (data && data.errors) || [];
+  const badge = document.getElementById('errosBadge');
+  if (errs.length) { badge.style.display = 'inline-block'; badge.textContent = errs.length; }
+  else { badge.style.display = 'none'; }
+  if (!errs.length) { box.innerHTML = '<div class="emb-placeholder">✅ Nenhum erro no período. Tudo salvando certinho.</div>'; return; }
+  box.innerHTML = errs.map(e => {
+    const dt = new Date(e.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' });
+    const tipo = ERR_LABEL[e.error_type] || e.error_type;
+    const pedidos = (e.order_ids || []).join(', ') || (e.shipping_id ? ('envio ' + e.shipping_id) : '—');
+    return `<div class="emb-video-row" style="border-left:3px solid var(--red)">
+      <div>
+        <div class="title"><i class="fas fa-triangle-exclamation" style="color:var(--red)"></i> ${escapeHtml(tipo)}</div>
+        <div class="meta">Pedido(s): ${escapeHtml(pedidos)} · <i class="fas fa-store"></i> ${escapeHtml(e.store_nickname || '—')}${e.staff_user_name ? ' · ' + escapeHtml(e.staff_user_name) : ''} · ${dt}</div>
+        ${e.detail ? `<div class="meta" style="color:var(--text-muted);font-size:11px">${escapeHtml(e.detail)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── Vídeo em lista (usado por "Buscar vídeos" e "Conferência do Dia") ──

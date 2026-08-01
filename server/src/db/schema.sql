@@ -135,6 +135,15 @@ CREATE TABLE IF NOT EXISTS questions (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Relatório de erros de embalagem (v65) — falhas ao salvar o vídeo de conferência.
+CREATE TABLE IF NOT EXISTS embalagem_errors (
+  id BIGSERIAL PRIMARY KEY,
+  error_type TEXT, shipping_id TEXT, order_ids TEXT[], store_id BIGINT,
+  store_nickname TEXT, staff_user_name TEXT, detail TEXT, file_path TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_embalagem_errors_created ON embalagem_errors(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS messages (
   id BIGSERIAL PRIMARY KEY,
   store_id BIGINT REFERENCES stores(id),

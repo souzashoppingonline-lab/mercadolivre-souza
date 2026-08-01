@@ -341,6 +341,7 @@ const DB = {
   async getVideosPorPedidos(orderIds)    { return this._get('/embalagem/videos-por-pedidos', { order_ids: orderIds.join(',') }); },
   async getEmbalagemHistorico(params={}) { return this._get('/embalagem/historico', params); },
   async getRelatorioEmbalagem(params={}) { return this._get('/embalagem/relatorio', params); },
+  async getEmbalagemErros(days=30)       { return this._get('/embalagem/erros', { days }); },
 
   // ── Conciliação Bancária ──
   async getAgendaRecebimentos(params={}) { return this._get('/conciliacao/agenda-recebimentos', params); },

@@ -36,6 +36,41 @@ const storage = multer.diskStorage({
 // bem abaixo disso; o limite é só uma trava de segurança.
 const upload = multer({ storage, limits: { fileSize: 300 * 1024 * 1024 } });
 
+// Registra uma falha ao salvar o vídeo de embalagem (nunca lança — logar não
+// pode virar um 2º erro). Tabela embalagem_errors (v65), lida pela aba "Erros".
+async function logEmbalagemError({ error_type, shipping_id, order_ids, store_id, staff_user_name, detail, file_path }) {
+  try {
+    let nick = null;
+    if (store_id) {
+      const r = await pool.query(`SELECT nickname FROM stores WHERE id = $1`, [store_id]);
+      nick = r.rows[0]?.nickname || null;
+    }
+    await pool.query(
+      `INSERT INTO embalagem_errors (error_type, shipping_id, order_ids, store_id, store_nickname, staff_user_name, detail, file_path)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [error_type || 'desconhecido', shipping_id || null,
+       Array.isArray(order_ids) && order_ids.length ? order_ids.map(String) : null,
+       store_id || null, nick, staff_user_name || null, String(detail || '').slice(0, 600), file_path || null]
+    );
+  } catch (e) { console.error('[embalagem] logEmbalagemError falhou:', e.message); }
+}
+
+// Wrap do multer: captura erro de upload/disco/limite (que o multer manda pro
+// next) e registra no relatório antes de responder — sem isso, disco cheio ou
+// vídeo grande virava um 500 genérico sem rastro.
+function uploadVideo(req, res, next) {
+  upload.single('video')(req, res, async (err) => {
+    if (!err) return next();
+    const tipo = err.code === 'LIMIT_FILE_SIZE' ? 'video_grande' : 'upload';
+    await logEmbalagemError({
+      error_type: tipo, shipping_id: req.body?.shipping_id,
+      order_ids: (() => { try { return JSON.parse(req.body?.order_ids || '[]'); } catch { return []; } })(),
+      store_id: req.body?.store_id, staff_user_name: req.body?.staff_user_name, detail: err.message,
+    });
+    res.status(500).json({ error: 'Falha ao receber o vídeo (' + tipo + '): ' + err.message + '. Registrado no Relatório de Erros.' });
+  });
+}
+
 // Último vídeo gravado pra essa etiqueta (ML ou Shopee) — o packing_videos
 // guarda o valor bipado (shipping_id do ML ou tracking da Shopee) na mesma
 // coluna `shipping_id`, então a checagem é a mesma pros dois.
@@ -393,15 +428,19 @@ router.get('/pedido/:shippingId', async (req, res) => {
 // grava o registro. Campos de texto devem vir ANTES do arquivo no
 // FormData, pra o multer já ter req.body.shipping_id disponível quando
 // monta o nome/pasta do arquivo (destination/filename acima).
-router.post('/finalizar', upload.single('video'), async (req, res) => {
+router.post('/finalizar', uploadVideo, async (req, res) => {
+  const { shipping_id, order_ids, duration_seconds, store_id, staff_user_id, staff_user_name } = req.body;
+  let orderIdsArr = [];
+  try { orderIdsArr = JSON.parse(order_ids || '[]'); } catch (e) { orderIdsArr = []; }
   try {
-    const { shipping_id, order_ids, duration_seconds, store_id, staff_user_id, staff_user_name } = req.body;
-    if (!req.file) return res.status(400).json({ error: 'arquivo de vídeo ausente' });
-    if (!shipping_id) return res.status(400).json({ error: 'shipping_id é obrigatório' });
-
-    let orderIdsArr = [];
-    try { orderIdsArr = JSON.parse(order_ids || '[]'); } catch (e) { orderIdsArr = []; }
-
+    if (!req.file) {
+      await logEmbalagemError({ error_type: 'arquivo_ausente', shipping_id, order_ids: orderIdsArr, store_id, staff_user_name, detail: 'req.file ausente (gravação não chegou ao servidor)' });
+      return res.status(400).json({ error: 'Arquivo de vídeo ausente — registrado no Relatório de Erros.' });
+    }
+    if (!shipping_id) {
+      await logEmbalagemError({ error_type: 'sem_shipping_id', order_ids: orderIdsArr, store_id, staff_user_name, detail: 'shipping_id ausente no envio', file_path: req.file.path });
+      return res.status(400).json({ error: 'shipping_id é obrigatório — registrado no Relatório de Erros.' });
+    }
     const { rows } = await pool.query(
       `INSERT INTO packing_videos (shipping_id, order_ids, file_path, duration_seconds, store_id, staff_user_id, staff_user_name)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`,
@@ -410,7 +449,28 @@ router.post('/finalizar', upload.single('video'), async (req, res) => {
     res.status(201).json({ id: rows[0].id, created_at: rows[0].created_at });
   } catch (e) {
     console.error('[api/embalagem] POST /finalizar', e.message);
-    res.status(500).json({ error: e.message });
+    // O arquivo em disco é a gravação real — NÃO apaga; loga o caminho pra
+    // recuperação manual e registra o erro no relatório.
+    await logEmbalagemError({ error_type: 'db_insert', shipping_id, order_ids: orderIdsArr, store_id, staff_user_name, detail: e.message, file_path: req.file?.path });
+    res.status(500).json({ error: 'Não foi possível salvar o registro do vídeo. O erro foi registrado no Relatório de Erros. Detalhe: ' + e.message });
+  }
+});
+
+// GET /api/embalagem/erros?days — relatório de erros de embalagem (v65).
+router.get('/erros', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days) || 30, 1), 365);
+    const { rows } = await pool.query(
+      `SELECT id, error_type, shipping_id, order_ids, store_id, store_nickname, staff_user_name, detail, file_path, created_at
+         FROM embalagem_errors
+        WHERE created_at >= now() - ($1::int * interval '1 day')
+        ORDER BY created_at DESC LIMIT 500`,
+      [days]
+    );
+    res.json({ errors: rows });
+  } catch (e) {
+    console.error('[api/embalagem] GET /erros', e.message);
+    res.status(500).json({ error: e.message, errors: [] });
   }
 });
 

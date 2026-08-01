@@ -13,6 +13,7 @@ const pool = require('../db/pool');
 const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
 const { generateLabelPDF } = require('../thermal/pdfLabel');
+const ml = require('../mlClient');
 
 const router = express.Router();
 
@@ -261,12 +262,58 @@ router.get('/debug/pedido/:shippingId', async (req, res) => {
   }
 });
 
+// Auto-resolver ML sob demanda: quando o bipe (numérico = shipment id do ML)
+// não acha nenhum pedido por shipping_id no banco — pedido recém-criado, ou o
+// webhook chegou antes do envio existir e ninguém reprocessou — consulta a API
+// do ML pra achar o pedido e gravá-lo com o shipping_id, self-heal. Espelha a
+// auto-busca que a Shopee já tem. Ver .claude/embalagem.md.
+async function resolveMlByShipment(code) {
+  const shipId = String(code).replace(/\D/g, '');
+  if (!shipId) return false;
+  const { rows: lojas } = await pool.query(
+    `SELECT id FROM stores
+      WHERE (marketplace_id = (SELECT id FROM marketplaces WHERE code='ML') OR marketplace_id IS NULL)
+        AND access_token IS NOT NULL`
+  );
+  for (const loja of lojas) {
+    let ship;
+    try { ship = await ml.getShipment(shipId, loja.id); }
+    catch (_) { continue; } // 403/404 = não é dessa loja, tenta a próxima
+    const orderId = ship && (ship.order_id || ship.order?.id);
+    if (!orderId) continue;
+    let order;
+    try { order = await ml.getOrder(orderId, loja.id); }
+    catch (_) { continue; }
+    if (!order || !order.id) continue;
+    const it0 = (order.order_items && order.order_items[0]) || {};
+    await pool.query(
+      `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price,
+                           shipping_type, status, date_created, raw_data, shipping_id, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+       ON CONFLICT (ml_id) DO UPDATE SET
+         shipping_id = COALESCE(EXCLUDED.shipping_id, orders.shipping_id),
+         raw_data = EXCLUDED.raw_data, status = EXCLUDED.status,
+         shipping_type = COALESCE(NULLIF(EXCLUDED.shipping_type,''), orders.shipping_type),
+         updated_at = now()`,
+      [
+        String(order.id), loja.id, order.buyer?.nickname || null,
+        it0.item?.id || null, it0.item?.title || order.title || null,
+        order.total_amount ?? null, it0.quantity ?? 1, it0.unit_price ?? null,
+        order.shipping?.logistic_type || '', order.status || null,
+        order.date_created || null, JSON.stringify(order), String(ship.id || shipId),
+      ]
+    );
+    return true;
+  }
+  return false;
+}
+
 // GET /api/embalagem/pedido/:shippingId — busca pedido(s) pela etiqueta bipada.
 // Pode retornar mais de 1 linha: um mesmo envio (pack) pode agrupar vários
 // pedidos do mesmo comprador.
 router.get('/pedido/:shippingId', async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const mlQuery = () => pool.query(
       `SELECT o.ml_id AS order_id, o.item_id, o.title, o.quantity, o.buyer_nickname, o.store_id,
               o.unit_price, o.status, o.shipping_type, o.date_created,
               o.raw_data->'order_items'->0->'item'->>'seller_sku' AS seller_sku,
@@ -280,6 +327,18 @@ router.get('/pedido/:shippingId', async (req, res) => {
        ORDER BY o.date_created ASC`,
       [req.params.shippingId]
     );
+
+    let { rows } = await mlQuery();
+
+    // Não achou no banco e é numérico (candidato a shipment ML): resolve na API
+    // do ML e grava o pedido, depois consulta de novo (self-heal).
+    if (!rows.length && /^\d+$/.test(String(req.params.shippingId).trim())) {
+      try {
+        if (await resolveMlByShipment(req.params.shippingId)) ({ rows } = await mlQuery());
+      } catch (e) {
+        console.error('[api/embalagem] auto-resolver ML falhou:', e.message);
+      }
+    }
 
     // Enriquece cada pedido com a foto de variação (se houver)
     if (rows.length) {

@@ -26,6 +26,8 @@ Não existia antes: o `shipping_id` (`order.shipping.id` na resposta `/orders/:i
 
 **Pedidos antigos** (criados antes da v21) não têm `shipping_id` retroativo. **Auto-resolver ML sob demanda (self-heal)**: quando o bipe é numérico (shipment id do ML) e a busca por `shipping_id` no banco não acha nada — pedido recém-criado, `shipping_id` ainda nulo, ou pedido nem processado — a rota `GET /pedido/:shippingId` chama `resolveMlByShipment()`: itera as lojas ML com token, `ml.getShipment(id, storeId)` (a dona responde 200 e traz `order_id`; as outras dão 403 e são puladas), busca o pedido com `ml.getOrder`, faz upsert em `orders` **gravando o `shipping_id`**, e re-consulta. Espelha a auto-busca que a Shopee já tinha (`refreshShopeeTrackingOnDemand`). É uma "ação pontual explícita em rota" chamando o `mlClient` (exceção permitida à regra de fronteira, ver `architecture.md`). Tudo defensivo — qualquer falha cai na mensagem de "não encontrado" de sempre.
 
+**Fonte da logística no self-heal**: `order.shipping.logistic_type` (resposta de `/orders/:id`) às vezes vem **vazio** em venda recém-criada, o que deixava o pedido gravado com `shipping_type=''` → a tela mostrava "Desconhecido" (bug relatado pelo usuário, ago/2026). Correção: `resolveMlByShipment()` monta a logística do próprio **shipment** já buscado (fonte mais confiável do tipo), com precedência `ship.logistic_type → ship.logistic.type → ship.mode → order.shipping.logistic_type`. O upsert continua com `COALESCE(NULLIF(EXCLUDED.shipping_type,''), orders.shipping_type)` — nunca sobrescreve um tipo já conhecido com vazio.
+
 ## Fluxo da tela (`pages/embalagem.html`)
 
 Quatro abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre), **Conferência do Dia** (consulta sempre travada em "hoje") e **Histórico** (tendência ao longo de semanas/meses).
@@ -49,6 +51,7 @@ Pedidos explícitos do usuário, com prints mostrando o card real: **quantidade*
 - **Quantidade**: 60px font-weight 900, com seta vermelha piscante (`embArrowBlink`) apontando pra "está aqui".
 - **Variação**: 30px, uppercase, tags (`emb-order-tag`) com animação `embTagBlink` (inverte fundo/texto de discreta pra amarelo sólido com sombra).
 - **SKU**: **42px, NOVO** — movido para posição prominente (após quantidade/variação, antes de comprador/detalhes) com pulsação `embQtyBlink` + fundo discreto + borda. Sempre visível quando houver SKU, não vai pra grade de detalhes escondido. Identificador exato do item ordenado — evita confusão com produtos multi-variação.
+- **Logística**: **badge grande piscante amarelo** (`.emb-logistica-badge`, 24px font-weight 900, uppercase, ocupa a linha inteira da grade), animação `emb-log-piscar` (1s, alterna amarelo sólido ↔ amarelo escuro com glow). Pedido explícito do usuário — o embalador precisa ver o tipo de envio (Full/Flex/Mercado Envios/Coleta) de relance antes de embalar. Quando `logLabel()` cai no fallback (tipo vazio/desconhecido), a badge mostra **"Logística indisponível"** com ícone de alerta e variação de cor (`.desconhecida`) — o back tenta preencher o tipo pelo shipment (ver self-heal acima), então esse estado deve ser raro.
 
 ### Aba Buscar vídeos
 

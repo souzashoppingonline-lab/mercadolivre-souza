@@ -321,6 +321,12 @@ async function resolveMlByShipment(code) {
     catch (_) { continue; }
     if (!order || !order.id) continue;
     const it0 = (order.order_items && order.order_items[0]) || {};
+    // Logística: o objeto de shipment (já buscado) é a fonte mais confiável do
+    // tipo — `order.shipping.logistic_type` às vezes vem vazio em venda recém-
+    // criada, o que deixava a tela mostrando "Desconhecido". Tenta shipment
+    // primeiro (logistic_type / logistic.type / mode), depois o pedido.
+    const logisticType = ship.logistic_type || ship.logistic?.type || ship.mode
+      || order.shipping?.logistic_type || '';
     await pool.query(
       `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price,
                            shipping_type, status, date_created, raw_data, shipping_id, updated_at)
@@ -334,7 +340,7 @@ async function resolveMlByShipment(code) {
         String(order.id), loja.id, order.buyer?.nickname || null,
         it0.item?.id || null, it0.item?.title || order.title || null,
         order.total_amount ?? null, it0.quantity ?? 1, it0.unit_price ?? null,
-        order.shipping?.logistic_type || '', order.status || null,
+        logisticType, order.status || null,
         order.date_created || null, JSON.stringify(order), String(ship.id || shipId),
       ]
     );

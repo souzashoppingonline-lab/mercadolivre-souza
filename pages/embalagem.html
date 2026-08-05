@@ -74,6 +74,22 @@
     .emb-order-detail .k { color: var(--text-muted); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; display: block; margin-bottom: 2px; }
     .emb-order-detail .v { font-weight: 700; color: var(--text-main); }
     .emb-order-detail .v.warn { color: var(--red); }
+    /* Logística em destaque grande + piscante amarelo, pra o embalador conferir o tipo de envio antes de embalar */
+    .emb-order-detail.logistica { grid-column: 1 / -1; }
+    .emb-order-detail.logistica .k { font-size: 11px; }
+    .emb-logistica-badge {
+      display: inline-flex; align-items: center; gap: 8px; margin-top: 4px;
+      font-size: 24px; font-weight: 900; letter-spacing: .5px; text-transform: uppercase;
+      color: #1a1a1a; background: #ffd60a; padding: 8px 18px; border-radius: 10px;
+      border: 2px solid #b58a00; animation: emb-log-piscar 1s steps(1, end) infinite;
+    }
+    .emb-logistica-badge i { font-size: 20px; }
+    .emb-logistica-badge.desconhecida { color: #fff; }
+    @keyframes emb-log-piscar {
+      0%, 100% { background: #ffd60a; color: #1a1a1a; border-color: #b58a00; box-shadow: 0 0 0 0 rgba(255,214,10,.6); }
+      50%      { background: #665600; color: #ffd60a; border-color: #ffd60a; box-shadow: 0 0 18px 3px rgba(255,214,10,.55); }
+    }
+    @media (prefers-reduced-motion: reduce) { .emb-logistica-badge { animation: none; } }
     .emb-order-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
     /* Variação/tipo em LETRA GRANDE — é o que mais causa erro de embalagem
        (pedido explícito do usuário). Bem maior que o resto, além de piscar. */
@@ -500,7 +516,12 @@ function renderOrders(orders, alreadyPacked) {
         <div class="emb-order-details">
           <div class="emb-order-detail"><span class="k">Pedido</span><span class="v">${escapeHtml(o.order_id)}</span></div>
           <div class="emb-order-detail"><span class="k">Valor</span><span class="v">${R$(Number(o.unit_price || 0) * Number(o.quantity || 1))}</span></div>
-          <div class="emb-order-detail"><span class="k">Logística</span><span class="v">${escapeHtml(logLabel(o.shipping_type))}</span></div>
+          ${(() => {
+            const lg = logLabel(o.shipping_type);
+            const desc = lg === 'Desconhecido';
+            return `<div class="emb-order-detail logistica"><span class="k">Logística</span>
+              <span class="emb-logistica-badge ${desc ? 'desconhecida' : ''}"><i class="fas ${desc ? 'fa-triangle-exclamation' : 'fa-truck-fast'}"></i>${escapeHtml(desc ? 'Logística indisponível' : lg)}</span></div>`;
+          })()}
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
           <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
           ${o.available_quantity != null ? `<div class="emb-order-detail"><span class="k">Estoque atual</span><span class="v ${estoqueBaixo ? 'warn' : ''}">${o.available_quantity} un.</span></div>` : ''}

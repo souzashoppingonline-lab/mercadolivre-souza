@@ -323,6 +323,20 @@
           <p class="emb-subtitle" style="margin-top:0">O que <b>precisa sair</b> (FLEX / Mercado Envios no ML e Entrega Rápida / Agência no Shopee) e o que <b>ainda não foi bipado</b>. Base no status de envio (etiqueta impressa / pronto pra enviar), não na data.</p>
           <div class="aud-kpis" id="audKpis"></div>
           <div class="emb-filters">
+            <div class="emb-field"><label>Período (data da venda)</label>
+              <select id="fAudPeriodo" onchange="onAudPeriodoChange()">
+                <option value="">Todos</option>
+                <option value="3">Últimos 3 dias</option>
+                <option value="5">Últimos 5 dias</option>
+                <option value="10">Últimos 10 dias</option>
+                <option value="15">Últimos 15 dias</option>
+                <option value="21">Últimos 21 dias</option>
+                <option value="30">Últimos 30 dias</option>
+                <option value="custom">Personalizada…</option>
+              </select>
+            </div>
+            <div class="emb-field" id="fAudCustomFrom" style="display:none"><label>De</label><input type="date" id="fAudFrom" onchange="loadAuditoria()"></div>
+            <div class="emb-field" id="fAudCustomTo" style="display:none"><label>Até</label><input type="date" id="fAudTo" onchange="loadAuditoria()"></div>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fAudMissing" onchange="loadAuditoria()"> Só o que falta bipar</label>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fAudPrinted" onchange="loadAuditoria()"> Só etiqueta impressa</label>
             <button class="emb-btn" onclick="loadAuditoria()"><i class="fas fa-sync-alt"></i> Atualizar</button>
@@ -898,6 +912,12 @@ function switchTab(tab) {
 }
 
 const AUD_LOG_CLASS = { 'Flex': 'chip-flex', 'Mercado Envios': 'chip-me', 'Entrega Rápida': 'chip-shopee', 'Agência': 'chip-coleta' };
+function onAudPeriodoChange() {
+  const custom = document.getElementById('fAudPeriodo').value === 'custom';
+  document.getElementById('fAudCustomFrom').style.display = custom ? '' : 'none';
+  document.getElementById('fAudCustomTo').style.display = custom ? '' : 'none';
+  if (!custom) loadAuditoria(); // datas exigem os dois campos; presets recarregam na hora
+}
 async function loadAuditoria() {
   const list = document.getElementById('audList');
   const kpis = document.getElementById('audKpis');
@@ -905,6 +925,15 @@ async function loadAuditoria() {
   const params = {};
   if (document.getElementById('fAudMissing').checked) params.only_missing = 1;
   if (document.getElementById('fAudPrinted').checked) params.only_printed = 1;
+  const periodo = document.getElementById('fAudPeriodo').value;
+  if (periodo === 'custom') {
+    const from = document.getElementById('fAudFrom').value;
+    const to = document.getElementById('fAudTo').value;
+    if (from) params.date_from = from;
+    if (to) params.date_to = to;
+  } else if (periodo) {
+    params.days = periodo;
+  }
   const d = await DB.getEmbalagemAuditoria(params);
   if (!d || d.error) { list.innerHTML = `<div class="emb-placeholder">Erro: ${d?.error || 'falha'}</div>`; return; }
   const r = d.resumo || { total: 0, bipados: 0, faltando: 0 };

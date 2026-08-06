@@ -499,18 +499,37 @@ router.get('/auditoria', async (req, res) => {
   try {
     const onlyPrinted = req.query.only_printed === '1' || req.query.only_printed === 'true';
     const onlyMissing = req.query.only_missing === '1' || req.query.only_missing === 'true';
-    // Filtro de período pela DATA DA VENDA (date_created, em SP). Aceita
-    // date_from/date_to (personalizado) OU days (últimos N dias). Sem nada = tudo.
+    const search = (req.query.search || '').trim();
     const params = [];
-    let dateCond = '';
-    const dFrom = req.query.date_from, dTo = req.query.date_to;
-    const days = Number(req.query.days);
-    if (dFrom || dTo) {
-      if (dFrom) { params.push(dFrom); dateCond += ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date >= $${params.length}::date`; }
-      if (dTo)   { params.push(dTo);   dateCond += ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date <= $${params.length}::date`; }
-    } else if (Number.isFinite(days) && days > 0) {
-      params.push(Math.min(days, 365));
-      dateCond = ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date > (current_date - $${params.length}::int)`;
+    let filterBlock;
+    if (search) {
+      // Busca direta por pedido / shipping_id / rastreio: ignora status,
+      // logística e período — só quer saber se AQUELE pedido foi bipado.
+      params.push(`%${search}%`);
+      const p = `$${params.length}`;
+      filterBlock = `AND (o.ml_id ILIKE ${p} OR o.shipping_id ILIKE ${p} OR sod.tracking_number ILIKE ${p})`;
+    } else {
+      // Filtro de período pela DATA DA VENDA (date_created, em SP). Aceita
+      // date_from/date_to (personalizado) OU days (últimos N dias). Sem nada = tudo.
+      let dateCond = '';
+      const dFrom = req.query.date_from, dTo = req.query.date_to;
+      const days = Number(req.query.days);
+      if (dFrom || dTo) {
+        if (dFrom) { params.push(dFrom); dateCond += ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date >= $${params.length}::date`; }
+        if (dTo)   { params.push(dTo);   dateCond += ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date <= $${params.length}::date`; }
+      } else if (Number.isFinite(days) && days > 0) {
+        params.push(Math.min(days, 365));
+        dateCond = ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date > (current_date - $${params.length}::int)`;
+      }
+      filterBlock =
+        `AND (
+           (COALESCE(mk.code,'ML') = 'ML'
+             AND lower(COALESCE(o.shipping_type,'')) ~ 'self_service|flex|xd_drop_off|me1|me2|cross_docking'
+             AND o.shipping_status = 'ready_to_ship')
+           OR
+           (mk.code = 'SHOPEE'
+             AND COALESCE(sod.order_status,'') IN ('READY_TO_SHIP','PROCESSED'))
+         )${dateCond}`;
     }
     const { rows } = await pool.query(
       `SELECT o.ml_id AS order_id, o.title, o.quantity, o.buyer_nickname, o.store_id,
@@ -539,15 +558,7 @@ router.get('/auditoria', async (req, res) => {
          ORDER BY pj.printed_at DESC LIMIT 1
        ) pj ON true
        WHERE o.status <> 'cancelled'
-         AND (
-           (COALESCE(mk.code,'ML') = 'ML'
-             AND lower(COALESCE(o.shipping_type,'')) ~ 'self_service|flex|xd_drop_off|me1|me2|cross_docking'
-             AND o.shipping_status = 'ready_to_ship')
-           OR
-           (mk.code = 'SHOPEE'
-             AND COALESCE(sod.order_status,'') IN ('READY_TO_SHIP','PROCESSED'))
-         )
-         ${dateCond}
+         ${filterBlock}
        ORDER BY bipado ASC, COALESCE(o.date_ready_to_ship, o.date_created) ASC
        LIMIT 1000`,
       params

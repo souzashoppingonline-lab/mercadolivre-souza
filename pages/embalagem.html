@@ -323,6 +323,7 @@
           <p class="emb-subtitle" style="margin-top:0">O que <b>precisa sair</b> (FLEX / Mercado Envios no ML e Entrega Rápida / Agência no Shopee) e o que <b>ainda não foi bipado</b>. Base no status de envio (etiqueta impressa / pronto pra enviar), não na data.</p>
           <div class="aud-kpis" id="audKpis"></div>
           <div class="emb-filters">
+            <div class="emb-field"><label>Pedido ou rastreio</label><input id="fAudSearch" placeholder="Nº do pedido ou rastreio…" onkeydown="if(event.key==='Enter')loadAuditoria()"></div>
             <div class="emb-field"><label>Período (data da venda)</label>
               <select id="fAudPeriodo" onchange="onAudPeriodoChange()">
                 <option value="">Todos</option>
@@ -923,6 +924,8 @@ async function loadAuditoria() {
   const kpis = document.getElementById('audKpis');
   list.innerHTML = '<div class="emb-placeholder">Carregando...</div>';
   const params = {};
+  const search = document.getElementById('fAudSearch').value.trim();
+  if (search) params.search = search; // busca direta ignora status/período no backend
   if (document.getElementById('fAudMissing').checked) params.only_missing = 1;
   if (document.getElementById('fAudPrinted').checked) params.only_printed = 1;
   const periodo = document.getElementById('fAudPeriodo').value;
@@ -948,7 +951,7 @@ async function loadAuditoria() {
      <div class="aud-kpi falta"><div class="n">${r.faltando}</div><div class="l">Falta bipar</div></div>`
      + (porLog ? `<div class="aud-kpi total" style="grid-column:1/-1"><div class="l" style="margin:0">${porLog}</div></div>` : '');
   const items = d.items || [];
-  if (!items.length) { list.innerHTML = '<div class="emb-placeholder">Nenhum pedido a expedir com os filtros atuais. 🎉</div>'; return; }
+  if (!items.length) { list.innerHTML = `<div class="emb-placeholder">${search ? 'Pedido/rastreio não encontrado.' : 'Nenhum pedido a expedir com os filtros atuais. 🎉'}</div>`; return; }
   list.innerHTML = `<div class="table-responsive"><table class="aud-table">
     <thead><tr><th>Pedido</th><th>Produto</th><th>Data venda</th><th>Loja</th><th>Logística</th><th>Etiqueta impressa</th><th>Bipado?</th></tr></thead>
     <tbody>${items.map(o => {

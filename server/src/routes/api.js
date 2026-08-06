@@ -397,7 +397,7 @@ router.get('/vendas/detalhado', async (req, res) => {
        WHERE m.order_id = o.ml_id AND m.description = 'Payment'
      ) c ON true
      LEFT JOIN LATERAL (
-       SELECT SUM(p.transaction_amount) - SUM(p.net_received_amount) AS taxa_pgto
+       SELECT NULLIF(GREATEST(SUM(p.transaction_amount) - SUM(p.net_received_amount), 0), 0) AS taxa_pgto
        FROM ml_payments p
        WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
          AND p.status = 'approved'
@@ -449,7 +449,7 @@ router.get('/vendas/detalhado', async (req, res) => {
        WHERE m.order_id = o.ml_id AND m.description = 'Payment'
      ) c ON true
      LEFT JOIN LATERAL (
-       SELECT SUM(p.transaction_amount) - SUM(p.net_received_amount) AS taxa_pgto
+       SELECT NULLIF(GREATEST(SUM(p.transaction_amount) - SUM(p.net_received_amount), 0), 0) AS taxa_pgto
        FROM ml_payments p
        WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
          AND p.status = 'approved'
@@ -691,6 +691,9 @@ router.patch('/custos/:sku', async (req, res) => {
 // ── Detalhes completos de um pedido ───────────────────────
 router.get('/pedidos/:id/detalhes', async (req, res) => {
   try {
+    // Mesma precedência de taxa por pedido de GET /vendas/detalhado (Conciliação
+    // → ml_payments split → pedido) para o modal bater 1:1 com a linha da tabela.
+    // Ver finance.md. taxa_pgto só conta se > 0 (account_money às vezes vem 0).
     const { rows } = await pool.query(
       `SELECT o.ml_id, o.store_id, o.buyer_nickname, o.item_id, o.title,
               o.total_amount, o.quantity, o.unit_price, o.ml_fee,
@@ -698,10 +701,23 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
               o.status, o.date_created, o.date_closed,
               o.raw_data,
               s.nickname as store_name, s.imposto_pct,
-              COALESCE(i.cost, 0) as custo_unitario
+              COALESCE(i.cost, 0) as custo_unitario,
+              c.tarifa_real, c.frete_vend_real, pg.taxa_pgto
        FROM vw_ml_orders o
        JOIN vw_ml_stores s ON s.id = o.store_id
        LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
+       LEFT JOIN LATERAL (
+         SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
+                ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
+         FROM mp_account_movements m
+         WHERE m.order_id = o.ml_id AND m.description = 'Payment'
+       ) c ON true
+       LEFT JOIN LATERAL (
+         SELECT NULLIF(GREATEST(SUM(p.transaction_amount) - SUM(p.net_received_amount), 0), 0) AS taxa_pgto
+         FROM ml_payments p
+         WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
+           AND p.status = 'approved'
+       ) pg ON true
        WHERE o.ml_id = $1`,
       [req.params.id]
     );
@@ -710,11 +726,25 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
     const fat = Number(row.total_amount) || 0;
     const custo = Number(row.custo_unitario) * (Number(row.quantity) || 1);
     const imposto = fat * (Number(row.imposto_pct) / 100);
-    const tarifa = Number(row.ml_fee) || 0;
+    const ssc = Number(row.shipping_seller_cost) || 0;
+    let tarifa, freteVend, fonte;
+    if (row.tarifa_real != null) {
+      tarifa = Number(row.tarifa_real) || 0;
+      freteVend = Number(row.frete_vend_real) || 0;
+      fonte = 'conciliacao';
+    } else if (row.taxa_pgto != null) {
+      const taxa = Number(row.taxa_pgto) || 0;
+      freteVend = Math.min(ssc, taxa);   // separa frete da tarifa sem contar 2×
+      tarifa = taxa - freteVend;
+      fonte = 'pagamento';
+    } else {
+      tarifa = Number(row.ml_fee) || 0;
+      freteVend = ssc;
+      fonte = 'pedido';
+    }
     const freteComp = Number(row.shipping_cost) || 0;
-    const freteVend = Number(row.shipping_seller_cost) || 0;
     const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
-    res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
+    res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, fonte_taxa: fonte, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
   } catch(e) {
     console.error('[/pedidos/:id/detalhes]', e.message);
     res.status(500).json({ error: e.message });

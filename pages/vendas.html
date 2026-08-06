@@ -499,7 +499,7 @@ async function openModal(orderId) {
       <div class="mrow"><span class="mk">Frete Vendedor</span>
         <span class="mv" style="display:flex;gap:6px;align-items:center">
           <input type="number" id="freteVendInput" min="0" step="0.01"
-            value="${Number(d.freteVend||d.shipping_seller_cost||0).toFixed(2)}"
+            value="${Number(d.shipping_seller_cost||0).toFixed(2)}"
             style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:13px;text-align:right">
           <button onclick="saveFreteVend('${d.ml_id}')" style="background:var(--primary);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#000">Salvar</button>
         </span>
@@ -518,7 +518,7 @@ async function openModal(orderId) {
       ${row('Tarifa ML', R(d.tarifa), 'neg')}
       ${row('Imposto ('+N(d.imposto_pct)+'%)', R(d.imposto), 'neg')}
       ${row('Frete Comprador', R(d.shipping_cost), 'neg')}
-      ${Number(d.freteVend||d.shipping_seller_cost||0)>0 ? row('Frete Vendedor', R(d.freteVend||d.shipping_seller_cost||0), 'neg') : ''}
+      ${Number(d.freteVend||0)>0 ? row('Frete Vendedor', R(d.freteVend), 'neg') : ''}
       <div class="mrow"><span class="mk">Custo Produto</span>
         <span class="mv" style="display:flex;gap:6px;align-items:center">
           <input type="number" id="custoInput" min="0" step="0.01"

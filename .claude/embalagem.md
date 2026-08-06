@@ -73,6 +73,18 @@ Mesma listagem/mesmo modal de vídeo da aba anterior (`videoRowHtml()` compartil
 
 **Gráfico de colunas "por hora"** (`renderConfHourChart()`, Chart.js — mesma lib já usada em `top-vendas-online.html`/`analise-vendas-mes.html`): compara a quantidade de bipagens por hora (0-23) do dia selecionado com o dia imediatamente anterior, mesmo filtro de loja se houver. Usa a rota dedicada `GET /api/embalagem/por-hora?date&store_id` (não dá pra calcular isso em cima de `GET /videos` porque ela tem `LIMIT 100` e só cobre 1 dia por chamada) — a rota devolve sempre as 24 horas (zero-fill via `generate_series(0,23)` + `LEFT JOIN`), pra o eixo do gráfico nunca ter buraco mesmo em horas sem nenhuma bipagem.
 
+### Aba Auditoria — "expedição do dia" (o que falta bipar)
+
+Cruza os pedidos que **precisam ser expedidos** com `packing_videos` pra dizer, numa tabela colorida, o que **já foi bipado** e o que **falta** — objetivo do usuário: rodar no dia pra saber o que ainda tem que sair (e o que comprar). Rota `GET /api/embalagem/auditoria?only_printed&only_missing` (`loadAuditoria()` no front).
+
+**Decisão-chave (explícita do usuário)**: a base é o **status de envio**, NÃO a data de criação nem corte por horário (a ideia inicial de "FLEX antes/depois das 12h + ME no dia seguinte" foi descartada — o próprio status de expedição do ML/Shopee já diz o que está pendente). Critério de "precisa sair":
+- **ML** (`orders`): `shipping_status = 'ready_to_ship'` e `shipping_type` ∈ FLEX (`self_service`/`flex`) ou Mercado Envios (`xd_drop_off`/`me1`/`me2`/`cross_docking`) — Full é excluído (não é embalado aqui). `shipping_substatus='printed'` = **etiqueta impressa** (badge/filtro).
+- **Shopee** (`shopee_order_data`): `order_status` ∈ (`READY_TO_SHIP`, `PROCESSED`); logística vem de `raw_data->>'shipping_carrier'` classificada em **Entrega Rápida** / **Agência** (senão mostra o carrier cru). `PROCESSED` conta como "etiqueta impressa".
+
+**Bipado?** = existe `packing_videos pv` com `o.ml_id = ANY(pv.order_ids)` **ou** `pv.shipping_id = o.shipping_id` (ML) **ou** `pv.shipping_id = sod.tracking_number` (Shopee). Resposta traz `items[]` (com `logistica`, `printed`, `bipado`) + `resumo` (`total`/`bipados`/`faltando`/`por_logistica`). Filtros: "só o que falta bipar", "só etiqueta impressa". A aba tem **badge vermelho** com quantos faltam (primado no load via `primeAudBadge()`, igual ao badge de Erros). Linhas verdes = bipado, vermelhas = falta.
+
+**Dependência Shopee**: o `shipping_carrier` **não** era buscado no `get_order_detail` (só `total_amount/order_status/item_list/create_time/update_time`); foi adicionado à lista de `response_optional_fields` em `shopeeClient.getOrderDetail`. Pedidos Shopee sincronizados **antes** desse deploy não têm o carrier no `raw_data` → caem no rótulo genérico "Shopee" até serem re-sincronizados (o polling atualiza no próximo ciclo).
+
 **Gráfico de colunas "por loja"** (`renderConfStoreChart()`), logo abaixo do gráfico por hora: uma coluna por loja com contagem de bipagens no dia/filtro selecionado, cada loja com uma cor distinta (`STORE_PALETTE`, cicla se houver mais lojas que cores) e um contorno (`borderColor`) mais forte que o preenchimento — mesma paleta de `--primary`/`--blue`/`--green`/`--orange`/`--purple`/`--teal`/`--red` do `style.css`. Calculado em cima de `confRows` (mesmo array dos cards e do drill-down), sem chamada nova ao backend. Ambos os gráficos da aba usam `animation: { duration: 700, easing: 'easeOutQuart' }` (Chart.js) em vez do padrão da lib, pra dar uma transição visível ao trocar de dia/loja no filtro.
 
 ## Armazenamento

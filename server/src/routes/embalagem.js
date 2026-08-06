@@ -480,6 +480,87 @@ router.get('/erros', async (req, res) => {
   }
 });
 
+// Classificação de logística do ML (mesma de logLabel do frontend).
+function mlLogLabel(tipo) {
+  const l = (tipo || '').toLowerCase();
+  if (l.includes('self_service') || l.includes('flex')) return 'Flex';
+  if (l.includes('xd_drop_off') || l.includes('me1') || l.includes('me2') || l.includes('cross_docking')) return 'Mercado Envios';
+  if (l.includes('fulfillment')) return 'Full';
+  return tipo || '—';
+}
+
+// GET /api/embalagem/auditoria?only_printed&only_missing — "Expedição do dia":
+// lista os pedidos que PRECISAM SAIR (base no STATUS de envio, não na data —
+// decisão do usuário) e cruza com packing_videos pra dizer o que já foi bipado
+// e o que falta. ML: FLEX/Mercado Envios com shipping_status='ready_to_ship'
+// (substatus 'printed' = etiqueta impressa). Shopee: Entrega Rápida/Agência com
+// order_status READY_TO_SHIP/PROCESSED. Ver .claude/embalagem.md.
+router.get('/auditoria', async (req, res) => {
+  try {
+    const onlyPrinted = req.query.only_printed === '1' || req.query.only_printed === 'true';
+    const onlyMissing = req.query.only_missing === '1' || req.query.only_missing === 'true';
+    const { rows } = await pool.query(
+      `SELECT o.ml_id AS order_id, o.title, o.quantity, o.buyer_nickname, o.store_id,
+              o.shipping_type, o.shipping_status, o.shipping_substatus, o.shipping_id,
+              o.date_created, o.date_ready_to_ship,
+              COALESCE(mk.code,'ML') AS marketplace,
+              s.nickname AS store_nickname,
+              sod.tracking_number AS shopee_tracking,
+              sod.order_status AS shopee_status,
+              sod.raw_data->>'shipping_carrier' AS shopee_carrier,
+              EXISTS (
+                SELECT 1 FROM packing_videos pv
+                WHERE o.ml_id = ANY(pv.order_ids)
+                   OR (o.shipping_id IS NOT NULL AND pv.shipping_id = o.shipping_id)
+                   OR (sod.tracking_number IS NOT NULL AND pv.shipping_id = sod.tracking_number)
+              ) AS bipado
+       FROM orders o
+       JOIN stores s ON s.id = o.store_id
+       LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
+       LEFT JOIN shopee_order_data sod ON sod.order_sn = o.ml_id
+       WHERE o.status <> 'cancelled'
+         AND (
+           (COALESCE(mk.code,'ML') = 'ML'
+             AND lower(COALESCE(o.shipping_type,'')) ~ 'self_service|flex|xd_drop_off|me1|me2|cross_docking'
+             AND o.shipping_status = 'ready_to_ship')
+           OR
+           (mk.code = 'SHOPEE'
+             AND COALESCE(sod.order_status,'') IN ('READY_TO_SHIP','PROCESSED'))
+         )
+       ORDER BY bipado ASC, COALESCE(o.date_ready_to_ship, o.date_created) ASC
+       LIMIT 1000`
+    );
+    const items = rows.map(r => {
+      const isML = r.marketplace === 'ML';
+      let logistica, printed;
+      if (isML) {
+        logistica = mlLogLabel(r.shipping_type);
+        printed = r.shipping_substatus === 'printed';
+      } else {
+        const c = (r.shopee_carrier || '').toLowerCase();
+        logistica = (c.includes('rápid') || c.includes('rapid')) ? 'Entrega Rápida'
+                  : (c.includes('agênc') || c.includes('agenc')) ? 'Agência'
+                  : (r.shopee_carrier || 'Shopee');
+        printed = r.shopee_status === 'PROCESSED';
+      }
+      return { ...r, logistica, printed };
+    }).filter(r => (!onlyPrinted || r.printed) && (!onlyMissing || !r.bipado));
+    const total = items.length;
+    const bipados = items.filter(r => r.bipado).length;
+    // Quebra por logística (pra o card de resumo)
+    const porLog = {};
+    for (const r of items) {
+      porLog[r.logistica] = porLog[r.logistica] || { total: 0, bipados: 0 };
+      porLog[r.logistica].total++;
+      if (r.bipado) porLog[r.logistica].bipados++;
+    }
+    res.json({ items, resumo: { total, bipados, faltando: total - bipados, por_logistica: porLog } });
+  } catch (e) {
+    console.error('[api/embalagem] GET /auditoria', e.message);
+    res.status(500).json({ error: e.message, items: [] });
+  }
+});
+
 // GET /api/embalagem/videos?order_id&buyer&date_from&date_to — consulta
 // (usado tanto na aba "Buscar vídeos" quanto, no futuro, num botão em
 // pages/devolucoes.html).

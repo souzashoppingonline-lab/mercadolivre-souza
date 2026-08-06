@@ -122,6 +122,27 @@
     .chip-shopee { background: rgba(255,94,0,.18); color: #ff7a33; }
     .chip-desc { background: rgba(255,69,58,.18); color: var(--red); }
     .emb-ult-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 16px 8px; }
+    /* Auditoria — expedição do dia */
+    .aud-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 4px 0 16px; }
+    .aud-kpi { border-radius: 12px; padding: 14px 16px; border: 1px solid var(--border); }
+    .aud-kpi .n { font-size: 26px; font-weight: 800; line-height: 1; }
+    .aud-kpi .l { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-top: 6px; }
+    .aud-kpi.total { background: rgba(255,255,255,.03); }
+    .aud-kpi.ok    { background: rgba(48,209,88,.10); border-color: rgba(48,209,88,.35); }
+    .aud-kpi.ok .n    { color: var(--green); }
+    .aud-kpi.falta { background: rgba(255,69,58,.10); border-color: rgba(255,69,58,.35); }
+    .aud-kpi.falta .n { color: var(--red); }
+    .aud-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .aud-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    .aud-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .aud-table tr.falta td { background: rgba(255,69,58,.06); }
+    .aud-table tr.ok td { background: rgba(48,209,88,.05); }
+    .aud-ped { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .aud-log { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 12px; }
+    .aud-status { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 12px; }
+    .aud-status.ok  { color: var(--green); }
+    .aud-status.no  { color: var(--red); }
+    .aud-badge-print { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 10px; background: rgba(255,214,10,.18); color: var(--primary); }
 
     .emb-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 16px; }
     .emb-field { display: flex; flex-direction: column; gap: 4px; }
@@ -161,6 +182,7 @@
         <button class="emb-tab-btn" id="tabBtnConferencia" onclick="switchTab('conferencia')"><i class="fas fa-clipboard-check"></i> Conferência do Dia</button>
         <button class="emb-tab-btn" id="tabBtnHistorico" onclick="switchTab('historico')"><i class="fas fa-chart-line"></i> Histórico</button>
         <button class="emb-tab-btn" id="tabBtnRelatorios" onclick="switchTab('relatorios')"><i class="fas fa-file-chart-bar"></i> Relatórios</button>
+        <button class="emb-tab-btn" id="tabBtnAuditoria" onclick="switchTab('auditoria')"><i class="fas fa-list-check"></i> Auditoria <span id="audBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
         <button class="emb-tab-btn" id="tabBtnErros" onclick="switchTab('erros')"><i class="fas fa-triangle-exclamation"></i> Erros <span id="errosBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
       </div>
 
@@ -295,6 +317,20 @@
         </div>
       </div>
 
+      <!-- ═══ ABA: AUDITORIA (expedição do dia) ═══ -->
+      <div class="emb-panel" id="panelAuditoria">
+        <div class="emb-card">
+          <p class="emb-subtitle" style="margin-top:0">O que <b>precisa sair</b> (FLEX / Mercado Envios no ML e Entrega Rápida / Agência no Shopee) e o que <b>ainda não foi bipado</b>. Base no status de envio (etiqueta impressa / pronto pra enviar), não na data.</p>
+          <div class="aud-kpis" id="audKpis"></div>
+          <div class="emb-filters">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fAudMissing" onchange="loadAuditoria()"> Só o que falta bipar</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fAudPrinted" onchange="loadAuditoria()"> Só etiqueta impressa</label>
+            <button class="emb-btn" onclick="loadAuditoria()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+          </div>
+          <div id="audList"><div class="emb-placeholder">Carregando...</div></div>
+        </div>
+      </div>
+
       <div class="emb-panel" id="panelErros">
         <div class="emb-card">
           <p class="emb-subtitle" style="margin-top:0">Falhas ao salvar o vídeo de conferência — tipo do erro, pedido, loja e data/hora. Se aparecer algo aqui, aquele envio pode ter ficado sem vídeo gravado.</p>
@@ -341,7 +377,17 @@ document.addEventListener('DOMContentLoaded', () => {
   loadErros(); // prime o badge de erros (fica visível mesmo sem abrir a aba)
   loadUltimosBipados(); // tabela "Últimos bipados" abaixo da câmera
   setInterval(loadUltimosBipados, 30000); // reflete bipagens de outras estações
+  primeAudBadge(); // badge da aba Auditoria = quantos faltam bipar
 });
+
+async function primeAudBadge() {
+  try {
+    const d = await DB.getEmbalagemAuditoria({});
+    const f = d?.resumo?.faltando || 0;
+    const badge = document.getElementById('audBadge');
+    badge.textContent = f; badge.style.display = f > 0 ? '' : 'none';
+  } catch (_) { /* silencioso */ }
+}
 
 // Print Agent — carrega as estações e deixa cada PC escolher a sua (guardado em
 // localStorage). Só mostra o seletor quando há 2+ estações; com 1 (ou nenhuma),
@@ -834,18 +880,63 @@ function switchTab(tab) {
   document.getElementById('panelConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('panelHistorico').classList.toggle('active', tab === 'historico');
   document.getElementById('panelRelatorios').classList.toggle('active', tab === 'relatorios');
+  document.getElementById('panelAuditoria').classList.toggle('active', tab === 'auditoria');
   document.getElementById('panelErros').classList.toggle('active', tab === 'erros');
   document.getElementById('tabBtnBipar').classList.toggle('active', tab === 'bipar');
   document.getElementById('tabBtnBuscar').classList.toggle('active', tab === 'buscar');
   document.getElementById('tabBtnConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('tabBtnHistorico').classList.toggle('active', tab === 'historico');
   document.getElementById('tabBtnRelatorios').classList.toggle('active', tab === 'relatorios');
+  document.getElementById('tabBtnAuditoria').classList.toggle('active', tab === 'auditoria');
   document.getElementById('tabBtnErros').classList.toggle('active', tab === 'erros');
   if (tab === 'bipar') refocusScan();
   if (tab === 'conferencia') loadConferenciaDia();
   if (tab === 'historico') loadHistorico();
   if (tab === 'relatorios') loadRelatorios();
+  if (tab === 'auditoria') loadAuditoria();
   if (tab === 'erros') loadErros();
+}
+
+const AUD_LOG_CLASS = { 'Flex': 'chip-flex', 'Mercado Envios': 'chip-me', 'Entrega Rápida': 'chip-shopee', 'Agência': 'chip-coleta' };
+async function loadAuditoria() {
+  const list = document.getElementById('audList');
+  const kpis = document.getElementById('audKpis');
+  list.innerHTML = '<div class="emb-placeholder">Carregando...</div>';
+  const params = {};
+  if (document.getElementById('fAudMissing').checked) params.only_missing = 1;
+  if (document.getElementById('fAudPrinted').checked) params.only_printed = 1;
+  const d = await DB.getEmbalagemAuditoria(params);
+  if (!d || d.error) { list.innerHTML = `<div class="emb-placeholder">Erro: ${d?.error || 'falha'}</div>`; return; }
+  const r = d.resumo || { total: 0, bipados: 0, faltando: 0 };
+  // Badge vermelho na aba = quantos faltam bipar
+  const badge = document.getElementById('audBadge');
+  badge.textContent = r.faltando; badge.style.display = r.faltando > 0 ? '' : 'none';
+  const porLog = Object.entries(r.por_logistica || {})
+    .map(([k, v]) => `${k}: <b>${v.bipados}/${v.total}</b>`).join(' · ');
+  kpis.innerHTML =
+    `<div class="aud-kpi total"><div class="n">${r.total}</div><div class="l">A expedir</div></div>
+     <div class="aud-kpi ok"><div class="n">${r.bipados}</div><div class="l">Já bipados</div></div>
+     <div class="aud-kpi falta"><div class="n">${r.faltando}</div><div class="l">Falta bipar</div></div>`
+     + (porLog ? `<div class="aud-kpi total" style="grid-column:1/-1"><div class="l" style="margin:0">${porLog}</div></div>` : '');
+  const items = d.items || [];
+  if (!items.length) { list.innerHTML = '<div class="emb-placeholder">Nenhum pedido a expedir com os filtros atuais. 🎉</div>'; return; }
+  list.innerHTML = `<div class="table-responsive"><table class="aud-table">
+    <thead><tr><th>Pedido</th><th>Produto</th><th>Comprador</th><th>Loja</th><th>Logística</th><th>Etiqueta</th><th>Bipado?</th></tr></thead>
+    <tbody>${items.map(o => {
+      const logCls = AUD_LOG_CLASS[o.logistica] || 'chip-desc';
+      const mk = o.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee">Shopee</span> ' : '';
+      return `<tr class="${o.bipado ? 'ok' : 'falta'}">
+        <td class="aud-ped">${mk}${escapeHtml(String(o.order_id))}</td>
+        <td title="${escapeHtml(o.title || '')}" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(o.title || '—')}</td>
+        <td>${escapeHtml(o.buyer_nickname || '—')}</td>
+        <td>${escapeHtml(o.store_nickname || '—')}</td>
+        <td><span class="aud-log ${logCls}">${escapeHtml(o.logistica)}</span></td>
+        <td>${o.printed ? '<span class="aud-badge-print">impressa</span>' : '<span style="color:var(--text-muted);font-size:11px">—</span>'}</td>
+        <td>${o.bipado
+          ? '<span class="aud-status ok"><i class="fas fa-circle-check"></i> Bipado</span>'
+          : '<span class="aud-status no"><i class="fas fa-circle-xmark"></i> Falta</span>'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
 }
 
 // ── Aba: Erros de embalagem (falha ao salvar vídeo) ──────────

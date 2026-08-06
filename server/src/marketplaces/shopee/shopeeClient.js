@@ -179,7 +179,7 @@ class ShopeeClient extends MarketplaceClient {
     // tiver "Acesso a dados sensíveis" aprovado (SHOPEE_SENSITIVE_ACCESS=true).
     // Sem isso, o get_order_detail pode rejeitar a chamada inteira em produção —
     // então por padrão só pedimos os campos não-sensíveis (ver .claude/shopee.md).
-    const fields = ['total_amount', 'order_status', 'item_list', 'create_time', 'update_time'];
+    const fields = ['total_amount', 'order_status', 'item_list', 'create_time', 'update_time', 'shipping_carrier'];
     if (this.cfg.sensitiveAccess) fields.unshift('buyer_username');
     // GET: order_sn_list e response_optional_fields como listas separadas por
     // vírgula no query string (não body — ver comentário em _call).

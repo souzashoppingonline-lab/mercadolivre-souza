@@ -508,6 +508,7 @@ router.get('/auditoria', async (req, res) => {
               sod.tracking_number AS shopee_tracking,
               sod.order_status AS shopee_status,
               sod.raw_data->>'shipping_carrier' AS shopee_carrier,
+              pj.printed_at AS etiqueta_impressa_at,
               EXISTS (
                 SELECT 1 FROM packing_videos pv
                 WHERE o.ml_id = ANY(pv.order_ids)
@@ -518,6 +519,12 @@ router.get('/auditoria', async (req, res) => {
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
        LEFT JOIN shopee_order_data sod ON sod.order_sn = o.ml_id
+       LEFT JOIN LATERAL (
+         SELECT pj.printed_at FROM print_jobs pj
+         WHERE pj.printed_at IS NOT NULL
+           AND (pj.shipping_id = o.shipping_id OR pj.shipping_id = sod.tracking_number)
+         ORDER BY pj.printed_at DESC LIMIT 1
+       ) pj ON true
        WHERE o.status <> 'cancelled'
          AND (
            (COALESCE(mk.code,'ML') = 'ML'

@@ -921,22 +921,31 @@ async function loadAuditoria() {
   const items = d.items || [];
   if (!items.length) { list.innerHTML = '<div class="emb-placeholder">Nenhum pedido a expedir com os filtros atuais. 🎉</div>'; return; }
   list.innerHTML = `<div class="table-responsive"><table class="aud-table">
-    <thead><tr><th>Pedido</th><th>Produto</th><th>Comprador</th><th>Loja</th><th>Logística</th><th>Etiqueta</th><th>Bipado?</th></tr></thead>
+    <thead><tr><th>Pedido</th><th>Produto</th><th>Data venda</th><th>Loja</th><th>Logística</th><th>Etiqueta impressa</th><th>Bipado?</th></tr></thead>
     <tbody>${items.map(o => {
       const logCls = AUD_LOG_CLASS[o.logistica] || 'chip-desc';
       const mk = o.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee">Shopee</span> ' : '';
+      // Etiqueta impressa: data/hora real do print_jobs; se não houver registro
+      // do print-agent mas o status já é "impressa", mostra o badge.
+      const etiqueta = o.etiqueta_impressa_at
+        ? `<span style="font-size:12px;font-variant-numeric:tabular-nums">${audFmtDT(o.etiqueta_impressa_at)}</span>`
+        : (o.printed ? '<span class="aud-badge-print">impressa</span>' : '<span style="color:var(--text-muted);font-size:11px">—</span>');
       return `<tr class="${o.bipado ? 'ok' : 'falta'}">
         <td class="aud-ped">${mk}${escapeHtml(String(o.order_id))}</td>
         <td title="${escapeHtml(o.title || '')}" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(o.title || '—')}</td>
-        <td>${escapeHtml(o.buyer_nickname || '—')}</td>
+        <td style="font-size:12px;white-space:nowrap">${o.date_created ? audFmtDT(o.date_created) : '—'}</td>
         <td>${escapeHtml(o.store_nickname || '—')}</td>
         <td><span class="aud-log ${logCls}">${escapeHtml(o.logistica)}</span></td>
-        <td>${o.printed ? '<span class="aud-badge-print">impressa</span>' : '<span style="color:var(--text-muted);font-size:11px">—</span>'}</td>
+        <td>${etiqueta}</td>
         <td>${o.bipado
           ? '<span class="aud-status ok"><i class="fas fa-circle-check"></i> Bipado</span>'
           : '<span class="aud-status no"><i class="fas fa-circle-xmark"></i> Falta</span>'}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
+}
+function audFmtDT(v) {
+  if (!v) return '—';
+  return new Date(v).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 // ── Aba: Erros de embalagem (falha ao salvar vídeo) ──────────

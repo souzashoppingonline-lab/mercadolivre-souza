@@ -660,7 +660,7 @@ router.get('/por-hora', async (req, res) => {
          WHERE (pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date = $1::date
            AND ($2::bigint IS NULL OR pv.store_id = $2)
            AND ($3 = '' OR pv.store_id IN (
-                 SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id
+                 SELECT st.id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id
                  WHERE COALESCE(mk.code,'ML') = $3))
          GROUP BY 1
        ) a ON a.hour = h.hour
@@ -700,7 +700,7 @@ router.get('/historico', async (req, res) => {
          WHERE (pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date > (current_date - $1::int)
            AND ($2::bigint IS NULL OR pv.store_id = $2)
            AND ($3 = '' OR pv.store_id IN (
-                 SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id
+                 SELECT st.id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id
                  WHERE COALESCE(mk.code,'ML') = $3))
          GROUP BY 1
        )

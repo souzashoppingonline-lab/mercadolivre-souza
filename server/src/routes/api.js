@@ -372,11 +372,13 @@ router.get('/vendas/detalhado', async (req, res) => {
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
        o.title, o.quantity, o.unit_price,
        o.total_amount as faturamento,
-       COALESCE(c.tarifa_real, pg.taxa_pgto, o.ml_fee, 0) as tarifa,
+       CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
+            WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
+            ELSE COALESCE(o.ml_fee, 0) END as tarifa,
        o.shipping_type as frete_tipo,
        o.shipping_cost as frete_comprador,
        CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real, 0)
-            WHEN pg.taxa_pgto IS NOT NULL THEN 0
+            WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
             ELSE COALESCE(o.shipping_seller_cost, 0) END as frete_vendedor,
        (c.tarifa_real IS NOT NULL) as tem_conciliacao,
        CASE WHEN c.tarifa_real IS NOT NULL THEN 'conciliacao'
@@ -427,10 +429,12 @@ router.get('/vendas/detalhado', async (req, res) => {
        COALESCE(SUM(o.total_amount), 0) AS faturamento,
        COALESCE(SUM(COALESCE(i.cost, 0) * o.quantity), 0) AS custo,
        COALESCE(SUM(o.total_amount * COALESCE(s.imposto_pct, 0) / 100), 0) AS imposto,
-       COALESCE(SUM(COALESCE(c.tarifa_real, pg.taxa_pgto, o.ml_fee)), 0) AS tarifa,
+       COALESCE(SUM(CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
+                         WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
+                         ELSE COALESCE(o.ml_fee, 0) END), 0) AS tarifa,
        COALESCE(SUM(o.shipping_cost), 0) AS frete_comprador,
        COALESCE(SUM(CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
-                         WHEN pg.taxa_pgto IS NOT NULL THEN 0
+                         WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
                          ELSE COALESCE(o.shipping_seller_cost,0) END), 0) AS frete_vendedor,
        COUNT(*) FILTER (WHERE c.tarifa_real IS NOT NULL OR pg.taxa_pgto IS NOT NULL) AS pedidos_conciliados,
        COALESCE(SUM(o.quantity), 0) AS qtd,

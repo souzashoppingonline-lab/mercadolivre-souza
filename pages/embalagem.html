@@ -103,6 +103,25 @@
     .emb-camera-rec.on { display: flex; }
     .emb-camera-rec .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: embPulse 1s infinite; }
     .emb-camera-off { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12px; text-align: center; padding: 20px; flex-direction: column; gap: 10px; }
+    /* Últimos bipados — tabela pequena colorida abaixo da câmera */
+    .emb-ult-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .emb-ult-title .cnt { margin-left: auto; background: var(--primary); color: #1a1a1a; border-radius: 20px; padding: 1px 9px; font-size: 11px; }
+    .emb-ult-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    .emb-ult-table th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); padding: 0 6px 5px; font-weight: 700; }
+    .emb-ult-table td { padding: 5px 6px; border-top: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+    .emb-ult-table tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+    .emb-ult-table tr:first-child td { animation: embUltNew 1.6s ease-out 1; }
+    @keyframes embUltNew { 0% { background: rgba(255,214,10,.35); } 100% { background: transparent; } }
+    .emb-ult-hora { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .emb-ult-ped { font-weight: 700; color: var(--text-main); font-variant-numeric: tabular-nums; }
+    .emb-ult-chip { display: inline-block; font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 12px; }
+    .chip-full { background: rgba(0,166,153,.18); color: #12b6a6; }
+    .chip-flex { background: rgba(0,122,255,.18); color: #4da3ff; }
+    .chip-me   { background: rgba(255,214,10,.18); color: var(--primary); }
+    .chip-coleta { background: rgba(175,82,222,.18); color: #c07af0; }
+    .chip-shopee { background: rgba(255,94,0,.18); color: #ff7a33; }
+    .chip-desc { background: rgba(255,69,58,.18); color: var(--red); }
+    .emb-ult-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 16px 8px; }
 
     .emb-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 16px; }
     .emb-field { display: flex; flex-direction: column; gap: 4px; }
@@ -180,6 +199,10 @@
                 <button class="emb-btn" onclick="initCamera()"><i class="fas fa-video"></i> Ativar câmera</button>
               </div>
             </div>
+          </div>
+          <div class="emb-card">
+            <div class="emb-ult-title"><i class="fas fa-clock-rotate-left"></i> Últimos bipados <span class="cnt" id="ultBipadosCnt">0</span></div>
+            <div id="ultBipadosBox"><div class="emb-ult-empty">Nenhum pedido bipado ainda hoje.</div></div>
           </div>
         </div>
       </div>
@@ -316,6 +339,8 @@
 document.addEventListener('DOMContentLoaded', () => {
   loadPrintStations();
   loadErros(); // prime o badge de erros (fica visível mesmo sem abrir a aba)
+  loadUltimosBipados(); // tabela "Últimos bipados" abaixo da câmera
+  setInterval(loadUltimosBipados, 30000); // reflete bipagens de outras estações
 });
 
 // Print Agent — carrega as estações e deixa cada PC escolher a sua (guardado em
@@ -350,6 +375,37 @@ let confRows = []; // última carga da aba Conferência do Dia — usado pelos c
 let stream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
+
+// --- Últimos 10 pedidos bipados (tabela pequena colorida abaixo da câmera) ---
+// Reaproveita GET /embalagem/videos (já ordenado por mais recente) — sem rota nova.
+function ultChipClass(label) {
+  return { 'Full': 'chip-full', 'Flex': 'chip-flex', 'Mercado Envios': 'chip-me',
+           'Coleta': 'chip-coleta', 'Shopee': 'chip-shopee' }[label] || 'chip-desc';
+}
+async function loadUltimosBipados() {
+  const box = document.getElementById('ultBipadosBox');
+  if (!box) return;
+  try {
+    const data = await DB.getVideosEmbalagem({});
+    const rows = (data?.rows || []).slice(0, 10);
+    document.getElementById('ultBipadosCnt').textContent = rows.length;
+    if (!rows.length) { box.innerHTML = '<div class="emb-ult-empty">Nenhum pedido bipado ainda.</div>'; return; }
+    box.innerHTML = `<table class="emb-ult-table">
+      <thead><tr><th>Hora</th><th>Pedido</th><th>Comprador</th><th>Loja</th><th>Logística</th></tr></thead>
+      <tbody>${rows.map(r => {
+        const hora = r.created_at ? new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const ped = (Array.isArray(r.order_ids) && r.order_ids[0]) || r.shipping_id || '—';
+        const lg = r.marketplace === 'SHOPEE' ? 'Shopee' : logLabel(r.sample_shipping_type);
+        return `<tr>
+          <td class="emb-ult-hora">${escapeHtml(hora)}</td>
+          <td class="emb-ult-ped" title="${escapeHtml(String(ped))}">${escapeHtml(String(ped))}</td>
+          <td title="${escapeHtml(r.sample_buyer || '')}">${escapeHtml(r.sample_buyer || '—')}</td>
+          <td title="${escapeHtml(r.store_nickname || '')}">${escapeHtml(r.store_nickname || '—')}</td>
+          <td><span class="emb-ult-chip ${ultChipClass(lg)}">${escapeHtml(lg)}</span></td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  } catch (e) { console.error('[embalagem] loadUltimosBipados', e); }
+}
 
 async function initCamera() {
   try {
@@ -631,6 +687,7 @@ async function uploadPackingVideo(session, blob, durationSeconds) {
       loadErros(); // atualiza o contador do sino/badge de erros
     } else {
       console.log('[thermal] ✓ vídeo salvo com sucesso:', session.shippingId);
+      loadUltimosBipados(); // atualiza a tabela de "Últimos bipados" abaixo da câmera
     }
   } catch (e) {
     showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${e.message}. Veja a aba "Erros".`, 'error');

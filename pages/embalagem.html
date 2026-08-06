@@ -953,7 +953,7 @@ async function loadAuditoria() {
   const items = d.items || [];
   if (!items.length) { list.innerHTML = `<div class="emb-placeholder">${search ? 'Pedido/rastreio não encontrado.' : 'Nenhum pedido a expedir com os filtros atuais. 🎉'}</div>`; return; }
   list.innerHTML = `<div class="table-responsive"><table class="aud-table">
-    <thead><tr><th>Pedido</th><th>Produto</th><th>Data venda</th><th>Loja</th><th>Logística</th><th>Etiqueta impressa</th><th>Bipado?</th></tr></thead>
+    <thead><tr><th>Pedido</th><th>Produto</th><th>Data venda</th><th>Loja</th><th>Logística</th><th>Etiqueta impressa</th><th>Bipado?</th><th>Bipado em</th></tr></thead>
     <tbody>${items.map(o => {
       const logCls = AUD_LOG_CLASS[o.logistica] || 'chip-desc';
       const mk = o.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee">Shopee</span> ' : '';
@@ -972,6 +972,7 @@ async function loadAuditoria() {
         <td>${o.bipado
           ? '<span class="aud-status ok"><i class="fas fa-circle-check"></i> Bipado</span>'
           : '<span class="aud-status no"><i class="fas fa-circle-xmark"></i> Falta</span>'}</td>
+        <td style="font-size:12px;white-space:nowrap">${o.bipado_at ? audFmtDT(o.bipado_at) : '<span style="color:var(--text-muted)">—</span>'}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
 }

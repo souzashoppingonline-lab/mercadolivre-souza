@@ -74,10 +74,16 @@ function uploadVideo(req, res, next) {
 // Último vídeo gravado pra essa etiqueta (ML ou Shopee) — o packing_videos
 // guarda o valor bipado (shipping_id do ML ou tracking da Shopee) na mesma
 // coluna `shipping_id`, então a checagem é a mesma pros dois.
-async function lastPacking(key) {
+async function lastPacking(key, orderIds = []) {
+  // Casa pelo valor bipado (shipping_id/tracking) OU pela sobreposição de
+  // order_ids (`&&`) — assim avisa "já bipado" mesmo quando o pack foi gravado
+  // por um código diferente do que está sendo bipado agora.
+  const arr = Array.isArray(orderIds) && orderIds.length ? orderIds.map(String) : null;
   const { rows } = await pool.query(
-    `SELECT id, created_at FROM packing_videos WHERE shipping_id = $1 ORDER BY created_at DESC LIMIT 1`,
-    [key]
+    `SELECT id, created_at FROM packing_videos
+      WHERE shipping_id = $1 OR ($2::text[] IS NOT NULL AND order_ids && $2::text[])
+      ORDER BY created_at DESC LIMIT 1`,
+    [key, arr]
   );
   return rows[0] || null;
 }
@@ -399,7 +405,7 @@ router.get('/pedido/:shippingId', async (req, res) => {
         // Prioriza a foto da variação; fallback para thumbnail principal
         row.thumbnail = variationPicture || row.thumbnail;
       });
-      const already = await lastPacking(req.params.shippingId);
+      const already = await lastPacking(req.params.shippingId, rows.map(r => r.order_id));
       return res.json({ shipping_id: req.params.shippingId, marketplace: 'ML', orders: rows, already_packed: already });
     }
 
@@ -420,7 +426,7 @@ router.get('/pedido/:shippingId', async (req, res) => {
       }
     }
     if (shopeeOrders.length) {
-      const already = await lastPacking(codigo);
+      const already = await lastPacking(codigo, shopeeOrders.map(o => o.order_id));
       return res.json({ shipping_id: codigo, marketplace: 'SHOPEE', orders: shopeeOrders, already_packed: already });
     }
     return res.status(404).json({ error: 'Nenhum pedido encontrado para essa etiqueta' });
@@ -541,12 +547,8 @@ router.get('/auditoria', async (req, res) => {
               sod.order_status AS shopee_status,
               sod.raw_data->>'shipping_carrier' AS shopee_carrier,
               pj.printed_at AS etiqueta_impressa_at,
-              EXISTS (
-                SELECT 1 FROM packing_videos pv
-                WHERE o.ml_id = ANY(pv.order_ids)
-                   OR (o.shipping_id IS NOT NULL AND pv.shipping_id = o.shipping_id)
-                   OR (sod.tracking_number IS NOT NULL AND pv.shipping_id = sod.tracking_number)
-              ) AS bipado
+              pvv.created_at AS bipado_at,
+              (pvv.created_at IS NOT NULL) AS bipado
        FROM orders o
        JOIN stores s ON s.id = o.store_id
        LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
@@ -557,6 +559,13 @@ router.get('/auditoria', async (req, res) => {
            AND (pj.shipping_id = o.shipping_id OR pj.shipping_id = sod.tracking_number)
          ORDER BY pj.printed_at DESC LIMIT 1
        ) pj ON true
+       LEFT JOIN LATERAL (
+         SELECT pv.created_at FROM packing_videos pv
+         WHERE o.ml_id = ANY(pv.order_ids)
+            OR (o.shipping_id IS NOT NULL AND pv.shipping_id = o.shipping_id)
+            OR (sod.tracking_number IS NOT NULL AND pv.shipping_id = sod.tracking_number)
+         ORDER BY pv.created_at DESC LIMIT 1
+       ) pvv ON true
        WHERE o.status <> 'cancelled'
          ${filterBlock}
        ORDER BY bipado ASC, COALESCE(o.date_ready_to_ship, o.date_created) ASC

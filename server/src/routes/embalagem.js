@@ -644,15 +644,19 @@ router.get('/por-hora', async (req, res) => {
     if (!date) return res.status(400).json({ error: 'date é obrigatório (YYYY-MM-DD)' });
 
     const { rows } = await pool.query(
-      `SELECT h.hour, COALESCE(COUNT(pv.id), 0)::int AS qty
+      `SELECT h.hour, COALESCE(a.qty, 0)::int AS qty
        FROM generate_series(0, 23) AS h(hour)
-       LEFT JOIN packing_videos pv
-         ON EXTRACT(HOUR FROM pv.created_at AT TIME ZONE 'America/Sao_Paulo') = h.hour
-        AND pv.created_at >= ($1::date AT TIME ZONE 'America/Sao_Paulo')
-        AND pv.created_at <  (($1::date + 1) AT TIME ZONE 'America/Sao_Paulo')
-        AND ($2::bigint IS NULL OR pv.store_id = $2)
-        AND ($3 = '' OR pv.store_id IN (SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id WHERE COALESCE(mk.code,'ML') = $3))
-       GROUP BY h.hour
+       LEFT JOIN (
+         SELECT EXTRACT(HOUR FROM pv.created_at AT TIME ZONE 'America/Sao_Paulo')::int AS hour,
+                COUNT(*)::int AS qty
+         FROM packing_videos pv
+         WHERE (pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date = $1::date
+           AND ($2::bigint IS NULL OR pv.store_id = $2)
+           AND ($3 = '' OR pv.store_id IN (
+                 SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id
+                 WHERE COALESCE(mk.code,'ML') = $3))
+         GROUP BY 1
+       ) a ON a.hour = h.hour
        ORDER BY h.hour`,
       [date, store_id || null, marketplace || '']
     );
@@ -674,19 +678,32 @@ router.get('/historico', async (req, res) => {
     const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 90);
     const { store_id, marketplace } = req.query;
 
+    // Bucketing por DATA LOCAL (America/Sao_Paulo): agrega os vídeos por dia
+    // convertendo created_at (timestamptz) pra data SP, depois zero-fill via
+    // generate_series de N dias. Substitui o LEFT JOIN por faixa de timestamp
+    // (dava 0 no gráfico mesmo com bipagens no dia). `date` volta como texto
+    // 'YYYY-MM-DD' pro frontend.
     const { rows } = await pool.query(
-      `SELECT d.day::date AS date,
-              COUNT(pv.id)::int AS count,
-              COALESCE(SUM(pv.duration_seconds) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::numeric AS duration_sum,
-              COALESCE(SUM(cardinality(pv.order_ids)) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::int AS duration_orders
-       FROM generate_series((current_date - ($1::int - 1))::timestamp, current_date::timestamp, interval '1 day') AS d(day)
-       LEFT JOIN packing_videos pv
-         ON pv.created_at >= (d.day AT TIME ZONE 'America/Sao_Paulo')
-        AND pv.created_at <  ((d.day + interval '1 day') AT TIME ZONE 'America/Sao_Paulo')
-        AND ($2::bigint IS NULL OR pv.store_id = $2)
-        AND ($3 = '' OR pv.store_id IN (SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id WHERE COALESCE(mk.code,'ML') = $3))
-       GROUP BY d.day
-       ORDER BY d.day`,
+      `WITH agg AS (
+         SELECT (pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS d,
+                COUNT(*)::int AS count,
+                COALESCE(SUM(pv.duration_seconds) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::numeric AS duration_sum,
+                COALESCE(SUM(cardinality(pv.order_ids)) FILTER (WHERE pv.duration_seconds IS NOT NULL), 0)::int AS duration_orders
+         FROM packing_videos pv
+         WHERE (pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date > (current_date - $1::int)
+           AND ($2::bigint IS NULL OR pv.store_id = $2)
+           AND ($3 = '' OR pv.store_id IN (
+                 SELECT id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id
+                 WHERE COALESCE(mk.code,'ML') = $3))
+         GROUP BY 1
+       )
+       SELECT to_char(current_date - g.n, 'YYYY-MM-DD') AS date,
+              COALESCE(a.count, 0)::int AS count,
+              COALESCE(a.duration_sum, 0)::numeric AS duration_sum,
+              COALESCE(a.duration_orders, 0)::int AS duration_orders
+       FROM generate_series(0, $1::int - 1) AS g(n)
+       LEFT JOIN agg a ON a.d = (current_date - g.n)
+       ORDER BY 1`,
       [days, store_id || null, marketplace || '']
     );
     res.json({ days: rows });

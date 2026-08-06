@@ -1192,6 +1192,10 @@ async function loadHistorico() {
   const mkt = document.getElementById('fHistMkt').value;
 
   const data = await DB.getEmbalagemHistorico({ days, store_id: storeId || undefined, marketplace: mkt || undefined });
+  if (data?.error) {
+    document.getElementById('histKpis').innerHTML = `<div class="stat-card"><div class="label">Erro ao carregar</div><div class="value" style="font-size:14px;color:var(--red)">${escapeHtml(data.error)}</div></div>`;
+    return;
+  }
   const rows = data?.days || [];
 
   const total = rows.reduce((s, r) => s + r.count, 0);

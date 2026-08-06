@@ -29,9 +29,12 @@ const SHOPEE_RETURNS_LOOKBACK_DAYS = Number(process.env.SHOPEE_RETURNS_LOOKBACK_
 
 // AMAZON_ENV=mock troca o cliente/EventSource real por um que fabrica pedidos
 // de teste variados, sem depender do sandbox estático da Amazon (que só
-// devolve um pedido fixo). Trocar de volta para a Amazon real é só mudar
-// AMAZON_ENV — nada mais no pipeline muda (ver .claude/amazon.md).
-const isMock = env.amazon?.env === 'mock';
+// devolve um pedido fixo). Ver .claude/amazon.md.
+// SEGURANÇA: o mock só liga com opt-in EXPLÍCITO (AMAZON_MOCK_ENABLED=true) —
+// ter AMAZON_ENV=mock sozinho NÃO gera mais pedido de teste (evita vender
+// fake em produção quando esquecem o .env em mock). Ver .claude/decisions.md.
+const mockRequested = env.amazon?.env === 'mock';
+const isMock = mockRequested && process.env.AMAZON_MOCK_ENABLED === 'true';
 
 // Client Amazon (ou mock) por conta — chave é `stores.id`, não o código do
 // marketplace, porque pode haver várias contas Amazon simultâneas. Populado
@@ -272,11 +275,17 @@ async function startMarketplaceEventWorkers() {
   // Uma EventSource por conta Amazon cadastrada — suporta múltiplas contas
   // (cada linha de `stores` com marketplace_id=AMAZON é uma conta), não só a
   // store sentinela original. Ver .claude/decisions.md.
-  const { rows: amazonStores } = await pool.query(
+  // AMAZON_ENV=mock sem opt-in explícito = Amazon totalmente desligada aqui:
+  // não gera pedido de teste (mock off) e não cai no polling real (que só daria
+  // erro com credenciais de sandbox). Some qualquer "venda da Amazon" fantasma.
+  const amazonOff = mockRequested && !isMock;
+  const { rows: amazonStores } = amazonOff ? { rows: [] } : await pool.query(
     `SELECT id, nickname, refresh_token, amazon_marketplace_id, amazon_region
      FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'AMAZON')`
   );
-  if (!amazonStores.length) {
+  if (amazonOff) {
+    console.warn('[marketplace-worker] AMAZON_ENV=mock sem AMAZON_MOCK_ENABLED=true — Amazon desativada, nenhum pedido de teste será gerado');
+  } else if (!amazonStores.length) {
     console.warn('[marketplace-worker] nenhuma conta Amazon cadastrada em `stores` — nada para sincronizar');
   }
   const mockClient = isMock ? new MockClient() : null; // stateless o bastante pra ser compartilhado entre contas

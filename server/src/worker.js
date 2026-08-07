@@ -1467,15 +1467,21 @@ async function syncPrecos() {
         for (const it of items) {
           try {
             const data = await ml.getItem(it.ml_id, s.id);
+            // Medidas da caixa: aproveita o mesmo getItem (custo zero) pra manter
+            // items.package_dims atualizado — a Embalagem lê do banco no bipe.
+            const dims = packageDimsFromItem(data);
             if (data.original_price && Number(data.original_price) > 0) {
               await pool.query(
-                `UPDATE items SET original_price=$1 WHERE ml_id=$2`,
-                [data.original_price, it.ml_id]
+                `UPDATE items SET original_price=$1, package_dims=COALESCE($2::jsonb, package_dims) WHERE ml_id=$3`,
+                [data.original_price, dims ? JSON.stringify(dims) : null, it.ml_id]
               );
               updated++;
             } else {
               // sem promoção — limpa original_price para não exibir desconto falso
-              await pool.query(`UPDATE items SET original_price=0 WHERE ml_id=$1`, [it.ml_id]);
+              await pool.query(
+                `UPDATE items SET original_price=0, package_dims=COALESCE($1::jsonb, package_dims) WHERE ml_id=$2`,
+                [dims ? JSON.stringify(dims) : null, it.ml_id]
+              );
               skipped++;
             }
           } catch (e) {

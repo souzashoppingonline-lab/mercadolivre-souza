@@ -14,6 +14,7 @@ const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
 const { generateLabelPDF } = require('../thermal/pdfLabel');
 const ml = require('../mlClient');
+const { packageDimsFromItem } = require('../mlDims');
 
 const router = express.Router();
 
@@ -405,8 +406,29 @@ router.get('/pedido/:shippingId', async (req, res) => {
         // Prioriza a foto da variação; fallback para thumbnail principal
         row.thumbnail = variationPicture || row.thumbnail;
       });
-      // As medidas da caixa (row.dimensoes) já vêm do banco (items.package_dims,
-      // preenchido pelo worker no sync) — sem GET no ML aqui, imune a rate limit.
+      // Medidas da caixa: lidas do banco (items.package_dims). Na PRIMEIRA
+      // bipagem de um item ainda sem medida cacheada, faz UM getItem, grava em
+      // items.package_dims e usa — nas próximas vem direto do banco (0 GET).
+      // Best-effort e 1x por item único do pack: nunca derruba o bipe nem
+      // repete GET a cada bipagem, então imune a rate limit.
+      const seen = new Set();
+      await Promise.all(rows.map(async (row) => {
+        if (row.dimensoes || !row.item_id || seen.has(row.item_id)) return;
+        seen.add(row.item_id);
+        try {
+          const item = await ml.getItem(row.item_id, row.store_id);
+          const dims = packageDimsFromItem(item);
+          if (dims) {
+            row.dimensoes = dims;
+            await pool.query(
+              `UPDATE items SET package_dims=$1::jsonb WHERE ml_id=$2`,
+              [JSON.stringify(dims), row.item_id]
+            );
+            // propaga pro mesmo item repetido no pack
+            rows.forEach(r => { if (r.item_id === row.item_id) r.dimensoes = dims; });
+          }
+        } catch (_) { /* sem medida — segue sem quebrar o bipe */ }
+      }));
       const already = await lastPacking(req.params.shippingId, rows.map(r => r.order_id));
       return res.json({ shipping_id: req.params.shippingId, marketplace: 'ML', orders: rows, already_packed: already });
     }

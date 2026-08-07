@@ -82,6 +82,7 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS permalink TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS cost NUMERIC DEFAULT 0;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS parent_item_id TEXT;
 ALTER TABLE items ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS package_dims JSONB;  -- medidas da caixa (v68), cacheadas no sync
 
 -- ml_id é TEXT (não BIGINT) para caber IDs de pedido não-numéricos de
 -- outros marketplaces (ex: Amazon "902-1845936-3456781"). Ver migrate-v15.sql.

@@ -63,6 +63,9 @@ cost NUMERIC DEFAULT 0            -- custo unitário (editável manualmente)
 original_price NUMERIC DEFAULT 0  -- v13: preço "de" quando em promoção
 parent_item_id TEXT               -- item pai (variações) — preenchido por syncParentItems
 marketplace_id INT FK marketplaces -- v15
+package_dims JSONB                 -- v68: medidas da caixa cacheadas ({comprimento,largura,altura,peso,texto}),
+                                   -- preenchidas pelo worker no handleItem a partir dos atributos PACKAGE_* do ML.
+                                   -- Lidas pela página Embalagem sem GET ao ML (evita rate limit na bipagem).
 updated_at TIMESTAMPTZ
 ```
 

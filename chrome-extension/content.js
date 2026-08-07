@@ -345,6 +345,31 @@ function collectAll() {
   };
 }
 
+// ── Auto-captura em background (monitoramento automático) ─────────────────
+// O service worker abre o anúncio numa aba OCULTA e pede a captura por mensagem
+// — sem painel, sem clique. Espera a página "amadurecer" (MLB + preço) até ~8s
+// antes de responder, porque o ML renderiza o preço via JS depois do load.
+// Mesmo rawData da coleta manual, então o servidor extrai igual.
+chrome.runtime.onMessage.addListener((req, _sender, sendResponse) => {
+  if (req && req.action === 'auto_capture') {
+    autoCapture().then(sendResponse).catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+    return true; // resposta assíncrona
+  }
+});
+async function autoCapture() {
+  for (let i = 0; i < 16; i++) {
+    const d = collectAll();
+    if (d.mlb && d.price != null) {
+      return { ok: true, rawData: {
+        url: location.href, pageText: document.body.innerText, title: document.title,
+        jsonLd: getJsonLd(), extracted: d, collectedAt: new Date().toISOString(),
+      } };
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return { ok: false, error: 'anúncio não carregou a tempo' };
+}
+
 // ── UI ───────────────────────────────────────────────────────────────────
 const BRL = (v) => v == null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

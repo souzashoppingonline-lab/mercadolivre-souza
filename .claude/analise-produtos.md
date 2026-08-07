@@ -93,6 +93,19 @@ Produto") e detalhe (header + cards de concorrentes ao vivo + Ativar/Finalizar
 coleta + Analisar). Métodos em `js/db.js` (`getProdutosAnalise`, `criarProdutoAnalise`,
 `ativarColetaProduto`, etc.).
 
+## Coleta automática de concorrentes (v66 / extensão v1.2.0)
+
+**Problema:** a coleta era 100% manual — abrir cada anúncio de concorrente e clicar "Salvar na análise" todo dia era inviável. **Solução:** monitoramento automático em background, sem clique, com o Chrome aberto.
+
+**Arquitetura (padrão MV3 correto — a inteligência sai do popup e vai pro Service Worker):**
+- **Watchlist = a própria `analise_product_ads`** (os concorrentes já cadastrados por produto). Migration v66 só adicionou `last_checked_at` + índice `idx_analise_ads_monitor_check`.
+- **Backend** (`extensionAnalise.js`): `GET /extension/monitoramento/proximos?limit=N` devolve os concorrentes mais desatualizados (`last_checked_at` nulo ou > 24h → **recoleta 1×/dia**), dedup por `ml_id`; `POST /extension/monitoramento` casa pelo `ml_id` e atualiza o anúncio em **todos** os produtos onde ele é monitorado, carimba `last_checked_at`, alimenta `analise_monitor_snapshots` — **não depende do produto ativo** (fluxo paralelo ao `/anuncio` manual, que segue existindo). O helper `resolveAdPayload()` é compartilhado pelos dois.
+- **Service Worker** (`service-worker.js`): `chrome.alarms` a cada 15 min → `runMonitorCycle()`: `GET /proximos` → abre cada anúncio numa **aba oculta** (`tabs.create({active:false})`), espera carregar, pede `auto_capture` ao content script, `POST /monitoramento`, **fecha a aba**. Pool de no máx. **3 abas simultâneas** (`processQueue`), config em `chrome.storage.local` (`monitorEnabled`, `batchSize=5`, `maxTabs=3`, `tabTimeoutMs`). Idempotente: se o SW morre no meio, o próximo alarm re-busca os que ainda estão desatualizados (estado no banco, não na memória).
+- **Content Script**: listener `auto_capture` → `autoCapture()` espera o anúncio "amadurecer" (MLB + preço, até ~8s) e responde com o **mesmo `rawData`** da coleta manual (`collectAll()` reusado). O painel/botão manual continua intacto.
+- **Popup**: vira status ("último ciclo: X ok / Y falhou", botões "Sincronizar agora" e "Pausar/Ativar"). Nenhuma lógica de coleta nele.
+
+**Limites (inerentes, documentados):** só roda com **Chrome aberto e logado**; vai devagar (3 abas, N por ciclo) pra não parecer robô pro ML; "vendidos" do concorrente é aproximado (o ML mostra faixa). É a diferença de extensão vs. worker no servidor — concorrente **exige** carregar a página (ML dá 403 na API de terceiro). Ver `decisions.md`.
+
 ## Extensão Chrome (`chrome-extension/`)
 
 **v2 — painel DARK na página (estilo Metrizap).** `content.js` detecta página de

@@ -36,6 +36,41 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAtivo();
   document.getElementById('saveBtn')?.addEventListener('click', () => setTimeout(loadAtivo, 300));
 
+  // ── Monitoramento automático (status + controles) ──────────────────────
+  const monBox = document.getElementById('monBox');
+  const toggleBtn = document.getElementById('toggleMonBtn');
+  function fmtWhen(ts) {
+    if (!ts) return 'nunca';
+    const m = Math.floor((Date.now() - ts) / 60000);
+    if (m < 1) return 'agora';
+    if (m < 60) return m + ' min atrás';
+    const h = Math.floor(m / 60);
+    return h < 24 ? h + 'h atrás' : Math.floor(h / 24) + 'd atrás';
+  }
+  function loadMonStatus() {
+    chrome.runtime.sendMessage({ action: 'get_monitor_status' }, (r) => {
+      if (chrome.runtime.lastError || !r) { monBox.textContent = 'Indisponível'; return; }
+      const enabled = r.monitorEnabled !== false;
+      const last = r.monitorLast;
+      const linha = last
+        ? (last.empty ? 'Nada a coletar no último ciclo.' : `Último ciclo: <b style="color:#4ade80">${last.ok || 0} ok</b>${last.fail ? ` · <b style="color:#fca5a5">${last.fail} falhou</b>` : ''}`)
+        : 'Ainda não rodou.';
+      monBox.innerHTML = `Estado: <b style="color:${enabled ? '#4ade80' : '#fca5a5'}">${enabled ? 'ATIVO' : 'PAUSADO'}</b><br>${linha}<br><span style="color:#8b929e">${fmtWhen(last?.at)}</span>`;
+      toggleBtn.textContent = enabled ? '⏸️ Pausar' : '▶️ Ativar';
+    });
+  }
+  loadMonStatus();
+  document.getElementById('syncNowBtn')?.addEventListener('click', () => {
+    monBox.innerHTML = 'Sincronizando… <span style="color:#8b929e">(pode levar alguns segundos)</span>';
+    chrome.runtime.sendMessage({ action: 'run_monitor_now' }, () => setTimeout(loadMonStatus, 4000));
+  });
+  toggleBtn?.addEventListener('click', () => {
+    chrome.storage.local.get(['monitorEnabled'], (r) => {
+      const next = r.monitorEnabled === false; // se estava pausado, ativa
+      chrome.storage.local.set({ monitorEnabled: next }, loadMonStatus);
+    });
+  });
+
   // Salvar URL
   saveBtn.addEventListener('click', () => {
     const apiUrl = apiUrlInput.value.trim();

@@ -122,3 +122,137 @@ async function fetchWithRetry(url, options, maxRetries = 3, baseDelay = 1000) {
 
   throw lastError || new Error('Todas as tentativas falharam');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MONITORAMENTO AUTOMÁTICO DE CONCORRENTES (background, sem clique do usuário)
+// A cada ciclo (chrome.alarms): pega os concorrentes mais desatualizados no
+// backend, abre cada um numa aba OCULTA, pede a captura ao content script,
+// envia ao backend e fecha a aba. Máx. 3 abas simultâneas. Recoleta 1×/dia (o
+// backend só devolve quem está com last_checked_at > 24h). Ver .claude/analise-produtos.md.
+// ═══════════════════════════════════════════════════════════════════════════
+const MONITOR_ALARM = 'financeecom-monitor';
+const MONITOR_DEFAULTS = { monitorEnabled: true, batchSize: 5, maxTabs: 3, tabTimeoutMs: 25000 };
+let _monitorRunning = false; // trava anti-reentrância dentro do mesmo SW vivo
+
+async function apiBase() {
+  const r = await chrome.storage.local.get(['apiUrl']);
+  return (r.apiUrl && r.apiUrl.trim()) || 'https://multimixvendas.duckdns.org';
+}
+async function monitorCfg() {
+  const r = await chrome.storage.local.get(Object.keys(MONITOR_DEFAULTS));
+  return { ...MONITOR_DEFAULTS, ...r };
+}
+
+// Garante o alarm criado (idempotente) — chamado no install, no startup e a
+// cada load do SW (que o Chrome recria sob demanda).
+async function ensureAlarm() {
+  const a = await chrome.alarms.get(MONITOR_ALARM);
+  if (!a) chrome.alarms.create(MONITOR_ALARM, { periodInMinutes: 15, delayInMinutes: 1 });
+}
+chrome.runtime.onInstalled.addListener(ensureAlarm);
+chrome.runtime.onStartup.addListener(ensureAlarm);
+ensureAlarm();
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === MONITOR_ALARM) runMonitorCycle().catch((e) => console.error('[SW] ciclo monitor erro:', e));
+});
+
+// Abre o anúncio numa aba oculta, espera carregar, pede a captura ao content
+// script, devolve o rawData. Sempre fecha a aba no fim (mesmo em erro/timeout).
+async function captureInHiddenTab(url, timeoutMs) {
+  let tabId = null;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    tabId = tab.id;
+    await waitTabComplete(tabId, timeoutMs);
+    // pequena folga extra pro JS do ML pintar o preço
+    await new Promise((r) => setTimeout(r, 1200));
+    const resp = await sendMessageWithTimeout(tabId, { action: 'auto_capture' }, timeoutMs);
+    if (!resp || !resp.ok) throw new Error((resp && resp.error) || 'sem captura');
+    return resp.rawData;
+  } finally {
+    if (tabId != null) { try { await chrome.tabs.remove(tabId); } catch (_) {} }
+  }
+}
+
+function waitTabComplete(tabId, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const to = setTimeout(() => { chrome.tabs.onUpdated.removeListener(onUpd); reject(new Error('timeout carregando aba')); }, timeoutMs);
+    function onUpd(id, info) {
+      if (id === tabId && info.status === 'complete') {
+        clearTimeout(to); chrome.tabs.onUpdated.removeListener(onUpd); resolve();
+      }
+    }
+    chrome.tabs.onUpdated.addListener(onUpd);
+  });
+}
+
+function sendMessageWithTimeout(tabId, msg, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const to = setTimeout(() => { if (!done) { done = true; resolve({ ok: false, error: 'timeout aguardando content' }); } }, timeoutMs);
+    chrome.tabs.sendMessage(tabId, msg, (resp) => {
+      if (done) return;
+      done = true; clearTimeout(to);
+      if (chrome.runtime.lastError) resolve({ ok: false, error: chrome.runtime.lastError.message });
+      else resolve(resp);
+    });
+  });
+}
+
+// Processa uma lista de itens com no máximo `maxTabs` abas ao mesmo tempo
+// (pool simples). Cada item: abre/lê/fecha aba → POST no backend.
+async function processQueue(itens, cfg, base) {
+  let idx = 0, ok = 0, fail = 0;
+  async function worker() {
+    while (idx < itens.length) {
+      const it = itens[idx++];
+      const url = it.url || (it.ml_id ? `https://produto.mercadolivre.com.br/${it.ml_id}` : null);
+      if (!url) { fail++; continue; }
+      try {
+        const rawData = await captureInHiddenTab(url, cfg.tabTimeoutMs);
+        const res = await fetchWithRetry(`${base}/extension/monitoramento`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ marketplace: 'mercadolivre', rawData }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        ok++;
+      } catch (e) { fail++; console.warn('[SW] monitor falhou', it.ml_id, e.message); }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(cfg.maxTabs, itens.length) }, worker));
+  return { ok, fail };
+}
+
+async function runMonitorCycle() {
+  if (_monitorRunning) return;
+  const cfg = await monitorCfg();
+  if (!cfg.monitorEnabled) return;
+  _monitorRunning = true;
+  try {
+    const base = await apiBase();
+    const res = await fetchWithRetry(`${base}/extension/monitoramento/proximos?limit=${cfg.batchSize}`, { method: 'GET' });
+    if (!res.ok) throw new Error(`HTTP ${res.status} em /proximos`);
+    const { itens = [] } = await res.json();
+    if (!itens.length) { await chrome.storage.local.set({ monitorLast: { at: Date.now(), ok: 0, fail: 0, empty: true } }); return; }
+    const r = await processQueue(itens, cfg, base);
+    await chrome.storage.local.set({ monitorLast: { at: Date.now(), ok: r.ok, fail: r.fail } });
+    console.log('[SW] ciclo monitor:', r);
+  } catch (e) {
+    console.error('[SW] runMonitorCycle:', e.message);
+  } finally {
+    _monitorRunning = false;
+  }
+}
+
+// Sincronização manual pelo popup ("Sincronizar Agora").
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  if (request.action === 'run_monitor_now') {
+    runMonitorCycle().then(() => sendResponse({ started: true })).catch(() => sendResponse({ started: false }));
+    return true;
+  }
+  if (request.action === 'get_monitor_status') {
+    chrome.storage.local.get(['monitorLast', 'monitorEnabled']).then((r) => sendResponse(r));
+    return true;
+  }
+});

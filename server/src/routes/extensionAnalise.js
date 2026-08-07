@@ -49,15 +49,11 @@ router.get('/produto-ativo', async (req, res) => {
   } catch (e) { console.error('[extension] produto-ativo', e.message); res.status(500).json({ error: e.message }); }
 });
 
-// POST /extension/anuncio — grava o anúncio coletado no produto ATIVO.
-// Aceita `rawData` (HTML/texto da página → o servidor extrai) ou campos já prontos.
-router.post('/anuncio', async (req, res) => {
-  try {
-    const { rows: acr } = await pool.query(`SELECT product_id FROM analise_active_collection WHERE id=1`);
-    const pid = acr[0]?.product_id;
-    if (!pid) return res.status(409).json({ error: 'nenhum produto ativo — ative a coleta no dashboard' });
-
-    const b = req.body || {};
+// Monta o payload do anúncio a partir do corpo recebido da extensão (rawData
+// da página OU campos já prontos), incluindo a resolução de cidade/estado do
+// vendedor pela API do ML. Extraído pra ser reusado pelos dois fluxos: coleta
+// manual (produto ativo) e monitoramento automático em background.
+async function resolveAdPayload(b) {
     let payload;
     if (b.rawData) {
       const { extracted } = extractMercadoLivreData(b.rawData);
@@ -111,15 +107,74 @@ router.post('/anuncio', async (req, res) => {
       }
     }
     console.log('[extension] loc:', JSON.stringify({ ml_id: payload.ml_id, cidade: payload.cidade, estado: payload.estado, via, sellerId: (b.rawData?.extracted?.sellerId) || null, vendedor: payload.vendedor }));
+    return payload;
+}
+
+// Grava o preço lido da PÁGINA no histórico de monitoramento (a API do ML dá
+// 403 pra item de concorrente, então a página é a única fonte). Best-effort.
+function feedSnapshot(ad) {
+  if (ad && ad.ml_id && ad.preco != null) {
+    require('../analise/monitor').recordSnapshot(ad.ml_id, { preco: ad.preco, preco_original: ad.preco_original }).catch(() => {});
+  }
+}
+
+// POST /extension/anuncio — grava o anúncio coletado no produto ATIVO.
+// Aceita `rawData` (HTML/texto da página → o servidor extrai) ou campos já prontos.
+router.post('/anuncio', async (req, res) => {
+  try {
+    const { rows: acr } = await pool.query(`SELECT product_id FROM analise_active_collection WHERE id=1`);
+    const pid = acr[0]?.product_id;
+    if (!pid) return res.status(409).json({ error: 'nenhum produto ativo — ative a coleta no dashboard' });
+    const payload = await resolveAdPayload(req.body || {});
     const ad = await upsertAd(pid, payload);
-    // Alimenta o histórico de monitoramento com o preço lido da PÁGINA (fonte que
-    // funciona — o ML bloqueia a leitura do item de concorrente via API/403).
-    if (ad.ml_id && ad.preco != null) {
-      require('../analise/monitor').recordSnapshot(ad.ml_id, { preco: ad.preco, preco_original: ad.preco_original }).catch(() => {});
-    }
+    if (ad.id) await pool.query(`UPDATE analise_product_ads SET last_checked_at = now() WHERE id = $1`, [ad.id]);
+    feedSnapshot(ad);
     wsHub.publish('analise_anuncio', { produto_id: pid, anuncio: ad }).catch(() => {});
     res.json({ ok: true, produto_id: pid, anuncio: ad });
   } catch (e) { console.error('[extension] POST anuncio', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// GET /extension/monitoramento/proximos?limit=N — fila de concorrentes a
+// recoletar (background da extensão). Devolve os `monitorar=true` mais
+// desatualizados (recoleta 1×/dia): last_checked_at nulo ou > 24h. Deduplica por
+// ml_id (o mesmo concorrente pode estar em vários produtos). Ver analise-produtos.md.
+router.get('/monitoramento/proximos', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 5, 1), 50);
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (ml_id) ml_id, link AS url
+         FROM analise_product_ads
+        WHERE ml_id IS NOT NULL AND COALESCE(monitorar, true) = true
+          AND (last_checked_at IS NULL OR last_checked_at < now() - interval '24 hours')
+        ORDER BY ml_id, last_checked_at NULLS FIRST
+        LIMIT $1`, [limit]);
+    res.json({ itens: rows });
+  } catch (e) { console.error('[extension] monitoramento/proximos', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// POST /extension/monitoramento — recebe um concorrente coletado em background.
+// Diferente do /anuncio: NÃO depende do produto ativo; casa pelo ml_id e
+// atualiza o anúncio em TODOS os produtos onde ele é monitorado (o mesmo
+// concorrente pode aparecer em vários dos seus produtos), sempre carimbando o
+// last_checked_at e alimentando o histórico de preço.
+router.post('/monitoramento', async (req, res) => {
+  try {
+    const payload = await resolveAdPayload(req.body || {});
+    if (!payload.ml_id) return res.status(400).json({ error: 'ml_id não identificado na coleta' });
+    const { rows: prods } = await pool.query(
+      `SELECT DISTINCT product_id FROM analise_product_ads WHERE ml_id = $1 AND COALESCE(monitorar, true) = true`,
+      [payload.ml_id]);
+    if (!prods.length) return res.json({ ok: true, ml_id: payload.ml_id, atualizados: 0, nota: 'ml_id não está na watchlist' });
+    let lastAd = null;
+    for (const { product_id } of prods) {
+      const ad = await upsertAd(product_id, payload);
+      if (ad.id) await pool.query(`UPDATE analise_product_ads SET last_checked_at = now() WHERE id = $1`, [ad.id]);
+      wsHub.publish('analise_anuncio', { produto_id: product_id, anuncio: ad }).catch(() => {});
+      lastAd = ad;
+    }
+    feedSnapshot(lastAd); // histórico é por ml_id — 1 snapshot basta
+    res.json({ ok: true, ml_id: payload.ml_id, atualizados: prods.length });
+  } catch (e) { console.error('[extension] POST monitoramento', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // GET /extension/monitor/:mlb — histórico de preço do MLB (pro mini-gráfico no

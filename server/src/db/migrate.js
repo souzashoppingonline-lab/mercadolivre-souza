@@ -68,17 +68,30 @@ async function migrate() {
     'migrate-v66.sql',
     'migrate-v67.sql',
   ];
+  // Cada arquivo roda ISOLADO: se um falhar (ex.: migration antiga não
+  // idempotente), loga e CONTINUA — antes um erro abortava tudo (process.exit),
+  // e as migrations seguintes nunca rodavam, causando drift de schema (ex.: a
+  // coluna `descricao` de analise_product_ads que nunca era criada). Como as
+  // migrations usam ADD COLUMN/CREATE ... IF NOT EXISTS, reexecutar é seguro.
+  let ok = 0, fail = 0;
   for (const f of files) {
     const filePath = path.join(__dirname, f);
     if (!fs.existsSync(filePath)) { console.log(`[migrate] skip ${f} (not found)`); continue; }
     const sql = fs.readFileSync(filePath, 'utf8');
-    await pool.query(sql);
-    console.log(`[migrate] applied ${f}`);
+    try {
+      await pool.query(sql);
+      console.log(`[migrate] applied ${f}`);
+      ok++;
+    } catch (e) {
+      console.error(`[migrate] ERRO em ${f} (continuando): ${e.message}`);
+      fail++;
+    }
   }
+  console.log(`[migrate] concluído — ${ok} ok, ${fail} com erro`);
   await pool.end();
 }
 
 migrate().catch((err) => {
-  console.error('[migrate] failed', err);
+  console.error('[migrate] falha fatal (conexão?):', err.message);
   process.exit(1);
 });

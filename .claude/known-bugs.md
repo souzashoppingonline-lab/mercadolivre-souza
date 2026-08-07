@@ -83,3 +83,15 @@ o `fetchItem` tenta o multiget (`/items?ids=`) como fallback, e o histórico de 
 do card é alimentado pela **extensão** (que lê a página renderizada e funciona) via
 `monitor.recordSnapshot` a cada coleta. **Correção real** dependeria de escopo/app com
 acesso público liberado pelo ML — fora do nosso controle.
+
+## RESOLVIDO (v67) — coleta da extensão dava 500 "column descricao does not exist"
+
+Sintoma: `POST /extension/anuncio` respondia 500 e nenhum concorrente era salvo. Log:
+`[extension] POST anuncio column "descricao" of relation "analise_product_ads" does not exist`.
+Causa: **drift de schema** — o banco de produção estava sem colunas que o `upsertAd`
+(`analise/ads.js`) grava (descricao, highlights, comentarios_auto, vendas_*/preco_medio_*,
+etc.), porque migrations históricas não foram aplicadas nessa instância. Correção: migration
+**v67** reaplica TODAS as colunas de `analise_product_ads` com `ADD COLUMN IF NOT EXISTS`
+(idempotente), alinhando com o `CREATE TABLE` de `schema.sql`. Lição: quando `upsertAd`/`mapAd`
+ganham coluna nova, garantir a migration `ADD COLUMN IF NOT EXISTS` correspondente registrada
+em `migrate.js` (ver a regra do CLAUDE.md sobre migrations).

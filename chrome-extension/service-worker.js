@@ -75,7 +75,11 @@ async function handleCollectData(data, sendResponse) {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      // Lê o corpo do erro pra mostrar a causa real (o backend responde
+      // { error: "..." }) em vez de só "HTTP 500".
+      let detail = '';
+      try { const j = await response.json(); detail = j && j.error ? ` — ${j.error}` : ''; } catch (_) {}
+      throw new Error(`HTTP ${response.status}${detail}`);
     }
 
     const responseData = await response.json();

@@ -110,6 +110,14 @@ async function resolveAdPayload(b) {
     return payload;
 }
 
+// Carimba a última recoleta. Best-effort: se a migration v66 (coluna
+// last_checked_at) ainda não rodou, o erro é ignorado e a coleta NÃO quebra.
+async function stampChecked(adId) {
+  if (!adId) return;
+  try { await pool.query(`UPDATE analise_product_ads SET last_checked_at = now() WHERE id = $1`, [adId]); }
+  catch (e) { console.warn('[extension] stampChecked (rodar migration v66?):', e.message); }
+}
+
 // Grava o preço lido da PÁGINA no histórico de monitoramento (a API do ML dá
 // 403 pra item de concorrente, então a página é a única fonte). Best-effort.
 function feedSnapshot(ad) {
@@ -127,7 +135,7 @@ router.post('/anuncio', async (req, res) => {
     if (!pid) return res.status(409).json({ error: 'nenhum produto ativo — ative a coleta no dashboard' });
     const payload = await resolveAdPayload(req.body || {});
     const ad = await upsertAd(pid, payload);
-    if (ad.id) await pool.query(`UPDATE analise_product_ads SET last_checked_at = now() WHERE id = $1`, [ad.id]);
+    await stampChecked(ad.id); // best-effort — não pode derrubar a coleta
     feedSnapshot(ad);
     wsHub.publish('analise_anuncio', { produto_id: pid, anuncio: ad }).catch(() => {});
     res.json({ ok: true, produto_id: pid, anuncio: ad });
@@ -168,7 +176,7 @@ router.post('/monitoramento', async (req, res) => {
     let lastAd = null;
     for (const { product_id } of prods) {
       const ad = await upsertAd(product_id, payload);
-      if (ad.id) await pool.query(`UPDATE analise_product_ads SET last_checked_at = now() WHERE id = $1`, [ad.id]);
+      await stampChecked(ad.id);
       wsHub.publish('analise_anuncio', { produto_id: product_id, anuncio: ad }).catch(() => {});
       lastAd = ad;
     }

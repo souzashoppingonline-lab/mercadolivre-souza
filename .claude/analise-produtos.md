@@ -104,6 +104,8 @@ coleta + Analisar). Métodos em `js/db.js` (`getProdutosAnalise`, `criarProdutoA
 - **Content Script**: listener `auto_capture` → `autoCapture()` espera o anúncio "amadurecer" (MLB + preço, até ~8s) e responde com o **mesmo `rawData`** da coleta manual (`collectAll()` reusado). O painel/botão manual continua intacto.
 - **Popup**: vira status ("último ciclo: X ok / Y falhou", botões "Sincronizar agora" e "Pausar/Ativar"). Nenhuma lógica de coleta nele.
 
+**Ligar/desligar (o "até que eu desligue"):** **"Finalizar coleta"** agora também **desliga o monitoramento** dos concorrentes daquele produto (`monitorar=false` em massa); **"Coleta ativa"** religa (`monitorar=true`). Por anúncio há um **toggle** no card (`POST /analise/anuncios/:adId/monitorar`, botão `.mon-tgl` verde=monitorando / cinza=pausado) pra manter só alguns. O `/proximos` só entrega quem tem `monitorar=true`. **Robustez:** o carimbo `last_checked_at` no `/anuncio` é best-effort (`stampChecked`) — se a migration v66 não rodou, a coleta manual **não quebra** (só não carimba).
+
 **Limites (inerentes, documentados):** só roda com **Chrome aberto e logado**; vai devagar (3 abas, N por ciclo) pra não parecer robô pro ML; "vendidos" do concorrente é aproximado (o ML mostra faixa). É a diferença de extensão vs. worker no servidor — concorrente **exige** carregar a página (ML dá 403 na API de terceiro). Ver `decisions.md`.
 
 ## Extensão Chrome (`chrome-extension/`)

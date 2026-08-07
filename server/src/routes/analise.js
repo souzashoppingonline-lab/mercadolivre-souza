@@ -110,16 +110,34 @@ router.post('/produtos/:id/ativar', async (req, res) => {
     const { rowCount } = await pool.query(`SELECT 1 FROM analise_products WHERE id=$1`, [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'produto não encontrado' });
     await pool.query(`UPDATE analise_active_collection SET product_id=$1, updated_at=now() WHERE id=1`, [req.params.id]);
+    // Religa o monitoramento automático dos concorrentes desse produto — ativar
+    // a coleta = voltar a acompanhar (ver decisions.md, "até que eu desligue").
+    await pool.query(`UPDATE analise_product_ads SET monitorar=true WHERE product_id=$1`, [req.params.id]);
     res.json({ ok: true, ativo_id: Number(req.params.id) });
   } catch (e) { console.error('[api/analise] ativar', e.message); res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/analise/produtos/:id/finalizar — limpa o ativo (encerra a coleta)
+// POST /api/analise/produtos/:id/finalizar — encerra a coleta E para de
+// monitorar os concorrentes desse produto (a extensão deixa de recoletá-los).
 router.post('/produtos/:id/finalizar', async (req, res) => {
   try {
     await pool.query(`UPDATE analise_active_collection SET product_id=NULL, updated_at=now() WHERE id=1 AND product_id=$1`, [req.params.id]);
+    await pool.query(`UPDATE analise_product_ads SET monitorar=false WHERE product_id=$1`, [req.params.id]);
     res.json({ ok: true, ativo_id: null });
   } catch (e) { console.error('[api/analise] finalizar', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/analise/anuncios/:adId/monitorar — liga/desliga o monitoramento
+// automático de UM concorrente específico (toggle no card). body { monitorar }.
+router.post('/anuncios/:adId/monitorar', async (req, res) => {
+  try {
+    const on = req.body?.monitorar === true || req.body?.monitorar === 'true' || req.body?.monitorar === 1;
+    const { rows } = await pool.query(
+      `UPDATE analise_product_ads SET monitorar=$2 WHERE id=$1 RETURNING id, monitorar`,
+      [req.params.adId, on]);
+    if (!rows.length) return res.status(404).json({ error: 'anúncio não encontrado' });
+    res.json({ ok: true, id: rows[0].id, monitorar: rows[0].monitorar });
+  } catch (e) { console.error('[api/analise] monitorar toggle', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/analise/produtos/:id/analisar — motor de IA (Fase 3, núcleo).

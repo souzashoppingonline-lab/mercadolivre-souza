@@ -142,10 +142,12 @@
     .ap-badge.loc  { background:rgba(155,89,182,.16);color:#c39bd3; }
     .ap-card .foot { display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-muted);border-top:1px solid rgba(255,255,255,.05);padding:7px 12px; }
     .ap-card { position:relative; }
-    .ap-card .acts { position:absolute;top:44px;right:6px;display:flex;gap:5px;opacity:0;transition:opacity .15s;z-index:2; }
+    .ap-card .acts { position:absolute;top:44px;right:6px;display:flex;gap:5px;opacity:.5;transition:opacity .15s;z-index:2; }
     .ap-card:hover .acts { opacity:1; }
     .ap-card .acts button { border:none;width:27px;height:27px;border-radius:7px;cursor:pointer;font-size:12px;background:rgba(0,0,0,.6);color:#fff; }
     .ap-card .acts button:hover { background:rgba(0,0,0,.85); }
+    .ap-card .acts .mon-tgl.on  { background:rgba(22,179,100,.9); }   /* monitorando */
+    .ap-card .acts .mon-tgl.off { background:rgba(120,120,120,.75); } /* pausado */
     .ap-card .obs { font-size:.7rem;color:#e6c200;background:rgba(255,230,0,.08);border-radius:6px;padding:4px 7px;line-height:1.35; }
     .ap-card .ap-desc { font-size:.72rem;background:var(--bg-card,#1c1d21);border:1px solid var(--border,#3a3b40);border-radius:8px;padding:0 8px; }
     .ap-card .ap-desc summary { cursor:pointer;font-weight:600;color:var(--text-muted);padding:6px 0;list-style:none; }
@@ -550,6 +552,7 @@ function cardHtml(a) {
       <i class="fas fa-cloud-arrow-down"></i> Puxar dados do Mercado Livre
     </button>
     <div class="acts">
+      <button class="mon-tgl ${a.monitorar === false ? 'off' : 'on'}" title="${a.monitorar === false ? 'Monitoramento automático PAUSADO — clique para ativar' : 'Monitorando automaticamente (1×/dia) — clique para pausar'}" onclick="toggleMonitorar(${a.id}, this)"><i class="fas ${a.monitorar === false ? 'fa-eye-slash' : 'fa-satellite-dish'}"></i></button>
       <button title="Gráfico de preços coletados" onclick="abrirGraficoPreco(${a.id})"><i class="fas fa-chart-line"></i></button>
       <button title="Editar / completar à mão" onclick="abrirAnuncioEditar(${a.id})"><i class="fas fa-pen"></i></button>
       <button title="Excluir" onclick="excluirAnuncio(${a.id})"><i class="fas fa-trash"></i></button>
@@ -913,6 +916,21 @@ async function salvarAnuncio() {
   renderCards(ANUNCIOS);
   toast(adId ? 'Concorrente atualizado.' : 'Concorrente adicionado.');
 }
+async function toggleMonitorar(id, btn) {
+  const ad = ANUNCIOS.find(x => String(x.id) === String(id));
+  const novo = !(ad && ad.monitorar !== false); // se estava ligado, desliga
+  btn.disabled = true;
+  const res = await DB.toggleMonitorarAnuncio(id, novo);
+  btn.disabled = false;
+  if (res?.error) return toast('Erro: ' + res.error);
+  if (ad) ad.monitorar = res.monitorar;
+  const on = res.monitorar !== false;
+  btn.className = 'mon-tgl ' + (on ? 'on' : 'off');
+  btn.title = on ? 'Monitorando automaticamente (1×/dia) — clique para pausar' : 'Monitoramento automático PAUSADO — clique para ativar';
+  btn.querySelector('i').className = 'fas ' + (on ? 'fa-satellite-dish' : 'fa-eye-slash');
+  toast(on ? 'Monitoramento automático ATIVADO.' : 'Monitoramento automático PAUSADO.');
+}
+
 async function excluirAnuncio(id) {
   if (!confirm('Excluir este concorrente?')) return;
   const res = await DB.excluirAnuncio(id);

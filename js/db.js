@@ -221,6 +221,7 @@ const DB = {
   async addAnuncioManual(id, data) { return this._post(`/analise/produtos/${id}/anuncio`, data); },
   async editarAnuncio(adId, data) { return this._post(`/analise/anuncios/${adId}/editar`, data); },
   async excluirAnuncio(adId) { return this._post(`/analise/anuncios/${adId}/excluir`, {}); },
+  async toggleMonitorarAnuncio(adId, on) { return this._post(`/analise/anuncios/${adId}/monitorar`, { monitorar: on }); },
 
   // ── Horários & Dias ────────────────────────────────────────
   async getHorarios(period='7', store_id='') { return this._get(`/analises/horarios?period=${period}&store_id=${encodeURIComponent(store_id)}`); },

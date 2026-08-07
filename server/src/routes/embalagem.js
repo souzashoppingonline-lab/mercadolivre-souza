@@ -355,6 +355,26 @@ async function resolveMlByShipment(code) {
   return false;
 }
 
+// Medidas da CAIXA (embalagem) declaradas no anúncio: lê os atributos
+// PACKAGE_HEIGHT/WIDTH/LENGTH/WEIGHT do item do ML (ou `shipping.dimensions`
+// como fallback). Retorna { comprimento, largura, altura, peso, texto } ou null
+// — só existe se o vendedor preencheu esses atributos no anúncio.
+function packageDimsFromItem(item) {
+  if (!item) return null;
+  const attrs = Array.isArray(item.attributes) ? item.attributes : [];
+  const get = (id) => {
+    const a = attrs.find((x) => x.id === id);
+    if (!a) return null;
+    if (a.value_struct && a.value_struct.number != null) return `${a.value_struct.number}${a.value_struct.unit ? ' ' + a.value_struct.unit : ''}`;
+    return a.value_name || null;
+  };
+  const alt = get('PACKAGE_HEIGHT'), lar = get('PACKAGE_WIDTH'), comp = get('PACKAGE_LENGTH'), peso = get('PACKAGE_WEIGHT');
+  let texto = null;
+  if (comp || lar || alt) texto = [comp, lar, alt].filter(Boolean).join(' × ') + (peso ? ` · ${peso}` : '');
+  else if (item.shipping && item.shipping.dimensions) texto = String(item.shipping.dimensions);
+  return texto ? { comprimento: comp, largura: lar, altura: alt, peso, texto } : null;
+}
+
 // GET /api/embalagem/pedido/:shippingId — busca pedido(s) pela etiqueta bipada.
 // Pode retornar mais de 1 linha: um mesmo envio (pack) pode agrupar vários
 // pedidos do mesmo comprador.
@@ -405,6 +425,19 @@ router.get('/pedido/:shippingId', async (req, res) => {
         // Prioriza a foto da variação; fallback para thumbnail principal
         row.thumbnail = variationPicture || row.thumbnail;
       });
+      // Medidas da caixa: GET no item do ML (não está no banco). Best-effort,
+      // 1 chamada por item único do pack (cacheada), nunca derruba o bipe.
+      const dimsCache = new Map();
+      await Promise.all(rows.map(async (row) => {
+        if (!row.item_id) return;
+        try {
+          if (!dimsCache.has(row.item_id)) {
+            const item = await ml.getItem(row.item_id, row.store_id);
+            dimsCache.set(row.item_id, packageDimsFromItem(item));
+          }
+          row.dimensoes = dimsCache.get(row.item_id);
+        } catch (_) { /* sem dimensão — segue sem quebrar */ }
+      }));
       const already = await lastPacking(req.params.shippingId, rows.map(r => r.order_id));
       return res.json({ shipping_id: req.params.shippingId, marketplace: 'ML', orders: rows, already_packed: already });
     }

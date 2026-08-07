@@ -642,6 +642,7 @@ function renderOrders(orders, alreadyPacked) {
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
           <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
           ${o.available_quantity != null ? `<div class="emb-order-detail"><span class="k">Estoque atual</span><span class="v ${estoqueBaixo ? 'warn' : ''}">${o.available_quantity} un.</span></div>` : ''}
+          ${o.dimensoes && o.dimensoes.texto ? `<div class="emb-order-detail"><span class="k"><i class="fas fa-box"></i> Caixa (C×L×A)</span><span class="v">${escapeHtml(o.dimensoes.texto)}</span></div>` : ''}
         </div>
       </div>
     </div>`;

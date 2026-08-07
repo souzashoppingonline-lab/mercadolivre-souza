@@ -148,12 +148,16 @@ router.post('/anuncio', async (req, res) => {
 // ml_id (o mesmo concorrente pode estar em vários produtos). Ver analise-produtos.md.
 router.get('/monitoramento/proximos', async (req, res) => {
   try {
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 5, 1), 50);
+    const force = req.query.force === '1' || req.query.force === 'true';
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || (force ? 100 : 5), 1), 200);
+    // force=1 ignora o corte de 24h (recoleta TODOS os monitorados agora).
+    const dueCond = force ? '' : `AND (last_checked_at IS NULL OR last_checked_at < now() - interval '24 hours')`;
     const { rows } = await pool.query(
       `SELECT DISTINCT ON (ml_id) ml_id, link AS url
          FROM analise_product_ads
         WHERE ml_id IS NOT NULL AND COALESCE(monitorar, true) = true
-          AND (last_checked_at IS NULL OR last_checked_at < now() - interval '24 hours')
+          AND link IS NOT NULL AND btrim(link) <> ''  -- precisa do permalink pra abrir (sem link a URL fica inválida)
+          ${dueCond}
         ORDER BY ml_id, last_checked_at NULLS FIRST
         LIMIT $1`, [limit]);
     res.json({ itens: rows });

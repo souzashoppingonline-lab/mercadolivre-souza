@@ -64,6 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
     monBox.innerHTML = 'Sincronizando… <span style="color:#8b929e">(pode levar alguns segundos)</span>';
     chrome.runtime.sendMessage({ action: 'run_monitor_now' }, () => setTimeout(loadMonStatus, 4000));
   });
+  document.getElementById('forceSyncBtn')?.addEventListener('click', () => {
+    if (!confirm('Recoletar TODOS os concorrentes monitorados agora? Vai abrir várias abas ocultas — deixe o Chrome aberto até terminar.')) return;
+    monBox.innerHTML = 'Forçando recoleta de todos… <span style="color:#8b929e">(pode demorar; abas abrindo/fechando)</span>';
+    chrome.runtime.sendMessage({ action: 'run_monitor_force' }, () => setTimeout(loadMonStatus, 8000));
+  });
   toggleBtn?.addEventListener('click', () => {
     chrome.storage.local.get(['monitorEnabled'], (r) => {
       const next = r.monitorEnabled === false; // se estava pausado, ativa

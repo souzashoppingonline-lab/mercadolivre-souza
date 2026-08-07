@@ -211,7 +211,10 @@ async function processQueue(itens, cfg, base) {
   async function worker() {
     while (idx < itens.length) {
       const it = itens[idx++];
-      const url = it.url || (it.ml_id ? `https://produto.mercadolivre.com.br/${it.ml_id}` : null);
+      // Preferir o permalink salvo (it.url). Fallback: MLB-<num> COM traço —
+      // sem o traço o ML devolve "página não existe" (404).
+      const mlbDash = it.ml_id ? String(it.ml_id).replace(/^MLB-?/i, 'MLB-') : null;
+      const url = it.url || (mlbDash ? `https://produto.mercadolivre.com.br/${mlbDash}` : null);
       if (!url) { fail++; continue; }
       try {
         const rawData = await captureInHiddenTab(url, cfg.tabTimeoutMs);
@@ -228,14 +231,16 @@ async function processQueue(itens, cfg, base) {
   return { ok, fail };
 }
 
-async function runMonitorCycle() {
+async function runMonitorCycle(force = false) {
   if (_monitorRunning) return;
   const cfg = await monitorCfg();
-  if (!cfg.monitorEnabled) return;
+  if (!cfg.monitorEnabled && !force) return; // force ignora o pause também
   _monitorRunning = true;
   try {
     const base = await apiBase();
-    const res = await fetchWithRetry(`${base}/extension/monitoramento/proximos?limit=${cfg.batchSize}`, { method: 'GET' });
+    // force=1: ignora o corte de 24h e recoleta TODOS os monitorados agora.
+    const qs = force ? 'limit=100&force=1' : `limit=${cfg.batchSize}`;
+    const res = await fetchWithRetry(`${base}/extension/monitoramento/proximos?${qs}`, { method: 'GET' });
     if (!res.ok) throw new Error(`HTTP ${res.status} em /proximos`);
     const { itens = [] } = await res.json();
     if (!itens.length) { await chrome.storage.local.set({ monitorLast: { at: Date.now(), ok: 0, fail: 0, empty: true } }); return; }
@@ -252,7 +257,11 @@ async function runMonitorCycle() {
 // Sincronização manual pelo popup ("Sincronizar Agora").
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request.action === 'run_monitor_now') {
-    runMonitorCycle().then(() => sendResponse({ started: true })).catch(() => sendResponse({ started: false }));
+    runMonitorCycle(false).then(() => sendResponse({ started: true })).catch(() => sendResponse({ started: false }));
+    return true;
+  }
+  if (request.action === 'run_monitor_force') {
+    runMonitorCycle(true).then(() => sendResponse({ started: true })).catch(() => sendResponse({ started: false }));
     return true;
   }
   if (request.action === 'get_monitor_status') {

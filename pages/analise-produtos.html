@@ -255,8 +255,11 @@
           <div id="iaPanel" style="display:none;margin-top:16px"></div>
 
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:16px 0 4px">
-            <h3 style="font-size:.9rem;font-weight:800"><i class="fas fa-users"></i> Concorrentes coletados (<span id="dQtd">0</span>)</h3>
+            <h3 style="font-size:.9rem;font-weight:800"><i class="fas fa-users"></i> Concorrentes coletados (<span id="dQtd">0</span>/10)</h3>
             <button class="ap-btn ghost" onclick="abrirAnuncioNovo()"><i class="fas fa-plus"></i> Concorrente manual</button>
+          </div>
+          <div id="dLimiteAviso" style="display:none;background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.35);color:#d4a017;border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:10px">
+            <i class="fas fa-triangle-exclamation"></i> Limite de <b>10 concorrentes por produto</b> (e 10 produtos no total) — cada concorrente abre uma aba oculta na recoleta, então monitorar demais pesa no seu PC. Exclua os que não interessam mais.
           </div>
           <div class="ap-cards" id="cardsConc"></div>
           <div id="cardsVazio" class="ap-empty" style="display:none"><i class="fas fa-inbox"></i>Nenhum anúncio coletado ainda. Ative a coleta e use a extensão no Mercado Livre.</div>
@@ -436,9 +439,19 @@ async function loadLista() {
       <td><div class="ap-rowbtns">
         <button class="ap-btn ghost" onclick="abrirProduto(${p.id})"><i class="fas fa-folder-open"></i> Abrir</button>
         <button class="ap-btn ghost" onclick="abrirEditar(${p.id})"><i class="fas fa-pen"></i></button>
+        <button class="ap-btn ghost" title="Excluir produto e parar de monitorar" onclick="excluirProduto(${p.id}, ${JSON.stringify(p.produto)})" style="color:var(--red,#ef4444)"><i class="fas fa-trash"></i></button>
       </div></td>
     </tr>`;
   }).join('');
+}
+
+async function excluirProduto(id, nome) {
+  if (!confirm(`Excluir o produto "${nome}"?\n\nIsso apaga o produto, TODOS os concorrentes coletados dele e para de monitorá-los. Não dá pra desfazer.`)) return;
+  const res = await DB.excluirProdutoAnalise(id);
+  if (res?.error) return toast('Erro: ' + res.error);
+  PRODUTOS = PRODUTOS.filter(x => String(x.id) !== String(id));
+  loadLista();
+  toast('Produto excluído.');
 }
 
 // ── Modal ────────────────────────────────────────────────────────────────
@@ -517,6 +530,7 @@ function voltarLista() {
 function renderCards(anuncios) {
   ANUNCIOS = anuncios || [];
   document.getElementById('dQtd').textContent = ANUNCIOS.length;
+  document.getElementById('dLimiteAviso').style.display = ANUNCIOS.length >= 8 ? 'block' : 'none'; // avisa perto do limite (10)
   const wrap = document.getElementById('cardsConc');
   document.getElementById('cardsVazio').style.display = ANUNCIOS.length ? 'none' : 'block';
   wrap.innerHTML = ANUNCIOS.map(cardHtml).join('');

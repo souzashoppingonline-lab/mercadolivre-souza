@@ -4,7 +4,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const wsHub = require('../ws/hub');
-const { num, upsertAd } = require('../analise/ads');
+const { num, upsertAd, competitorSlotAvailable, MAX_COMPETITORS } = require('../analise/ads');
 const { extractMercadoLivreData } = require('../extractors/mercadolivre');
 const ml = require('../mlClient');
 const { pickMlStoreId } = require('../analise/monitor');
@@ -134,6 +134,8 @@ router.post('/anuncio', async (req, res) => {
     const pid = acr[0]?.product_id;
     if (!pid) return res.status(409).json({ error: 'nenhum produto ativo — ative a coleta no dashboard' });
     const payload = await resolveAdPayload(req.body || {});
+    if (!(await competitorSlotAvailable(pid, payload.ml_id)))
+      return res.status(409).json({ error: `Limite de ${MAX_COMPETITORS} concorrentes neste produto. Exclua algum no dashboard para coletar outro.` });
     const ad = await upsertAd(pid, payload);
     await stampChecked(ad.id); // best-effort — não pode derrubar a coleta
     feedSnapshot(ad);

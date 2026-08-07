@@ -215,6 +215,7 @@ const DB = {
   async getProdutoAnalise(id) { return this._get(`/analise/produtos/${id}`); },
   async criarProdutoAnalise(data) { return this._post('/analise/produtos', data); },
   async editarProdutoAnalise(id, data) { return this._post(`/analise/produtos/${id}/editar`, data); },
+  async excluirProdutoAnalise(id) { return this._post(`/analise/produtos/${id}/excluir`, {}); },
   async ativarColetaProduto(id) { return this._post(`/analise/produtos/${id}/ativar`, {}); },
   async finalizarColetaProduto(id) { return this._post(`/analise/produtos/${id}/finalizar`, {}); },
   async analisarProduto(id) { return this._post(`/analise/produtos/${id}/analisar`, {}); },

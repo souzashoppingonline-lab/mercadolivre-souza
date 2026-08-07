@@ -96,4 +96,20 @@ async function upsertAd(productId, b) {
   return mapAd(rows[0]);
 }
 
-module.exports = { num, bool, mapAd, adValues, upsertAd };
+// Limites (proteção do servidor/PC — evitar abrir abas demais no monitoramento):
+// no máx. 10 concorrentes por produto e 10 produtos no total. Ver decisions.md.
+const MAX_COMPETITORS = 10;
+const MAX_PRODUCTS = 10;
+
+// true se dá pra adicionar/atualizar esse concorrente: se o ml_id já existe no
+// produto é update (sempre ok); se é novo, só se ainda houver vaga (< 10).
+async function competitorSlotAvailable(productId, mlId) {
+  if (mlId) {
+    const { rows } = await pool.query(`SELECT 1 FROM analise_product_ads WHERE product_id=$1 AND ml_id=$2`, [productId, mlId]);
+    if (rows.length) return true;
+  }
+  const { rows: c } = await pool.query(`SELECT count(*)::int AS n FROM analise_product_ads WHERE product_id=$1`, [productId]);
+  return c[0].n < MAX_COMPETITORS;
+}
+
+module.exports = { num, bool, mapAd, adValues, upsertAd, competitorSlotAvailable, MAX_COMPETITORS, MAX_PRODUCTS };

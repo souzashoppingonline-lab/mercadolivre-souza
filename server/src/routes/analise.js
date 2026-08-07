@@ -5,7 +5,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const wsHub = require('../ws/hub');
-const { num, mapAd, adValues, upsertAd } = require('../analise/ads');
+const { num, mapAd, adValues, upsertAd, competitorSlotAvailable, MAX_COMPETITORS, MAX_PRODUCTS } = require('../analise/ads');
 const llm = require('../ai/llm');
 const { analisarNucleo, gerarCriativos } = require('../ai/analiseAgents');
 const monitor = require('../analise/monitor');
@@ -80,6 +80,8 @@ router.post('/produtos', async (req, res) => {
   try {
     const b = req.body || {};
     if (!b.produto) return res.status(400).json({ error: 'produto é obrigatório' });
+    const { rows: cnt } = await pool.query(`SELECT count(*)::int AS n FROM analise_products`);
+    if (cnt[0].n >= MAX_PRODUCTS) return res.status(409).json({ error: `Limite de ${MAX_PRODUCTS} produtos em análise atingido. Exclua um produto que não vai mais monitorar para criar outro.` });
     const { rows } = await pool.query(
       `INSERT INTO analise_products (produto,fornecedor,preco_compra,taxa_mp,imposto,frete_entrada,embalagem,observacoes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
@@ -125,6 +127,17 @@ router.post('/produtos/:id/finalizar', async (req, res) => {
     await pool.query(`UPDATE analise_product_ads SET monitorar=false WHERE product_id=$1`, [req.params.id]);
     res.json({ ok: true, ativo_id: null });
   } catch (e) { console.error('[api/analise] finalizar', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/analise/produtos/:id/excluir — apaga o produto e (CASCADE) todos os
+// concorrentes coletados dele; limpa o ativo se apontava pra ele. Sem volta.
+router.post('/produtos/:id/excluir', async (req, res) => {
+  try {
+    await pool.query(`UPDATE analise_active_collection SET product_id=NULL, updated_at=now() WHERE id=1 AND product_id=$1`, [req.params.id]);
+    const { rowCount } = await pool.query(`DELETE FROM analise_products WHERE id=$1`, [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'produto não encontrado' });
+    res.json({ ok: true });
+  } catch (e) { console.error('[api/analise] excluir produto', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/analise/anuncios/:adId/monitorar — liga/desliga o monitoramento
@@ -211,6 +224,9 @@ router.post('/produtos/:id/anuncio', async (req, res) => {
   try {
     const { rowCount } = await pool.query(`SELECT 1 FROM analise_products WHERE id=$1`, [req.params.id]);
     if (!rowCount) return res.status(404).json({ error: 'produto não encontrado' });
+    const mlId = (req.body?.ml_id && String(req.body.ml_id).trim()) || null;
+    if (!(await competitorSlotAvailable(req.params.id, mlId)))
+      return res.status(409).json({ error: `Limite de ${MAX_COMPETITORS} concorrentes por produto atingido. Exclua algum concorrente para adicionar outro.` });
     const ad = await upsertAd(req.params.id, req.body || {});
     wsHub.publish('analise_anuncio', { produto_id: Number(req.params.id), anuncio: ad }).catch(() => {});
     res.json(ad);

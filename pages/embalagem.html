@@ -90,6 +90,24 @@
       50%      { background: #665600; color: #ffd60a; border-color: #ffd60a; box-shadow: 0 0 18px 3px rgba(255,214,10,.55); }
     }
     @media (prefers-reduced-motion: reduce) { .emb-logistica-badge { animation: none; } }
+    /* Medidas da caixa em destaque grande amarelo (SEM piscar), pra o embalador
+       escolher a caixa certa de longe. C/L/A separados + peso. */
+    .emb-caixa-box {
+      margin-top: 14px; padding: 12px 16px; border-radius: 10px;
+      background: rgba(255,214,10,.10); border: 2px solid #ffd60a;
+    }
+    .emb-caixa-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+      color: #ffd60a; margin-bottom: 8px;
+    }
+    .emb-caixa-vals { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: baseline; }
+    .emb-caixa-vals span {
+      font-size: 30px; font-weight: 900; color: #ffd60a; line-height: 1.1;
+    }
+    .emb-caixa-vals span b { color: #fff; margin-right: 4px; }
+    .emb-caixa-vals .peso { font-size: 22px; opacity: .9; }
+    .emb-caixa-vals .peso b { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; }
     .emb-order-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
     /* Variação/tipo em LETRA GRANDE — é o que mais causa erro de embalagem
        (pedido explícito do usuário). Bem maior que o resto, além de piscar. */
@@ -642,8 +660,18 @@ function renderOrders(orders, alreadyPacked) {
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
           <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
           ${o.available_quantity != null ? `<div class="emb-order-detail"><span class="k">Estoque atual</span><span class="v ${estoqueBaixo ? 'warn' : ''}">${o.available_quantity} un.</span></div>` : ''}
-          ${o.dimensoes && o.dimensoes.texto ? `<div class="emb-order-detail"><span class="k"><i class="fas fa-box"></i> Caixa (C×L×A)</span><span class="v">${escapeHtml(o.dimensoes.texto)}</span></div>` : ''}
         </div>
+        ${o.dimensoes && o.dimensoes.texto ? `
+        <div class="emb-caixa-box">
+          <div class="emb-caixa-title"><i class="fas fa-box"></i> Caixa (C×L×A)</div>
+          <div class="emb-caixa-vals">
+            ${o.dimensoes.comprimento ? `<span><b>C</b> ${escapeHtml(o.dimensoes.comprimento)}</span>` : ''}
+            ${o.dimensoes.largura ? `<span><b>L</b> ${escapeHtml(o.dimensoes.largura)}</span>` : ''}
+            ${o.dimensoes.altura ? `<span><b>A</b> ${escapeHtml(o.dimensoes.altura)}</span>` : ''}
+            ${o.dimensoes.peso ? `<span class="peso"><b>Peso</b> ${escapeHtml(o.dimensoes.peso)}</span>` : ''}
+            ${!(o.dimensoes.comprimento || o.dimensoes.largura || o.dimensoes.altura) ? `<span>${escapeHtml(o.dimensoes.texto)}</span>` : ''}
+          </div>
+        </div>` : ''}
       </div>
     </div>`;
   }).join('');

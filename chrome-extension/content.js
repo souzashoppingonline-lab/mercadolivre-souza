@@ -644,7 +644,10 @@ function saveToAnalysis(d) {
     jsonLd: getJsonLd(), extracted: d || null, collectedAt: new Date().toISOString(),
   };
   chrome.runtime.sendMessage({ action: 'collect_data', data: rawData }, (res) => {
-    if (chrome.runtime.lastError || !res) { setStatus(st, '❌ Sem resposta do serviço', false); reset(btn); return; }
+    // Log visível no console da PÁGINA pra diagnóstico rápido (sem abrir o
+    // console do service worker).
+    console.log('[content] resposta do salvar:', chrome.runtime.lastError || res);
+    if (chrome.runtime.lastError || !res) { setStatus(st, '❌ Sem resposta do serviço: ' + (chrome.runtime.lastError?.message || 'vazio'), false); reset(btn); return; }
     if (res.success) { setStatus(st, '✓ Produto salvo na análise', true); }
     else { setStatus(st, '⚠️ ' + (res.error || 'ative um produto no dashboard'), false); }
     reset(btn);

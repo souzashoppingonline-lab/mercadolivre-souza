@@ -157,8 +157,24 @@ async function snapshot() {
       // Qualidade + buy-box do banco (jobs já populam essas tabelas).
       const { rows: q } = await pool.query(`SELECT score FROM item_seo_score WHERE item_id = $1`, [ad.ml_id]);
       const seo = q[0]?.score != null ? Number(q[0].score) : null;
-      const { rows: c } = await pool.query(`SELECT winner_item_id FROM catalog_competition WHERE item_id = $1`, [ad.ml_id]);
+      const { rows: c } = await pool.query(`SELECT winner_item_id, catalog_product_id FROM catalog_competition WHERE item_id = $1`, [ad.ml_id]);
       const buybox = c.length ? (String(c[0].winner_item_id) === String(ad.ml_id)) : null;
+
+      // Posição nos "Mais Vendidos" da categoria (highlights). Casa por item id
+      // (type ITEM) ou pelo catalog_product_id (type PRODUCT). null = fora do
+      // ranking de destaque. best-effort (a API 404 se a categoria não tem highlights).
+      let highlightPos = null;
+      const { rows: cat } = await pool.query(`SELECT category_id FROM items WHERE ml_id = $1`, [ad.ml_id]);
+      const categoryId = cat[0]?.category_id;
+      if (categoryId) {
+        try {
+          const h = await ml.getCategoryHighlights(categoryId, ad.store_id);
+          const prodId = c[0]?.catalog_product_id;
+          const hit = (h?.content || []).find(x =>
+            String(x.id) === String(ad.ml_id) || (prodId && String(x.id) === String(prodId)));
+          highlightPos = hit ? Number(hit.position) : null;
+        } catch (_) { /* categoria sem highlights */ }
+      }
 
       if (visits != null && ad.last_visits != null && visits !== Number(ad.last_visits)) {
         const dir = visits > Number(ad.last_visits) ? '⬆️' : '⬇️';
@@ -173,12 +189,22 @@ async function snapshot() {
           ? `🥇 <b>GANHOU o buy-box!</b>\n📦 ${ad.title || ad.ml_id}`
           : `⚠️ <b>PERDEU o buy-box</b>\n📦 ${ad.title || ad.ml_id}`, { ganhando: buybox });
       }
+      // Destaque nos Mais Vendidos: entrou / saiu / mudou de posição.
+      if (highlightPos !== (ad.last_highlight_pos != null ? Number(ad.last_highlight_pos) : null)) {
+        const antes = ad.last_highlight_pos;
+        let msg;
+        if (highlightPos != null && antes == null) msg = `🚀 <b>ENTROU nos Mais Vendidos!</b>\n📦 ${ad.title || ad.ml_id}\n🏅 Posição <b>#${highlightPos}</b> na categoria`;
+        else if (highlightPos == null && antes != null) msg = `📉 <b>SAIU dos Mais Vendidos</b>\n📦 ${ad.title || ad.ml_id}\n(estava em #${antes})`;
+        else { const dir = highlightPos < antes ? '⬆️ subiu' : '⬇️ caiu'; msg = `📊 <b>Mais Vendidos ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n#${antes} → <b>#${highlightPos}</b> na categoria`; }
+        await emit(ad, 'destaque', msg, { de: antes != null ? Number(antes) : null, para: highlightPos });
+      }
       await pool.query(
         `UPDATE ranking_ads SET last_visits = COALESCE($2, last_visits),
            last_seo_score = COALESCE($3, last_seo_score),
-           last_buybox = COALESCE($4, last_buybox), updated_at = now()
+           last_buybox = COALESCE($4, last_buybox),
+           last_highlight_pos = $5, updated_at = now()
          WHERE id = $1`,
-        [ad.id, visits, seo, buybox]
+        [ad.id, visits, seo, buybox, highlightPos]
       );
       checked++;
     } catch (e) { console.error(`[ranking] snapshot ${ad.ml_id}:`, e.message); }

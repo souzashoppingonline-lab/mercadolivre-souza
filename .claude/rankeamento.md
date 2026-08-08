@@ -43,6 +43,14 @@ Ao marcar um anúncio (`POST /ads`), os `last_price`/`last_available_quantity`/`
 - **Limite**: `MAX_ADS=30` anúncios ativos (o snapshot roda por anúncio ativo — trava de proteção).
 - **Silêncio/throttle do Telegram**: eventos `venda` e `marco` usam `tgNotifyForce` (ignoram silêncio/throttle) — a mensagem "Venda de produto em rankeamento" **sempre** sai logo depois do alerta de venda normal (`tg_vendas`). Os demais eventos (`preco`/`estoque`/`status`/`visitas`/`qualidade`/`buybox`/`destaque`) usam `tgNotify` (respeitam silêncio/intervalo). Ativar/desativar o tópico: chave `tg_rankeamento` em `app_config` — só afeta os eventos não-forçados (venda/marco ignoram, por serem o núcleo da feature).
 
+## Multi-canal (ML + Shopee)
+
+Anúncios e pedidos das duas plataformas vivem nas mesmas tabelas `items`/`orders` (discriminados por `marketplace_id`), então o rankeamento serve os dois. A página tem um filtro **Todos os canais / Mercado Livre / Shopee** (`?marketplace=` em `/ranking/ads` e `/ranking/buscar`) e um selo de canal em cada card/linha.
+
+- **Vendas Shopee**: `handleShopeeOrderEvent` (`marketplaceEventWorker.js`) chama `ranking.onSale` por item do `item_list` (mesma guarda anti-pedido-antigo de 24h). Venda + contador 5-em-5 + marco funcionam igual ao ML.
+- **Faturamento do marco**: somado dos próprios `ranking_events` (campo `detail.valor`), não de `orders.item_id` — a Shopee não popula `item_id` em `orders`, então essa era a única forma agnóstica.
+- **Limitações Shopee (hoje)**: o snapshot `sync-ranking` (visitas/qualidade/buy-box/destaque) roda **só para anúncios ML** (usa a API do ML); e preço/estoque/status **não** notificam para Shopee (o hook `onItemChange` está só no `handleItem` do pipeline ML). Shopee recebe venda/marco em tempo real; o resto é gap conhecido.
+
 ## Página `pages/rankeamento.html`
 
 Duas partes: (1) **cards dos anúncios em rankeamento** no topo — badge "Anúncio em rankeamento", contador com barra de progresso 5-em-5, stats (faturamento/visitas/estoque/preço) e **timeline venda-a-venda ao vivo** (WS `ranking_event` insere no topo na hora); botões pausar/remover. (2) **tabela com todos os anúncios** (busca por título/MLB) com botão "Acompanhar" que promove o anúncio a card. Métodos em `js/db.js`: `getRankingAds`, `buscarRankingItems`, `addRankingAd`, `patchRankingAd`, `removeRankingAd`, `getRankingEventos`.

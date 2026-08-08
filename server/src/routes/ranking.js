@@ -12,15 +12,23 @@ const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo
 // Lista os anúncios em rankeamento com estatísticas derivadas (ritmo, dias).
 router.get('/ads', async (req, res) => {
   try {
+    const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
+    const params = [];
+    let where = '';
+    if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); where = `WHERE COALESCE(m.code, 'ML') = $1`; }
     const { rows } = await pool.query(
       `SELECT r.*, i.thumbnail, i.permalink, i.available_quantity AS estoque_atual,
               i.price AS preco_atual, i.status AS status_atual, s.nickname AS store_nickname,
-              (SELECT COALESCE(SUM(o.unit_price * o.quantity), 0) FROM orders o
-                 WHERE o.item_id = r.ml_id AND o.status <> 'cancelled' AND o.date_created >= r.started_at) AS faturamento
+              COALESCE(m.code, 'ML') AS marketplace,
+              (SELECT COALESCE(SUM((e.detail->>'valor')::numeric), 0) FROM ranking_events e
+                 WHERE e.ranking_ad_id = r.id AND e.event_type = 'venda') AS faturamento
          FROM ranking_ads r
          LEFT JOIN items i ON i.ml_id = r.ml_id
+         LEFT JOIN marketplaces m ON m.id = i.marketplace_id
          LEFT JOIN stores s ON s.id = r.store_id
-        ORDER BY r.active DESC, r.last_sale_at DESC NULLS LAST, r.created_at DESC`
+        ${where}
+        ORDER BY r.active DESC, r.last_sale_at DESC NULLS LAST, r.created_at DESC`,
+      params
     );
     const now = Date.now();
     const ads = rows.map((r) => {
@@ -35,17 +43,20 @@ router.get('/ads', async (req, res) => {
 router.get('/buscar', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
+    const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
     // q vazio → lista os anúncios mais recentes (a "tabela com todos os anúncios").
     // Com q → filtra por ml_id/título. Marca quais já estão em rankeamento.
     const params = [];
     let where = `i.status <> 'closed'`;
-    if (q.length >= 2) { params.push(`%${q}%`); where += ` AND (i.ml_id ILIKE $1 OR i.title ILIKE $1)`; }
+    if (q.length >= 2) { params.push(`%${q}%`); where += ` AND (i.ml_id ILIKE $${params.length} OR i.title ILIKE $${params.length})`; }
+    if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); where += ` AND COALESCE(m.code, 'ML') = $${params.length}`; }
     const { rows } = await pool.query(
       `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.status, i.thumbnail, i.sold_quantity,
-              s.nickname AS store_nickname,
+              s.nickname AS store_nickname, COALESCE(m.code, 'ML') AS marketplace,
               (r.id IS NOT NULL AND r.active) AS em_rankeamento
          FROM items i
          LEFT JOIN stores s ON s.id = i.store_id
+         LEFT JOIN marketplaces m ON m.id = i.marketplace_id
          LEFT JOIN ranking_ads r ON r.ml_id = i.ml_id
         WHERE ${where}
         ORDER BY i.updated_at DESC LIMIT ${q.length >= 2 ? 30 : 100}`,

@@ -12,6 +12,7 @@ const pool = require('./db/pool');
 const redis = require('./db/redis');
 const { publish } = require('./ws/hub');
 const { tgNotify } = require('./notify');
+const ranking = require('./ranking');
 const { Scheduler } = require('./marketplaces/Scheduler');
 const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
 const { ShopeePollingEventSource } = require('./marketplaces/shopee/ShopeePollingEventSource');
@@ -247,6 +248,22 @@ async function handleShopeeOrderEvent(evt) {
       await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🛍️ <b>Shopee</b>\n🏪 ${loja}\n📦 ${titulo}${qtdItens > 1 ? ` (${qtdItens} itens)` : ''}\n💰 ${val}\n🔖 Pedido: ${o.order_sn}`);
     } catch (e) {
       console.error('[marketplace-worker] tgNotify Shopee erro:', e.message);
+    }
+    // Rankeamento: se algum item deste pedido Shopee está em rankeamento, registra
+    // a venda (tela + Telegram + marco), igual ao ML. Valor da linha = preço × qtd.
+    for (const it of (Array.isArray(o.item_list) ? o.item_list : [])) {
+      const mlId = it.item_id != null ? String(it.item_id) : null;
+      if (!mlId) continue;
+      const qtd = Number(it.model_quantity_purchased) || 1;
+      const preco = Number(it.model_discounted_price ?? it.model_original_price ?? 0);
+      try {
+        await ranking.onSale({
+          mlId, order: { id: o.order_sn },
+          valorNum: preco * qtd,
+          comprador: o.buyer_username || '—',
+          saleDate: o.create_time ? new Date(Number(o.create_time) * 1000) : null,
+        });
+      } catch (e) { console.error('[ranking] onSale Shopee falhou:', e.message); }
     }
   }
 }

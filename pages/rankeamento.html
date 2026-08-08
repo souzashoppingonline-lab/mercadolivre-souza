@@ -86,12 +86,17 @@
 
   <div class="rk-section-title"><i class="fas fa-list"></i> Todos os anúncios</div>
   <div class="rk-search">
-    <input id="rkSearch" placeholder="Buscar por título ou MLB..." autocomplete="off">
+    <select id="rkMkt" onchange="onMktChange()" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px">
+      <option value="">Todos os canais</option>
+      <option value="ML">Mercado Livre</option>
+      <option value="SHOPEE">Shopee</option>
+    </select>
+    <input id="rkSearch" placeholder="Buscar por título ou ID..." autocomplete="off">
   </div>
   <div style="overflow-x:auto">
     <table class="rk-table">
-      <thead><tr><th>Anúncio</th><th>Loja</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th></th></tr></thead>
-      <tbody id="rkTableBody"><tr><td colspan="6" class="rk-empty" style="border:none">Carregando...</td></tr></tbody>
+      <thead><tr><th>Anúncio</th><th>Canal</th><th>Loja</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th></th></tr></thead>
+      <tbody id="rkTableBody"><tr><td colspan="7" class="rk-empty" style="border:none">Carregando...</td></tr></tbody>
     </table>
   </div>
     </div>
@@ -107,12 +112,22 @@ const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDT = d => new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
 const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀' };
+const mktTag = m => m === 'SHOPEE'
+  ? '<span style="background:#ee4d2d;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Shopee</span>'
+  : '<span style="background:#ffe600;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Mercado Livre</span>';
 
 let ADS = [];        // anúncios em rankeamento (com stats)
+let MKT = '';        // filtro de canal atual ('', 'ML', 'SHOPEE')
 const EVENTS = {};   // id do ranking_ad -> array de eventos
 
+function onMktChange() {
+  MKT = document.getElementById('rkMkt').value;
+  loadCards();
+  loadTable(document.getElementById('rkSearch').value);
+}
+
 async function loadCards() {
-  const d = await DB.getRankingAds();
+  const d = await DB.getRankingAds(MKT);
   ADS = d.ads || [];
   const wrap = document.getElementById('rkCards');
   const empty = document.getElementById('rkCardsEmpty');
@@ -132,7 +147,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        <span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Anúncio em rankeamento' : 'Pausado'}</span>
+        <span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Anúncio em rankeamento' : 'Pausado'}</span> ${mktTag(a.marketplace)}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
       </div>
@@ -183,12 +198,13 @@ document.getElementById('rkSearch').addEventListener('input', e => {
 });
 
 async function loadTable(q = '') {
-  const d = await DB.buscarRankingItems(q);
+  const d = await DB.buscarRankingItems(q, MKT);
   const items = d.items || [];
   const body = document.getElementById('rkTableBody');
-  if (!items.length) { body.innerHTML = '<tr><td colspan="6" class="rk-empty" style="border:none">Nenhum anúncio encontrado.</td></tr>'; return; }
+  if (!items.length) { body.innerHTML = '<tr><td colspan="7" class="rk-empty" style="border:none">Nenhum anúncio encontrado.</td></tr>'; return; }
   body.innerHTML = items.map(i => `<tr>
     <td>${i.thumbnail?`<img src="${esc(i.thumbnail)}" onerror="this.style.display='none'">`:''}${esc(i.title||i.ml_id)}<br><span class="rk-mlid">${esc(i.ml_id)}</span></td>
+    <td>${mktTag(i.marketplace)}</td>
     <td>${esc(i.store_nickname||'')}</td>
     <td>${i.price!=null?BRL(i.price):'—'}</td>
     <td>${i.available_quantity!=null?i.available_quantity:'—'}</td>

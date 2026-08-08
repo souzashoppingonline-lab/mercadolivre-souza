@@ -87,12 +87,13 @@ async function milestone(ad) {
   const firstAt = ad.first_sale_at ? new Date(ad.first_sale_at) : new Date();
   const dias = Math.max(1, (Date.now() - firstAt.getTime()) / 86400000);
   const ritmo = (ad.sales_count / dias).toFixed(1);
+  // Faturamento = soma dos valores das próprias vendas registradas em
+  // ranking_events (agnóstico de marketplace: ML e Shopee gravam o mesmo campo
+  // detail.valor; não depende de orders.item_id, que a Shopee não popula).
   const { rows } = await pool.query(
-    `SELECT COALESCE(SUM(unit_price * quantity), 0) AS fat
-       FROM orders
-      WHERE item_id = $1 AND status <> 'cancelled'
-        AND date_created >= $2`,
-    [ad.ml_id, ad.started_at]
+    `SELECT COALESCE(SUM((detail->>'valor')::numeric), 0) AS fat
+       FROM ranking_events WHERE ranking_ad_id = $1 AND event_type = 'venda'`,
+    [ad.id]
   );
   const fat = rows[0].fat;
   await emit(ad, 'marco',
@@ -147,7 +148,15 @@ async function onItemChange({ mlId, price, availableQuantity, status, title }) {
 // (poucos, limite de negócio) — não varre o catálogo todo, então não pesa no ML.
 async function snapshot() {
   const ml = require('./mlClient'); // require tardio: evita custo se o job nunca roda
-  const { rows: ads } = await pool.query(`SELECT * FROM ranking_ads WHERE active = true`);
+  // Só anúncios do Mercado Livre — visitas/qualidade/buy-box/highlights usam a
+  // API do ML. Anúncios Shopee em rankeamento são ignorados neste snapshot
+  // (recebem só venda/marco em tempo real, ver .claude/rankeamento.md).
+  const { rows: ads } = await pool.query(
+    `SELECT r.* FROM ranking_ads r
+       JOIN items i ON i.ml_id = r.ml_id
+       LEFT JOIN marketplaces m ON m.id = i.marketplace_id
+      WHERE r.active = true AND COALESCE(m.code, 'ML') = 'ML'`
+  );
   let checked = 0;
   for (const ad of ads) {
     try {

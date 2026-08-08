@@ -41,7 +41,7 @@ Ao marcar um anúncio (`POST /ads`), os `last_price`/`last_available_quantity`/`
 - **Marco a cada N vendas**: `milestone_every` por anúncio (default 5, editável no `POST`/`PATCH`).
 - **Duração**: fica ativo até o usuário **remover** (DELETE, apaga histórico via CASCADE) ou **pausar** (`active=false`, mantém histórico, para de notificar). Não auto-desliga.
 - **Limite**: `MAX_ADS=30` anúncios ativos (o snapshot roda por anúncio ativo — trava de proteção).
-- **Silêncio/throttle do Telegram**: `tg_rankeamento` respeita a janela de silêncio e o intervalo mínimo global do `tgNotify` (ver `business-rules.md`). Para ativar/desativar o tópico: chave `tg_rankeamento` em `app_config` (default ligado; `'false'` desliga).
+- **Silêncio/throttle do Telegram**: eventos `venda` e `marco` usam `tgNotifyForce` (ignoram silêncio/throttle) — a mensagem "Venda de produto em rankeamento" **sempre** sai logo depois do alerta de venda normal (`tg_vendas`). Os demais eventos (`preco`/`estoque`/`status`/`visitas`/`qualidade`/`buybox`/`destaque`) usam `tgNotify` (respeitam silêncio/intervalo). Ativar/desativar o tópico: chave `tg_rankeamento` em `app_config` — só afeta os eventos não-forçados (venda/marco ignoram, por serem o núcleo da feature).
 
 ## Página `pages/rankeamento.html`
 

@@ -8,7 +8,7 @@
 // pelo pipeline ML — então worker.js só chama onSale/onItemChange e não duplica
 // lógica de Telegram/WS. mlClient é usado só no snapshot (visitas), nunca no bipe.
 const pool = require('./db/pool');
-const { tgNotify } = require('./notify');
+const { tgNotify, tgNotifyForce } = require('./notify');
 const { publish } = require('./ws/hub');
 
 const BRL = (n) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0);
@@ -27,7 +27,9 @@ async function getTracked(mlId) {
 }
 
 // Registra um evento (grava em ranking_events + notifica tela e Telegram).
-async function emit(ad, eventType, message, detail = {}) {
+// `force` usa tgNotifyForce (ignora silêncio/throttle) — para venda/marco, que
+// devem SEMPRE acompanhar a venda no Telegram, logo depois do alerta normal.
+async function emit(ad, eventType, message, detail = {}, force = false) {
   const { rows } = await pool.query(
     `INSERT INTO ranking_events (ranking_ad_id, ml_id, event_type, message, detail)
      VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
@@ -39,8 +41,9 @@ async function emit(ad, eventType, message, detail = {}) {
     ranking_ad_id: ad.id, ml_id: ad.ml_id, title: ad.title,
     event_type: eventType, message, detail, id: ev.id, created_at: ev.created_at,
   });
-  // Telegram — tópico dedicado (silêncio/throttle respeitados via tgNotify).
-  await tgNotify('tg_rankeamento', message);
+  // Telegram — tópico dedicado tg_rankeamento.
+  if (force) await tgNotifyForce('tg_rankeamento', message);
+  else await tgNotify('tg_rankeamento', message);
   return ev;
 }
 
@@ -65,9 +68,11 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate }) {
   const count = rows[0].sales_count;
   const orderId = order?.id || order?.ml_id || '—';
 
+  const every0 = ad.milestone_every || 5;
+  const faltam = (every0 - (count % every0)) % every0;
   await emit(ad, 'venda',
-    `🏆 <b>Venda em rankeamento!</b> (#${count})\n📦 ${ad.title || ad.ml_id}\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🔗 ${linkOf(ad.ml_id)}`,
-    { order_id: orderId, valor: valorNum, comprador, sales_count: count });
+    `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> em rankeamento\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`,
+    { order_id: orderId, valor: valorNum, comprador, sales_count: count }, true);
 
   // Marco a cada N vendas — resumo de ritmo.
   const every = ad.milestone_every || 5;
@@ -92,7 +97,7 @@ async function milestone(ad) {
   const fat = rows[0].fat;
   await emit(ad, 'marco',
     `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento no período: ${BRL(fat)}\n🔗 ${linkOf(ad.ml_id)}`,
-    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat) });
+    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat) }, true);
 }
 
 // Alterações do anúncio detectadas no sync do item (handleItem) — preço, estoque

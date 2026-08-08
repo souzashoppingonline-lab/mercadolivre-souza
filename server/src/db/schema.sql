@@ -834,3 +834,38 @@ CREATE TABLE IF NOT EXISTS ai_settings (
   CONSTRAINT ai_settings_one CHECK (id = 1)
 );
 INSERT INTO ai_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- Rankeamento de anúncios novos (v69) — acompanha cada venda e cada alteração
+-- de um anúncio na janela de ranqueamento, notificando tela + Telegram.
+CREATE TABLE IF NOT EXISTS ranking_ads (
+  id SERIAL PRIMARY KEY,
+  ml_id TEXT NOT NULL UNIQUE REFERENCES items(ml_id) ON DELETE CASCADE,
+  store_id BIGINT REFERENCES stores(id),
+  title TEXT,
+  active BOOLEAN DEFAULT true,
+  sales_count INT DEFAULT 0,
+  first_sale_at TIMESTAMPTZ,
+  last_sale_at TIMESTAMPTZ,
+  base_price NUMERIC,
+  last_price NUMERIC,
+  last_available_quantity INT,
+  last_status TEXT,
+  last_visits INT,
+  last_seo_score NUMERIC,
+  last_buybox BOOLEAN,
+  milestone_every INT DEFAULT 5,
+  started_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_ads_active ON ranking_ads(active);
+CREATE TABLE IF NOT EXISTS ranking_events (
+  id SERIAL PRIMARY KEY,
+  ranking_ad_id INT REFERENCES ranking_ads(id) ON DELETE CASCADE,
+  ml_id TEXT,
+  event_type TEXT,
+  message TEXT,
+  detail JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_events_ad ON ranking_events(ranking_ad_id, created_at DESC);

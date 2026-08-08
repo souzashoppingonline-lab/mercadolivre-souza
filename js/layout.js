@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   ]},
   { section: 'Operação', items: [
     { href: 'anuncios.html', icon: 'fa-tag', label: 'Anúncios' },
+    { href: 'rankeamento.html', icon: 'fa-ranking-star', label: 'Rankeamento' },
     { href: 'pedidos.html', icon: 'fa-box', label: 'Pedidos' },
     { href: 'embalagem.html', icon: 'fa-barcode', label: 'Embalagem' },
     { href: 'vendas.html', icon: 'fa-chart-line', label: 'Vendas Totais' },

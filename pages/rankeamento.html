@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rankeamento — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Rankeamento'; window.ACTIVE_NAV='rankeamento.html';</script>
+  <style>
+    .rk-sub { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
+    .rk-section-title { font-size: 15px; font-weight: 800; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
+    .rk-empty { color: var(--text-muted); font-size: 13px; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; }
+
+    /* Cards dos anúncios EM RANKEAMENTO */
+    .rk-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; }
+    @media (max-width: 700px) { .rk-cards { grid-template-columns: 1fr; } }
+    .rk-card { background: var(--bg-card); border: 2px solid #ffd60a; border-radius: 16px; padding: 18px 20px; box-shadow: 0 0 0 1px rgba(255,214,10,.15); }
+    .rk-card.paused { border-color: var(--border); opacity: .7; box-shadow: none; }
+    .rk-card-head { display: flex; gap: 12px; align-items: flex-start; }
+    .rk-card-head img { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; background: var(--bg-card2); }
+    .rk-badge { display: inline-flex; align-items: center; gap: 6px; background: #ffd60a; color: #1a1a1a; font-weight: 900; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; }
+    .rk-card.paused .rk-badge { background: var(--border); color: var(--text-muted); }
+    .rk-card-title { font-weight: 700; font-size: 14px; margin-top: 6px; line-height: 1.3; }
+    .rk-card-store { font-size: 11px; color: var(--text-muted); }
+    .rk-card-actions { margin-left: auto; display: flex; gap: 6px; }
+    .rk-icon-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 6px 9px; cursor: pointer; font-size: 12px; }
+    .rk-icon-btn:hover { color: var(--text-main); border-color: var(--text-muted); }
+    .rk-icon-btn.danger:hover { color: #fff; background: var(--red); border-color: var(--red); }
+
+    /* Contador 5 em 5 */
+    .rk-counter { margin: 16px 0 6px; }
+    .rk-counter-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .rk-counter-num { font-size: 34px; font-weight: 900; color: #ffd60a; line-height: 1; }
+    .rk-counter-num small { font-size: 13px; color: var(--text-muted); font-weight: 600; }
+    .rk-counter-meta { font-size: 11px; color: var(--text-muted); text-align: right; }
+    .rk-progress { height: 10px; background: var(--bg-card2); border-radius: 6px; overflow: hidden; display: flex; gap: 2px; }
+    .rk-progress i { flex: 1; background: var(--border); }
+    .rk-progress i.on { background: #ffd60a; }
+    .rk-next { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    .rk-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+    .rk-stat { background: var(--bg-card2); border-radius: 10px; padding: 8px 10px; text-align: center; }
+    .rk-stat .v { font-size: 16px; font-weight: 800; }
+    .rk-stat .k { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; margin-top: 2px; }
+
+    /* Timeline venda-a-venda */
+    .rk-timeline { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; max-height: 260px; overflow-y: auto; }
+    .rk-ev { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
+    .rk-ev:last-child { border-bottom: none; }
+    .rk-ev .ico { font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+    .rk-ev .txt { flex: 1; white-space: pre-line; line-height: 1.35; }
+    .rk-ev .when { color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+    .rk-ev.venda { background: rgba(255,214,10,.06); border-radius: 6px; padding: 6px 8px; }
+    .rk-ev.marco { background: rgba(46,160,67,.10); border-radius: 6px; padding: 6px 8px; }
+    .rk-ev.novo { animation: rkFlash 1.4s ease-out; }
+    @keyframes rkFlash { 0% { background: rgba(255,214,10,.5); } 100% { background: transparent; } }
+
+    /* Tabela de todos os anúncios */
+    .rk-search { display: flex; gap: 10px; margin-bottom: 12px; max-width: 480px; }
+    .rk-search input { flex: 1; background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+    .rk-search input:focus { border-color: var(--primary); outline: none; }
+    table.rk-table { width: 100%; border-collapse: collapse; }
+    .rk-table th, .rk-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .rk-table th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+    .rk-table tr:hover td { background: var(--bg-card2); }
+    .rk-table img { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; vertical-align: middle; margin-right: 8px; }
+    .rk-add-btn { background: #ffd60a; color: #1a1a1a; border: none; border-radius: 8px; padding: 7px 12px; font-weight: 800; font-size: 12px; cursor: pointer; }
+    .rk-add-btn:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
+    .rk-tag-on { color: #ffd60a; font-weight: 800; font-size: 12px; }
+    .rk-mlid { font-family: monospace; font-size: 11px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+<div class="main-content" id="mainContent">
+  <p class="rk-sub">Marque um anúncio em <b>rankeamento</b> (janela de ranqueamento de anúncio novo) e acompanhe cada venda e cada alteração — na tela e no Telegram. A cada 5 vendas, um marco com o ritmo.</p>
+
+  <div class="rk-section-title"><i class="fas fa-ranking-star" style="color:#ffd60a"></i> Em rankeamento <span id="wsStatus" style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto"></span></div>
+  <div id="rkCards" class="rk-cards"></div>
+  <div id="rkCardsEmpty" class="rk-empty" style="display:none">Nenhum anúncio em rankeamento. Selecione um na tabela abaixo para começar a acompanhar.</div>
+
+  <div class="rk-section-title"><i class="fas fa-list"></i> Todos os anúncios</div>
+  <div class="rk-search">
+    <input id="rkSearch" placeholder="Buscar por título ou MLB..." autocomplete="off">
+  </div>
+  <div style="overflow-x:auto">
+    <table class="rk-table">
+      <thead><tr><th>Anúncio</th><th>Loja</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th></th></tr></thead>
+      <tbody id="rkTableBody"><tr><td colspan="6" class="rk-empty" style="border:none">Carregando...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtDT = d => new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
+const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇' };
+
+let ADS = [];        // anúncios em rankeamento (com stats)
+const EVENTS = {};   // id do ranking_ad -> array de eventos
+
+async function loadCards() {
+  const d = await DB.getRankingAds();
+  ADS = d.ads || [];
+  const wrap = document.getElementById('rkCards');
+  const empty = document.getElementById('rkCardsEmpty');
+  empty.style.display = ADS.length ? 'none' : 'block';
+  // carrega eventos de cada card em paralelo
+  await Promise.all(ADS.map(async a => { EVENTS[a.id] = (await DB.getRankingEventos(a.id, 100)).eventos || []; }));
+  wrap.innerHTML = ADS.map(cardHtml).join('');
+}
+
+function cardHtml(a) {
+  const every = a.milestone_every || 5;
+  const naFaixa = a.sales_count % every;        // 0..every-1 já feitos rumo ao próximo marco
+  const falta = naFaixa === 0 && a.sales_count > 0 ? 0 : (every - naFaixa);
+  const pips = Array.from({length: every}, (_,i) => `<i class="${i < naFaixa ? 'on':''}"></i>`).join('');
+  const evs = (EVENTS[a.id] || []).map(evHtml).join('') || '<div class="rk-empty" style="border:none">Aguardando a 1ª venda…</div>';
+  return `<div class="rk-card ${a.active ? '' : 'paused'}" id="rkcard-${a.id}">
+    <div class="rk-card-head">
+      ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
+      <div style="min-width:0">
+        <span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Anúncio em rankeamento' : 'Pausado'}</span>
+        <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
+        <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}</div>
+      </div>
+      <div class="rk-card-actions">
+        <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
+        <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+
+    <div class="rk-counter">
+      <div class="rk-counter-top">
+        <div class="rk-counter-num">${a.sales_count}<small> venda(s)</small></div>
+        <div class="rk-counter-meta">${a.dias!=null?`${a.dias} dia(s)`:'—'}<br>${a.ritmo_dia!=null?`${a.ritmo_dia}/dia`:''}</div>
+      </div>
+      <div class="rk-progress">${pips}</div>
+      <div class="rk-next">${falta === 0 ? '🎯 Marco atingido!' : `Faltam <b>${falta}</b> venda(s) para o próximo marco (a cada ${every})`}</div>
+    </div>
+
+    <div class="rk-stats">
+      <div class="rk-stat"><div class="v">${BRL(a.faturamento)}</div><div class="k">Faturamento</div></div>
+      <div class="rk-stat"><div class="v">${a.last_visits!=null?a.last_visits:'—'}</div><div class="k">Visitas</div></div>
+      <div class="rk-stat"><div class="v">${a.estoque_atual!=null?a.estoque_atual:'—'}</div><div class="k">Estoque</div></div>
+      <div class="rk-stat"><div class="v">${a.preco_atual!=null?BRL(a.preco_atual):'—'}</div><div class="k">Preço</div></div>
+    </div>
+
+    <div class="rk-timeline" id="rktl-${a.id}">${evs}</div>
+  </div>`;
+}
+
+function evHtml(e, isNew) {
+  return `<div class="rk-ev ${e.event_type} ${isNew?'novo':''}">
+    <span class="ico">${EV_ICO[e.event_type] || '•'}</span>
+    <span class="txt">${esc((e.message||'').replace(/<\/?b>/g,'').replace(/🔗.*$/s,'').trim())}</span>
+    <span class="when">${fmtDT(e.created_at)}</span>
+  </div>`;
+}
+
+async function togglePause(id, activate) { await DB.patchRankingAd(id, { active: activate }); loadCards(); }
+async function removeAd(id) {
+  if (!confirm('Remover este anúncio do rankeamento? O histórico de eventos será apagado.')) return;
+  await DB.removeRankingAd(id); loadCards(); loadTable();
+}
+
+let searchTimer;
+document.getElementById('rkSearch').addEventListener('input', e => {
+  clearTimeout(searchTimer); const q = e.target.value;
+  searchTimer = setTimeout(() => loadTable(q), 350);
+});
+
+async function loadTable(q = '') {
+  const d = await DB.buscarRankingItems(q);
+  const items = d.items || [];
+  const body = document.getElementById('rkTableBody');
+  if (!items.length) { body.innerHTML = '<tr><td colspan="6" class="rk-empty" style="border:none">Nenhum anúncio encontrado.</td></tr>'; return; }
+  body.innerHTML = items.map(i => `<tr>
+    <td>${i.thumbnail?`<img src="${esc(i.thumbnail)}" onerror="this.style.display='none'">`:''}${esc(i.title||i.ml_id)}<br><span class="rk-mlid">${esc(i.ml_id)}</span></td>
+    <td>${esc(i.store_nickname||'')}</td>
+    <td>${i.price!=null?BRL(i.price):'—'}</td>
+    <td>${i.available_quantity!=null?i.available_quantity:'—'}</td>
+    <td>${i.sold_quantity!=null?i.sold_quantity:'—'}</td>
+    <td>${i.em_rankeamento
+      ? '<span class="rk-tag-on"><i class="fas fa-check"></i> Em rankeamento</span>'
+      : `<button class="rk-add-btn" onclick="addAd('${esc(i.ml_id)}', this)"><i class="fas fa-ranking-star"></i> Acompanhar</button>`}</td>
+  </tr>`).join('');
+}
+
+async function addAd(mlId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    await DB.addRankingAd(mlId);
+    await loadCards();
+    await loadTable(document.getElementById('rkSearch').value);
+    document.getElementById('rkCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    alert(e.message || 'Erro ao adicionar');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ranking-star"></i> Acompanhar'; }
+  }
+}
+
+// Tempo real: cada venda/alteração/marco chega por WS e entra no card na hora.
+WS.on('ranking_event', (p) => {
+  if (!p || p.ranking_ad_id == null) return;
+  const tl = document.getElementById('rktl-' + p.ranking_ad_id);
+  if (tl) {
+    const first = tl.querySelector('.rk-empty'); if (first) first.remove();
+    tl.insertAdjacentHTML('afterbegin', evHtml({ event_type: p.event_type, message: p.message, created_at: p.created_at || new Date().toISOString() }, true));
+  }
+  // venda/marco alteram contador/stats → recarrega os cards (barato)
+  if (p.event_type === 'venda' || p.event_type === 'marco') loadCards();
+});
+WS.on('_connected', () => { document.getElementById('wsStatus').innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
+
+loadCards();
+loadTable();
+</script>
+</body>
+</html>

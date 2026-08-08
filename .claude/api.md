@@ -42,6 +42,18 @@ Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/t
 
 Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-competition` (ver `workers.md`), nunca em tempo real — as rotas de listagem/histórico são leitura pura de `item_seo_score`/`catalog_competition`, sem chamar a API do ML (exceto a rota de concorrentes acima, sob demanda). A listagem principal (`GET /api/qualidade-anuncio`) também traz `buybox_status`/`price_to_win`/`winner_item_id`/`winner_price`/`buybox_boosts_missing` via `LEFT JOIN catalog_competition` e `summary.perdendo_buybox` — só preenchido pra itens `catalog_listing=true`. Ver `database.md`/`decisions.md`.
 
+## Rankeamento de Anúncios (`routes/ranking.js`, montado em `/api/ranking`, ver `rankeamento.md`)
+| Rota | Descrição |
+|---|---|
+| `GET /api/ranking/ads` | anúncios em rankeamento com stats derivadas (`sales_count`, `dias`, `ritmo_dia`, `faturamento` no período, `estoque_atual`/`preco_atual`/`status_atual`, `last_visits`) |
+| `GET /api/ranking/buscar?q` | tabela de todos os anúncios (`items`, `status<>closed`); `q` vazio → 100 mais recentes, `q≥2` → filtra por título/MLB (30). Traz `em_rankeamento` (bool) pra marcar os já monitorados |
+| `POST /api/ranking/ads` `{ml_id, milestone_every?}` | marca um anúncio em rankeamento (semeia `last_*` de `items` p/ não gerar alerta falso). Limite `MAX_ADS=30` ativos. `milestone_every` default 5 |
+| `PATCH /api/ranking/ads/:id` `{active?, milestone_every?}` | pausar/retomar (mantém histórico) ou mudar o intervalo do marco |
+| `DELETE /api/ranking/ads/:id` | remove do rankeamento (apaga eventos via CASCADE) |
+| `GET /api/ranking/ads/:id/eventos?limit` | timeline (venda/alteração/marco) mais recentes primeiro (limit ≤ 300) |
+
+Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco a cada N vendas ficam em `server/src/ranking.js`, disparados pelos hooks do worker — não nestas rotas (só CRUD/leitura). Ver `rankeamento.md`.
+
 ## Pedidos / Vendas (webhook-driven — tabela `orders`)
 | Rota | Descrição |
 |---|---|

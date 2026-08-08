@@ -58,6 +58,8 @@ app.use('/api/embalagem', embalagemRoutes);
 app.use('/api/print', require('./routes/print'));
 // Análise de Produtos — cadastro + fila de coleta (lado dashboard). Ver .claude/analise-produtos.md.
 app.use('/api/analise', require('./routes/analise'));
+// Rankeamento de anúncios novos — acompanha cada venda/alteração (ver .claude/rankeamento.md).
+app.use('/api/ranking', require('./routes/ranking'));
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

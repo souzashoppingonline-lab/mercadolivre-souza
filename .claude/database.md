@@ -584,3 +584,24 @@ shipping_id TEXT, order_ids TEXT[], store_id BIGINT, store_nickname TEXT
 staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
 ```
 Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).
+
+### `ranking_ads` / `ranking_events` — v69: Rankeamento de anúncios (ver `rankeamento.md`)
+```
+ranking_ads:
+id SERIAL PK, ml_id TEXT UNIQUE FK items(ml_id) ON DELETE CASCADE, store_id BIGINT FK stores
+title TEXT, active BOOLEAN DEFAULT true            -- active=false = pausado (mantém histórico)
+sales_count INT, first_sale_at, last_sale_at TIMESTAMPTZ
+base_price NUMERIC                                 -- preço ao entrar em rankeamento (referência)
+last_price, last_available_quantity, last_status   -- últimos valores (detecção de mudança)
+last_visits INT, last_seo_score NUMERIC, last_buybox BOOLEAN  -- semeados pelo snapshot
+milestone_every INT DEFAULT 5                       -- marco a cada N vendas
+started_at, created_at, updated_at TIMESTAMPTZ
+-- idx_ranking_ads_active
+
+ranking_events:
+id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE, ml_id TEXT
+event_type TEXT   -- venda|preco|estoque|status|qualidade|buybox|visitas|marco
+message TEXT, detail JSONB, created_at TIMESTAMPTZ
+-- idx_ranking_events_ad (ranking_ad_id, created_at DESC)
+```
+Preenchidas por `server/src/ranking.js` (hooks no `handleOrder`/`handleItem` + job `sync-ranking`). Lidas por `/api/ranking/*`.

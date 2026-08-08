@@ -12,6 +12,7 @@ const pool = require('./db/pool');
 const redis = require('./db/redis');
 const ml = require('./mlClient');
 const { packageDimsFromItem } = require('./mlDims');
+const ranking = require('./ranking');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getMargemPorLoja, getRupturaEstoque } = require('./reports');
@@ -323,6 +324,20 @@ async function handleOrder({ resource, storeId, silent = false }) {
         comprador: order.buyer?.nickname || '—',
         order_id: order.id,
       });
+      // Rankeamento: se algum item deste pedido está "em rankeamento", registra
+      // a venda (tela + Telegram + marco). Best-effort, nunca quebra o handler.
+      for (const oi of (order.order_items || [])) {
+        const mlId = oi.item?.id;
+        if (!mlId) continue;
+        try {
+          await ranking.onSale({
+            mlId, order,
+            valorNum: Number(oi.unit_price || 0) * Number(oi.quantity || 1),
+            comprador: order.buyer?.nickname || '—',
+            saleDate,
+          });
+        } catch (e) { console.error('[ranking] onSale falhou:', e.message); }
+      }
     }
   }
 }
@@ -431,6 +446,15 @@ async function handleItem({ resource, storeId }) {
        updated_at = now()`,
     [item.id, storeId, item.title, item.price, origPrice, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId, dims ? JSON.stringify(dims) : null]
   );
+
+  // Rankeamento: se este anúncio está em rankeamento, notifica preço/estoque/status
+  // alterados (tela + Telegram). Zero custo de API — usa o item já buscado.
+  try {
+    await ranking.onItemChange({
+      mlId: item.id, price: item.price, availableQuantity: item.available_quantity,
+      status: item.status, title: item.title,
+    });
+  } catch (e) { console.error('[ranking] onItemChange falhou:', e.message); }
 
   const lojaNome = await getStoreName(storeId);
 
@@ -1648,6 +1672,25 @@ async function syncShippingStatus() {
   } finally {
     isSyncingShippingStatus = false;
     scheduleEvery(4, syncShippingStatus, 'sync-shipping-status');
+  }
+}
+
+// Snapshot de rankeamento (a cada 6h): visitas/qualidade/buy-box dos anúncios em
+// rankeamento — notifica só mudanças. Vendas e preço/estoque já vêm em tempo real
+// pelos webhooks (handleOrder/handleItem); este job cobre o que não tem webhook.
+let isSyncingRanking = false;
+async function syncRanking() {
+  if (isSyncingRanking) return;
+  isSyncingRanking = true;
+  try {
+    return await recordSync('sync-ranking', '0 */6 * * *', async () => {
+      const r = await ranking.snapshot();
+      console.log(`[sync-ranking] snapshot: ${r.checked}/${r.total} anúncios`);
+      return r;
+    });
+  } finally {
+    isSyncingRanking = false;
+    scheduleEvery(6, syncRanking, 'sync-ranking');
   }
 }
 
@@ -2932,6 +2975,7 @@ scheduleAt(7, 30,  checkRupturaEstoque, 'ruptura-estoque');
 scheduleAt(7,  0,  () => syncClaimsStatus(false), 'sync-claims-status'); // reconsulta devoluções → alerta quando encerra
 scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
+scheduleEvery(6,   syncRanking, 'sync-ranking'); // snapshot visitas/qualidade/buy-box dos anúncios em rankeamento
 
 // Notion Tarefas — 2ª feira 08:00 (usa setTimeout próprio, não scheduleAt)
 setTimeout(() => syncNotionTarefas().catch(e => console.error('[notion] boot erro:', e.message)), (() => {

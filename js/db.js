@@ -256,6 +256,14 @@ const DB = {
   async getVendasDoDia(date, store_id='') { return this._get('/analises/vendas-mes/dia', { date, store_id }); },
   async getDiaHistorico(params = {}) { return this._get('/analises/vendas-mes/dia-historico', params); },
 
+  // ── Rankeamento de anúncios ──────────────────────────────────
+  async getRankingAds()              { return this._get('/ranking/ads'); },
+  async buscarRankingItems(q = '')   { return this._get('/ranking/buscar', { q }); },
+  async addRankingAd(ml_id, milestone_every) { return this._post('/ranking/ads', { ml_id, milestone_every }); },
+  async patchRankingAd(id, body)     { return this._patch(`/ranking/ads/${id}`, body); },
+  async removeRankingAd(id)          { return this._delete(`/ranking/ads/${id}`); },
+  async getRankingEventos(id, limit = 100) { return this._get(`/ranking/ads/${id}/eventos`, { limit }); },
+
   // ── Top Vendas Online (dashboard matinal) ────────────────────
   async getResumoOntem()       { return this._get('/dashboard/resumo-ontem'); },
   async getTopVendasDia()      { return this._get('/dashboard/top-vendas-dia'); },

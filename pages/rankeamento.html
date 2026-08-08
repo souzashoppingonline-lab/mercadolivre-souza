@@ -73,7 +73,11 @@
   </style>
 </head>
 <body>
-<div class="main-content" id="mainContent">
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
   <p class="rk-sub">Marque um anúncio em <b>rankeamento</b> (janela de ranqueamento de anúncio novo) e acompanhe cada venda e cada alteração — na tela e no Telegram. A cada 5 vendas, um marco com o ritmo.</p>
 
   <div class="rk-section-title"><i class="fas fa-ranking-star" style="color:#ffd60a"></i> Em rankeamento <span id="wsStatus" style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto"></span></div>
@@ -90,6 +94,8 @@
       <tbody id="rkTableBody"><tr><td colspan="6" class="rk-empty" style="border:none">Carregando...</td></tr></tbody>
     </table>
   </div>
+    </div>
+  </main>
 </div>
 
 <script src="../js/db.js"></script>

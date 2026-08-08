@@ -595,6 +595,8 @@ base_price NUMERIC                                 -- preço ao entrar em rankea
 last_price, last_available_quantity, last_status   -- últimos valores (detecção de mudança)
 last_visits INT, last_seo_score NUMERIC, last_buybox BOOLEAN  -- semeados pelo snapshot
 last_highlight_pos INT                             -- v70: posição nos Mais Vendidos da categoria (NULL=fora)
+fase TEXT DEFAULT 'rankeando'                       -- v71: 'rankeando' | 'ranqueado' (idx_ranking_ads_fase)
+ranqueado_em TIMESTAMPTZ                            -- v71: quando passou pra fase 2
 milestone_every INT DEFAULT 5                       -- marco a cada N vendas
 started_at, created_at, updated_at TIMESTAMPTZ
 -- idx_ranking_ads_active

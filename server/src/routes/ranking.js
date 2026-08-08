@@ -13,9 +13,12 @@ const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo
 router.get('/ads', async (req, res) => {
   try {
     const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
+    const fase = String(req.query.fase || '').trim().toLowerCase();       // '', 'rankeando' ou 'ranqueado'
     const params = [];
-    let where = '';
-    if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); where = `WHERE COALESCE(m.code, 'ML') = $1`; }
+    const conds = [];
+    if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); conds.push(`COALESCE(m.code, 'ML') = $${params.length}`); }
+    if (fase === 'rankeando' || fase === 'ranqueado') { params.push(fase); conds.push(`r.fase = $${params.length}`); }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const { rows } = await pool.query(
       `SELECT r.*, i.thumbnail, i.permalink, i.available_quantity AS estoque_atual,
               i.price AS preco_atual, i.status AS status_atual, s.nickname AS store_nickname,
@@ -33,7 +36,14 @@ router.get('/ads', async (req, res) => {
     const now = Date.now();
     const ads = rows.map((r) => {
       const dias = r.first_sale_at ? Math.max(1, (now - new Date(r.first_sale_at).getTime()) / 86400000) : null;
-      return { ...r, ritmo_dia: dias ? Number((r.sales_count / dias).toFixed(1)) : null, dias: dias ? Number(dias.toFixed(1)) : null };
+      const diasRank = r.started_at ? (now - new Date(r.started_at).getTime()) / 86400000 : 0;
+      // Sugestão de "pronto pra ranqueado" (só fase 1): bateu qualquer critério
+      // objetivo que já capturamos. Quem confirma é o usuário (transição manual).
+      const sugerir = r.fase === 'rankeando' && (
+        r.last_highlight_pos != null || r.last_buybox === true ||
+        r.sales_count >= 10 || diasRank >= 15
+      );
+      return { ...r, ritmo_dia: dias ? Number((r.sales_count / dias).toFixed(1)) : null, dias: dias ? Number(dias.toFixed(1)) : null, sugerir_ranqueado: sugerir };
     });
     res.json({ ads });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -101,6 +111,13 @@ router.patch('/ads/:id', async (req, res) => {
     const sets = [], vals = [req.params.id]; let n = 1;
     if (req.body.active != null)          { sets.push(`active = $${++n}`); vals.push(!!req.body.active); }
     if (Number(req.body.milestone_every) > 0) { sets.push(`milestone_every = $${++n}`); vals.push(Number(req.body.milestone_every)); }
+    // Mudança de fase (transição manual): 'ranqueado' carimba ranqueado_em;
+    // voltar pra 'rankeando' limpa o carimbo (reempurrar).
+    const fase = String(req.body.fase || '').trim().toLowerCase();
+    if (fase === 'rankeando' || fase === 'ranqueado') {
+      sets.push(`fase = $${++n}`); vals.push(fase);
+      sets.push(`ranqueado_em = ${fase === 'ranqueado' ? 'now()' : 'NULL'}`);
+    }
     if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
     sets.push('updated_at = now()');
     const { rows } = await pool.query(`UPDATE ranking_ads SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, vals);

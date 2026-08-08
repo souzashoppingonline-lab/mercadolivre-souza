@@ -45,10 +45,10 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 ## Rankeamento de Anúncios (`routes/ranking.js`, montado em `/api/ranking`, ver `rankeamento.md`)
 | Rota | Descrição |
 |---|---|
-| `GET /api/ranking/ads` | anúncios em rankeamento com stats derivadas (`sales_count`, `dias`, `ritmo_dia`, `faturamento` no período, `estoque_atual`/`preco_atual`/`status_atual`, `last_visits`) |
+| `GET /api/ranking/ads?marketplace&fase` | anúncios em rankeamento com stats (`sales_count`, `dias`, `ritmo_dia`, `faturamento`, `estoque_atual`/`preco_atual`, `last_*`, `marketplace`, `fase`) + `sugerir_ranqueado` (bool). Filtros opcionais `marketplace` (ML/SHOPEE) e `fase` (rankeando/ranqueado) |
 | `GET /api/ranking/buscar?q` | tabela de todos os anúncios (`items`, `status<>closed`); `q` vazio → 100 mais recentes, `q≥2` → filtra por título/MLB (30). Traz `em_rankeamento` (bool) pra marcar os já monitorados |
 | `POST /api/ranking/ads` `{ml_id, milestone_every?}` | marca um anúncio em rankeamento (semeia `last_*` de `items` p/ não gerar alerta falso). Limite `MAX_ADS=30` ativos. `milestone_every` default 5 |
-| `PATCH /api/ranking/ads/:id` `{active?, milestone_every?}` | pausar/retomar (mantém histórico) ou mudar o intervalo do marco |
+| `PATCH /api/ranking/ads/:id` `{active?, milestone_every?, fase?}` | pausar/retomar, mudar intervalo do marco, ou mudar de **fase** (`rankeando`↔`ranqueado`; `ranqueado` carimba `ranqueado_em`) |
 | `DELETE /api/ranking/ads/:id` | remove do rankeamento (apaga eventos via CASCADE) |
 | `GET /api/ranking/ads/:id/eventos?limit` | timeline (venda/alteração/marco) mais recentes primeiro (limit ≤ 300) |
 

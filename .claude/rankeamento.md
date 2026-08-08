@@ -28,6 +28,7 @@ Núcleo em **`server/src/ranking.js`** (reaproveita `notify.js`/`ws/hub.js` — 
 | `visitas` | `snapshot` (6/6h) | visitas do último dia mudaram |
 | `qualidade` | `snapshot` | `item_seo_score.score` mudou |
 | `buybox` | `snapshot` | ganhou/perdeu o buy-box de catálogo (`catalog_competition.winner_item_id == ml_id`) |
+| `esfriou` | `snapshot` fase 2 (v71) | sem vender há 3 dias (só ranqueado) |
 | `destaque` | `snapshot` (v70) | entrou/saiu/mudou de posição nos **Mais Vendidos** da categoria (`mlClient.getCategoryHighlights` → `/highlights/MLB/category/:cat`); casa por item id (`type ITEM`) ou `catalog_product_id` (`type PRODUCT`); posição em `ranking_ads.last_highlight_pos` |
 
 Preço/estoque/status vêm **de graça** do webhook de item (sem GET extra). Visitas/qualidade/buy-box não têm webhook → job periódico só dos anúncios ativos (poucos, limite `MAX_ADS=30`), sem varrer o catálogo, então não pesa no rate limit do ML.
@@ -42,6 +43,20 @@ Ao marcar um anúncio (`POST /ads`), os `last_price`/`last_available_quantity`/`
 - **Duração**: fica ativo até o usuário **remover** (DELETE, apaga histórico via CASCADE) ou **pausar** (`active=false`, mantém histórico, para de notificar). Não auto-desliga.
 - **Limite**: `MAX_ADS=30` anúncios ativos (o snapshot roda por anúncio ativo — trava de proteção).
 - **Silêncio/throttle do Telegram**: eventos `venda` e `marco` usam `tgNotifyForce` (ignoram silêncio/throttle) — a mensagem "Venda de produto em rankeamento" **sempre** sai logo depois do alerta de venda normal (`tg_vendas`). Os demais eventos (`preco`/`estoque`/`status`/`visitas`/`qualidade`/`buybox`/`destaque`) usam `tgNotify` (respeitam silêncio/intervalo). Ativar/desativar o tópico: chave `tg_rankeamento` em `app_config` — só afeta os eventos não-forçados (venda/marco ignoram, por serem o núcleo da feature).
+
+## Duas fases (v71): rankeando → ranqueado
+
+Cada anúncio tem `ranking_ads.fase`:
+
+| | **rankeando** (empurrar) | **ranqueado** (defender) |
+|---|---|---|
+| Cada venda | 🔔 tela + Telegram forçado ("Venda de produto em rankeamento") + marco | conta em silêncio (só tela), **sem** Telegram |
+| Snapshot | qualquer mudança (subiu/caiu), a cada 6h (`sync-ranking`) | **só regressão**, 1x/dia (`sync-ranking-ranqueado`, 05:15) |
+| Regressão vigiada | — | perdeu buy-box, saiu/caiu nos Mais Vendidos, visitas **−40%+**, qualidade piorou, estoque, **esfriou** (sem vender há 3 dias) |
+
+**Transição manual** (`PATCH /api/ranking/ads/:id {fase}`): botão "Marcar como ranqueado" / "Voltar pra rankeamento". Passar pra `ranqueado` carimba `ranqueado_em`; voltar limpa. A rota `/ads` devolve `sugerir_ranqueado` (bool) — sugere quando bate qualquer critério objetivo (entrou nos Mais Vendidos **ou** ganhou buy-box **ou** ≥ 10 vendas **ou** ≥ 15 dias); quem confirma é o usuário (nunca automático). Novo evento `esfriou` 💤.
+
+A página tem 3 abas: **Em rankeamento** (cards venda-a-venda + chip de sugestão), **Ranqueados** (cards em modo saúde: posição/buy-box/visitas/qualidade + timeline só de regressão), **Todos os anúncios** (tabela de seleção).
 
 ## Multi-canal (ML + Shopee)
 

@@ -1675,22 +1675,40 @@ async function syncShippingStatus() {
   }
 }
 
-// Snapshot de rankeamento (a cada 6h): visitas/qualidade/buy-box dos anúncios em
-// rankeamento — notifica só mudanças. Vendas e preço/estoque já vêm em tempo real
-// pelos webhooks (handleOrder/handleItem); este job cobre o que não tem webhook.
+// Snapshot de rankeamento FASE 1 (a cada 6h): anúncios ainda 'rankeando' —
+// notifica qualquer mudança (visitas/qualidade/buy-box/Mais Vendidos). Vendas e
+// preço/estoque já vêm em tempo real pelos webhooks; este job cobre o resto.
 let isSyncingRanking = false;
 async function syncRanking() {
   if (isSyncingRanking) return;
   isSyncingRanking = true;
   try {
     return await recordSync('sync-ranking', '0 */6 * * *', async () => {
-      const r = await ranking.snapshot();
-      console.log(`[sync-ranking] snapshot: ${r.checked}/${r.total} anúncios`);
+      const r = await ranking.snapshot('rankeando');
+      console.log(`[sync-ranking] snapshot rankeando: ${r.checked}/${r.total} anúncios`);
       return r;
     });
   } finally {
     isSyncingRanking = false;
     scheduleEvery(6, syncRanking, 'sync-ranking');
+  }
+}
+
+// Snapshot de rankeamento FASE 2 (1x/dia): anúncios 'ranqueado' (consolidados) —
+// SÓ regressão (perdeu buy-box, saiu/caiu nos Mais Vendidos, visitas -40%,
+// qualidade piorou) + alerta "esfriou". Cadência menor = menos chamadas ao ML.
+let isSyncingRankingRanqueado = false;
+async function syncRankingRanqueado() {
+  if (isSyncingRankingRanqueado) return;
+  isSyncingRankingRanqueado = true;
+  try {
+    return await recordSync('sync-ranking-ranqueado', '15 5 * * *', async () => {
+      const r = await ranking.snapshot('ranqueado');
+      console.log(`[sync-ranking-ranqueado] snapshot: ${r.checked}/${r.total} anúncios`);
+      return r;
+    });
+  } finally {
+    isSyncingRankingRanqueado = false;
   }
 }
 
@@ -2975,7 +2993,8 @@ scheduleAt(7, 30,  checkRupturaEstoque, 'ruptura-estoque');
 scheduleAt(7,  0,  () => syncClaimsStatus(false), 'sync-claims-status'); // reconsulta devoluções → alerta quando encerra
 scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
-scheduleEvery(6,   syncRanking, 'sync-ranking'); // snapshot visitas/qualidade/buy-box dos anúncios em rankeamento
+scheduleEvery(6,   syncRanking, 'sync-ranking'); // fase 1 (rankeando) — qualquer mudança, a cada 6h
+scheduleAt(5, 15,  syncRankingRanqueado, 'sync-ranking-ranqueado'); // fase 2 (ranqueado) — só regressão, 1x/dia
 
 // Notion Tarefas — 2ª feira 08:00 (usa setTimeout próprio, não scheduleAt)
 setTimeout(() => syncNotionTarefas().catch(e => console.error('[notion] boot erro:', e.message)), (() => {

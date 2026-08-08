@@ -27,9 +27,12 @@ async function getTracked(mlId) {
 }
 
 // Registra um evento (grava em ranking_events + notifica tela e Telegram).
-// `force` usa tgNotifyForce (ignora silêncio/throttle) — para venda/marco, que
-// devem SEMPRE acompanhar a venda no Telegram, logo depois do alerta normal.
-async function emit(ad, eventType, message, detail = {}, force = false) {
+// tgMode controla o Telegram:
+//   'force'  → tgNotifyForce (ignora silêncio/throttle): venda/marco na fase 1.
+//   'normal' → tgNotify (respeita silêncio/throttle): alterações/regressão.
+//   'silent' → só tela, sem Telegram: venda/marco na fase 2 (ranqueado).
+// A tela (WS) SEMPRE recebe — o histórico/timeline não muda entre fases.
+async function emit(ad, eventType, message, detail = {}, tgMode = 'normal') {
   const { rows } = await pool.query(
     `INSERT INTO ranking_events (ranking_ad_id, ml_id, event_type, message, detail)
      VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
@@ -42,8 +45,9 @@ async function emit(ad, eventType, message, detail = {}, force = false) {
     event_type: eventType, message, detail, id: ev.id, created_at: ev.created_at,
   });
   // Telegram — tópico dedicado tg_rankeamento.
-  if (force) await tgNotifyForce('tg_rankeamento', message);
-  else await tgNotify('tg_rankeamento', message);
+  if (tgMode === 'force') await tgNotifyForce('tg_rankeamento', message);
+  else if (tgMode === 'normal') await tgNotify('tg_rankeamento', message);
+  // 'silent' → não notifica no Telegram.
   return ev;
 }
 
@@ -68,13 +72,16 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate }) {
   const count = rows[0].sales_count;
   const orderId = order?.id || order?.ml_id || '—';
 
+  // Fase 2 (ranqueado): venda conta em silêncio (só tela), sem "venda!" no
+  // Telegram — o foco vira defender, não celebrar cada venda. Fase 1: força.
+  const isRanq = ad.fase === 'ranqueado';
   const every0 = ad.milestone_every || 5;
   const faltam = (every0 - (count % every0)) % every0;
   await emit(ad, 'venda',
     `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> em rankeamento\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`,
-    { order_id: orderId, valor: valorNum, comprador, sales_count: count }, true);
+    { order_id: orderId, valor: valorNum, comprador, sales_count: count }, isRanq ? 'silent' : 'force');
 
-  // Marco a cada N vendas — resumo de ritmo.
+  // Marco a cada N vendas — resumo de ritmo (também silencioso na fase 2).
   const every = ad.milestone_every || 5;
   if (count > 0 && count % every === 0) {
     await milestone({ ...ad, sales_count: count, first_sale_at: rows[0].first_sale_at });
@@ -98,7 +105,8 @@ async function milestone(ad) {
   const fat = rows[0].fat;
   await emit(ad, 'marco',
     `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento no período: ${BRL(fat)}\n🔗 ${linkOf(ad.ml_id)}`,
-    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat) }, true);
+    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat) },
+    ad.fase === 'ranqueado' ? 'silent' : 'force');
 }
 
 // Alterações do anúncio detectadas no sync do item (handleItem) — preço, estoque
@@ -144,19 +152,25 @@ async function onItemChange({ mlId, price, availableQuantity, status, title }) {
 
 // Snapshot periódico (job): pra cada anúncio ativo, coleta visitas (API) e lê
 // qualidade (item_seo_score) e buy-box (catalog_competition) do banco, e notifica
-// só quando muda. Rodado pelo worker (a cada 6h). Só os anúncios em rankeamento
-// (poucos, limite de negócio) — não varre o catálogo todo, então não pesa no ML.
-async function snapshot() {
+// quando muda. `faseAlvo` limita quais anúncios processar:
+//   'rankeando' (a cada 6h) → notifica QUALQUER mudança (subiu/caiu), fase de empurrar.
+//   'ranqueado' (1x/dia)    → SÓ regressão (perdeu buy-box, saiu/caiu nos Mais
+//                              Vendidos, visitas caíram ≥40%, qualidade piorou) +
+//                              alerta "esfriou" (sem vender há N dias).
+// Só anúncios do Mercado Livre — visitas/qualidade/buy-box/highlights usam a API
+// do ML. Shopee é ignorado (recebe só venda/marco). Poucos anúncios (limite de
+// negócio), não varre o catálogo, então não pesa no rate limit.
+async function snapshot(faseAlvo = 'rankeando') {
   const ml = require('./mlClient'); // require tardio: evita custo se o job nunca roda
-  // Só anúncios do Mercado Livre — visitas/qualidade/buy-box/highlights usam a
-  // API do ML. Anúncios Shopee em rankeamento são ignorados neste snapshot
-  // (recebem só venda/marco em tempo real, ver .claude/rankeamento.md).
+  const COLD_DAYS = 3; // "esfriou" = sem vender há N dias (só fase ranqueado)
   const { rows: ads } = await pool.query(
     `SELECT r.* FROM ranking_ads r
        JOIN items i ON i.ml_id = r.ml_id
        LEFT JOIN marketplaces m ON m.id = i.marketplace_id
-      WHERE r.active = true AND COALESCE(m.code, 'ML') = 'ML'`
+      WHERE r.active = true AND COALESCE(m.code, 'ML') = 'ML' AND r.fase = $1`,
+    [faseAlvo]
   );
+  const isRanq = faseAlvo === 'ranqueado';
   let checked = 0;
   for (const ad of ads) {
     try {
@@ -190,27 +204,58 @@ async function snapshot() {
         } catch (_) { /* categoria sem highlights */ }
       }
 
+      // Visitas: fase 1 alerta qualquer variação; fase 2 só QUEDA forte (≥40%).
       if (visits != null && ad.last_visits != null && visits !== Number(ad.last_visits)) {
-        const dir = visits > Number(ad.last_visits) ? '⬆️' : '⬇️';
-        await emit(ad, 'visitas', `👁️ <b>Visitas ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n${ad.last_visits} → <b>${visits}</b> (últ. dia)`, { de: Number(ad.last_visits), para: visits });
+        const last = Number(ad.last_visits);
+        const caiu = visits < last;
+        const quedaForte = caiu && visits < last * 0.6; // -40%+
+        if (!isRanq || quedaForte) {
+          const dir = caiu ? (isRanq ? '⚠️ despencaram' : '⬇️') : '⬆️';
+          await emit(ad, 'visitas', `👁️ <b>Visitas ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n${last} → <b>${visits}</b> (últ. dia)`, { de: last, para: visits });
+        }
       }
+      // Qualidade: fase 2 só quando PIORA.
       if (seo != null && ad.last_seo_score != null && seo !== Number(ad.last_seo_score)) {
-        const dir = seo > Number(ad.last_seo_score) ? '⬆️ melhorou' : '⬇️ piorou';
-        await emit(ad, 'qualidade', `⭐ <b>Qualidade ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n${ad.last_seo_score} → <b>${seo}</b>`, { de: Number(ad.last_seo_score), para: seo });
+        const piorou = seo < Number(ad.last_seo_score);
+        if (!isRanq || piorou) {
+          await emit(ad, 'qualidade', `⭐ <b>Qualidade ${piorou ? '⬇️ piorou' : '⬆️ melhorou'}</b>\n📦 ${ad.title || ad.ml_id}\n${ad.last_seo_score} → <b>${seo}</b>`, { de: Number(ad.last_seo_score), para: seo });
+        }
       }
+      // Buy-box: fase 2 só quando PERDE.
       if (buybox != null && ad.last_buybox != null && buybox !== ad.last_buybox) {
-        await emit(ad, 'buybox', buybox
-          ? `🥇 <b>GANHOU o buy-box!</b>\n📦 ${ad.title || ad.ml_id}`
-          : `⚠️ <b>PERDEU o buy-box</b>\n📦 ${ad.title || ad.ml_id}`, { ganhando: buybox });
+        if (!isRanq || !buybox) {
+          await emit(ad, 'buybox', buybox
+            ? `🥇 <b>GANHOU o buy-box!</b>\n📦 ${ad.title || ad.ml_id}`
+            : `⚠️ <b>PERDEU o buy-box</b>\n📦 ${ad.title || ad.ml_id}`, { ganhando: buybox });
+        }
       }
-      // Destaque nos Mais Vendidos: entrou / saiu / mudou de posição.
+      // Mais Vendidos: entrou / saiu / mudou de posição. Fase 2 só regressão (saiu/caiu).
       if (highlightPos !== (ad.last_highlight_pos != null ? Number(ad.last_highlight_pos) : null)) {
         const antes = ad.last_highlight_pos;
-        let msg;
-        if (highlightPos != null && antes == null) msg = `🚀 <b>ENTROU nos Mais Vendidos!</b>\n📦 ${ad.title || ad.ml_id}\n🏅 Posição <b>#${highlightPos}</b> na categoria`;
-        else if (highlightPos == null && antes != null) msg = `📉 <b>SAIU dos Mais Vendidos</b>\n📦 ${ad.title || ad.ml_id}\n(estava em #${antes})`;
-        else { const dir = highlightPos < antes ? '⬆️ subiu' : '⬇️ caiu'; msg = `📊 <b>Mais Vendidos ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n#${antes} → <b>#${highlightPos}</b> na categoria`; }
-        await emit(ad, 'destaque', msg, { de: antes != null ? Number(antes) : null, para: highlightPos });
+        const saiu = highlightPos == null && antes != null;
+        const caiu = highlightPos != null && antes != null && highlightPos > antes;
+        const regressao = saiu || caiu;
+        if (!isRanq || regressao) {
+          let msg;
+          if (highlightPos != null && antes == null) msg = `🚀 <b>ENTROU nos Mais Vendidos!</b>\n📦 ${ad.title || ad.ml_id}\n🏅 Posição <b>#${highlightPos}</b> na categoria`;
+          else if (saiu) msg = `📉 <b>SAIU dos Mais Vendidos</b>\n📦 ${ad.title || ad.ml_id}\n(estava em #${antes})`;
+          else { const dir = highlightPos < antes ? '⬆️ subiu' : '⬇️ caiu'; msg = `📊 <b>Mais Vendidos ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n#${antes} → <b>#${highlightPos}</b> na categoria`; }
+          await emit(ad, 'destaque', msg, { de: antes != null ? Number(antes) : null, para: highlightPos });
+        }
+      }
+      // "Esfriou" (só fase ranqueado): sem vender há COLD_DAYS dias. Alerta 1x por
+      // esfriamento — não repete todo dia (checa se já não avisou desde a últ. venda).
+      if (isRanq && ad.last_sale_at) {
+        const diasSemVenda = (Date.now() - new Date(ad.last_sale_at).getTime()) / 86400000;
+        if (diasSemVenda >= COLD_DAYS) {
+          const { rows: já } = await pool.query(
+            `SELECT 1 FROM ranking_events WHERE ranking_ad_id = $1 AND event_type = 'esfriou' AND created_at > $2 LIMIT 1`,
+            [ad.id, ad.last_sale_at]
+          );
+          if (!já.length) {
+            await emit(ad, 'esfriou', `💤 <b>Esfriou</b>\n📦 ${ad.title || ad.ml_id}\nSem vender há <b>${Math.floor(diasSemVenda)} dia(s)</b> (ranqueado)`, { dias: Math.floor(diasSemVenda) });
+          }
+        }
       }
       await pool.query(
         `UPDATE ranking_ads SET last_visits = COALESCE($2, last_visits),

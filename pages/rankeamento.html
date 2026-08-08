@@ -10,6 +10,14 @@
   <script>window.PAGE_TITLE='Rankeamento'; window.ACTIVE_NAV='rankeamento.html';</script>
   <style>
     .rk-sub { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
+    .rk-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+    .rk-tab { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px; padding: 10px 16px; font-size: 13px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .rk-tab.active { color: #1a1a1a; background: #ffd60a; border-color: #ffd60a; }
+    .rk-tab-badge { background: rgba(0,0,0,.15); color: inherit; font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 10px; }
+    .rk-tab:not(.active) .rk-tab-badge { background: var(--bg-card2); }
+    .rk-panel { display: none; }
+    .rk-panel.active { display: block; }
+    .rk-chip-sug { display: inline-flex; align-items: center; gap: 4px; background: rgba(46,160,67,.15); color: #2ea043; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px; }
     .rk-section-title { font-size: 15px; font-weight: 800; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
     .rk-empty { color: var(--text-muted); font-size: 13px; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; }
 
@@ -79,26 +87,43 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-  <p class="rk-sub">Marque um anúncio em <b>rankeamento</b> (janela de ranqueamento de anúncio novo) e acompanhe cada venda e cada alteração — na tela e no Telegram. A cada 5 vendas, um marco com o ritmo.</p>
+  <p class="rk-sub">Acompanhe anúncios em <b>rankeamento</b> venda-a-venda; quando pegam tração, mova-os para <b>Ranqueados</b> e passe a monitorar só regressão. <span id="wsStatus" style="font-size:11px;color:var(--text-muted);margin-left:6px"></span></p>
 
-  <div class="rk-section-title"><i class="fas fa-ranking-star" style="color:#ffd60a"></i> Em rankeamento <span id="wsStatus" style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:auto"></span></div>
-  <div id="rkCards" class="rk-cards"></div>
-  <div id="rkCardsEmpty" class="rk-empty" style="display:none">Nenhum anúncio em rankeamento. Selecione um na tabela abaixo para começar a acompanhar.</div>
-
-  <div class="rk-section-title"><i class="fas fa-list"></i> Todos os anúncios</div>
-  <div class="rk-search">
-    <select id="rkMkt" onchange="onMktChange()" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px">
-      <option value="">Todos os canais</option>
-      <option value="ML">Mercado Livre</option>
-      <option value="SHOPEE">Shopee</option>
-    </select>
-    <input id="rkSearch" placeholder="Buscar por título ou ID..." autocomplete="off">
+  <div class="rk-tabs">
+    <button class="rk-tab active" id="tab-rankeando" onclick="switchTab('rankeando')"><i class="fas fa-ranking-star"></i> Em rankeamento <span class="rk-tab-badge" id="cnt-rankeando">0</span></button>
+    <button class="rk-tab" id="tab-ranqueado" onclick="switchTab('ranqueado')"><i class="fas fa-shield-halved"></i> Ranqueados <span class="rk-tab-badge" id="cnt-ranqueado">0</span></button>
+    <button class="rk-tab" id="tab-todos" onclick="switchTab('todos')"><i class="fas fa-list"></i> Todos os anúncios</button>
   </div>
-  <div style="overflow-x:auto">
-    <table class="rk-table">
-      <thead><tr><th>Anúncio</th><th>Canal</th><th>Loja</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th></th></tr></thead>
-      <tbody id="rkTableBody"><tr><td colspan="7" class="rk-empty" style="border:none">Carregando...</td></tr></tbody>
-    </table>
+
+  <!-- Aba: Em rankeamento -->
+  <div class="rk-panel active" id="panel-rankeando">
+    <div id="rkCards" class="rk-cards"></div>
+    <div id="rkCardsEmpty" class="rk-empty" style="display:none">Nenhum anúncio em rankeamento. Vá em "Todos os anúncios" e selecione um para começar a acompanhar.</div>
+  </div>
+
+  <!-- Aba: Ranqueados (monitoramento) -->
+  <div class="rk-panel" id="panel-ranqueado">
+    <p class="rk-sub" style="margin-top:0">Anúncios consolidados. Aqui o foco é <b>defender</b>: as vendas contam em silêncio (sem alerta) e você só é avisado quando algo <b>piora</b> — perdeu buy-box, saiu dos Mais Vendidos, visitas caíram, qualidade piorou ou esfriou.</p>
+    <div id="rkCardsRanq" class="rk-cards"></div>
+    <div id="rkCardsRanqEmpty" class="rk-empty" style="display:none">Nenhum anúncio ranqueado ainda. Quando um anúncio pegar tração, use "Marcar como ranqueado" no card dele.</div>
+  </div>
+
+  <!-- Aba: Todos os anúncios -->
+  <div class="rk-panel" id="panel-todos">
+    <div class="rk-search">
+      <select id="rkMkt" onchange="onMktChange()" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px">
+        <option value="">Todos os canais</option>
+        <option value="ML">Mercado Livre</option>
+        <option value="SHOPEE">Shopee</option>
+      </select>
+      <input id="rkSearch" placeholder="Buscar por título ou ID..." autocomplete="off">
+    </div>
+    <div style="overflow-x:auto">
+      <table class="rk-table">
+        <thead><tr><th>Anúncio</th><th>Canal</th><th>Loja</th><th>Preço</th><th>Estoque</th><th>Vendas</th><th></th></tr></thead>
+        <tbody id="rkTableBody"><tr><td colspan="7" class="rk-empty" style="border:none">Carregando...</td></tr></tbody>
+      </table>
+    </div>
   </div>
     </div>
   </main>
@@ -112,7 +137,7 @@
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDT = d => new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀' };
+const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀', esfriou:'💤' };
 // Dias em rankeamento — desde started_at (quando o anúncio foi marcado).
 // 0 = "hoje" (entrou hoje), senão "Nd" (ex.: 3d). Base do contador de dias.
 function diasRank(startedAt) {
@@ -124,47 +149,66 @@ const mktTag = m => m === 'SHOPEE'
   ? '<span style="background:#ee4d2d;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Shopee</span>'
   : '<span style="background:#ffe600;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Mercado Livre</span>';
 
-let ADS = [];        // anúncios em rankeamento (com stats)
 let MKT = '';        // filtro de canal atual ('', 'ML', 'SHOPEE')
+let TAB = 'rankeando';
 const EVENTS = {};   // id do ranking_ad -> array de eventos
+
+function switchTab(t) {
+  TAB = t;
+  ['rankeando','ranqueado','todos'].forEach(x => {
+    document.getElementById('tab-'+x).classList.toggle('active', x === t);
+    document.getElementById('panel-'+x).classList.toggle('active', x === t);
+  });
+  if (t === 'todos') loadTable(document.getElementById('rkSearch').value);
+}
 
 function onMktChange() {
   MKT = document.getElementById('rkMkt').value;
-  loadCards();
   loadTable(document.getElementById('rkSearch').value);
 }
 
+// Carrega as duas listas (fase 1 e fase 2) e atualiza contadores das abas.
 async function loadCards() {
-  const d = await DB.getRankingAds(MKT);
-  ADS = d.ads || [];
-  const wrap = document.getElementById('rkCards');
-  const empty = document.getElementById('rkCardsEmpty');
-  empty.style.display = ADS.length ? 'none' : 'block';
-  // carrega eventos de cada card em paralelo
-  await Promise.all(ADS.map(async a => { EVENTS[a.id] = (await DB.getRankingEventos(a.id, 100)).eventos || []; }));
-  wrap.innerHTML = ADS.map(cardHtml).join('');
+  const [d1, d2] = await Promise.all([DB.getRankingAds('', 'rankeando'), DB.getRankingAds('', 'ranqueado')]);
+  await renderPanel(d1.ads || [], 'rkCards', 'rkCardsEmpty');
+  await renderPanel(d2.ads || [], 'rkCardsRanq', 'rkCardsRanqEmpty');
+  document.getElementById('cnt-rankeando').textContent = (d1.ads || []).length;
+  document.getElementById('cnt-ranqueado').textContent = (d2.ads || []).length;
+}
+
+async function renderPanel(ads, wrapId, emptyId) {
+  document.getElementById(emptyId).style.display = ads.length ? 'none' : 'block';
+  await Promise.all(ads.map(async a => { EVENTS[a.id] = (await DB.getRankingEventos(a.id, 100)).eventos || []; }));
+  document.getElementById(wrapId).innerHTML = ads.map(cardHtml).join('');
 }
 
 function cardHtml(a) {
+  const ranq = a.fase === 'ranqueado';
   const every = a.milestone_every || 5;
-  const naFaixa = a.sales_count % every;        // 0..every-1 já feitos rumo ao próximo marco
+  const naFaixa = a.sales_count % every;
   const falta = naFaixa === 0 && a.sales_count > 0 ? 0 : (every - naFaixa);
   const pips = Array.from({length: every}, (_,i) => `<i class="${i < naFaixa ? 'on':''}"></i>`).join('');
-  const evs = (EVENTS[a.id] || []).map(evHtml).join('') || '<div class="rk-empty" style="border:none">Aguardando a 1ª venda…</div>';
-  return `<div class="rk-card ${a.active ? '' : 'paused'}" id="rkcard-${a.id}">
-    <div class="rk-card-head">
-      ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
-      <div style="min-width:0">
-        <span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Anúncio em rankeamento' : 'Pausado'}</span> ${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>
-        <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
-        <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
-      </div>
-      <div class="rk-card-actions">
-        <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
-        <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i></button>
-      </div>
-    </div>
+  const evs = (EVENTS[a.id] || []).map(evHtml).join('') || `<div class="rk-empty" style="border:none">${ranq?'Sem alertas — tudo certo 👍':'Aguardando a 1ª venda…'}</div>`;
 
+  // Badge/ações mudam por fase.
+  const badge = ranq
+    ? `<span class="rk-badge" style="background:#2ea043;color:#fff"><i class="fas fa-shield-halved"></i> Ranqueado</span>`
+    : `<span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Em rankeamento' : 'Pausado'}</span>`;
+  const sug = (!ranq && a.sugerir_ranqueado) ? ` <span class="rk-chip-sug" title="Bateu critério (Mais Vendidos / buy-box / 10 vendas / 15 dias)">🎯 pronto pra ranqueado?</span>` : '';
+  const faseBtn = ranq
+    ? `<button class="rk-icon-btn" title="Voltar pra rankeamento (reempurrar)" onclick="mudarFase(${a.id},'rankeando')"><i class="fas fa-rotate-left"></i></button>`
+    : `<button class="rk-icon-btn" title="Marcar como ranqueado" onclick="mudarFase(${a.id},'ranqueado')"><i class="fas fa-shield-halved"></i></button>`;
+
+  // Saúde (fase 2) ou contador 5-em-5 (fase 1).
+  const meio = ranq ? `
+    <div class="rk-stats">
+      <div class="rk-stat"><div class="v">${a.last_highlight_pos!=null?'#'+a.last_highlight_pos:'—'}</div><div class="k">Mais Vendidos</div></div>
+      <div class="rk-stat"><div class="v">${a.last_buybox===true?'🥇 Sim':(a.last_buybox===false?'Não':'—')}</div><div class="k">Buy-box</div></div>
+      <div class="rk-stat"><div class="v">${a.last_visits!=null?a.last_visits:'—'}</div><div class="k">Visitas/dia</div></div>
+      <div class="rk-stat"><div class="v">${a.last_seo_score!=null?a.last_seo_score:'—'}</div><div class="k">Qualidade</div></div>
+      <div class="rk-stat"><div class="v">${a.estoque_atual!=null?a.estoque_atual:'—'}</div><div class="k">Estoque</div></div>
+      <div class="rk-stat"><div class="v">${a.sales_count}</div><div class="k">Vendas</div></div>
+    </div>` : `
     <div class="rk-counter">
       <div class="rk-counter-top">
         <div class="rk-counter-num">${a.sales_count}<small> venda(s)</small></div>
@@ -173,16 +217,36 @@ function cardHtml(a) {
       <div class="rk-progress">${pips}</div>
       <div class="rk-next">${falta === 0 ? '🎯 Marco atingido!' : `Faltam <b>${falta}</b> venda(s) para o próximo marco (a cada ${every})`}</div>
     </div>
-
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${BRL(a.faturamento)}</div><div class="k">Faturamento</div></div>
       <div class="rk-stat"><div class="v">${a.last_visits!=null?a.last_visits:'—'}</div><div class="k">Visitas</div></div>
       <div class="rk-stat"><div class="v">${a.estoque_atual!=null?a.estoque_atual:'—'}</div><div class="k">Estoque</div></div>
       <div class="rk-stat"><div class="v">${a.preco_atual!=null?BRL(a.preco_atual):'—'}</div><div class="k">Preço</div></div>
-    </div>
+    </div>`;
 
+  return `<div class="rk-card ${a.active ? '' : 'paused'} ${ranq?'ranq':''}" id="rkcard-${a.id}" style="${ranq?'border-color:#2ea043;box-shadow:0 0 0 1px rgba(46,160,67,.15)':''}">
+    <div class="rk-card-head">
+      ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
+      <div style="min-width:0">
+        ${badge} ${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${sug}
+        <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
+        <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
+      </div>
+      <div class="rk-card-actions">
+        ${faseBtn}
+        <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
+        <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>
+    ${meio}
     <div class="rk-timeline" id="rktl-${a.id}">${evs}</div>
   </div>`;
+}
+
+async function mudarFase(id, fase) {
+  if (fase === 'ranqueado' && !confirm('Marcar como RANQUEADO? A partir de agora as vendas contam em silêncio e você só é avisado quando algo piora.')) return;
+  await DB.patchRankingAd(id, { fase });
+  loadCards();
 }
 
 function evHtml(e, isNew) {
@@ -244,8 +308,8 @@ WS.on('ranking_event', (p) => {
     const first = tl.querySelector('.rk-empty'); if (first) first.remove();
     tl.insertAdjacentHTML('afterbegin', evHtml({ event_type: p.event_type, message: p.message, created_at: p.created_at || new Date().toISOString() }, true));
   }
-  // venda/marco alteram contador/stats → recarrega os cards (barato)
-  if (p.event_type === 'venda' || p.event_type === 'marco') loadCards();
+  // qualquer evento pode alterar contador/stats/saúde → recarrega os cards
+  loadCards();
 });
 WS.on('_connected', () => { document.getElementById('wsStatus').innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 

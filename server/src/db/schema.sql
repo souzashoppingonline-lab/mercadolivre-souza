@@ -854,6 +854,8 @@ CREATE TABLE IF NOT EXISTS ranking_ads (
   last_seo_score NUMERIC,
   last_buybox BOOLEAN,
   last_highlight_pos INT,
+  fase TEXT DEFAULT 'rankeando',
+  ranqueado_em TIMESTAMPTZ,
   milestone_every INT DEFAULT 5,
   started_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now(),

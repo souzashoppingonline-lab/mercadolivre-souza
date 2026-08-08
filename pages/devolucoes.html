@@ -190,6 +190,12 @@
             <option value="">Todos os estágios</option>
             <option value="__none__">Sem estágio</option>
           </select>
+          <select id="filtroStatus" onchange="filterDevTable()" title="Filtrar por status do Mercado Livre"
+            style="margin-left:8px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px">
+            <option value="">Todos os status</option>
+            <option value="analise">Em Análise</option>
+            <option value="encerrada">Encerrada</option>
+          </select>
           <button class="btn-save-note" onclick="novoEstagio()" style="margin-left:8px;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border)" title="Criar um novo estágio de observação"><i class="fas fa-plus"></i> Estágio</button>
           <button class="btn-save-note" id="btnAtualizarPendentes" onclick="atualizarPendentes(this)" style="margin-left:8px" title="Reconsulta em segundo plano todas as devoluções em análise, 1 por vez (respeita o rate limit do ML)"><i class="fas fa-arrows-rotate"></i> Atualizar pendentes</button>
           <button class="btn-save-note" id="btnMaskDev" onclick="toggleDevMask()" style="margin-left:8px" title="Oculta Pedido, Loja e Produto na tela (para print/compartilhar). Não afeta o CSV/PDF."><i class="fas fa-eye-slash"></i> Ocultar</button>
@@ -522,10 +528,15 @@ function renderDevRows(rows) {
 function filterDevTable() {
   const q = (document.getElementById('devTableSearch').value || '').trim().toLowerCase();
   const sf = (document.getElementById('filtroSituacao') || {}).value || '';
+  const stf = (document.getElementById('filtroStatus') || {}).value || '';
   let f = allDevRows;
   // Filtro por estágio (situação): '' = todos, '__none__' = sem estágio, senão a key.
   if (sf === '__none__') f = f.filter(r => !r.situacao);
   else if (sf) f = f.filter(r => r.situacao === sf);
+  // Filtro por status do ML: 'encerrada' = status closed; 'analise' = em análise
+  // (opened/analysis) — mesmo agrupamento do statusMap exibido na coluna Status.
+  if (stf === 'encerrada')   f = f.filter(r => (statusMap[r.status]?.l) === 'Encerrada');
+  else if (stf === 'analise') f = f.filter(r => (statusMap[r.status]?.l) === 'Em Análise');
   if (q) f = f.filter(r =>
     String(r.order_id || '').toLowerCase().includes(q) ||
     String(r.claim_id || '').toLowerCase().includes(q) ||

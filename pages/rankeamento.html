@@ -22,6 +22,7 @@
     .rk-card-head img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: var(--bg-card2); }
     .rk-badge { display: inline-flex; align-items: center; gap: 5px; background: #ffd60a; color: #1a1a1a; font-weight: 900; font-size: 9px; letter-spacing: .3px; text-transform: uppercase; padding: 2px 6px; border-radius: 5px; }
     .rk-card.paused .rk-badge { background: var(--border); color: var(--text-muted); }
+    .rk-days { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-card2); color: var(--text-main); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); }
     .rk-card-title { font-weight: 700; font-size: 12.5px; margin-top: 4px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .rk-card-store { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
     .rk-card-actions { margin-left: auto; display: flex; gap: 5px; }
@@ -112,6 +113,13 @@ const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDT = d => new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
 const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀' };
+// Dias em rankeamento — desde started_at (quando o anúncio foi marcado).
+// 0 = "hoje" (entrou hoje), senão "Nd" (ex.: 3d). Base do contador de dias.
+function diasRank(startedAt) {
+  if (!startedAt) return 'hoje';
+  const dias = Math.floor((Date.now() - new Date(startedAt).getTime()) / 86400000);
+  return dias <= 0 ? 'hoje' : `${dias}d em rankeamento`;
+}
 const mktTag = m => m === 'SHOPEE'
   ? '<span style="background:#ee4d2d;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Shopee</span>'
   : '<span style="background:#ffe600;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Mercado Livre</span>';
@@ -147,7 +155,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        <span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Anúncio em rankeamento' : 'Pausado'}</span> ${mktTag(a.marketplace)}
+        <span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Anúncio em rankeamento' : 'Pausado'}</span> ${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
       </div>

@@ -48,6 +48,8 @@
     .vc-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; } @media(max-width:900px){.vc-grid2{grid-template-columns:1fr;}}
     .vc-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
     .vc-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .vc-in { display:block; width:100%; margin-top:4px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; }
+    .vc-in:focus { outline:none; border-color:#3fb950; }
   </style>
 </head>
 <body>
@@ -62,6 +64,24 @@
         <select id="vcMes"></select><select id="vcAno"></select>
         <select id="vcLoja"><option value="">Todas as lojas</option></select>
         <span style="font-size:12px;color:var(--text-muted)">Margem = receita bruta − (taxas + frete + CMV + ads + impostos)</span>
+      </div>
+
+      <!-- Novo Lançamento Diário (escrita) -->
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>➕ Novo Lançamento Diário</h3><span id="vcFormMsg" style="margin-left:auto;font-size:12px"></span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+          <label style="font-size:12px;color:var(--text-muted)">Data<input type="date" id="fData" class="vc-in"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Qtd. Vendas<input type="number" id="fQtd" class="vc-in" placeholder="0"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Receita Bruta (R$)<input type="number" step="0.01" id="fRec" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Taxas Marketplace (R$)<input type="number" step="0.01" id="fFees" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Frete Subsidiado (R$)<input type="number" step="0.01" id="fFrete" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">CMV — Custo Mercadoria (R$)<input type="number" step="0.01" id="fCmv" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Ads Mercado Livre (R$)<input type="number" step="0.01" id="fAdsMl" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Ads Externos (R$)<input type="number" step="0.01" id="fAdsEx" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Imposto (R$)<input type="number" step="0.01" id="fTax" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Loja *<select id="fLoja" class="vc-in"><option value="">Selecione…</option></select></label>
+        </div>
+        <div style="text-align:right;margin-top:12px"><button id="fBtn" onclick="lancar()" style="background:#3fb950;color:#03210d;border:none;border-radius:10px;padding:10px 20px;font-weight:800;cursor:pointer">Lançar</button></div>
       </div>
 
       <!-- Meta de Faturamento -->
@@ -170,7 +190,12 @@ async function init(){
   const rSt = await DB.getFinanceiroDados('stores',500);
   const st = rSt.rows||[];
   st.forEach(s=>{ STORES[s.id]=s.name||s.nome||s.nickname||String(s.id).slice(0,6); });
-  const sel=document.getElementById('vcLoja'); Object.entries(STORES).forEach(([id,n])=>sel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`));
+  const sel=document.getElementById('vcLoja'), fSel=document.getElementById('fLoja');
+  Object.entries(STORES).forEach(([id,n])=>{
+    sel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`);
+    fSel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`);
+  });
+  document.getElementById('fData').value=new Date().toISOString().slice(0,10);
 
   const rG = await DB.getFinanceiroDados('monthly_goals',2000); GOALS_ALL = rG.rows||[];
   const rS = await DB.getFinanceiroDados('sales_entries',5000,'date.desc'); ALL = rS.rows||[];
@@ -186,8 +211,42 @@ async function init(){
   render();
 }
 
+// ── Escrita: grava um lançamento diário em sales_entries (migração p/ o Supabase).
+function fMsg(t,err){ const el=document.getElementById('vcFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
+function fNum(id){ const v=parseFloat(String(document.getElementById(id).value).replace(',','.')); return isNaN(v)?0:v; }
+async function lancar(){
+  const btn=document.getElementById('fBtn');
+  const date=document.getElementById('fData').value, store_id=document.getElementById('fLoja').value;
+  if(!date){ fMsg('Informe a data.',true); return; }
+  if(!store_id){ fMsg('Selecione a loja.',true); return; }
+  const row={
+    date,
+    quantity_sales:Math.round(fNum('fQtd')),
+    gross_revenue:fNum('fRec'),
+    marketplace_fees:fNum('fFees'),
+    subsidized_shipping:fNum('fFrete'),
+    cogs:fNum('fCmv'),
+    ads_ml:fNum('fAdsMl'),
+    ads_external:fNum('fAdsEx'),
+    tax:fNum('fTax'),
+    store_id,
+  };
+  btn.disabled=true; fMsg('Gravando…',false);
+  const r=await DB.addFinanceiroRow('sales_entries',row);
+  btn.disabled=false;
+  if(r&&r.error){ fMsg('Erro: '+esc(r.error),true); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null;
+  if(saved) ALL.unshift(saved); // reflete na tela sem recarregar tudo
+  fMsg('✅ Lançamento gravado.',false);
+  ['fQtd','fRec','fFees','fFrete','fCmv','fAdsMl','fAdsEx','fTax'].forEach(id=>document.getElementById(id).value='');
+  render();
+}
+
 function goalsByStore(m,y){ const map={}; GOALS_ALL.filter(g=>+g.month===m&&+g.year===y).forEach(g=>{ if(g.store_id) map[g.store_id]=Number(g.goal_value)||0; }); return map; }
-function totalGoal(m,y){ return GOALS_ALL.filter(g=>+g.month===m&&+g.year===y).reduce((s,g)=>s+(Number(g.goal_value)||0),0); }
+// Meta GERAL = linha única com store_id NULL (igual ao Readdy MonthlyGoal). Não é soma.
+function globalGoal(m,y){ const r=GOALS_ALL.find(g=>+g.month===m&&+g.year===y&&!g.store_id); if(r) return Number(r.goal_value)||0;
+  // fallback: se não houver linha geral, soma as por-loja
+  return Object.values(goalsByStore(m,y)).reduce((s,v)=>s+v,0); }
 function monthRows(m,y,loja){ return ALL.filter(e=>{ if(!e.date) return false; const d=new Date(e.date+'T00:00:00'); if(d.getMonth()+1!==m||d.getFullYear()!==y) return false; if(loja&&String(e.store_id)!==loja) return false; return true; }); }
 function totais(rows){ const t={rec:0,custo:0,mc:0,vendas:0}; rows.forEach(r=>{t.rec+=rev(r);t.custo+=custoDe(r);t.mc+=mcDe(r);t.vendas+=+r.quantity_sales||0;}); t.mcPct=t.rec?t.mc/t.rec*100:0; t.ticket=t.vendas?t.rec/t.vendas:0; return t; }
 
@@ -195,7 +254,7 @@ function render(){
   const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value, loja=document.getElementById('vcLoja').value;
   const rows=monthRows(m,y,loja);
   const gStore=goalsByStore(m,y);
-  const goal = loja ? (gStore[loja]||0) : totalGoal(m,y);
+  const goal = loja ? (gStore[loja]||0) : globalGoal(m,y);
   const g=goalCalc(rows,m,y,goal);
   renderMeta(g,goal,m,y);
   renderStoreGoals(m,y,gStore);

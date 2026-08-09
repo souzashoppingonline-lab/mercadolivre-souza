@@ -98,6 +98,34 @@ async function selectRows(nome, limit = 1000, order = '') {
   return get(path);
 }
 
+// ── ESCRITA (migração: este sistema passa a gravar no Supabase) ──────────────
+// Allowlist de tabelas que a UI pode gravar — cresce conforme as telas ficam
+// prontas. Nunca gravar em tabela fora desta lista. Escrita exige chave
+// service_role (sb_secret); com a publishable o Supabase costuma recusar (RLS).
+const WRITE_ALLOW = new Set(['sales_entries']);
+function assertWritable(nome) {
+  if (!/^[a-zA-Z0-9_]+$/.test(String(nome || '')) || !WRITE_ALLOW.has(nome)) {
+    const e = new Error(`Escrita não permitida na tabela "${nome}".`); e.status = 403; throw e;
+  }
+}
+async function writeReq(method, path, body) {
+  if (!isConfigured()) { const e = new Error('Módulo Financeiro não configurado.'); e.code = 'NOT_CONFIGURED'; throw e; }
+  const r = await fetch(`${BASE()}/rest/v1${path}`, {
+    method,
+    headers: { ...headers(), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text(); let b; try { b = text ? JSON.parse(text) : null; } catch (_) { b = text; }
+  if (!r.ok) {
+    const msg = typeof b === 'string' ? b : (b?.message || b?.hint || JSON.stringify(b));
+    const e = new Error(`Supabase ${r.status}: ${msg}`); e.status = r.status; throw e;
+  }
+  return b;
+}
+async function insertRow(nome, obj) { assertWritable(nome); return writeReq('POST', `/${nome}`, obj); }
+async function updateRow(nome, id, obj) { assertWritable(nome); return writeReq('PATCH', `/${nome}?id=eq.${encodeURIComponent(id)}`, obj); }
+async function deleteRow(nome, id) { assertWritable(nome); return writeReq('DELETE', `/${nome}?id=eq.${encodeURIComponent(id)}`); }
+
 // Teste de conexão leve (usado pela tela de status do módulo).
 async function ping() {
   if (!isConfigured()) return { configured: false, key_hint: keyHint(), url: BASE() || null };
@@ -109,4 +137,4 @@ async function ping() {
   }
 }
 
-module.exports = { isConfigured, get, listTables, previewTable, selectRows, ping, keyHint };
+module.exports = { isConfigured, get, listTables, previewTable, selectRows, insertRow, updateRow, deleteRow, ping, keyHint };

@@ -45,4 +45,23 @@ router.get('/dados/:nome', async (req, res) => {
   }
 });
 
+// ── Escrita (migração) — só tabelas da allowlist em supabaseFin (WRITE_ALLOW).
+// Exige a chave service_role (sb_secret) no servidor; com a publishable falha.
+function handleWriteErr(res, e) {
+  if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
+  return res.status(e.status || 500).json({ error: e.message });
+}
+router.post('/dados/:nome', async (req, res) => {
+  try { res.json({ rows: await supa.insertRow(req.params.nome, req.body) }); }
+  catch (e) { handleWriteErr(res, e); }
+});
+router.patch('/dados/:nome/:id', async (req, res) => {
+  try { res.json({ rows: await supa.updateRow(req.params.nome, req.params.id, req.body) }); }
+  catch (e) { handleWriteErr(res, e); }
+});
+router.delete('/dados/:nome/:id', async (req, res) => {
+  try { res.json({ rows: await supa.deleteRow(req.params.nome, req.params.id) }); }
+  catch (e) { handleWriteErr(res, e); }
+});
+
 module.exports = router;

@@ -354,3 +354,22 @@ body {
 .store-avatar-sm.connected { background: var(--green); color: #fff; }
 .store-avatar-sm.disconnected { background: var(--red); color: #fff; }
 .store-avatar-sm.all { background: var(--surface); color: var(--text-muted); }
+
+/* Switcher de MÓDULOS (Operacional / Financeiro / Inteligência de Negócio) —
+   troca o "sistema" inteiro (muda a sidebar). Fica no topbar, à esquerda. */
+.module-switcher { display: flex; align-items: center; gap: 6px; padding-left: 12px; margin-left: 4px; border-left: 1px solid var(--border); }
+.module-switcher a {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+  color: var(--text-muted); text-decoration: none; padding: 6px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--bg-card2); white-space: nowrap;
+}
+.module-switcher a:hover { color: var(--text-main); border-color: var(--text-muted); }
+.module-switcher a.active { background: var(--primary); color: #000; border-color: var(--primary); }
+@media (max-width: 900px) { .module-switcher a span { display: none; } .module-switcher a { padding: 6px 9px; } }
+
+/* Página "em construção" (módulos ainda não implementados) */
+.em-construcao { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 70vh; gap: 14px; }
+.em-construcao .ec-ico { font-size: 64px; color: var(--primary); }
+.em-construcao h1 { font-size: 26px; margin: 0; }
+.em-construcao p { color: var(--text-muted); max-width: 460px; font-size: 14px; line-height: 1.5; }
+.em-construcao .ec-tag { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 16px; font-size: 12px; color: var(--text-muted); }

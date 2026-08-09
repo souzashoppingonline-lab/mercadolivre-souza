@@ -20,6 +20,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 |---|---|
 | `workflow.md` | Processo obrigatório antes/durante/depois de qualquer alteração: checklist de análise, padrões de qualidade nunca aceitos, verificação de duplicação, objetivos e prioridades do projeto, regra de melhoria proativa |
 | `architecture.md` | Fluxo EDA ponta-a-ponta, topologia dos dois processos (server/worker), árvore de diretórios, regras de fronteira entre camadas |
+| `modules.md` | Organização em módulos (Operacional/Financeiro/Inteligência de Negócio): switcher de módulos, layouts próprios por módulo, plano do banco Supabase do Financeiro |
 | `backend.md` | Processo HTTP Express: `server.js`, `config/env.js`, montagem de rotas, dependências, conexões singleton |
 | `frontend.md` | Estrutura estática (HTML/CSS/JS sem build), páginas, `js/db.js`, `js/websocket.js`, `js/layout.js`, contrato para criar página nova |
 | `database.md` | Schema PostgreSQL completo (todas as tabelas/colunas/índices), migrations e como aplicá-las |

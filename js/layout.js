@@ -109,6 +109,20 @@ function buildSidebar(activeHref, staffUser) {
 // Só o link, não o menu lateral: a sidebar de cada marketplace é independente
 // (ver dashboard-amazon.html/dashboard-shopee.html, que não usam este
 // layout.js) para nunca misturar o menu de uma loja com o de outra.
+// Switcher de MÓDULOS — troca o sistema inteiro (muda a sidebar). Operacional é
+// o sistema atual (ML/Amazon/Shopee); Financeiro e Inteligência de Negócio são
+// módulos próprios com seu próprio menu lateral (js/layout-financeiro.js e
+// js/layout-bi.js). Paths relativos a pages/ (onde as páginas dos módulos vivem).
+function buildModuleSwitcher(active) {
+  const mods = [
+    { key: 'operacional', href: '../index.html',            icon: 'fa-gears',              label: 'Operacional' },
+    { key: 'financeiro',  href: 'financeiro.html',          icon: 'fa-money-bill-trend-up', label: 'Financeiro' },
+    { key: 'bi',          href: 'inteligencia-negocio.html', icon: 'fa-brain',             label: 'Inteligência de Negócio' },
+  ];
+  return `<nav class="module-switcher">${mods.map(m => `
+    <a href="${m.href}" class="${m.key === active ? 'active' : ''}"><i class="fas ${m.icon}"></i><span>${m.label}</span></a>`).join('')}</nav>`;
+}
+
 function buildMarketplaceSwitcher() {
   const items = [
     { href: '../index.html', icon: 'fa-shopping-bag', label: 'Mercado Livre', active: true },
@@ -138,6 +152,7 @@ function buildTopbar(title, staffUser) {
       <div class="topbar-left">
         <button class="menu-toggle" id="menuToggle"><i class="fas fa-bars"></i></button>
         <h1 class="page-title">${title}</h1>
+        ${showMktSwitcher ? buildModuleSwitcher('operacional') : ''}
       </div>
       <div class="topbar-right">
         ${showMktSwitcher ? buildMarketplaceSwitcher() : ''}

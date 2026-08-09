@@ -166,16 +166,24 @@ async function init(){
   MESES.forEach((m,i)=>selM.insertAdjacentHTML('beforeend',`<option value="${i+1}">${m}</option>`)); selM.value=now.getMonth()+1;
   for(let y=now.getFullYear();y>=now.getFullYear()-4;y--) selA.insertAdjacentHTML('beforeend',`<option value="${y}">${y}</option>`); selA.value=now.getFullYear();
   [selM,selA,document.getElementById('vcLoja')].forEach(s=>s.addEventListener('change',render));
-  try{
-    try{ const st=(await DB.getFinanceiroDados('stores',500)).rows||[];
-      st.forEach(s=>{ STORES[s.id]=s.name||s.nome||s.nickname||String(s.id).slice(0,6); });
-      const sel=document.getElementById('vcLoja'); Object.entries(STORES).forEach(([id,n])=>sel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`));
-    }catch(_){}
-    try{ GOALS_ALL=(await DB.getFinanceiroDados('monthly_goals',2000)).rows||[]; }catch(_){ GOALS_ALL=[]; }
-    ALL=(await DB.getFinanceiroDados('sales_entries',5000,'date.desc')).rows||[];
-    render();
-  }catch(e){ showStatus(`Erro ao carregar: ${esc(e.message)}. Confirme que o módulo Financeiro está conectado (aba Dados).`,true);
-    document.getElementById('vcDaily').innerHTML='<tr><td colspan="7" class="vc-empty">—</td></tr>'; }
+  // Busca com diagnóstico visível (db.js não lança erro, devolve {error}).
+  const rSt = await DB.getFinanceiroDados('stores',500);
+  const st = rSt.rows||[];
+  st.forEach(s=>{ STORES[s.id]=s.name||s.nome||s.nickname||String(s.id).slice(0,6); });
+  const sel=document.getElementById('vcLoja'); Object.entries(STORES).forEach(([id,n])=>sel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`));
+
+  const rG = await DB.getFinanceiroDados('monthly_goals',2000); GOALS_ALL = rG.rows||[];
+  const rS = await DB.getFinanceiroDados('sales_entries',5000,'date.desc'); ALL = rS.rows||[];
+
+  const errs = [['stores',rSt],['monthly_goals',rG],['sales_entries',rS]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
+  if (errs.length) {
+    showStatus(`⚠️ <b>Falha ao ler o banco.</b> ${esc(errs.join(' · '))}. Se for "HTTP 404" a rota nova não subiu (reinicie o servidor); se for erro de leitura, a chave não acessa essas tabelas.`, true);
+  } else if (ALL.length===0) {
+    showStatus(`ℹ️ Leitura OK mas <b>0 lançamentos</b> retornados (stores: ${st.length}, metas: ${GOALS_ALL.length}, vendas: ${ALL.length}). Ou a tabela não libera leitura pela chave atual, ou não há dados. Se o explorador mostra vendas mas aqui vem 0, é a rota /dados — reinicie o servidor.`, true);
+  } else {
+    showStatus(`✅ Carregado: ${ALL.length} lançamentos, ${st.length} lojas, ${GOALS_ALL.length} metas.`, false);
+  }
+  render();
 }
 
 function goalsByStore(m,y){ const map={}; GOALS_ALL.filter(g=>+g.month===m&&+g.year===y).forEach(g=>{ if(g.store_id) map[g.store_id]=Number(g.goal_value)||0; }); return map; }

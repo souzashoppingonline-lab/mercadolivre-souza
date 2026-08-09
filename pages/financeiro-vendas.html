@@ -208,6 +208,20 @@
           </div>
         </div>
       </div>
+
+      <!-- Volume vs. Rentabilidade (combo: barras receita/margem + linha margem %) -->
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>📊 Volume vs. Rentabilidade</h3>
+          <span id="vcVRSub" style="font-size:12px;color:var(--text-muted)"></span>
+          <span id="vcVRBadges" style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"></span>
+        </div>
+        <div class="vc-grid2" style="margin-bottom:14px">
+          <div class="vc-store"><div style="font-size:11px;color:var(--text-muted)">⏱️ Maior volume</div><div id="vcVRVol" style="font-weight:800;font-size:16px;margin-top:4px">—</div></div>
+          <div class="vc-store"><div style="font-size:11px;color:var(--text-muted)">🏆 Maior margem R$</div><div id="vcVRMarg" style="font-weight:800;font-size:16px;margin-top:4px">—</div></div>
+        </div>
+        <canvas id="vcChVR" height="130"></canvas>
+        <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">Barras cinzas = Receita Bruta · Barras verdes/vermelhas = Margem R$ · Linha âmbar = Margem %</div>
+      </div>
     </div>
   </main>
 </div>
@@ -238,7 +252,7 @@ const mcDe=e=>rev(e)-custoDe(e);
 function semClass(pct){ if(pct<0) return 'red'; if(pct<15) return 'red'; if(pct<25) return 'amber'; return 'green'; }
 function semColor(pct){ if(pct<0) return '#7f1d1d'; if(pct<15) return '#f87171'; if(pct<25) return '#f59e0b'; return '#3fb950'; }
 
-let ALL=[], STORES={}, GOALS_ALL=[], chM, chC, chReceita, chComp, custoTab='';
+let ALL=[], STORES={}, GOALS_ALL=[], chM, chC, chReceita, chComp, chVR, custoTab='';
 const COLORS={ fees:'#f87171', frete:'#fb923c', cmv:'#f59e0b', adsMl:'#a78bfa', adsEx:'#3b82f6', imp:'#34d399', ads:'#64748b', margem:'#10b981', rec:'#cbd5e1' };
 function showStatus(t,err){ const el=document.getElementById('vcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
@@ -486,6 +500,7 @@ function render(){
   renderComparativo(rows);
   buildCustoTabs(rows);
   renderCustos(rows);
+  renderVolRent(rows,m,y);
 }
 function curRows(){ const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value, loja=document.getElementById('vcLoja').value; return monthRows(m,y,loja); }
 function agg(rows){ const a={rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,imp:0,mc:0,vendas:0}; rows.forEach(r=>{ a.rec+=rev(r); a.fees+=+r.marketplace_fees||0; a.frete+=+r.subsidized_shipping||0; a.cmv+=+r.cogs||0; a.adsMl+=+r.ads_ml||0; a.adsEx+=+r.ads_external||0; a.imp+=+r.tax||0; a.mc+=mcDe(r); a.vendas+=+r.quantity_sales||0; }); a.ads=a.adsMl+a.adsEx; return a; }
@@ -637,6 +652,40 @@ function renderCustos(rows){
   document.getElementById('vcCustoCards').innerHTML=items.map(([k,v,c])=>`<div class="vc-rc"><div class="k"><i style="background:${c}"></i>${k}</div><div class="v">${BRL(v)}</div><div class="p" style="color:${c}">${PCT(v/g*100)}</div></div>`).join('');
   chC&&chC.destroy();
   chC=new Chart(document.getElementById('vcChC'),{type:'doughnut',data:{labels:items.map(i=>i[0]),datasets:[{data:items.map(i=>Math.max(i[1],0)),backgroundColor:items.map(i=>i[2]),borderWidth:0}]},options:{cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${BRL(c.raw)} (${PCT(c.raw/g*100)})`}}}}});
+}
+
+// Volume vs. Rentabilidade — combo por lançamento: barras (Rec. Bruta cinza +
+// Margem R$ verde/vermelha) e linha da Margem % (eixo à direita).
+function renderVolRent(rows,m,y){
+  const sub=document.getElementById('vcVRSub'), badges=document.getElementById('vcVRBadges');
+  const vol=document.getElementById('vcVRVol'), marg=document.getElementById('vcVRMarg');
+  sub.textContent=`${MESES[m-1]} ${y} — Receita Bruta e Margem R$ por dia`;
+  const arr=rows.slice().filter(r=>r.date).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(STORES[a.store_id]||'').localeCompare(String(STORES[b.store_id]||'')));
+  chVR&&chVR.destroy(); chVR=null;
+  if(!arr.length){ badges.innerHTML=''; vol.textContent='—'; marg.textContent='—'; return; }
+  const labels=arr.map(r=>+String(r.date).slice(8,10));
+  const recA=arr.map(r=>+rev(r).toFixed(2)), mcA=arr.map(r=>+mcDe(r).toFixed(2));
+  const pctA=arr.map(r=>rev(r)?+(mcDe(r)/rev(r)*100).toFixed(1):0);
+  const totRec=recA.reduce((s,v)=>s+v,0), totMc=mcA.reduce((s,v)=>s+v,0), geral=totRec?totMc/totRec*100:0;
+  badges.innerHTML=`
+    <span class="vc-ev-badge">⬤ Total Rec. <b>${BRL(totRec)}</b></span>
+    <span class="vc-ev-badge">⬤ Total Margem <b style="color:#10b981">${BRL(totMc)}</b></span>
+    <span class="vc-ev-badge">% <b style="color:${semColor(geral)}">${PCT(geral)} geral</b></span>`;
+  let vi=0,mi=0; arr.forEach((r,i)=>{ if(rev(r)>rev(arr[vi]))vi=i; if(mcDe(r)>mcDe(arr[mi]))mi=i; });
+  vol.innerHTML=`Dia ${+String(arr[vi].date).slice(8,10)} <span style="color:var(--text-muted);font-weight:600;font-size:13px">· ${BRL(rev(arr[vi]))}</span>`;
+  marg.innerHTML=`Dia ${+String(arr[mi].date).slice(8,10)} <span style="color:#10b981;font-weight:600;font-size:13px">· ${BRL(mcDe(arr[mi]))} · ${PCT(pctA[mi])}</span>`;
+  chVR=new Chart(document.getElementById('vcChVR'),{data:{labels,datasets:[
+      {type:'bar',label:'Receita Bruta',data:recA,backgroundColor:'#cbd5e1',yAxisID:'y',order:2},
+      {type:'bar',label:'Margem R$',data:mcA,backgroundColor:mcA.map(v=>v>=0?'#10b981':'#f87171'),yAxisID:'y',order:2},
+      {type:'line',label:'Margem %',data:pctA,borderColor:'#f59e0b',backgroundColor:'#f59e0b',yAxisID:'y1',tension:.4,pointRadius:3,pointBackgroundColor:'#f59e0b',fill:false,order:1},
+    ]},options:{interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{
+        title:it=>`Dia ${it[0].label}`,
+        label:c=>{ const i=c.dataIndex; if(c.dataset.type==='line') return ` Margem %: ${PCT(pctA[i])}`; if(c.dataset.label==='Receita Bruta') return ` Rec. Bruta: ${BRL(recA[i])}`; return ` Margem R$: ${BRL(mcA[i])}`; },
+      }}},scales:{
+        y:{position:'left',ticks:{color:'#64748b',callback:v=>'R$'+(Math.abs(v)>=1000?(v/1000)+'k':v)},grid:{color:'rgba(148,163,184,.1)'}},
+        y1:{position:'right',ticks:{color:'#f59e0b',callback:v=>v+'%'},grid:{drawOnChartArea:false}},
+        x:{ticks:{color:'#64748b'}},
+      }}});
 }
 
 document.getElementById('vcModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });

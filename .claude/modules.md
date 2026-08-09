@@ -16,7 +16,25 @@ Hoje **Financeiro** e **Inteligência de Negócio** têm só a página "em const
 
 - Cada módulo tem seu **layout próprio** (sidebar + topbar), mesmo padrão de `js/layout-amazon.js`/`js/layout-shopee.js`: a página tem `<div id="app-sidebar">`/`<div id="app-topbar">` e o layout injeta o menu no `DOMContentLoaded`.
 - O **switcher de módulos** (`buildModuleSwitcher`, classe CSS `.module-switcher`) fica no `topbar-left` e leva a `../index.html` (Operacional), `financeiro.html` e `inteligencia-negocio.html`. Está replicado em `layout.js`, `layout-financeiro.js` e `layout-bi.js` (mesmo motivo do switcher de marketplace ser replicado — cada layout monta seu próprio topbar) e também inline no `index.html` (topbar da raiz).
-- **Permissão**: o gate de `routes/staffAuth.js` já libera todas as páginas para `admin`; papéis restritos (`embalagem`, `shopee-demo`) continuam barrados e redirecionados. Quando o Financeiro for pra valer, dá pra criar um papel `financeiro`.
+## Autorização de módulos (implementado)
+
+Fonte de verdade: o objeto **`MODULES`** em `server/src/routes/staffAuth.js` — mapeia cada módulo para os papéis que podem acessá-lo, mais as `pages`/`apiPrefixes` que pertencem a ele:
+
+```js
+const MODULES = {
+  operacional: { roles: '*' },                          // todos os papéis logados
+  financeiro:  { roles: ['admin'], pages: ['/pages/financeiro.html'], apiPrefixes: ['/api/financeiro'] },
+  bi:          { roles: ['admin'], pages: ['/pages/inteligencia-negocio.html'], apiPrefixes: ['/api/bi'] },
+};
+```
+
+Hoje **Financeiro e Inteligência de Negócio são só `admin`**. Para autorizar um papel novo, mudar quem vê um módulo, ou adicionar um módulo, **edita-se só esse objeto** — nada mais.
+
+Como é aplicado:
+- **Backend (gate real)**: `requireStaffAuth` chama `restrictedModuleForPath(path)`; se o path é de um módulo restrito e o papel não está autorizado, bloqueia (`403` em API) ou redireciona pra `/` (página). Vale pra qualquer papel.
+- **Frontend (UX)**: `GET /auth/staff/me` devolve `modules: [...]` (chaves autorizadas). `applyModuleAuth()` em `js/layout.js` **remove do switcher** os botões de módulo não autorizados (inclui o switcher inline do `index.html`, via `data-module`). Se o gate estiver desligado (`modules` ausente), não esconde nada.
+
+Papéis restritos legados (`embalagem`, `shopee-demo`) continuam com suas próprias regras (redirecionados antes de chegar ao gate de módulo).
 
 ## Módulo Financeiro — banco Supabase (planejado, ainda NÃO implementado)
 

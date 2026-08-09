@@ -120,7 +120,20 @@ function buildModuleSwitcher(active) {
     { key: 'bi',          href: 'inteligencia-negocio.html', icon: 'fa-brain',             label: 'Inteligência de Negócio' },
   ];
   return `<nav class="module-switcher">${mods.map(m => `
-    <a href="${m.href}" class="${m.key === active ? 'active' : ''}"><i class="fas ${m.icon}"></i><span>${m.label}</span></a>`).join('')}</nav>`;
+    <a href="${m.href}" data-module="${m.key}" class="${m.key === active ? 'active' : ''}"><i class="fas ${m.icon}"></i><span>${m.label}</span></a>`).join('')}</nav>`;
+}
+
+// Autorização de módulos no frontend: esconde os botões de módulo que o papel
+// logado não pode acessar (fonte de verdade é o backend — /auth/staff/me
+// devolve `modules`). Roda em qualquer página com .module-switcher, inclusive
+// o switcher inline do index.html. Se `modules` não veio (gate desligado),
+// não esconde nada.
+function applyModuleAuth(staffUser) {
+  const allowed = staffUser && Array.isArray(staffUser.modules) ? staffUser.modules : null;
+  if (!allowed) return;
+  document.querySelectorAll('.module-switcher a[data-module]').forEach((a) => {
+    if (!allowed.includes(a.getAttribute('data-module'))) a.remove();
+  });
 }
 
 function buildMarketplaceSwitcher() {
@@ -254,6 +267,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const staffUser = await fetchStaffUser();
   if (sidebarEl) sidebarEl.outerHTML = buildSidebar(window.ACTIVE_NAV || '', staffUser);
   if (topbarEl)  topbarEl.outerHTML  = buildTopbar(window.PAGE_TITLE || 'Dashboard', staffUser);
+  applyModuleAuth(staffUser); // esconde módulos não autorizados (inclui switcher inline do index.html)
   initStoreSwitcher();
   initAlerts();
   initLogout();

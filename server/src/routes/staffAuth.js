@@ -54,11 +54,44 @@ router.get('/me', (req, res) => {
   if (!token) return res.status(401).json({ error: 'não autenticado' });
   try {
     const payload = jwt.verify(token, env.staffAuth.jwtSecret);
-    res.json({ username: payload.username, role: payload.role });
+    res.json({ username: payload.username, role: payload.role, modules: modulesForRole(payload.role) });
   } catch (e) {
     res.status(401).json({ error: 'sessão inválida ou expirada' });
   }
 });
+
+// ── Autorização de MÓDULOS (reutilizável) ──────────────────────────────
+// Fonte de verdade de quais papéis acessam cada módulo do sistema. Para
+// autorizar/restringir um módulo, ou adicionar um novo, edite SÓ este objeto:
+//   roles: '*'        → todos os papéis logados
+//   roles: ['admin']  → só esses papéis
+//   pages/apiPrefixes → o que pertence ao módulo (gate + esconder no frontend)
+// O Operacional é o "resto" (tudo que não cai num módulo restrito). Ver
+// .claude/modules.md e .claude/auth-staff.md.
+const MODULES = {
+  operacional: { label: 'Operacional', roles: '*', pages: [], apiPrefixes: [] },
+  financeiro:  { label: 'Financeiro', roles: ['admin'], pages: ['/pages/financeiro.html'], apiPrefixes: ['/api/financeiro'] },
+  bi:          { label: 'Inteligência de Negócio', roles: ['admin'], pages: ['/pages/inteligencia-negocio.html'], apiPrefixes: ['/api/bi'] },
+};
+
+function roleCanModule(role, key) {
+  const m = MODULES[key];
+  if (!m) return false;
+  return m.roles === '*' || m.roles.includes(role);
+}
+// Chaves dos módulos que o papel pode ver (usado por /me e pelo frontend).
+function modulesForRole(role) {
+  return Object.keys(MODULES).filter((k) => roleCanModule(role, k));
+}
+// Módulo RESTRITO ao qual um path pertence (null = comum/Operacional).
+function restrictedModuleForPath(p) {
+  for (const [key, m] of Object.entries(MODULES)) {
+    if (m.roles === '*') continue;
+    if ((m.pages || []).includes(p)) return key;
+    if ((m.apiPrefixes || []).some((pre) => p === pre || p.startsWith(pre + '/'))) return key;
+  }
+  return null;
+}
 
 // ── Middleware global — protege API + páginas estáticas ────────────────
 // Caminhos que NUNCA passam por este gate, mesmo com o gate ligado: fluxos
@@ -121,6 +154,15 @@ function requireStaffAuth(req, res, next) {
   if (payload.role === 'shopee-demo' && !isShopeeDemoAllowed(req.path)) {
     if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — esse usuário só tem permissão pro dashboard Shopee' });
     return res.redirect('/pages/dashboard-shopee.html');
+  }
+
+  // Autorização de módulos: se o path pertence a um módulo restrito e o papel
+  // não tem acesso, bloqueia (API) ou volta pro Operacional (página). Vale pra
+  // qualquer papel — hoje Financeiro/BI são só 'admin' (ver MODULES).
+  const mod = restrictedModuleForPath(req.path);
+  if (mod && !roleCanModule(payload.role, mod)) {
+    if (isApiOrWebhook) return res.status(403).json({ error: `acesso restrito ao módulo ${MODULES[mod].label}` });
+    return res.redirect('/');
   }
 
   req.staffUser = payload;

@@ -50,6 +50,28 @@
     .vc-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
     .vc-in { display:block; width:100%; margin-top:4px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; }
     .vc-in:focus { outline:none; border-color:#3fb950; }
+    .vc-t td.act, .vc-t th.act { text-align:center; }
+    .vc-icon { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:12px; padding:4px 7px; border-radius:6px; }
+    .vc-icon:hover { background:var(--bg-card); color:var(--text-main); }
+    .vc-icon.del:hover { color:#f87171; }
+    .vc-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--text-muted); margin-left:auto; }
+    .vc-legend i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:4px; vertical-align:middle; }
+    .vc-modal-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+    .vc-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:540px; max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+    .vc-modal-h { display:flex; align-items:center; padding:16px 18px; border-bottom:1px solid var(--border); }
+    .vc-modal-h h3 { margin:0; font-size:16px; font-weight:800; }
+    .vc-modal-x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:16px; cursor:pointer; }
+    .vc-modal-b { padding:16px 18px; font-size:13px; }
+    .vc-modal-b p { margin:0 0 8px; }
+    .vc-modal-f { display:flex; gap:10px; justify-content:flex-end; padding:14px 18px; border-top:1px solid var(--border); }
+    .vc-btn-cancel { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 18px; font-weight:700; cursor:pointer; }
+    .vc-btn-ok { background:#3fb950; color:#03210d; border:none; border-radius:10px; padding:9px 20px; font-weight:800; cursor:pointer; }
+    .vc-btn-ok:disabled { opacity:.6; cursor:default; }
+    .vc-btn-ok.danger { background:#f87171; color:#2a0a0a; }
+    .vc-sum { width:100%; border-collapse:collapse; font-size:13px; }
+    .vc-sum td { padding:6px 4px; border-bottom:1px solid var(--border); }
+    .vc-sum td:last-child { text-align:right; font-weight:700; }
+    .vc-mrow label { display:block; font-size:11px; color:var(--text-muted); margin-bottom:2px; }
   </style>
 </head>
 <body>
@@ -82,6 +104,24 @@
           <label style="font-size:12px;color:var(--text-muted)">Loja *<select id="fLoja" class="vc-in"><option value="">Selecione…</option></select></label>
         </div>
         <div style="text-align:right;margin-top:12px"><button id="fBtn" onclick="lancar()" style="background:#3fb950;color:#03210d;border:none;border-radius:10px;padding:10px 20px;font-weight:800;cursor:pointer">Lançar</button></div>
+      </div>
+
+      <!-- Histórico de Lançamentos (editar/excluir por linha) -->
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>📒 Histórico de Lançamentos</h3>
+          <span class="vc-legend">
+            <span><i style="background:#3fb950"></i>&gt;25% Saudável</span>
+            <span><i style="background:#f59e0b"></i>15–25% Atenção</span>
+            <span><i style="background:#f87171"></i>&lt;15% Problema</span>
+            <span><i style="background:#7f1d1d"></i>Negativo Prejuízo</span>
+          </span>
+        </div>
+        <div style="overflow:auto;max-height:60vh">
+          <table class="vc-t">
+            <thead><tr><th>Data</th><th>Loja</th><th>Qtd</th><th>Rec. Bruta</th><th>Taxas MP</th><th>Frete Sub.</th><th>CMV</th><th>Ads ML</th><th>Ads Ext.</th><th>Imposto</th><th>Margem R$</th><th>Margem %</th><th class="act">Ações</th></tr></thead>
+            <tbody id="vcHist"><tr><td colspan="13" class="vc-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Meta de Faturamento -->
@@ -129,6 +169,18 @@
     </div>
   </main>
 </div>
+<!-- Modal reutilizável: confirmação de lançamento / edição / exclusão -->
+<div class="vc-modal-ov" id="vcModal">
+  <div class="vc-modal">
+    <div class="vc-modal-h"><h3 id="vcModalTitle"></h3><button class="vc-modal-x" onclick="fecharModal()">✕</button></div>
+    <div class="vc-modal-b" id="vcModalBody"></div>
+    <div class="vc-modal-f">
+      <button class="vc-btn-cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="vc-btn-ok" id="vcModalOk">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/layout-financeiro.js"></script>
 <script src="../js/sidebar.js"></script>
@@ -213,9 +265,27 @@ async function init(){
 
 // ── Escrita: grava um lançamento diário em sales_entries (migração p/ o Supabase).
 function fMsg(t,err){ const el=document.getElementById('vcFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
-function fNum(id){ const v=parseFloat(String(document.getElementById(id).value).replace(',','.')); return isNaN(v)?0:v; }
-async function lancar(){
-  const btn=document.getElementById('fBtn');
+function pNum(v){ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; }
+function fNum(id){ return pNum(document.getElementById(id).value); }
+function fmtDate(s){ if(!s) return '—'; const p=String(s).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s; }
+
+// ── Modal reutilizável (confirmar / editar / excluir) ───────────────────────
+let modalAction=null;
+function abrirModal(title, bodyHtml, okLabel, onOk, danger){
+  document.getElementById('vcModalTitle').textContent=title;
+  document.getElementById('vcModalBody').innerHTML=bodyHtml;
+  const ok=document.getElementById('vcModalOk');
+  ok.textContent=okLabel; ok.dataset.prev=okLabel; ok.disabled=false;
+  ok.className='vc-btn-ok'+(danger?' danger':'');
+  modalAction=onOk;
+  document.getElementById('vcModal').style.display='flex';
+}
+function fecharModal(){ document.getElementById('vcModal').style.display='none'; modalAction=null; }
+function modalBusy(on,label){ const ok=document.getElementById('vcModalOk'); ok.disabled=on; if(on&&label){ ok.textContent=label; } else { ok.textContent=ok.dataset.prev||'Confirmar'; } }
+function eMsgErr(t){ const m=document.getElementById('eMsg'); if(m) m.innerHTML='<span style="color:var(--red)">'+t+'</span>'; }
+
+// ── Novo lançamento: confirma antes de gravar ───────────────────────────────
+function lancar(){
   const date=document.getElementById('fData').value, store_id=document.getElementById('fLoja').value;
   if(!date){ fMsg('Informe a data.',true); return; }
   if(!store_id){ fMsg('Selecione a loja.',true); return; }
@@ -231,15 +301,122 @@ async function lancar(){
     tax:fNum('fTax'),
     store_id,
   };
-  btn.disabled=true; fMsg('Gravando…',false);
+  const mc=mcDe(row), pct=rev(row)?mc/rev(row)*100:0;
+  const body=`
+    <table class="vc-sum">
+      <tr><td>📅 Data</td><td>${fmtDate(date)}</td></tr>
+      <tr><td>🏢 Loja</td><td>${esc(STORES[store_id]||store_id)}</td></tr>
+      <tr><td>Qtd. Vendas</td><td>${row.quantity_sales}</td></tr>
+      <tr><td>Receita Bruta</td><td>${BRL(row.gross_revenue)}</td></tr>
+      <tr><td>Taxas Marketplace</td><td class="down">-${BRL(row.marketplace_fees)}</td></tr>
+      <tr><td>Frete Subsidiado</td><td class="down">-${BRL(row.subsidized_shipping)}</td></tr>
+      <tr><td>CMV</td><td class="down">-${BRL(row.cogs)}</td></tr>
+      <tr><td>Ads Mercado Livre</td><td class="down">-${BRL(row.ads_ml)}</td></tr>
+      <tr><td>Ads Externos</td><td class="down">-${BRL(row.ads_external)}</td></tr>
+      <tr><td>Imposto</td><td class="down">-${BRL(row.tax)}</td></tr>
+      <tr><td><b>Margem de Contribuição</b></td><td style="color:${semColor(pct)}"><b>${BRL(mc)} · ${PCT(pct)}</b></td></tr>
+    </table>
+    <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Confira empresa, data e valores antes de gravar.</div>`;
+  abrirModal('✅ Confirmar lançamento', body, 'Confirmar e gravar', ()=>doInsert(row), false);
+}
+async function doInsert(row){
+  modalBusy(true,'Gravando…');
   const r=await DB.addFinanceiroRow('sales_entries',row);
-  btn.disabled=false;
-  if(r&&r.error){ fMsg('Erro: '+esc(r.error),true); return; }
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
   const saved=Array.isArray(r&&r.rows)?r.rows[0]:null;
-  if(saved) ALL.unshift(saved); // reflete na tela sem recarregar tudo
-  fMsg('✅ Lançamento gravado.',false);
+  ALL.unshift(saved||row);
+  fecharModal();
   ['fQtd','fRec','fFees','fFrete','fCmv','fAdsMl','fAdsEx','fTax'].forEach(id=>document.getElementById(id).value='');
   render();
+  fMsg('✅ Lançamento gravado.',false);
+}
+
+// ── Editar / excluir uma linha do histórico ─────────────────────────────────
+function lojaOptions(sel){ return Object.entries(STORES).map(([id,n])=>`<option value="${esc(id)}"${String(sel)===String(id)?' selected':''}>${esc(n)}</option>`).join(''); }
+function editForm(e){
+  const f=(lbl,id,val,step)=>`<div class="vc-mrow"><label>${lbl}</label><input type="number"${step?' step="0.01"':''} id="${id}" class="vc-in" value="${val}"></div>`;
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="vc-mrow"><label>Data</label><input type="date" id="eData" class="vc-in" value="${esc((e.date||'').slice(0,10))}"></div>
+      <div class="vc-mrow"><label>Loja</label><select id="eLoja" class="vc-in">${lojaOptions(e.store_id)}</select></div>
+      ${f('Qtd. Vendas','eQtd',+e.quantity_sales||0,false)}
+      ${f('Receita Bruta','eRec',+e.gross_revenue||0,true)}
+      ${f('Taxas Marketplace','eFees',+e.marketplace_fees||0,true)}
+      ${f('Frete Subsidiado','eFrete',+e.subsidized_shipping||0,true)}
+      ${f('CMV','eCmv',+e.cogs||0,true)}
+      ${f('Ads Mercado Livre','eAdsMl',+e.ads_ml||0,true)}
+      ${f('Ads Externos','eAdsEx',+e.ads_external||0,true)}
+      ${f('Imposto','eTax',+e.tax||0,true)}
+    </div>
+    <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Ajuste os campos (ex.: corrigir a data) e salve.</div>`;
+}
+function editarLanc(id){
+  const e=ALL.find(x=>String(x.id)===String(id)); if(!e){ return; }
+  abrirModal('✏️ Editar lançamento', editForm(e), 'Salvar alterações', ()=>doUpdate(id), false);
+}
+async function doUpdate(id){
+  const patch={
+    date:document.getElementById('eData').value,
+    store_id:document.getElementById('eLoja').value,
+    quantity_sales:Math.round(pNum(document.getElementById('eQtd').value)),
+    gross_revenue:pNum(document.getElementById('eRec').value),
+    marketplace_fees:pNum(document.getElementById('eFees').value),
+    subsidized_shipping:pNum(document.getElementById('eFrete').value),
+    cogs:pNum(document.getElementById('eCmv').value),
+    ads_ml:pNum(document.getElementById('eAdsMl').value),
+    ads_external:pNum(document.getElementById('eAdsEx').value),
+    tax:pNum(document.getElementById('eTax').value),
+  };
+  if(!patch.date){ eMsgErr('Informe a data.'); return; }
+  modalBusy(true,'Salvando…');
+  const r=await DB.updateFinanceiroRow('sales_entries',id,patch);
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null;
+  const idx=ALL.findIndex(x=>String(x.id)===String(id));
+  if(idx>=0) ALL[idx]=saved||Object.assign({},ALL[idx],patch);
+  fecharModal(); render();
+  fMsg('✅ Lançamento atualizado.',false);
+}
+function excluirLanc(id){
+  const e=ALL.find(x=>String(x.id)===String(id)); if(!e){ return; }
+  const body=`<p>Excluir o lançamento de <b>${fmtDate(e.date)}</b> — <b>${esc(STORES[e.store_id]||'—')}</b> (${BRL(rev(e))})?</p>
+    <p style="color:var(--text-muted)">Remove a linha do banco. Não pode ser desfeito.</p>
+    <div id="eMsg" style="font-size:12px;margin-top:4px"></div>`;
+  abrirModal('🗑️ Excluir lançamento', body, 'Excluir', ()=>doDelete(id), true);
+}
+async function doDelete(id){
+  modalBusy(true,'Excluindo…');
+  const r=await DB.deleteFinanceiroRow('sales_entries',id);
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  ALL=ALL.filter(x=>String(x.id)!==String(id));
+  fecharModal(); render();
+  fMsg('✅ Lançamento excluído.',false);
+}
+
+// Tabela de histórico do período (respeita os filtros mês/ano/loja).
+function renderHistory(rows){
+  const tb=document.getElementById('vcHist');
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="13" class="vc-empty">Sem lançamentos neste período.</td></tr>'; return; }
+  tb.innerHTML=rows.map(r=>{
+    const mc=mcDe(r), pct=rev(r)?mc/rev(r)*100:0, col=semColor(pct);
+    const neg=v=>'-'+BRL(v);
+    return `<tr>
+      <td style="border-left:3px solid ${col}">${fmtDate(r.date)}</td>
+      <td>${esc(STORES[r.store_id]||'—')}</td>
+      <td>${+r.quantity_sales||0}</td>
+      <td>${BRL(rev(r))}</td>
+      <td class="down">${neg(+r.marketplace_fees||0)}</td>
+      <td class="down">${neg(+r.subsidized_shipping||0)}</td>
+      <td class="down">${neg(+r.cogs||0)}</td>
+      <td class="down">${neg(+r.ads_ml||0)}</td>
+      <td class="down">${neg(+r.ads_external||0)}</td>
+      <td class="down">${neg(+r.tax||0)}</td>
+      <td style="font-weight:700;color:${col}">${BRL(mc)}</td>
+      <td style="color:${col}">${PCT(pct)}</td>
+      <td class="act">
+        <button class="vc-icon" title="Editar" onclick="editarLanc('${esc(r.id)}')"><i class="fas fa-pen"></i></button>
+        <button class="vc-icon del" title="Excluir" onclick="excluirLanc('${esc(r.id)}')"><i class="fas fa-trash"></i></button>
+      </td></tr>`;
+  }).join('');
 }
 
 function goalsByStore(m,y){ const map={}; GOALS_ALL.filter(g=>+g.month===m&&+g.year===y).forEach(g=>{ if(g.store_id) map[g.store_id]=Number(g.goal_value)||0; }); return map; }
@@ -261,6 +438,7 @@ function render(){
   renderKpis(rows,m,y,loja);
   renderDaily(rows,g,goal,m,y);
   renderReports(rows);
+  renderHistory(rows);
   renderCharts(rows,totais(rows));
 }
 
@@ -370,6 +548,10 @@ function renderCharts(rows,t){
   const labels=Object.keys(c).concat('Margem'), vals=Object.values(c).concat(Math.max(t.mc,0));
   chC&&chC.destroy(); chC=new Chart(document.getElementById('vcChC'),{type:'doughnut',data:{labels,datasets:[{data:vals,backgroundColor:['#f87171','#fb923c','#f59e0b','#64748b','#3b82f6','#3fb950']}]},options:{plugins:{legend:{position:'right',labels:{color:'#94a3b8',boxWidth:12,font:{size:11}}}}}});
 }
+
+document.getElementById('vcModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });
+document.getElementById('vcModal').addEventListener('click', e=>{ if(e.target.id==='vcModal') fecharModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('vcModal').style.display==='flex') fecharModal(); });
 
 init();
 </script>

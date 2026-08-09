@@ -13,7 +13,21 @@ function isConfigured() {
 }
 
 function headers() {
-  return { apikey: KEY(), Authorization: `Bearer ${KEY()}` };
+  const k = KEY();
+  const h = { apikey: k };
+  // Chave JWT antiga (eyJ...) → o PostgREST resolve o papel pelo Bearer.
+  // Chave NOVA (sb_publishable_/sb_secret_) → só o header apikey; mandar Bearer
+  // com ela faz o PostgREST tentar decodificar como JWT e devolver "Invalid API key".
+  if (k.startsWith('eyJ')) h.Authorization = `Bearer ${k}`;
+  return h;
+}
+
+// Prefixo mascarado da chave carregada — só pra diagnóstico na tela de status
+// (confirma QUAL chave o servidor está usando, sem expor a chave inteira).
+function keyHint() {
+  const k = KEY();
+  if (!k) return null;
+  return `${k.slice(0, 14)}…(${k.length})`;
 }
 
 // GET cru no PostgREST. `path` começa com '/'. Lança erro com status legível.
@@ -54,13 +68,13 @@ async function previewTable(nome, limit = 50) {
 
 // Teste de conexão leve (usado pela tela de status do módulo).
 async function ping() {
-  if (!isConfigured()) return { configured: false };
+  if (!isConfigured()) return { configured: false, key_hint: keyHint(), url: BASE() || null };
   try {
     const tabelas = await listTables();
-    return { configured: true, ok: true, total_tabelas: tabelas.length };
+    return { configured: true, ok: true, total_tabelas: tabelas.length, key_hint: keyHint(), url: BASE() };
   } catch (e) {
-    return { configured: true, ok: false, error: e.message, status: e.status || null };
+    return { configured: true, ok: false, error: e.message, status: e.status || null, key_hint: keyHint(), url: BASE() };
   }
 }
 
-module.exports = { isConfigured, get, listTables, previewTable, ping };
+module.exports = { isConfigured, get, listTables, previewTable, ping, keyHint };

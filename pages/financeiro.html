@@ -70,7 +70,12 @@ async function init() {
     return;
   }
   if (!st.ok) {
-    setStatus('var(--red)', `Conectado à URL, mas a leitura falhou (${esc(st.status||'')}): ${esc(st.error||'')}. <div class="fin-hint">Se for erro de permissão (RLS), use a chave <b>service_role</b> no servidor ou crie um usuário só-leitura.</div>`);
+    const diag = `<div class="fin-hint">URL: <code>${esc(st.url||'')}</code> · chave carregada: <code>${esc(st.key_hint||'—')}</code></div>`;
+    if (st.status === 401) {
+      setStatus('var(--red)', `Chave rejeitada (401 Invalid API key). ${diag}<div class="fin-hint">Confirme que a chave carregada acima começa com <code>sb_publishable_</code> ou <code>sb_secret_</code> (a chave <code>eyJ…</code> antiga está desativada neste projeto). Se estiver a antiga, o <code>.env</code> não recarregou — reveja e reinicie.</div>`);
+    } else {
+      setStatus('var(--red)', `Conectado à URL, mas a leitura falhou (${esc(st.status||'')}): ${esc(st.error||'')}. ${diag}<div class="fin-hint">Se for permissão (RLS), use a chave <b>service_role</b> (<code>sb_secret_</code>) no servidor.</div>`);
+    }
     return;
   }
   setStatus('var(--green)', `Conectado ao Supabase financeiro — <b>${st.total_tabelas}</b> tabela(s) encontrada(s).`);

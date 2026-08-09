@@ -13,13 +13,13 @@ function isConfigured() {
 }
 
 function headers() {
+  // Mesmo comportamento do cliente oficial supabase-js (o que o Readdy usa neste
+  // mesmo projeto e funciona): a chave vai NOS DOIS headers — `apikey` e
+  // `Authorization: Bearer`. Vale para anon/publishable/secret. (A doc nova diz
+  // pra não mandar no Bearer, mas na prática deste projeto os dois headers são o
+  // que conecta — então seguimos o supabase-js.)
   const k = KEY();
-  const h = { apikey: k };
-  // Chave JWT antiga (eyJ...) → o PostgREST resolve o papel pelo Bearer.
-  // Chave NOVA (sb_publishable_/sb_secret_) → só o header apikey; mandar Bearer
-  // com ela faz o PostgREST tentar decodificar como JWT e devolver "Invalid API key".
-  if (k.startsWith('eyJ')) h.Authorization = `Bearer ${k}`;
-  return h;
+  return { apikey: k, Authorization: `Bearer ${k}` };
 }
 
 // Prefixo mascarado da chave carregada — só pra diagnóstico na tela de status

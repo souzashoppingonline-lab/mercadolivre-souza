@@ -60,6 +60,8 @@ app.use('/api/print', require('./routes/print'));
 app.use('/api/analise', require('./routes/analise'));
 // Rankeamento de anúncios novos — acompanha cada venda/alteração (ver .claude/rankeamento.md).
 app.use('/api/ranking', require('./routes/ranking'));
+// Módulo Financeiro — lê do Supabase separado, read-only (só admin — ver MODULES). Ver .claude/modules.md.
+app.use('/api/financeiro', require('./routes/financeiro'));
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

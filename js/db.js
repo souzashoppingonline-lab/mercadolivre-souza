@@ -264,6 +264,11 @@ const DB = {
   async removeRankingAd(id)          { return this._delete(`/ranking/ads/${id}`); },
   async getRankingEventos(id, limit = 100) { return this._get(`/ranking/ads/${id}/eventos`, { limit }); },
 
+  // ── Módulo Financeiro (Supabase separado, read-only) ─────────
+  async getFinanceiroStatus()        { return this._get('/financeiro/status'); },
+  async getFinanceiroTabelas()       { return this._get('/financeiro/tabelas'); },
+  async getFinanceiroTabela(nome, limit = 50) { return this._get(`/financeiro/tabela/${encodeURIComponent(nome)}`, { limit }); },
+
   // ── Top Vendas Online (dashboard matinal) ────────────────────
   async getResumoOntem()       { return this._get('/dashboard/resumo-ontem'); },
   async getTopVendasDia()      { return this._get('/dashboard/top-vendas-dia'); },

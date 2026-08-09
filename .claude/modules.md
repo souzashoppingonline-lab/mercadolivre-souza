@@ -36,13 +36,14 @@ Como é aplicado:
 
 Papéis restritos legados (`embalagem`, `shopee-demo`) continuam com suas próprias regras (redirecionados antes de chegar ao gate de módulo).
 
-## Módulo Financeiro — banco Supabase (planejado, ainda NÃO implementado)
+## Módulo Financeiro — banco Supabase (implementado, READ-ONLY)
 
-O Financeiro vai ler de um **Supabase existente** (Postgres hospedado, com dados reais de outra ferramenta — **nada pode ser perdido**). Decisão de arquitetura (a implementar quando as credenciais/esquema chegarem):
+O Financeiro lê de um **Supabase existente** (projeto "Sistema de Gestão Financeira E-commerce", dados reais de outra ferramenta — **nada pode ser perdido**). Como está feito:
 
-1. **Pool separado e isolado** no backend (`server/src/db/supabasePool.js`), distinto de `db/pool.js`. Rotas `/api/financeiro/*` leem/escrevem só nesse pool; as páginas chamam via `js/db.js` (mantém a regra "frontend nunca fala com banco externo direto").
-2. **`db/migrate.js` NUNCA aponta pro Supabase** — sem rodar `schema.sql`/migrations lá, o esquema deles fica intacto. Começar **read-only**; escrever só o que for autorizado.
-3. Os dois bancos **não se juntam em SQL** — qualquer cruzamento ML×Financeiro é feito na aplicação.
-4. Segredos (URL/senha/anon key) no `.env` do servidor, nunca no frontend. Liberar egress do servidor de produção → Supabase.
+- **Cliente isolado** `server/src/db/supabaseFin.js` — REST (PostgREST `/rest/v1`), **só GET** (lista tabelas, prévia de linhas). **Não existe escrita/update/delete** no código. Distinto do `db/pool.js`; `migrate.js` **nunca** aponta pra cá.
+- **Config** em `env.financeiro` (`SUPABASE_FIN_URL` + `SUPABASE_FIN_KEY`, do `.env` do servidor). Sem elas o módulo responde "não configurado". A chave pode ser `anon` (respeita RLS) ou `service_role` (ignora RLS — só no servidor).
+- **Rotas** `/api/financeiro/*` (montadas em `server.js`, **só admin** via MODULES): `GET /status` (configurado/conectado), `GET /tabelas` (lista), `GET /tabela/:nome?limit` (prévia read-only, ≤200, nome sanitizado). Métodos espelho em `js/db.js` (`getFinanceiroStatus/Tabelas/Tabela`).
+- **Página** `pages/financeiro.html` = **explorador**: mostra status da conexão, lista as tabelas do Supabase e a prévia de cada uma. Serve pra descobrir o schema real (o ambiente de dev não tem egress pro Supabase, então a validação acontece no deploy).
+- **Rede**: o servidor de produção precisa de egress pro Supabase (443 REST). Os dois bancos **não se juntam em SQL** — cruzamento ML×Financeiro é na aplicação.
 
-Registrar essa decisão em `decisions.md` quando implementar.
+Próximo passo (quando virmos as tabelas reais): transformar o explorador nas telas financeiras de verdade (continua read-only até o usuário pedir escrita).

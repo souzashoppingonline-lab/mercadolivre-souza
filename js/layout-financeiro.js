@@ -4,7 +4,7 @@
 // Nunca incluído por páginas do Operacional — cada módulo tem seu próprio menu.
 
 const FIN_NAV_ITEMS = [
-  { href: 'financeiro.html', icon: 'fa-hammer', label: 'Em construção' },
+  { href: 'financeiro.html', icon: 'fa-database', label: 'Dados (Supabase)' },
 ];
 
 // Switcher de módulos (igual ao de layout.js, replicado aqui porque este layout

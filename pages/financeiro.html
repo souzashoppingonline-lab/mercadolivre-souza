@@ -8,6 +8,27 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>window.PAGE_TITLE='Financeiro'; window.ACTIVE_NAV='financeiro.html';</script>
+  <style>
+    .fin-status { display:flex; align-items:center; gap:10px; padding:12px 16px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:16px; font-size:13px; }
+    .fin-status .dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .fin-grid { display:grid; grid-template-columns: 240px 1fr; gap:16px; align-items:start; }
+    @media (max-width:800px){ .fin-grid { grid-template-columns:1fr; } }
+    .fin-tables { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:10px; max-height:70vh; overflow:auto; }
+    .fin-tables h3 { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); margin:6px 8px 10px; }
+    .fin-tbtn { display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:none; border:none; color:var(--text-main); padding:8px 10px; border-radius:8px; cursor:pointer; font-size:13px; }
+    .fin-tbtn:hover { background:var(--bg-card2); }
+    .fin-tbtn.active { background:#22c55e; color:#04310f; font-weight:700; }
+    .fin-tbtn i { font-size:11px; color:var(--text-muted); }
+    .fin-tbtn.active i { color:#04310f; }
+    .fin-view { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px; min-height:200px; overflow:auto; }
+    .fin-view h2 { font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+    table.fin-data { width:100%; border-collapse:collapse; font-size:12px; }
+    .fin-data th, .fin-data td { border:1px solid var(--border); padding:6px 9px; text-align:left; white-space:nowrap; max-width:320px; overflow:hidden; text-overflow:ellipsis; }
+    .fin-data th { background:var(--bg-card2); color:var(--text-muted); position:sticky; top:0; }
+    .fin-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    .fin-hint { font-size:12px; color:var(--text-muted); margin-top:8px; }
+    code { background:var(--bg-card2); padding:2px 6px; border-radius:5px; font-size:12px; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,16 +36,75 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="em-construcao">
-        <div class="ec-ico"><i class="fas fa-money-bill-trend-up"></i></div>
-        <h1>Módulo Financeiro</h1>
-        <p>Este módulo está <b>em construção</b>. Ele vai se conectar a um banco de dados próprio (Supabase existente) para trazer o controle financeiro — sem afetar os dados do módulo Operacional.</p>
-        <span class="ec-tag"><i class="fas fa-hammer"></i> Em breve</span>
+      <div id="finStatus" class="fin-status"><span class="dot" style="background:var(--orange)"></span> Verificando conexão com o Supabase…</div>
+      <div id="finBody" style="display:none">
+        <div class="fin-grid">
+          <div class="fin-tables">
+            <h3><i class="fas fa-table"></i> Tabelas</h3>
+            <div id="finTablesList"><div class="fin-empty">—</div></div>
+          </div>
+          <div class="fin-view" id="finView">
+            <div class="fin-empty">Selecione uma tabela à esquerda para ver os dados.</div>
+          </div>
+        </div>
       </div>
     </div>
   </main>
 </div>
+<script src="../js/db.js"></script>
 <script src="../js/layout-financeiro.js"></script>
 <script src="../js/sidebar.js"></script>
+<script>
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function setStatus(color, html) {
+  document.getElementById('finStatus').innerHTML = `<span class="dot" style="background:${color}"></span> ${html}`;
+}
+
+async function init() {
+  let st;
+  try { st = await DB.getFinanceiroStatus(); }
+  catch (e) { setStatus('var(--red)', `Erro ao consultar o módulo: ${esc(e.message)}`); return; }
+
+  if (!st.configured) {
+    setStatus('var(--orange)', 'Módulo <b>não configurado</b> — defina <code>SUPABASE_FIN_URL</code> e <code>SUPABASE_FIN_KEY</code> no <code>.env</code> do servidor e reinicie.');
+    return;
+  }
+  if (!st.ok) {
+    setStatus('var(--red)', `Conectado à URL, mas a leitura falhou (${esc(st.status||'')}): ${esc(st.error||'')}. <div class="fin-hint">Se for erro de permissão (RLS), use a chave <b>service_role</b> no servidor ou crie um usuário só-leitura.</div>`);
+    return;
+  }
+  setStatus('var(--green)', `Conectado ao Supabase financeiro — <b>${st.total_tabelas}</b> tabela(s) encontrada(s).`);
+  document.getElementById('finBody').style.display = 'block';
+  loadTables();
+}
+
+async function loadTables() {
+  const wrap = document.getElementById('finTablesList');
+  try {
+    const { tabelas } = await DB.getFinanceiroTabelas();
+    if (!tabelas.length) { wrap.innerHTML = '<div class="fin-empty">Nenhuma tabela visível com esta chave.</div>'; return; }
+    wrap.innerHTML = tabelas.map(t => `<button class="fin-tbtn" data-t="${esc(t)}" onclick="openTable('${esc(t)}', this)"><i class="fas fa-table"></i> ${esc(t)}</button>`).join('');
+  } catch (e) { wrap.innerHTML = `<div class="fin-empty">${esc(e.message)}</div>`; }
+}
+
+async function openTable(nome, btn) {
+  document.querySelectorAll('.fin-tbtn').forEach(b => b.classList.toggle('active', b === btn));
+  const view = document.getElementById('finView');
+  view.innerHTML = '<div class="fin-empty">Carregando…</div>';
+  try {
+    const { rows } = await DB.getFinanceiroTabela(nome, 50);
+    if (!Array.isArray(rows) || !rows.length) { view.innerHTML = `<h2><i class="fas fa-table"></i> ${esc(nome)}</h2><div class="fin-empty">Tabela vazia (ou sem permissão de leitura).</div>`; return; }
+    const cols = Object.keys(rows[0]);
+    view.innerHTML = `<h2><i class="fas fa-table"></i> ${esc(nome)} <span style="font-size:11px;color:var(--text-muted);font-weight:400">(${rows.length} linha(s), prévia)</span></h2>
+      <div style="overflow:auto"><table class="fin-data">
+        <thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td title="${esc(typeof r[c]==='object'?JSON.stringify(r[c]):r[c])}">${esc(typeof r[c]==='object'?JSON.stringify(r[c]):r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>
+      <div class="fin-hint">Prévia de até 50 linhas (somente leitura). Depois montamos as telas reais a partir destas tabelas.</div>`;
+  } catch (e) { view.innerHTML = `<h2><i class="fas fa-table"></i> ${esc(nome)}</h2><div class="fin-empty">${esc(e.message)}</div>`; }
+}
+
+init();
+</script>
 </body>
 </html>

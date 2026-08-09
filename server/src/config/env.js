@@ -51,6 +51,13 @@ module.exports = {
     // Sem ela, a validação da assinatura do webhook falha (verified=false).
     pushPartnerKey: process.env.SHOPEE_PUSH_PARTNER_KEY,
   },
+  // Módulo Financeiro — banco Supabase SEPARADO (não o Postgres principal).
+  // Read-only via REST (PostgREST). Isolado: nunca migra/escreve por padrão.
+  // Ver .claude/modules.md. Sem URL+KEY, o módulo fica "não configurado".
+  financeiro: {
+    supabaseUrl: process.env.SUPABASE_FIN_URL,   // ex: https://<ref>.supabase.co
+    supabaseKey: process.env.SUPABASE_FIN_KEY,   // chave anon (respeita RLS) ou service_role (ignora RLS) — só no servidor
+  },
   // Login de acesso restrito (staff) — ver .claude/auth-staff.md.
   staffAuth: {
     // Desliga o gate inteiro na hora (sem precisar reverter deploy) se algo

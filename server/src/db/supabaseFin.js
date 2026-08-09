@@ -49,11 +49,31 @@ async function get(path) {
   return body;
 }
 
-// Lista as tabelas/views expostas (lê o schema OpenAPI da raiz do PostgREST).
+// Lista as tabelas do Supabase. O índice OpenAPI da raiz (/rest/v1/) costuma
+// dar 401 com a chave pública (só a service_role introspecciona), então:
+//  1) tenta a raiz com apikey-only e depois com os dois headers;
+//  2) se falhar, usa a lista configurada em SUPABASE_FIN_TABLES (CSV) — jeito
+//     garantido quando a chave anon não lista o índice.
 async function listTables() {
-  const spec = await get('/');
-  const defs = spec?.definitions || spec?.components?.schemas || {};
-  return Object.keys(defs).sort();
+  const base = BASE();
+  const attempts = [{ apikey: KEY() }, headers()];
+  for (const h of attempts) {
+    try {
+      const r = await fetch(`${base}/rest/v1/`, { headers: h });
+      if (r.ok) {
+        const spec = await r.json().catch(() => ({}));
+        const defs = spec?.definitions || spec?.components?.schemas || {};
+        const keys = Object.keys(defs);
+        if (keys.length) return keys.sort();
+      }
+    } catch (_) { /* tenta a próxima estratégia */ }
+  }
+  const configured = String(process.env.SUPABASE_FIN_TABLES || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  if (configured.length) return configured.sort();
+  const e = new Error('A chave não consegue listar o índice do banco (introspecção bloqueada). Use a chave service_role (sb_secret) OU liste as tabelas em SUPABASE_FIN_TABLES no .env.');
+  e.status = 422;
+  throw e;
 }
 
 // Prévia de linhas de uma tabela (READ-ONLY). Sanitiza o nome (PostgREST usa o

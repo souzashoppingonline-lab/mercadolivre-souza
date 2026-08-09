@@ -109,4 +109,4 @@ async function ping() {
   }
 }
 
-module.exports = { isConfigured, get, listTables, previewTable, ping, keyHint };
+module.exports = { isConfigured, get, listTables, previewTable, selectRows, ping, keyHint };

@@ -46,9 +46,18 @@ O Financeiro lê de um **Supabase existente** (projeto "Sistema de Gestão Finan
 - **Página** `pages/financeiro.html` = **explorador**: mostra status da conexão, lista as tabelas do Supabase e a prévia de cada uma. Serve pra descobrir o schema real (o ambiente de dev não tem egress pro Supabase, então a validação acontece no deploy).
 - **Rede**: o servidor de produção precisa de egress pro Supabase (443 REST). Os dois bancos **não se juntam em SQL** — cruzamento ML×Financeiro é na aplicação.
 
+## Clone do ERP FinanceEcom (Readdy) — referência mestra
+
+O usuário está **migrando** um ERP financeiro (feito no Readdy, React) para cá. O sistema fica em **somente leitura** durante a construção (o Readdy continua o dono da escrita); a escrita é habilitada por último, tela a tela. **Manter o tema ESCURO e o layout atual do dashboard** — clonar só a **funcionalidade/cálculos**, não o visual claro do Readdy.
+
+- **Memória permanente do ERP**: `.claude/financeiro-clone-guide.md` (guia completo: 28 rotas, componentes, regras) e `.claude/financeiro-supabase-schema.md` (schema real das ~60 tabelas). **Consultar sempre** antes de construir uma tela do Financeiro.
+- **Empresas/lojas**: UNIFULL, TOP MIX, R SOUZA, SHOPEE. Campo `empresa` (text) em boletos/receivables/compras; `store_id` (uuid) na maioria.
+- **Fórmulas-chave**: Margem contribuição = `gross_revenue − marketplace_fees − subsidized_shipping − cogs − ads_ml − ads_external − tax`. Semáforo margem: >25 verde, 15-25 amarelo, <15 vermelho, <0 prejuízo. Projeção (run rate) = média diária × dias do mês; status ahead>105% / risco 95-105% / atrasado<95%. Break-even = (custos fixos+operacionais) / margem%. DRE: receita → (-)deduções → (-)CMV → lucro bruto → (-)despesas → lucro líquido.
+- **Ordem das telas**: Vendas ✅ → Despesas & DRE → DRE → Fluxo de Caixa → Boletos → Projeção → Compras → Home → resto.
+
 ### Telas reais (read-only) — em construção
 
-- **Vendas & Custos** (`pages/financeiro-vendas.html`, nav `Vendas & Custos`): lê `sales_entries` (+ `stores` p/ nomes) via `GET /api/financeiro/dados/:nome`. Calcula **margem de contribuição** = `gross_revenue − (marketplace_fees + subsidized_shipping + cogs + ads_ml + ads_external + tax)`. Filtros mês/ano/loja; KPIs (faturamento, MC R$/%, custos, vendas, ticket, variação vs mês anterior); semáforo de margem (>25 verde, 15-25 amarelo, <15 vermelho, <0 escuro); gráfico de margem % diária (ref 25%), donut de custos, ranking por loja, tabela do mês. Sem formulários — escrita continua no Readdy.
+- **Vendas & Custos** (`pages/financeiro-vendas.html`, nav `Vendas & Custos`): lê `sales_entries` + `stores` + `monthly_goals`. **Funcionalidade fiel ao Readdy** (tema escuro nosso): **Meta de Faturamento** (11 cards — Realizado D-1, Meta, Meta Restante, Gap Projeção, Velocidade Média, Projeção Mês, Meta do Dia, Ontem, Pior Dia, Meta Mínima, Dia Ideal — via porta do `useGoalCalculations`), barra de progresso + status ahead/risco/atrasado; **Metas por Empresa** (card por loja: realizado/meta/%/projeção/ritmo/margem); **Indicadores do Período** (Receita, MC, Vendas, Ticket + variação vs mês ant.); **Meta Diária** (dia a dia com semáforo Passou/Faltou, meta = goal/dias); gráfico margem % diária + donut custos; **Relatórios por Empresa** (composição de custos em barras). Sem formulários — escrita continua no Readdy.
 - Rota nova: `GET /api/financeiro/dados/:nome?limit&order` (read-only, limite ≤5000, order `col.asc|desc`). `js/db.js`: `getFinanceiroDados`.
 
 Schema real das tabelas do ERP (via Readdy): `sales_entries`, `expenses`, `expense_categories`, `compras_cmv`, etc. — ver o que o usuário forneceu; próximas telas: **Despesas & DRE** (`expenses`/`expense_categories`), **Compras** (`compras_cmv`), **Home** (10 tabelas: sales_entries, cash_flow_entries, boletos_mensais, expenses, receivables, monthly_goals, daily_alerts, daily_alert_logs, compras_xml, backups).

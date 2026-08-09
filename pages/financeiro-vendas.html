@@ -72,6 +72,19 @@
     .vc-sum td { padding:6px 4px; border-bottom:1px solid var(--border); }
     .vc-sum td:last-child { text-align:right; font-weight:700; }
     .vc-mrow label { display:block; font-size:11px; color:var(--text-muted); margin-bottom:2px; }
+    .vc-rc { border:1px solid var(--border); border-radius:10px; padding:10px 13px; background:var(--bg-card2); }
+    .vc-rc .k { font-size:12px; font-weight:700; display:flex; align-items:center; gap:7px; }
+    .vc-rc .k i { width:9px; height:9px; border-radius:50%; display:inline-block; flex:none; }
+    .vc-rc .v { font-size:15px; font-weight:800; margin-top:4px; }
+    .vc-rc .p { font-size:12px; font-weight:700; margin-top:1px; }
+    .vc-split { display:grid; grid-template-columns:220px 1fr; gap:20px; align-items:center; }
+    @media(max-width:760px){ .vc-split { grid-template-columns:1fr; } }
+    .vc-zone { display:flex; gap:16px; flex-wrap:wrap; font-size:11px; color:var(--text-muted); margin-bottom:10px; }
+    .vc-zone i { display:inline-block; width:14px; height:4px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+    .vc-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+    .vc-tab { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:999px; padding:5px 15px; font-size:12px; font-weight:700; cursor:pointer; }
+    .vc-tab.on { background:#1f2937; color:#fff; border-color:#374151; }
+    .vc-ev-badge { border-radius:10px; padding:4px 12px; font-size:12px; font-weight:700; background:var(--bg-card2); border:1px solid var(--border); white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -144,10 +157,29 @@
         <div class="vc-kpis" id="vcKpis"></div>
       </div>
 
-      <!-- Gráficos -->
-      <div class="vc-grid2" style="margin-bottom:16px">
-        <div class="vc-card" style="margin:0"><div class="vc-card-h"><h3>Margem de contribuição diária (%)</h3></div><canvas id="vcChM" height="150"></canvas></div>
-        <div class="vc-card" style="margin:0"><div class="vc-card-h"><h3>Para onde vai o faturamento</h3></div><canvas id="vcChC" height="150"></canvas></div>
+      <!-- Composição da Receita Bruta -->
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>🥧 Composição da Receita Bruta</h3><span style="margin-left:auto;font-size:12px;color:var(--text-muted)">% que cada item representa sobre a Receita Bruta total</span></div>
+        <div class="vc-split">
+          <div><canvas id="vcChReceita" height="200"></canvas></div>
+          <div class="vc-mg" id="vcReceitaCards"></div>
+        </div>
+      </div>
+
+      <!-- Evolução Diária da Margem % -->
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>📈 Evolução Diária da Margem %</h3>
+          <span id="vcEvSub" style="font-size:12px;color:var(--text-muted)"></span>
+          <span id="vcEvBadges" style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"></span>
+        </div>
+        <div class="vc-zone">
+          <span><i style="background:#10b981"></i>&gt;25% Excelente</span>
+          <span><i style="background:#f59e0b"></i>15–25% Atenção</span>
+          <span><i style="background:#f87171"></i>&lt;15% Problema</span>
+          <span><i style="background:#818cf8"></i>Linha tracejada = média</span>
+        </div>
+        <canvas id="vcChM" height="130"></canvas>
+        <div id="vcEvTrend" style="margin-top:12px;font-size:12px"></div>
       </div>
 
       <!-- Meta Diária -->
@@ -161,10 +193,20 @@
         </div>
       </div>
 
-      <!-- Relatórios por Empresa -->
-      <div class="vc-card">
-        <div class="vc-card-h"><h3>🏪 Relatórios por Empresa</h3></div>
-        <div class="vc-stores" id="vcReports"></div>
+      <!-- Comparativo por Empresa + Composição dos Custos -->
+      <div class="vc-grid2" style="margin-bottom:16px">
+        <div class="vc-card" style="margin:0">
+          <div class="vc-card-h"><h3>📊 Comparativo por Empresa</h3><span style="margin-left:auto;font-size:12px;color:var(--text-muted)">Receita Bruta, Custos e Margem</span></div>
+          <canvas id="vcChComp" height="180"></canvas>
+        </div>
+        <div class="vc-card" style="margin:0">
+          <div class="vc-card-h"><h3>🍩 Composição dos Custos</h3><span style="margin-left:auto;font-size:12px;color:var(--text-muted)">% sobre a Receita Bruta</span></div>
+          <div class="vc-tabs" id="vcCustoTabs"></div>
+          <div class="vc-split" style="grid-template-columns:160px 1fr">
+            <div><canvas id="vcChC" height="160"></canvas></div>
+            <div class="vc-mg" id="vcCustoCards" style="grid-template-columns:1fr 1fr"></div>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -196,7 +238,8 @@ const mcDe=e=>rev(e)-custoDe(e);
 function semClass(pct){ if(pct<0) return 'red'; if(pct<15) return 'red'; if(pct<25) return 'amber'; return 'green'; }
 function semColor(pct){ if(pct<0) return '#7f1d1d'; if(pct<15) return '#f87171'; if(pct<25) return '#f59e0b'; return '#3fb950'; }
 
-let ALL=[], STORES={}, GOALS_ALL=[], chM, chC;
+let ALL=[], STORES={}, GOALS_ALL=[], chM, chC, chReceita, chComp, custoTab='';
+const COLORS={ fees:'#f87171', frete:'#fb923c', cmv:'#f59e0b', adsMl:'#a78bfa', adsEx:'#3b82f6', imp:'#34d399', ads:'#64748b', margem:'#10b981', rec:'#cbd5e1' };
 function showStatus(t,err){ const el=document.getElementById('vcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
 // Porta fiel do useGoalCalculations do Readdy.
@@ -437,10 +480,15 @@ function render(){
   renderStoreGoals(m,y,gStore);
   renderKpis(rows,m,y,loja);
   renderDaily(rows,g,goal,m,y);
-  renderReports(rows);
   renderHistory(rows);
-  renderCharts(rows,totais(rows));
+  renderReceita(rows);
+  renderMargemEvol(rows,m,y);
+  renderComparativo(rows);
+  buildCustoTabs(rows);
+  renderCustos(rows);
 }
+function curRows(){ const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value, loja=document.getElementById('vcLoja').value; return monthRows(m,y,loja); }
+function agg(rows){ const a={rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,imp:0,mc:0,vendas:0}; rows.forEach(r=>{ a.rec+=rev(r); a.fees+=+r.marketplace_fees||0; a.frete+=+r.subsidized_shipping||0; a.cmv+=+r.cogs||0; a.adsMl+=+r.ads_ml||0; a.adsEx+=+r.ads_external||0; a.imp+=+r.tax||0; a.mc+=mcDe(r); a.vendas+=+r.quantity_sales||0; }); a.ads=a.adsMl+a.adsEx; return a; }
 
 function renderMeta(g,goal,m,y){
   const badge=document.getElementById('vcMetaBadge');
@@ -523,30 +571,72 @@ function renderDaily(rows,g,goal,m,y){
   document.getElementById('vcDailyHead').innerHTML=`Meta mensal ${BRL(goal)} ÷ ${daysInMonth} dias = ${BRL(metaDiaFixa)}/dia · <span class="up">Bateu ${bateu}</span> · <span class="down">Faltou ${faltou}</span>`;
 }
 
-function renderReports(rows){
-  const by={}; rows.forEach(r=>{ const k=r.store_id||'—'; (by[k]=by[k]||{rec:0,mc:0,vendas:0,fees:0,frete:0,cmv:0,ads:0,imp:0}); const o=by[k]; o.rec+=rev(r); o.mc+=mcDe(r); o.vendas+=+r.quantity_sales||0; o.fees+=+r.marketplace_fees||0; o.frete+=+r.subsidized_shipping||0; o.cmv+=+r.cogs||0; o.ads+=(+r.ads_ml||0)+(+r.ads_external||0); o.imp+=+r.tax||0; });
-  const arr=Object.entries(by).map(([id,v])=>({id,nome:STORES[id]||'—',...v,pct:v.rec?v.mc/v.rec*100:0})).sort((a,b)=>b.rec-a.rec);
-  const wrap=document.getElementById('vcReports');
-  if(!arr.length){ wrap.innerHTML='<div class="vc-empty">Sem dados.</div>'; return; }
-  wrap.innerHTML=arr.map(s=>{
-    const max=Math.max(s.cmv,s.frete,s.fees,s.imp,s.ads,1);
-    const bar=(lbl,val,col)=>`<div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-top:4px"><span style="width:44px;color:var(--text-muted)">${lbl}</span><div class="vc-costbar" style="flex:1"><span style="width:${val/max*100}%;background:${col}"></span></div><span style="width:90px;text-align:right">${BRL(val)}</span></div>`;
-    return `<div class="vc-store">
-      <div style="display:flex;justify-content:space-between"><b>${esc(s.nome)}</b><span style="font-size:11px;color:var(--text-muted)">${s.vendas} un.</span></div>
-      <div style="display:flex;gap:16px;margin:8px 0"><div><div style="font-size:10px;color:var(--text-muted)">Receita</div><div style="font-weight:800">${BRL(s.rec)}</div></div><div><div style="font-size:10px;color:var(--text-muted)">Margem</div><div style="font-weight:800;color:${semColor(s.pct)}">${BRL(s.mc)} · ${PCT(s.pct)}</div></div></div>
-      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-top:6px">Composição dos Custos</div>
-      ${bar('CMV',s.cmv,'#f59e0b')}${bar('Frete',s.frete,'#fb923c')}${bar('Tarifas',s.fees,'#f87171')}${bar('Imposto',s.imp,'#3fb950')}${bar('Ads',s.ads,'#64748b')}
-    </div>`;
-  }).join('');
+// Composição da Receita Bruta — donut + cards (% de cada item sobre a receita).
+function renderReceita(rows){
+  const a=agg(rows), g=a.rec||1;
+  const items=[
+    ['Taxas MP',a.fees,COLORS.fees],['Frete Sub.',a.frete,COLORS.frete],['CMV',a.cmv,COLORS.cmv],
+    ['Ads ML',a.adsMl,COLORS.adsMl],['Ads Ext.',a.adsEx,COLORS.adsEx],['Imposto',a.imp,COLORS.imp],
+    ['Margem',Math.max(a.mc,0),COLORS.margem],
+  ];
+  document.getElementById('vcReceitaCards').innerHTML=items.map(([k,v,c])=>`<div class="vc-rc"><div class="k"><i style="background:${c}"></i>${k}</div><div class="v">${BRL(v)}</div><div class="p" style="color:${c}">${PCT(v/g*100)}</div></div>`).join('');
+  chReceita&&chReceita.destroy();
+  chReceita=new Chart(document.getElementById('vcChReceita'),{type:'doughnut',data:{labels:items.map(i=>i[0]),datasets:[{data:items.map(i=>Math.max(i[1],0)),backgroundColor:items.map(i=>i[2]),borderWidth:0}]},options:{cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${BRL(c.raw)} (${PCT(c.raw/g*100)})`}}}}});
 }
 
-function renderCharts(rows,t){
-  const byDay={}; rows.forEach(r=>{ const d=(r.date||'').slice(8,10); (byDay[d]=byDay[d]||{rec:0,mc:0}); byDay[d].rec+=rev(r); byDay[d].mc+=mcDe(r); });
-  const dias=Object.keys(byDay).sort(); const pctData=dias.map(d=>byDay[d].rec?+(byDay[d].mc/byDay[d].rec*100).toFixed(1):0);
-  chM&&chM.destroy(); chM=new Chart(document.getElementById('vcChM'),{type:'line',data:{labels:dias,datasets:[{label:'Margem %',data:pctData,borderColor:'#3fb950',backgroundColor:'rgba(63,185,80,.12)',fill:true,tension:.3},{label:'Ref 25%',data:dias.map(()=>25),borderColor:'#f59e0b',borderDash:[5,5],pointRadius:0}]},options:{plugins:{legend:{labels:{color:'#94a3b8'}}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>v+'%'}}}}});
-  const c={'Tarifas':0,'Frete':0,'CMV':0,'Ads':0,'Imposto':0}; rows.forEach(r=>{c['Tarifas']+=+r.marketplace_fees||0;c['Frete']+=+r.subsidized_shipping||0;c['CMV']+=+r.cogs||0;c['Ads']+=(+r.ads_ml||0)+(+r.ads_external||0);c['Imposto']+=+r.tax||0;});
-  const labels=Object.keys(c).concat('Margem'), vals=Object.values(c).concat(Math.max(t.mc,0));
-  chC&&chC.destroy(); chC=new Chart(document.getElementById('vcChC'),{type:'doughnut',data:{labels,datasets:[{data:vals,backgroundColor:['#f87171','#fb923c','#f59e0b','#64748b','#3b82f6','#3fb950']}]},options:{plugins:{legend:{position:'right',labels:{color:'#94a3b8',boxWidth:12,font:{size:11}}}}}});
+// Evolução Diária da Margem % — linha + média + melhor/pior dia + tendência.
+function renderMargemEvol(rows,m,y){
+  const by={}; rows.forEach(r=>{ const d=(r.date||'').slice(8,10); if(!d) return; (by[d]=by[d]||{rec:0,mc:0}); by[d].rec+=rev(r); by[d].mc+=mcDe(r); });
+  const dias=Object.keys(by).sort();
+  const pct=dias.map(d=>by[d].rec?+(by[d].mc/by[d].rec*100).toFixed(1):0);
+  const recArr=dias.map(d=>by[d].rec), mcArr=dias.map(d=>by[d].mc);
+  const sub=document.getElementById('vcEvSub'), badges=document.getElementById('vcEvBadges'), trend=document.getElementById('vcEvTrend');
+  sub.textContent=`${MESES[m-1]} ${y} — margem de contribuição por dia`;
+  chM&&chM.destroy(); chM=null;
+  if(!dias.length){ badges.innerHTML=''; trend.innerHTML='<span style="color:var(--text-muted)">Sem lançamentos no período.</span>'; return; }
+  const media=pct.reduce((s,v)=>s+v,0)/pct.length;
+  let bi=0,wi=0; pct.forEach((v,i)=>{ if(v>pct[bi])bi=i; if(v<pct[wi])wi=i; });
+  badges.innerHTML=`
+    <span class="vc-ev-badge">⬤ Média <b style="color:#818cf8">${PCT(media)}</b></span>
+    <span class="vc-ev-badge">▲ Melhor <b style="color:#3fb950">Dia ${+dias[bi]} · ${PCT(pct[bi])}</b></span>
+    <span class="vc-ev-badge">▼ Pior <b style="color:#f87171">Dia ${+dias[wi]} · ${PCT(pct[wi])}</b></span>`;
+  const delta=pct[pct.length-1]-pct[0];
+  trend.innerHTML=`<span style="color:${delta>=0?'#3fb950':'#f87171'}">${delta>=0?'↗ Tendência de alta':'↘ Tendência de queda'} no mês: margem ${delta>=0?'subiu':'caiu'} ${Math.abs(delta).toFixed(1)} p.p. do dia ${+dias[0]} ao dia ${+dias[dias.length-1]}.</span>`;
+  chM=new Chart(document.getElementById('vcChM'),{type:'line',data:{labels:dias.map(d=>+d),datasets:[
+      {label:'Margem %',data:pct,borderColor:'#10b981',backgroundColor:'rgba(16,185,129,.10)',fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#10b981'},
+      {label:'Média',data:dias.map(()=>+media.toFixed(1)),borderColor:'#818cf8',borderDash:[6,5],pointRadius:0,fill:false},
+    ]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{
+        title:it=>`Dia ${it[0].label}`,
+        label:c=>{ if(c.datasetIndex===1) return ` Média: ${PCT(c.raw)}`; const i=c.dataIndex; return [` Margem %: ${PCT(pct[i])}`,` Margem R$: ${BRL(mcArr[i])}`,` Rec. Bruta: ${BRL(recArr[i])}`]; },
+      }}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>v+'%'},grid:{color:'rgba(148,163,184,.1)'}}}}});
+}
+
+// Comparativo por Empresa — barras agrupadas (receita, custos e margem por loja).
+function renderComparativo(rows){
+  const by={}; rows.forEach(r=>{ const k=r.store_id||'—'; const o=(by[k]=by[k]||{rec:0,cmv:0,frete:0,fees:0,imp:0,ads:0,mc:0}); o.rec+=rev(r); o.cmv+=+r.cogs||0; o.frete+=+r.subsidized_shipping||0; o.fees+=+r.marketplace_fees||0; o.imp+=+r.tax||0; o.ads+=(+r.ads_ml||0)+(+r.ads_external||0); o.mc+=mcDe(r); });
+  const ids=Object.keys(by).sort((a,b)=>by[b].rec-by[a].rec);
+  const labels=ids.map(id=>STORES[id]||'—');
+  const ds=[['Rec. Bruta','rec',COLORS.rec],['CMV','cmv',COLORS.cmv],['Frete','frete',COLORS.frete],['Tarifas','fees',COLORS.fees],['Imposto','imp',COLORS.imp],['Ads','ads',COLORS.ads],['Margem','mc',COLORS.margem]]
+    .map(([lbl,key,c])=>({label:lbl,data:ids.map(id=>+by[id][key].toFixed(2)),backgroundColor:c}));
+  chComp&&chComp.destroy();
+  chComp=new Chart(document.getElementById('vcChComp'),{type:'bar',data:{labels,datasets:ds},options:{plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>'R$'+(Math.abs(v)>=1000?(v/1000)+'k':v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
+}
+
+// Composição dos Custos — abas por empresa (Todas + cada loja) + donut + cards.
+function buildCustoTabs(rows){
+  const ids=[...new Set(rows.map(r=>r.store_id).filter(Boolean))].sort((a,b)=>String(STORES[a]||'').localeCompare(String(STORES[b]||'')));
+  if(custoTab && !ids.includes(custoTab)) custoTab='';
+  const tabs=[['','Todas'],...ids.map(id=>[id,STORES[id]||'—'])];
+  document.getElementById('vcCustoTabs').innerHTML=tabs.map(([id,n])=>`<button class="vc-tab${String(custoTab)===String(id)?' on':''}" onclick="setCustoTab('${esc(id)}')">${esc(n)}</button>`).join('');
+}
+function setCustoTab(id){ custoTab=id; const rows=curRows(); buildCustoTabs(rows); renderCustos(rows); }
+function renderCustos(rows){
+  const sub=custoTab?rows.filter(r=>String(r.store_id)===String(custoTab)):rows;
+  const a=agg(sub), g=a.rec||1;
+  const items=[['CMV',a.cmv,COLORS.cmv],['Frete',a.frete,COLORS.frete],['Tarifas',a.fees,COLORS.fees],['Imposto',a.imp,COLORS.imp],['Ads',a.ads,COLORS.ads],['Margem',Math.max(a.mc,0),COLORS.margem]];
+  document.getElementById('vcCustoCards').innerHTML=items.map(([k,v,c])=>`<div class="vc-rc"><div class="k"><i style="background:${c}"></i>${k}</div><div class="v">${BRL(v)}</div><div class="p" style="color:${c}">${PCT(v/g*100)}</div></div>`).join('');
+  chC&&chC.destroy();
+  chC=new Chart(document.getElementById('vcChC'),{type:'doughnut',data:{labels:items.map(i=>i[0]),datasets:[{data:items.map(i=>Math.max(i[1],0)),backgroundColor:items.map(i=>i[2]),borderWidth:0}]},options:{cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${BRL(c.raw)} (${PCT(c.raw/g*100)})`}}}}});
 }
 
 document.getElementById('vcModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });

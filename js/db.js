@@ -268,6 +268,7 @@ const DB = {
   async getFinanceiroStatus()        { return this._get('/financeiro/status'); },
   async getFinanceiroTabelas()       { return this._get('/financeiro/tabelas'); },
   async getFinanceiroTabela(nome, limit = 50) { return this._get(`/financeiro/tabela/${encodeURIComponent(nome)}`, { limit }); },
+  async getFinanceiroDados(nome, limit = 1000, order = '') { return this._get(`/financeiro/dados/${encodeURIComponent(nome)}`, { limit, order }); },
 
   // ── Top Vendas Online (dashboard matinal) ────────────────────
   async getResumoOntem()       { return this._get('/dashboard/resumo-ontem'); },

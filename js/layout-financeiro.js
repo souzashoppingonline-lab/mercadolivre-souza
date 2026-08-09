@@ -4,6 +4,7 @@
 // Nunca incluído por páginas do Operacional — cada módulo tem seu próprio menu.
 
 const FIN_NAV_ITEMS = [
+  { href: 'financeiro-vendas.html', icon: 'fa-chart-line', label: 'Vendas & Custos' },
   { href: 'financeiro.html', icon: 'fa-database', label: 'Dados (Supabase)' },
 ];
 

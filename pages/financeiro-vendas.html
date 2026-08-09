@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendas & Custos — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Vendas & Custos'; window.ACTIVE_NAV='financeiro-vendas.html';</script>
+  <style>
+    .vc-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+    .vc-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
+    .vc-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:18px; }
+    .vc-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:14px 16px; }
+    .vc-kpi .k { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .vc-kpi .v { font-size:22px; font-weight:800; margin-top:4px; }
+    .vc-kpi .s { font-size:11px; margin-top:3px; color:var(--text-muted); }
+    .vc-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px; }
+    @media (max-width:900px){ .vc-grid2 { grid-template-columns:1fr; } }
+    .vc-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px; }
+    .vc-card h3 { font-size:14px; margin:0 0 12px; }
+    table.vc-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .vc-table th, .vc-table td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .vc-table th:first-child, .vc-table td:first-child { text-align:left; }
+    .vc-table th { color:var(--text-muted); font-size:11px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); }
+    .vc-sem { display:inline-block; width:10px; height:10px; border-radius:50%; }
+    .vc-stores { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+    .vc-store { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+    .vc-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    .vc-status { padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:16px; font-size:13px; display:none; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div id="vcStatus" class="vc-status"></div>
+      <div class="vc-filters">
+        <select id="vcMes"></select>
+        <select id="vcAno"></select>
+        <select id="vcLoja"><option value="">Todas as lojas</option></select>
+        <span style="font-size:12px;color:var(--text-muted)">Margem de contribuição = receita bruta − (taxas + frete + CMV + ads + impostos)</span>
+      </div>
+
+      <div class="vc-kpis" id="vcKpis"></div>
+
+      <div class="vc-grid2">
+        <div class="vc-card"><h3><i class="fas fa-chart-line" style="color:#22c55e"></i> Margem de contribuição diária (%)</h3><canvas id="vcChartMargem" height="150"></canvas></div>
+        <div class="vc-card"><h3><i class="fas fa-chart-pie" style="color:#22c55e"></i> Para onde vai o faturamento</h3><canvas id="vcChartCustos" height="150"></canvas></div>
+      </div>
+
+      <div class="vc-card" style="margin-bottom:18px">
+        <h3><i class="fas fa-store"></i> Por loja</h3>
+        <div id="vcStores" class="vc-stores"></div>
+      </div>
+
+      <div class="vc-card">
+        <h3><i class="fas fa-table"></i> Lançamentos do mês</h3>
+        <div style="overflow:auto;max-height:60vh">
+          <table class="vc-table">
+            <thead><tr><th>Data</th><th>Loja</th><th>Vendas</th><th>Receita bruta</th><th>Custos</th><th>Margem R$</th><th>Margem %</th><th></th></tr></thead>
+            <tbody id="vcTbody"><tr><td colspan="8" class="vc-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const custoDe = r => (+r.marketplace_fees||0)+(+r.subsidized_shipping||0)+(+r.cogs||0)+(+r.ads_ml||0)+(+r.ads_external||0)+(+r.tax||0);
+const mcDe = r => (+r.gross_revenue||0) - custoDe(r);
+// Semáforo de margem: verde >25%, amarelo 15-25%, vermelho <15%, escuro <0.
+function semColor(pct){ if(pct<0) return '#7f1d1d'; if(pct<15) return '#ef4444'; if(pct<25) return '#f59e0b'; return '#22c55e'; }
+
+let ALL = [];          // todas as sales_entries
+let STORES = {};        // id -> nome
+let chM, chC;
+
+function showStatus(txt, err){ const el=document.getElementById('vcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=txt; }
+
+async function init() {
+  // filtros de mês/ano
+  const now = new Date();
+  const selMes = document.getElementById('vcMes'), selAno = document.getElementById('vcAno');
+  MESES.forEach((m,i)=> selMes.insertAdjacentHTML('beforeend',`<option value="${i+1}">${m}</option>`));
+  selMes.value = now.getMonth()+1;
+  for (let y=now.getFullYear(); y>=now.getFullYear()-4; y--) selAno.insertAdjacentHTML('beforeend',`<option value="${y}">${y}</option>`);
+  selAno.value = now.getFullYear();
+  [selMes, selAno, document.getElementById('vcLoja')].forEach(s=> s.addEventListener('change', render));
+
+  try {
+    // lojas (nomes) — best-effort (colunas variam)
+    try {
+      const st = (await DB.getFinanceiroDados('stores', 500)).rows || [];
+      st.forEach(s => { STORES[s.id] = s.name || s.nome || s.nickname || s.title || s.loja || String(s.id).slice(0,8); });
+      const selLoja = document.getElementById('vcLoja');
+      Object.entries(STORES).forEach(([id,nome])=> selLoja.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(nome)}</option>`));
+    } catch(_) {}
+    // lançamentos de venda
+    ALL = (await DB.getFinanceiroDados('sales_entries', 5000, 'date.desc')).rows || [];
+    render();
+  } catch (e) {
+    showStatus(`Erro ao carregar vendas: ${esc(e.message)}. Confira se o módulo Financeiro está conectado (verde) na aba Dados.`, true);
+    document.getElementById('vcTbody').innerHTML = '<tr><td colspan="8" class="vc-empty">—</td></tr>';
+  }
+}
+
+function filtrar() {
+  const m = +document.getElementById('vcMes').value, y = +document.getElementById('vcAno').value;
+  const loja = document.getElementById('vcLoja').value;
+  return ALL.filter(r => {
+    if (!r.date) return false;
+    const d = new Date(r.date + 'T00:00:00');
+    if (d.getMonth()+1 !== m || d.getFullYear() !== y) return false;
+    if (loja && String(r.store_id) !== loja) return false;
+    return true;
+  });
+}
+function totais(rows) {
+  const t = { rec:0, custo:0, mc:0, vendas:0 };
+  rows.forEach(r => { t.rec+=+r.gross_revenue||0; t.custo+=custoDe(r); t.mc+=mcDe(r); t.vendas+=+r.quantity_sales||0; });
+  t.mcPct = t.rec ? t.mc/t.rec*100 : 0;
+  t.ticket = t.vendas ? t.rec/t.vendas : 0;
+  return t;
+}
+
+function render() {
+  const rows = filtrar();
+  const t = totais(rows);
+  // mês anterior (mesma loja) pra variação
+  const m = +document.getElementById('vcMes').value, y = +document.getElementById('vcAno').value;
+  const pm = m===1?12:m-1, py = m===1?y-1:y, loja = document.getElementById('vcLoja').value;
+  const rowsPrev = ALL.filter(r=>{ if(!r.date) return false; const d=new Date(r.date+'T00:00:00'); if(d.getMonth()+1!==pm||d.getFullYear()!==py) return false; if(loja&&String(r.store_id)!==loja) return false; return true; });
+  const tp = totais(rowsPrev);
+  const varRec = tp.rec ? (t.rec-tp.rec)/tp.rec*100 : null;
+
+  document.getElementById('vcKpis').innerHTML = `
+    <div class="vc-kpi"><div class="k">Faturamento bruto</div><div class="v">${BRL(t.rec)}</div><div class="s">${varRec==null?'sem mês anterior':(varRec>=0?'▲ ':'▼ ')+PCT(Math.abs(varRec))+' vs mês anterior'}</div></div>
+    <div class="vc-kpi"><div class="k">Margem de contribuição</div><div class="v" style="color:${semColor(t.mcPct)}">${BRL(t.mc)}</div><div class="s">${PCT(t.mcPct)} da receita</div></div>
+    <div class="vc-kpi"><div class="k">Custos totais</div><div class="v">${BRL(t.custo)}</div><div class="s">taxas+frete+CMV+ads+impostos</div></div>
+    <div class="vc-kpi"><div class="k">Vendas (qtd)</div><div class="v">${t.vendas.toLocaleString('pt-BR')}</div><div class="s">${rows.length} lançamento(s)</div></div>
+    <div class="vc-kpi"><div class="k">Ticket médio</div><div class="v">${BRL(t.ticket)}</div><div class="s">receita ÷ vendas</div></div>`;
+
+  renderTabela(rows);
+  renderStores(rows);
+  renderCharts(rows, t);
+}
+
+function renderTabela(rows) {
+  const body = document.getElementById('vcTbody');
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="8" class="vc-empty">Sem lançamentos neste mês/loja.</td></tr>'; return; }
+  const ord = rows.slice().sort((a,b)=> (a.date<b.date?1:-1));
+  body.innerHTML = ord.map(r=>{
+    const c=custoDe(r), mc=mcDe(r), rec=+r.gross_revenue||0, pct=rec?mc/rec*100:0;
+    return `<tr>
+      <td>${esc((r.date||'').split('-').reverse().join('/'))}</td>
+      <td>${esc(STORES[r.store_id]||'—')}</td>
+      <td>${(+r.quantity_sales||0).toLocaleString('pt-BR')}</td>
+      <td>${BRL(rec)}</td>
+      <td>${BRL(c)}</td>
+      <td style="color:${semColor(pct)}">${BRL(mc)}</td>
+      <td style="color:${semColor(pct)};font-weight:700">${PCT(pct)}</td>
+      <td><span class="vc-sem" style="background:${semColor(pct)}"></span></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderStores(rows) {
+  const by = {};
+  rows.forEach(r=>{ const k=r.store_id||'—'; (by[k]=by[k]||{rec:0,mc:0}); by[k].rec+=+r.gross_revenue||0; by[k].mc+=mcDe(r); });
+  const arr = Object.entries(by).map(([id,v])=>({id,nome:STORES[id]||'—',...v,pct:v.rec?v.mc/v.rec*100:0})).sort((a,b)=>b.rec-a.rec);
+  const wrap = document.getElementById('vcStores');
+  wrap.innerHTML = arr.length ? arr.map(s=>`<div class="vc-store">
+    <div style="font-weight:700;font-size:13px">${esc(s.nome)}</div>
+    <div style="font-size:18px;font-weight:800;margin:4px 0">${BRL(s.rec)}</div>
+    <div style="font-size:12px;color:${semColor(s.pct)}">MC ${BRL(s.mc)} · ${PCT(s.pct)}</div>
+  </div>`).join('') : '<div class="vc-empty">Sem dados por loja.</div>';
+}
+
+function renderCharts(rows, t) {
+  // margem % por dia
+  const byDay = {};
+  rows.forEach(r=>{ const d=(r.date||'').slice(8,10); (byDay[d]=byDay[d]||{rec:0,mc:0}); byDay[d].rec+=+r.gross_revenue||0; byDay[d].mc+=mcDe(r); });
+  const dias = Object.keys(byDay).sort();
+  const pctData = dias.map(d=> byDay[d].rec? +(byDay[d].mc/byDay[d].rec*100).toFixed(1):0);
+  chM && chM.destroy();
+  chM = new Chart(document.getElementById('vcChartMargem'), {
+    type:'line',
+    data:{ labels:dias, datasets:[
+      { label:'Margem %', data:pctData, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.12)', fill:true, tension:.3 },
+      { label:'Ref 25%', data:dias.map(()=>25), borderColor:'#f59e0b', borderDash:[5,5], pointRadius:0 },
+    ]},
+    options:{ plugins:{legend:{display:true}}, scales:{y:{ticks:{callback:v=>v+'%'}}} }
+  });
+  // donut de custos
+  const c = { 'Taxas ML':0,'Frete':0,'CMV':0,'Ads ML':0,'Ads ext.':0,'Impostos':0 };
+  rows.forEach(r=>{ c['Taxas ML']+=+r.marketplace_fees||0; c['Frete']+=+r.subsidized_shipping||0; c['CMV']+=+r.cogs||0; c['Ads ML']+=+r.ads_ml||0; c['Ads ext.']+=+r.ads_external||0; c['Impostos']+=+r.tax||0; });
+  const labels = Object.keys(c).concat('Margem líquida'), vals = Object.values(c).concat(Math.max(t.mc,0));
+  chC && chC.destroy();
+  chC = new Chart(document.getElementById('vcChartCustos'), {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data:vals, backgroundColor:['#ef4444','#f59e0b','#8b5cf6','#3b82f6','#06b6d4','#64748b','#22c55e'] }]},
+    options:{ plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}} }
+  });
+}
+
+init();
+</script>
+</body>
+</html>

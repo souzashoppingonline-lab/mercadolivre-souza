@@ -46,4 +46,9 @@ O Financeiro lê de um **Supabase existente** (projeto "Sistema de Gestão Finan
 - **Página** `pages/financeiro.html` = **explorador**: mostra status da conexão, lista as tabelas do Supabase e a prévia de cada uma. Serve pra descobrir o schema real (o ambiente de dev não tem egress pro Supabase, então a validação acontece no deploy).
 - **Rede**: o servidor de produção precisa de egress pro Supabase (443 REST). Os dois bancos **não se juntam em SQL** — cruzamento ML×Financeiro é na aplicação.
 
-Próximo passo (quando virmos as tabelas reais): transformar o explorador nas telas financeiras de verdade (continua read-only até o usuário pedir escrita).
+### Telas reais (read-only) — em construção
+
+- **Vendas & Custos** (`pages/financeiro-vendas.html`, nav `Vendas & Custos`): lê `sales_entries` (+ `stores` p/ nomes) via `GET /api/financeiro/dados/:nome`. Calcula **margem de contribuição** = `gross_revenue − (marketplace_fees + subsidized_shipping + cogs + ads_ml + ads_external + tax)`. Filtros mês/ano/loja; KPIs (faturamento, MC R$/%, custos, vendas, ticket, variação vs mês anterior); semáforo de margem (>25 verde, 15-25 amarelo, <15 vermelho, <0 escuro); gráfico de margem % diária (ref 25%), donut de custos, ranking por loja, tabela do mês. Sem formulários — escrita continua no Readdy.
+- Rota nova: `GET /api/financeiro/dados/:nome?limit&order` (read-only, limite ≤5000, order `col.asc|desc`). `js/db.js`: `getFinanceiroDados`.
+
+Schema real das tabelas do ERP (via Readdy): `sales_entries`, `expenses`, `expense_categories`, `compras_cmv`, etc. — ver o que o usuário forneceu; próximas telas: **Despesas & DRE** (`expenses`/`expense_categories`), **Compras** (`compras_cmv`), **Home** (10 tabelas: sales_entries, cash_flow_entries, boletos_mensais, expenses, receivables, monthly_goals, daily_alerts, daily_alert_logs, compras_xml, backups).

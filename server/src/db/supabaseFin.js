@@ -86,6 +86,18 @@ async function previewTable(nome, limit = 50) {
   return get(`/${nome}?limit=${lim}`);
 }
 
+// Busca linhas de uma tabela (READ-ONLY) com limite maior — pra telas reais
+// (fluxo de caixa, etc.). `order` opcional no formato coluna(.asc|.desc).
+async function selectRows(nome, limit = 1000, order = '') {
+  if (!/^[a-zA-Z0-9_]+$/.test(String(nome || ''))) {
+    const e = new Error('nome de tabela inválido'); e.status = 400; throw e;
+  }
+  const lim = Math.min(Math.max(Number(limit) || 1000, 1), 5000);
+  let path = `/${nome}?limit=${lim}`;
+  if (order && /^[a-zA-Z0-9_]+(\.(asc|desc))?$/.test(order)) path += `&order=${encodeURIComponent(order)}`;
+  return get(path);
+}
+
 // Teste de conexão leve (usado pela tela de status do módulo).
 async function ping() {
   if (!isConfigured()) return { configured: false, key_hint: keyHint(), url: BASE() || null };

@@ -308,16 +308,23 @@ function evHtml(e, isNew) {
 }
 
 // Salva ADS/ROAS/orçamento manual — sem re-renderizar (não perde o foco do input).
+// DB._patch devolve null em falha (não lança), por isso checamos o retorno.
 async function salvarAds(id, campo, valor) {
-  try { await DB.patchRankingAd(id, { [campo]: valor }); }
-  catch (e) { alert(e.message || 'Erro ao salvar'); }
+  const r = await DB.patchRankingAd(id, { [campo]: valor });
+  if (!r) console.warn('[rankeamento] falha ao salvar', campo, '— servidor reiniciado?');
 }
 
 // Encerra o ciclo atual e começa o próximo (arquiva os números do ciclo).
+// DB._post devolve null em falha (não lança) → checamos o retorno pra não
+// "engolir" o erro e deixar o card preso no mesmo ciclo sem avisar.
 async function novoCiclo(id, ciclo) {
   if (!confirm(`Encerrar o Ciclo ${ciclo} e começar o Ciclo ${ciclo+1}?\n\nOs números deste ciclo (ADS, ROAS, orçamento, vendas e faturamento) vão para o histórico e o contador reinicia.`)) return;
-  try { await DB.novoCicloRankingAd(id); loadCards(); }
-  catch (e) { alert(e.message || 'Erro ao iniciar novo ciclo'); }
+  const r = await DB.novoCicloRankingAd(id);
+  if (!r || !r.ad) {
+    alert('Não consegui iniciar o novo ciclo.\n\nProvável causa: o servidor não foi reiniciado após o deploy (a rota nova ainda não está no ar).\nRode:  sudo systemctl restart ml-dashboard-novo ml-worker-novo');
+    return;
+  }
+  await loadCards();
 }
 
 // Carrega o histórico de ciclos encerrados (lazy, ao abrir o <details>).

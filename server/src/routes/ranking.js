@@ -177,7 +177,8 @@ router.post('/ads/:id/ciclo', async (req, res) => {
     // Faturamento do ciclo que está encerrando (mesmo escopo do card).
     const { rows: fat } = await client.query(
       `SELECT COALESCE(SUM((detail->>'valor')::numeric), 0) AS f FROM ranking_events
-        WHERE ranking_ad_id = $1 AND event_type = 'venda' AND created_at >= COALESCE($2, $3)`,
+        WHERE ranking_ad_id = $1 AND event_type = 'venda'
+          AND created_at >= COALESCE($2::timestamptz, $3::timestamptz)`,
       [r.id, r.ciclo_iniciado_em, r.started_at]
     );
     await client.query(

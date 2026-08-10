@@ -11,6 +11,7 @@ const FIN_NAV_ITEMS = [
   { href: 'financeiro-recebiveis.html', icon: 'fa-hand-holding-dollar', label: 'Recebíveis' },
   { href: 'financeiro-cartoes.html', icon: 'fa-credit-card', label: 'Relatório de Cartão' },
   { href: 'financeiro-fluxo-caixa.html', icon: 'fa-money-bill-transfer', label: 'Fluxo de Caixa' },
+  { href: 'financeiro-projecao-caixa.html', icon: 'fa-chart-line', label: 'Projeção de Caixa' },
   { href: 'financeiro.html', icon: 'fa-database', label: 'Dados (Supabase)' },
 ];
 

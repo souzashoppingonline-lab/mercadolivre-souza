@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projeção de Caixa — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Projeção de Caixa'; window.ACTIVE_NAV='financeiro-projecao-caixa.html';</script>
+  <style>
+    .pj-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .pj-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .pj-pill { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:999px; padding:7px 15px; font-size:13px; font-weight:700; cursor:pointer; }
+    .pj-pill.on { background:#1f2937; color:#fff; border-color:#374151; }
+    .pj-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; gap:7px; align-items:center; }
+    .pj-btn:hover { border-color:#3fb950; }
+    .pj-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .pj-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .pj-card-h h3 { font-size:15px; font-weight:800; margin:0; }
+    .pj-card-h .desc { font-size:12px; color:var(--text-muted); font-weight:500; }
+    .pj-tri { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+    .pj-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:16px; }
+    .pj-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+    .pj-kpi .k { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .pj-kpi .v { font-size:22px; font-weight:800; margin-top:4px; }
+    .pj-kpi .s { font-size:11px; margin-top:3px; color:var(--text-muted); }
+    .pj-cols { display:grid; grid-template-columns:2fr 1fr; gap:16px; align-items:start; }
+    @media(max-width:980px){ .pj-cols { grid-template-columns:1fr; } }
+    .pj-per { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+    .pj-perc { border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--bg-card2); }
+    .pj-alert { border-radius:10px; padding:11px 13px; margin-bottom:8px; font-size:12.5px; border:1px solid; }
+    .pj-alert.danger { background:rgba(239,68,68,.08); border-color:rgba(239,68,68,.3); color:#f87171; }
+    .pj-alert.warning { background:rgba(245,158,11,.08); border-color:rgba(245,158,11,.3); color:#f59e0b; }
+    .pj-alert.success { background:rgba(46,160,67,.08); border-color:rgba(46,160,67,.3); color:#3fb950; }
+    .pj-alert.info { background:rgba(59,130,246,.08); border-color:rgba(59,130,246,.3); color:#60a5fa; }
+    table.pj-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .pj-t th, .pj-t td { padding:8px 9px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .pj-t th:first-child, .pj-t td:first-child, .pj-t td:last-child, .pj-t th:last-child { text-align:left; }
+    .pj-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); }
+    .pj-t tr:hover td { background:var(--bg-card2); }
+    .pj-t tr.hoje td { background:rgba(46,160,67,.08); }
+    .pj-t tr.neg td { background:rgba(239,68,68,.09); }
+    .pj-t tr.crit td { background:rgba(245,158,11,.08); }
+    .pj-t tr.maxs td { background:rgba(236,72,153,.07); }
+    .pj-t tr.maxe td { background:rgba(59,130,246,.07); }
+    .pj-evt { border-radius:999px; padding:1px 7px; font-size:9px; font-weight:800; cursor:pointer; margin-right:3px; }
+    .pj-tag { font-size:9px; color:var(--text-muted); }
+    .pj-badge { border-radius:999px; padding:1px 7px; font-size:9px; font-weight:800; margin-left:4px; }
+    .pj-costcards { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
+    .pj-cc { border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--bg-card2); }
+    .pj-cc.dark { background:#0f172a; }
+    .pj-cc .k { font-size:12px; color:var(--text-muted); } .pj-cc .v { font-size:22px; font-weight:800; margin-top:6px; }
+    .pj-prog { height:7px; background:var(--bg-card); border-radius:4px; overflow:hidden; margin:8px 0 2px; } .pj-prog>span{ display:block;height:100%; }
+    .up{color:#3fb950} .down{color:#f87171}
+    .pj-in { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:6px; padding:5px 7px; font-size:12px; width:100px; }
+    .pj-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    .pj-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .pj-modal-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+    .pj-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:520px; max-height:90vh; overflow:auto; }
+    .pj-modal-h { display:flex; align-items:center; padding:16px 18px; border-bottom:1px solid var(--border); } .pj-modal-h h3{ margin:0;font-size:16px;font-weight:800; }
+    .pj-modal-x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:16px; cursor:pointer; }
+    .pj-modal-b { padding:16px 18px; font-size:13px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="pj-sub">Projeção do caixa dia a dia — recebíveis, boletos, faturas de cartão e recorrentes, com alertas e comparativo anual.</p>
+      <div id="pjStatus" class="pj-status"></div>
+
+      <div class="pj-top">
+        <span style="font-size:12px;color:var(--text-muted)">Período:</span>
+        <div id="pjPeriodo" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <div style="margin-left:auto"><button class="pj-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button></div>
+      </div>
+
+      <div class="pj-card">
+        <div class="pj-card-h"><h3>📊 Resumo da Movimentação Projetada <span id="pjResLbl" class="desc"></span></h3></div>
+        <div class="pj-tri" id="pjResumo"></div>
+      </div>
+
+      <div class="pj-kpis" id="pjKpis"></div>
+
+      <div class="pj-cols">
+        <div class="pj-card"><div class="pj-card-h"><h3>📅 Projeção por Período</h3></div><canvas id="pjChartPer" height="120"></canvas><div class="pj-per" id="pjPer" style="margin-top:14px"></div></div>
+        <div class="pj-card"><div class="pj-card-h"><h3>🔔 Alertas Inteligentes</h3></div><div id="pjAlerts"></div></div>
+      </div>
+
+      <div class="pj-card"><div class="pj-card-h"><h3>📈 Evolução do Saldo Projetado</h3></div><canvas id="pjChart" height="110"></canvas></div>
+
+      <div class="pj-card">
+        <div class="pj-card-h"><h3>🗓️ Projeção Diária</h3><span id="pjMediaLbl" class="desc" style="margin-left:auto"></span></div>
+        <div style="overflow:auto;max-height:65vh">
+          <table class="pj-t">
+            <thead><tr><th>Data</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Eventos</th></tr></thead>
+            <tbody id="pjDaily"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="pj-card"><div class="pj-card-h"><h3>💡 Análise de Custos & Margem <span id="pjCostLbl" class="desc"></span></h3></div><div class="pj-costcards" id="pjCost"></div></div>
+
+      <div class="pj-card">
+        <div class="pj-card-h"><h3>🗓️ Fluxo de Caixa Anual (manual) <span id="pjAnoLbl" class="desc"></span></h3></div>
+        <div style="overflow:auto"><table class="pj-t">
+          <thead><tr><th>Mês</th><th>Caixa Dia 1</th><th>Entrada Banco</th><th>Saída Banco</th><th>Saldo Banco</th><th>Faturamento</th><th>Cresc. %</th><th>Lucro Líq. %</th><th>Status</th></tr></thead>
+          <tbody id="pjAnual"></tbody>
+        </table></div>
+        <canvas id="pjChartAno" height="90" style="margin-top:16px"></canvas>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="pj-modal-ov" id="pjModal"><div class="pj-modal"><div class="pj-modal-h"><h3 id="pjModalTitle"></h3><button class="pj-modal-x" onclick="fecharModal()">✕</button></div><div class="pj-modal-b" id="pjModalBody"></div></div></div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const BRLk = n => { n=Number(n)||0; return 'R$'+(Math.abs(n)>=1000?(n/1000).toFixed(0)+'k':n.toFixed(0)); };
+const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MESHORT=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const DOW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const iso=d=>d.toISOString().slice(0,10);
+const addDays=(d,n)=>new Date(d.getTime()+n*864e5);
+const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
+const rev=e=>Number(e.gross_revenue)||0;
+const custoVar=e=>(+e.marketplace_fees||0)+(+e.subsidized_shipping||0)+(+e.cogs||0)+(+e.ads_ml||0)+(+e.ads_external||0)+(+e.tax||0);
+
+let ENTRIES=[], RECV=[], BOLETOS=[], PARCELAS=[], EXPENSES=[], RECOR=[], SALES=[], CLOSING=[], MANUAL=[], STARTBAL=[];
+let periodo=30, mediaOverride=null, chartPer, chart, chartAno;
+function showStatus(t,err){ const el=document.getElementById('pjStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
+
+async function load(){
+  const g=(n,l,o)=>DB.getFinanceiroDados(n,l||5000,o||'');
+  const [rE,rR,rB,rP,rX,rC,rS,rCl,rM]=await Promise.all([
+    g('cash_flow_entries',20000,'date.desc'), g('receivables',5000,'date.asc'), g('boletos_mensais',10000),
+    g('parcelas_cartao',10000), g('expenses',5000), g('cash_flow_recurring',2000), g('sales_entries',5000,'date.desc'),
+    g('monthly_closing',500), g('manual_cash_flow_values',2000)
+  ]);
+  ENTRIES=rE.rows||[]; RECV=rR.rows||[]; BOLETOS=rB.rows||[]; PARCELAS=rP.rows||[]; EXPENSES=rX.rows||[]; RECOR=rC.rows||[]; SALES=rS.rows||[]; CLOSING=(rCl.error?[]:rCl.rows)||[]; MANUAL=(rM.error?[]:rM.rows)||[];
+  const errs=[['cash_flow_entries',rE],['boletos_mensais',rB],['parcelas_cartao',rP]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
+  if(errs.length) showStatus('⚠️ <b>Falha ao ler o banco.</b> '+esc(errs.join(' · ')),true);
+  else showStatus(`✅ Carregado: ${ENTRIES.length} lançamentos, ${RECV.length} recebíveis, ${BOLETOS.length} boletos, ${PARCELAS.length} parcelas.`,false);
+  render();
+}
+
+function caixaAtual(){ return ENTRIES.reduce((s,e)=>s+(e.type==='income'?(+e.value||0):-(+e.value||0)),0); }
+function mediaDiaria(){
+  if(mediaOverride!=null) return mediaOverride;
+  const hoje=new Date(), ini=iso(addDays(hoje,-30));
+  const inc=ENTRIES.filter(e=>e.type==='income' && (e.date||'')>=ini).reduce((s,e)=>s+(+e.value||0),0);
+  return inc/30;
+}
+// Constrói o mapa de eventos por dia dentro da janela.
+function buildDias(dias){
+  const hoje=new Date(); hoje.setHours(0,0,0,0);
+  const arr=[];
+  const media=mediaDiaria();
+  for(let i=0;i<=dias;i++){
+    const d=addDays(hoje,i), k=iso(d);
+    const recs=RECV.filter(r=>!r.recebido && (r.date||'').slice(0,10)===k);
+    const recorr=RECOR.filter(t=>t.active!==false && t.type==='income' && +t.day_of_month===d.getDate());
+    const bols=BOLETOS.filter(b=>b.status!=='pago' && b.tipo!=='cartao' && (b.date||'').slice(0,10)===k);
+    const parc=PARCELAS.filter(p=>p.status!=='pago' && (p.data_vencimento||'').slice(0,10)===k);
+    const entReal=recs.reduce((s,r)=>s+(+r.value||0),0)+recorr.reduce((s,t)=>s+(+t.value||0),0);
+    const temReal=recs.length||recorr.length;
+    const entProj=temReal?0:(i===0?0:media);
+    const sai=bols.reduce((s,b)=>s+(+b.value||0),0)+parc.reduce((s,p)=>s+(+p.valor||0),0);
+    arr.push({ d, k, dow:DOW[d.getDay()], recs, recorr, bols, parc, entReal, entProj, ent:entReal+entProj, sai, temReal });
+  }
+  // saldo acumulado
+  let saldo=caixaAtual();
+  arr.forEach(o=>{ saldo+=o.ent-o.sai; o.saldo=saldo; });
+  return arr;
+}
+
+function render(){
+  document.getElementById('pjPeriodo').innerHTML=[7,15,21,30,45,60].map(p=>`<button class="pj-pill ${periodo===p?'on':''}" onclick="setPeriodo(${p})">${p}d</button>`).join('');
+  const dias=buildDias(periodo);
+  document.getElementById('pjResLbl').textContent=`— próximos ${periodo} dias`;
+  document.getElementById('pjMediaLbl').innerHTML=`Média diária projetada: <b>${BRL(mediaDiaria())}</b> ${mediaOverride!=null?`<button class="pj-btn" style="padding:3px 8px;margin-left:6px" onclick="restaurarMedia()">Restaurar automático</button>`:`<button class="pj-btn" style="padding:3px 8px;margin-left:6px" onclick="editarMedia()">Editar projeção</button>`}`;
+  renderResumo(dias); renderKpis(dias); renderPeriodos(); renderAlerts(dias); renderChart(dias); renderDaily(dias); renderCost(); renderAnual();
+}
+
+function totJan(dias){ const ent=dias.slice(1).reduce((s,o)=>s+o.ent,0), sai=dias.slice(1).reduce((s,o)=>s+o.sai,0); return {ent,sai,saldoFim:dias[dias.length-1].saldo}; }
+function renderResumo(dias){
+  const t=totJan(dias);
+  document.getElementById('pjResumo').innerHTML=`
+    <div><div style="font-size:11px;color:var(--text-muted)">TOTAL ENTRADAS</div><div style="font-size:22px;font-weight:800;color:#3fb950">${BRL(t.ent)}</div></div>
+    <div><div style="font-size:11px;color:var(--text-muted)">TOTAL SAÍDAS</div><div style="font-size:22px;font-weight:800;color:#f87171">${BRL(t.sai)}</div></div>
+    <div><div style="font-size:11px;color:var(--text-muted)">SALDO FINAL PROJETADO</div><div style="font-size:22px;font-weight:800;color:${t.saldoFim>=0?'#3fb950':'#f87171'}">${BRL(t.saldoFim)}</div></div>`;
+}
+function renderKpis(dias){
+  const cx=caixaAtual(), t=totJan(dias), proj=cx+t.ent-t.sai, media=mediaDiaria();
+  document.getElementById('pjKpis').innerHTML=`
+    <div class="pj-kpi"><div class="k">💰 Caixa Atual</div><div class="v" style="color:${cx>=0?'#3fb950':'#f87171'}">${BRL(cx)}</div><div class="s">saldo real do fluxo</div></div>
+    <div class="pj-kpi"><div class="k">↓ Entradas Previstas</div><div class="v up">${BRL(t.ent)}</div><div class="s">~${BRL(media)}/dia</div></div>
+    <div class="pj-kpi"><div class="k">↑ Saídas Previstas</div><div class="v down">${BRL(t.sai)}</div><div class="s">boletos + faturas</div></div>
+    <div class="pj-kpi"><div class="k">🎯 Caixa Projetado</div><div class="v" style="color:${proj>=0?'#3fb950':'#f87171'}">${BRL(proj)}</div><div class="s">em ${periodo} dias</div></div>`;
+}
+function renderPeriodos(){
+  const cx=caixaAtual(), pers=[7,15,21,30,45,60];
+  const dados=pers.map(p=>{ const dd=buildDias(p), t=totJan(dd); return {p,saldo:cx+t.ent-t.sai,ent:t.ent,sai:t.sai}; });
+  const cor=s=>s<0?'#f87171':s<5000?'#f59e0b':'#3fb950';
+  chartPer&&chartPer.destroy();
+  chartPer=new Chart(document.getElementById('pjChartPer'),{type:'bar',data:{labels:pers.map(p=>p+'d'),datasets:[{label:'Saldo projetado',data:dados.map(x=>+x.saldo.toFixed(0)),backgroundColor:dados.map(x=>cor(x.saldo))}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>BRLk(v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
+  document.getElementById('pjPer').innerHTML=dados.map(x=>{ const st=x.saldo<0?['Crítico','#f87171']:x.saldo<5000?['Atenção','#f59e0b']:['Saudável','#3fb950']; return `<div class="pj-perc"><div style="font-size:11px;color:var(--text-muted)">${x.p} dias</div><div style="font-weight:800;color:${cor(x.saldo)}">${BRL(x.saldo)}</div><div style="font-size:10px;color:var(--text-muted);margin-top:3px">▲ ${BRL(x.ent)} · ▼ ${BRL(x.sai)}</div><div style="font-size:10px;color:${st[1]};font-weight:700">${st[0]}</div></div>`; }).join('');
+}
+function renderAlerts(dias){
+  const al=[]; const cx=caixaAtual();
+  const neg=dias.find(o=>o.saldo<0);
+  if(neg) al.push(['danger',`🔴 <b>Caixa negativo</b> em ${Math.round((neg.d-dias[0].d)/864e5)} dia(s) (${neg.d.getDate()}/${neg.d.getMonth()+1}): ${BRL(neg.saldo)}`]);
+  const venc7=dias.slice(1,8).reduce((s,o)=>s+o.sai,0);
+  if(venc7>0) al.push(['warning',`🟡 <b>Vencimentos em 7 dias</b>: ${BRL(venc7)} em boletos/faturas`]);
+  const fim=dias[dias.length-1].saldo;
+  if(cx>0 && fim<cx*0.7) al.push(['warning',`🟡 <b>Queda de caixa</b>: saldo cai ${PCT((1-fim/cx)*100)} no período`]);
+  const totSai=totJan(dias).sai;
+  if(cx>0 && totSai>cx*0.8) al.push(['warning',`🟡 <b>Grande volume de pagamentos</b>: saídas somam ${PCT(totSai/cx*100)} do caixa atual`]);
+  const maxE=dias.slice(1).reduce((a,o)=>o.ent>((a&&a.ent)||0)?o:a,null);
+  if(maxE&&maxE.ent>0) al.push(['info',`🔵 <b>Maior entrada</b> em ${maxE.d.getDate()}/${maxE.d.getMonth()+1}: ${BRL(maxE.ent)}`]);
+  const maxS=dias.slice(1).reduce((a,o)=>o.sai>((a&&a.sai)||0)?o:a,null);
+  if(maxS&&maxS.sai>0) al.push(['warning',`🟡 <b>Maior saída</b> em ${maxS.d.getDate()}/${maxS.d.getMonth()+1}: ${BRL(maxS.sai)}`]);
+  const pico=dias.reduce((a,o)=>o.saldo>a.saldo?o:a,dias[0]);
+  al.push(['success',`🟢 <b>Maior saldo projetado</b> em ${pico.d.getDate()}/${pico.d.getMonth()+1}: ${BRL(pico.saldo)}`]);
+  if(!neg) al.push(['success',`🟢 <b>Caixa saudável</b> — sem risco de liquidez nos próximos ${periodo} dias`]);
+  document.getElementById('pjAlerts').innerHTML=al.map(([t,m])=>`<div class="pj-alert ${t}">${m}</div>`).join('');
+}
+function renderChart(dias){
+  const labels=dias.map(o=>`${o.d.getDate()}/${o.d.getMonth()+1}`);
+  chart&&chart.destroy();
+  chart=new Chart(document.getElementById('pjChart'),{data:{labels,datasets:[
+    {type:'line',label:'Saldo',data:dias.map(o=>+o.saldo.toFixed(0)),borderColor:'#3fb950',backgroundColor:'rgba(63,185,80,.08)',tension:.3,pointRadius:0,fill:true},
+    {type:'line',label:'Entradas',data:dias.map(o=>+o.ent.toFixed(0)),borderColor:'#60a5fa',borderDash:[5,4],tension:.3,pointRadius:0,fill:false},
+    {type:'line',label:'Saídas',data:dias.map(o=>+o.sai.toFixed(0)),borderColor:'#f87171',borderDash:[5,4],tension:.3,pointRadius:0,fill:false},
+  ]},options:{interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b',maxTicksLimit:15}},y:{ticks:{color:'#64748b',callback:v=>BRLk(v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
+}
+function renderDaily(dias){
+  const maxE=dias.slice(1).reduce((a,o)=>o.ent>((a&&a.ent)||0)?o:a,null), maxS=dias.slice(1).reduce((a,o)=>o.sai>((a&&a.sai)||0)?o:a,null);
+  document.getElementById('pjDaily').innerHTML=dias.map((o,i)=>{
+    let cls=i===0?'hoje':(o.saldo<0?'neg':(o.saldo<5000?'crit':''));
+    if(o===maxS&&o.sai>0) cls='maxs'; if(o===maxE&&o.ent>0) cls='maxe';
+    const badges=[];
+    if(o.recs.length) badges.push(`<span class="pj-evt" style="background:rgba(46,160,67,.15);color:#3fb950" onclick="verEventos('${o.k}','rec')">${o.recs.length} recebível</span>`);
+    if(o.recorr.length) badges.push(`<span class="pj-evt" style="background:rgba(59,130,246,.15);color:#60a5fa">${o.recorr.length} recorrente</span>`);
+    if(o.bols.length) badges.push(`<span class="pj-evt" style="background:rgba(249,115,22,.15);color:#fb923c" onclick="verEventos('${o.k}','bol')">${o.bols.length} boleto</span>`);
+    if(o.parc.length) badges.push(`<span class="pj-evt" style="background:rgba(236,72,153,.15);color:#ec4899" onclick="verEventos('${o.k}','parc')">${o.parc.length} parcela</span>`);
+    return `<tr class="${cls}">
+      <td>${o.dow} ${o.d.getDate()}/${o.d.getMonth()+1}${i===0?'<span class="pj-badge" style="background:#3fb950;color:#03210d">HOJE</span>':''}${o.saldo<0?'<span class="pj-badge" style="background:#f87171;color:#2a0a0a">NEG</span>':''}</td>
+      <td style="color:#3fb950">${o.ent?BRL(o.ent):'—'} ${o.entProj>0&&!o.temReal?'<span class="pj-tag">proj.</span>':(o.temReal?'<span class="pj-tag">real</span>':'')}</td>
+      <td style="color:#f87171">${o.sai?BRL(o.sai):'—'}</td>
+      <td style="font-weight:700;color:${o.saldo>=0?'#3fb950':'#f87171'}">${BRL(o.saldo)}</td>
+      <td>${badges.join('')||'<span style="color:var(--text-muted)">—</span>'}</td></tr>`;
+  }).join('');
+}
+
+// ── Custos & Margem ─────────────────────────────────────────────────────────
+function renderCost(){
+  const now=new Date(), m=now.getMonth()+1, y=now.getFullYear();
+  document.getElementById('pjCostLbl').textContent=`— ${MESHORT[m-1]}/${y}`;
+  const exp=EXPENSES.filter(e=>+e.month===m && +e.year===y);
+  const fixo=exp.filter(e=>e.type==='fixed').reduce((s,e)=>s+(+e.value||0),0);
+  const oper=exp.filter(e=>e.type==='operational').reduce((s,e)=>s+(+e.value||0),0);
+  const sales=SALES.filter(e=>{ if(!e.date) return false; const d=new Date(e.date+'T00:00:00'); return d.getMonth()+1===m&&d.getFullYear()===y; });
+  const receita=sales.reduce((s,e)=>s+rev(e),0), mc=sales.reduce((s,e)=>s+(rev(e)-custoVar(e)),0), mcPct=receita?mc/receita*100:0;
+  const dias=buildDias(periodo), pos=dias.filter(o=>o.saldo>=0).length, negc=dias.length-pos;
+  const cx=caixaAtual(), fim=dias[dias.length-1].saldo, varPct=cx?((fim-cx)/Math.abs(cx)*100):0;
+  const totSai=totJan(dias).sai, cob=totSai?Math.min(cx/totSai*100,999):100;
+  const lab=mcPct<0?['Prejuízo','#f87171']:mcPct<10?['Preocupante','#f59e0b']:mcPct<20?['Bom','#3fb950']:mcPct<30?['Ótimo','#3fb950']:['Excelente','#3fb950'];
+  const barP=(v,max,c)=>`<div class="pj-prog"><span style="width:${Math.min(v/(max||1)*100,100)}%;background:${c}"></span></div>`;
+  document.getElementById('pjCost').innerHTML=`
+    <div class="pj-cc dark"><div class="k">Análise Geral do Caixa</div>
+      <div style="display:flex;gap:14px;margin-top:8px;font-size:12px"><span>Positivos <b class="up">${pos}</b></span><span>Negativos <b class="down">${negc}</b></span></div>
+      <div style="font-size:12px;margin-top:6px;color:var(--text-muted)">Variação do caixa <b style="color:${varPct>=0?'#3fb950':'#f87171'}">${PCT(varPct)}</b></div>
+      <div style="font-size:12px;color:var(--text-muted)">Cobertura de saídas <b>${PCT(cob)}</b></div></div>
+    <div class="pj-cc"><div class="k">Custo Fixo</div><div class="v down">${BRL(fixo)}</div><div style="font-size:11px;color:var(--text-muted)">${PCT(receita?fixo/receita*100:0)} da receita</div>${barP(fixo,receita,'#60a5fa')}</div>
+    <div class="pj-cc"><div class="k">Custo Operacional</div><div class="v down">${BRL(oper)}</div><div style="font-size:11px;color:var(--text-muted)">${PCT(receita?oper/receita*100:0)} da receita</div>${barP(oper,receita,'#f59e0b')}</div>
+    <div class="pj-cc" style="border-color:${lab[1]}55"><div class="k">Margem de Contribuição</div><div class="v" style="color:${lab[1]}">${PCT(mcPct)}</div><div style="font-size:12px;color:var(--text-muted)">${BRL(mc)} · <b style="color:${lab[1]}">${lab[0]}</b></div></div>`;
+}
+
+// ── Anual (manual + comparativo) ────────────────────────────────────────────
+function manualDe(m,y){ return MANUAL.find(x=>+x.month===m && +x.year===y)||null; }
+function closingDe(m,y){ return CLOSING.find(x=>+x.month===m && +x.year===y)||null; }
+function renderAnual(){
+  const now=new Date(), y=now.getFullYear(), curM=now.getMonth()+1;
+  document.getElementById('pjAnoLbl').textContent=`— ${y}`;
+  let prevFat=0, html='';
+  const fatArr=[], fluxArr=[], lucroArr=[];
+  for(let m=1;m<=12;m++){
+    const man=manualDe(m,y)||{}, cl=closingDe(m,y)||{};
+    const dia1=+man.value||0, bin=+man.bank_in||0, bout=+man.bank_out||0, saldoB=bin-bout;
+    const fat=+cl.revenue_gross||+cl.revenue_total||0;
+    const lucroPct = fat ? ((+cl.contribution_margin_pct)|| (cl.dre_data&&+cl.dre_data.net_pct) || 0) : 0;
+    const cresc = prevFat? (fat-prevFat)/prevFat*100 : null; prevFat=fat||prevFat;
+    const futuro=(y===now.getFullYear()&&m>curM);
+    const st= cl.status==='closed'?['Fechado','#3fb950']:(m===curM?['Em andamento','#f59e0b']:['Aberto','#94a3b8']);
+    fatArr.push(fat); fluxArr.push(dia1); lucroArr.push(+lucroPct);
+    html+=`<tr class="${m===curM?'hoje':''}" style="${futuro?'opacity:.5':''}">
+      <td>${MESHORT[m-1]}</td>
+      <td><input class="pj-in" type="number" step="0.01" value="${dia1||''}" ${futuro?'disabled':''} onchange="salvarManual(${m},${y},'value',this.value)"></td>
+      <td><input class="pj-in" type="number" step="0.01" value="${bin||''}" ${futuro?'disabled':''} onchange="salvarManual(${m},${y},'bank_in',this.value)"></td>
+      <td><input class="pj-in" type="number" step="0.01" value="${bout||''}" ${futuro?'disabled':''} onchange="salvarManual(${m},${y},'bank_out',this.value)"></td>
+      <td style="color:${saldoB>=0?'#3fb950':'#f87171'}">${BRL(saldoB)}</td>
+      <td>${fat?BRL(fat):'—'}</td>
+      <td style="color:${cresc==null?'var(--text-muted)':(cresc>=0?'#3fb950':'#f87171')}">${cresc==null?'—':PCT(cresc)}</td>
+      <td>${lucroPct?PCT(lucroPct):'—'}</td>
+      <td><span style="color:${st[1]};font-weight:700;font-size:11px">${st[0]}</span></td></tr>`;
+  }
+  document.getElementById('pjAnual').innerHTML=html;
+  chartAno&&chartAno.destroy();
+  chartAno=new Chart(document.getElementById('pjChartAno'),{data:{labels:MESHORT,datasets:[
+    {type:'bar',label:'Caixa Dia 1',data:fluxArr,backgroundColor:'#3fb950',yAxisID:'y'},
+    {type:'line',label:'Faturamento',data:fatArr,borderColor:'#60a5fa',tension:.3,pointRadius:2,yAxisID:'y',fill:false},
+    {type:'line',label:'Lucro Líq. %',data:lucroArr,borderColor:'#f59e0b',borderDash:[5,4],tension:.3,pointRadius:2,yAxisID:'y1',fill:false},
+  ]},options:{plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}},tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?` ${c.dataset.label}: ${PCT(c.raw)}`:` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b'}},y:{position:'left',ticks:{color:'#64748b',callback:v=>BRLk(v)},grid:{color:'rgba(148,163,184,.1)'}},y1:{position:'right',ticks:{color:'#f59e0b',callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
+}
+async function salvarManual(m,y,campo,valor){
+  const v=pNum(valor); let man=manualDe(m,y);
+  if(man){ const r=await DB.updateFinanceiroRow('manual_cash_flow_values',man.id,{[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } man[campo]=v; }
+  else { const r=await DB.addFinanceiroRow('manual_cash_flow_values',{month:m,year:y,[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) MANUAL.push(saved); }
+  renderAnual();
+}
+
+// ── Eventos / projeção / período ────────────────────────────────────────────
+function verEventos(k,tipo){
+  const items=[]; let titulo='Eventos do dia '+k.split('-').reverse().join('/'), link='';
+  if(tipo==='rec'){ RECV.filter(r=>!r.recebido&&(r.date||'').slice(0,10)===k).forEach(r=>items.push([r.description||'Recebível', +r.value||0, r.empresa||''])); link='financeiro-recebiveis.html'; }
+  else if(tipo==='bol'){ BOLETOS.filter(b=>b.status!=='pago'&&b.tipo!=='cartao'&&(b.date||'').slice(0,10)===k).forEach(b=>items.push([b.name||'Boleto', +b.value||0, (b.empresa||'').trim()])); link='financeiro-boletos.html'; }
+  else if(tipo==='parc'){ PARCELAS.filter(p=>p.status!=='pago'&&(p.data_vencimento||'').slice(0,10)===k).forEach(p=>items.push(['Parcela '+(p.numero_parcela||''), +p.valor||0, p.fatura_mes||''])); link='financeiro-cartoes.html'; }
+  const tot=items.reduce((s,i)=>s+i[1],0);
+  const body=`${items.length?items.map(i=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(i[0])} <span style="color:var(--text-muted);font-size:11px">${esc(i[2])}</span></span><b>${BRL(i[1])}</b></div>`).join(''):'<div class="pj-empty">Sem itens.</div>'}
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-weight:800"><span>Total do dia</span><span>${BRL(tot)}</span></div>
+    ${link?`<a class="pj-btn" style="margin-top:12px;display:inline-flex" href="${link}"><i class="fas fa-up-right-from-square"></i> Abrir página</a>`:''}`;
+  document.getElementById('pjModalTitle').textContent=titulo; document.getElementById('pjModalBody').innerHTML=body; document.getElementById('pjModal').style.display='flex';
+}
+function fecharModal(){ document.getElementById('pjModal').style.display='none'; }
+function editarMedia(){ const v=prompt('Média diária de entradas projetada (R$):', mediaDiaria().toFixed(2)); if(v==null) return; mediaOverride=pNum(v); render(); }
+function restaurarMedia(){ mediaOverride=null; render(); }
+function setPeriodo(p){ periodo=p; render(); }
+
+function init(){
+  document.getElementById('pjModal').addEventListener('click', e=>{ if(e.target.id==='pjModal') fecharModal(); });
+  load();
+}
+init();
+</script>
+</body>
+</html>

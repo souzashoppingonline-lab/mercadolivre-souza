@@ -119,6 +119,11 @@ router.patch('/ads/:id', async (req, res) => {
     const sets = [], vals = [req.params.id]; let n = 1;
     if (req.body.active != null)          { sets.push(`active = $${++n}`); vals.push(!!req.body.active); }
     if (Number(req.body.milestone_every) > 0) { sets.push(`milestone_every = $${++n}`); vals.push(Number(req.body.milestone_every)); }
+    // Nome da campanha de ADS (texto, ''/null → zera).
+    if (Object.prototype.hasOwnProperty.call(req.body, 'campanha_nome')) {
+      const v = req.body.campanha_nome;
+      sets.push(`campanha_nome = $${++n}`); vals.push((v == null || v === '') ? null : String(v).slice(0, 200));
+    }
     // Métricas de ADS informadas manualmente no card ('' ou null → zera a coluna).
     for (const campo of ['ads_investido', 'roas', 'orcamento_diario', 'preco_anterior', 'preco_atual']) {
       if (Object.prototype.hasOwnProperty.call(req.body, campo)) {
@@ -183,9 +188,9 @@ router.post('/ads/:id/ciclo', async (req, res) => {
       [r.id]
     );
     await client.query(
-      `INSERT INTO ranking_ciclos (ranking_ad_id, ciclo, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [r.id, r.ciclo || 1, r.ads_investido, r.roas, r.orcamento_diario, r.preco_anterior, r.preco_atual, r.sales_count, fat[0].f, r.ciclo_iniciado_em]
+      `INSERT INTO ranking_ciclos (ranking_ad_id, ciclo, campanha_nome, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [r.id, r.ciclo || 1, r.campanha_nome, r.ads_investido, r.roas, r.orcamento_diario, r.preco_anterior, r.preco_atual, r.sales_count, fat[0].f, r.ciclo_iniciado_em]
     );
     const { rows } = await client.query(
       `UPDATE ranking_ads
@@ -208,7 +213,7 @@ router.post('/ads/:id/ciclo', async (req, res) => {
 router.get('/ads/:id/ciclos', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, ciclo, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em, encerrado_em
+      `SELECT id, ciclo, campanha_nome, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em, encerrado_em
          FROM ranking_ciclos WHERE ranking_ad_id = $1 ORDER BY ciclo DESC`,
       [req.params.id]
     );

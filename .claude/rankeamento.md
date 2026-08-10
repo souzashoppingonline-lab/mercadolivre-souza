@@ -74,7 +74,7 @@ Duas partes: (1) **cards dos anúncios em rankeamento** no topo — badge "Anún
 
 ## Ciclos de rankeamento + métricas de ADS (v72/v73)
 
-Um anúncio **em rankeamento** passa por **ciclos** (campanhas/empurrões sucessivos). O card mostra o **Ciclo N** atual (badge 🔄 azul, em destaque no topo) e campos **preenchidos manualmente** — ADS investido (R$), ROAS, orçamento diário (R$) e a transição de preço (**preço anterior → preço atual**) — porque o ML não expõe esses números por webhook. Colunas em `ranking_ads`: `ciclo`, `ads_investido`, `roas`, `orcamento_diario`, `preco_anterior`, `preco_atual`, `ciclo_iniciado_em` (ver `database.md`).
+Um anúncio **em rankeamento** passa por **ciclos** (campanhas/empurrões sucessivos). O card mostra o **Ciclo N** atual (badge 🔄 azul, em destaque no topo) e campos **preenchidos manualmente** — **nome da campanha** (texto), ROAS, orçamento diário (R$) e a transição de preço (**preço anterior → preço atual**) — porque o ML não expõe esses dados por webhook. Colunas em `ranking_ads`: `ciclo`, `campanha_nome`, `roas`, `orcamento_diario`, `preco_anterior`, `preco_atual`, `ciclo_iniciado_em` (ver `database.md`). `ads_investido` (v72) ficou legado — saiu do card, substituído pelo nome da campanha (v74).
 
 - **Vendas são cumulativas:** o contador (5-em-5), `sales_count` e o `faturamento` **contam através dos ciclos** — trocar de ciclo **não zera** nada. O ciclo é só um rótulo de fase de campanha.
 - **Salvar manual:** cada input salva no `onchange` via `PATCH /api/ranking/ads/:id` (`DB.patchRankingAd`) — sem re-render, pra não perder o foco. Dicas no card: **ROAS calculado** (faturamento ÷ ADS) e a seta de preço (↑/↓/=); os campos continuam manuais (fonte de verdade).

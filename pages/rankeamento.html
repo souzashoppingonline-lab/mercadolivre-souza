@@ -242,18 +242,16 @@ function cardHtml(a) {
   const pips = Array.from({length: every}, (_,i) => `<i class="${i < naFaixa ? 'on':''}"></i>`).join('');
   const evs = (EVENTS[a.id] || []).map(evHtml).join('') || `<div class="rk-empty" style="border:none">${ranq?'Sem alertas — tudo certo 👍':'Aguardando a 1ª venda…'}</div>`;
 
-  // Bloco de métricas de ADS informadas manualmente (por ciclo). ROAS "calculado"
-  // é só uma dica (faturamento do ciclo ÷ ADS); o campo ROAS continua manual.
-  const adsV = a.ads_investido, roasCalc = (Number(adsV) > 0) ? (Number(a.faturamento||0) / Number(adsV)) : null;
+  // Bloco de campanha de ADS + preços, informados manualmente (por ciclo).
   const inNum = (campo, val, ph) => `<input type="number" min="0" step="0.01" value="${val==null?'':val}" placeholder="${ph}" onchange="salvarAds(${a.id},'${campo}',this.value)">`;
+  const inTxt = (campo, val, ph) => `<input type="text" maxlength="200" value="${val==null?'':esc(val)}" placeholder="${ph}" onchange="salvarAds(${a.id},'${campo}',this.value)">`;
   const adsBlock = `<div class="rk-ads">
-      <label>ADS R$ ${inNum('ads_investido', a.ads_investido, '0,00')}</label>
+      <label style="grid-column:1/-1">Nome da campanha ${inTxt('campanha_nome', a.campanha_nome, 'ex.: Talheres — Ciclo 2')}</label>
       <label>ROAS ${inNum('roas', a.roas, '0,0')}</label>
       <label>Orç./dia R$ ${inNum('orcamento_diario', a.orcamento_diario, '0,00')}</label>
       <label>Preço ant. R$ ${inNum('preco_anterior', a.preco_anterior, '0,00')}</label>
       <label>Preço atual R$ ${inNum('preco_atual', a.preco_atual, '0,00')}</label>
       ${(a.preco_anterior!=null && a.preco_atual!=null) ? `<div class="rk-ads-hint">🏷️ Preço: ${BRL(a.preco_anterior)} → <b>${BRL(a.preco_atual)}</b> ${Number(a.preco_atual)>Number(a.preco_anterior)?'↑':(Number(a.preco_atual)<Number(a.preco_anterior)?'↓':'=')}</div>` : ''}
-      ${roasCalc!=null ? `<div class="rk-ads-hint">💡 ROAS ≈ <b>${roasCalc.toFixed(2)}x</b> (faturamento ${BRL(a.faturamento)} ÷ ADS ${BRL(adsV)})</div>` : ''}
     </div>`;
   const ciclosBlock = (a.ciclos_anteriores > 0) ? `<details class="rk-ciclos">
       <summary onclick="carregarCiclos(${a.id})">📚 Ciclos anteriores (${a.ciclos_anteriores})</summary>
@@ -361,12 +359,12 @@ async function carregarCiclos(id) {
     box.dataset.loaded = '1';
     if (!cs.length) { box.innerHTML = '<div class="rk-empty" style="border:none;font-size:10px">Sem ciclos anteriores.</div>'; return; }
     box.innerHTML = `<table>
-      <thead><tr><th>Ciclo</th><th>Vendas</th><th>Fatur.</th><th>ADS</th><th>ROAS</th><th>Orç./dia</th><th>Preço</th></tr></thead>
+      <thead><tr><th>Ciclo</th><th>Campanha</th><th>Vendas</th><th>Fatur.</th><th>ROAS</th><th>Orç./dia</th><th>Preço</th></tr></thead>
       <tbody>${cs.map(c => `<tr>
         <td>#${c.ciclo}</td>
+        <td>${c.campanha_nome?esc(c.campanha_nome):'—'}</td>
         <td>${c.sales_count!=null?c.sales_count:'—'}</td>
         <td>${c.faturamento!=null?BRL(c.faturamento):'—'}</td>
-        <td>${c.ads_investido!=null?BRL(c.ads_investido):'—'}</td>
         <td>${c.roas!=null?Number(c.roas).toFixed(2)+'x':'—'}</td>
         <td>${c.orcamento_diario!=null?BRL(c.orcamento_diario):'—'}</td>
         <td>${(c.preco_anterior!=null||c.preco_atual!=null)?`${c.preco_anterior!=null?BRL(c.preco_anterior):'—'}→${c.preco_atual!=null?BRL(c.preco_atual):'—'}`:'—'}</td>

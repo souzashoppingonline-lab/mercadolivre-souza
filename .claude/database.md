@@ -585,7 +585,7 @@ staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
 ```
 Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).
 
-### `ranking_ads` / `ranking_events` / `ranking_ciclos` — v69/v72/v73: Rankeamento de anúncios (ver `rankeamento.md`)
+### `ranking_ads` / `ranking_events` / `ranking_ciclos` — v69/v72/v73/v74: Rankeamento de anúncios (ver `rankeamento.md`)
 ```
 ranking_ads:
 id SERIAL PK, ml_id TEXT UNIQUE FK items(ml_id) ON DELETE CASCADE, store_id BIGINT FK stores
@@ -598,7 +598,8 @@ last_highlight_pos INT                             -- v70: posição nos Mais Ve
 fase TEXT DEFAULT 'rankeando'                       -- v71: 'rankeando' | 'ranqueado' (idx_ranking_ads_fase)
 ranqueado_em TIMESTAMPTZ                            -- v71: quando passou pra fase 2
 ciclo INT DEFAULT 1                                -- v72: ciclo atual de rankeamento (1,2,3…); só em fase 'rankeando'
-ads_investido, roas, orcamento_diario NUMERIC      -- v72: métricas de ADS do ciclo atual (MANUAIS no card)
+campanha_nome TEXT                                 -- v74: nome da campanha de ADS do ciclo (MANUAL; substituiu o campo ADS R$)
+ads_investido, roas, orcamento_diario NUMERIC      -- v72: métricas de ADS do ciclo (roas/orçamento MANUAIS; ads_investido legado, fora do card)
 preco_anterior, preco_atual NUMERIC                -- v73: transição de preço do ciclo (MANUAIS; ao trocar ciclo, atual→anterior)
 ciclo_iniciado_em TIMESTAMPTZ DEFAULT now()        -- v72: início do ciclo atual (backfill=started_at)
 milestone_every INT DEFAULT 5                       -- marco a cada N vendas
@@ -614,6 +615,7 @@ message TEXT, detail JSONB, created_at TIMESTAMPTZ
 ranking_ciclos:  -- v72: histórico dos ciclos encerrados (1 linha por "Novo ciclo")
 id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE
 ciclo INT                                          -- número do ciclo encerrado
+campanha_nome TEXT                                 -- v74: snapshot do nome da campanha
 ads_investido, roas, orcamento_diario NUMERIC      -- snapshot dos manuais do ciclo
 preco_anterior, preco_atual NUMERIC                -- v73: snapshot da transição de preço do ciclo
 sales_count INT, faturamento NUMERIC               -- vendas e faturamento ACUMULADOS no momento da troca (soma dos ranking_events)

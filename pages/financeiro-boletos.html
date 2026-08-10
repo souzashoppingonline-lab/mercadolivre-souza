@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boletos — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Boletos'; window.ACTIVE_NAV='financeiro-boletos.html';</script>
+  <style>
+    .bo-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .bo-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .bo-top select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
+    .bo-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+    .bo-btn:hover { border-color:#3fb950; }
+    .bo-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .bo-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .bo-card-h h3 { font-size:15px; font-weight:800; margin:0; }
+    .bo-card-h .desc { font-size:12px; color:var(--text-muted); font-weight:500; }
+    .bo-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:16px; }
+    .bo-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+    .bo-kpi .k { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .bo-kpi .v { font-size:22px; font-weight:800; margin-top:4px; }
+    .bo-kpi .s { font-size:11px; margin-top:3px; color:var(--text-muted); }
+    .bo-kpi.pago { border-color:rgba(46,160,67,.4); } .bo-kpi.pago .v{ color:#3fb950; }
+    .bo-kpi.pend { border-color:rgba(245,158,11,.4); } .bo-kpi.pend .v{ color:#f59e0b; }
+    .bo-kpi.atr { border-color:rgba(239,68,68,.4); } .bo-kpi.atr .v{ color:#f87171; }
+    .bo-cols { display:grid; grid-template-columns:340px 1fr; gap:16px; align-items:start; }
+    @media(max-width:980px){ .bo-cols { grid-template-columns:1fr; } }
+    .bo-in { display:block; width:100%; margin-top:4px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; box-sizing:border-box; }
+    .bo-in:focus { outline:none; border-color:#3fb950; }
+    label.bo-lbl { display:block; font-size:12px; color:var(--text-muted); margin-top:12px; }
+    .bo-cta { width:100%; margin-top:16px; background:#3fb950; color:#03210d; border:none; border-radius:10px; padding:12px; font-weight:800; font-size:14px; cursor:pointer; }
+    table.bo-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .bo-t th, .bo-t td { padding:9px 10px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .bo-t th:first-child,.bo-t td:first-child,.bo-t th:nth-child(2),.bo-t td:nth-child(2){ text-align:left; }
+    .bo-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); }
+    .bo-t tr:hover td { background:var(--bg-card2); }
+    .bo-t tfoot td { position:sticky; bottom:0; background:var(--bg-card); font-weight:800; border-top:2px solid var(--border); }
+    .bo-chip { border-radius:999px; padding:2px 9px; font-size:10px; font-weight:800; }
+    .bo-chip.pago { background:rgba(46,160,67,.15); color:#3fb950; }
+    .bo-chip.pendente { background:rgba(245,158,11,.15); color:#f59e0b; }
+    .bo-chip.atrasado { background:rgba(239,68,68,.15); color:#f87171; }
+    .bo-chip.emp { background:var(--bg-card2); color:var(--text-muted); border:1px solid var(--border); }
+    .bo-icon { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:12px; padding:4px 7px; border-radius:6px; }
+    .bo-icon:hover { background:var(--bg-card2); color:var(--text-main); }
+    .bo-icon.pay:hover { color:#3fb950; } .bo-icon.del:hover { color:#f87171; }
+    .bo-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+    .bo-cc { border:1px solid var(--border); border-radius:12px; padding:14px; background:var(--bg-card2); }
+    .up{ color:#3fb950;} .down{ color:#f87171;}
+    .bo-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    .bo-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .bo-modal-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+    .bo-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:540px; max-height:90vh; overflow:auto; }
+    .bo-modal-h { display:flex; align-items:center; padding:16px 18px; border-bottom:1px solid var(--border); }
+    .bo-modal-h h3 { margin:0; font-size:16px; font-weight:800; }
+    .bo-modal-x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:16px; cursor:pointer; }
+    .bo-modal-b { padding:16px 18px; font-size:13px; }
+    .bo-modal-f { display:flex; gap:10px; justify-content:flex-end; padding:14px 18px; border-top:1px solid var(--border); }
+    .bo-btn-cancel { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 18px; font-weight:700; cursor:pointer; }
+    .bo-btn-ok { background:#3fb950; color:#03210d; border:none; border-radius:10px; padding:9px 20px; font-weight:800; cursor:pointer; }
+    .bo-btn-ok:disabled { opacity:.6; cursor:default; }
+    .bo-btn-ok.danger { background:#f87171; color:#2a0a0a; }
+    .bo-sum { width:100%; border-collapse:collapse; font-size:13px; }
+    .bo-sum td { padding:6px 4px; border-bottom:1px solid var(--border); }
+    .bo-sum td:last-child { text-align:right; font-weight:700; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="bo-sub">Contas a pagar do mês — boletos, impostos, cartões e faturas por empresa. Pague, edite e acompanhe vencimentos.</p>
+      <div id="boStatus" class="bo-status"></div>
+
+      <div class="bo-top">
+        <select id="boEmpresa"></select>
+        <select id="boMes"></select><select id="boAno"></select>
+        <select id="boFiltro"><option value="todos">Todos os status</option><option value="pendente">Pendentes</option><option value="atrasado">Atrasados</option><option value="pago">Pagos</option></select>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="bo-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> CSV</button>
+          <button class="bo-btn" onclick="abrirCategorias()"><i class="fas fa-tags"></i> Categorias</button>
+          <button class="bo-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+      </div>
+
+      <div class="bo-kpis" id="boKpis"></div>
+
+      <div class="bo-cols">
+        <!-- Novo boleto -->
+        <div class="bo-card">
+          <div class="bo-card-h"><h3>➕ Novo Lançamento</h3><span id="boFormMsg" style="margin-left:auto;font-size:12px"></span></div>
+          <label class="bo-lbl">Descrição<input id="fName" class="bo-in" placeholder="Ex: Boleto fornecedor, imposto…"></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label class="bo-lbl">Empresa<select id="fEmp" class="bo-in"></select></label>
+            <label class="bo-lbl">Tipo<select id="fTipo" class="bo-in">
+              <option value="boleto">Boleto</option><option value="manual">Imposto/Manual</option><option value="cartao">Cartão</option>
+              <option value="fatura_ml">Fatura ML</option><option value="flex">Flex</option><option value="pessoal">Pessoal</option>
+              <option value="custo_fixo">Custo Fixo</option><option value="custo_variavel">Custo Variável</option></select></label>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label class="bo-lbl">Categoria<select id="fCat" class="bo-in"><option value="">Sem categoria</option></select></label>
+            <label class="bo-lbl">Fornecedor<input id="fSup" class="bo-in" placeholder="opcional"></label>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label class="bo-lbl">Banco<input id="fBanco" class="bo-in" placeholder="opcional"></label>
+            <label class="bo-lbl">Vencimento<input type="date" id="fDate" class="bo-in"></label>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label class="bo-lbl">Valor (R$)<input type="number" step="0.01" id="fVal" class="bo-in" placeholder="0,00"></label>
+            <label class="bo-lbl">Parcelas<input type="number" min="1" value="1" id="fParc" class="bo-in"></label>
+          </div>
+          <button class="bo-cta" onclick="cadastrar()">+ Lançar</button>
+          <p style="font-size:11px;color:var(--text-muted);margin-top:10px">Com parcelas &gt; 1, cria uma dívida por mês (valor ÷ parcelas), começando no vencimento.</p>
+        </div>
+
+        <!-- Tabela + recebíveis + cartões -->
+        <div>
+          <div class="bo-card">
+            <div class="bo-card-h"><h3>📄 Contas a Pagar <span id="boMesLbl" class="desc"></span></h3></div>
+            <div id="boTipoTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
+            <div style="overflow:auto;max-height:60vh">
+              <table class="bo-t">
+                <thead><tr><th>Descrição</th><th>Empresa</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Vencimento</th><th>Valor</th><th>Status</th><th style="text-align:center">Ações</th></tr></thead>
+                <tbody id="boLista"><tr><td colspan="9" class="bo-empty">Carregando…</td></tr></tbody>
+                <tfoot id="boFoot"></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Resumo por Empresa -->
+          <div class="bo-card">
+            <div class="bo-card-h"><h3>🏢 Resumo por Empresa</h3></div>
+            <div class="bo-cards" id="boResumoEmp"></div>
+          </div>
+
+          <!-- Calendário de Vencimentos -->
+          <div class="bo-card">
+            <div class="bo-card-h"><h3>🗓️ Calendário de Vencimentos <span id="boCalLbl" class="desc"></span></h3>
+              <span style="margin-left:auto;font-size:11px;color:var(--text-muted)"><span style="color:#f87171">●</span> pendente · <span style="color:#3fb950">●</span> pago · <span style="color:#3b82f6">●</span> recebível</span>
+            </div>
+            <div class="bo-kpis" id="boCalHead" style="margin-bottom:14px"></div>
+            <div id="boCal"></div>
+          </div>
+
+          <div class="bo-card">
+            <div class="bo-card-h"><h3>💰 Recebíveis (contas a receber)</h3>
+              <button class="bo-btn" style="margin-left:auto" onclick="novoRecebivel()"><i class="fas fa-plus"></i> Novo recebível</button>
+            </div>
+            <div style="overflow:auto;max-height:40vh">
+              <table class="bo-t">
+                <thead><tr><th>Descrição</th><th>Empresa</th><th>Data</th><th>Valor</th><th>Status</th><th style="text-align:center">Ações</th></tr></thead>
+                <tbody id="boRec"><tr><td colspan="6" class="bo-empty">Carregando…</td></tr></tbody>
+                <tfoot id="boRecFoot"></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div class="bo-card">
+            <div class="bo-card-h"><h3>💳 Cartões</h3><span class="desc" id="boCartLbl"></span></div>
+            <div class="bo-cards" id="boCartoes"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="bo-modal-ov" id="boModal">
+  <div class="bo-modal">
+    <div class="bo-modal-h"><h3 id="boModalTitle"></h3><button class="bo-modal-x" onclick="fecharModal()">✕</button></div>
+    <div class="bo-modal-b" id="boModalBody"></div>
+    <div class="bo-modal-f">
+      <button class="bo-btn-cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="bo-btn-ok" id="boModalOk">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const EMPRESAS=['UNIFULL','TOP MIX','R SOUZA','SHOPEE'];
+const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
+const fmtDate=s=>{ if(!s) return '—'; const p=String(s).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s; };
+const hojeISO=()=>new Date().toISOString().slice(0,10);
+function tipoLabel(t){ return {boleto:'Boleto',manual:'Imposto',cartao:'Cartão',fatura_ml:'Fatura ML',flex:'Flex',pessoal:'Pessoal',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'}[t]||t||'—'; }
+function statusReal(b){ if(b.status==='pago') return 'pago'; if((b.date||'')< hojeISO()) return 'atrasado'; return 'pendente'; }
+
+let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, fTipo='todos';
+const TIPOS=[['todos','Todos'],['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
+const nfDe=b=>b.numero_nf||b.nf||b.nota_fiscal||'';
+function showStatus(t,err){ const el=document.getElementById('boStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
+
+async function load(){
+  const rB=await DB.getFinanceiroDados('boletos_mensais',5000,'date.asc'); BOLETOS=rB.rows||[];
+  const rR=await DB.getFinanceiroDados('receivables',3000,'date.asc'); RECS=rR.rows||[];
+  const rCa=await DB.getFinanceiroDados('cartoes',500); CARTOES=rCa.rows||[];
+  const rCt=await DB.getFinanceiroDados('boleto_categories',1000); CATS=rCt.rows||[]; CATMAP={}; CATS.forEach(c=>CATMAP[c.id]=c.name);
+  const errs=[['boletos_mensais',rB],['receivables',rR],['cartoes',rCa],['boleto_categories',rCt]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
+  if(errs.length) showStatus(`⚠️ <b>Falha ao ler o banco.</b> ${esc(errs.join(' · '))}.`,true);
+  else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.`,false);
+  const sel=document.getElementById('fCat'); sel.innerHTML='<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  render();
+}
+
+function selEmp(){ return document.getElementById('boEmpresa').value; }
+function selMesRef(){ return `${document.getElementById('boAno').value}-${String(document.getElementById('boMes').value).padStart(2,'0')}`; }
+function boletosMes(){
+  const mr=selMesRef(), emp=selEmp(), f=document.getElementById('boFiltro').value;
+  return BOLETOS.filter(b=>{
+    if((b.mes_referencia||'')!==mr) return false;
+    if(emp && String(b.empresa||'').trim()!==emp) return false;
+    if(f!=='todos' && statusReal(b)!==f) return false;
+    if(fTipo!=='todos' && (b.tipo||'')!==fTipo) return false;
+    return true;
+  });
+}
+
+function render(){
+  const m=+document.getElementById('boMes').value, y=+document.getElementById('boAno').value;
+  document.getElementById('boMesLbl').textContent=`— ${MESES[m-1]}/${y}${selEmp()?' · '+selEmp():''}`;
+  document.getElementById('boCalLbl').textContent=`— ${MESES[m-1]}/${y}`;
+  renderTipoTabs(); renderKpis(); renderLista(); renderRecs(); renderCartoes(); renderResumoEmp(); renderCalendario();
+}
+function renderTipoTabs(){
+  const mr=selMesRef(), emp=selEmp();
+  const base=BOLETOS.filter(b=>(b.mes_referencia||'')===mr && (!emp||String(b.empresa||'').trim()===emp));
+  document.getElementById('boTipoTabs').innerHTML=TIPOS.map(([k,l])=>{
+    const n=k==='todos'?base.length:base.filter(b=>(b.tipo||'')===k).length;
+    return `<button class="bo-btn ${fTipo===k?'':''}" style="${fTipo===k?'background:#1f2937;color:#fff;border-color:#374151':''}" onclick="setTipo('${k}')">${l}${n?` <span style="opacity:.7">${n}</span>`:''}</button>`;
+  }).join('');
+}
+function setTipo(t){ fTipo=t; render(); }
+function renderResumoEmp(){
+  const mr=selMesRef();
+  const by={}; BOLETOS.filter(b=>(b.mes_referencia||'')===mr).forEach(b=>{ const e=(b.empresa||'Sem Empresa').trim()||'Sem Empresa'; const o=(by[e]=by[e]||{total:0,pago:0,n:0}); const v=+b.value||0; o.total+=v; o.n++; if(statusReal(b)==='pago') o.pago+=v; });
+  const arr=Object.entries(by).sort((a,b)=>b[1].total-a[1].total);
+  const wrap=document.getElementById('boResumoEmp');
+  if(!arr.length){ wrap.innerHTML='<div class="bo-empty">Sem contas neste mês.</div>'; return; }
+  wrap.innerHTML=arr.map(([e,o])=>{
+    const resta=o.total-o.pago, pct=o.total?o.pago/o.total*100:0;
+    return `<div class="bo-cc"><div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(e)}</b><span class="bo-chip emp">${o.n}</span></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Total</div><div style="font-weight:800;font-size:17px">${BRL(o.total)}</div>
+      <div style="height:6px;background:var(--bg-card);border-radius:4px;overflow:hidden;margin:8px 0"><span style="display:block;height:100%;width:${pct}%;background:#3fb950"></span></div>
+      <div style="font-size:11px"><span class="up">● Pago ${BRL(o.pago)}</span><br><span class="down">● Resta ${BRL(resta)}</span></div></div>`;
+  }).join('');
+}
+function renderCalendario(){
+  const m=+document.getElementById('boMes').value, y=+document.getElementById('boAno').value, mr=selMesRef();
+  const bol=BOLETOS.filter(b=>(b.mes_referencia||'')===mr);
+  const totBol=bol.reduce((s,b)=>s+(+b.value||0),0);
+  const pagoBol=bol.filter(b=>statusReal(b)==='pago').reduce((s,b)=>s+(+b.value||0),0);
+  const atrasados=bol.filter(b=>statusReal(b)==='atrasado');
+  const recMes=RECS.filter(r=>(r.date||'').slice(0,7)===mr);
+  const totRec=recMes.reduce((s,r)=>s+(+r.value||0),0);
+  const pendBol=totBol-pagoBol, pendRec=recMes.filter(r=>!r.recebido).reduce((s,r)=>s+(+r.value||0),0);
+  const saldoMes=pendRec-pendBol;
+  document.getElementById('boCalHead').innerHTML=`
+    <div class="bo-kpi"><div class="k">📄 Total Boletos</div><div class="v">${BRL(totBol)}</div><div class="s">${bol.length} conta(s)</div></div>
+    <div class="bo-kpi pago"><div class="k">💰 Total Recebíveis</div><div class="v">${BRL(totRec)}</div><div class="s">${recMes.length} previsto(s)</div></div>
+    <div class="bo-kpi atr"><div class="k">⚠️ Atrasados</div><div class="v">${atrasados.length}</div><div class="s">${BRL(atrasados.reduce((s,b)=>s+(+b.value||0),0))}</div></div>
+    <div class="bo-kpi"><div class="k">🏦 Saldo do Mês</div><div class="v" style="color:${saldoMes>=0?'#3fb950':'#f87171'}">${BRL(saldoMes)}</div><div class="s">recebíveis − boletos pendentes</div></div>`;
+  // grade do calendário
+  const first=new Date(y,m-1,1), start=first.getDay(), days=new Date(y,m,0).getDate();
+  const byDay={}; bol.forEach(b=>{ const d=+(b.date||'').slice(8,10); (byDay[d]=byDay[d]||{pend:0,pago:0,atr:0,rec:0,val:0}); const st=statusReal(b); byDay[d][st==='pago'?'pago':st==='atrasado'?'atr':'pend']++; byDay[d].val+=(+b.value||0); });
+  recMes.forEach(r=>{ const d=+(r.date||'').slice(8,10); (byDay[d]=byDay[d]||{pend:0,pago:0,atr:0,rec:0,val:0}); byDay[d].rec++; });
+  const today=new Date(), isCur=today.getMonth()+1===m&&today.getFullYear()===y, td=today.getDate();
+  let cells=''; for(let i=0;i<start;i++) cells+='<div></div>';
+  for(let d=1;d<=days;d++){ const o=byDay[d]||{}; const dots=[];
+    if(o.pend) dots.push(`<span style="color:#f87171">●</span>`.repeat(Math.min(o.pend,3)));
+    if(o.atr) dots.push(`<span style="color:#f87171">◆</span>`.repeat(Math.min(o.atr,3)));
+    if(o.pago) dots.push(`<span style="color:#3fb950">●</span>`.repeat(Math.min(o.pago,3)));
+    if(o.rec) dots.push(`<span style="color:#3b82f6">●</span>`.repeat(Math.min(o.rec,3)));
+    const cur=isCur&&d===td;
+    cells+=`<div style="border:1px solid ${cur?'#3fb950':'var(--border)'};border-radius:8px;min-height:64px;padding:6px;background:${cur?'rgba(46,160,67,.06)':'var(--bg-card2)'}">
+      <div style="font-weight:700;font-size:12px">${d}${cur?' <span style="font-size:9px;background:#111;color:#fff;border-radius:4px;padding:1px 4px">HOJE</span>':''}</div>
+      <div style="font-size:9px;line-height:1.3;margin-top:2px">${dots.join(' ')}</div>
+      ${o.val?`<div style="font-size:9px;color:var(--text-muted);margin-top:2px">${BRL(o.val)}</div>`:''}</div>`;
+  }
+  document.getElementById('boCal').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;font-size:10px;color:var(--text-muted);text-align:center;margin-bottom:6px">${['DOM','SEG','TER','QUA','QUI','SEX','SÁB'].map(d=>`<div>${d}</div>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${cells}</div>`;
+}
+
+function renderKpis(){
+  const mr=selMesRef(), emp=selEmp();
+  const list=BOLETOS.filter(b=>(b.mes_referencia||'')===mr && (!emp||String(b.empresa||'').trim()===emp));
+  let total=0,pago=0,pend=0,atr=0, cP=0,cA=0;
+  list.forEach(b=>{ const v=+b.value||0, st=statusReal(b); total+=v; if(st==='pago')pago+=v; else if(st==='atrasado'){atr+=v;cA++;} else {pend+=v;cP++;} });
+  document.getElementById('boKpis').innerHTML=`
+    <div class="bo-kpi"><div class="k">📄 Total do Mês</div><div class="v">${BRL(total)}</div><div class="s">${list.length} conta(s)</div></div>
+    <div class="bo-kpi pago"><div class="k">✅ Pago</div><div class="v">${BRL(pago)}</div><div class="s">${list.length-cP-cA} quitada(s)</div></div>
+    <div class="bo-kpi pend"><div class="k">🕗 Pendente</div><div class="v">${BRL(pend)}</div><div class="s">${cP} a vencer</div></div>
+    <div class="bo-kpi atr"><div class="k">⚠️ Atrasado</div><div class="v">${BRL(atr)}</div><div class="s">${cA} vencida(s)</div></div>`;
+}
+
+function renderLista(){
+  const list=boletosMes(), tb=document.getElementById('boLista'), ft=document.getElementById('boFoot');
+  if(!list.length){ tb.innerHTML='<tr><td colspan="9" class="bo-empty">Sem contas neste filtro.</td></tr>'; ft.innerHTML=''; return; }
+  tb.innerHTML=list.map(b=>{
+    const st=statusReal(b);
+    return `<tr>
+      <td><b>${esc(b.name||'—')}</b>${b.numero_parcelas>1?` <span class="bo-chip emp">${b.numero_parcela||1}/${b.numero_parcelas}</span>`:''} <span class="bo-chip emp">${tipoLabel(b.tipo)}</span></td>
+      <td><span class="bo-chip emp">${esc((b.empresa||'—').trim())}</span></td>
+      <td style="color:var(--text-muted)">${esc(b.category||CATMAP[b.category_id]||'—')}</td>
+      <td style="color:var(--text-muted)">${esc(b.supplier||'—')}</td>
+      <td style="color:var(--text-muted)">${esc(nfDe(b)||'—')}</td>
+      <td>${fmtDate(b.date)}</td>
+      <td style="font-weight:700">${BRL(+b.value||0)}</td>
+      <td><span class="bo-chip ${st}">${st==='pago'?'Pago':st==='atrasado'?'Atrasado':'Pendente'}</span></td>
+      <td style="text-align:center">
+        <button class="bo-icon pay" title="${st==='pago'?'Marcar pendente':'Marcar pago'}" onclick="togglePago('${esc(b.id)}')"><i class="fas fa-${st==='pago'?'rotate-left':'check'}"></i></button>
+        <button class="bo-icon" title="Editar" onclick="editarBoleto('${esc(b.id)}')"><i class="fas fa-pen"></i></button>
+        <button class="bo-icon del" title="Excluir" onclick="excluirBoleto('${esc(b.id)}')"><i class="fas fa-trash"></i></button>
+      </td></tr>`;
+  }).join('');
+  const tot=list.reduce((s,b)=>s+(+b.value||0),0);
+  const pago=list.filter(b=>statusReal(b)==='pago').reduce((s,b)=>s+(+b.value||0),0);
+  ft.innerHTML=`<tr><td colspan="6">TOTAL — Pago ${BRL(pago)} · Em aberto ${BRL(tot-pago)}</td><td>${BRL(tot)}</td><td colspan="2"></td></tr>`;
+}
+
+function renderRecs(){
+  const mr=selMesRef(), emp=selEmp();
+  const list=RECS.filter(r=>{ const rm=(r.date||'').slice(0,7); if(rm!==mr) return false; if(emp && String(r.empresa||'').trim()!==emp) return false; return true; });
+  const tb=document.getElementById('boRec'), ft=document.getElementById('boRecFoot');
+  if(!list.length){ tb.innerHTML='<tr><td colspan="6" class="bo-empty">Sem recebíveis neste mês.</td></tr>'; ft.innerHTML=''; return; }
+  tb.innerHTML=list.map(r=>`<tr>
+    <td><b>${esc(r.description||'—')}</b></td>
+    <td><span class="bo-chip emp">${esc((r.empresa||'—').trim())}</span></td>
+    <td>${fmtDate(r.date)}</td>
+    <td style="font-weight:700;color:#3fb950">${BRL(+r.value||0)}</td>
+    <td><span class="bo-chip ${r.recebido?'pago':'pendente'}">${r.recebido?'Recebido':'A receber'}</span></td>
+    <td style="text-align:center">
+      <button class="bo-icon pay" title="${r.recebido?'Desmarcar':'Marcar recebido'}" onclick="toggleReceb('${esc(r.id)}')"><i class="fas fa-${r.recebido?'rotate-left':'check'}"></i></button>
+      <button class="bo-icon del" title="Excluir" onclick="excluirReceb('${esc(r.id)}')"><i class="fas fa-trash"></i></button>
+    </td></tr>`).join('');
+  const tot=list.reduce((s,r)=>s+(+r.value||0),0), receb=list.filter(r=>r.recebido).reduce((s,r)=>s+(+r.value||0),0);
+  ft.innerHTML=`<tr><td colspan="3">TOTAL — Recebido ${BRL(receb)} · A receber ${BRL(tot-receb)}</td><td>${BRL(tot)}</td><td colspan="2"></td></tr>`;
+}
+
+function renderCartoes(){
+  const mr=selMesRef();
+  const wrap=document.getElementById('boCartoes');
+  document.getElementById('boCartLbl').innerHTML=`<button class="bo-btn" onclick="novoCartao()"><i class="fas fa-plus"></i> Novo cartão</button>`;
+  if(!CARTOES.length){ wrap.innerHTML='<div class="bo-empty">Nenhum cartão cadastrado.</div>'; return; }
+  wrap.innerHTML=CARTOES.map(c=>{
+    const fatura=BOLETOS.filter(b=>(b.mes_referencia||'')===mr && b.tipo==='cartao' && (String(b.cartao_credito||'').trim()===String(c.nome||'').trim() || b.cartao_id===c.id)).reduce((s,b)=>s+(+b.value||0),0);
+    const cor=c.cor||'#64748b';
+    return `<div class="bo-cc" style="border-left:4px solid ${cor}">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(c.nome||'—')}</b><span style="font-size:11px;color:var(--text-muted)">${esc(c.bandeira||'')}</span></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Fecha dia ${c.dia_fechamento||'—'} · Vence dia ${c.dia_vencimento||'—'}</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Fatura do mês</div>
+      <div style="font-weight:800;font-size:18px">${BRL(fatura)}</div>
+      ${c.limite?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Limite ${BRL(c.limite)}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── Cadastro (com parcelamento) ─────────────────────────────────────────────
+function fMsg(t,err){ const el=document.getElementById('boFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
+function cadastrar(){
+  const name=document.getElementById('fName').value.trim(), val=pNum(document.getElementById('fVal').value);
+  const date=document.getElementById('fDate').value, emp=document.getElementById('fEmp').value, tipo=document.getElementById('fTipo').value;
+  const catId=document.getElementById('fCat').value, sup=document.getElementById('fSup').value.trim(), banco=document.getElementById('fBanco').value.trim();
+  const parc=Math.max(1,Math.round(pNum(document.getElementById('fParc').value)||1));
+  if(!name){ fMsg('Informe a descrição.',true); return; }
+  if(val<=0){ fMsg('Informe um valor.',true); return; }
+  if(!date){ fMsg('Informe o vencimento.',true); return; }
+  const valorParc=val/parc;
+  const body=`<table class="bo-sum">
+    <tr><td>Descrição</td><td>${esc(name)}</td></tr>
+    <tr><td>Empresa</td><td>${esc(emp)}</td></tr>
+    <tr><td>Tipo</td><td>${tipoLabel(tipo)}</td></tr>
+    <tr><td>Vencimento</td><td>${fmtDate(date)}</td></tr>
+    <tr><td>Valor total</td><td>${BRL(val)}</td></tr>
+    <tr><td>Parcelas</td><td>${parc}× de ${BRL(valorParc)}</td></tr>
+    </table><div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Confira antes de gravar.</div>`;
+  abrirModal('✅ Confirmar lançamento', body, parc>1?`Lançar ${parc} parcelas`:'Confirmar e gravar', ()=>doInsert({name,val,valorParc,date,emp,tipo,catId,sup,banco,parc}), false);
+}
+async function doInsert(d){
+  modalBusy(true,'Gravando…');
+  const base=new Date(d.date+'T00:00:00'); let erro=null; const criados=[];
+  for(let i=0;i<d.parc;i++){
+    const dt=new Date(base.getFullYear(),base.getMonth()+i,base.getDate());
+    const iso=dt.toISOString().slice(0,10), mr=iso.slice(0,7);
+    const row={ name:d.name, category:CATMAP[d.catId]||null, category_id:d.catId||null, supplier:d.sup||null, banco:d.banco||null,
+      date:iso, value:+d.valorParc.toFixed(2), status:'pendente', mes_referencia:mr, empresa:d.emp, tipo:d.tipo,
+      is_origem:i===0, numero_parcela:d.parc>1?i+1:null, numero_parcelas:d.parc>1?d.parc:null, valor_total:d.parc>1?d.val:null };
+    const r=await DB.addFinanceiroRow('boletos_mensais',row);
+    if(r&&r.error){ erro=r.error; break; }
+    const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) criados.push(saved);
+  }
+  if(erro){ modalBusy(false); eMsgErr('Erro: '+esc(erro)+(criados.length?` (${criados.length} parcela(s) já criadas)`:'')); criados.forEach(b=>BOLETOS.push(b)); return; }
+  criados.forEach(b=>BOLETOS.push(b));
+  fecharModal();
+  ['fName','fVal','fSup','fBanco'].forEach(id=>document.getElementById(id).value=''); document.getElementById('fParc').value='1';
+  render(); fMsg('✅ Lançado.',false);
+}
+
+function togglePago(id){
+  const b=BOLETOS.find(x=>String(x.id)===String(id)); if(!b) return;
+  const novo=b.status==='pago'?'pendente':'pago';
+  doPatchBoleto(id,{status:novo});
+}
+async function doPatchBoleto(id,patch){
+  const r=await DB.updateFinanceiroRow('boletos_mensais',id,patch);
+  if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null, i=BOLETOS.findIndex(x=>String(x.id)===String(id));
+  if(i>=0) BOLETOS[i]=saved||Object.assign({},BOLETOS[i],patch);
+  render();
+}
+function editarBoleto(id){
+  const b=BOLETOS.find(x=>String(x.id)===String(id)); if(!b) return;
+  const body=`<div style="display:grid;gap:12px">
+    <div><label style="font-size:11px;color:var(--text-muted)">Descrição</label><input id="eName" class="bo-in" value="${esc(b.name||'')}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label style="font-size:11px;color:var(--text-muted)">Empresa</label><select id="eEmp" class="bo-in">${EMPRESAS.map(e=>`<option${String(b.empresa||'').trim()===e?' selected':''}>${e}</option>`).join('')}</select></div>
+      <div><label style="font-size:11px;color:var(--text-muted)">Vencimento</label><input type="date" id="eDate" class="bo-in" value="${esc((b.date||'').slice(0,10))}"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label style="font-size:11px;color:var(--text-muted)">Valor (R$)</label><input type="number" step="0.01" id="eVal" class="bo-in" value="${+b.value||0}"></div>
+      <div><label style="font-size:11px;color:var(--text-muted)">Fornecedor</label><input id="eSup" class="bo-in" value="${esc(b.supplier||'')}"></div>
+    </div></div>
+    <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)"></div>`;
+  abrirModal('✏️ Editar conta', body, 'Salvar', ()=>doEditBoleto(id), false);
+}
+async function doEditBoleto(id){
+  const date=document.getElementById('eDate').value;
+  const patch={ name:document.getElementById('eName').value.trim(), empresa:document.getElementById('eEmp').value, date, value:pNum(document.getElementById('eVal').value), supplier:document.getElementById('eSup').value.trim()||null, mes_referencia:(date||'').slice(0,7) };
+  if(!patch.name){ eMsgErr('Informe a descrição.'); return; }
+  modalBusy(true,'Salvando…');
+  const r=await DB.updateFinanceiroRow('boletos_mensais',id,patch);
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null, i=BOLETOS.findIndex(x=>String(x.id)===String(id));
+  if(i>=0) BOLETOS[i]=saved||Object.assign({},BOLETOS[i],patch);
+  fecharModal(); render();
+}
+function excluirBoleto(id){
+  const b=BOLETOS.find(x=>String(x.id)===String(id)); if(!b) return;
+  abrirModal('🗑️ Excluir conta', `<p>Excluir <b>${esc(b.name||'—')}</b> (${BRL(+b.value||0)})?</p><p style="color:var(--text-muted)">Não pode ser desfeito.</p><div id="eMsg" style="font-size:12px"></div>`, 'Excluir', async()=>{
+    modalBusy(true,'Excluindo…');
+    const r=await DB.deleteFinanceiroRow('boletos_mensais',id);
+    if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+    BOLETOS=BOLETOS.filter(x=>String(x.id)!==String(id)); fecharModal(); render();
+  }, true);
+}
+
+// ── Recebíveis ──────────────────────────────────────────────────────────────
+function novoRecebivel(){
+  const m=+document.getElementById('boMes').value, y=+document.getElementById('boAno').value;
+  const body=`<div style="display:grid;gap:12px">
+    <div><label style="font-size:11px;color:var(--text-muted)">Descrição</label><input id="rDesc" class="bo-in" placeholder="Ex: Repasse ML, venda a prazo…"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label style="font-size:11px;color:var(--text-muted)">Empresa</label><select id="rEmp" class="bo-in">${EMPRESAS.map(e=>`<option>${e}</option>`).join('')}</select></div>
+      <div><label style="font-size:11px;color:var(--text-muted)">Data prevista</label><input type="date" id="rDate" class="bo-in" value="${y}-${String(m).padStart(2,'0')}-${String(Math.min(new Date().getDate(),28)).padStart(2,'0')}"></div>
+    </div>
+    <div><label style="font-size:11px;color:var(--text-muted)">Valor (R$)</label><input type="number" step="0.01" id="rVal" class="bo-in" placeholder="0,00"></div></div>
+    <div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
+  abrirModal('💰 Novo recebível', body, 'Cadastrar', doAddReceb, false);
+}
+async function doAddReceb(){
+  const description=document.getElementById('rDesc').value.trim(), value=pNum(document.getElementById('rVal').value), date=document.getElementById('rDate').value, empresa=document.getElementById('rEmp').value;
+  if(!description){ eMsgErr('Informe a descrição.'); return; }
+  if(value<=0){ eMsgErr('Informe o valor.'); return; }
+  modalBusy(true,'Salvando…');
+  const r=await DB.addFinanceiroRow('receivables',{description,value,date,empresa,recebido:false});
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) RECS.push(saved);
+  fecharModal(); render();
+}
+async function toggleReceb(id){
+  const r0=RECS.find(x=>String(x.id)===String(id)); if(!r0) return;
+  const novo=!r0.recebido;
+  const r=await DB.updateFinanceiroRow('receivables',id,{recebido:novo, data_recebimento:novo?hojeISO():null});
+  if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null, i=RECS.findIndex(x=>String(x.id)===String(id));
+  if(i>=0) RECS[i]=saved||Object.assign({},RECS[i],{recebido:novo}); render();
+}
+function excluirReceb(id){
+  const r0=RECS.find(x=>String(x.id)===String(id)); if(!r0) return;
+  abrirModal('🗑️ Excluir recebível', `<p>Excluir <b>${esc(r0.description||'—')}</b> (${BRL(+r0.value||0)})?</p><div id="eMsg" style="font-size:12px"></div>`, 'Excluir', async()=>{
+    modalBusy(true,'Excluindo…');
+    const r=await DB.deleteFinanceiroRow('receivables',id);
+    if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+    RECS=RECS.filter(x=>String(x.id)!==String(id)); fecharModal(); render();
+  }, true);
+}
+
+// ── Cartões / Categorias ────────────────────────────────────────────────────
+function novoCartao(){
+  const body=`<div style="display:grid;gap:12px">
+    <div><label style="font-size:11px;color:var(--text-muted)">Nome do cartão</label><input id="cNome" class="bo-in" placeholder="Ex: Nubank Empresa"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label style="font-size:11px;color:var(--text-muted)">Bandeira</label><input id="cBand" class="bo-in" placeholder="Visa, Master…"></div>
+      <div><label style="font-size:11px;color:var(--text-muted)">Limite (R$)</label><input type="number" step="0.01" id="cLim" class="bo-in" placeholder="opcional"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label style="font-size:11px;color:var(--text-muted)">Dia fechamento</label><input type="number" min="1" max="31" id="cFech" class="bo-in" value="20"></div>
+      <div><label style="font-size:11px;color:var(--text-muted)">Dia vencimento</label><input type="number" min="1" max="31" id="cVenc" class="bo-in" value="10"></div>
+    </div></div>
+    <div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
+  abrirModal('💳 Novo cartão', body, 'Cadastrar', doAddCartao, false);
+}
+async function doAddCartao(){
+  const nome=document.getElementById('cNome').value.trim();
+  if(!nome){ eMsgErr('Informe o nome.'); return; }
+  modalBusy(true,'Salvando…');
+  const row={ nome, bandeira:document.getElementById('cBand').value.trim()||null, limite:pNum(document.getElementById('cLim').value)||null, dia_fechamento:Math.round(pNum(document.getElementById('cFech').value))||20, dia_vencimento:Math.round(pNum(document.getElementById('cVenc').value))||10, ativo:true };
+  const r=await DB.addFinanceiroRow('cartoes',row);
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) CARTOES.push(saved);
+  fecharModal(); render();
+}
+function abrirCategorias(){
+  const list=CATS.length?CATS.map(c=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(c.name)}</span></div>`).join(''):'<div class="bo-empty">Nenhuma categoria ainda.</div>';
+  const body=`<div style="margin-bottom:12px">${list}</div><label style="font-size:12px;color:var(--text-muted)">Nova categoria<input id="cCatNome" class="bo-in" placeholder="Ex: Fornecedor, Imposto, Aluguel…"></label><div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
+  abrirModal('🏷️ Categorias de Boleto', body, 'Adicionar', doAddCat, false);
+}
+async function doAddCat(){
+  const nome=document.getElementById('cCatNome').value.trim();
+  if(!nome){ eMsgErr('Informe o nome.'); return; }
+  modalBusy(true,'Salvando…');
+  const r=await DB.addFinanceiroRow('boleto_categories',{name:nome,type:'categoria'});
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved){ CATS.push(saved); CATMAP[saved.id]=saved.name; }
+  const sel=document.getElementById('fCat'); sel.innerHTML='<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  fecharModal(); render();
+}
+
+function exportarCsv(){
+  const list=boletosMes();
+  const linhas=[['Descrição','Empresa','Categoria','Fornecedor','Vencimento','Valor','Status','Tipo']].concat(list.map(b=>[b.name||'',b.empresa||'',b.category||CATMAP[b.category_id]||'',b.supplier||'',b.date||'',String(+b.value||0).replace('.',','),statusReal(b),tipoLabel(b.tipo)]));
+  const csv=linhas.map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}), url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`boletos-${selMesRef()}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+
+// ── Modal ──
+let modalAction=null;
+function abrirModal(title,bodyHtml,okLabel,onOk,danger){
+  document.getElementById('boModalTitle').textContent=title;
+  document.getElementById('boModalBody').innerHTML=bodyHtml;
+  const ok=document.getElementById('boModalOk'); ok.textContent=okLabel; ok.dataset.prev=okLabel; ok.disabled=false; ok.className='bo-btn-ok'+(danger?' danger':'');
+  modalAction=onOk; document.getElementById('boModal').style.display='flex';
+}
+function fecharModal(){ document.getElementById('boModal').style.display='none'; modalAction=null; }
+function modalBusy(on,label){ const ok=document.getElementById('boModalOk'); ok.disabled=on; ok.textContent=on&&label?label:(ok.dataset.prev||'Confirmar'); }
+function eMsgErr(t){ const m=document.getElementById('eMsg'); if(m) m.innerHTML='<span style="color:var(--red)">'+t+'</span>'; }
+
+function init(){
+  const now=new Date();
+  const se=document.getElementById('boEmpresa'); se.innerHTML='<option value="">Todas as empresas</option>'+EMPRESAS.map(e=>`<option>${e}</option>`).join('');
+  const fe=document.getElementById('fEmp'); fe.innerHTML=EMPRESAS.map(e=>`<option>${e}</option>`).join('');
+  const sm=document.getElementById('boMes'), sa=document.getElementById('boAno');
+  MESES.forEach((mm,i)=>sm.insertAdjacentHTML('beforeend',`<option value="${i+1}">${mm}</option>`)); sm.value=now.getMonth()+1;
+  for(let yy=now.getFullYear();yy>=now.getFullYear()-4;yy--) sa.insertAdjacentHTML('beforeend',`<option value="${yy}">${yy}</option>`); sa.value=now.getFullYear();
+  document.getElementById('fDate').value=now.toISOString().slice(0,10);
+  [se,sm,sa,document.getElementById('boFiltro')].forEach(s=>s.addEventListener('change',render));
+  document.getElementById('boModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });
+  document.getElementById('boModal').addEventListener('click', e=>{ if(e.target.id==='boModal') fecharModal(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('boModal').style.display==='flex') fecharModal(); });
+  load();
+}
+init();
+</script>
+</body>
+</html>

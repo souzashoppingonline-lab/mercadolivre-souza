@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recebíveis — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Recebíveis'; window.ACTIVE_NAV='financeiro-recebiveis.html';</script>
+  <style>
+    .rc-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .rc-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .rc-top select, .rc-top input { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
+    .rc-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+    .rc-btn:hover { border-color:#3fb950; }
+    .rc-tabs { display:flex; gap:6px; }
+    .rc-tab { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:10px; padding:8px 14px; font-size:12.5px; font-weight:700; cursor:pointer; }
+    .rc-tab.on { background:#1f2937; color:#fff; border-color:#374151; }
+    .rc-add { display:grid; grid-template-columns:150px 1fr 160px 130px auto; gap:10px; align-items:center; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:14px; }
+    @media(max-width:820px){ .rc-add { grid-template-columns:1fr 1fr; } }
+    .rc-add input, .rc-add select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; }
+    .rc-add .go { background:#3fb950; color:#03210d; border:none; border-radius:8px; padding:10px 16px; font-weight:800; cursor:pointer; }
+    .rc-note { background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.3); color:#f59e0b; border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:16px; }
+    .rc-day { border:1px solid var(--border); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+    .rc-day-h { display:flex; align-items:center; padding:10px 14px; background:var(--bg-card2); }
+    .rc-day-h .d { font-weight:800; } .rc-day-h .w { font-size:11px; color:var(--text-muted); margin-left:8px; text-transform:uppercase; }
+    .rc-day-h .tot { margin-left:auto; font-weight:800; } .rc-day-h .cnt { font-size:11px; color:var(--text-muted); margin-left:8px; }
+    .rc-row { display:grid; grid-template-columns:auto 120px 1fr auto auto; gap:10px; align-items:center; padding:9px 14px; border-top:1px solid var(--border); font-size:13px; }
+    .rc-row .chk { width:20px; height:20px; border-radius:6px; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; background:var(--bg-card2); }
+    .rc-row .chk.on { background:#3fb950; color:#03210d; border-color:#3fb950; }
+    .rc-row .val { font-weight:800; text-align:right; }
+    .rc-emp-brk { padding:6px 14px; font-size:11px; color:var(--text-muted); border-top:1px dashed var(--border); display:flex; gap:14px; flex-wrap:wrap; }
+    .rc-chip { border-radius:999px; padding:2px 9px; font-size:10px; font-weight:800; background:var(--bg-card2); color:var(--text-muted); border:1px solid var(--border); }
+    .rc-ok { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:11px; font-weight:800; border:1px solid var(--border); border-radius:8px; padding:3px 9px; }
+    .rc-ok.on { background:rgba(46,160,67,.15); color:#3fb950; border-color:rgba(46,160,67,.4); }
+    .rc-del { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:12px; }
+    .rc-del:hover { color:#f87171; }
+    .rc-foot { display:flex; gap:20px; flex-wrap:wrap; padding:12px 4px; font-size:13px; }
+    .rc-empty { color:var(--text-muted); font-size:13px; padding:24px; text-align:center; }
+    .rc-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .up{ color:#3fb950;} .down{ color:#f87171;}
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="rc-sub">Gerencie entradas previstas e confirmadas — só os recebíveis <b>pendentes</b> entram nos indicadores; recebidos ficam no histórico.</p>
+      <div id="rcStatus" class="rc-status"></div>
+
+      <div class="rc-top">
+        <select id="rcMes"></select><select id="rcAno"></select>
+        <select id="rcEmp"></select>
+        <div class="rc-tabs">
+          <button class="rc-tab on" id="tabTodos" onclick="setTab('todos')">Todos <span id="cTodos">0</span></button>
+          <button class="rc-tab" id="tabPend" onclick="setTab('pend')">Pendentes <span id="cPend">0</span></button>
+          <button class="rc-tab" id="tabReceb" onclick="setTab('receb')">Recebidos <span id="cReceb">0</span></button>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="rc-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> CSV</button>
+          <button class="rc-btn" onclick="exportarPdf()"><i class="fas fa-file-pdf"></i> PDF</button>
+          <button class="rc-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+      </div>
+
+      <div class="rc-add">
+        <input type="date" id="aData">
+        <input id="aDesc" placeholder="Descrição (opcional)">
+        <select id="aEmp"></select>
+        <input type="number" step="0.01" id="aVal" placeholder="Valor R$">
+        <button class="go" onclick="adicionar()">+ Adicionar</button>
+      </div>
+      <div id="aMsg" style="font-size:12px;margin:-6px 0 12px"></div>
+
+      <div class="rc-note">⚠️ <b>Regra de cálculo:</b> Apenas recebíveis <b>pendentes</b> entram nos indicadores financeiros (Cobertura e Capacidade de Compra). Recebidos ficam somente no histórico.</div>
+
+      <div id="rcList"></div>
+      <div class="rc-foot" id="rcFoot"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const DOW=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const EMPRESAS=['UNIFULL','TOP MIX','R SOUZA','SHOPEE'];
+const EMPCOR={'UNIFULL':'#3fb950','TOP MIX':'#f59e0b','R SOUZA':'#f97316','SHOPEE':'#ec4899'};
+const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
+const hojeISO=()=>new Date().toISOString().slice(0,10);
+
+let RECS=[], tab='todos';
+function showStatus(t,err){ const el=document.getElementById('rcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
+
+async function load(){
+  const r=await DB.getFinanceiroDados('receivables',5000,'date.asc'); RECS=r.rows||[];
+  if(r&&r.error) showStatus('⚠️ <b>Falha ao ler o banco.</b> '+esc(r.error),true);
+  else showStatus(`✅ Carregado: ${RECS.length} recebíveis.`,false);
+  render();
+}
+function selMes(){ return +document.getElementById('rcMes').value; }
+function selAno(){ return +document.getElementById('rcAno').value; }
+function mesRecs(){
+  const m=selMes(), y=selAno(), emp=document.getElementById('rcEmp').value;
+  return RECS.filter(r=>{ const d=(r.date||''); if(!d) return false; const dt=new Date(d+'T00:00:00'); if(dt.getMonth()+1!==m||dt.getFullYear()!==y) return false; if(emp && String(r.empresa||'').trim()!==emp) return false; return true; });
+}
+function setTab(t){ tab=t; ['todos','pend','receb'].forEach(x=>document.getElementById({todos:'tabTodos',pend:'tabPend',receb:'tabReceb'}[x]).classList.toggle('on',x===t)); render(); }
+
+function render(){
+  const all=mesRecs();
+  document.getElementById('cTodos').textContent=all.length;
+  document.getElementById('cPend').textContent=all.filter(r=>!r.recebido).length;
+  document.getElementById('cReceb').textContent=all.filter(r=>r.recebido).length;
+  let list=all; if(tab==='pend') list=all.filter(r=>!r.recebido); else if(tab==='receb') list=all.filter(r=>r.recebido);
+  const byDay={}; list.forEach(r=>{ const d=(r.date||'').slice(0,10); (byDay[d]=byDay[d]||[]).push(r); });
+  const dias=Object.keys(byDay).sort();
+  const wrap=document.getElementById('rcList');
+  if(!dias.length){ wrap.innerHTML='<div class="rc-empty">Sem recebíveis neste filtro.</div>'; }
+  else wrap.innerHTML=dias.map(d=>{
+    const rows=byDay[d], tot=rows.reduce((s,r)=>s+(+r.value||0),0);
+    const dt=new Date(d+'T00:00:00');
+    const emps={}; rows.forEach(r=>{ const e=(r.empresa||'—').trim(); emps[e]=(emps[e]||0)+(+r.value||0); });
+    const brk=Object.entries(emps).map(([e,v])=>`<span><span style="color:${EMPCOR[e]||'#94a3b8'}">●</span> ${esc(e)} ${BRL(v)}</span>`).join('');
+    return `<div class="rc-day">
+      <div class="rc-day-h"><span class="d">${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}</span><span class="w">${DOW[dt.getDay()]}</span><span class="tot">${BRL(tot)}</span><span class="cnt">${rows.length} rec.</span></div>
+      ${rows.map(r=>`<div class="rc-row">
+        <div class="chk ${r.recebido?'on':''}" onclick="toggle('${esc(r.id)}')">${r.recebido?'<i class="fas fa-check"></i>':''}</div>
+        <span class="rc-chip" style="border-color:${(EMPCOR[(r.empresa||'').trim()]||'#334155')}55">${esc((r.empresa||'—').trim())}</span>
+        <span>${esc(r.description||'Recebível')}</span>
+        <span class="val" style="color:${r.recebido?'#3fb950':'var(--text-main)'}">${BRL(+r.value||0)}</span>
+        <span style="display:flex;gap:6px;align-items:center"><button class="rc-ok ${r.recebido?'on':''}" onclick="toggle('${esc(r.id)}')">${r.recebido?'OK':'Receber'}</button><button class="rc-del" onclick="excluir('${esc(r.id)}')"><i class="fas fa-trash"></i></button></span>
+      </div>`).join('')}
+      <div class="rc-emp-brk"><b>POR EMPRESA</b> ${brk}</div>
+    </div>`;
+  }).join('');
+  const pend=all.filter(r=>!r.recebido).reduce((s,r)=>s+(+r.value||0),0);
+  const receb=all.filter(r=>r.recebido).reduce((s,r)=>s+(+r.value||0),0);
+  document.getElementById('rcFoot').innerHTML=`<span>Pendente: <b class="down">${BRL(pend)}</b></span><span>Recebido no mês: <b class="up">${BRL(receb)}</b></span><span style="color:var(--text-muted)">Total previsto: <b>${BRL(pend+receb)}</b></span>`;
+}
+
+async function adicionar(){
+  const description=document.getElementById('aDesc').value.trim(), value=pNum(document.getElementById('aVal').value);
+  const date=document.getElementById('aData').value||hojeISO(), empresa=document.getElementById('aEmp').value;
+  const msg=document.getElementById('aMsg');
+  if(value<=0){ msg.innerHTML='<span class="down">Informe o valor.</span>'; return; }
+  msg.textContent='Gravando…';
+  const r=await DB.addFinanceiroRow('receivables',{description:description||'Recebível',value,date,empresa,recebido:false});
+  if(r&&r.error){ msg.innerHTML='<span class="down">Erro: '+esc(r.error)+'</span>'; return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) RECS.push(saved);
+  document.getElementById('aDesc').value=''; document.getElementById('aVal').value='';
+  msg.innerHTML='<span class="up">✅ Recebível adicionado.</span>'; render();
+}
+async function toggle(id){
+  const r0=RECS.find(x=>String(x.id)===String(id)); if(!r0) return;
+  const novo=!r0.recebido;
+  const i=RECS.findIndex(x=>String(x.id)===String(id)); RECS[i]={...r0,recebido:novo}; render(); // otimista
+  const r=await DB.updateFinanceiroRow('receivables',id,{recebido:novo, data_recebimento:novo?hojeISO():null});
+  if(r&&r.error){ RECS[i]=r0; render(); showStatus('⚠️ '+esc(r.error),true); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved){ RECS[i]=saved; render(); }
+}
+async function excluir(id){
+  const r0=RECS.find(x=>String(x.id)===String(id)); if(!r0) return;
+  if(!confirm(`Excluir o recebível "${r0.description||'—'}" (${BRL(+r0.value||0)})?`)) return;
+  const r=await DB.deleteFinanceiroRow('receivables',id);
+  if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; }
+  RECS=RECS.filter(x=>String(x.id)!==String(id)); render();
+}
+
+function exportarCsv(){
+  const list=mesRecs();
+  const linhas=[['Data','Descrição','Empresa','Valor','Status']].concat(list.map(r=>[r.date||'',r.description||'',r.empresa||'',String(+r.value||0).replace('.',','),r.recebido?'Recebido':'Pendente']));
+  const csv=linhas.map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}), url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`recebiveis-${selAno()}-${String(selMes()).padStart(2,'0')}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+function exportarPdf(){
+  const list=mesRecs(), m=selMes(), y=selAno();
+  const trs=list.map(r=>`<tr><td>${esc((r.date||'').split('-').reverse().join('/'))}</td><td>${esc(r.description||'')}</td><td>${esc(r.empresa||'')}</td><td class="r">${BRL(+r.value||0)}</td><td>${r.recebido?'Recebido':'Pendente'}</td></tr>`).join('');
+  const pend=list.filter(r=>!r.recebido).reduce((s,r)=>s+(+r.value||0),0), receb=list.filter(r=>r.recebido).reduce((s,r)=>s+(+r.value||0),0);
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recebíveis ${MESES[m-1]}/${y}</title>
+   <style>body{font-family:Arial,sans-serif;color:#111;padding:24px}h1{font-size:18px;margin:0}.sub{color:#666;font-size:12px;margin:2px 0 16px}
+   table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px 8px;border-bottom:1px solid #ddd;text-align:left}td.r,th.r{text-align:right}th{background:#f3f4f6;font-size:10px;text-transform:uppercase;color:#555}</style></head>
+   <body><h1>Recebíveis — ${MESES[m-1]}/${y}</h1><div class="sub">Pendente ${BRL(pend)} · Recebido ${BRL(receb)} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+   <table><thead><tr><th>Data</th><th>Descrição</th><th>Empresa</th><th class="r">Valor</th><th>Status</th></tr></thead><tbody>${trs}</tbody></table>
+   <script>window.onload=function(){window.print();}<\/script></body></html>`;
+  const w=window.open('','_blank'); if(!w){ alert('Permita pop-ups para gerar o PDF.'); return; } w.document.write(html); w.document.close();
+}
+
+function init(){
+  const now=new Date(), sm=document.getElementById('rcMes'), sa=document.getElementById('rcAno');
+  MESES.forEach((mm,i)=>sm.insertAdjacentHTML('beforeend',`<option value="${i+1}">${mm}</option>`)); sm.value=now.getMonth()+1;
+  for(let yy=now.getFullYear();yy>=now.getFullYear()-4;yy--) sa.insertAdjacentHTML('beforeend',`<option value="${yy}">${yy}</option>`); sa.value=now.getFullYear();
+  document.getElementById('rcEmp').innerHTML='<option value="">Todas Empresas</option>'+EMPRESAS.map(e=>`<option>${e}</option>`).join('');
+  document.getElementById('aEmp').innerHTML=EMPRESAS.map(e=>`<option>${e}</option>`).join('');
+  document.getElementById('aData').value=now.toISOString().slice(0,10);
+  [sm,sa,document.getElementById('rcEmp')].forEach(s=>s.addEventListener('change',render));
+  load();
+}
+init();
+</script>
+</body>
+</html>

@@ -79,6 +79,7 @@
       <div class="bo-top">
         <select id="boEmpresa"></select>
         <select id="boMes"></select><select id="boAno"></select>
+        <select id="boDia"><option value="">Todos os dias</option></select>
         <select id="boFiltro"><option value="todos">Todos os status</option><option value="pendente">Pendentes</option><option value="atrasado">Atrasados</option><option value="pago">Pagos</option></select>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
           <button class="bo-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> CSV</button>
@@ -226,12 +227,13 @@ async function load(){
 function selEmp(){ return document.getElementById('boEmpresa').value; }
 function selMesRef(){ return `${document.getElementById('boAno').value}-${String(document.getElementById('boMes').value).padStart(2,'0')}`; }
 function boletosMes(){
-  const mr=selMesRef(), emp=selEmp(), f=document.getElementById('boFiltro').value;
+  const mr=selMesRef(), emp=selEmp(), f=document.getElementById('boFiltro').value, dia=document.getElementById('boDia').value;
   return BOLETOS.filter(b=>{
     if((b.mes_referencia||'')!==mr) return false;
     if(emp && String(b.empresa||'').trim()!==emp) return false;
     if(f!=='todos' && statusReal(b)!==f) return false;
     if(fTipo!=='todos' && (b.tipo||'')!==fTipo) return false;
+    if(dia && (b.date||'').slice(8,10)!==dia) return false;
     return true;
   });
 }
@@ -728,7 +730,8 @@ function init(){
   MESES.forEach((mm,i)=>sm.insertAdjacentHTML('beforeend',`<option value="${i+1}">${mm}</option>`)); sm.value=now.getMonth()+1;
   for(let yy=now.getFullYear();yy>=now.getFullYear()-4;yy--) sa.insertAdjacentHTML('beforeend',`<option value="${yy}">${yy}</option>`); sa.value=now.getFullYear();
   document.getElementById('fDate').value=now.toISOString().slice(0,10);
-  [se,sm,sa,document.getElementById('boFiltro')].forEach(s=>s.addEventListener('change',render));
+  const sd=document.getElementById('boDia'); for(let d=1;d<=31;d++) sd.insertAdjacentHTML('beforeend',`<option value="${String(d).padStart(2,'0')}">Dia ${d}</option>`);
+  [se,sm,sa,sd,document.getElementById('boFiltro')].forEach(s=>s.addEventListener('change',render));
   document.getElementById('boModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });
   document.getElementById('boModal').addEventListener('click', e=>{ if(e.target.id==='boModal') fecharModal(); });
   document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('boModal').style.display==='flex') fecharModal(); });

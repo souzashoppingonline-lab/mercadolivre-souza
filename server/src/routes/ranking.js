@@ -195,8 +195,11 @@ router.post('/ads/:id/ciclo', async (req, res) => {
     );
     await client.query('COMMIT');
     res.json({ ad: rows[0] });
-  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: e.message }); }
-  finally { client.release(); }
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[ranking] POST /ads/:id/ciclo falhou:', e.message, e.stack);
+    res.status(500).json({ error: e.message });
+  } finally { client.release(); }
 });
 
 // Histórico de ciclos encerrados de um anúncio (mais recente primeiro).

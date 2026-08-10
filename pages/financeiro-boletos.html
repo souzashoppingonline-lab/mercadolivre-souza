@@ -320,7 +320,7 @@ function renderLista(){
   tb.innerHTML=list.map(b=>{
     const st=statusReal(b);
     return `<tr>
-      <td><b>${esc(b.name||'—')}</b>${b.numero_parcelas>1?` <span class="bo-chip emp">${b.numero_parcela||1}/${b.numero_parcelas}</span>`:''} <span class="bo-chip emp">${tipoLabel(b.tipo)}</span></td>
+      <td><b>${esc(b.name||'—')}</b>${b.numero_parcelas>1?` <span class="bo-chip emp">${b.numero_parcela||1}/${b.numero_parcelas}</span>`:''} <span class="bo-chip" style="background:${(TIPO_COR[b.tipo]||'#64748b')}22;color:${TIPO_COR[b.tipo]||'#94a3b8'}">${tipoLabel(b.tipo)}</span></td>
       <td><span class="bo-chip emp">${esc((b.empresa||'—').trim())}</span></td>
       <td style="color:var(--text-muted)">${esc(b.category||CATMAP[b.category_id]||'—')}</td>
       <td style="color:var(--text-muted)">${esc(b.supplier||'—')}</td>
@@ -378,10 +378,15 @@ function renderCartoes(){
 
 // ── Formulário: tipo/status segmentado, empresa chips, bloco de cartão ──────
 let formTipo='boleto', formStatus='pendente';
-const FORM_TIPOS=[['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
+const FORM_TIPOS=[['boleto','Boleto','#3b82f6'],['cartao','Cartão','#ec4899'],['manual','Imposto','#22c55e'],['pessoal','Pessoal','#a78bfa'],['fatura_ml','Fatura ML','#eab308'],['flex','Flex','#06b6d4'],['custo_fixo','Custo Fixo','#f97316'],['custo_variavel','Custo Variável','#14b8a6']];
+const TIPO_COR={}; FORM_TIPOS.forEach(([k,,c])=>TIPO_COR[k]=c);
 function fMsg(t,err){ const el=document.getElementById('boFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
 function renderFormControls(){
-  document.getElementById('boTipoSeg').innerHTML=FORM_TIPOS.map(([k,l])=>`<button class="bo-btn" style="${formTipo===k?'background:#1f2937;color:#fff;border-color:#374151':''}" onclick="setFormTipo('${k}')">${l}</button>`).join('');
+  document.getElementById('boTipoSeg').innerHTML=FORM_TIPOS.map(([k,l,c])=>{
+    const sel=formTipo===k;
+    const style=sel ? `background:${c};color:#fff;border-color:${c};box-shadow:0 2px 8px ${c}55` : `border-left:4px solid ${c};color:${c}`;
+    return `<button class="bo-btn" style="${style}" onclick="setFormTipo('${k}')">${l}</button>`;
+  }).join('');
   document.getElementById('boStatusSeg').innerHTML=[['pendente','Pendente','#f59e0b'],['pago','Pago','#3fb950'],['atrasado','Atrasado','#f87171']].map(([k,l,c])=>`<button class="bo-btn" style="${formStatus===k?`background:${c}22;color:${c};border-color:${c}66`:''}" onclick="setFormStatus('${k}')">${l}</button>`).join('');
   document.getElementById('boEmpChips').innerHTML=EMPRESAS.map(e=>`<span class="bo-chip emp" style="cursor:pointer" onclick="document.getElementById('fEmp').value='${e}'">${e}</span>`).join('');
 }

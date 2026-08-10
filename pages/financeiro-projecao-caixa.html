@@ -216,23 +216,48 @@ function renderPeriodos(){
   document.getElementById('pjPer').innerHTML=dados.map(x=>{ const st=x.saldo<0?['Crítico','#f87171']:x.saldo<5000?['Atenção','#f59e0b']:['Saudável','#3fb950']; return `<div class="pj-perc"><div style="font-size:11px;color:var(--text-muted)">${x.p} dias</div><div style="font-weight:800;color:${cor(x.saldo)}">${BRL(x.saldo)}</div><div style="font-size:10px;color:var(--text-muted);margin-top:3px">▲ ${BRL(x.ent)} · ▼ ${BRL(x.sai)}</div><div style="font-size:10px;color:${st[1]};font-weight:700">${st[0]}</div></div>`; }).join('');
 }
 function renderAlerts(dias){
-  const al=[]; const cx=caixaAtual();
+  const al=[], cx=caixaAtual(), t=totJan(dias), fim=dias[dias.length-1].saldo;
+  const dd=(o)=>Math.round((o.d-dias[0].d)/864e5), data=(o)=>`${o.d.getDate()}/${o.d.getMonth()+1}`;
+  const A=(sev,icon,titulo,desc)=>al.push({sev,icon,titulo,desc});
+
+  // 1) Runway até o caixa negativo
   const neg=dias.find(o=>o.saldo<0);
-  if(neg) al.push(['danger',`🔴 <b>Caixa negativo</b> em ${Math.round((neg.d-dias[0].d)/864e5)} dia(s) (${neg.d.getDate()}/${neg.d.getMonth()+1}): ${BRL(neg.saldo)}`]);
-  const venc7=dias.slice(1,8).reduce((s,o)=>s+o.sai,0);
-  if(venc7>0) al.push(['warning',`🟡 <b>Vencimentos em 7 dias</b>: ${BRL(venc7)} em boletos/faturas`]);
-  const fim=dias[dias.length-1].saldo;
-  if(cx>0 && fim<cx*0.7) al.push(['warning',`🟡 <b>Queda de caixa</b>: saldo cai ${PCT((1-fim/cx)*100)} no período`]);
-  const totSai=totJan(dias).sai;
-  if(cx>0 && totSai>cx*0.8) al.push(['warning',`🟡 <b>Grande volume de pagamentos</b>: saídas somam ${PCT(totSai/cx*100)} do caixa atual`]);
-  const maxE=dias.slice(1).reduce((a,o)=>o.ent>((a&&a.ent)||0)?o:a,null);
-  if(maxE&&maxE.ent>0) al.push(['info',`🔵 <b>Maior entrada</b> em ${maxE.d.getDate()}/${maxE.d.getMonth()+1}: ${BRL(maxE.ent)}`]);
+  if(neg){
+    const nd=dd(neg), fundo=dias.reduce((a,o)=>o.saldo<a.saldo?o:a,dias[0]);
+    A('danger','🔴',`Caixa fica negativo em ${nd} dia${nd!==1?'s':''}`,`No dia ${data(neg)} o saldo projetado chega a <b>${BRL(neg.saldo)}</b>. Pior ponto: ${BRL(fundo.saldo)} em ${data(fundo)}. Antecipe recebíveis ou renegocie vencimentos.`);
+  }
+  // 2) Cobertura (runway) em dias com base na saída média
+  const totSai=t.sai, mediaSaida=totSai/Math.max(periodo,1);
+  if(cx>0 && mediaSaida>0){
+    const coberturaDias=Math.floor(cx/mediaSaida);
+    A(coberturaDias<15?'warning':'info','🛡️',`Cobertura de ${coberturaDias} dias`,`No ritmo atual de saídas (${BRL(mediaSaida)}/dia), o caixa de hoje cobre <b>${coberturaDias} dias</b> de pagamentos.`);
+  }
+  // 3) Déficit/superávit do período
+  const resultado=t.ent-t.sai;
+  if(resultado<0) A('warning','📉',`Déficit de ${BRL(-resultado)} no período`,`As saídas (${BRL(t.sai)}) superam as entradas (${BRL(t.ent)}) nos próximos ${periodo} dias. Diferença coberta pelo caixa atual.`);
+  else A('success','📈',`Superávit de ${BRL(resultado)} no período`,`Entradas (${BRL(t.ent)}) maiores que saídas (${BRL(t.sai)}) — o caixa cresce no período.`);
+  // 4) Vencimentos próximos 7 dias
+  const prox=dias.slice(1,8), venc7=prox.reduce((s,o)=>s+o.sai,0), qt7=prox.reduce((s,o)=>s+o.bols.length+o.parc.length,0);
+  if(venc7>0) A(venc7>cx?'danger':'warning','📆',`${BRL(venc7)} vencem em 7 dias`,`${qt7} pagamento${qt7!==1?'s':''} (boletos + faturas) na próxima semana.${venc7>cx?' <b>Acima do caixa atual!</b>':''}`);
+  // 5) Maior saída concentrada
   const maxS=dias.slice(1).reduce((a,o)=>o.sai>((a&&a.sai)||0)?o:a,null);
-  if(maxS&&maxS.sai>0) al.push(['warning',`🟡 <b>Maior saída</b> em ${maxS.d.getDate()}/${maxS.d.getMonth()+1}: ${BRL(maxS.sai)}`]);
+  if(maxS&&maxS.sai>0){ const conc=totSai?maxS.sai/totSai*100:0; A(conc>40?'warning':'info','💸',`Maior saída: ${BRL(maxS.sai)} em ${data(maxS)}`,`Representa <b>${PCT(conc)}</b> de todas as saídas do período.${conc>40?' Concentração alta — planeje o caixa para esse dia.':''}`); }
+  // 6) Dia com mais recebíveis
+  const maxE=dias.slice(1).reduce((a,o)=>o.ent>((a&&a.ent)||0)?o:a,null);
+  if(maxE&&maxE.ent>0) A('info','💰',`Maior entrada: ${BRL(maxE.ent)} em ${data(maxE)}`,`Dia que concentra mais recebimentos previstos.`);
+  // 7) Maior sequência sem pagamentos
+  let seq=0,best=0,bestFim=null,cur=0,curIni=null;
+  dias.slice(1).forEach(o=>{ if(o.sai<=0){ if(cur===0)curIni=o; cur++; if(cur>best){best=cur;bestFim=o;} } else cur=0; });
+  if(best>=3) A('success','🟢',`${best} dias seguidos sem pagamentos`,`Janela de folga no caixa até ${bestFim?data(bestFim):''} — bom momento para reforçar caixa ou investir.`);
+  // 8) Pico de saldo
   const pico=dias.reduce((a,o)=>o.saldo>a.saldo?o:a,dias[0]);
-  al.push(['success',`🟢 <b>Maior saldo projetado</b> em ${pico.d.getDate()}/${pico.d.getMonth()+1}: ${BRL(pico.saldo)}`]);
-  if(!neg) al.push(['success',`🟢 <b>Caixa saudável</b> — sem risco de liquidez nos próximos ${periodo} dias`]);
-  document.getElementById('pjAlerts').innerHTML=al.map(([t,m])=>`<div class="pj-alert ${t}">${m}</div>`).join('');
+  A('success','⛰️',`Pico de saldo: ${BRL(pico.saldo)} em ${data(pico)}`,`Melhor momento de liquidez projetado no período.`);
+  // 9) Saúde geral
+  if(!neg && resultado>=0) A('success','✅',`Caixa saudável`,`Sem risco de liquidez nos próximos ${periodo} dias.`);
+
+  const ordem={danger:0,warning:1,info:2,success:3};
+  al.sort((a,b)=>ordem[a.sev]-ordem[b.sev]);
+  document.getElementById('pjAlerts').innerHTML=al.map(a=>`<div class="pj-alert ${a.sev}"><div style="font-weight:800">${a.icon} ${a.titulo}</div><div style="opacity:.9;margin-top:3px;color:var(--text-muted)">${a.desc}</div></div>`).join('')||'<div class="pj-empty">Sem alertas.</div>';
 }
 function renderChart(dias){
   const labels=dias.map(o=>`${o.d.getDate()}/${o.d.getMonth()+1}`);

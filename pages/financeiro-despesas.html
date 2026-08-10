@@ -82,6 +82,13 @@
     .dp-year tr.cur td { background:rgba(46,160,67,.08); font-weight:800; }
     .dp-year tfoot td { font-weight:800; border-top:2px solid var(--border); }
     /* categoria list */
+    .dp-catwrap { border-bottom:1px solid var(--border); }
+    .dp-catwrap .dp-catrow { border-bottom:none; cursor:pointer; }
+    .dp-catwrap .dp-catrow:hover { background:var(--bg-card2); }
+    .dp-catdet { padding:2px 4px 10px 20px; }
+    .dp-catdet .item { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); font-size:12.5px; }
+    .dp-catdet .item .nm { display:flex; align-items:center; gap:8px; }
+    .dp-catdet .item .dot2 { width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; }
     .dp-catrow { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); }
     .dp-catrow .nm { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
     .dp-catrow .dot { width:9px; height:9px; border-radius:50%; flex:none; }
@@ -481,15 +488,23 @@ function renderCusto(m,y){
   const {arr,total}=catAgg(m,y,fCusto);
   const wrap=document.getElementById('dpCustoList');
   if(!arr.length){ wrap.innerHTML='<div class="dp-empty">Sem despesas cadastradas neste mês/filtro.</div>'; chCusto&&chCusto.destroy(); chCusto=null; return; }
-  const max=arr[0].value||1;
-  wrap.innerHTML=arr.map(o=>{
+  const max=arr[0].value||1, expAll=expMonth(m,y,fCusto);
+  wrap.innerHTML=arr.map((o,i)=>{
     const c=colorFor(o.name), p=total?o.value/total*100:0;
-    return `<div class="dp-catrow"><div>
-        <div class="nm"><span class="dot" style="background:${c}"></span>${esc(o.name)}</div>
+    const itens=expAll.filter(e=>(e.category_id||'__none')===o.key).sort((x,y2)=>(+y2.value||0)-(+x.value||0));
+    const det=`det-custo-${i}`;
+    const linhas=itens.length?itens.map(e=>`<div class="item"><span class="nm"><span class="dot2" style="background:${c}"></span>${esc(e.description||'—')}${e.is_recurring?' <span class="dp-chip auto"><i class="fas fa-rotate"></i> Recorrente</span>':''}</span><b>${BRL(+e.value||0)}</b></div>`).join(''):'<div class="dp-empty">Sem itens.</div>';
+    return `<div class="dp-catwrap">
+      <div class="dp-catrow" onclick="toggleRank('${det}',this)"><div>
+        <div class="nm"><span class="dot" style="background:${c}"></span>${esc(o.name)} <i class="fas fa-chevron-down dp-chev" style="margin-left:2px"></i></div>
         <div class="dp-catbar"><span style="width:${o.value/max*100}%;background:${c}"></span></div>
       </div><div style="text-align:right">
         <div style="font-size:11px;color:var(--text-muted)">${o.items} ${o.items>1?'itens':'item'}</div>
         <div style="font-weight:800">${BRL(o.value)} <span class="dp-chip pct">${PCT(p)}</span></div>
+      </div></div>
+      <div class="dp-catdet" id="${det}" style="display:none">
+        <div style="font-size:10px;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin:2px 0 4px">Despesas desta categoria</div>
+        ${linhas}
       </div></div>`;
   }).join('')+`<div class="dp-catrow" style="border:none"><div class="nm" style="font-weight:800">TOTAL</div><div style="font-weight:800;text-align:right">${BRL(total)}</div></div>`;
   chCusto&&chCusto.destroy();

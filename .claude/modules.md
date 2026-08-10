@@ -73,4 +73,11 @@ O usuário está **migrando** um ERP financeiro (feito no Readdy, React) para c�
   - Ações: Exportar CSV, Categorias (CRUD categorias), Recorrentes (lista), Limpar Despesas (só as manuais do mês, com confirmação).
 - Escrita liberada: `WRITE_ALLOW` em `supabaseFin.js` = `sales_entries`, `expenses`, `expense_categories`.
 
-Schema real das tabelas do ERP (via Readdy): `sales_entries`, `expenses`, `expense_categories`, `compras_cmv`, etc. — próximas telas: **DRE Mensal** (dedicada), **Fluxo de Caixa**, **Boletos**, **Compras** (`compras_cmv`), **Home** (10 tabelas: sales_entries, cash_flow_entries, boletos_mensais, expenses, receivables, monthly_goals, daily_alerts, daily_alert_logs, compras_xml, backups).
+- **DRE — Resultado** (`pages/financeiro-dre.html`, nav `DRE — Resultado`): read-only, lê `sales_entries` + `expenses` + `expense_categories` (mesmas 3 tabelas). Seções (clone fiel do `/dre` do Readdy, tema escuro):
+  - **Visão Anual**: 12 cards de mês (receita + resultado, mês atual destacado) clicáveis para trocar o mês do DRE; + Receita Anual / Custos Totais / Lucro Acumulado.
+  - **Comparativo** mês vs mês anterior: cards Período, Receita Total, Saída Total, Margem Contrib. (badge de status), Lucro Líquido (badge Prejuízo/Atenção), cada um com % de variação + mini-sparkline SVG (últimos 6 meses).
+  - **DRE completa**: cascata Receita → custos operacionais (cada linha com % da receita) → Total Custos Op. → Margem de Contribuição → Despesas (cada despesa individual) → Total Despesas → Lucro Líquido; + **Composição da Receita** (barras) + boxes Total Custos / Resultado.
+  - **Projeção Anual**: método **Média 3 meses / Tendência linear (regressão) / Último mês**; cards Receita/Custos/Lucro projetados (fechado vs projetado) + médias mensais; gráfico Receita×Lucro por mês; **Detalhamento Mensal** (tabela com status Fechado/Estimado/Projetado + Total do ano com selo Crítico/Saudável).
+  - Ações: Atualizar, **Exportar Excel** (.xls via HTML table) e **Exportar PDF** (janela de impressão).
+
+Schema real das tabelas do ERP (via Readdy): `sales_entries`, `expenses`, `expense_categories`, `compras_cmv`, etc. — próximas telas: **Fluxo de Caixa**, **Boletos**, **Compras** (`compras_cmv`), **Home** (10 tabelas: sales_entries, cash_flow_entries, boletos_mensais, expenses, receivables, monthly_goals, daily_alerts, daily_alert_logs, compras_xml, backups).

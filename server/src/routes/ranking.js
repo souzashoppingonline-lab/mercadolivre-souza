@@ -15,20 +15,21 @@ router.get('/ads', async (req, res) => {
     const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
     const fase = String(req.query.fase || '').trim().toLowerCase();       // '', 'rankeando' ou 'ranqueado'
     const storeId = String(req.query.store_id || '').trim();              // '' ou id da loja
+    const ciclo = String(req.query.ciclo || '').trim();                  // '' ou número do ciclo
     const params = [];
     const conds = [];
     if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); conds.push(`COALESCE(m.code, 'ML') = $${params.length}`); }
     if (fase === 'rankeando' || fase === 'ranqueado') { params.push(fase); conds.push(`r.fase = $${params.length}`); }
     if (storeId) { params.push(storeId); conds.push(`r.store_id = $${params.length}`); }
+    if (ciclo && /^\d+$/.test(ciclo)) { params.push(ciclo); conds.push(`r.ciclo = $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const { rows } = await pool.query(
       `SELECT r.*, i.thumbnail, i.permalink, i.available_quantity AS estoque_atual,
               i.price AS preco_atual, i.status AS status_atual, s.nickname AS store_nickname,
               COALESCE(m.code, 'ML') AS marketplace,
-              -- Faturamento do CICLO atual (vendas desde ciclo_iniciado_em).
+              -- Faturamento acumulado (as vendas contam através dos ciclos).
               (SELECT COALESCE(SUM((e.detail->>'valor')::numeric), 0) FROM ranking_events e
-                 WHERE e.ranking_ad_id = r.id AND e.event_type = 'venda'
-                   AND e.created_at >= COALESCE(r.ciclo_iniciado_em, r.started_at)) AS faturamento,
+                 WHERE e.ranking_ad_id = r.id AND e.event_type = 'venda') AS faturamento,
               (SELECT COUNT(*)::int FROM ranking_ciclos c WHERE c.ranking_ad_id = r.id) AS ciclos_anteriores
          FROM ranking_ads r
          LEFT JOIN items i ON i.ml_id = r.ml_id
@@ -119,7 +120,7 @@ router.patch('/ads/:id', async (req, res) => {
     if (req.body.active != null)          { sets.push(`active = $${++n}`); vals.push(!!req.body.active); }
     if (Number(req.body.milestone_every) > 0) { sets.push(`milestone_every = $${++n}`); vals.push(Number(req.body.milestone_every)); }
     // Métricas de ADS informadas manualmente no card ('' ou null → zera a coluna).
-    for (const campo of ['ads_investido', 'roas', 'orcamento_diario']) {
+    for (const campo of ['ads_investido', 'roas', 'orcamento_diario', 'preco_anterior', 'preco_atual']) {
       if (Object.prototype.hasOwnProperty.call(req.body, campo)) {
         const v = req.body[campo];
         const num = (v === '' || v == null) ? null : Number(v);
@@ -163,10 +164,11 @@ router.get('/ads/:id/eventos', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Encerra o ciclo atual e começa o próximo. Arquiva os números do ciclo
-// (ADS/ROAS/orçamento manuais + vendas + faturamento) em ranking_ciclos, então
-// incrementa `ciclo`, zera o contador de vendas e carimba novo início — os
-// campos manuais voltam em branco pro usuário preencher os do novo empurrão.
+// Encerra o ciclo atual e começa o próximo. Arquiva um snapshot do ciclo
+// (ADS/ROAS/orçamento/preços manuais + vendas e faturamento ACUMULADOS) em
+// ranking_ciclos, incrementa `ciclo` e desloca o preço (o preço atual do ciclo
+// vira o "preço anterior" do próximo). NÃO zera o contador de vendas — as
+// vendas seguem cumulativas através dos ciclos.
 router.post('/ads/:id/ciclo', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -174,22 +176,21 @@ router.post('/ads/:id/ciclo', async (req, res) => {
     const { rows: ad } = await client.query(`SELECT * FROM ranking_ads WHERE id = $1 FOR UPDATE`, [req.params.id]);
     if (!ad.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'anúncio não encontrado' }); }
     const r = ad[0];
-    // Faturamento do ciclo que está encerrando (mesmo escopo do card).
+    // Faturamento acumulado (snapshot no momento da troca de ciclo).
     const { rows: fat } = await client.query(
       `SELECT COALESCE(SUM((detail->>'valor')::numeric), 0) AS f FROM ranking_events
-        WHERE ranking_ad_id = $1 AND event_type = 'venda'
-          AND created_at >= COALESCE($2::timestamptz, $3::timestamptz)`,
-      [r.id, r.ciclo_iniciado_em, r.started_at]
+        WHERE ranking_ad_id = $1 AND event_type = 'venda'`,
+      [r.id]
     );
     await client.query(
-      `INSERT INTO ranking_ciclos (ranking_ad_id, ciclo, ads_investido, roas, orcamento_diario, sales_count, faturamento, iniciado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [r.id, r.ciclo || 1, r.ads_investido, r.roas, r.orcamento_diario, r.sales_count, fat[0].f, r.ciclo_iniciado_em]
+      `INSERT INTO ranking_ciclos (ranking_ad_id, ciclo, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [r.id, r.ciclo || 1, r.ads_investido, r.roas, r.orcamento_diario, r.preco_anterior, r.preco_atual, r.sales_count, fat[0].f, r.ciclo_iniciado_em]
     );
     const { rows } = await client.query(
       `UPDATE ranking_ads
-          SET ciclo = COALESCE(ciclo,1) + 1, sales_count = 0, first_sale_at = NULL, last_sale_at = NULL,
-              ads_investido = NULL, roas = NULL, orcamento_diario = NULL,
+          SET ciclo = COALESCE(ciclo,1) + 1,
+              preco_anterior = preco_atual,   -- o preço do ciclo que fecha vira o "anterior"
               ciclo_iniciado_em = now(), updated_at = now()
         WHERE id = $1 RETURNING *`,
       [r.id]
@@ -207,7 +208,7 @@ router.post('/ads/:id/ciclo', async (req, res) => {
 router.get('/ads/:id/ciclos', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, ciclo, ads_investido, roas, orcamento_diario, sales_count, faturamento, iniciado_em, encerrado_em
+      `SELECT id, ciclo, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em, encerrado_em
          FROM ranking_ciclos WHERE ranking_ad_id = $1 ORDER BY ciclo DESC`,
       [req.params.id]
     );

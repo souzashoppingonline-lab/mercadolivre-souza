@@ -99,14 +99,15 @@ async function milestone(ad) {
   // detail.valor; não depende de orders.item_id, que a Shopee não popula).
   const { rows } = await pool.query(
     `SELECT COALESCE(SUM((detail->>'valor')::numeric), 0) AS fat
-       FROM ranking_events WHERE ranking_ad_id = $1 AND event_type = 'venda'
-         AND created_at >= COALESCE($2::timestamptz, $3::timestamptz)`,
-    [ad.id, ad.ciclo_iniciado_em || null, ad.started_at || null]
+       FROM ranking_events WHERE ranking_ad_id = $1 AND event_type = 'venda'`,
+    [ad.id]
   );
   const fat = rows[0].fat;
+  // A cada múltiplo de N vendas o marco lembra de avaliar/trocar o ciclo
+  // manualmente (o card tem o botão "Novo ciclo"; a troca nunca é automática).
   await emit(ad, 'marco',
-    `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento no período: ${BRL(fat)}\n🔗 ${linkOf(ad.ml_id)}`,
-    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat) },
+    `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento acumulado: ${BRL(fat)}\n🔄 <b>Atingiu múltiplo de ${ad.milestone_every || 5} — avalie trocar o ciclo manualmente no card.</b>\n🔗 ${linkOf(ad.ml_id)}`,
+    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat), ciclo: ad.ciclo || 1 },
     ad.fase === 'ranqueado' ? 'silent' : 'force');
 }
 

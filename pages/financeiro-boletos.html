@@ -217,7 +217,7 @@ const hojeISO=()=>new Date().toISOString().slice(0,10);
 function tipoLabel(t){ return {boleto:'Boleto',manual:'Imposto',cartao:'Cartão',fatura_ml:'Fatura ML',flex:'Flex',pessoal:'Pessoal',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'}[t]||t||'—'; }
 function statusReal(b){ if(b.status==='pago') return 'pago'; if((b.date||'')< hojeISO()) return 'atrasado'; return 'pendente'; }
 
-let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], PARCELAS=[], fTipo='todos', listStatus='todos';
+let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], PARCELAS=[], CONTAS=[], CONTAEMP=[], fTipo='todos', listStatus='todos';
 const TIPOS=[['todos','Todos'],['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
 const nfDe=b=>b.numero_nf||b.nf||b.nota_fiscal||'';
 function showStatus(t,err){ const el=document.getElementById('boStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
@@ -229,6 +229,8 @@ async function load(){
   const rCt=await DB.getFinanceiroDados('boleto_categories',1000); CATS=rCt.rows||[]; CATMAP={}; CATS.forEach(c=>CATMAP[c.id]=c.name);
   const rRe=await DB.getFinanceiroDados('boletos_recorrentes',2000); RECORRENTES=rRe.rows||[];
   const rPc=await DB.getFinanceiroDados('parcelas_cartao',10000,'data_vencimento.asc'); PARCELAS=rPc.rows||[];
+  const rBk=await DB.getFinanceiroDados('contas_bancarias',1000); CONTAS=(rBk.error?[]:rBk.rows)||[];
+  const rCe=await DB.getFinanceiroDados('conta_empresas',3000); CONTAEMP=(rCe.error?[]:rCe.rows)||[];
   const errs=[['boletos_mensais',rB],['receivables',rR],['cartoes',rCa],['boleto_categories',rCt]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
   if(errs.length) showStatus(`⚠️ <b>Falha ao ler o banco.</b> ${esc(errs.join(' · '))}.`,true);
   else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.`,false);
@@ -589,26 +591,53 @@ async function doInsertCartao(base,card,n,total,dataCompra,venc,parcVal){
 }
 function limparForm(){ ['fName','fVal','fSup','fNf','fValTotal'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); const np=document.getElementById('fNParc'); if(np) np.value='1'; const pi=document.getElementById('fParcInfo'); if(pi) pi.textContent=''; }
 
-async function togglePago(id){
+function togglePago(id){
   const b=BOLETOS.find(x=>String(x.id)===String(id)); if(!b) return;
-  const novo=b.status==='pago'?'pendente':'pago';
-  await doPatchBoleto(id,{status:novo});
-  await syncFCPagamento(b, novo==='pago');
+  if(b.status==='pago'){ // desmarcar: volta pra pendente e remove a saída do FC
+    doPatchBoleto(id,{status:'pendente'}).then(()=>syncFCPagamento(b,false));
+    return;
+  }
+  abrirModalBanco(b); // marcar pago → escolher a conta de onde saiu o dinheiro
 }
-// Regra do Readdy: boleto PAGO gera uma saída em cash_flow_entries (vinculada por
-// boleto_id); ao voltar pra pendente (ou excluir), a saída é removida. Evita duplicar
-// apagando qualquer entry existente daquele boleto antes de inserir.
-async function syncFCPagamento(boleto, pago){
+// Modal "De qual conta saiu o pagamento?" — filtra pelas contas da empresa do boleto.
+function abrirModalBanco(b){
+  const emp=String(b.empresa||'').trim();
+  let contas=CONTAS.filter(c=>c.ativa!==false);
+  if(emp){
+    const ids=new Set(CONTAEMP.filter(ce=>String(ce.empresa_nome||'').trim()===emp).map(ce=>ce.conta_id));
+    const f=contas.filter(c=>ids.has(c.id)); if(f.length) contas=f;
+  }
+  const opts=contas.length?contas.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||c.banco_nome||'—')}</option>`).join(''):'<option value="">— sem conta cadastrada —</option>';
+  const body=`<p>Pagar <b>${esc(b.name||'—')}</b> · <b>${BRL(+b.value||0)}</b>${emp?` · ${esc(emp)}`:''}.</p>
+    <label style="font-size:12px;color:var(--text-muted)">De qual conta saiu o pagamento?<select id="bkConta" class="bo-in">${opts}</select></label>
+    <div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
+  abrirModal('💳 Confirmar pagamento', body, 'Confirmar pagamento', ()=>doPagarBoleto(b), false);
+}
+async function doPagarBoleto(b){
+  const contaId=document.getElementById('bkConta').value||null;
+  modalBusy(true,'Pagando…');
+  const r=await DB.updateFinanceiroRow('boletos_mensais',b.id,{status:'pago'});
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const i=BOLETOS.findIndex(x=>String(x.id)===String(b.id)); if(i>=0) BOLETOS[i]={...BOLETOS[i],status:'pago'};
+  await syncFCPagamento(b, true, contaId);
+  fecharModal(); render();
+}
+// Regra do Readdy: boleto PAGO gera uma saída em cash_flow_entries (vínculo por
+// boleto_id, com conta/empresa/NF); ao voltar pra pendente (ou excluir), a saída é
+// removida. Idempotente: apaga a entry existente daquele boleto antes de inserir.
+async function syncFCPagamento(boleto, pago, contaId){
   try{
     const r=await DB.getFinanceiroDados('cash_flow_entries',200,'','boleto_id=eq.'+encodeURIComponent(boleto.id));
     const existentes=(r&&!r.error&&Array.isArray(r.rows))?r.rows:[];
     for(const e of existentes){ await DB.deleteFinanceiroRow('cash_flow_entries', e.id); }
     if(pago){
-      await DB.addFinanceiroRow('cash_flow_entries', {
-        type:'expense', date:(boleto.date||'').slice(0,10)||hojeISO(), value:+boleto.value||0,
+      const row={ type:'expense', date:(boleto.date||'').slice(0,10)||hojeISO(), value:+boleto.value||0,
         reason:(boleto.name||'Boleto')+(boleto.supplier?(' — '+boleto.supplier):''),
-        category:boleto.category||null, store_id:boleto.store_id||null, boleto_id:boleto.id,
-      });
+        category:boleto.category||null, store_id:boleto.store_id||null, boleto_id:boleto.id };
+      if(boleto.empresa) row.empresa=boleto.empresa;
+      if(contaId) row.conta_bancaria_id=contaId;
+      const nf=nfDe(boleto); if(nf) row.nota_fiscal=nf;
+      await DB.addFinanceiroRow('cash_flow_entries', row);
     }
   }catch(e){ showStatus('⚠️ Fluxo de caixa não sincronizou: '+esc(e.message||e),true); }
 }

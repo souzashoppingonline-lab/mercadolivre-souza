@@ -217,7 +217,7 @@ const hojeISO=()=>new Date().toISOString().slice(0,10);
 function tipoLabel(t){ return {boleto:'Boleto',manual:'Imposto',cartao:'Cartão',fatura_ml:'Fatura ML',flex:'Flex',pessoal:'Pessoal',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'}[t]||t||'—'; }
 function statusReal(b){ if(b.status==='pago') return 'pago'; if((b.date||'')< hojeISO()) return 'atrasado'; return 'pendente'; }
 
-let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], fTipo='todos', listStatus='todos';
+let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], PARCELAS=[], fTipo='todos', listStatus='todos';
 const TIPOS=[['todos','Todos'],['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
 const nfDe=b=>b.numero_nf||b.nf||b.nota_fiscal||'';
 function showStatus(t,err){ const el=document.getElementById('boStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
@@ -228,6 +228,7 @@ async function load(){
   const rCa=await DB.getFinanceiroDados('cartoes',500); CARTOES=rCa.rows||[];
   const rCt=await DB.getFinanceiroDados('boleto_categories',1000); CATS=rCt.rows||[]; CATMAP={}; CATS.forEach(c=>CATMAP[c.id]=c.name);
   const rRe=await DB.getFinanceiroDados('boletos_recorrentes',2000); RECORRENTES=rRe.rows||[];
+  const rPc=await DB.getFinanceiroDados('parcelas_cartao',10000,'data_vencimento.asc'); PARCELAS=rPc.rows||[];
   const errs=[['boletos_mensais',rB],['receivables',rR],['cartoes',rCa],['boleto_categories',rCt]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
   if(errs.length) showStatus(`⚠️ <b>Falha ao ler o banco.</b> ${esc(errs.join(' · '))}.`,true);
   else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.`,false);
@@ -265,14 +266,54 @@ function boletosMes(){
     return true;
   });
 }
+// Faturas virtuais: 1 linha por cartão, somando as parcelas_cartao que vencem no
+// mês selecionado (a compra-mãe tipo='cartao' fica escondida da tabela).
+function faturasMes(){
+  const mr=selMesRef(), out=[];
+  CARTOES.filter(c=>c.ativo!==false).forEach(c=>{
+    const ps=PARCELAS.filter(p=>p.cartao_id===c.id && (p.fatura_mes||'')===mr);
+    if(!ps.length) return;
+    const total=ps.reduce((s,p)=>s+(+p.valor||0),0);
+    const pend=ps.filter(p=>p.status!=='pago');
+    let st='pago'; if(pend.length) st=pend.some(p=>(p.data_vencimento||'')<hojeISO())?'atrasado':'pendente';
+    out.push({ _fatura:true, cartao_id:c.id, name:c.nome, cor:c.cor||'#ec4899', value:total,
+      date:ps[0].data_vencimento||`${mr}-${String(c.dia_vencimento||10).padStart(2,'0')}`, count:ps.length, pendentes:pend.length, status:st, tipo:'cartao' });
+  });
+  return out;
+}
+function faturasFiltradas(){
+  const dia=document.getElementById('boDia').value, cart=document.getElementById('boCartFilter').value;
+  const sup=document.getElementById('boSup').value, banco=document.getElementById('boBanco').value, nf=document.getElementById('boNf').value.trim();
+  if(sup||banco||nf) return []; // filtros que não se aplicam à fatura escondem-na
+  return faturasMes().filter(f=>{
+    if(fTipo!=='todos' && fTipo!=='cartao') return false;
+    if(listStatus!=='todos' && f.status!==listStatus) return false;
+    if(dia && (f.date||'').slice(8,10)!==dia) return false;
+    if(cart && String(f.name||'').trim()!==cart) return false;
+    return true;
+  });
+}
+async function pagarFaturaCartao(cid){
+  const mr=selMesRef(), c=CARTOES.find(x=>String(x.id)===String(cid));
+  const pend=PARCELAS.filter(p=>p.cartao_id===cid && (p.fatura_mes||'')===mr && p.status!=='pago');
+  if(!pend.length){ showStatus('Nenhuma parcela pendente nesta fatura.',false); return; }
+  const tot=pend.reduce((s,p)=>s+(+p.valor||0),0);
+  abrirModal('💳 Pagar Fatura', `<p>Pagar a fatura de <b>${esc(c?c.nome:'cartão')}</b> de <b>${MESES[+document.getElementById('boMes').value-1]}/${document.getElementById('boAno').value}</b>?</p><p style="color:var(--text-muted)">Quita <b>${pend.length}</b> parcela(s) · Total <b>${BRL(tot)}</b>.</p><div id="eMsg" style="font-size:12px"></div>`, `Pagar ${BRL(tot)}`, async()=>{
+    modalBusy(true,'Pagando…'); let erro=null;
+    for(const p of pend){ const r=await DB.updateFinanceiroRow('parcelas_cartao',p.id,{status:'pago'}); if(r&&r.error){ erro=r.error; break; } const i=PARCELAS.findIndex(x=>String(x.id)===String(p.id)); PARCELAS[i]={...PARCELAS[i],status:'pago'}; }
+    if(!erro){ await DB.addFinanceiroRow('fatura_pagamentos',{cartao_id:cid,fatura_mes:mr,data_pagamento:hojeISO(),valor_pago:+tot.toFixed(2),parcelas_count:pend.length}); }
+    if(erro){ modalBusy(false); eMsgErr('Erro: '+esc(erro)); render(); return; }
+    fecharModal(); render();
+  }, false);
+}
 
 function render(){
   const m=+document.getElementById('boMes').value, y=+document.getElementById('boAno').value;
   document.getElementById('boMesLbl').textContent=`— ${MESES[m-1]}/${y}${selEmp()?' · '+selEmp():''}`;
   document.getElementById('boCalLbl').textContent=`— ${MESES[m-1]}/${y}`;
   renderStatusTabs(); renderTipoTabs(); renderKpis(); renderLista(); renderRecs(); renderCartoes(); renderResumoEmp(); renderCalendario();
-  const mesAll=BOLETOS.filter(b=>(b.mes_referencia||'')===selMesRef() && (!selEmp()||String(b.empresa||'').trim()===selEmp()));
-  document.getElementById('boCount').textContent=`${mesAll.length} dívidas`;
+  const mesAll=BOLETOS.filter(b=>(b.mes_referencia||'')===selMesRef() && b.tipo!=='cartao' && (!selEmp()||String(b.empresa||'').trim()===selEmp()));
+  document.getElementById('boCount').textContent=`${mesAll.length + (selEmp()?0:faturasMes().length)} dívidas`;
 }
 function renderStatusTabs(){
   const opts=[['todos','Todos','#1f2937','#fff'],['pendente','Pendente','#f59e0b'],['pago','Pago','#3fb950'],['atrasado','Atrasado','#f87171']];
@@ -345,25 +386,44 @@ function renderCalendario(){
 
 function renderKpis(){
   const mr=selMesRef(), emp=selEmp();
-  const list=BOLETOS.filter(b=>(b.mes_referencia||'')===mr && (!emp||String(b.empresa||'').trim()===emp));
+  // Exclui a compra-mãe de cartão (senão soma dobrado com as parcelas); soma as faturas virtuais.
+  const list=BOLETOS.filter(b=>(b.mes_referencia||'')===mr && b.tipo!=='cartao' && (!emp||String(b.empresa||'').trim()===emp));
+  const itens=[...list.map(b=>({v:+b.value||0,st:statusReal(b)})), ...(emp?[]:faturasMes().map(f=>({v:f.value,st:f.status})))];
   let total=0,pago=0,pend=0,atr=0, cP=0,cA=0;
-  list.forEach(b=>{ const v=+b.value||0, st=statusReal(b); total+=v; if(st==='pago')pago+=v; else if(st==='atrasado'){atr+=v;cA++;} else {pend+=v;cP++;} });
+  itens.forEach(({v,st})=>{ total+=v; if(st==='pago')pago+=v; else if(st==='atrasado'){atr+=v;cA++;} else {pend+=v;cP++;} });
   document.getElementById('boKpis').innerHTML=`
-    <div class="bo-kpi"><div class="k">📄 Total do Mês</div><div class="v">${BRL(total)}</div><div class="s">${list.length} conta(s)</div></div>
-    <div class="bo-kpi pago"><div class="k">✅ Pago</div><div class="v">${BRL(pago)}</div><div class="s">${list.length-cP-cA} quitada(s)</div></div>
+    <div class="bo-kpi"><div class="k">📄 Total do Mês</div><div class="v">${BRL(total)}</div><div class="s">${itens.length} conta(s)</div></div>
+    <div class="bo-kpi pago"><div class="k">✅ Pago</div><div class="v">${BRL(pago)}</div><div class="s">${itens.length-cP-cA} quitada(s)</div></div>
     <div class="bo-kpi pend"><div class="k">🕗 Pendente</div><div class="v">${BRL(pend)}</div><div class="s">${cP} a vencer</div></div>
     <div class="bo-kpi atr"><div class="k">⚠️ Atrasado</div><div class="v">${BRL(atr)}</div><div class="s">${cA} vencida(s)</div></div>`;
 }
 
 function renderLista(){
-  const list=boletosMes(), tb=document.getElementById('boLista'), ft=document.getElementById('boFoot');
-  if(!list.length){ tb.innerHTML='<tr><td colspan="9" class="bo-empty">Sem contas neste filtro.</td></tr>'; ft.innerHTML=''; return; }
-  tb.innerHTML=list.map(b=>{
+  const tb=document.getElementById('boLista'), ft=document.getElementById('boFoot');
+  // Esconde as compras-mãe de cartão; mostra 1 fatura virtual por cartão.
+  const boletosVis=boletosMes().filter(b=>b.tipo!=='cartao');
+  const faturas=faturasFiltradas();
+  const linhas=[...boletosVis, ...faturas].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!linhas.length){ tb.innerHTML='<tr><td colspan="9" class="bo-empty">Sem contas neste filtro.</td></tr>'; ft.innerHTML=''; return; }
+  tb.innerHTML=linhas.map(b=>{
+    if(b._fatura){
+      const st=b.status;
+      return `<tr style="background:rgba(236,72,153,.04)">
+        <td><b style="color:${b.cor}">💳 ${esc(b.name||'—')}</b> <span class="bo-chip" style="background:${b.cor}22;color:${b.cor}">Fatura</span> <span style="font-size:11px;color:var(--text-muted)">${b.count} parcela(s)</span></td>
+        <td style="color:var(--text-muted)">—</td><td style="color:var(--text-muted)">Cartão</td><td style="color:var(--text-muted)">—</td><td style="color:var(--text-muted)">—</td>
+        <td>${fmtDate(b.date)}</td>
+        <td style="font-weight:700">${BRL(b.value)}</td>
+        <td><span class="bo-chip ${st}">${st==='pago'?'Paga':st==='atrasado'?'Atrasada':'Pendente'}</span></td>
+        <td style="text-align:center;white-space:nowrap">
+          ${b.pendentes?`<button class="bo-icon pay" title="Pagar Fatura" onclick="pagarFaturaCartao('${esc(b.cartao_id)}')"><i class="fas fa-money-check-dollar"></i></button>`:''}
+          <a class="bo-icon" title="Ver detalhes (Relatório de Cartão)" href="financeiro-cartoes.html" style="text-decoration:none"><i class="fas fa-up-right-from-square"></i></a>
+        </td></tr>`;
+    }
     const st=statusReal(b);
     return `<tr>
-      <td><b>${esc(b.name||'—')}</b>${b.numero_parcelas>1?` <span class="bo-chip emp">${b.numero_parcela||1}/${b.numero_parcelas}</span>`:''} <span class="bo-chip" style="background:${(TIPO_COR[b.tipo]||'#64748b')}22;color:${TIPO_COR[b.tipo]||'#94a3b8'}">${tipoLabel(b.tipo)}</span></td>
+      <td><b>${esc(b.name||'—')}</b> <span class="bo-chip" style="background:${(TIPO_COR[b.tipo]||'#64748b')}22;color:${TIPO_COR[b.tipo]||'#94a3b8'}">${tipoLabel(b.tipo)}</span></td>
       <td><span class="bo-chip emp">${esc((b.empresa||'—').trim())}</span></td>
-      <td style="color:var(--text-muted)">${esc(b.category||CATMAP[b.category_id]||'—')}</td>
+      <td style="color:var(--text-muted)">${esc(b.category||'—')}</td>
       <td style="color:var(--text-muted)">${esc(b.supplier||'—')}</td>
       <td style="color:var(--text-muted)">${esc(nfDe(b)||'—')}</td>
       <td>${fmtDate(b.date)}</td>
@@ -375,8 +435,8 @@ function renderLista(){
         <button class="bo-icon del" title="Excluir" onclick="excluirBoleto('${esc(b.id)}')"><i class="fas fa-trash"></i></button>
       </td></tr>`;
   }).join('');
-  const tot=list.reduce((s,b)=>s+(+b.value||0),0);
-  const pago=list.filter(b=>statusReal(b)==='pago').reduce((s,b)=>s+(+b.value||0),0);
+  const tot=linhas.reduce((s,b)=>s+(+b.value||0),0);
+  const pago=linhas.filter(b=>(b._fatura?b.status:statusReal(b))==='pago').reduce((s,b)=>s+(+b.value||0),0);
   ft.innerHTML=`<tr><td colspan="6">TOTAL — Pago ${BRL(pago)} · Em aberto ${BRL(tot-pago)}</td><td>${BRL(tot)}</td><td colspan="2"></td></tr>`;
 }
 

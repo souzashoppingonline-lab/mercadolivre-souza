@@ -169,7 +169,11 @@
             <!-- Lançamentos do mês -->
             <div class="dp-card">
               <div class="dp-card-h"><h3>📄 Lançamentos <span id="dpMesLbl" class="desc"></span></h3>
-                <button class="dp-btn" style="margin-left:auto" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar dados</button>
+                <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="dp-btn" onclick="baixarLancCsv()"><i class="fas fa-file-csv"></i> CSV</button>
+                  <button class="dp-btn" onclick="baixarLancPdf()"><i class="fas fa-file-pdf"></i> PDF</button>
+                  <button class="dp-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+                </div>
               </div>
               <div style="overflow:auto;max-height:60vh">
                 <table class="dp-t">
@@ -677,15 +681,37 @@ async function doLimpar(list){
   fecharModal(); render();
 }
 
-function exportarCsv(){
-  const m=selM(), y=selY(), a=salesAgg(m,y), exp=expMonth(m,y);
-  const linhas=[['Descrição','Categoria','Tipo','Valor']];
-  [['Receita Bruta','Vendas & Custos','Entrada',a.rec],['Taxas Marketplace','Vendas & Custos','Custo',-a.fees],['Frete Subsidiado','Vendas & Custos','Custo',-a.frete],['CMV','Vendas & Custos','Custo',-a.cmv],['Ads ML','Vendas & Custos','Custo',-a.adsMl],['Ads Externos','Vendas & Custos','Custo',-a.adsEx],['Impostos','Vendas & Custos','Custo',-a.tax]].forEach(r=>linhas.push([r[0],r[1],r[2],String(r[3]).replace('.',',')]));
-  exp.forEach(e=>linhas.push([e.description||'',CATMAP[e.category_id]||'Sem categoria',e.type==='fixed'?'Custo Fixo':'Custo Operacional',String(-(+e.value||0)).replace('.',',')]));
+// Monta as linhas dos Lançamentos (custos Auto das vendas + despesas manuais).
+function lancRows(m,y){
+  const a=salesAgg(m,y), exp=expMonth(m,y), rows=[];
+  rows.push({desc:'Receita Bruta',cat:'Vendas & Custos',tipo:'Entrada',valor:a.rec});
+  [['Taxas Marketplace',a.fees],['Frete Subsidiado',a.frete],['CMV (Custo Mercadoria)',a.cmv],['Ads Mercado Livre',a.adsMl],['Ads Externos',a.adsEx],['Impostos',a.tax]].forEach(([d,v])=>{ if(v) rows.push({desc:d,cat:'Vendas & Custos',tipo:'Custo Operacional',valor:-v}); });
+  exp.forEach(e=>rows.push({desc:e.description||'—',cat:CATMAP[e.category_id]||'Sem categoria',tipo:e.type==='fixed'?'Custo Fixo':'Custo Operacional',valor:-(+e.value||0)}));
+  const et=expTotals(exp), entradas=a.rec, custos=a.custoVar+et.total;
+  return {rows, entradas, custos, result:entradas-custos};
+}
+function baixarLancCsv(){
+  const m=selM(), y=selY(), {rows}=lancRows(m,y);
+  const linhas=[['Descrição','Categoria','Tipo','Valor']].concat(rows.map(r=>[r.desc,r.cat,r.tipo,String(r.valor).replace('.',',')]));
   const csv=linhas.map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}), url=URL.createObjectURL(blob);
-  const a2=document.createElement('a'); a2.href=url; a2.download=`despesas-dre-${y}-${String(m).padStart(2,'0')}.csv`; a2.click(); URL.revokeObjectURL(url);
+  const a2=document.createElement('a'); a2.href=url; a2.download=`lancamentos-${y}-${String(m).padStart(2,'0')}.csv`; a2.click(); URL.revokeObjectURL(url);
 }
+function baixarLancPdf(){
+  const m=selM(), y=selY(), {rows,entradas,custos,result}=lancRows(m,y);
+  const trs=rows.map(r=>`<tr><td>${esc(r.desc)}</td><td>${esc(r.cat)}</td><td>${esc(r.tipo)}</td><td class="r ${r.valor<0?'neg':'pos'}">${r.valor<0?'-':'+'}${BRL(Math.abs(r.valor))}</td></tr>`).join('');
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Lançamentos ${MESES[m-1]}/${y}</title>
+    <style>body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:24px}h1{font-size:18px;margin:0}.sub{color:#666;font-size:12px;margin:2px 0 16px}
+    table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px 8px;border-bottom:1px solid #ddd;text-align:left}td.r,th.r{text-align:right}
+    th{background:#f3f4f6;text-transform:uppercase;font-size:10px;color:#555}.pos{color:#0a7d33}.neg{color:#b91c1c}tfoot td{font-weight:bold;border-top:2px solid #999}</style></head>
+    <body><h1>Lançamentos — ${MESES[m-1]}/${y}</h1><div class="sub">Despesas &amp; DRE · gerado em ${new Date().toLocaleString('pt-BR')}</div>
+    <table><thead><tr><th>Descrição</th><th>Categoria</th><th>Tipo</th><th class="r">Valor</th></tr></thead><tbody>${trs}</tbody>
+    <tfoot><tr><td colspan="3">TOTAL — Entradas ${BRL(entradas)} · Custos ${BRL(custos)}</td><td class="r ${result<0?'neg':'pos'}">${result<0?'-':'+'}${BRL(Math.abs(result))}</td></tr></tfoot></table>
+    <script>window.onload=function(){window.print();}<\/script></body></html>`;
+  const w=window.open('','_blank'); if(!w){ alert('Permita pop-ups para gerar o PDF.'); return; } w.document.write(html); w.document.close();
+}
+// "Exportar" do topo = mesmo CSV dos lançamentos.
+function exportarCsv(){ baixarLancCsv(); }
 
 function setTab(t){
   document.getElementById('tabDre').classList.toggle('on',t==='dre');

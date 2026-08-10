@@ -209,6 +209,20 @@ router.post('/ads/:id/ciclo', async (req, res) => {
   } finally { client.release(); }
 });
 
+// Histórico de mudanças de PREÇO do anúncio (eventos 'preco' com de→para e data),
+// mais recente primeiro. Alimenta o modal de histórico de preço no card.
+router.get('/ads/:id/precos', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT created_at, detail FROM ranking_events
+        WHERE ranking_ad_id = $1 AND event_type = 'preco'
+        ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json({ precos: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Histórico de ciclos encerrados de um anúncio (mais recente primeiro).
 router.get('/ads/:id/ciclos', async (req, res) => {
   try {

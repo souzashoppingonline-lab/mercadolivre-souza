@@ -53,6 +53,7 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/ranking/ads/:id/eventos?limit` | timeline (venda/alteração/marco) mais recentes primeiro (limit ≤ 300) |
 | `POST /api/ranking/ads/:id/ciclo` | **v72/v73:** encerra o ciclo atual (snapshot ADS/ROAS/orçamento/preços + vendas e faturamento **acumulados** em `ranking_ciclos`) e começa o próximo: `ciclo++`, desloca `preco_anterior ← preco_atual`, novo `ciclo_iniciado_em`. **NÃO zera** o contador de vendas (cumulativo através dos ciclos) |
 | `GET /api/ranking/ads/:id/ciclos` | **v72:** histórico dos ciclos encerrados (mais recente primeiro) |
+| `GET /api/ranking/ads/:id/precos` | histórico de mudanças de preço (eventos `preco`: `created_at` + `detail{de,para}`), mais recente primeiro — alimenta o modal de preço no card |
 
 Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco a cada N vendas ficam em `server/src/ranking.js`, disparados pelos hooks do worker — não nestas rotas (só CRUD/leitura). Ver `rankeamento.md`.
 

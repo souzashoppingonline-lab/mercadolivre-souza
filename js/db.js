@@ -265,6 +265,7 @@ const DB = {
   async getRankingEventos(id, limit = 100) { return this._get(`/ranking/ads/${id}/eventos`, { limit }); },
   async novoCicloRankingAd(id)       { return this._post(`/ranking/ads/${id}/ciclo`, {}); },
   async getRankingCiclos(id)         { return this._get(`/ranking/ads/${id}/ciclos`); },
+  async getRankingPrecos(id)         { return this._get(`/ranking/ads/${id}/precos`); },
 
   // ── Módulo Financeiro (Supabase separado, read-only) ─────────
   async getFinanceiroStatus()        { return this._get('/financeiro/status'); },

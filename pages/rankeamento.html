@@ -94,6 +94,23 @@
     .rk-add-btn:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
     .rk-tag-on { color: #ffd60a; font-weight: 800; font-size: 12px; }
     .rk-mlid { font-family: monospace; font-size: 11px; color: var(--text-muted); }
+
+    /* Modal de histórico de preço */
+    .rk-modal-ov { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+    .rk-modal-ov.open { display: flex; }
+    .rk-modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 520px; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+    .rk-modal-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .rk-modal-head h3 { font-size: 15px; font-weight: 800; margin: 0; flex: 1; }
+    .rk-modal-head .sub { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .rk-modal-close { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 8px; padding: 5px 9px; cursor: pointer; font-size: 13px; }
+    .rk-modal-close:hover { color: var(--text-main); }
+    .rk-modal-body { padding: 8px 16px 16px; overflow-y: auto; }
+    table.rk-preco { width: 100%; border-collapse: collapse; }
+    .rk-preco th, .rk-preco td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .rk-preco th { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .4px; }
+    .rk-preco td.up { color: var(--red, #f85149); font-weight: 700; }
+    .rk-preco td.down { color: var(--green, #2ea043); font-weight: 700; }
+    .rk-preco .var { font-size: 11px; }
   </style>
 </head>
 <body>
@@ -148,6 +165,21 @@
   </div>
     </div>
   </main>
+</div>
+
+<!-- Modal: histórico de preço -->
+<div class="rk-modal-ov" id="precoModal" onclick="if(event.target===this)fecharPrecoModal()">
+  <div class="rk-modal">
+    <div class="rk-modal-head">
+      <i class="fas fa-chart-line" style="color:#ffd60a"></i>
+      <div style="flex:1;min-width:0">
+        <h3>Histórico de preço</h3>
+        <div class="sub" id="precoModalSub"></div>
+      </div>
+      <button class="rk-modal-close" onclick="fecharPrecoModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="rk-modal-body" id="precoModalBody"></div>
+  </div>
 </div>
 
 <script src="../js/db.js"></script>
@@ -301,6 +333,7 @@ function cardHtml(a) {
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
       </div>
       <div class="rk-card-actions">
+        <button class="rk-icon-btn" title="Histórico de preço" onclick="abrirPrecoModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-chart-line"></i></button>
         ${faseBtn}
         ${!ranq ? `<button class="rk-icon-btn" title="Encerrar ciclo ${a.ciclo||1} e começar o ciclo ${(a.ciclo||1)+1}" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i></button>` : ''}
         <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
@@ -371,6 +404,38 @@ async function carregarCiclos(id) {
       </tr>`).join('')}</tbody></table>`;
   } catch (e) { box.innerHTML = `<div class="rk-empty" style="border:none;font-size:10px">Erro: ${esc(e.message||'')}</div>`; }
 }
+
+// Modal de histórico de preço — usa os eventos 'preco' (mudanças reais, com data).
+async function abrirPrecoModal(id, titulo) {
+  const ov = document.getElementById('precoModal');
+  document.getElementById('precoModalSub').textContent = titulo || '';
+  const body = document.getElementById('precoModalBody');
+  body.innerHTML = '<div class="rk-empty" style="border:none">Carregando…</div>';
+  ov.classList.add('open');
+  try {
+    const d = await DB.getRankingPrecos(id);
+    const ps = (d && d.precos) || [];
+    if (!ps.length) { body.innerHTML = '<div class="rk-empty">Nenhuma mudança de preço registrada desde que o anúncio entrou em rankeamento.</div>'; return; }
+    body.innerHTML = `<table class="rk-preco">
+      <thead><tr><th>Data</th><th>De</th><th>Para</th><th>Variação</th></tr></thead>
+      <tbody>${ps.map(p => {
+        const de = p.detail && p.detail.de != null ? Number(p.detail.de) : null;
+        const para = p.detail && p.detail.para != null ? Number(p.detail.para) : null;
+        const dif = (de != null && para != null) ? (para - de) : null;
+        const pct = de ? (dif / de * 100) : null;
+        const cls = dif == null ? '' : (dif > 0 ? 'up' : (dif < 0 ? 'down' : ''));
+        const arrow = dif == null ? '' : (dif > 0 ? '▲' : (dif < 0 ? '▼' : '='));
+        return `<tr>
+          <td>${fmtDT(p.created_at)}</td>
+          <td>${de != null ? BRL(de) : '—'}</td>
+          <td class="${cls}">${para != null ? BRL(para) : '—'}</td>
+          <td class="${cls} var">${dif != null ? `${arrow} ${BRL(Math.abs(dif))}${pct != null ? ` (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)` : ''}` : '—'}</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  } catch (e) { body.innerHTML = `<div class="rk-empty">Erro: ${esc(e.message || '')}</div>`; }
+}
+function fecharPrecoModal() { document.getElementById('precoModal').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharPrecoModal(); });
 
 async function togglePause(id, activate) { await DB.patchRankingAd(id, { active: activate }); loadCards(); }
 async function removeAd(id) {

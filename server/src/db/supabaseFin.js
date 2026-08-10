@@ -102,7 +102,7 @@ async function selectRows(nome, limit = 1000, order = '') {
 // Allowlist de tabelas que a UI pode gravar — cresce conforme as telas ficam
 // prontas. Nunca gravar em tabela fora desta lista. Escrita exige chave
 // service_role (sb_secret); com a publishable o Supabase costuma recusar (RLS).
-const WRITE_ALLOW = new Set(['sales_entries', 'expenses', 'expense_categories', 'boletos_mensais', 'receivables', 'boleto_categories', 'cartoes']);
+const WRITE_ALLOW = new Set(['sales_entries', 'expenses', 'expense_categories', 'boletos_mensais', 'receivables', 'boleto_categories', 'cartoes', 'parcelas_cartao', 'parcela_tags', 'fatura_pagamentos']);
 function assertWritable(nome) {
   if (!/^[a-zA-Z0-9_]+$/.test(String(nome || '')) || !WRITE_ALLOW.has(nome)) {
     const e = new Error(`Escrita não permitida na tabela "${nome}".`); e.status = 403; throw e;

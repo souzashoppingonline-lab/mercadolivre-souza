@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório de Cartão — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Relatório de Cartão'; window.ACTIVE_NAV='financeiro-cartoes.html';</script>
+  <style>
+    .ct-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .ct-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+    .ct-tab { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:10px; padding:9px 15px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; gap:7px; align-items:center; }
+    .ct-tab.on { background:#1f2937; color:#fff; border-color:#374151; }
+    .ct-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .ct-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 11px; font-size:13px; }
+    .ct-chip { border:1px solid var(--border); background:var(--bg-card2); color:var(--text-muted); border-radius:999px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; }
+    .ct-chip.on { background:#1f2937; color:#fff; }
+    .ct-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 13px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; gap:6px; align-items:center; }
+    .ct-btn:hover { border-color:#3fb950; }
+    .ct-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .ct-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .ct-card-h h3 { font-size:15px; font-weight:800; margin:0; }
+    .ct-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:16px; }
+    .ct-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+    .ct-kpi .k { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .ct-kpi .v { font-size:22px; font-weight:800; margin-top:4px; }
+    .cc { border:1px solid var(--border); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+    .cc-h { display:grid; grid-template-columns:auto 1fr auto auto; gap:12px; align-items:center; padding:14px; cursor:pointer; }
+    .cc-h:hover { background:var(--bg-card2); }
+    .cc-badge { border-radius:999px; padding:2px 10px; font-size:10px; font-weight:800; }
+    .cc-badge.aberta { background:rgba(59,130,246,.15); color:#60a5fa; }
+    .cc-badge.fechada { background:rgba(245,158,11,.15); color:#f59e0b; }
+    .cc-badge.vencida { background:rgba(239,68,68,.15); color:#f87171; }
+    .cc-badge.paga { background:rgba(46,160,67,.15); color:#3fb950; }
+    .cc-body { padding:0 14px 14px; border-top:1px dashed var(--border); }
+    .cc-lim { height:10px; background:var(--bg-card2); border-radius:6px; overflow:hidden; margin:8px 0 4px; }
+    .cc-lim > span { display:block; height:100%; }
+    .fat { border:1px solid var(--border); border-radius:10px; margin-top:8px; overflow:hidden; }
+    .fat-h { display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; font-size:12.5px; }
+    .fat-h:hover { background:var(--bg-card2); }
+    table.ct-t { width:100%; border-collapse:collapse; font-size:12px; }
+    .ct-t th, .ct-t td { padding:8px 9px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .ct-t th:first-child, .ct-t td:first-child, .ct-t th:nth-child(2), .ct-t td:nth-child(2) { text-align:left; }
+    .ct-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; }
+    .ct-t tr:hover td { background:var(--bg-card2); }
+    .pchip { border-radius:999px; padding:2px 8px; font-size:10px; font-weight:800; }
+    .pchip.pago { background:rgba(46,160,67,.15); color:#3fb950; }
+    .pchip.pendente { background:rgba(245,158,11,.15); color:#f59e0b; }
+    .pchip.vencida { background:rgba(239,68,68,.15); color:#f87171; }
+    .ct-rank { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); }
+    .ct-bar { height:8px; background:var(--bg-card2); border-radius:4px; overflow:hidden; margin-top:5px; }
+    .ct-bar > span { display:block; height:100%; }
+    .ct-tag { border-radius:999px; padding:2px 10px; font-size:11px; font-weight:700; color:#fff; }
+    .ct-icon { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:12px; padding:4px 6px; border-radius:6px; }
+    .ct-icon:hover { background:var(--bg-card2); color:var(--text-main); }
+    .ct-icon.del:hover { color:#f87171; }
+    .ct-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    .ct-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .up{color:#3fb950} .down{color:#f87171}
+    .hidden { display:none !important; }
+    .ct-modal-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+    .ct-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:500px; max-height:90vh; overflow:auto; }
+    .ct-modal-h { display:flex; align-items:center; padding:16px 18px; border-bottom:1px solid var(--border); }
+    .ct-modal-h h3 { margin:0; font-size:16px; font-weight:800; }
+    .ct-modal-x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:16px; cursor:pointer; }
+    .ct-modal-b { padding:16px 18px; font-size:13px; }
+    .ct-modal-f { display:flex; gap:10px; justify-content:flex-end; padding:14px 18px; border-top:1px solid var(--border); }
+    .ct-in { display:block; width:100%; margin-top:4px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; box-sizing:border-box; }
+    .ct-btn-cancel { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 18px; font-weight:700; cursor:pointer; }
+    .ct-btn-ok { background:#3fb950; color:#03210d; border:none; border-radius:10px; padding:9px 20px; font-weight:800; cursor:pointer; }
+    .ct-btn-ok.danger { background:#f87171; color:#2a0a0a; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="ct-sub">Centro de controle de cartão de crédito — faturas, parcelas, limites, categorias e tags.</p>
+      <div id="ctStatus" class="ct-status"></div>
+
+      <div class="ct-tabs">
+        <button class="ct-tab on" data-tab="cards" onclick="setTab('cards')"><i class="fas fa-id-card"></i> Cards por Cartão</button>
+        <button class="ct-tab" data-tab="geral" onclick="setTab('geral')"><i class="fas fa-chart-simple"></i> Visão Geral</button>
+        <button class="ct-tab" data-tab="porcartao" onclick="setTab('porcartao')"><i class="fas fa-table-list"></i> Por Cartão</button>
+        <button class="ct-tab" data-tab="categorias" onclick="setTab('categorias')"><i class="fas fa-tags"></i> Categorias</button>
+        <button class="ct-tab" data-tab="futuras" onclick="setTab('futuras')"><i class="fas fa-clock"></i> Parcelas Futuras</button>
+        <button class="ct-tab" data-tab="tags" onclick="setTab('tags')"><i class="fas fa-hashtag"></i> Tags</button>
+      </div>
+
+      <div class="ct-filters">
+        <select id="ctMes"></select>
+        <span style="font-size:12px;color:var(--text-muted)">Cartões:</span>
+        <span id="ctCartChips" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="ct-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> CSV</button>
+          <button class="ct-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+      </div>
+
+      <div id="paneCards"></div>
+      <div id="paneGeral" class="hidden"></div>
+      <div id="panePorcartao" class="hidden"></div>
+      <div id="paneCategorias" class="hidden"></div>
+      <div id="paneFuturas" class="hidden"></div>
+      <div id="paneTags" class="hidden"></div>
+    </div>
+  </main>
+</div>
+
+<div class="ct-modal-ov" id="ctModal">
+  <div class="ct-modal">
+    <div class="ct-modal-h"><h3 id="ctModalTitle"></h3><button class="ct-modal-x" onclick="fecharModal()">✕</button></div>
+    <div class="ct-modal-b" id="ctModalBody"></div>
+    <div class="ct-modal-f"><button class="ct-btn-cancel" onclick="fecharModal()">Cancelar</button><button class="ct-btn-ok" id="ctModalOk">Confirmar</button></div>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
+const MESHORT=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const PALETTE=['#6366f1','#10b981','#f59e0b','#ec4899','#ef4444','#06b6d4','#8b5cf6','#f97316','#84cc16','#14b8a6','#a855f7','#eab308'];
+const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
+const hojeISO=()=>new Date().toISOString().slice(0,10);
+const val=p=>+p.valor||0;
+const fmtFat=fm=>{ if(!fm) return '—'; const [y,m]=String(fm).split('-'); return `${MESHORT[(+m||1)-1]}/${y}`; };
+const fmtDate=s=>{ if(!s) return '—'; const p=String(s).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s; };
+function isVencida(p){ return p.status!=='pago' && (p.data_vencimento||'')<hojeISO(); }
+function statusP(p){ return p.status==='pago'?'pago':(isVencida(p)?'vencida':'pendente'); }
+
+let PARCELAS=[], CARTOES=[], BOLETOS=[], TAGS=[], PAGTOS=[], CARTMAP={}, BOLMAP={}, TAGMAP={};
+let tab='cards', filtroCartoes=new Set(), chGeral1, chGeral2, chTags1, chTags2, geralMode='bar';
+function showStatus(t,err){ const el=document.getElementById('ctStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
+
+async function load(){
+  const rP=await DB.getFinanceiroDados('parcelas_cartao',10000,'data_vencimento.asc'); PARCELAS=rP.rows||[];
+  const rC=await DB.getFinanceiroDados('cartoes',500); CARTOES=rC.rows||[]; CARTMAP={}; CARTOES.forEach(c=>CARTMAP[c.id]=c);
+  const rB=await DB.getFinanceiroDados('boletos_mensais',10000); BOLETOS=rB.rows||[]; BOLMAP={}; BOLETOS.forEach(b=>BOLMAP[b.id]=b);
+  const rT=await DB.getFinanceiroDados('parcela_tags',500); TAGS=rT.rows||[]; TAGMAP={}; TAGS.forEach(t=>TAGMAP[t.id]=t);
+  const rG=await DB.getFinanceiroDados('fatura_pagamentos',3000); PAGTOS=rG.rows||[];
+  const errs=[['parcelas_cartao',rP],['cartoes',rC],['boletos_mensais',rB],['parcela_tags',rT]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
+  if(errs.length) showStatus('⚠️ <b>Falha ao ler o banco.</b> '+esc(errs.join(' · ')),true);
+  else showStatus(`✅ Carregado: ${PARCELAS.length} parcelas, ${CARTOES.length} cartões, ${TAGS.length} tags.`,false);
+  if(!filtroCartoes.size) CARTOES.forEach(c=>filtroCartoes.add(c.id));
+  buildFilters(); render();
+}
+
+function compraDe(p){ return BOLMAP[p.divida_id]||BOLMAP[p.boleto_mensal_id]||null; }
+function meses(){ const s=new Set(); PARCELAS.forEach(p=>{ if(p.fatura_mes) s.add(p.fatura_mes); }); return [...s].sort().reverse(); }
+function buildFilters(){
+  const sm=document.getElementById('ctMes'); const ms=meses();
+  sm.innerHTML='<option value="todos">Todos os meses</option>'+ms.map(m=>`<option value="${m}">${fmtFat(m)}</option>`).join('');
+  document.getElementById('ctCartChips').innerHTML=CARTOES.map(c=>`<button class="ct-chip ${filtroCartoes.has(c.id)?'on':''}" onclick="toggleCart('${esc(c.id)}')"><span style="color:${c.cor||'#64748b'}">●</span> ${esc(c.nome||'—')}</button>`).join('')||'<span style="font-size:12px;color:var(--text-muted)">nenhum cartão</span>';
+}
+function toggleCart(id){ if(filtroCartoes.has(id)) filtroCartoes.delete(id); else filtroCartoes.add(id); buildFilters(); render(); }
+function parcFiltradas(){
+  const mes=document.getElementById('ctMes').value;
+  return PARCELAS.filter(p=>filtroCartoes.has(p.cartao_id) && (mes==='todos' || p.fatura_mes===mes));
+}
+
+function setTab(t){ tab=t; document.querySelectorAll('.ct-tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  ['cards','geral','porcartao','categorias','futuras','tags'].forEach(x=>document.getElementById('pane'+x[0].toUpperCase()+x.slice(1)).classList.toggle('hidden',x!==t));
+  render(); }
+function render(){ ({cards:renderCards,geral:renderGeral,porcartao:renderPorCartao,categorias:renderCategorias,futuras:renderFuturas,tags:renderTags}[tab]||renderCards)(); }
+
+// ── 1. Cards por Cartão ─────────────────────────────────────────────────────
+function statusFatura(card, fm, parc){
+  if(!parc.length) return null;
+  if(parc.every(p=>p.status==='pago')) return 'paga';
+  const [y,m]=fm.split('-').map(Number);
+  const venc=new Date(y,m-1,card.dia_vencimento||10), fech=new Date(y,m-1,card.dia_fechamento||20), hoje=new Date();
+  if(hoje>venc) return 'vencida'; if(hoje>=fech) return 'fechada'; return 'aberta';
+}
+function renderCards(){
+  const cartoes=CARTOES.filter(c=>filtroCartoes.has(c.id));
+  const wrap=document.getElementById('paneCards');
+  if(!cartoes.length){ wrap.innerHTML='<div class="ct-card"><div class="ct-empty">Nenhum cartão selecionado.</div></div>'; return; }
+  const atualFm=new Date().toISOString().slice(0,7);
+  wrap.innerHTML=cartoes.map((c,ci)=>{
+    const pc=PARCELAS.filter(p=>p.cartao_id===c.id);
+    const fatAtual=pc.filter(p=>p.fatura_mes===atualFm);
+    const st=statusFatura(c,atualFm,fatAtual)||'aberta';
+    const tot=fatAtual.reduce((s,p)=>s+val(p),0), pago=fatAtual.filter(p=>p.status==='pago').reduce((s,p)=>s+val(p),0), aberto=tot-pago;
+    const comprometido=pc.filter(p=>p.status!=='pago').reduce((s,p)=>s+val(p),0);
+    const limite=+c.limite||0, usoPct=limite?Math.min(comprometido/limite*100,100):0;
+    const cor=c.cor||'#64748b';
+    // histórico faturas
+    const byFm={}; pc.forEach(p=>{ (byFm[p.fatura_mes]=byFm[p.fatura_mes]||[]).push(p); });
+    const fms=Object.keys(byFm).sort().reverse();
+    const hist=fms.map((fm,fi)=>{
+      const arr=byFm[fm], t=arr.reduce((s,p)=>s+val(p),0), pg=arr.filter(p=>p.status==='pago').reduce((s,p)=>s+val(p),0);
+      const sf=statusFatura(c,fm,arr)||'—', det=`fat-${ci}-${fi}`;
+      return `<div class="fat">
+        <div class="fat-h" onclick="tog('${det}',this)"><i class="fas fa-chevron-right ct-chev"></i> <b>${fmtFat(fm)}</b> <span class="cc-badge ${sf}">${sf}</span><span style="margin-left:auto">${BRL(t)} · pago ${BRL(pg)}</span></div>
+        <div id="${det}" class="hidden" style="padding:6px 12px 10px">
+          <table class="ct-t"><thead><tr><th>Compra</th><th>Empresa</th><th>Parc.</th><th>Venc.</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>
+          ${arr.sort((a,b)=>(a.data_vencimento||'').localeCompare(b.data_vencimento||'')).map(p=>{ const co=compraDe(p); return `<tr>
+            <td>${esc(co?co.name:'—')}</td><td style="color:var(--text-muted)">${esc((co&&co.empresa||'—').trim())}</td>
+            <td>${p.numero_parcela||'—'}</td><td>${fmtDate(p.data_vencimento)}</td><td>${BRL(val(p))}</td>
+            <td><span class="pchip ${statusP(p)}">${statusP(p)==='pago'?'Pago':statusP(p)==='vencida'?'Vencida':'Pendente'}</span></td>
+            <td><button class="ct-icon" title="Alternar pago/pendente" onclick="toggleParc('${esc(p.id)}')"><i class="fas fa-${p.status==='pago'?'rotate-left':'check'}"></i></button><button class="ct-icon" title="Editar" onclick="editarParc('${esc(p.id)}')"><i class="fas fa-pen"></i></button></td></tr>`; }).join('')}
+          </tbody></table>
+        </div></div>`;
+    }).join('');
+    const body=`bcard-${ci}`;
+    return `<div class="cc">
+      <div class="cc-h" onclick="tog('${body}',this)" style="border-left:5px solid ${cor}">
+        <i class="fas fa-chevron-right ct-chev"></i>
+        <div><b>${esc(c.nome||'—')}</b> <span style="font-size:11px;color:var(--text-muted)">${esc(c.bandeira||'')}</span><div style="font-size:11px;color:var(--text-muted)">Fatura atual ${fmtFat(atualFm)}</div></div>
+        <span class="cc-badge ${st}">${st}</span>
+        <div style="text-align:right"><div style="font-weight:800">${BRL(tot)}</div><div style="font-size:11px;color:var(--text-muted)">aberto ${BRL(aberto)}</div></div>
+      </div>
+      <div id="${body}" class="cc-body hidden">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0">
+          <div><div style="font-size:10px;color:var(--text-muted)">TOTAL FATURA</div><div style="font-weight:800">${BRL(tot)}</div></div>
+          <div><div style="font-size:10px;color:var(--text-muted)">PAGO</div><div style="font-weight:800;color:#3fb950">${BRL(pago)}</div></div>
+          <div><div style="font-size:10px;color:var(--text-muted)">EM ABERTO</div><div style="font-weight:800;color:#f59e0b">${BRL(aberto)}</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between">Limite usado <span>${BRL(comprometido)} / ${limite?BRL(limite):'sem limite'}</span></div>
+        <div class="cc-lim"><span style="width:${usoPct}%;background:${usoPct>85?'#f87171':usoPct>60?'#f59e0b':'#3fb950'}"></span></div>
+        <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap">
+          <button class="ct-btn" onclick="pagarFatura('${esc(c.id)}','${atualFm}')"><i class="fas fa-money-check-dollar"></i> Pagar Fatura Atual</button>
+          <button class="ct-btn" onclick="editarLimite('${esc(c.id)}')"><i class="fas fa-pen"></i> Editar Limite</button>
+        </div>
+        <div style="font-size:11px;font-weight:800;color:var(--text-muted);text-transform:uppercase;margin:10px 0 4px">Histórico de Faturas</div>
+        ${hist||'<div class="ct-empty">Sem faturas.</div>'}
+      </div></div>`;
+  }).join('');
+}
+function tog(id,el){ const d=document.getElementById(id); if(!d) return; const open=d.classList.contains('hidden'); d.classList.toggle('hidden',!open); const ch=el.querySelector('.ct-chev'); if(ch) ch.style.transform=open?'rotate(90deg)':''; }
+
+// ── 2. Visão Geral ──────────────────────────────────────────────────────────
+function renderGeral(){
+  const parc=parcFiltradas();
+  const comprometido=parc.reduce((s,p)=>s+val(p),0), aberto=parc.filter(p=>p.status!=='pago').reduce((s,p)=>s+val(p),0), pago=comprometido-aberto;
+  const nCompras=new Set(parc.map(p=>p.divida_id||p.boleto_mensal_id)).size;
+  const porCartao={}; parc.forEach(p=>{ porCartao[p.cartao_id]=(porCartao[p.cartao_id]||0)+val(p); });
+  const cids=Object.keys(porCartao); const labels=cids.map(id=>CARTMAP[id]?CARTMAP[id].nome:'—'); const cores=cids.map(id=>CARTMAP[id]?CARTMAP[id].cor||'#64748b':'#64748b');
+  const byMes={}; parc.forEach(p=>{ const m=p.fatura_mes||'—'; const o=(byMes[m]=byMes[m]||{pago:0,pend:0}); if(p.status==='pago') o.pago+=val(p); else o.pend+=val(p); });
+  const mkeys=Object.keys(byMes).sort();
+  document.getElementById('paneGeral').innerHTML=`
+    <div class="ct-kpis">
+      <div class="ct-kpi"><div class="k">💳 Total Comprometido</div><div class="v">${BRL(comprometido)}</div></div>
+      <div class="ct-kpi"><div class="k">🕗 Em Aberto</div><div class="v" style="color:#f59e0b">${BRL(aberto)}</div></div>
+      <div class="ct-kpi"><div class="k">✅ Já Pago</div><div class="v" style="color:#3fb950">${BRL(pago)}</div></div>
+      <div class="ct-kpi"><div class="k">🧾 Nº de Compras</div><div class="v">${nCompras}</div></div>
+    </div>
+    <div class="ct-card"><div class="ct-card-h"><h3>Gasto por Cartão</h3><div style="margin-left:auto;display:flex;gap:6px"><button class="ct-chip ${geralMode==='bar'?'on':''}" onclick="setGeralMode('bar')">Barras</button><button class="ct-chip ${geralMode==='pie'?'on':''}" onclick="setGeralMode('pie')">Pizza</button></div></div><canvas id="chG1" height="110"></canvas></div>
+    <div class="ct-card"><div class="ct-card-h"><h3>Limite Disponível por Cartão</h3></div><canvas id="chG2" height="110"></canvas></div>
+    <div class="ct-card"><div class="ct-card-h"><h3>Comprometimento Mensal (pago × pendente)</h3></div>
+      ${mkeys.map(m=>{ const o=byMes[m], t=o.pago+o.pend, pp=t?o.pago/t*100:0; return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px"><b>${fmtFat(m)}</b><span style="color:var(--text-muted)">pago ${BRL(o.pago)} · pend ${BRL(o.pend)}</span></div><div class="ct-bar" style="height:10px"><span style="width:${pp}%;background:#3fb950"></span></div></div>`; }).join('')||'<div class="ct-empty">Sem dados.</div>'}
+    </div>`;
+  chGeral1&&chGeral1.destroy();
+  chGeral1=new Chart(document.getElementById('chG1'),{type:geralMode==='pie'?'doughnut':'bar',data:{labels,datasets:[{label:'Gasto',data:cids.map(id=>+porCartao[id].toFixed(2)),backgroundColor:cores,borderWidth:0}]},options:{plugins:{legend:{display:geralMode==='pie',position:'right',labels:{color:'#94a3b8',boxWidth:12,font:{size:11}}},tooltip:{callbacks:{label:c=>` ${c.label}: ${BRL(c.raw)}`}}},scales:geralMode==='pie'?{}:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>'R$'+(Math.abs(v)>=1000?(v/1000)+'k':v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
+  const usado=cids.map(id=>{ return PARCELAS.filter(p=>p.cartao_id===id&&p.status!=='pago').reduce((s,p)=>s+val(p),0); });
+  const disp=cids.map((id,i)=>Math.max((+CARTMAP[id].limite||0)-usado[i],0));
+  chGeral2&&chGeral2.destroy();
+  chGeral2=new Chart(document.getElementById('chG2'),{type:'bar',data:{labels,datasets:[{label:'Usado',data:usado.map(v=>+v.toFixed(2)),backgroundColor:'#f59e0b'},{label:'Disponível',data:disp.map(v=>+v.toFixed(2)),backgroundColor:'#3fb950'}]},options:{plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{stacked:true,ticks:{color:'#64748b'}},y:{stacked:true,ticks:{color:'#64748b',callback:v=>'R$'+(Math.abs(v)>=1000?(v/1000)+'k':v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
+}
+function setGeralMode(m){ geralMode=m; renderGeral(); }
+
+// ── 3. Por Cartão (tabela) ──────────────────────────────────────────────────
+function renderPorCartao(){
+  const cartoes=CARTOES.filter(c=>filtroCartoes.has(c.id)); const mes=document.getElementById('ctMes').value;
+  document.getElementById('panePorcartao').innerHTML=cartoes.map(c=>{
+    const arr=PARCELAS.filter(p=>p.cartao_id===c.id && (mes==='todos'||p.fatura_mes===mes)).sort((a,b)=>(a.data_vencimento||'').localeCompare(b.data_vencimento||''));
+    const tot=arr.reduce((s,p)=>s+val(p),0);
+    return `<div class="ct-card"><div class="ct-card-h"><h3><span style="color:${c.cor||'#64748b'}">●</span> ${esc(c.nome||'—')}</h3><span style="margin-left:auto;font-weight:800">${BRL(tot)}</span></div>
+      <div style="overflow:auto"><table class="ct-t"><thead><tr><th>Compra</th><th>Empresa</th><th>Fatura</th><th>Parc.</th><th>Venc.</th><th>Valor</th><th>Status</th><th></th></tr></thead><tbody>
+      ${arr.length?arr.map(p=>{ const co=compraDe(p); return `<tr><td>${esc(co?co.name:'—')}</td><td style="color:var(--text-muted)">${esc((co&&co.empresa||'—').trim())}</td><td>${fmtFat(p.fatura_mes)}</td><td>${p.numero_parcela||'—'}</td><td>${fmtDate(p.data_vencimento)}</td><td>${BRL(val(p))}</td><td><span class="pchip ${statusP(p)}">${statusP(p)==='pago'?'Pago':statusP(p)==='vencida'?'Vencida':'Pendente'}</span></td><td><button class="ct-icon" onclick="toggleParc('${esc(p.id)}')"><i class="fas fa-${p.status==='pago'?'rotate-left':'check'}"></i></button><button class="ct-icon" onclick="editarParc('${esc(p.id)}')"><i class="fas fa-pen"></i></button></td></tr>`; }).join(''):'<tr><td colspan="8" class="ct-empty">Sem parcelas.</td></tr>'}
+      </tbody></table></div></div>`;
+  }).join('')||'<div class="ct-card"><div class="ct-empty">Nenhum cartão selecionado.</div></div>';
+}
+
+// ── 4. Categorias ───────────────────────────────────────────────────────────
+function renderCategorias(){
+  const parc=parcFiltradas(); const by={};
+  parc.forEach(p=>{ const co=compraDe(p); const cat=(co&&co.category||'Sem categoria').trim()||'Sem categoria'; by[cat]=(by[cat]||0)+val(p); });
+  const arr=Object.entries(by).sort((a,b)=>b[1]-a[1]); const total=arr.reduce((s,x)=>s+x[1],0), max=arr[0]?arr[0][1]:1;
+  document.getElementById('paneCategorias').innerHTML=`<div class="ct-card"><div class="ct-card-h"><h3>🏷️ Gastos por Categoria</h3><span style="margin-left:auto;font-weight:800">${BRL(total)}</span></div>
+    ${arr.length?arr.map(([cat,v],i)=>{ const c=PALETTE[i%PALETTE.length]; return `<div class="ct-rank"><div><div style="font-weight:600;font-size:13px"><span style="color:${c}">●</span> ${esc(cat)}</div><div class="ct-bar"><span style="width:${v/max*100}%;background:${c}"></span></div></div><div style="text-align:right;font-weight:800">${BRL(v)}<div style="font-size:11px;color:var(--text-muted)">${PCT(total?v/total*100:0)}</div></div></div>`; }).join(''):'<div class="ct-empty">Sem parcelas no filtro.</div>'}
+  </div>`;
+}
+
+// ── 5. Parcelas Futuras ─────────────────────────────────────────────────────
+let futStatus='todos';
+function renderFuturas(){
+  const mes=document.getElementById('ctMes').value;
+  let list=PARCELAS.filter(p=>filtroCartoes.has(p.cartao_id));
+  if(mes!=='todos') list=list.filter(p=>p.fatura_mes===mes); else list=list.filter(p=>p.status!=='pago' || (p.data_vencimento||'')>=hojeISO());
+  if(futStatus==='pendente') list=list.filter(p=>p.status!=='pago'); else if(futStatus==='pago') list=list.filter(p=>p.status==='pago');
+  const byFm={}; list.forEach(p=>{ (byFm[p.fatura_mes]=byFm[p.fatura_mes]||[]).push(p); });
+  const fms=Object.keys(byFm).sort();
+  document.getElementById('paneFuturas').innerHTML=`
+    <div class="ct-card"><div class="ct-card-h"><h3>⏳ Parcelas Futuras</h3>
+      <div style="margin-left:auto;display:flex;gap:6px"><button class="ct-chip ${futStatus==='todos'?'on':''}" onclick="setFut('todos')">Todos</button><button class="ct-chip ${futStatus==='pendente'?'on':''}" onclick="setFut('pendente')">Pendentes</button><button class="ct-chip ${futStatus==='pago'?'on':''}" onclick="setFut('pago')">Pagos</button></div></div>
+      ${fms.length?fms.map(fm=>{ const arr=byFm[fm].sort((a,b)=>(a.data_vencimento||'').localeCompare(b.data_vencimento||'')); const t=arr.reduce((s,p)=>s+val(p),0);
+        return `<div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-weight:800;padding:6px 0;border-bottom:1px solid var(--border)"><span>${fmtFat(fm)}</span><span>${BRL(t)}</span></div>
+        <table class="ct-t"><tbody>${arr.map(p=>{ const co=compraDe(p), venc=isVencida(p), tg=TAGMAP[p.tag_id]; return `<tr>
+          <td><span style="color:${CARTMAP[p.cartao_id]?CARTMAP[p.cartao_id].cor:'#64748b'}">●</span> ${esc(co?co.name:'—')} ${venc?'<span class="pchip vencida">VENCIDA</span>':''}</td>
+          <td style="color:var(--text-muted)">${esc((co&&co.empresa||'—').trim())}</td>
+          <td>${tg?`<span class="ct-tag" style="background:${tg.cor||'#64748b'}">${esc(tg.nome)}</span>`:'<span style="color:var(--text-muted);font-size:11px">sem tag</span>'}</td>
+          <td>parc ${p.numero_parcela||'—'}</td><td>${fmtDate(p.data_vencimento)}</td><td>${BRL(val(p))}</td>
+          <td><span class="pchip ${statusP(p)}">${statusP(p)==='pago'?'Pago':venc?'Vencida':'Pendente'}</span></td>
+          <td><button class="ct-icon" title="Tag" onclick="tagParc('${esc(p.id)}')"><i class="fas fa-hashtag"></i></button><button class="ct-icon" title="Alternar" onclick="toggleParc('${esc(p.id)}')"><i class="fas fa-${p.status==='pago'?'rotate-left':'check'}"></i></button><button class="ct-icon" title="Editar" onclick="editarParc('${esc(p.id)}')"><i class="fas fa-pen"></i></button></td></tr>`; }).join('')}</tbody></table></div>`;
+      }).join(''):'<div class="ct-empty">Sem parcelas futuras.</div>'}
+    </div>`;
+}
+function setFut(s){ futStatus=s; renderFuturas(); }
+
+// ── 6. Tags ─────────────────────────────────────────────────────────────────
+function renderTags(){
+  const parc=parcFiltradas();
+  const byTag={}; TAGS.forEach(t=>byTag[t.id]={nome:t.nome,cor:t.cor,total:0}); byTag['__none']={nome:'Sem tag',cor:'#64748b',total:0};
+  const meses=new Set(); parc.forEach(p=>{ const k=p.tag_id&&byTag[p.tag_id]?p.tag_id:'__none'; byTag[k].total+=val(p); if(p.fatura_mes) meses.add(p.fatura_mes); });
+  const mk=[...meses].sort(); const arr=Object.entries(byTag).filter(([,o])=>o.total>0).sort((a,b)=>b[1].total-a[1].total);
+  const total=arr.reduce((s,x)=>s+x[1].total,0);
+  // matriz tag×mês
+  const cell=(tid,m)=>parc.filter(p=>(p.tag_id&&byTag[p.tag_id]?p.tag_id:'__none')===tid && p.fatura_mes===m).reduce((s,p)=>s+val(p),0);
+  document.getElementById('paneTags').innerHTML=`
+    <div class="ct-card"><div class="ct-card-h"><h3># Tags</h3>
+      <div style="margin-left:auto;display:flex;gap:8px"><button class="ct-btn" onclick="novaTag()"><i class="fas fa-plus"></i> Nova tag</button><button class="ct-btn" onclick="exportarTagsCsv()"><i class="fas fa-download"></i> CSV</button><button class="ct-btn" onclick="exportarTagsPdf()"><i class="fas fa-file-pdf"></i> PDF</button></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">${TAGS.map(t=>`<span class="ct-tag" style="background:${t.cor||'#64748b'}">${esc(t.nome)} <i class="fas fa-pen" style="cursor:pointer;opacity:.7;margin-left:4px" onclick="editarTag('${esc(t.id)}')"></i> <i class="fas fa-times" style="cursor:pointer;opacity:.7" onclick="excluirTag('${esc(t.id)}')"></i></span>`).join('')||'<span style="font-size:12px;color:var(--text-muted)">Nenhuma tag ainda.</span>'}</div>
+      <canvas id="chTags1" height="90"></canvas>
+    </div>
+    <div class="ct-card"><div class="ct-card-h"><h3>Distribuição por Tag</h3><span style="margin-left:auto;font-weight:800">${BRL(total)}</span></div>
+      ${arr.length?arr.map(([id,o])=>`<div class="ct-rank"><div><div style="font-weight:600;font-size:13px"><span style="color:${o.cor}">●</span> ${esc(o.nome)}</div><div class="ct-bar"><span style="width:${total?o.total/arr[0][1].total*100:0}%;background:${o.cor}"></span></div></div><div style="text-align:right;font-weight:800">${BRL(o.total)}<div style="font-size:11px;color:var(--text-muted)">${PCT(total?o.total/total*100:0)}</div></div></div>`).join(''):'<div class="ct-empty">Sem dados.</div>'}
+    </div>
+    <div class="ct-card"><div class="ct-card-h"><h3>Matriz Tag × Mês</h3></div>
+      <div style="overflow:auto"><table class="ct-t"><thead><tr><th>Tag</th>${mk.map(m=>`<th>${fmtFat(m)}</th>`).join('')}<th>Total</th></tr></thead><tbody>
+      ${arr.map(([id,o])=>`<tr><td><span style="color:${o.cor}">●</span> ${esc(o.nome)}</td>${mk.map(m=>{ const v=cell(id,m); return `<td>${v?BRL(v):'—'}</td>`; }).join('')}<td style="font-weight:800">${BRL(o.total)}</td></tr>`).join('')||`<tr><td colspan="${mk.length+2}" class="ct-empty">Sem dados.</td></tr>`}
+      </tbody></table></div>
+    </div>`;
+  // stacked bar por mês
+  chTags1&&chTags1.destroy();
+  const ds=arr.map(([id,o])=>({label:o.nome,data:mk.map(m=>+cell(id,m).toFixed(2)),backgroundColor:o.cor}));
+  chTags1=new Chart(document.getElementById('chTags1'),{type:'bar',data:{labels:mk.map(fmtFat),datasets:ds},options:{plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{stacked:true,ticks:{color:'#64748b'}},y:{stacked:true,ticks:{color:'#64748b',callback:v=>'R$'+(Math.abs(v)>=1000?(v/1000)+'k':v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
+}
+
+// ── Ações (parcelas / faturas / limite / tags) ──────────────────────────────
+async function patchParc(id,patch,optimistic){ const i=PARCELAS.findIndex(p=>String(p.id)===String(id)); if(i<0) return; const old=PARCELAS[i];
+  if(optimistic){ PARCELAS[i]={...old,...patch}; render(); }
+  const r=await DB.updateFinanceiroRow('parcelas_cartao',id,patch);
+  if(r&&r.error){ PARCELAS[i]=old; render(); showStatus('⚠️ '+esc(r.error),true); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; PARCELAS[i]=saved||{...old,...patch}; render();
+}
+function toggleParc(id){ const p=PARCELAS.find(x=>String(x.id)===String(id)); if(!p) return; patchParc(id,{status:p.status==='pago'?'pendente':'pago'},true); }
+function editarParc(id){ const p=PARCELAS.find(x=>String(x.id)===String(id)); if(!p) return;
+  const body=`<div style="display:grid;gap:12px">
+    <div><label style="font-size:11px;color:var(--text-muted)">Valor (R$)</label><input type="number" step="0.01" id="mVal" class="ct-in" value="${val(p)}"></div>
+    <div><label style="font-size:11px;color:var(--text-muted)">Vencimento</label><input type="date" id="mVenc" class="ct-in" value="${esc((p.data_vencimento||'').slice(0,10))}"></div>
+    <div><label style="font-size:11px;color:var(--text-muted)">Status</label><select id="mStatus" class="ct-in"><option value="pendente"${p.status!=='pago'?' selected':''}>Pendente</option><option value="pago"${p.status==='pago'?' selected':''}>Pago</option></select></div>
+    <div><label style="font-size:11px;color:var(--text-muted)">Tag</label><select id="mTag" class="ct-in"><option value="">Sem tag</option>${TAGS.map(t=>`<option value="${esc(t.id)}"${p.tag_id===t.id?' selected':''}>${esc(t.nome)}</option>`).join('')}</select></div></div>
+    <div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
+  abrirModal('✏️ Editar parcela', body, 'Salvar', async()=>{ const patch={valor:pNum(document.getElementById('mVal').value), data_vencimento:document.getElementById('mVenc').value, status:document.getElementById('mStatus').value, tag_id:document.getElementById('mTag').value||null, fatura_mes:(document.getElementById('mVenc').value||'').slice(0,7)}; modalBusy(true); const r=await DB.updateFinanceiroRow('parcelas_cartao',id,patch); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } const i=PARCELAS.findIndex(x=>String(x.id)===String(id)); const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; PARCELAS[i]=saved||{...PARCELAS[i],...patch}; fecharModal(); render(); }, false);
+}
+function tagParc(id){ const p=PARCELAS.find(x=>String(x.id)===String(id)); if(!p) return;
+  const body=`<label style="font-size:12px;color:var(--text-muted)">Tag da parcela<select id="mTag" class="ct-in"><option value="">Sem tag</option>${TAGS.map(t=>`<option value="${esc(t.id)}"${p.tag_id===t.id?' selected':''}>${esc(t.nome)}</option>`).join('')}</select></label><div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
+  abrirModal('# Atribuir tag', body, 'Salvar', async()=>{ modalBusy(true); const r=await DB.updateFinanceiroRow('parcelas_cartao',id,{tag_id:document.getElementById('mTag').value||null}); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } const i=PARCELAS.findIndex(x=>String(x.id)===String(id)); const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; PARCELAS[i]=saved||{...PARCELAS[i],tag_id:document.getElementById('mTag').value||null}; fecharModal(); render(); }, false);
+}
+function pagarFatura(cid,fm){
+  const pend=PARCELAS.filter(p=>p.cartao_id===cid && p.fatura_mes===fm && p.status!=='pago');
+  if(!pend.length){ abrirModalInfo('Fatura', '<p>Não há parcelas pendentes nesta fatura.</p>'); return; }
+  const tot=pend.reduce((s,p)=>s+val(p),0);
+  abrirModal('💳 Pagar Fatura', `<p>Marcar <b>${pend.length} parcela(s)</b> de <b>${fmtFat(fm)}</b> como pagas? Total <b>${BRL(tot)}</b>.</p><div id="eMsg" style="font-size:12px"></div>`, `Pagar ${BRL(tot)}`, async()=>{
+    modalBusy(true,'Pagando…'); let erro=null;
+    for(const p of pend){ const r=await DB.updateFinanceiroRow('parcelas_cartao',p.id,{status:'pago'}); if(r&&r.error){ erro=r.error; break; } const i=PARCELAS.findIndex(x=>String(x.id)===String(p.id)); PARCELAS[i]={...PARCELAS[i],status:'pago'}; }
+    if(!erro){ await DB.addFinanceiroRow('fatura_pagamentos',{cartao_id:cid,fatura_mes:fm,data_pagamento:hojeISO(),valor_pago:+tot.toFixed(2),parcelas_count:pend.length}); }
+    if(erro){ modalBusy(false); eMsgErr('Erro: '+esc(erro)); render(); return; }
+    fecharModal(); render();
+  }, false);
+}
+function editarLimite(cid){ const c=CARTMAP[cid]; if(!c) return;
+  abrirModal('Editar limite', `<label style="font-size:12px;color:var(--text-muted)">Limite (R$)<input type="number" step="0.01" id="mLim" class="ct-in" value="${+c.limite||0}"></label><div id="eMsg" style="font-size:12px;margin-top:8px"></div>`, 'Salvar', async()=>{ modalBusy(true); const r=await DB.updateFinanceiroRow('cartoes',cid,{limite:pNum(document.getElementById('mLim').value)}); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } c.limite=pNum(document.getElementById('mLim').value); fecharModal(); render(); }, false);
+}
+function novaTag(){ abrirModal('# Nova tag', `<label style="font-size:12px;color:var(--text-muted)">Nome<input id="mTagNome" class="ct-in" placeholder="Ex: Marketing, Estoque…"></label><div id="eMsg" style="font-size:12px;margin-top:8px"></div>`, 'Criar', async()=>{ const nome=document.getElementById('mTagNome').value.trim(); if(!nome){ eMsgErr('Informe o nome.'); return; } modalBusy(true); const cor=PALETTE[TAGS.length%PALETTE.length]; const r=await DB.addFinanceiroRow('parcela_tags',{nome,cor}); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved){ TAGS.push(saved); TAGMAP[saved.id]=saved; } fecharModal(); render(); }, false); }
+function editarTag(id){ const t=TAGMAP[id]; if(!t) return; abrirModal('Renomear tag', `<label style="font-size:12px;color:var(--text-muted)">Nome<input id="mTagNome" class="ct-in" value="${esc(t.nome)}"></label><div id="eMsg" style="font-size:12px;margin-top:8px"></div>`, 'Salvar', async()=>{ const nome=document.getElementById('mTagNome').value.trim(); if(!nome){ eMsgErr('Informe o nome.'); return; } modalBusy(true); const r=await DB.updateFinanceiroRow('parcela_tags',id,{nome}); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } t.nome=nome; fecharModal(); render(); }, false); }
+function excluirTag(id){ const t=TAGMAP[id]; if(!t) return; abrirModal('Excluir tag', `<p>Excluir a tag <b>${esc(t.nome)}</b>? As parcelas ficam sem tag.</p><div id="eMsg" style="font-size:12px"></div>`, 'Excluir', async()=>{ modalBusy(true); const r=await DB.deleteFinanceiroRow('parcela_tags',id); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } TAGS=TAGS.filter(x=>x.id!==id); delete TAGMAP[id]; fecharModal(); render(); }, true); }
+
+// ── Export ──────────────────────────────────────────────────────────────────
+function exportarCsv(){
+  const parc=parcFiltradas();
+  const linhas=[['Cartão','Compra','Empresa','Fatura','Parcela','Vencimento','Valor','Status','Tag']].concat(parc.map(p=>{ const co=compraDe(p), c=CARTMAP[p.cartao_id], tg=TAGMAP[p.tag_id]; return [c?c.nome:'',co?co.name:'',(co&&co.empresa||'').trim(),p.fatura_mes||'',p.numero_parcela||'',p.data_vencimento||'',String(val(p)).replace('.',','),statusP(p),tg?tg.nome:'']; }));
+  baixar(linhas,`cartoes-${document.getElementById('ctMes').value}.csv`);
+}
+function exportarTagsCsv(){
+  const parc=parcFiltradas(), by={}; parc.forEach(p=>{ const t=TAGMAP[p.tag_id]; const k=t?t.nome:'Sem tag'; by[k]=(by[k]||0)+val(p); });
+  const linhas=[['Tag','Total']].concat(Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[k,String(v).replace('.',',')]));
+  baixar(linhas,'tags.csv');
+}
+function baixar(linhas,nome){ const csv=linhas.map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n'); const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}), url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=nome; a.click(); URL.revokeObjectURL(url); }
+function exportarTagsPdf(){
+  const parc=parcFiltradas(), by={}; parc.forEach(p=>{ const t=TAGMAP[p.tag_id]; const k=t?t.nome:'Sem tag'; by[k]=(by[k]||0)+val(p); });
+  const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
+  const trs=rows.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="r">${BRL(v)}</td></tr>`).join('');
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Relatório de Tags</title><style>body{font-family:Arial;padding:24px;color:#111}table{width:100%;border-collapse:collapse}td{padding:6px 8px;border-bottom:1px solid #ddd}td.r{text-align:right}</style></head><body><h1>Relatório de Tags — Cartões</h1><table>${trs}</table><script>window.onload=function(){window.print();}<\/script></body></html>`;
+  const w=window.open('','_blank'); if(!w){ alert('Permita pop-ups.'); return; } w.document.write(html); w.document.close();
+}
+
+// ── Modal ──
+let modalAction=null;
+function abrirModal(t,b,ok,fn,danger){ document.getElementById('ctModalTitle').textContent=t; document.getElementById('ctModalBody').innerHTML=b; const o=document.getElementById('ctModalOk'); o.textContent=ok; o.dataset.prev=ok; o.disabled=false; o.className='ct-btn-ok'+(danger?' danger':''); o.style.display=''; modalAction=fn; document.getElementById('ctModal').style.display='flex'; }
+function abrirModalInfo(t,b){ document.getElementById('ctModalTitle').textContent=t; document.getElementById('ctModalBody').innerHTML=b; document.getElementById('ctModalOk').style.display='none'; modalAction=null; document.getElementById('ctModal').style.display='flex'; }
+function fecharModal(){ document.getElementById('ctModal').style.display='none'; modalAction=null; }
+function modalBusy(on,label){ const o=document.getElementById('ctModalOk'); o.disabled=on; o.textContent=on?(label||'Salvando…'):(o.dataset.prev||'Confirmar'); }
+function eMsgErr(t){ const m=document.getElementById('eMsg'); if(m) m.innerHTML='<span style="color:var(--red)">'+t+'</span>'; }
+
+function init(){
+  document.getElementById('ctModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });
+  document.getElementById('ctModal').addEventListener('click', e=>{ if(e.target.id==='ctModal') fecharModal(); });
+  document.getElementById('ctMes').addEventListener('change', render);
+  load();
+}
+init();
+</script>
+</body>
+</html>

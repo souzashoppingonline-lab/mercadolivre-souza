@@ -50,7 +50,7 @@
     .rk-next { font-size: 10px; color: var(--text-muted); margin-top: 3px; }
 
     /* Ciclo + ADS manual */
-    .rk-cyc { display: inline-flex; align-items: center; gap: 3px; background: rgba(88,166,255,.15); color: #58a6ff; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px; }
+    .rk-cyc { display: inline-flex; align-items: center; gap: 4px; background: #58a6ff; color: #06131f; font-size: 11px; font-weight: 900; letter-spacing: .3px; padding: 3px 9px; border-radius: 6px; text-transform: uppercase; }
     .rk-ads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 4px; background: var(--bg-card2); border-radius: 8px; padding: 8px; }
     .rk-ads label { display: flex; flex-direction: column; gap: 3px; font-size: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; font-weight: 700; }
     .rk-ads input { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; padding: 5px 6px; font-size: 12px; font-weight: 700; width: 100%; }
@@ -275,7 +275,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${badge} ${mktTag(a.marketplace)} <span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${sug}
+        <span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ${badge} ${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
       </div>

@@ -93,6 +93,9 @@
     <button class="rk-tab active" id="tab-rankeando" onclick="switchTab('rankeando')"><i class="fas fa-ranking-star"></i> Em rankeamento <span class="rk-tab-badge" id="cnt-rankeando">0</span></button>
     <button class="rk-tab" id="tab-ranqueado" onclick="switchTab('ranqueado')"><i class="fas fa-shield-halved"></i> Ranqueados <span class="rk-tab-badge" id="cnt-ranqueado">0</span></button>
     <button class="rk-tab" id="tab-todos" onclick="switchTab('todos')"><i class="fas fa-list"></i> Todos os anúncios</button>
+    <select id="rkLoja" onchange="onLojaChange()" title="Filtrar por empresa/loja do Mercado Livre" style="margin-left:auto;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px">
+      <option value="">Todas as empresas (ML)</option>
+    </select>
   </div>
 
   <!-- Aba: Em rankeamento -->
@@ -150,7 +153,21 @@ const mktTag = m => m === 'SHOPEE'
   : '<span style="background:#ffe600;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Mercado Livre</span>';
 
 let MKT = '';        // filtro de canal atual ('', 'ML', 'SHOPEE')
+let LOJA = '';       // filtro de empresa/loja do ML (store_id) — '' = todas
 let TAB = 'rankeando';
+
+async function popularLojas() {
+  try {
+    const d = await DB.getLojas();
+    const sel = document.getElementById('rkLoja');
+    (d.stores || []).forEach(s => sel.insertAdjacentHTML('beforeend', `<option value="${s.id}">${(s.nickname || s.id)}</option>`));
+  } catch (_) { /* segue sem filtro de loja */ }
+}
+function onLojaChange() {
+  LOJA = document.getElementById('rkLoja').value;
+  loadCards();
+  if (TAB === 'todos') loadTable(document.getElementById('rkSearch').value);
+}
 const EVENTS = {};   // id do ranking_ad -> array de eventos
 
 function switchTab(t) {
@@ -169,7 +186,7 @@ function onMktChange() {
 
 // Carrega as duas listas (fase 1 e fase 2) e atualiza contadores das abas.
 async function loadCards() {
-  const [d1, d2] = await Promise.all([DB.getRankingAds('', 'rankeando'), DB.getRankingAds('', 'ranqueado')]);
+  const [d1, d2] = await Promise.all([DB.getRankingAds(MKT, 'rankeando', LOJA), DB.getRankingAds(MKT, 'ranqueado', LOJA)]);
   await renderPanel(d1.ads || [], 'rkCards', 'rkCardsEmpty');
   await renderPanel(d2.ads || [], 'rkCardsRanq', 'rkCardsRanqEmpty');
   document.getElementById('cnt-rankeando').textContent = (d1.ads || []).length;
@@ -270,7 +287,7 @@ document.getElementById('rkSearch').addEventListener('input', e => {
 });
 
 async function loadTable(q = '') {
-  const d = await DB.buscarRankingItems(q, MKT);
+  const d = await DB.buscarRankingItems(q, MKT, LOJA);
   const items = d.items || [];
   const body = document.getElementById('rkTableBody');
   if (!items.length) { body.innerHTML = '<tr><td colspan="7" class="rk-empty" style="border:none">Nenhum anúncio encontrado.</td></tr>'; return; }
@@ -313,6 +330,7 @@ WS.on('ranking_event', (p) => {
 });
 WS.on('_connected', () => { document.getElementById('wsStatus').innerHTML = '<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo'; });
 
+popularLojas();
 loadCards();
 loadTable();
 </script>

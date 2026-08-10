@@ -257,8 +257,8 @@ const DB = {
   async getDiaHistorico(params = {}) { return this._get('/analises/vendas-mes/dia-historico', params); },
 
   // ── Rankeamento de anúncios ──────────────────────────────────
-  async getRankingAds(marketplace = '', fase = '') { return this._get('/ranking/ads', { marketplace, fase }); },
-  async buscarRankingItems(q = '', marketplace = '') { return this._get('/ranking/buscar', { q, marketplace }); },
+  async getRankingAds(marketplace = '', fase = '', store_id = '') { return this._get('/ranking/ads', { marketplace, fase, store_id }); },
+  async buscarRankingItems(q = '', marketplace = '', store_id = '') { return this._get('/ranking/buscar', { q, marketplace, store_id }); },
   async addRankingAd(ml_id, milestone_every) { return this._post('/ranking/ads', { ml_id, milestone_every }); },
   async patchRankingAd(id, body)     { return this._patch(`/ranking/ads/${id}`, body); },
   async removeRankingAd(id)          { return this._delete(`/ranking/ads/${id}`); },

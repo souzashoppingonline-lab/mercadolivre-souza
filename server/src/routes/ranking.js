@@ -14,10 +14,12 @@ router.get('/ads', async (req, res) => {
   try {
     const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
     const fase = String(req.query.fase || '').trim().toLowerCase();       // '', 'rankeando' ou 'ranqueado'
+    const storeId = String(req.query.store_id || '').trim();              // '' ou id da loja
     const params = [];
     const conds = [];
     if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); conds.push(`COALESCE(m.code, 'ML') = $${params.length}`); }
     if (fase === 'rankeando' || fase === 'ranqueado') { params.push(fase); conds.push(`r.fase = $${params.length}`); }
+    if (storeId) { params.push(storeId); conds.push(`r.store_id = $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const { rows } = await pool.query(
       `SELECT r.*, i.thumbnail, i.permalink, i.available_quantity AS estoque_atual,
@@ -54,12 +56,14 @@ router.get('/buscar', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
+    const storeId = String(req.query.store_id || '').trim();              // '' ou id da loja
     // q vazio → lista os anúncios mais recentes (a "tabela com todos os anúncios").
     // Com q → filtra por ml_id/título. Marca quais já estão em rankeamento.
     const params = [];
     let where = `i.status <> 'closed'`;
     if (q.length >= 2) { params.push(`%${q}%`); where += ` AND (i.ml_id ILIKE $${params.length} OR i.title ILIKE $${params.length})`; }
     if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); where += ` AND COALESCE(m.code, 'ML') = $${params.length}`; }
+    if (storeId) { params.push(storeId); where += ` AND i.store_id = $${params.length}`; }
     const { rows } = await pool.query(
       `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.status, i.thumbnail, i.sold_quantity,
               s.nickname AS store_nickname, COALESCE(m.code, 'ML') AS marketplace,

@@ -88,8 +88,15 @@
     .dp-catbar { height:7px; background:var(--bg-card2); border-radius:4px; overflow:hidden; margin-top:5px; }
     .dp-catbar > span { display:block; height:100%; }
     /* ranking */
-    .dp-rank { border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:10px; display:grid; grid-template-columns:auto 1fr auto; gap:14px; align-items:center; }
+    .dp-rankwrap { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+    .dp-rank { padding:14px; display:grid; grid-template-columns:auto 1fr auto; gap:14px; align-items:center; cursor:pointer; }
+    .dp-rank:hover { background:var(--bg-card2); }
     .dp-rank .pos { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; font-size:13px; flex:none; }
+    .dp-chev { transition:transform .15s; color:var(--text-muted); font-size:12px; }
+    .dp-rankdet { padding:2px 14px 14px; border-top:1px dashed var(--border); }
+    .dp-rankdet .item { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+    .dp-rankdet .item .nm { display:flex; align-items:center; gap:8px; }
+    .dp-rankdet .item .dot2 { width:8px; height:8px; border-radius:50%; display:inline-block; flex:none; }
     .dp-alav { background:linear-gradient(135deg,#0f2a1a,#0d1f2a); border:1px solid #1f3b2b; border-radius:14px; padding:16px 18px; margin-bottom:16px; font-size:13px; }
     /* break-even boxes */
     .dp-be { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
@@ -547,21 +554,45 @@ function renderRank(m,y){
   alav.innerHTML=`<div class="dp-alav"><div style="font-weight:800;margin-bottom:6px">💡 Maior alavanca de redução</div><div style="color:#cbd5e1">${alavTxt}</div></div>`;
   const tipoChip=t=>t==='fixed'?'<span class="dp-chip fixo">Fixo</span>':t==='operational'?'<span class="dp-chip oper">Operacional</span>':'<span class="dp-chip misto">Misto</span>';
   const max=arr[0].value||1;
+  const expAll=expMonth(m,y,fRank);
   list.innerHTML=arr.map((o,i)=>{
-    const c=colorFor(o.name), p=total?o.value/total*100:0;
-    return `<div class="dp-rank">
-      <div class="pos" style="background:${c}">${i+1}</div>
-      <div>
-        <div style="font-weight:700">${esc(o.name)} ${tipoChip(o.tipo)} <span style="color:var(--text-muted);font-size:11px">${o.items} ${o.items>1?'itens':'item'}</span></div>
-        <div class="dp-catbar" style="margin-top:8px"><span style="width:${o.value/max*100}%;background:${c}"></span></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${PCT(p)} do total · Custo ${BRL(o.value)}</div>
+    const c=colorFor(o.name), p=total?o.value/total*100:0, redV=red(o.value), beSem=be-redV;
+    const itens=expAll.filter(e=>(e.category_id||'__none')===o.key).sort((x,y2)=>(+y2.value||0)-(+x.value||0));
+    const det=`det-rank-${i}`;
+    const linhas=itens.length?itens.map(e=>`<div class="item"><span class="nm"><span class="dot2" style="background:${c}"></span>${esc(e.description||'—')}${e.is_recurring?' <span class="dp-chip auto"><i class="fas fa-rotate"></i> Recorrente</span>':''}</span><b>${BRL(+e.value||0)}</b></div>`).join(''):'<div class="dp-empty">Sem itens.</div>';
+    return `<div class="dp-rankwrap">
+      <div class="dp-rank" onclick="toggleRank('${det}',this)">
+        <div class="pos" style="background:${c}">${i+1}</div>
+        <div>
+          <div style="font-weight:700">${esc(o.name)} ${tipoChip(o.tipo)} <span style="color:var(--text-muted);font-size:11px">${o.items} ${o.items>1?'itens':'item'}</span></div>
+          <div class="dp-catbar" style="margin-top:8px"><span style="width:${o.value/max*100}%;background:${c}"></span></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${PCT(p)} do total · Custo ${BRL(o.value)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="text-align:right;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);border-radius:10px;padding:8px 12px">
+            <div style="font-size:10px;color:var(--text-muted)">Reduz break-even em</div>
+            <div style="font-weight:800;color:#f87171">${BRL(redV)}</div>
+            <div style="font-size:10px;color:var(--text-muted)">(${PCT(p)})</div>
+          </div>
+          <i class="fas fa-chevron-down dp-chev"></i>
+        </div>
       </div>
-      <div style="text-align:right;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);border-radius:10px;padding:8px 12px">
-        <div style="font-size:10px;color:var(--text-muted)">Reduz break-even em</div>
-        <div style="font-weight:800;color:#f87171">${BRL(red(o.value))}</div>
-        <div style="font-size:10px;color:var(--text-muted)">(${PCT(p)})</div>
+      <div class="dp-rankdet" id="${det}" style="display:none">
+        <div class="dp-be" style="margin:12px 0">
+          <div class="box"><div class="k">Break-even sem esta categoria</div><div class="v" style="color:#3fb950">${BRL(beSem)}</div></div>
+          <div class="box"><div class="k">Economia mensal</div><div class="v down">${BRL(o.value)}</div></div>
+          <div class="box"><div class="k">Peso no break-even</div><div class="v">${PCT(p)}</div></div>
+        </div>
+        <div style="font-size:10px;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin-bottom:4px">Despesas desta categoria</div>
+        ${linhas}
       </div></div>`;
   }).join('');
+}
+function toggleRank(id,el){
+  const d=document.getElementById(id); if(!d) return;
+  const open=d.style.display==='none';
+  d.style.display=open?'block':'none';
+  const chev=el.querySelector('.dp-chev'); if(chev) chev.style.transform=open?'rotate(180deg)':'';
 }
 
 // ── Filtros das seções ─────────────────────────────────────────────────────

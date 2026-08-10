@@ -506,12 +506,15 @@ function calcParcInfo(){ const n=Math.max(1,Math.round(pNum(document.getElementB
 // do fechamento, começa na fatura do mês seguinte.
 function calcVencimentos(card, dataCompra, nParc){
   const fech=+card.dia_fechamento||20, venc=+card.dia_vencimento||10;
-  const d=new Date(dataCompra+'T00:00:00'), y=d.getFullYear();
-  let baseM=d.getMonth(); if(d.getDate()>fech) baseM+=1;
+  const [cy,cm,cd]=String(dataCompra).split('-').map(Number);   // parse local, sem fuso
+  const pad=n=>String(n).padStart(2,'0');
+  let baseM=(cm-1); if(cd>fech) baseM+=1;                        // mês da fatura (0-idx); pula se após fechamento
   const out=[];
   for(let i=0;i<nParc;i++){
-    const fat=new Date(y, baseM+i, 1), vd=new Date(y, baseM+i+1, venc);
-    out.push({ fatura_mes:`${fat.getFullYear()}-${String(fat.getMonth()+1).padStart(2,'0')}`, data_vencimento:vd.toISOString().slice(0,10) });
+    const fat=new Date(cy, baseM+i, 1), fy=fat.getFullYear(), fm=fat.getMonth();          // fatura
+    const vdt=new Date(fy, fm+1, 1), vy=vdt.getFullYear(), vm=vdt.getMonth();             // vence no mês seguinte
+    const ultimoDia=new Date(vy, vm+1, 0).getDate(), dia=Math.min(venc, ultimoDia);        // clamp dia 31 em mês curto
+    out.push({ fatura_mes:`${fy}-${pad(fm+1)}`, data_vencimento:`${vy}-${pad(vm+1)}-${pad(dia)}` });
   }
   return out;
 }

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fluxo de Caixa — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Fluxo de Caixa'; window.ACTIVE_NAV='financeiro-fluxo-caixa.html';</script>
+  <style>
+    .fx-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .fx-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .fx-top select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
+    .fx-top select option, select option { background:var(--bg-card); color:var(--text-main); }
+    .fx-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; gap:7px; align-items:center; }
+    .fx-btn:hover { border-color:#3fb950; }
+    .fx-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .fx-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .fx-card-h h3 { font-size:15px; font-weight:800; margin:0; }
+    .fx-card-h .desc { font-size:12px; color:var(--text-muted); font-weight:500; }
+    .fx-sem { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:16px; }
+    .fx-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+    .fx-kpi .k { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .fx-kpi .v { font-size:22px; font-weight:800; margin-top:4px; }
+    .fx-kpi .s { font-size:11px; margin-top:3px; color:var(--text-muted); }
+    .fx-cols { display:grid; grid-template-columns:340px 1fr; gap:16px; align-items:start; }
+    @media(max-width:980px){ .fx-cols { grid-template-columns:1fr; } }
+    .fx-seg { display:flex; border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:12px; }
+    .fx-seg button { flex:1; background:var(--bg-card2); color:var(--text-muted); border:none; padding:11px; font-size:14px; font-weight:800; cursor:pointer; }
+    .fx-seg button.income.on { background:rgba(46,160,67,.18); color:#3fb950; }
+    .fx-seg button.expense.on { background:rgba(239,68,68,.18); color:#f87171; }
+    .fx-in { display:block; width:100%; margin-top:4px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; box-sizing:border-box; }
+    label.fx-lbl { display:block; font-size:12px; color:var(--text-muted); margin-top:12px; }
+    .fx-cta { width:100%; margin-top:16px; border:none; border-radius:10px; padding:12px; font-weight:800; font-size:14px; cursor:pointer; }
+    table.fx-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .fx-t th, .fx-t td { padding:8px 9px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .fx-t th:first-child, .fx-t td:first-child, .fx-t th:nth-child(2), .fx-t td:nth-child(2), .fx-t th:nth-child(3), .fx-t td:nth-child(3), .fx-t th:nth-child(4), .fx-t td:nth-child(4) { text-align:left; }
+    .fx-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); }
+    .fx-t tr:hover td { background:var(--bg-card2); }
+    .fx-t tr.hoje td { background:rgba(245,158,11,.08); }
+    .fx-t tr.cartao td { background:rgba(236,72,153,.06); }
+    .fx-t tr.boleto td { background:rgba(249,115,22,.06); }
+    .fx-chip { border-radius:999px; padding:2px 9px; font-size:10px; font-weight:800; }
+    .fx-chip.income { background:rgba(46,160,67,.15); color:#3fb950; }
+    .fx-chip.expense { background:rgba(239,68,68,.15); color:#f87171; }
+    .fx-chip.emp { background:var(--bg-card2); color:var(--text-muted); border:1px solid var(--border); }
+    .fx-icon { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:12px; padding:4px 6px; border-radius:6px; }
+    .fx-icon:hover { background:var(--bg-card); color:var(--text-main); } .fx-icon.del:hover { color:#f87171; }
+    .fx-summary { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+    .fx-sc { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:14px; }
+    .fx-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+    .fx-tab { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer; }
+    .fx-tab.on { background:#1f2937; color:#fff; }
+    .up{ color:#3fb950;} .down{ color:#f87171;}
+    .fx-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    .fx-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .fx-modal-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+    .fx-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:560px; max-height:90vh; overflow:auto; }
+    .fx-modal-h { display:flex; align-items:center; padding:16px 18px; border-bottom:1px solid var(--border); }
+    .fx-modal-h h3 { margin:0; font-size:16px; font-weight:800; }
+    .fx-modal-x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:16px; cursor:pointer; }
+    .fx-modal-b { padding:16px 18px; font-size:13px; } .fx-modal-b select option { background:var(--bg-card); color:var(--text-main); }
+    .fx-modal-f { display:flex; gap:10px; justify-content:flex-end; padding:14px 18px; border-top:1px solid var(--border); }
+    .fx-btn-cancel { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 18px; font-weight:700; cursor:pointer; }
+    .fx-btn-ok { background:#3fb950; color:#03210d; border:none; border-radius:10px; padding:9px 20px; font-weight:800; cursor:pointer; }
+    .fx-btn-ok.danger { background:#f87171; color:#2a0a0a; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="fx-sub">Controle de entradas e saídas — lançamentos, semáforo do mês, resumos por empresa/conta, gráficos e recorrentes.</p>
+      <div id="fxStatus" class="fx-status"></div>
+
+      <div class="fx-top">
+        <select id="fxMes"></select><select id="fxAno"></select>
+        <select id="fxEmpFiltro"><option value="">Todas as empresas</option></select>
+        <select id="fxContaFiltro"><option value="">Todas as contas</option></select>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="fx-btn" onclick="abrirRecorrentes()"><i class="fas fa-rotate"></i> Recorrentes</button>
+          <button class="fx-btn" onclick="abrirCategorias()"><i class="fas fa-tags"></i> Categorias</button>
+          <button class="fx-btn" onclick="abrirContas()"><i class="fas fa-building-columns"></i> Contas</button>
+          <button class="fx-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> CSV</button>
+          <button class="fx-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+      </div>
+
+      <div class="fx-sem" id="fxSemaforo"></div>
+
+      <div class="fx-cols">
+        <!-- Form -->
+        <div class="fx-card">
+          <div class="fx-card-h"><h3>➕ Novo Lançamento</h3><span id="fxFormMsg" style="margin-left:auto;font-size:12px"></span></div>
+          <div class="fx-seg">
+            <button class="income on" id="segIncome" onclick="setFormType('income')">↓ Entrada</button>
+            <button class="expense" id="segExpense" onclick="setFormType('expense')">↑ Saída</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label class="fx-lbl">Empresa<select id="fEmp" class="fx-in"><option value="">— Selecione —</option></select></label>
+            <label class="fx-lbl">Conta bancária<select id="fConta" class="fx-in"><option value="">— Selecione —</option></select></label>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <label class="fx-lbl">Data<input type="date" id="fData" class="fx-in"></label>
+            <label class="fx-lbl">Valor (R$)<input type="number" step="0.01" id="fVal" class="fx-in" placeholder="0,00"></label>
+          </div>
+          <div id="fxExpenseFields">
+            <label class="fx-lbl">Categoria *<select id="fCat" class="fx-in"><option value="">— Selecione —</option></select></label>
+            <label class="fx-lbl">Motivo (opcional)<input id="fReason" class="fx-in" placeholder="Ex: Aluguel escritório…"></label>
+          </div>
+          <button class="fx-cta" id="fBtn" onclick="salvar()" style="background:#3fb950;color:#03210d">+ Cadastrar</button>
+          <div id="fEditInfo" style="font-size:11px;color:var(--text-muted);margin-top:8px;display:none"></div>
+        </div>
+
+        <!-- Table -->
+        <div class="fx-card">
+          <div class="fx-card-h"><h3>📋 Lançamentos <span id="fxMesLbl" class="desc"></span></h3></div>
+          <div class="fx-filters">
+            <div id="fxTipoTabs" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+            <select id="fxCatFiltro" class="fx-in" style="width:auto;margin:0"><option value="">Todas categorias</option></select>
+          </div>
+          <div id="fxHoje" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px"></div>
+          <div style="overflow:auto;max-height:60vh">
+            <table class="fx-t">
+              <thead><tr><th>Data</th><th>Tipo</th><th>Loja/Categoria</th><th>Motivo</th><th>Conta</th><th>Valor</th><th style="text-align:center">Ações</th></tr></thead>
+              <tbody id="fxLista"><tr><td colspan="7" class="fx-empty">Carregando…</td></tr></tbody>
+              <tfoot id="fxFoot"></tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="fx-card">
+        <div class="fx-card-h"><h3>🏢 Resumo por Empresa</h3></div>
+        <div class="fx-summary" id="fxResumoEmp"></div>
+      </div>
+      <div class="fx-card">
+        <div class="fx-card-h"><h3>🏦 Resumo por Conta Bancária</h3></div>
+        <div class="fx-summary" id="fxResumoConta"></div>
+      </div>
+
+      <div class="fx-card">
+        <div class="fx-card-h"><h3>📈 Evolução do Caixa</h3>
+          <div style="margin-left:auto;display:flex;gap:6px" id="fxPeriodo">
+            <button class="fx-tab" onclick="setPeriodo(7)">7d</button><button class="fx-tab on" onclick="setPeriodo(15)">15d</button><button class="fx-tab" onclick="setPeriodo(30)">30d</button><button class="fx-tab" onclick="setPeriodo(60)">60d</button>
+          </div>
+        </div>
+        <canvas id="fxChart" height="110"></canvas>
+      </div>
+
+      <div class="fx-card">
+        <div class="fx-card-h"><h3>🗓️ Resumo Semanal <span id="fxSemLbl" class="desc"></span></h3></div>
+        <div style="overflow:auto"><table class="fx-t"><thead><tr><th>Semana</th><th>Entradas</th><th>Saídas</th><th>Saldo</th></tr></thead><tbody id="fxSemanal"></tbody></table></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="fx-modal-ov" id="fxModal">
+  <div class="fx-modal">
+    <div class="fx-modal-h"><h3 id="fxModalTitle"></h3><button class="fx-modal-x" onclick="fecharModal()">✕</button></div>
+    <div class="fx-modal-b" id="fxModalBody"></div>
+    <div class="fx-modal-f"><button class="fx-btn-cancel" onclick="fecharModal()">Cancelar</button><button class="fx-btn-ok" id="fxModalOk">Confirmar</button></div>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
+const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
+const hojeISO=()=>new Date().toISOString().slice(0,10);
+const fmtDate=s=>{ if(!s) return '—'; const p=String(s).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}`:s; };
+const isIncome=e=>e.type==='income';
+const isCartao=e=>/fatura|cart[aã]o/i.test(String(e.reason||'')+' '+String(e.category||''));
+const isBoleto=e=>!!e.boleto_id;
+
+let ENTRIES=[], CATS=[], RECOR=[], STORES=[], CONTAS=[], CONTAEMP=[], STOREMAP={}, CONTAMAP={};
+let formType='income', editId=null, periodo=15, filtroTipo='todos', chart;
+function showStatus(t,err){ const el=document.getElementById('fxStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
+
+async function load(){
+  const rE=await DB.getFinanceiroDados('cash_flow_entries',20000,'date.desc'); ENTRIES=rE.rows||[];
+  const rC=await DB.getFinanceiroDados('cash_flow_categories',1000); CATS=rC.rows||[];
+  const rR=await DB.getFinanceiroDados('cash_flow_recurring',2000); RECOR=rR.rows||[];
+  const rS=await DB.getFinanceiroDados('stores',1000); STORES=rS.rows||[]; STOREMAP={}; STORES.forEach(s=>STOREMAP[s.id]=s.name||s.nome||s.nickname||String(s.id).slice(0,6));
+  const rB=await DB.getFinanceiroDados('contas_bancarias',1000); CONTAS=(rB.error?[]:rB.rows)||[]; CONTAMAP={}; CONTAS.forEach(c=>CONTAMAP[c.id]=c.nome||c.banco_nome||String(c.id).slice(0,6));
+  const rCE=await DB.getFinanceiroDados('conta_empresas',3000); CONTAEMP=(rCE.error?[]:rCE.rows)||[];
+  const errs=[['cash_flow_entries',rE],['cash_flow_categories',rC],['stores',rS]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
+  if(errs.length) showStatus('⚠️ <b>Falha ao ler o banco.</b> '+esc(errs.join(' · ')),true);
+  else showStatus(`✅ Carregado: ${ENTRIES.length} lançamentos, ${CATS.length} categorias, ${STORES.length} empresas, ${CONTAS.length} contas.`,false);
+  // selects
+  const empOpts='<option value="">— Selecione —</option>'+STORES.map(s=>`<option value="${esc(s.id)}">${esc(STOREMAP[s.id])}</option>`).join('');
+  document.getElementById('fEmp').innerHTML=empOpts;
+  document.getElementById('fEmpFiltro') && (document.getElementById('fEmpFiltro').innerHTML='');
+  document.getElementById('fxEmpFiltro').innerHTML='<option value="">Todas as empresas</option>'+STORES.map(s=>`<option value="${esc(s.id)}">${esc(STOREMAP[s.id])}</option>`).join('');
+  const contaOpts='<option value="">— Selecione —</option>'+CONTAS.map(c=>`<option value="${esc(c.id)}">${esc(CONTAMAP[c.id])}</option>`).join('');
+  document.getElementById('fConta').innerHTML=contaOpts;
+  document.getElementById('fxContaFiltro').innerHTML='<option value="">Todas as contas</option>'+CONTAS.map(c=>`<option value="${esc(c.id)}">${esc(CONTAMAP[c.id])}</option>`).join('');
+  const catOpts=CATS.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  document.getElementById('fCat').innerHTML='<option value="">— Selecione —</option>'+catOpts;
+  document.getElementById('fxCatFiltro').innerHTML='<option value="">Todas categorias</option>'+catOpts;
+  render();
+}
+
+function selM(){ return +document.getElementById('fxMes').value; }
+function selY(){ return +document.getElementById('fxAno').value; }
+function inMonth(e,m,y){ if(!e.date) return false; const d=new Date(e.date+'T00:00:00'); return d.getMonth()+1===m && d.getFullYear()===y; }
+function monthEntries(m,y){
+  const emp=document.getElementById('fxEmpFiltro').value, conta=document.getElementById('fxContaFiltro').value;
+  return ENTRIES.filter(e=>inMonth(e,m,y) && (!emp||String(e.store_id)===emp) && (!conta||String(e.conta_bancaria_id)===conta));
+}
+function val(e){ return +e.value||0; }
+
+function render(){
+  const m=selM(), y=selY();
+  document.getElementById('fxMesLbl').textContent=`— ${MESES[m-1]}/${y}`;
+  document.getElementById('fxSemLbl').textContent=`— ${MESES[m-1]}/${y}`;
+  renderSemaforo(m,y); renderTipoTabs(); renderLista(m,y); renderResumos(m,y); renderChart(); renderSemanal(m,y);
+}
+
+function renderSemaforo(m,y){
+  const saldoHist=ENTRIES.reduce((s,e)=>s+(isIncome(e)?val(e):-val(e)),0);
+  const cur=monthEntries(m,y);
+  const pm=m===1?12:m-1, py=m===1?y-1:y, prev=monthEntries(pm,py);
+  const ent=cur.filter(isIncome).reduce((s,e)=>s+val(e),0), sai=cur.filter(e=>!isIncome(e)).reduce((s,e)=>s+val(e),0);
+  const entP=prev.filter(isIncome).reduce((s,e)=>s+val(e),0), saiP=prev.filter(e=>!isIncome(e)).reduce((s,e)=>s+val(e),0);
+  const cartao=cur.filter(e=>!isIncome(e)&&isCartao(e)).reduce((s,e)=>s+val(e),0);
+  const hoje=ENTRIES.filter(e=>(e.date||'').slice(0,10)===hojeISO());
+  const hE=hoje.filter(isIncome).reduce((s,e)=>s+val(e),0), hS=hoje.filter(e=>!isIncome(e)).reduce((s,e)=>s+val(e),0);
+  const chg=(a,b)=>b?`<span class="${a>=b?'up':'down'}">${a>=b?'▲':'▼'} ${PCT(Math.abs((a-b)/b*100))}</span>`:'<span style="color:var(--text-muted)">—</span>';
+  document.getElementById('fxSemaforo').innerHTML=`
+    <div class="fx-kpi"><div class="k">💰 Saldo Acumulado</div><div class="v" style="color:${saldoHist>=0?'#3fb950':'#f87171'}">${BRL(saldoHist)}</div><div class="s">histórico total</div></div>
+    <div class="fx-kpi"><div class="k">↓ Entradas do Mês</div><div class="v up">${BRL(ent)}</div><div class="s">${chg(ent,entP)} vs mês ant.</div></div>
+    <div class="fx-kpi"><div class="k">↑ Saídas do Mês</div><div class="v down">${BRL(sai)}</div><div class="s">${chg(sai,saiP)} vs mês ant.</div></div>
+    <div class="fx-kpi"><div class="k">💳 Cartão no Mês</div><div class="v" style="color:#ec4899">${BRL(cartao)}</div><div class="s">faturas pagas</div></div>
+    <div class="fx-kpi"><div class="k">📅 Hoje</div><div class="v" style="font-size:16px"><span class="up">+${BRL(hE)}</span> · <span class="down">-${BRL(hS)}</span></div><div class="s">saldo dia ${BRL(hE-hS)}</div></div>`;
+}
+
+function renderTipoTabs(){
+  const tabs=[['todos','Todos'],['income','Entradas'],['expense','Saídas'],['boleto','Boletos'],['cartao','Cartões']];
+  document.getElementById('fxTipoTabs').innerHTML=tabs.map(([k,l])=>`<button class="fx-tab ${filtroTipo===k?'on':''}" onclick="setFiltroTipo('${k}')">${l}</button>`).join('');
+}
+function setFiltroTipo(t){ filtroTipo=t; render(); }
+
+function listaFiltrada(m,y){
+  const cat=document.getElementById('fxCatFiltro').value;
+  return monthEntries(m,y).filter(e=>{
+    if(filtroTipo==='income' && !isIncome(e)) return false;
+    if(filtroTipo==='expense' && isIncome(e)) return false;
+    if(filtroTipo==='boleto' && !isBoleto(e)) return false;
+    if(filtroTipo==='cartao' && !isCartao(e)) return false;
+    if(cat && String(e.category||'')!==cat) return false;
+    return true;
+  }).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+}
+function linhaEntry(e){
+  const inc=isIncome(e), cls=(e.date||'').slice(0,10)===hojeISO()?'hoje':(isCartao(e)?'cartao':(isBoleto(e)?'boleto':''));
+  return `<tr class="${cls}">
+    <td>${fmtDate(e.date)}</td>
+    <td><span class="fx-chip ${inc?'income':'expense'}">${inc?'Entrada':'Saída'}</span></td>
+    <td>${inc?esc(STOREMAP[e.store_id]||'—'):esc(e.category||'—')}</td>
+    <td style="color:var(--text-muted)">${esc(e.reason||(inc?'Recebimento':'—'))}</td>
+    <td style="color:var(--text-muted)">${esc(CONTAMAP[e.conta_bancaria_id]||STOREMAP[e.store_id]||'—')}</td>
+    <td style="font-weight:700;color:${inc?'#3fb950':'#f87171'}">${inc?'+':'-'}${BRL(val(e))}</td>
+    <td style="text-align:center">
+      <button class="fx-icon" title="Editar" onclick="editar('${esc(e.id)}')"><i class="fas fa-pen"></i></button>
+      <button class="fx-icon del" title="Excluir" onclick="excluir('${esc(e.id)}')"><i class="fas fa-trash"></i></button>
+    </td></tr>`;
+}
+function renderLista(m,y){
+  const list=listaFiltrada(m,y), tb=document.getElementById('fxLista'), ft=document.getElementById('fxFoot');
+  const hoje=list.filter(e=>(e.date||'').slice(0,10)===hojeISO());
+  const hE=hoje.filter(isIncome).reduce((s,e)=>s+val(e),0), hS=hoje.filter(e=>!isIncome(e)).reduce((s,e)=>s+val(e),0);
+  document.getElementById('fxHoje').innerHTML=`<b>HOJE</b> — Entradas <span class="up">${BRL(hE)}</span> · Saídas <span class="down">${BRL(hS)}</span> · Saldo <b style="color:${hE-hS>=0?'#3fb950':'#f87171'}">${BRL(hE-hS)}</b>`;
+  tb.innerHTML=list.length?list.map(linhaEntry).join(''):'<tr><td colspan="7" class="fx-empty">Sem lançamentos neste filtro.</td></tr>';
+  const ent=list.filter(isIncome).reduce((s,e)=>s+val(e),0), sai=list.filter(e=>!isIncome(e)).reduce((s,e)=>s+val(e),0);
+  ft.innerHTML=`<tr><td colspan="5">TOTAL — Entradas ${BRL(ent)} · Saídas ${BRL(sai)}</td><td style="color:${ent-sai>=0?'#3fb950':'#f87171'}">${BRL(ent-sai)}</td><td></td></tr>`;
+}
+
+function renderResumos(m,y){
+  const list=monthEntries(m,y);
+  const grupo=(keyFn,nameFn)=>{ const by={}; list.forEach(e=>{ const k=keyFn(e)||'—'; const o=(by[k]=by[k]||{ent:0,sai:0}); if(isIncome(e))o.ent+=val(e); else o.sai+=val(e); }); return Object.entries(by).map(([k,o])=>({nome:nameFn(k),...o,res:o.ent-o.sai})).sort((a,b)=>b.res-a.res); };
+  const card=arr=>arr.length?arr.map(o=>{ const tot=o.ent||1; return `<div class="fx-sc"><div style="font-weight:800;margin-bottom:6px">${esc(o.nome)}</div>
+    <div style="display:flex;gap:14px;font-size:12px"><span>Ent <b class="up">${BRL(o.ent)}</b></span><span>Saí <b class="down">${BRL(o.sai)}</b></span></div>
+    <div style="height:6px;background:var(--bg-card);border-radius:4px;overflow:hidden;margin:8px 0"><span style="display:block;height:100%;width:${Math.min(o.sai/tot*100,100)}%;background:#f87171"></span></div>
+    <div style="font-size:13px;font-weight:800;color:${o.res>=0?'#3fb950':'#f87171'}">Resultado ${BRL(o.res)}</div></div>`;}).join(''):'<div class="fx-empty">Sem dados.</div>';
+  document.getElementById('fxResumoEmp').innerHTML=card(grupo(e=>e.store_id, k=>STOREMAP[k]||'Sem empresa'));
+  document.getElementById('fxResumoConta').innerHTML=card(grupo(e=>e.conta_bancaria_id, k=>CONTAMAP[k]||'Sem conta'));
+}
+
+function renderChart(){
+  const dias=periodo, hoje=new Date(), labels=[], ent=[], sai=[], saldo=[];
+  const emp=document.getElementById('fxEmpFiltro').value, conta=document.getElementById('fxContaFiltro').value;
+  const filt=e=>(!emp||String(e.store_id)===emp) && (!conta||String(e.conta_bancaria_id)===conta);
+  // saldo inicial (antes da janela)
+  const iniStr=new Date(hoje.getTime()-(dias-1)*864e5).toISOString().slice(0,10);
+  let acc=ENTRIES.filter(e=>filt(e)&&(e.date||'')<iniStr).reduce((s,e)=>s+(isIncome(e)?val(e):-val(e)),0);
+  for(let i=dias-1;i>=0;i--){
+    const d=new Date(hoje.getTime()-i*864e5), iso=d.toISOString().slice(0,10);
+    const dia=ENTRIES.filter(e=>filt(e)&&(e.date||'').slice(0,10)===iso);
+    const e=dia.filter(isIncome).reduce((s,x)=>s+val(x),0), s2=dia.filter(x=>!isIncome(x)).reduce((s,x)=>s+val(x),0);
+    acc+=e-s2; labels.push(`${d.getDate()}/${d.getMonth()+1}`); ent.push(+e.toFixed(2)); sai.push(+s2.toFixed(2)); saldo.push(+acc.toFixed(2));
+  }
+  chart&&chart.destroy();
+  chart=new Chart(document.getElementById('fxChart'),{data:{labels,datasets:[
+    {type:'bar',label:'Entradas',data:ent,backgroundColor:'#3fb950'},
+    {type:'bar',label:'Saídas',data:sai,backgroundColor:'#f87171'},
+    {type:'line',label:'Saldo',data:saldo,borderColor:'#6366f1',backgroundColor:'#6366f1',tension:.3,pointRadius:2,fill:false},
+  ]},options:{interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>'R$'+(Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
+}
+function setPeriodo(p){ periodo=p; [...document.getElementById('fxPeriodo').children].forEach(b=>b.classList.toggle('on',b.textContent===p+'d')); renderChart(); }
+
+function renderSemanal(m,y){
+  const list=monthEntries(m,y); const weeks={};
+  list.forEach(e=>{ const d=new Date(e.date+'T00:00:00'); const w=Math.ceil(d.getDate()/7); const o=(weeks[w]=weeks[w]||{ent:0,sai:0}); if(isIncome(e))o.ent+=val(e); else o.sai+=val(e); });
+  const tb=document.getElementById('fxSemanal');
+  const ks=Object.keys(weeks).sort((a,b)=>a-b);
+  tb.innerHTML=ks.length?ks.map(w=>{ const o=weeks[w], r=o.ent-o.sai; return `<tr><td>Semana ${w}</td><td class="up">${BRL(o.ent)}</td><td class="down">${BRL(o.sai)}</td><td style="color:${r>=0?'#3fb950':'#f87171'};font-weight:700">${BRL(r)}</td></tr>`; }).join(''):'<tr><td colspan="4" class="fx-empty">Sem lançamentos.</td></tr>';
+}
+
+// ── Form ────────────────────────────────────────────────────────────────────
+function setFormType(t){ formType=t; document.getElementById('segIncome').classList.toggle('on',t==='income'); document.getElementById('segExpense').classList.toggle('on',t==='expense');
+  document.getElementById('fxExpenseFields').style.display=t==='expense'?'block':'none';
+  const btn=document.getElementById('fBtn'); btn.style.background=t==='income'?'#3fb950':'#f87171'; btn.style.color=t==='income'?'#03210d':'#2a0a0a';
+}
+function fMsg(t,err){ const el=document.getElementById('fxFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
+function salvar(){
+  const date=document.getElementById('fData').value, value=pNum(document.getElementById('fVal').value);
+  const store_id=document.getElementById('fEmp').value, conta=document.getElementById('fConta').value;
+  const category=document.getElementById('fCat').value, reason=document.getElementById('fReason').value.trim();
+  if(!date){ fMsg('Informe a data.',true); return; }
+  if(value<=0){ fMsg('Informe um valor.',true); return; }
+  if(formType==='expense' && !category){ fMsg('Categoria é obrigatória na saída.',true); return; }
+  const row={ type:formType, date, value, reason:reason||null };
+  if(store_id) row.store_id=store_id;
+  if(conta) row.conta_bancaria_id=conta;
+  if(formType==='expense') row.category=category;
+  doSalvar(row);
+}
+async function doSalvar(row){
+  fMsg('Gravando…',false);
+  let r;
+  if(editId) r=await DB.updateFinanceiroRow('cash_flow_entries',editId,row);
+  else r=await DB.addFinanceiroRow('cash_flow_entries',row);
+  if(r&&r.error){ fMsg('Erro: '+esc(r.error),true); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null;
+  if(editId){ const i=ENTRIES.findIndex(x=>String(x.id)===String(editId)); if(i>=0) ENTRIES[i]=saved||{...ENTRIES[i],...row}; cancelarEdicao(); }
+  else if(saved) ENTRIES.unshift(saved);
+  ['fVal','fReason'].forEach(id=>document.getElementById(id).value='');
+  render(); fMsg('✅ Salvo.',false);
+}
+function editar(id){
+  const e=ENTRIES.find(x=>String(x.id)===String(id)); if(!e) return;
+  editId=id; setFormType(e.type||'income');
+  document.getElementById('fData').value=(e.date||'').slice(0,10); document.getElementById('fVal').value=val(e);
+  document.getElementById('fEmp').value=e.store_id||''; document.getElementById('fConta').value=e.conta_bancaria_id||'';
+  document.getElementById('fCat').value=e.category||''; document.getElementById('fReason').value=e.reason||'';
+  document.getElementById('fBtn').textContent='Salvar alterações';
+  const ei=document.getElementById('fEditInfo'); ei.style.display='block'; ei.innerHTML=`Editando lançamento · <a href="#" onclick="cancelarEdicao();return false" style="color:#3fb950">cancelar</a>`;
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelarEdicao(){ editId=null; document.getElementById('fBtn').textContent='+ Cadastrar'; document.getElementById('fEditInfo').style.display='none'; ['fVal','fReason'].forEach(id=>document.getElementById(id).value=''); }
+function excluir(id){
+  const e=ENTRIES.find(x=>String(x.id)===String(id)); if(!e) return;
+  abrirModal('🗑️ Excluir lançamento', `<p>Excluir ${isIncome(e)?'a entrada':'a saída'} de <b>${BRL(val(e))}</b> (${fmtDate(e.date)})?</p><div id="eMsg" style="font-size:12px"></div>`, 'Excluir', async()=>{
+    modalBusy(true,'Excluindo…'); const r=await DB.deleteFinanceiroRow('cash_flow_entries',id);
+    if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+    ENTRIES=ENTRIES.filter(x=>String(x.id)!==String(id)); fecharModal(); render();
+  }, true);
+}
+
+// ── Categorias ──────────────────────────────────────────────────────────────
+function abrirCategorias(){
+  const list=CATS.length?CATS.map(c=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(c.name)}</span><button class="fx-icon del" onclick="excluirCat('${esc(c.id)}')"><i class="fas fa-trash"></i></button></div>`).join(''):'<div class="fx-empty">Nenhuma categoria.</div>';
+  abrirModalInfo('🏷️ Categorias', `<div style="margin-bottom:12px">${list}</div><label style="font-size:12px;color:var(--text-muted)">Nova categoria<input id="mCat" class="fx-in" placeholder="Ex: Aluguel, Marketing…"></label><div id="eMsg" style="font-size:12px;margin-top:8px"></div><button class="fx-btn-ok" style="margin-top:12px" onclick="addCat()">Adicionar</button>`);
+}
+async function addCat(){ const nome=document.getElementById('mCat').value.trim(); if(!nome){ eMsgErr('Informe o nome.'); return; } const r=await DB.addFinanceiroRow('cash_flow_categories',{name:nome}); if(r&&r.error){ eMsgErr('Erro: '+esc(r.error)); return; } const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) CATS.push(saved); load(); abrirCategorias(); }
+async function excluirCat(id){ const r=await DB.deleteFinanceiroRow('cash_flow_categories',id); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } CATS=CATS.filter(c=>c.id!==id); load(); abrirCategorias(); }
+
+// ── Contas bancárias ────────────────────────────────────────────────────────
+function abrirContas(){
+  const list=CONTAS.length?CONTAS.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span><b>${esc(c.nome||'—')}</b> <span style="font-size:11px;color:var(--text-muted)">${esc(c.banco_nome||'')}${c.ativa===false?' · inativa':''}</span></span><button class="fx-icon del" onclick="excluirConta('${esc(c.id)}')"><i class="fas fa-trash"></i></button></div>`).join(''):'<div class="fx-empty">Nenhuma conta.</div>';
+  abrirModalInfo('🏦 Contas Bancárias', `<div style="margin-bottom:12px">${list}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="mcNome" class="fx-in" placeholder="Nome (ex: Itaú PJ)"><input id="mcBanco" class="fx-in" placeholder="Banco"></div>
+    <div id="eMsg" style="font-size:12px;margin-top:8px"></div><button class="fx-btn-ok" style="margin-top:12px" onclick="addConta()">Adicionar conta</button>`);
+}
+async function addConta(){ const nome=document.getElementById('mcNome').value.trim(); if(!nome){ eMsgErr('Informe o nome.'); return; } const r=await DB.addFinanceiroRow('contas_bancarias',{nome,banco_nome:document.getElementById('mcBanco').value.trim()||null,ativa:true}); if(r&&r.error){ eMsgErr('Erro: '+esc(r.error)); return; } load(); abrirContas(); }
+async function excluirConta(id){ const r=await DB.deleteFinanceiroRow('contas_bancarias',id); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } load(); abrirContas(); }
+
+// ── Recorrentes ─────────────────────────────────────────────────────────────
+function abrirRecorrentes(){
+  const list=RECOR.length?RECOR.map(t=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span><b>${esc(t.name||'—')}</b> <span style="font-size:11px;color:var(--text-muted)">${t.type==='income'?'entrada':'saída'} · dia ${t.day_of_month||'—'} · ${BRL(t.value)}${t.active===false?' · inativo':''}</span></span><button class="fx-icon del" onclick="excluirRec('${esc(t.id)}')"><i class="fas fa-trash"></i></button></div>`).join(''):'<div class="fx-empty">Nenhum template.</div>';
+  abrirModalInfo('🔁 Lançamentos Recorrentes', `<div style="margin-bottom:10px">${list}</div>
+    <button class="fx-btn" style="margin-bottom:12px" onclick="gerarRecMes()"><i class="fas fa-bolt"></i> Gerar ${MESES[selM()-1]}/${selY()}</button>
+    <div style="border-top:1px solid var(--border);padding-top:12px"><div style="font-size:12px;font-weight:800;color:var(--text-muted);margin-bottom:8px">Novo template</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="mrNome" class="fx-in" placeholder="Nome"><select id="mrTipo" class="fx-in"><option value="expense">Saída</option><option value="income">Entrada</option></select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"><input type="number" step="0.01" id="mrVal" class="fx-in" placeholder="Valor"><input type="number" min="1" max="31" id="mrDia" class="fx-in" placeholder="Dia do mês"></div>
+      <input id="mrCat" class="fx-in" placeholder="Categoria (saída)" style="margin-top:8px">
+      <div id="eMsg" style="font-size:12px;margin-top:8px"></div><button class="fx-btn-ok" style="margin-top:12px" onclick="addRec()">Criar template</button></div>`);
+}
+async function addRec(){ const name=document.getElementById('mrNome').value.trim(); if(!name){ eMsgErr('Informe o nome.'); return; } const row={ name, type:document.getElementById('mrTipo').value, value:pNum(document.getElementById('mrVal').value), day_of_month:Math.round(pNum(document.getElementById('mrDia').value))||1, category:document.getElementById('mrCat').value.trim()||null, active:true }; const r=await DB.addFinanceiroRow('cash_flow_recurring',row); if(r&&r.error){ eMsgErr('Erro: '+esc(r.error)); return; } const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) RECOR.push(saved); abrirRecorrentes(); }
+async function excluirRec(id){ const r=await DB.deleteFinanceiroRow('cash_flow_recurring',id); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } RECOR=RECOR.filter(t=>t.id!==id); abrirRecorrentes(); }
+async function gerarRecMes(){
+  const m=selM(), y=selY(), ativos=RECOR.filter(t=>t.active!==false);
+  if(!ativos.length){ eMsgErr('Nenhum template ativo.'); return; }
+  let criados=0, pulados=0, erro=null;
+  for(const t of ativos){
+    const dia=Math.min(t.day_of_month||1, new Date(y,m,0).getDate());
+    const date=`${y}-${String(m).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+    const jaExiste=ENTRIES.some(e=>(e.date||'').slice(0,10)===date && String(e.reason||'')===String(t.name||'') && e.type===t.type);
+    if(jaExiste){ pulados++; continue; }
+    const row={ type:t.type||'expense', date, value:+t.value||0, reason:t.name, category:t.category||null };
+    const r=await DB.addFinanceiroRow('cash_flow_entries',row);
+    if(r&&r.error){ erro=r.error; break; }
+    const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved){ ENTRIES.unshift(saved); criados++; }
+  }
+  if(erro){ eMsgErr('Erro: '+esc(erro)); render(); return; }
+  fecharModal(); render(); fMsg(`✅ ${criados} gerado(s), ${pulados} já existiam.`,false);
+}
+
+function exportarCsv(){
+  const list=listaFiltrada(selM(),selY());
+  const linhas=[['Data','Tipo','Loja/Categoria','Motivo','Conta','Valor']].concat(list.map(e=>[e.date||'',isIncome(e)?'Entrada':'Saída',isIncome(e)?(STOREMAP[e.store_id]||''):(e.category||''),e.reason||'',CONTAMAP[e.conta_bancaria_id]||'',String((isIncome(e)?1:-1)*val(e)).replace('.',',')]));
+  const csv=linhas.map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}), url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`fluxo-caixa-${selY()}-${String(selM()).padStart(2,'0')}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+
+// ── Modal ──
+let modalAction=null;
+function abrirModal(t,b,ok,fn,danger){ document.getElementById('fxModalTitle').textContent=t; document.getElementById('fxModalBody').innerHTML=b; const o=document.getElementById('fxModalOk'); o.textContent=ok; o.dataset.prev=ok; o.disabled=false; o.className='fx-btn-ok'+(danger?' danger':''); o.style.display=''; modalAction=fn; document.getElementById('fxModal').style.display='flex'; }
+function abrirModalInfo(t,b){ document.getElementById('fxModalTitle').textContent=t; document.getElementById('fxModalBody').innerHTML=b; document.getElementById('fxModalOk').style.display='none'; modalAction=null; document.getElementById('fxModal').style.display='flex'; }
+function fecharModal(){ document.getElementById('fxModal').style.display='none'; modalAction=null; }
+function modalBusy(on,label){ const o=document.getElementById('fxModalOk'); o.disabled=on; o.textContent=on?(label||'…'):(o.dataset.prev||'Confirmar'); }
+function eMsgErr(t){ const m=document.getElementById('eMsg'); if(m) m.innerHTML='<span style="color:var(--red)">'+t+'</span>'; }
+
+function init(){
+  const now=new Date(), sm=document.getElementById('fxMes'), sa=document.getElementById('fxAno');
+  MESES.forEach((mm,i)=>sm.insertAdjacentHTML('beforeend',`<option value="${i+1}">${mm}</option>`)); sm.value=now.getMonth()+1;
+  for(let yy=now.getFullYear();yy>=now.getFullYear()-4;yy--) sa.insertAdjacentHTML('beforeend',`<option value="${yy}">${yy}</option>`); sa.value=now.getFullYear();
+  document.getElementById('fData').value=now.toISOString().slice(0,10);
+  ['fxMes','fxAno','fxEmpFiltro','fxContaFiltro','fxCatFiltro'].forEach(id=>document.getElementById(id).addEventListener('change',render));
+  document.getElementById('fxModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });
+  document.getElementById('fxModal').addEventListener('click', e=>{ if(e.target.id==='fxModal') fecharModal(); });
+  setFormType('income');
+  load();
+}
+init();
+</script>
+</body>
+</html>

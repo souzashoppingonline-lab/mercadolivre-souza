@@ -43,6 +43,7 @@
     .vc-t th:first-child,.vc-t td:first-child,.vc-t th:nth-child(2),.vc-t td:nth-child(2){ text-align:left; }
     .vc-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); }
     .vc-t tr:hover td { background:var(--bg-card2); }
+    .vc-t tfoot td { position:sticky; bottom:0; background:var(--bg-card); font-weight:800; border-top:2px solid var(--border); }
     .vc-chip { border-radius:999px; padding:2px 8px; font-size:10px; font-weight:800; }
     .vc-chip.g{ background:rgba(46,160,67,.15); color:#3fb950;} .vc-chip.r{ background:rgba(239,68,68,.15); color:#f87171;}
     .vc-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; } @media(max-width:900px){.vc-grid2{grid-template-columns:1fr;}}
@@ -133,6 +134,7 @@
           <table class="vc-t">
             <thead><tr><th>Data</th><th>Loja</th><th>Qtd</th><th>Rec. Bruta</th><th>Taxas MP</th><th>Frete Sub.</th><th>CMV</th><th>Ads ML</th><th>Ads Ext.</th><th>Imposto</th><th>Margem R$</th><th>Margem %</th><th class="act">Ações</th></tr></thead>
             <tbody id="vcHist"><tr><td colspan="13" class="vc-empty">Carregando…</td></tr></tbody>
+            <tfoot id="vcHistFoot"></tfoot>
           </table>
         </div>
       </div>
@@ -451,8 +453,8 @@ async function doDelete(id){
 
 // Tabela de histórico do período (respeita os filtros mês/ano/loja).
 function renderHistory(rows){
-  const tb=document.getElementById('vcHist');
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="13" class="vc-empty">Sem lançamentos neste período.</td></tr>'; return; }
+  const tb=document.getElementById('vcHist'), ft=document.getElementById('vcHistFoot');
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="13" class="vc-empty">Sem lançamentos neste período.</td></tr>'; ft.innerHTML=''; return; }
   tb.innerHTML=rows.map(r=>{
     const mc=mcDe(r), pct=rev(r)?mc/rev(r)*100:0, col=semColor(pct);
     const neg=v=>'-'+BRL(v);
@@ -474,6 +476,26 @@ function renderHistory(rows){
         <button class="vc-icon del" title="Excluir" onclick="excluirLanc('${esc(r.id)}')"><i class="fas fa-trash"></i></button>
       </td></tr>`;
   }).join('');
+  // Rodapé: soma de cada coluna + margem de contribuição total e média.
+  const s={qtd:0,rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,tax:0,mc:0};
+  rows.forEach(r=>{ s.qtd+=+r.quantity_sales||0; s.rec+=rev(r); s.fees+=+r.marketplace_fees||0; s.frete+=+r.subsidized_shipping||0; s.cmv+=+r.cogs||0; s.adsMl+=+r.ads_ml||0; s.adsEx+=+r.ads_external||0; s.tax+=+r.tax||0; s.mc+=mcDe(r); });
+  const pctTot=s.rec?s.mc/s.rec*100:0;                 // margem sobre a receita total
+  const pctMedia=rows.reduce((a,r)=>a+(rev(r)?mcDe(r)/rev(r)*100:0),0)/rows.length; // média das margens por linha
+  const colT=semColor(pctTot);
+  ft.innerHTML=`<tr>
+    <td>TOTAL</td>
+    <td style="color:var(--text-muted)">${rows.length} lanç.</td>
+    <td>${s.qtd.toLocaleString('pt-BR')}</td>
+    <td>${BRL(s.rec)}</td>
+    <td class="down">-${BRL(s.fees)}</td>
+    <td class="down">-${BRL(s.frete)}</td>
+    <td class="down">-${BRL(s.cmv)}</td>
+    <td class="down">-${BRL(s.adsMl)}</td>
+    <td class="down">-${BRL(s.adsEx)}</td>
+    <td class="down">-${BRL(s.tax)}</td>
+    <td style="color:${colT}">${BRL(s.mc)}</td>
+    <td style="color:${colT}" title="Margem sobre a receita total: ${PCT(pctTot)} · Média das margens por lançamento: ${PCT(pctMedia)}">${PCT(pctTot)} · méd ${PCT(pctMedia)}</td>
+    <td class="act"></td></tr>`;
 }
 
 function goalsByStore(m,y){ const map={}; GOALS_ALL.filter(g=>+g.month===m&&+g.year===y).forEach(g=>{ if(g.store_id) map[g.store_id]=Number(g.goal_value)||0; }); return map; }

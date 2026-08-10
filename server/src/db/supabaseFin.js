@@ -88,13 +88,18 @@ async function previewTable(nome, limit = 50) {
 
 // Busca linhas de uma tabela (READ-ONLY) com limite maior — pra telas reais
 // (fluxo de caixa, etc.). `order` opcional no formato coluna(.asc|.desc).
-async function selectRows(nome, limit = 1000, order = '') {
+async function selectRows(nome, limit = 1000, order = '', filtro = '') {
   if (!/^[a-zA-Z0-9_]+$/.test(String(nome || ''))) {
     const e = new Error('nome de tabela inválido'); e.status = 400; throw e;
   }
   const lim = Math.min(Math.max(Number(limit) || 1000, 1), 5000);
   let path = `/${nome}?limit=${lim}`;
   if (order && /^[a-zA-Z0-9_]+(\.(asc|desc))?$/.test(order)) path += `&order=${encodeURIComponent(order)}`;
+  // Filtro simples de igualdade: "coluna=eq.valor" (coluna sanitizada, valor codificado).
+  if (filtro) {
+    const m = /^([a-zA-Z0-9_]+)=eq\.(.+)$/.exec(String(filtro));
+    if (m) path += `&${m[1]}=eq.${encodeURIComponent(m[2])}`;
+  }
   return get(path);
 }
 

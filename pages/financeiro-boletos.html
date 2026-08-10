@@ -301,7 +301,10 @@ async function pagarFaturaCartao(cid){
   abrirModal('💳 Pagar Fatura', `<p>Pagar a fatura de <b>${esc(c?c.nome:'cartão')}</b> de <b>${MESES[+document.getElementById('boMes').value-1]}/${document.getElementById('boAno').value}</b>?</p><p style="color:var(--text-muted)">Quita <b>${pend.length}</b> parcela(s) · Total <b>${BRL(tot)}</b>.</p><div id="eMsg" style="font-size:12px"></div>`, `Pagar ${BRL(tot)}`, async()=>{
     modalBusy(true,'Pagando…'); let erro=null;
     for(const p of pend){ const r=await DB.updateFinanceiroRow('parcelas_cartao',p.id,{status:'pago'}); if(r&&r.error){ erro=r.error; break; } const i=PARCELAS.findIndex(x=>String(x.id)===String(p.id)); PARCELAS[i]={...PARCELAS[i],status:'pago'}; }
-    if(!erro){ await DB.addFinanceiroRow('fatura_pagamentos',{cartao_id:cid,fatura_mes:mr,data_pagamento:hojeISO(),valor_pago:+tot.toFixed(2),parcelas_count:pend.length}); }
+    if(!erro){
+      await DB.addFinanceiroRow('fatura_pagamentos',{cartao_id:cid,fatura_mes:mr,data_pagamento:hojeISO(),valor_pago:+tot.toFixed(2),parcelas_count:pend.length});
+      await DB.addFinanceiroRow('cash_flow_entries',{ type:'expense', date:hojeISO(), value:+tot.toFixed(2), reason:`Fatura ${c?c.nome:'cartão'} ${mr}`, category:'Cartão de Crédito' }).catch(()=>{});
+    }
     if(erro){ modalBusy(false); eMsgErr('Erro: '+esc(erro)); render(); return; }
     fecharModal(); render();
   }, false);
@@ -586,10 +589,28 @@ async function doInsertCartao(base,card,n,total,dataCompra,venc,parcVal){
 }
 function limparForm(){ ['fName','fVal','fSup','fNf','fValTotal'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); const np=document.getElementById('fNParc'); if(np) np.value='1'; const pi=document.getElementById('fParcInfo'); if(pi) pi.textContent=''; }
 
-function togglePago(id){
+async function togglePago(id){
   const b=BOLETOS.find(x=>String(x.id)===String(id)); if(!b) return;
   const novo=b.status==='pago'?'pendente':'pago';
-  doPatchBoleto(id,{status:novo});
+  await doPatchBoleto(id,{status:novo});
+  await syncFCPagamento(b, novo==='pago');
+}
+// Regra do Readdy: boleto PAGO gera uma saída em cash_flow_entries (vinculada por
+// boleto_id); ao voltar pra pendente (ou excluir), a saída é removida. Evita duplicar
+// apagando qualquer entry existente daquele boleto antes de inserir.
+async function syncFCPagamento(boleto, pago){
+  try{
+    const r=await DB.getFinanceiroDados('cash_flow_entries',200,'','boleto_id=eq.'+encodeURIComponent(boleto.id));
+    const existentes=(r&&!r.error&&Array.isArray(r.rows))?r.rows:[];
+    for(const e of existentes){ await DB.deleteFinanceiroRow('cash_flow_entries', e.id); }
+    if(pago){
+      await DB.addFinanceiroRow('cash_flow_entries', {
+        type:'expense', date:(boleto.date||'').slice(0,10)||hojeISO(), value:+boleto.value||0,
+        reason:(boleto.name||'Boleto')+(boleto.supplier?(' — '+boleto.supplier):''),
+        category:boleto.category||null, store_id:boleto.store_id||null, boleto_id:boleto.id,
+      });
+    }
+  }catch(e){ showStatus('⚠️ Fluxo de caixa não sincronizou: '+esc(e.message||e),true); }
 }
 async function doPatchBoleto(id,patch){
   const r=await DB.updateFinanceiroRow('boletos_mensais',id,patch);
@@ -630,6 +651,7 @@ function excluirBoleto(id){
     modalBusy(true,'Excluindo…');
     const r=await DB.deleteFinanceiroRow('boletos_mensais',id);
     if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+    await syncFCPagamento(b, false); // remove a saída vinculada no fluxo de caixa
     BOLETOS=BOLETOS.filter(x=>String(x.id)!==String(id)); fecharModal(); render();
   }, true);
 }

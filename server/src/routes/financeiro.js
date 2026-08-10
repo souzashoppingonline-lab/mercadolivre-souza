@@ -37,7 +37,7 @@ router.get('/tabela/:nome', async (req, res) => {
 // Dados de uma tabela p/ as telas reais (read-only, limite maior, order opcional).
 router.get('/dados/:nome', async (req, res) => {
   try {
-    const rows = await supa.selectRows(req.params.nome, req.query.limit, req.query.order);
+    const rows = await supa.selectRows(req.params.nome, req.query.limit, req.query.order, req.query.filtro);
     res.json({ tabela: req.params.nome, total: Array.isArray(rows) ? rows.length : 0, rows });
   } catch (e) {
     if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });

@@ -14,6 +14,9 @@
     .bo-top select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
     .bo-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
     .bo-btn:hover { border-color:#3fb950; }
+    .bo-fpill { display:inline-flex; align-items:center; gap:7px; background:var(--bg-card2); border:1px solid var(--border); border-radius:10px; padding:5px 10px; }
+    .bo-fpill select, .bo-fpill input { background:none; border:none; color:var(--text-main); font-size:13px; outline:none; max-width:170px; }
+    .bo-strow { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     .bo-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
     .bo-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
     .bo-card-h h3 { font-size:15px; font-weight:800; margin:0; }
@@ -76,15 +79,25 @@
       <p class="bo-sub">Contas a pagar do mês — boletos, impostos, cartões e faturas por empresa. Pague, edite e acompanhe vencimentos.</p>
       <div id="boStatus" class="bo-status"></div>
 
-      <div class="bo-top">
-        <select id="boEmpresa"></select>
-        <select id="boMes"></select><select id="boAno"></select>
-        <select id="boDia"><option value="">Todos os dias</option></select>
-        <select id="boFiltro"><option value="todos">Todos os status</option><option value="pendente">Pendentes</option><option value="atrasado">Atrasados</option><option value="pago">Pagos</option></select>
-        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+      <div class="bo-top" style="flex-direction:column;align-items:stretch;gap:10px">
+        <div class="bo-strow">
+          <span class="bo-fpill"><i class="fas fa-calendar" style="color:#6366f1"></i><select id="boMes"></select><select id="boAno"></select></span>
+          <div id="boStatusTabs" class="bo-strow" style="gap:6px"></div>
+          <span id="boCount" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
           <button class="bo-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> CSV</button>
-          <button class="bo-btn" onclick="abrirCategorias()"><i class="fas fa-tags"></i> Categorias</button>
           <button class="bo-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+        <div class="bo-strow">
+          <span class="bo-fpill"><i class="fas fa-calendar-day" style="color:#3b82f6"></i><select id="boDia"><option value="">Dia 01–31</option></select></span>
+          <span class="bo-fpill"><i class="fas fa-truck" style="color:#f59e0b"></i><select id="boSup"><option value="">Fornecedor: Todos</option></select></span>
+          <span class="bo-fpill"><i class="fas fa-credit-card" style="color:#ec4899"></i><select id="boCartFilter"><option value="">Cartão: Todos</option></select></span>
+          <span class="bo-fpill"><i class="fas fa-building-columns" style="color:#8b5cf6"></i><select id="boBanco"><option value="">Banco: Todos</option></select></span>
+          <span class="bo-fpill"><i class="fas fa-briefcase" style="color:#22c55e"></i><select id="boEmpresa"></select></span>
+        </div>
+        <div class="bo-strow">
+          <span class="bo-fpill" style="border-color:#eab30866"><i class="fas fa-file-invoice" style="color:#eab308"></i><input id="boNf" placeholder="Número da NF…"></span>
+          <span style="font-size:12px;color:var(--text-muted)">Tipo:</span>
+          <div id="boTipoTabs" class="bo-strow" style="gap:6px"></div>
         </div>
       </div>
 
@@ -131,7 +144,6 @@
         <div>
           <div class="bo-card">
             <div class="bo-card-h"><h3>📄 Contas a Pagar <span id="boMesLbl" class="desc"></span></h3></div>
-            <div id="boTipoTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
             <div style="overflow:auto;max-height:60vh">
               <table class="bo-t">
                 <thead><tr><th>Descrição</th><th>Empresa</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Vencimento</th><th>Valor</th><th>Status</th><th style="text-align:center">Ações</th></tr></thead>
@@ -204,7 +216,7 @@ const hojeISO=()=>new Date().toISOString().slice(0,10);
 function tipoLabel(t){ return {boleto:'Boleto',manual:'Imposto',cartao:'Cartão',fatura_ml:'Fatura ML',flex:'Flex',pessoal:'Pessoal',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'}[t]||t||'—'; }
 function statusReal(b){ if(b.status==='pago') return 'pago'; if((b.date||'')< hojeISO()) return 'atrasado'; return 'pendente'; }
 
-let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], fTipo='todos';
+let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], fTipo='todos', listStatus='todos';
 const TIPOS=[['todos','Todos'],['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
 const nfDe=b=>b.numero_nf||b.nf||b.nota_fiscal||'';
 function showStatus(t,err){ const el=document.getElementById('boStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
@@ -220,20 +232,35 @@ async function load(){
   else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.`,false);
   document.getElementById('fCat').innerHTML='<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   document.getElementById('fCartao').innerHTML=CARTOES.length?CARTOES.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||'—')}${c.limite?` · limite ${BRL(c.limite)}`:''}</option>`).join(''):'<option value="">— cadastre um cartão —</option>';
+  popularFiltroSelects();
   renderFormControls();
   render();
+}
+function popularFiltroSelects(){
+  const uniq=(arr)=>[...new Set(arr.map(x=>String(x||'').trim()).filter(Boolean))].sort();
+  const sup=uniq(BOLETOS.map(b=>b.supplier)), banco=uniq(BOLETOS.map(b=>b.banco));
+  const cart=uniq([...CARTOES.map(c=>c.nome), ...BOLETOS.map(b=>b.cartao_credito)]);
+  document.getElementById('boSup').innerHTML='<option value="">Fornecedor: Todos</option>'+sup.map(s=>`<option>${esc(s)}</option>`).join('');
+  document.getElementById('boBanco').innerHTML='<option value="">Banco: Todos</option>'+banco.map(s=>`<option>${esc(s)}</option>`).join('');
+  document.getElementById('boCartFilter').innerHTML='<option value="">Cartão: Todos</option>'+cart.map(s=>`<option>${esc(s)}</option>`).join('');
 }
 
 function selEmp(){ return document.getElementById('boEmpresa').value; }
 function selMesRef(){ return `${document.getElementById('boAno').value}-${String(document.getElementById('boMes').value).padStart(2,'0')}`; }
 function boletosMes(){
-  const mr=selMesRef(), emp=selEmp(), f=document.getElementById('boFiltro').value, dia=document.getElementById('boDia').value;
+  const mr=selMesRef(), emp=selEmp(), dia=document.getElementById('boDia').value;
+  const sup=document.getElementById('boSup').value, cart=document.getElementById('boCartFilter').value, banco=document.getElementById('boBanco').value;
+  const nf=document.getElementById('boNf').value.trim().toLowerCase();
   return BOLETOS.filter(b=>{
     if((b.mes_referencia||'')!==mr) return false;
     if(emp && String(b.empresa||'').trim()!==emp) return false;
-    if(f!=='todos' && statusReal(b)!==f) return false;
+    if(listStatus!=='todos' && statusReal(b)!==listStatus) return false;
     if(fTipo!=='todos' && (b.tipo||'')!==fTipo) return false;
     if(dia && (b.date||'').slice(8,10)!==dia) return false;
+    if(sup && String(b.supplier||'').trim()!==sup) return false;
+    if(cart && String(b.cartao_credito||'').trim()!==cart) return false;
+    if(banco && String(b.banco||'').trim()!==banco) return false;
+    if(nf && !String(nfDe(b)).toLowerCase().includes(nf)) return false;
     return true;
   });
 }
@@ -242,8 +269,19 @@ function render(){
   const m=+document.getElementById('boMes').value, y=+document.getElementById('boAno').value;
   document.getElementById('boMesLbl').textContent=`— ${MESES[m-1]}/${y}${selEmp()?' · '+selEmp():''}`;
   document.getElementById('boCalLbl').textContent=`— ${MESES[m-1]}/${y}`;
-  renderTipoTabs(); renderKpis(); renderLista(); renderRecs(); renderCartoes(); renderResumoEmp(); renderCalendario();
+  renderStatusTabs(); renderTipoTabs(); renderKpis(); renderLista(); renderRecs(); renderCartoes(); renderResumoEmp(); renderCalendario();
+  const mesAll=BOLETOS.filter(b=>(b.mes_referencia||'')===selMesRef() && (!selEmp()||String(b.empresa||'').trim()===selEmp()));
+  document.getElementById('boCount').textContent=`${mesAll.length} dívidas`;
 }
+function renderStatusTabs(){
+  const opts=[['todos','Todos','#1f2937','#fff'],['pendente','Pendente','#f59e0b'],['pago','Pago','#3fb950'],['atrasado','Atrasado','#f87171']];
+  document.getElementById('boStatusTabs').innerHTML=opts.map(([k,l,c,tc])=>{
+    const sel=listStatus===k;
+    const style=sel?`background:${c};color:${tc||'#fff'};border-color:${c}`:`color:${k==='todos'?'var(--text-muted)':c};border-color:${k==='todos'?'var(--border)':c+'66'}`;
+    return `<button class="bo-btn" style="${style}" onclick="setListStatus('${k}')">${l}</button>`;
+  }).join('');
+}
+function setListStatus(s){ listStatus=s; render(); }
 function renderTipoTabs(){
   const mr=selMesRef(), emp=selEmp();
   const base=BOLETOS.filter(b=>(b.mes_referencia||'')===mr && (!emp||String(b.empresa||'').trim()===emp));
@@ -731,7 +769,8 @@ function init(){
   for(let yy=now.getFullYear();yy>=now.getFullYear()-4;yy--) sa.insertAdjacentHTML('beforeend',`<option value="${yy}">${yy}</option>`); sa.value=now.getFullYear();
   document.getElementById('fDate').value=now.toISOString().slice(0,10);
   const sd=document.getElementById('boDia'); for(let d=1;d<=31;d++) sd.insertAdjacentHTML('beforeend',`<option value="${String(d).padStart(2,'0')}">Dia ${d}</option>`);
-  [se,sm,sa,sd,document.getElementById('boFiltro')].forEach(s=>s.addEventListener('change',render));
+  ['boEmpresa','boMes','boAno','boDia','boSup','boCartFilter','boBanco'].forEach(id=>document.getElementById(id).addEventListener('change',render));
+  document.getElementById('boNf').addEventListener('input',render);
   document.getElementById('boModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });
   document.getElementById('boModal').addEventListener('click', e=>{ if(e.target.id==='boModal') fecharModal(); });
   document.addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('boModal').style.display==='flex') fecharModal(); });

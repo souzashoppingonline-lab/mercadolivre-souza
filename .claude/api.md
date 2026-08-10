@@ -45,12 +45,14 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 ## Rankeamento de Anúncios (`routes/ranking.js`, montado em `/api/ranking`, ver `rankeamento.md`)
 | Rota | Descrição |
 |---|---|
-| `GET /api/ranking/ads?marketplace&fase` | anúncios em rankeamento com stats (`sales_count`, `dias`, `ritmo_dia`, `faturamento`, `estoque_atual`/`preco_atual`, `last_*`, `marketplace`, `fase`) + `sugerir_ranqueado` (bool). Filtros opcionais `marketplace` (ML/SHOPEE) e `fase` (rankeando/ranqueado) |
+| `GET /api/ranking/ads?marketplace&fase&store_id` | anúncios em rankeamento com stats (`sales_count`, `dias`, `ritmo_dia`, `faturamento` **do ciclo atual**, `estoque_atual`/`preco_atual`, `last_*`, `marketplace`, `fase`, `ciclo`, `ads_investido`/`roas`/`orcamento_diario`, `ciclos_anteriores`) + `sugerir_ranqueado` (bool). Filtros opcionais `marketplace` (ML/SHOPEE), `fase` (rankeando/ranqueado) e `store_id` (empresa/loja) |
 | `GET /api/ranking/buscar?q` | tabela de todos os anúncios (`items`, `status<>closed`); `q` vazio → 100 mais recentes, `q≥2` → filtra por título/MLB (30). Traz `em_rankeamento` (bool) pra marcar os já monitorados |
 | `POST /api/ranking/ads` `{ml_id, milestone_every?}` | marca um anúncio em rankeamento (semeia `last_*` de `items` p/ não gerar alerta falso). Limite `MAX_ADS=30` ativos. `milestone_every` default 5 |
-| `PATCH /api/ranking/ads/:id` `{active?, milestone_every?, fase?}` | pausar/retomar, mudar intervalo do marco, ou mudar de **fase** (`rankeando`↔`ranqueado`; `ranqueado` carimba `ranqueado_em`) |
-| `DELETE /api/ranking/ads/:id` | remove do rankeamento (apaga eventos via CASCADE) |
+| `PATCH /api/ranking/ads/:id` `{active?, milestone_every?, fase?, ads_investido?, roas?, orcamento_diario?}` | pausar/retomar, mudar intervalo do marco, mudar de **fase** (`rankeando`↔`ranqueado`; `ranqueado` carimba `ranqueado_em`), ou salvar as métricas de ADS **manuais** do ciclo (`''`/null zera a coluna) |
+| `DELETE /api/ranking/ads/:id` | remove do rankeamento (apaga eventos + ciclos via CASCADE) |
 | `GET /api/ranking/ads/:id/eventos?limit` | timeline (venda/alteração/marco) mais recentes primeiro (limit ≤ 300) |
+| `POST /api/ranking/ads/:id/ciclo` | **v72:** encerra o ciclo atual (arquiva ADS/ROAS/orçamento + vendas + faturamento em `ranking_ciclos`) e começa o próximo: `ciclo++`, zera `sales_count`/`first_sale_at`/`last_sale_at`, limpa os manuais, novo `ciclo_iniciado_em` |
+| `GET /api/ranking/ads/:id/ciclos` | **v72:** histórico dos ciclos encerrados (mais recente primeiro) |
 
 Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco a cada N vendas ficam em `server/src/ranking.js`, disparados pelos hooks do worker — não nestas rotas (só CRUD/leitura). Ver `rankeamento.md`.
 

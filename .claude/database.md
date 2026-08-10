@@ -585,7 +585,7 @@ staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
 ```
 Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).
 
-### `ranking_ads` / `ranking_events` — v69: Rankeamento de anúncios (ver `rankeamento.md`)
+### `ranking_ads` / `ranking_events` / `ranking_ciclos` — v69/v72: Rankeamento de anúncios (ver `rankeamento.md`)
 ```
 ranking_ads:
 id SERIAL PK, ml_id TEXT UNIQUE FK items(ml_id) ON DELETE CASCADE, store_id BIGINT FK stores
@@ -597,6 +597,9 @@ last_visits INT, last_seo_score NUMERIC, last_buybox BOOLEAN  -- semeados pelo s
 last_highlight_pos INT                             -- v70: posição nos Mais Vendidos da categoria (NULL=fora)
 fase TEXT DEFAULT 'rankeando'                       -- v71: 'rankeando' | 'ranqueado' (idx_ranking_ads_fase)
 ranqueado_em TIMESTAMPTZ                            -- v71: quando passou pra fase 2
+ciclo INT DEFAULT 1                                -- v72: ciclo atual de rankeamento (1,2,3…)
+ads_investido, roas, orcamento_diario NUMERIC      -- v72: métricas de ADS do ciclo atual (MANUAIS no card)
+ciclo_iniciado_em TIMESTAMPTZ DEFAULT now()        -- v72: início do ciclo atual (escopo do faturamento do ciclo; backfill=started_at)
 milestone_every INT DEFAULT 5                       -- marco a cada N vendas
 started_at, created_at, updated_at TIMESTAMPTZ
 -- idx_ranking_ads_active
@@ -606,5 +609,13 @@ id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE, ml_id TEXT
 event_type TEXT   -- venda|preco|estoque|status|qualidade|buybox|visitas|marco
 message TEXT, detail JSONB, created_at TIMESTAMPTZ
 -- idx_ranking_events_ad (ranking_ad_id, created_at DESC)
+
+ranking_ciclos:  -- v72: histórico dos ciclos encerrados (1 linha por "Novo ciclo")
+id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE
+ciclo INT                                          -- número do ciclo encerrado
+ads_investido, roas, orcamento_diario NUMERIC      -- snapshot dos manuais do ciclo
+sales_count INT, faturamento NUMERIC               -- vendas e faturamento do ciclo (soma dos ranking_events)
+iniciado_em, encerrado_em, created_at TIMESTAMPTZ
+-- idx_ranking_ciclos_ad (ranking_ad_id, ciclo DESC)
 ```
 Preenchidas por `server/src/ranking.js` (hooks no `handleOrder`/`handleItem` + job `sync-ranking`). Lidas por `/api/ranking/*`.

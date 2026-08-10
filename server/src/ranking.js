@@ -99,8 +99,9 @@ async function milestone(ad) {
   // detail.valor; não depende de orders.item_id, que a Shopee não popula).
   const { rows } = await pool.query(
     `SELECT COALESCE(SUM((detail->>'valor')::numeric), 0) AS fat
-       FROM ranking_events WHERE ranking_ad_id = $1 AND event_type = 'venda'`,
-    [ad.id]
+       FROM ranking_events WHERE ranking_ad_id = $1 AND event_type = 'venda'
+         AND created_at >= COALESCE($2, $3)`,
+    [ad.id, ad.ciclo_iniciado_em || null, ad.started_at || null]
   );
   const fat = rows[0].fat;
   await emit(ad, 'marco',

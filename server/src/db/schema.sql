@@ -856,12 +856,31 @@ CREATE TABLE IF NOT EXISTS ranking_ads (
   last_highlight_pos INT,
   fase TEXT DEFAULT 'rankeando',
   ranqueado_em TIMESTAMPTZ,
+  ciclo INT DEFAULT 1,
+  ads_investido NUMERIC,
+  roas NUMERIC,
+  orcamento_diario NUMERIC,
+  ciclo_iniciado_em TIMESTAMPTZ DEFAULT now(),
   milestone_every INT DEFAULT 5,
   started_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ranking_ads_active ON ranking_ads(active);
+CREATE TABLE IF NOT EXISTS ranking_ciclos (
+  id SERIAL PRIMARY KEY,
+  ranking_ad_id INT REFERENCES ranking_ads(id) ON DELETE CASCADE,
+  ciclo INT NOT NULL,
+  ads_investido NUMERIC,
+  roas NUMERIC,
+  orcamento_diario NUMERIC,
+  sales_count INT,
+  faturamento NUMERIC,
+  iniciado_em TIMESTAMPTZ,
+  encerrado_em TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_ciclos_ad ON ranking_ciclos(ranking_ad_id, ciclo DESC);
 CREATE TABLE IF NOT EXISTS ranking_events (
   id SERIAL PRIMARY KEY,
   ranking_ad_id INT REFERENCES ranking_ads(id) ON DELETE CASCADE,

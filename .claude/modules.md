@@ -61,4 +61,16 @@ O usuário está **migrando** um ERP financeiro (feito no Readdy, React) para c�
 - Meta geral = linha de `monthly_goals` com `store_id` NULL (igual ao Readdy `MonthlyGoal`); nunca soma das metas por loja (evita duplicar). Fallback: se não houver linha geral, soma as por-loja.
 - Rotas: `GET /api/financeiro/dados/:nome?limit&order` (≤5000, order `col.asc|desc`) + `POST/PATCH/DELETE /api/financeiro/dados/:nome[/:id]` (allowlist). `js/db.js`: `getFinanceiroDados`, `addFinanceiroRow`.
 
-Schema real das tabelas do ERP (via Readdy): `sales_entries`, `expenses`, `expense_categories`, `compras_cmv`, etc. — ver o que o usuário forneceu; próximas telas: **Despesas & DRE** (`expenses`/`expense_categories`), **Compras** (`compras_cmv`), **Home** (10 tabelas: sales_entries, cash_flow_entries, boletos_mensais, expenses, receivables, monthly_goals, daily_alerts, daily_alert_logs, compras_xml, backups).
+- **Despesas & DRE** (`pages/financeiro-despesas.html`, nav `Despesas & DRE`): lê `expenses` + `expense_categories` + `sales_entries`. **2 abas**: "DRE & Despesas" e "Ponto de Equilíbrio". Escrita (allowlist) em `expenses` e `expense_categories`. Conteúdo (clone fiel do Readdy, tema escuro):
+  - **Lançamentos do mês** = custos "Auto" das vendas (Receita Bruta como entrada; Taxas/Frete/CMV/Ads/Impostos como custo — não editáveis, vêm da tela Vendas) **+** despesas manuais (editáveis/excluíveis). `expenses` tem colunas `type` ('fixed'/'operational'), `description`, `category_id`, `value`, `date`, `is_recurring`, `month`, `year`, `store_id`.
+  - **Nova Despesa**: tipo (segmented Fixo/Operacional), categoria, descrição, valor, recorrente — com **modal de confirmação**. Competência = mês/ano selecionados.
+  - **DRE Detalhada**: cascata Receita → custos automáticos → Margem de Contribuição → despesas fixas/operacionais → Lucro Líquido, + cards-resumo à direita (Receita, MC com barra, Total Despesas, Lucro Líquido/Prejuízo) + badge de status da margem.
+  - **DRE Resumida anual** (painel lateral): Entradas/Custos/Resultado por mês + totais.
+  - **Custo por Categoria** (donut + lista rankeada com % e barras, filtro Todos/Fixos/Operacionais).
+  - **Tendência** (barras gastos × linha faturamento, 3M/6M/12M + cards mensais com % do faturamento).
+  - **Comparativo Mês a Mês por Categoria** (tabela com variação % + Δ absoluto vs mês anterior, "novo" na 1ª aparição).
+  - **Ponto de Equilíbrio** = (custos fixos+operacionais) ÷ margem de contribuição %; **a margem usa os últimos 30 dias de vendas** (não o mês). **Ranking de Impacto no Break-even**: quanto cada categoria reduz o break-even se eliminada (= custo ÷ margem%), + destaque "Maior alavanca de redução".
+  - Ações: Exportar CSV, Categorias (CRUD categorias), Recorrentes (lista), Limpar Despesas (só as manuais do mês, com confirmação).
+- Escrita liberada: `WRITE_ALLOW` em `supabaseFin.js` = `sales_entries`, `expenses`, `expense_categories`.
+
+Schema real das tabelas do ERP (via Readdy): `sales_entries`, `expenses`, `expense_categories`, `compras_cmv`, etc. — próximas telas: **DRE Mensal** (dedicada), **Fluxo de Caixa**, **Boletos**, **Compras** (`compras_cmv`), **Home** (10 tabelas: sales_entries, cash_flow_entries, boletos_mensais, expenses, receivables, monthly_goals, daily_alerts, daily_alert_logs, compras_xml, backups).

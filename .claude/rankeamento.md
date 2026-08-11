@@ -74,7 +74,13 @@ Cada anúncio tem `ranking_ads.fase`:
 
 **Transição manual** (`PATCH /api/ranking/ads/:id {fase}`): botão "Marcar como ranqueado" / "Voltar pra rankeamento". Passar pra `ranqueado` carimba `ranqueado_em`; voltar limpa. A rota `/ads` devolve `sugerir_ranqueado` (bool) — sugere quando bate qualquer critério objetivo (entrou nos Mais Vendidos **ou** ganhou buy-box **ou** ≥ 10 vendas **ou** ≥ 15 dias); quem confirma é o usuário (nunca automático). Novo evento `esfriou` 💤.
 
-A página tem 3 abas: **Em rankeamento** (cards venda-a-venda + chip de sugestão), **Ranqueados** (cards em modo saúde: posição/buy-box/visitas/qualidade + timeline só de regressão), **Todos os anúncios** (tabela de seleção).
+A página tem 4 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento** (ver abaixo) e **Todos os anúncios** (tabela de seleção).
+
+## Três estágios + mudança manual (v76)
+
+Além de `rankeando` e `ranqueado`, existe o 3º estágio **`monitoramento`**: um produto que **já ranqueou mas caiu**, no qual foram feitas alterações e agora se acompanha o efeito. A transição entre os 3 é **manual**, por um **seletor de estágio** (`<select>`) no card (`mudarFase` → `PATCH /ads/:id {fase}`). Regras do carimbo: `→ranqueado` seta `ranqueado_em=now()`, `→rankeando` limpa, `→monitoramento` não mexe (o produto já foi ranqueado). Layout de `monitoramento` = modo saúde (igual ranqueado) + um **banner âmbar** e o log de alterações. Cores dos badges: rankeando amarelo, ranqueado verde, monitoramento âmbar (#f59e0b).
+
+**Log de alterações (`ranking_notes`):** cada card tem um botão **📋 Alterações** (ícone `clipboard-list`, com contador `notas_count`) que abre um modal para **escrever e ler** anotações livres do que foi mudado (baixei preço, troquei foto, ajustei título…), cada uma com data. Rotas `/ads/:id/notas` (GET/POST/DELETE), métodos `DB.getRankingNotas`/`addRankingNota`/`delRankingNota`. Disponível em qualquer fase, mas é o centro do estágio Monitoramento. As vendas em `monitoramento` contam em silêncio (como ranqueado).
 
 ## Multi-canal (ML + Shopee)
 

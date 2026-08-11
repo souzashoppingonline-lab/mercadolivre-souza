@@ -595,7 +595,7 @@ base_price NUMERIC                                 -- preço ao entrar em rankea
 last_price, last_available_quantity, last_status   -- últimos valores (detecção de mudança)
 last_visits INT, last_seo_score NUMERIC, last_buybox BOOLEAN  -- semeados pelo snapshot
 last_highlight_pos INT                             -- v70: posição nos Mais Vendidos da categoria (NULL=fora)
-fase TEXT DEFAULT 'rankeando'                       -- v71: 'rankeando' | 'ranqueado' (idx_ranking_ads_fase)
+fase TEXT DEFAULT 'rankeando'                       -- v71/v76: 'rankeando' | 'ranqueado' | 'monitoramento' (idx_ranking_ads_fase)
 ranqueado_em TIMESTAMPTZ                            -- v71: quando passou pra fase 2
 ciclo INT DEFAULT 1                                -- v72: ciclo atual de rankeamento (1,2,3…); só em fase 'rankeando'
 campanha_nome TEXT                                 -- v74: nome da campanha de ADS do ciclo (MANUAL; substituiu o campo ADS R$)
@@ -611,6 +611,11 @@ id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE, ml_id TEXT
 event_type TEXT   -- venda|preco|estoque|status|qualidade|buybox|visitas|marco
 message TEXT, detail JSONB, created_at TIMESTAMPTZ
 -- idx_ranking_events_ad (ranking_ad_id, created_at DESC)
+
+ranking_notes:  -- v76: log de alterações/anotações por card (usado no estágio Monitoramento)
+id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE
+texto TEXT NOT NULL, created_at TIMESTAMPTZ
+-- idx_ranking_notes_ad (ranking_ad_id, created_at DESC)
 
 ranking_ad_links:  -- v75: ml_id extra vinculado a um card (anúncio de catálogo + tradicional do mesmo produto)
 id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE

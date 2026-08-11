@@ -13,13 +13,13 @@ const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo
 router.get('/ads', async (req, res) => {
   try {
     const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
-    const fase = String(req.query.fase || '').trim().toLowerCase();       // '', 'rankeando' ou 'ranqueado'
+    const fase = String(req.query.fase || '').trim().toLowerCase();       // '', 'rankeando', 'ranqueado' ou 'monitoramento'
     const storeId = String(req.query.store_id || '').trim();              // '' ou id da loja
     const ciclo = String(req.query.ciclo || '').trim();                  // '' ou número do ciclo
     const params = [];
     const conds = [];
     if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); conds.push(`COALESCE(m.code, 'ML') = $${params.length}`); }
-    if (fase === 'rankeando' || fase === 'ranqueado') { params.push(fase); conds.push(`r.fase = $${params.length}`); }
+    if (['rankeando', 'ranqueado', 'monitoramento'].includes(fase)) { params.push(fase); conds.push(`r.fase = $${params.length}`); }
     if (storeId) { params.push(storeId); conds.push(`r.store_id = $${params.length}`); }
     if (ciclo && /^\d+$/.test(ciclo)) { params.push(ciclo); conds.push(`r.ciclo = $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
@@ -33,7 +33,8 @@ router.get('/ads', async (req, res) => {
               (SELECT COUNT(*)::int FROM ranking_ciclos c WHERE c.ranking_ad_id = r.id) AS ciclos_anteriores,
               (SELECT COALESCE(json_agg(json_build_object('id', l.id, 'ml_id', l.ml_id, 'tipo', l.tipo, 'title', li.title) ORDER BY l.id), '[]'::json)
                  FROM ranking_ad_links l LEFT JOIN items li ON li.ml_id = l.ml_id
-                WHERE l.ranking_ad_id = r.id) AS links
+                WHERE l.ranking_ad_id = r.id) AS links,
+              (SELECT COUNT(*)::int FROM ranking_notes nt WHERE nt.ranking_ad_id = r.id) AS notas_count
          FROM ranking_ads r
          LEFT JOIN items i ON i.ml_id = r.ml_id
          LEFT JOIN marketplaces m ON m.id = i.marketplace_id
@@ -137,11 +138,13 @@ router.patch('/ads/:id', async (req, res) => {
       }
     }
     // Mudança de fase (transição manual): 'ranqueado' carimba ranqueado_em;
-    // voltar pra 'rankeando' limpa o carimbo (reempurrar).
+    // voltar pra 'rankeando' limpa o carimbo (reempurrar); 'monitoramento' não
+    // mexe no carimbo (o produto já foi ranqueado, só está sob observação).
     const fase = String(req.body.fase || '').trim().toLowerCase();
-    if (fase === 'rankeando' || fase === 'ranqueado') {
+    if (['rankeando', 'ranqueado', 'monitoramento'].includes(fase)) {
       sets.push(`fase = $${++n}`); vals.push(fase);
-      sets.push(`ranqueado_em = ${fase === 'ranqueado' ? 'now()' : 'NULL'}`);
+      if (fase === 'ranqueado') sets.push(`ranqueado_em = now()`);
+      else if (fase === 'rankeando') sets.push(`ranqueado_em = NULL`);
     }
     if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
     sets.push('updated_at = now()');
@@ -210,6 +213,35 @@ router.post('/ads/:id/ciclo', async (req, res) => {
     console.error('[ranking] POST /ads/:id/ciclo falhou:', e.message, e.stack);
     res.status(500).json({ error: e.message });
   } finally { client.release(); }
+});
+
+// Log de alterações / anotações do card (usado no estágio Monitoramento, mas
+// disponível em qualquer fase). Mais recentes primeiro.
+router.get('/ads/:id/notas', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, texto, created_at FROM ranking_notes WHERE ranking_ad_id = $1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json({ notas: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.post('/ads/:id/notas', async (req, res) => {
+  try {
+    const texto = String(req.body.texto || '').trim();
+    if (!texto) return res.status(400).json({ error: 'texto obrigatório' });
+    const { rows } = await pool.query(
+      `INSERT INTO ranking_notes (ranking_ad_id, texto) VALUES ($1, $2) RETURNING id, texto, created_at`,
+      [req.params.id, texto.slice(0, 4000)]
+    );
+    res.json({ nota: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.delete('/ads/:id/notas/:notaId', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM ranking_notes WHERE id = $1 AND ranking_ad_id = $2`, [req.params.notaId, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Vincula um ml_id (ex.: anúncio de catálogo) ao card — a venda desse ml_id

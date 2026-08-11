@@ -905,3 +905,10 @@ CREATE TABLE IF NOT EXISTS ranking_ad_links (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ranking_ad_links_ad ON ranking_ad_links(ranking_ad_id);
+CREATE TABLE IF NOT EXISTS ranking_notes (
+  id SERIAL PRIMARY KEY,
+  ranking_ad_id INT REFERENCES ranking_ads(id) ON DELETE CASCADE,
+  texto TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_notes_ad ON ranking_notes(ranking_ad_id, created_at DESC);

@@ -48,7 +48,7 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/ranking/ads?marketplace&fase&store_id&ciclo` | anúncios em rankeamento com stats (`sales_count`, `dias`, `ritmo_dia`, `faturamento` **acumulado**, `estoque_atual`/`preco_atual`, `last_*`, `marketplace`, `fase`, `ciclo`, `campanha_nome`, `roas`/`orcamento_diario`, `preco_anterior`/`preco_atual`, `ciclos_anteriores`) + `sugerir_ranqueado` (bool). Filtros opcionais `marketplace` (ML/SHOPEE), `fase` (rankeando/ranqueado), `store_id` (empresa/loja) e `ciclo` (número) |
 | `GET /api/ranking/buscar?q` | tabela de todos os anúncios (`items`, `status<>closed`); `q` vazio → 100 mais recentes, `q≥2` → filtra por título/MLB (30). Traz `em_rankeamento` (bool) pra marcar os já monitorados |
 | `POST /api/ranking/ads` `{ml_id, milestone_every?}` | marca um anúncio em rankeamento (semeia `last_*` de `items` p/ não gerar alerta falso). Limite `MAX_ADS=30` ativos. `milestone_every` default 5 |
-| `PATCH /api/ranking/ads/:id` `{active?, milestone_every?, fase?, campanha_nome?, roas?, orcamento_diario?, preco_anterior?, preco_atual?, ads_investido?}` | pausar/retomar, mudar intervalo do marco, mudar de **fase** (`rankeando`↔`ranqueado`; `ranqueado` carimba `ranqueado_em`), ou salvar os campos **manuais** do ciclo (nome da campanha + ROAS/orçamento + preço anterior/atual; `''`/null zera a coluna) |
+| `PATCH /api/ranking/ads/:id` `{active?, milestone_every?, fase?, campanha_nome?, roas?, orcamento_diario?, preco_anterior?, preco_atual?, ads_investido?}` | pausar/retomar, mudar intervalo do marco, mudar de **fase** (`rankeando`/`ranqueado`/`monitoramento`; `ranqueado` carimba `ranqueado_em`, `rankeando` limpa, `monitoramento` não mexe), ou salvar os campos **manuais** do ciclo (nome da campanha + ROAS/orçamento + preço anterior/atual; `''`/null zera a coluna) |
 | `DELETE /api/ranking/ads/:id` | remove do rankeamento (apaga eventos + ciclos via CASCADE) |
 | `GET /api/ranking/ads/:id/eventos?limit` | timeline (venda/alteração/marco) mais recentes primeiro (limit ≤ 300) |
 | `POST /api/ranking/ads/:id/ciclo` | **v72/v73:** encerra o ciclo atual (snapshot ADS/ROAS/orçamento/preços + vendas e faturamento **acumulados** em `ranking_ciclos`) e começa o próximo: `ciclo++`, desloca `preco_anterior ← preco_atual`, novo `ciclo_iniciado_em`. **NÃO zera** o contador de vendas (cumulativo através dos ciclos) |
@@ -56,6 +56,9 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/ranking/ads/:id/precos` | histórico de mudanças de preço (eventos `preco`: `created_at` + `detail{de,para}`), mais recente primeiro — alimenta o modal de preço no card |
 | `POST /api/ranking/ads/:id/links` `{ml_id, tipo?}` | **v75:** vincula um `ml_id` (ex.: anúncio de **catálogo**) ao card — a venda desse ml_id passa a contar no mesmo card. Valida: item existe, não é card próprio, não já vinculado. `/ads` devolve `links[]` |
 | `DELETE /api/ranking/ads/:id/links/:linkId` | **v75:** desvincula o ml_id do card |
+| `GET /api/ranking/ads/:id/notas` | **v76:** log de alterações/anotações (mais recente primeiro). `/ads` devolve `notas_count` |
+| `POST /api/ranking/ads/:id/notas` `{texto}` | **v76:** registra uma anotação livre (o que foi alterado) |
+| `DELETE /api/ranking/ads/:id/notas/:notaId` | **v76:** exclui uma anotação |
 
 Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco a cada N vendas ficam em `server/src/ranking.js`, disparados pelos hooks do worker — não nestas rotas (só CRUD/leitura). Ver `rankeamento.md`.
 

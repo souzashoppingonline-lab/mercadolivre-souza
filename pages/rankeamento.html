@@ -72,6 +72,18 @@
     .rk-vinc-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
     .rk-vinc-item img { width: 30px; height: 30px; border-radius: 5px; object-fit: cover; }
     .rk-vinc-item .b { margin-left: auto; }
+    /* Seletor de estágio + monitoramento + notas */
+    .rk-fase-sel { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 7px; padding: 4px 6px; font-size: 10px; font-weight: 700; cursor: pointer; max-width: 130px; }
+    .rk-badge-n { background: rgba(0,0,0,.25); border-radius: 8px; padding: 0 5px; font-size: 9px; font-weight: 800; margin-left: 2px; }
+    .rk-mon-banner { background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.35); border-radius: 8px; padding: 8px 10px; margin: 8px 0 2px; font-size: 11px; color: var(--text-main); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .rk-mon-btn { background: #f59e0b; color: #1a1a1a; border: none; border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer; margin-left: auto; }
+    .rk-nota { border-bottom: 1px dashed var(--border); padding: 8px 0; font-size: 12px; }
+    .rk-nota:last-child { border-bottom: none; }
+    .rk-nota .when { font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    .rk-nota .txt { white-space: pre-wrap; line-height: 1.4; margin-top: 2px; }
+    .rk-nota .del { margin-left: auto; cursor: pointer; }
+    .rk-nota .del:hover { color: var(--red); }
+    .rk-nota-form textarea { width: 100%; background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 10px; padding: 10px; font-size: 13px; resize: vertical; min-height: 70px; font-family: inherit; box-sizing: border-box; }
     .rk-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
     .rk-stat { background: var(--bg-card2); border-radius: 8px; padding: 6px 4px; text-align: center; }
     .rk-stat .v { font-size: 13px; font-weight: 800; }
@@ -132,6 +144,7 @@
   <div class="rk-tabs">
     <button class="rk-tab active" id="tab-rankeando" onclick="switchTab('rankeando')"><i class="fas fa-ranking-star"></i> Em rankeamento <span class="rk-tab-badge" id="cnt-rankeando">0</span></button>
     <button class="rk-tab" id="tab-ranqueado" onclick="switchTab('ranqueado')"><i class="fas fa-shield-halved"></i> Ranqueados <span class="rk-tab-badge" id="cnt-ranqueado">0</span></button>
+    <button class="rk-tab" id="tab-monitoramento" onclick="switchTab('monitoramento')"><i class="fas fa-eye"></i> Monitoramento <span class="rk-tab-badge" id="cnt-monitoramento">0</span></button>
     <button class="rk-tab" id="tab-todos" onclick="switchTab('todos')"><i class="fas fa-list"></i> Todos os anúncios</button>
     <select id="rkCiclo" onchange="onCicloChange()" title="Filtrar por ciclo de rankeamento" style="margin-left:auto;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px">
       <option value="">Todos os ciclos</option>
@@ -152,6 +165,13 @@
     <p class="rk-sub" style="margin-top:0">Anúncios consolidados. Aqui o foco é <b>defender</b>: as vendas contam em silêncio (sem alerta) e você só é avisado quando algo <b>piora</b> — perdeu buy-box, saiu dos Mais Vendidos, visitas caíram, qualidade piorou ou esfriou.</p>
     <div id="rkCardsRanq" class="rk-cards"></div>
     <div id="rkCardsRanqEmpty" class="rk-empty" style="display:none">Nenhum anúncio ranqueado ainda. Quando um anúncio pegar tração, use "Marcar como ranqueado" no card dele.</div>
+  </div>
+
+  <!-- Aba: Monitoramento -->
+  <div class="rk-panel" id="panel-monitoramento">
+    <p class="rk-sub" style="margin-top:0">Produtos que <b>já ranquearam mas caíram</b>. Você fez alterações e está acompanhando o efeito. Cada card tem um <b>registro de alterações</b> (o que foi mudado) — clique em <b>📋 Alterações</b> para escrever e ler.</p>
+    <div id="rkCardsMon" class="rk-cards"></div>
+    <div id="rkCardsMonEmpty" class="rk-empty" style="display:none">Nenhum produto em monitoramento. Em um card <b>Ranqueado</b>, mude o estágio para <b>Monitoramento</b> quando as vendas caírem e você fizer alterações.</div>
   </div>
 
   <!-- Aba: Todos os anúncios -->
@@ -205,6 +225,24 @@
       <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Busque o anúncio (ex.: o de <b>catálogo</b> do mesmo produto) e vincule — as vendas dele passam a contar <b>neste card</b>. Preço/estoque continuam do anúncio principal.</p>
       <input id="vincSearch" placeholder="Buscar por título ou MLB..." autocomplete="off" style="width:100%;background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:10px;padding:10px 14px;font-size:14px;margin-bottom:8px">
       <div id="vincResults"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: alterações / anotações (log livre) -->
+<div class="rk-modal-ov" id="notasModal" onclick="if(event.target===this)fecharNotasModal()">
+  <div class="rk-modal">
+    <div class="rk-modal-head">
+      <i class="fas fa-clipboard-list" style="color:#f59e0b"></i>
+      <div style="flex:1;min-width:0"><h3>Alterações / anotações</h3><div class="sub" id="notasModalSub"></div></div>
+      <button class="rk-modal-close" onclick="fecharNotasModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="rk-modal-body">
+      <div class="rk-nota-form" style="margin-bottom:12px">
+        <textarea id="notaTexto" placeholder="O que foi alterado? Ex.: baixei o preço de 79,90 para 74,90, troquei a foto de capa e ajustei o título."></textarea>
+        <div style="text-align:right;margin-top:6px"><button class="rk-add-btn" onclick="salvarNota()"><i class="fas fa-plus"></i> Registrar alteração</button></div>
+      </div>
+      <div id="notasList"></div>
     </div>
   </div>
 </div>
@@ -266,7 +304,7 @@ const EVENTS = {};   // id do ranking_ad -> array de eventos
 
 function switchTab(t) {
   TAB = t;
-  ['rankeando','ranqueado','todos'].forEach(x => {
+  ['rankeando','ranqueado','monitoramento','todos'].forEach(x => {
     document.getElementById('tab-'+x).classList.toggle('active', x === t);
     document.getElementById('panel-'+x).classList.toggle('active', x === t);
   });
@@ -278,13 +316,19 @@ function onMktChange() {
   loadTable(document.getElementById('rkSearch').value);
 }
 
-// Carrega as duas listas (fase 1 e fase 2) e atualiza contadores das abas.
+// Carrega os 3 estágios (rankeando / ranqueado / monitoramento) e os contadores.
 async function loadCards() {
-  const [d1, d2] = await Promise.all([DB.getRankingAds(MKT, 'rankeando', LOJA, CICLO), DB.getRankingAds(MKT, 'ranqueado', LOJA, CICLO)]);
+  const [d1, d2, d3] = await Promise.all([
+    DB.getRankingAds(MKT, 'rankeando', LOJA, CICLO),
+    DB.getRankingAds(MKT, 'ranqueado', LOJA, CICLO),
+    DB.getRankingAds(MKT, 'monitoramento', LOJA, CICLO),
+  ]);
   await renderPanel(d1.ads || [], 'rkCards', 'rkCardsEmpty');
   await renderPanel(d2.ads || [], 'rkCardsRanq', 'rkCardsRanqEmpty');
+  await renderPanel(d3.ads || [], 'rkCardsMon', 'rkCardsMonEmpty');
   document.getElementById('cnt-rankeando').textContent = (d1.ads || []).length;
   document.getElementById('cnt-ranqueado').textContent = (d2.ads || []).length;
+  document.getElementById('cnt-monitoramento').textContent = (d3.ads || []).length;
 }
 
 async function renderPanel(ads, wrapId, emptyId) {
@@ -293,13 +337,26 @@ async function renderPanel(ads, wrapId, emptyId) {
   document.getElementById(wrapId).innerHTML = ads.map(cardHtml).join('');
 }
 
+const FASES = {
+  rankeando:     { label:'Em rankeamento', cor:'#ffd60a', txt:'#1a1a1a', icon:'fa-ranking-star',  glow:'rgba(255,214,10,.15)' },
+  ranqueado:     { label:'Ranqueado',      cor:'#2ea043', txt:'#ffffff', icon:'fa-shield-halved', glow:'rgba(46,160,67,.15)' },
+  monitoramento: { label:'Monitoramento',  cor:'#f59e0b', txt:'#1a1a1a', icon:'fa-eye',           glow:'rgba(245,158,11,.18)' },
+};
+function faseSelect(a, fase) {
+  return `<select class="rk-fase-sel" title="Mudar estágio" onchange="mudarFase(${a.id}, this.value)">`
+    + Object.entries(FASES).map(([k,f]) => `<option value="${k}"${k===fase?' selected':''}>${f.label}</option>`).join('')
+    + `</select>`;
+}
+
 function cardHtml(a) {
-  const ranq = a.fase === 'ranqueado';
+  const fase = a.fase || 'rankeando';
+  const F = FASES[fase] || FASES.rankeando;
+  const rankeando = fase === 'rankeando';
   const every = a.milestone_every || 5;
   const naFaixa = a.sales_count % every;
   const falta = naFaixa === 0 && a.sales_count > 0 ? 0 : (every - naFaixa);
   const pips = Array.from({length: every}, (_,i) => `<i class="${i < naFaixa ? 'on':''}"></i>`).join('');
-  const evs = (EVENTS[a.id] || []).map(evHtml).join('') || `<div class="rk-empty" style="border:none">${ranq?'Sem alertas — tudo certo 👍':'Aguardando a 1ª venda…'}</div>`;
+  const evs = (EVENTS[a.id] || []).map(evHtml).join('') || `<div class="rk-empty" style="border:none">${rankeando?'Aguardando a 1ª venda…':'Sem alertas — tudo certo 👍'}</div>`;
 
   // Bloco de campanha de ADS + preços, informados manualmente (por ciclo).
   const inNum = (campo, val, ph) => `<input type="number" min="0" step="0.01" value="${val==null?'':val}" placeholder="${ph}" onchange="salvarAds(${a.id},'${campo}',this.value)">`;
@@ -317,17 +374,14 @@ function cardHtml(a) {
       <div id="rkcyc-${a.id}"><div class="rk-empty" style="border:none;font-size:10px">Carregando…</div></div>
     </details>` : '';
 
-  // Badge/ações mudam por fase.
-  const badge = ranq
-    ? `<span class="rk-badge" style="background:#2ea043;color:#fff"><i class="fas fa-shield-halved"></i> Ranqueado</span>`
-    : `<span class="rk-badge"><i class="fas fa-ranking-star"></i> ${a.active ? 'Em rankeamento' : 'Pausado'}</span>`;
-  const sug = (!ranq && a.sugerir_ranqueado) ? ` <span class="rk-chip-sug" title="Bateu critério (Mais Vendidos / buy-box / 10 vendas / 15 dias)">🎯 pronto pra ranqueado?</span>` : '';
-  const faseBtn = ranq
-    ? `<button class="rk-icon-btn" title="Voltar pra rankeamento (reempurrar)" onclick="mudarFase(${a.id},'rankeando')"><i class="fas fa-rotate-left"></i></button>`
-    : `<button class="rk-icon-btn" title="Marcar como ranqueado" onclick="mudarFase(${a.id},'ranqueado')"><i class="fas fa-shield-halved"></i></button>`;
+  // Badge por estágio + seletor de estágio (transição manual).
+  const badge = `<span class="rk-badge" style="background:${F.cor};color:${F.txt}"><i class="fas ${F.icon}"></i> ${(rankeando && !a.active) ? 'Pausado' : F.label}</span>`;
+  const sug = (rankeando && a.sugerir_ranqueado) ? ` <span class="rk-chip-sug" title="Bateu critério (Mais Vendidos / buy-box / 10 vendas / 15 dias)">🎯 pronto pra ranqueado?</span>` : '';
+  const notasBtn = `<button class="rk-icon-btn" title="Alterações / anotações" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-clipboard-list"></i>${a.notas_count>0?` <span class="rk-badge-n">${a.notas_count}</span>`:''}</button>`;
+  const monBanner = (fase==='monitoramento') ? `<div class="rk-mon-banner">🔍 Monitorando o efeito das alterações. <button class="rk-mon-btn" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')">📋 Registrar/ver alterações${a.notas_count>0?` (${a.notas_count})`:''}</button></div>` : '';
 
-  // Saúde (fase 2) ou contador 5-em-5 (fase 1).
-  const meio = ranq ? `
+  // Saúde (ranqueado/monitoramento) ou contador 5-em-5 (rankeando).
+  const meio = !rankeando ? `
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${a.last_highlight_pos!=null?'#'+a.last_highlight_pos:'—'}</div><div class="k">Mais Vendidos</div></div>
       <div class="rk-stat"><div class="v">${a.last_buybox===true?'🥇 Sim':(a.last_buybox===false?'Não':'—')}</div><div class="k">Buy-box</div></div>
@@ -351,34 +405,42 @@ function cardHtml(a) {
       <div class="rk-stat"><div class="v">${a.preco_atual!=null?BRL(a.preco_atual):'—'}</div><div class="k">Preço</div></div>
     </div>`;
 
-  return `<div class="rk-card ${a.active ? '' : 'paused'} ${ranq?'ranq':''}" id="rkcard-${a.id}" style="${ranq?'border-color:#2ea043;box-shadow:0 0 0 1px rgba(46,160,67,.15)':''}">
+  return `<div class="rk-card ${a.active ? '' : 'paused'}" id="rkcard-${a.id}" style="border-color:${F.cor};box-shadow:0 0 0 1px ${F.glow}">
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${!ranq ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${badge} ${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${sug}
+        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${badge} ${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}
       </div>
       <div class="rk-card-actions">
+        ${faseSelect(a, fase)}
         <button class="rk-icon-btn" title="Histórico de preço" onclick="abrirPrecoModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-chart-line"></i></button>
         <button class="rk-icon-btn" title="Vincular anúncio de catálogo/tradicional (soma as vendas neste card)" onclick="abrirVincularModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-link"></i></button>
-        ${faseBtn}
-        ${!ranq ? `<button class="rk-icon-btn" title="Encerrar ciclo ${a.ciclo||1} e começar o ciclo ${(a.ciclo||1)+1}" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i></button>` : ''}
+        ${notasBtn}
+        ${rankeando ? `<button class="rk-icon-btn" title="Encerrar ciclo ${a.ciclo||1} e começar o ciclo ${(a.ciclo||1)+1}" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i></button>` : ''}
         <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
         <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i></button>
       </div>
     </div>
+    ${monBanner}
     ${meio}
-    ${!ranq ? adsBlock : ''}
+    ${rankeando ? adsBlock : ''}
     <div class="rk-timeline" id="rktl-${a.id}">${evs}</div>
-    ${!ranq ? ciclosBlock : ''}
+    ${rankeando ? ciclosBlock : ''}
   </div>`;
 }
 
 async function mudarFase(id, fase) {
-  if (fase === 'ranqueado' && !confirm('Marcar como RANQUEADO? A partir de agora as vendas contam em silêncio e você só é avisado quando algo piora.')) return;
-  await DB.patchRankingAd(id, { fase });
+  const msg = {
+    ranqueado: 'Mudar para RANQUEADO? As vendas passam a contar em silêncio e você só é avisado quando algo piora.',
+    monitoramento: 'Mudar para MONITORAMENTO? Use quando o produto já ranqueou, as vendas caíram e você fez alterações para observar o efeito. Registre o que mudou em "Alterações".',
+    rankeando: 'Mudar para EM RANKEAMENTO? Volta a acompanhar venda-a-venda com alerta forçado no Telegram.',
+  }[fase];
+  if (msg && !confirm(msg)) { loadCards(); return; } // reload reseta o select se cancelar
+  const r = await DB.patchRankingAd(id, { fase });
+  if (!r) alert('Não consegui mudar o estágio. Servidor reiniciado após o deploy?');
   loadCards();
 }
 
@@ -510,7 +572,43 @@ async function desvincular(id, linkId) {
   if (r && r.error) { alert(r.error); return; }
   loadCards();
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); } });
+// ── Alterações / anotações (log livre, usado no Monitoramento) ──────────────
+let NOTAS_AD = null;
+function abrirNotasModal(id, titulo) {
+  NOTAS_AD = id;
+  document.getElementById('notasModalSub').textContent = titulo || '';
+  document.getElementById('notaTexto').value = '';
+  document.getElementById('notasModal').classList.add('open');
+  carregarNotas();
+}
+function fecharNotasModal() { document.getElementById('notasModal').classList.remove('open'); NOTAS_AD = null; }
+async function carregarNotas() {
+  const box = document.getElementById('notasList');
+  box.innerHTML = '<div class="rk-empty" style="border:none">Carregando…</div>';
+  const d = await DB.getRankingNotas(NOTAS_AD);
+  const ns = (d && d.notas) || [];
+  if (!ns.length) { box.innerHTML = '<div class="rk-empty" style="border:none">Nenhuma alteração registrada ainda. Escreva acima o que você mudou.</div>'; return; }
+  box.innerHTML = ns.map(n => `<div class="rk-nota">
+    <div class="when">🕐 ${fmtDT(n.created_at)} <i class="fas fa-trash del" title="Excluir" onclick="excluirNota(${n.id})"></i></div>
+    <div class="txt">${esc(n.texto)}</div>
+  </div>`).join('');
+}
+async function salvarNota() {
+  const t = document.getElementById('notaTexto').value.trim();
+  if (!t) return;
+  const r = await DB.addRankingNota(NOTAS_AD, t);
+  if (!r || !r.nota) { alert('Falha ao salvar a anotação. Servidor reiniciado após o deploy?'); return; }
+  document.getElementById('notaTexto').value = '';
+  carregarNotas();
+  loadCards(); // atualiza o contador no card
+}
+async function excluirNota(notaId) {
+  if (!confirm('Excluir esta anotação?')) return;
+  await DB.delRankingNota(NOTAS_AD, notaId);
+  carregarNotas();
+  loadCards();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); fecharNotasModal(); } });
 
 async function togglePause(id, activate) { await DB.patchRankingAd(id, { active: activate }); loadCards(); }
 async function removeAd(id) {

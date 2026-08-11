@@ -267,6 +267,9 @@ const DB = {
   async getRankingCiclos(id)         { return this._get(`/ranking/ads/${id}/ciclos`); },
   async getRankingPrecos(id)         { return this._get(`/ranking/ads/${id}/precos`); },
 
+  // ── Inteligência de Negócio (BI) — dados operacionais (Postgres principal) ──
+  async getBiPainel(period = 30, store_id = '') { return this._get('/bi/painel', { period, store_id }); },
+
   // ── Módulo Financeiro (Supabase separado, read-only) ─────────
   async getFinanceiroStatus()        { return this._get('/financeiro/status'); },
   async getFinanceiroTabelas()       { return this._get('/financeiro/tabelas'); },

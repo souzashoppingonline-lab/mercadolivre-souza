@@ -3,7 +3,7 @@
 // página "em construção". Ver .claude/modules.md.
 
 const BI_NAV_ITEMS = [
-  { href: 'inteligencia-negocio.html', icon: 'fa-hammer', label: 'Em construção' },
+  { href: 'inteligencia-negocio.html', icon: 'fa-chart-pie', label: 'Painel Estratégico' },
 ];
 
 function buildModuleSwitcherBi(active) {

@@ -57,6 +57,11 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 
 Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco a cada N vendas ficam em `server/src/ranking.js`, disparados pelos hooks do worker — não nestas rotas (só CRUD/leitura). Ver `rankeamento.md`.
 
+## Inteligência de Negócio / BI (`routes/bi.js`, montado em `/api/bi`, **só admin**, ver `modules.md`)
+| Rota | Descrição |
+|---|---|
+| `GET /api/bi/painel?period&store_id` | Painel Estratégico: `kpis` (receita/pedidos/ticket/unidades + `receita_ant`/`pedidos_ant`/`cresc_receita`/`cresc_pedidos` = crescimento % vs. período anterior de mesma duração), `diaria` (série por dia), `canais` (ML/Shopee), `top` (top 10 produtos por receita), `clientes` (novos vs. recorrentes). `period` em dias (default 30, máx 365); `store_id` opcional. Lê `orders` (não-cancelados, data SP), **exclui Amazon** |
+
 ## Pedidos / Vendas (webhook-driven — tabela `orders`)
 | Rota | Descrição |
 |---|---|

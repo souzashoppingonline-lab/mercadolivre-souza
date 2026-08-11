@@ -8,9 +8,9 @@
 |---|---|---|---|
 | **Operacional** | O sistema atual completo (ML + Amazon + Shopee, rankeamento, embalagem, conciliação, etc.) | `js/layout.js` (`NAV_ITEMS`) — e os layouts próprios de Amazon/Shopee dentro dele | Postgres principal (`db/pool.js`) |
 | **Financeiro** | Controle financeiro (em construção) | `js/layout-financeiro.js` (`FIN_NAV_ITEMS`) | **Supabase separado** (banco já existente de outra ferramenta — ver abaixo) |
-| **Inteligência de Negócio** | Análises estratégicas (em construção) | `js/layout-bi.js` (`BI_NAV_ITEMS`) | a definir |
+| **Inteligência de Negócio** | Análises estratégicas | `js/layout-bi.js` (`BI_NAV_ITEMS`) | **Postgres principal** (dados operacionais) |
 
-Hoje **Financeiro** e **Inteligência de Negócio** têm só a página "em construção" (`pages/financeiro.html`, `pages/inteligencia-negocio.html`). O Operacional está 100% pronto.
+O **Operacional** está 100% pronto. **Financeiro** está em construção (várias telas prontas, ver abaixo). **Inteligência de Negócio** começou pelo **Painel Estratégico** (`pages/inteligencia-negocio.html`).
 
 ## Como funciona a troca de módulo
 
@@ -95,3 +95,12 @@ O usuário está **migrando** um ERP financeiro (feito no Readdy, React) para c�
   - v1: "Caixa Projetado" usa média diária de entradas (últimos 30d) nos dias sem recebível real (editável na tela, override em memória — não persiste ainda); saldo inicial via `forecast_starting_balance` é fallback não aplicado ainda.
 
 Schema real das tabelas do ERP (via Readdy): `sales_entries`, `expenses`, `expense_categories`, `boletos_mensais`, `receivables`, `cartoes`, `cash_flow_entries`, `compras_cmv`, etc. — próximas telas: **Compras** (`compras_cmv`), **Home** (10 tabelas: sales_entries, cash_flow_entries, boletos_mensais, expenses, receivables, monthly_goals, daily_alerts, daily_alert_logs, compras_xml, backups).
+
+## Módulo Inteligência de Negócio (BI) — dados operacionais (Postgres principal)
+
+Diferente do Financeiro (que lê do Supabase), o BI analisa os **dados operacionais** do Postgres principal (`orders`, `items`, etc.). Só admin (MODULES `bi`, prefixo `/api/bi`). Amazon fica **de fora** dos números (sandbox/mock inflava — mesma regra do `dashboard/kpis`).
+
+- **Rota** `server/src/routes/bi.js`, montada em `/api/bi` no `server.js`. Espelho em `js/db.js`: `getBiPainel(period, store_id)`.
+- **`GET /api/bi/painel?period=30&store_id=`** — payload único do Painel Estratégico: `kpis` (receita/pedidos/ticket/unidades + `receita_ant`/`pedidos_ant` e `cresc_receita`/`cresc_pedidos` = crescimento % vs. período anterior de mesma duração), `diaria` (série por dia), `canais` (ML/Shopee, receita/pedidos), `top` (top 10 produtos por receita), `clientes` (novos vs. recorrentes — "novo" = 1ª compra histórica caiu na janela). Filtra pedidos não-cancelados por data (SP), exclui Amazon, `store_id` opcional.
+- **Página** `pages/inteligencia-negocio.html` (nav `Painel Estratégico`, layout `js/layout-bi.js`): tema escuro, Chart.js. Filtros período (7/15/30/90) + loja; 4 KPIs com badge de crescimento; gráfico combo receita(barra)+pedidos(linha); comparativo por canal (donut) e clientes novos×recorrentes (donut); tabela top 10 produtos. Accent roxo (#8b5cf6).
+- **Próximas telas do BI** (menu vazio ainda): Curva ABC, Desempenho de produtos (visitas→conversão/qualidade/buy-box), Análise de clientes detalhada, Tendências/sazonalidade.

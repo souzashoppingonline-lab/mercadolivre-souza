@@ -7,7 +7,36 @@
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>window.PAGE_TITLE='Inteligência de Negócio'; window.ACTIVE_NAV='inteligencia-negocio.html';</script>
+  <style>
+    .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .bi-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .bi-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
+    .bi-status { font-size:12px; color:var(--text-muted); margin-bottom:12px; }
+    .bi-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:16px; }
+    .bi-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; border-left:4px solid #8b5cf6; }
+    .bi-kpi .k { font-size:12px; color:var(--text-muted); font-weight:700; display:flex; align-items:center; gap:7px; }
+    .bi-kpi .v { font-size:24px; font-weight:900; margin-top:6px; }
+    .bi-kpi .s { font-size:12px; font-weight:700; margin-top:3px; }
+    .up { color:#3fb950; } .down { color:#f87171; }
+    .bi-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .bi-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .bi-card-h h3 { font-size:15px; font-weight:800; margin:0; }
+    .bi-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media(max-width:820px){ .bi-grid2 { grid-template-columns:1fr; } }
+    .bi-canal { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px dashed var(--border); font-size:13px; }
+    .bi-canal:last-child { border-bottom:none; }
+    .bi-canal .tag { font-size:9px; font-weight:800; padding:2px 7px; border-radius:5px; }
+    .bi-canal .v { margin-left:auto; font-weight:800; }
+    table.bi-t { width:100%; border-collapse:collapse; }
+    .bi-t th, .bi-t td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); font-size:13px; }
+    .bi-t th { color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+    .bi-t td.num, .bi-t th.num { text-align:right; }
+    .bi-t tr:hover td { background:var(--bg-card2); }
+    .bi-rank { display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:6px; background:var(--bg-card2); font-weight:800; font-size:11px; margin-right:8px; }
+    .bi-empty { color:var(--text-muted); font-size:13px; padding:16px; text-align:center; }
+  </style>
 </head>
 <body>
 <div class="app-container">
@@ -15,16 +44,146 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <div class="em-construcao">
-        <div class="ec-ico"><i class="fas fa-brain"></i></div>
-        <h1>Módulo Inteligência de Negócio</h1>
-        <p>Este módulo está <b>em construção</b>. Aqui virão as análises estratégicas e indicadores que cruzam os dados dos demais módulos para apoiar a tomada de decisão.</p>
-        <span class="ec-tag"><i class="fas fa-hammer"></i> Em breve</span>
+      <p class="bi-sub">Visão estratégica dos dados operacionais (Mercado Livre + Shopee). Amazon fica de fora enquanto a integração não está em produção.</p>
+
+      <div class="bi-filters">
+        <select id="biPeriod">
+          <option value="7">Últimos 7 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <select id="biLoja"><option value="">Todas as empresas</option></select>
+        <span class="bi-status" id="biStatus"></span>
+      </div>
+
+      <div class="bi-kpis" id="biKpis"></div>
+
+      <div class="bi-card">
+        <div class="bi-card-h"><h3>📈 Evolução diária da receita</h3><span style="margin-left:auto;font-size:12px;color:var(--text-muted)" id="biDiariaSub"></span></div>
+        <div style="height:280px"><canvas id="biChDiaria"></canvas></div>
+      </div>
+
+      <div class="bi-grid2">
+        <div class="bi-card">
+          <div class="bi-card-h"><h3>🛒 Comparativo por canal</h3></div>
+          <div style="height:200px;margin-bottom:12px"><canvas id="biChCanal"></canvas></div>
+          <div id="biCanalList"></div>
+        </div>
+        <div class="bi-card">
+          <div class="bi-card-h"><h3>👥 Clientes no período</h3></div>
+          <div style="height:200px;margin-bottom:12px"><canvas id="biChClientes"></canvas></div>
+          <div id="biClientesList"></div>
+        </div>
+      </div>
+
+      <div class="bi-card">
+        <div class="bi-card-h"><h3>🏆 Top 10 produtos por receita</h3></div>
+        <div style="overflow-x:auto">
+          <table class="bi-t">
+            <thead><tr><th>Produto</th><th class="num">Pedidos</th><th class="num">Unidades</th><th class="num">Receita</th><th class="num">% do total</th></tr></thead>
+            <tbody id="biTop"><tr><td colspan="5" class="bi-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </main>
 </div>
+
+<script src="../js/db.js"></script>
 <script src="../js/layout-bi.js"></script>
 <script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
+const PCT = n => `${Number(n)>0?'+':''}${(Number(n)||0).toFixed(1)}%`;
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CANAL_COR = { ML:'#ffe600', SHOPEE:'#ee4d2d', AMAZON:'#ff9900' };
+let chDiaria, chCanal, chClientes;
+
+async function popularLojas(){
+  try{ const d=await DB.getLojas(); const sel=document.getElementById('biLoja');
+    (d.stores||[]).forEach(s=>sel.insertAdjacentHTML('beforeend',`<option value="${s.id}">${esc(s.nickname||s.id)}</option>`));
+  }catch(_){}
+}
+
+function growthBadge(v){ const cls=v>=0?'up':'down'; const ar=v>=0?'▲':'▼'; return `<span class="s ${cls}">${ar} ${PCT(v)} <span style="color:var(--text-muted);font-weight:500">vs. período anterior</span></span>`; }
+
+function renderKpis(k){
+  document.getElementById('biKpis').innerHTML = `
+    <div class="bi-kpi"><div class="k">💰 Receita</div><div class="v">${BRL(k.receita)}</div>${growthBadge(k.cresc_receita)}</div>
+    <div class="bi-kpi"><div class="k">📦 Pedidos</div><div class="v">${INT(k.pedidos)}</div>${growthBadge(k.cresc_pedidos)}</div>
+    <div class="bi-kpi"><div class="k">🎟️ Ticket médio</div><div class="v">${BRL(k.ticket)}</div><div class="s" style="color:var(--text-muted)">${INT(k.unidades)} unidades vendidas</div></div>
+    <div class="bi-kpi"><div class="k">📊 Receita anterior</div><div class="v" style="font-size:18px;color:var(--text-muted)">${BRL(k.receita_ant)}</div><div class="s" style="color:var(--text-muted)">${INT(k.pedidos_ant)} pedidos no período anterior</div></div>`;
+}
+
+function renderDiaria(diaria){
+  document.getElementById('biDiariaSub').textContent = diaria.length ? `${diaria.length} dia(s) com venda` : '';
+  const labels = diaria.map(x=>{ const p=String(x.d).slice(5).split('-'); return `${p[1]}/${p[0]}`; });
+  const rec = diaria.map(x=>x.receita), ped = diaria.map(x=>x.pedidos);
+  if(chDiaria) chDiaria.destroy();
+  chDiaria = new Chart(document.getElementById('biChDiaria'),{ data:{ labels, datasets:[
+      { type:'bar', label:'Receita', data:rec, backgroundColor:'rgba(139,92,246,.65)', borderRadius:4, yAxisID:'y' },
+      { type:'line', label:'Pedidos', data:ped, borderColor:'#3fb950', backgroundColor:'rgba(63,185,80,.1)', tension:.35, pointRadius:2, yAxisID:'y1' },
+    ]}, options:{ maintainAspectRatio:false, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{labels:{color:'#9ca3af'}}, tooltip:{callbacks:{label:c=>c.dataset.label==='Receita'?` Receita: ${BRL(c.raw)}`:` Pedidos: ${INT(c.raw)}`}} },
+      scales:{ x:{ticks:{color:'#9ca3af'},grid:{display:false}},
+        y:{position:'left',ticks:{color:'#9ca3af',callback:v=>'R$'+(v/1000).toFixed(0)+'k'},grid:{color:'rgba(255,255,255,.05)'}},
+        y1:{position:'right',ticks:{color:'#3fb950'},grid:{display:false}} } } });
+}
+
+function renderCanais(canais){
+  const tot = canais.reduce((s,c)=>s+c.receita,0)||1;
+  if(chCanal) chCanal.destroy();
+  chCanal = new Chart(document.getElementById('biChCanal'),{ type:'doughnut',
+    data:{ labels:canais.map(c=>c.name), datasets:[{ data:canais.map(c=>c.receita), backgroundColor:canais.map(c=>CANAL_COR[c.code]||'#8b5cf6'), borderWidth:0 }] },
+    options:{ maintainAspectRatio:false, cutout:'62%', plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.label}: ${BRL(c.raw)} (${(c.raw/tot*100).toFixed(1)}%)`}} } } });
+  document.getElementById('biCanalList').innerHTML = canais.length ? canais.map(c=>`
+    <div class="bi-canal"><span class="tag" style="background:${CANAL_COR[c.code]||'#8b5cf6'};color:#1a1a1a">${esc(c.name)}</span>
+      <span style="color:var(--text-muted)">${INT(c.pedidos)} pedidos · ${(c.receita/tot*100).toFixed(1)}%</span>
+      <span class="v">${BRL(c.receita)}</span></div>`).join('') : '<div class="bi-empty">Sem vendas no período.</div>';
+}
+
+function renderClientes(cli){
+  const tot=(cli.novos+cli.recorrentes)||1;
+  if(chClientes) chClientes.destroy();
+  chClientes = new Chart(document.getElementById('biChClientes'),{ type:'doughnut',
+    data:{ labels:['Novos','Recorrentes'], datasets:[{ data:[cli.novos,cli.recorrentes], backgroundColor:['#8b5cf6','#3fb950'], borderWidth:0 }] },
+    options:{ maintainAspectRatio:false, cutout:'62%', plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.label}: ${INT(c.raw)} (${(c.raw/tot*100).toFixed(1)}%)`}} } } });
+  document.getElementById('biClientesList').innerHTML = `
+    <div class="bi-canal"><span class="tag" style="background:#8b5cf6;color:#fff">Novos</span><span style="color:var(--text-muted)">1ª compra no período</span><span class="v">${INT(cli.novos)} (${(cli.novos/tot*100).toFixed(0)}%)</span></div>
+    <div class="bi-canal"><span class="tag" style="background:#3fb950;color:#03210d">Recorrentes</span><span style="color:var(--text-muted)">já compravam antes</span><span class="v">${INT(cli.recorrentes)} (${(cli.recorrentes/tot*100).toFixed(0)}%)</span></div>`;
+}
+
+function renderTop(top, totalReceita){
+  const tb=document.getElementById('biTop');
+  if(!top.length){ tb.innerHTML='<tr><td colspan="5" class="bi-empty">Sem produtos no período.</td></tr>'; return; }
+  tb.innerHTML = top.map((p,i)=>`<tr>
+    <td><span class="bi-rank">${i+1}</span>${esc(p.title||p.item_id)}</td>
+    <td class="num">${INT(p.pedidos)}</td>
+    <td class="num">${INT(p.unidades)}</td>
+    <td class="num">${BRL(p.receita)}</td>
+    <td class="num">${totalReceita?((p.receita/totalReceita)*100).toFixed(1):'0'}%</td>
+  </tr>`).join('');
+}
+
+async function carregar(){
+  const period=document.getElementById('biPeriod').value, loja=document.getElementById('biLoja').value;
+  document.getElementById('biStatus').textContent='Carregando…';
+  const d = await DB.getBiPainel(period, loja);
+  if(!d || d.error){ document.getElementById('biStatus').innerHTML=`<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
+  document.getElementById('biStatus').textContent=`Período de ${d.period} dias.`;
+  renderKpis(d.kpis);
+  renderDiaria(d.diaria||[]);
+  renderCanais(d.canais||[]);
+  renderClientes(d.clientes||{novos:0,recorrentes:0});
+  renderTop(d.top||[], d.kpis.receita);
+}
+
+document.getElementById('biPeriod').addEventListener('change', carregar);
+document.getElementById('biLoja').addEventListener('change', carregar);
+popularLojas();
+carregar();
+</script>
 </body>
 </html>

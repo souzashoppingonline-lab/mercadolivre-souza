@@ -53,12 +53,29 @@ async function emit(ad, eventType, message, detail = {}, tgMode = 'normal') {
 
 // Uma venda de um anúncio em rankeamento. `valorNum` é o valor da LINHA do
 // pedido (unit_price × quantity) desse item, não o total do pedido.
-async function onSale({ mlId, order, valorNum, comprador, saleDate }) {
+async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = true }) {
   const ad = await getTracked(mlId);
   if (!ad) return;
 
+  const orderId = order?.id || order?.ml_id || null;
+
+  // Só conta vendas ocorridas DEPOIS que o anúncio entrou em rankeamento
+  // (started_at) — uma re-sincronização não deve contar o histórico antigo.
+  if (saleDate && ad.started_at && new Date(saleDate) < new Date(ad.started_at)) return;
+
+  // Idempotência por order_id: se a venda deste pedido já foi registrada para
+  // este anúncio, não conta de novo. É o que permite chamar onSale sem medo em
+  // re-processos / sync / webhooks tardios (nenhuma venda é perdida nem dobrada).
+  if (orderId) {
+    const dup = await pool.query(
+      `SELECT 1 FROM ranking_events
+        WHERE ranking_ad_id = $1 AND event_type = 'venda' AND detail->>'order_id' = $2 LIMIT 1`,
+      [ad.id, String(orderId)]
+    );
+    if (dup.rows.length) return;
+  }
+
   const now = new Date();
-  const first = ad.first_sale_at || now;
   const { rows } = await pool.query(
     `UPDATE ranking_ads
        SET sales_count = sales_count + 1,
@@ -70,27 +87,27 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate }) {
     [ad.id, now]
   );
   const count = rows[0].sales_count;
-  const orderId = order?.id || order?.ml_id || '—';
 
-  // Fase 2 (ranqueado): venda conta em silêncio (só tela), sem "venda!" no
-  // Telegram — o foco vira defender, não celebrar cada venda. Fase 1: força.
+  // Telegram só em tempo real e na fase 1 (rankeando). Fora disso (fase 2
+  // ranqueado, catch-up de sync ou venda >24h) a venda conta em silêncio (tela).
   const isRanq = ad.fase === 'ranqueado';
+  const notify = (realtime && !isRanq) ? 'force' : 'silent';
   const every0 = ad.milestone_every || 5;
   const faltam = (every0 - (count % every0)) % every0;
   await emit(ad, 'venda',
     `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> em rankeamento\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`,
-    { order_id: orderId, valor: valorNum, comprador, sales_count: count }, isRanq ? 'silent' : 'force');
+    { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count }, notify);
 
-  // Marco a cada N vendas — resumo de ritmo (também silencioso na fase 2).
+  // Marco a cada N vendas — resumo de ritmo (Telegram só em tempo real).
   const every = ad.milestone_every || 5;
   if (count > 0 && count % every === 0) {
-    await milestone({ ...ad, sales_count: count, first_sale_at: rows[0].first_sale_at });
+    await milestone({ ...ad, sales_count: count, first_sale_at: rows[0].first_sale_at }, realtime);
   }
 }
 
 // Marco (a cada N vendas): total, tempo desde a 1ª venda, ritmo/dia e faturamento
 // do anúncio no período em rankeamento.
-async function milestone(ad) {
+async function milestone(ad, realtime = true) {
   const firstAt = ad.first_sale_at ? new Date(ad.first_sale_at) : new Date();
   const dias = Math.max(1, (Date.now() - firstAt.getTime()) / 86400000);
   const ritmo = (ad.sales_count / dias).toFixed(1);
@@ -108,7 +125,7 @@ async function milestone(ad) {
   await emit(ad, 'marco',
     `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento acumulado: ${BRL(fat)}\n🔄 <b>Atingiu múltiplo de ${ad.milestone_every || 5} — avalie trocar o ciclo manualmente no card.</b>\n🔗 ${linkOf(ad.ml_id)}`,
     { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat), ciclo: ad.ciclo || 1 },
-    ad.fase === 'ranqueado' ? 'silent' : 'force');
+    (ad.fase === 'ranqueado' || !realtime) ? 'silent' : 'force');
 }
 
 // Alterações do anúncio detectadas no sync do item (handleItem) — preço, estoque

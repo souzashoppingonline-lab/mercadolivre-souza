@@ -33,6 +33,16 @@ Núcleo em **`server/src/ranking.js`** (reaproveita `notify.js`/`ws/hub.js` — 
 
 Preço/estoque/status vêm **de graça** do webhook de item (sem GET extra). Visitas/qualidade/buy-box não têm webhook → job periódico só dos anúncios ativos (poucos, limite `MAX_ADS=30`), sem varrer o catálogo, então não pesa no rate limit do ML.
 
+## Anti-perda de venda (idempotência)
+
+`onSale` roda para **todo pedido pago** de um anúncio monitorado (no `handleOrder`, fora do gate `isNewSale`/`!silent`), sem perder nem duplicar venda:
+
+- **Idempotente por `order_id`**: antes de contar, checa se já existe evento `venda` com aquele `detail->>'order_id'` para o anúncio; se existe, retorna sem contar. Assim pode ser chamado à vontade em re-processos / sync / webhooks tardios.
+- **Janela do anúncio**: só conta vendas com `saleDate >= ranking_ads.started_at` — uma re-sincronização do histórico não infla o contador com vendas anteriores à marcação.
+- **Telegram só em tempo real**: o parâmetro `realtime` (= `isNewSale && !silent`) controla o alerta. Venda em tempo real na fase 1 → Telegram forçado; catch-up de sync, venda >24h ou fase 2 → conta **em silêncio** (só tela), sem spam. O marco (`milestone`) recebe o mesmo `realtime`.
+
+Isso corrige o gap em que vendas processadas em `silent` (importação/sync) ou sem transição real de status não entravam no rankeamento.
+
 ## Semente anti-alerta-falso
 
 Ao marcar um anúncio (`POST /ads`), os `last_price`/`last_available_quantity`/`last_status` são semeados a partir de `items`, e `base_price` guarda o preço de referência. Assim a 1ª alteração real dispara evento (não a leitura inicial). `onItemChange` também atualiza os `last_*` mesmo sem evento, para semear anúncios recém-marcados.

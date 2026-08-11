@@ -324,20 +324,28 @@ async function handleOrder({ resource, storeId, silent = false }) {
         comprador: order.buyer?.nickname || '—',
         order_id: order.id,
       });
-      // Rankeamento: se algum item deste pedido está "em rankeamento", registra
-      // a venda (tela + Telegram + marco). Best-effort, nunca quebra o handler.
-      for (const oi of (order.order_items || [])) {
-        const mlId = oi.item?.id;
-        if (!mlId) continue;
-        try {
-          await ranking.onSale({
-            mlId, order,
-            valorNum: Number(oi.unit_price || 0) * Number(oi.quantity || 1),
-            comprador: order.buyer?.nickname || '—',
-            saleDate,
-          });
-        } catch (e) { console.error('[ranking] onSale falhou:', e.message); }
-      }
+    }
+  }
+
+  // Rankeamento: registra a venda de qualquer item monitorado deste pedido PAGO.
+  // Roda FORA do gate isNewSale/!silent de propósito: o onSale é idempotente por
+  // order_id (não conta 2x) e só conta vendas a partir do started_at do anúncio,
+  // então pode rodar em silent / re-sync / venda >24h sem inflar nem duplicar —
+  // é isso que garante que nenhuma venda de anúncio em rankeamento seja perdida.
+  // Telegram só quando é venda em tempo real (isNewSale && !silent). Best-effort.
+  if (order.status === 'paid') {
+    const realtime = isNewSale && !silent;
+    for (const oi of (order.order_items || [])) {
+      const mlId = oi.item?.id;
+      if (!mlId) continue;
+      try {
+        await ranking.onSale({
+          mlId, order,
+          valorNum: Number(oi.unit_price || 0) * Number(oi.quantity || 1),
+          comprador: order.buyer?.nickname || '—',
+          saleDate, realtime,
+        });
+      } catch (e) { console.error('[ranking] onSale falhou:', e.message); }
     }
   }
 }

@@ -754,12 +754,12 @@ async function onImportFile(input){
           iTar=col('tarifa de venda (-)'), iFVend=col('frete vendedor (-)'),
           iStatus=col('status pedido'), iId=col('id da venda');
     if(iData<0||iFat<0||iStatus<0){ impMsg('⚠️ Não parece a exportação de pedidos do MercadoTurbo (faltam colunas Data / Faturamento ML / Status Pedido).',true); return; }
-    const grp={}; let pagos=0;
+    const grp={}; let aprovados=0;
     for(let i=1;i<rows.length;i++){
       const r=rows[i]; if(!r||(iId>=0&&!r[iId])) continue;
-      if(normHdr(r[iStatus])!=='pago') continue; // só pedidos pagos (exclui Cancelado)
+      const st=normHdr(r[iStatus]); if(st==='cancelado'||st==='cancelada') continue; // exclui só canceladas (= "Vendas Aprovadas" do MercadoTurbo)
       const d=impDateISO(r[iData]); if(!d) continue;
-      pagos++;
+      aprovados++;
       const g=grp[d]||(grp[d]={date:d,quantity_sales:0,gross_revenue:0,marketplace_fees:0,subsidized_shipping:0,cogs:0,tax:0});
       g.quantity_sales+=1;
       g.gross_revenue+=impNum(r[iFat]);
@@ -770,7 +770,7 @@ async function onImportFile(input){
     }
     const dias=Object.values(grp).sort((a,b)=>a.date<b.date?-1:1);
     if(!dias.length){ impMsg('Nenhum pedido pago encontrado na planilha.',true); return; }
-    impMsg(`✅ ${pagos} pedido(s) pago(s) em ${dias.length} dia(s). Confirme o ADS.`,false);
+    impMsg(`✅ ${aprovados} pedido(s) aprovado(s) em ${dias.length} dia(s). Confirme o ADS.`,false);
     abrirImportModal(dias, store_id);
   }catch(e){ impMsg('Erro ao ler: '+esc(e.message||e),true); }
   finally{ input.value=''; }

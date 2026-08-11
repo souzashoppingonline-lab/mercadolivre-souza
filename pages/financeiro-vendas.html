@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>window.PAGE_TITLE='Vendas & Custos'; window.ACTIVE_NAV='financeiro-vendas.html';</script>
   <style>
     .vc-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
@@ -100,6 +101,16 @@
         <select id="vcMes"></select><select id="vcAno"></select>
         <select id="vcLoja"><option value="">Todas as lojas</option></select>
         <span style="font-size:12px;color:var(--text-muted)">Margem = receita bruta − (taxas + frete + CMV + ads + impostos)</span>
+      </div>
+
+      <!-- Importar planilha MercadoTurbo (agrega pedidos → lançamento diário) -->
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>📤 Importar planilha (MercadoTurbo)</h3><span id="impMsg" style="margin-left:auto;font-size:12px"></span></div>
+        <p class="vc-sub" style="margin:0 0 12px">Escolha a <b>loja</b>, suba o Excel de pedidos e o sistema soma os <b>pedidos pagos por dia</b> (receita, taxas, frete, CMV e imposto). O <b>ADS</b> não vem na planilha — é perguntado num modal antes de gravar.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+          <label style="font-size:12px;color:var(--text-muted)">Loja *<select id="impLoja" class="vc-in"><option value="">Selecione…</option></select></label>
+          <label style="font-size:12px;color:var(--text-muted)">Planilha (.xlsx)<input type="file" id="impFile" accept=".xlsx,.xls" class="vc-in" onchange="onImportFile(this)"></label>
+        </div>
       </div>
 
       <!-- Novo Lançamento Diário (escrita) -->
@@ -301,10 +312,11 @@ async function init(){
   const rSt = await DB.getFinanceiroDados('stores',500);
   const st = rSt.rows||[];
   st.forEach(s=>{ STORES[s.id]=s.name||s.nome||s.nickname||String(s.id).slice(0,6); });
-  const sel=document.getElementById('vcLoja'), fSel=document.getElementById('fLoja');
+  const sel=document.getElementById('vcLoja'), fSel=document.getElementById('fLoja'), iSel=document.getElementById('impLoja');
   Object.entries(STORES).forEach(([id,n])=>{
     sel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`);
     fSel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`);
+    iSel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`);
   });
   document.getElementById('fData').value=new Date().toISOString().slice(0,10);
 
@@ -708,6 +720,116 @@ function renderVolRent(rows,m,y){
         y1:{position:'right',ticks:{color:'#f59e0b',callback:v=>v+'%'},grid:{drawOnChartArea:false}},
         x:{ticks:{color:'#64748b'}},
       }}});
+}
+
+// ── Importar planilha MercadoTurbo → lançamentos diários ────────────────────
+function impMsg(t,err){ const el=document.getElementById('impMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
+function impNum(v){ if(v==null||v==='') return 0; if(typeof v==='number') return v; let s=String(v).trim().replace('%','').replace('R$','').trim(); if(s.includes(',')&&s.includes('.')) s=s.replace(/\./g,'').replace(',','.'); else if(s.includes(',')) s=s.replace(',','.'); const n=parseFloat(s); return isNaN(n)?0:n; }
+function impDateISO(v){
+  if(v==null||v==='') return null;
+  if(v instanceof Date){ const p=n=>String(n).padStart(2,'0'); return `${v.getFullYear()}-${p(v.getMonth()+1)}-${p(v.getDate())}`; }
+  const s=String(v).trim();
+  let m=/^(\d{2})\/(\d{2})\/(\d{4})/.exec(s); if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
+}
+const normHdr=s=>String(s==null?'':s).trim().toLowerCase();
+
+async function onImportFile(input){
+  const store_id=document.getElementById('impLoja').value;
+  const file=input.files&&input.files[0];
+  if(!store_id){ impMsg('⚠️ Escolha a loja antes de subir a planilha.',true); input.value=''; return; }
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ impMsg('⚠️ Biblioteca de planilha não carregou (sem internet?).',true); input.value=''; return; }
+  impMsg('Lendo planilha…',false);
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+    if(!rows.length){ impMsg('Planilha vazia.',true); return; }
+    const hdr=rows[0].map(normHdr);
+    const col=name=>hdr.findIndex(h=>h===name);
+    const iData=col('data'), iFat=col('faturamento ml'), iCusto=col('custo (-)'), iImp=col('imposto (-)'),
+          iTar=col('tarifa de venda (-)'), iFComp=col('frete comprador (-)'), iFVend=col('frete vendedor (-)'),
+          iStatus=col('status pedido'), iId=col('id da venda');
+    if(iData<0||iFat<0||iStatus<0){ impMsg('⚠️ Não parece a exportação de pedidos do MercadoTurbo (faltam colunas Data / Faturamento ML / Status Pedido).',true); return; }
+    const grp={}; let pagos=0;
+    for(let i=1;i<rows.length;i++){
+      const r=rows[i]; if(!r||(iId>=0&&!r[iId])) continue;
+      if(normHdr(r[iStatus])!=='pago') continue; // só pedidos pagos (exclui Cancelado)
+      const d=impDateISO(r[iData]); if(!d) continue;
+      pagos++;
+      const g=grp[d]||(grp[d]={date:d,quantity_sales:0,gross_revenue:0,marketplace_fees:0,subsidized_shipping:0,cogs:0,tax:0});
+      g.quantity_sales+=1;
+      g.gross_revenue+=impNum(r[iFat]);
+      g.marketplace_fees+=iTar>=0?impNum(r[iTar]):0;
+      g.subsidized_shipping+=(iFVend>=0?impNum(r[iFVend]):0)+(iFComp>=0?impNum(r[iFComp]):0);
+      g.cogs+=iCusto>=0?impNum(r[iCusto]):0;
+      g.tax+=iImp>=0?impNum(r[iImp]):0;
+    }
+    const dias=Object.values(grp).sort((a,b)=>a.date<b.date?-1:1);
+    if(!dias.length){ impMsg('Nenhum pedido pago encontrado na planilha.',true); return; }
+    impMsg(`✅ ${pagos} pedido(s) pago(s) em ${dias.length} dia(s). Confirme o ADS.`,false);
+    abrirImportModal(dias, store_id);
+  }catch(e){ impMsg('Erro ao ler: '+esc(e.message||e),true); }
+  finally{ input.value=''; }
+}
+
+function abrirImportModal(dias, store_id){
+  const lojaNome=STORES[store_id]||store_id;
+  const linhas=dias.map((g,i)=>{
+    const existe=ALL.find(e=>e.date===g.date&&String(e.store_id)===String(store_id));
+    return `<div class="vc-rc" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <b>${fmtDate(g.date)}</b>
+        ${existe?'<span class="vc-badge risco">já existe — vai substituir</span>':'<span class="vc-badge ahead">novo</span>'}
+      </div>
+      <table class="vc-sum" style="margin-top:6px">
+        <tr><td>Qtd. Vendas (pagas)</td><td>${g.quantity_sales}</td></tr>
+        <tr><td>Receita Bruta (Faturamento ML)</td><td>${BRL(g.gross_revenue)}</td></tr>
+        <tr><td>Taxas Marketplace</td><td class="down">-${BRL(g.marketplace_fees)}</td></tr>
+        <tr><td>Frete Subsidiado (vend+comp)</td><td class="down">-${BRL(g.subsidized_shipping)}</td></tr>
+        <tr><td>CMV</td><td class="down">-${BRL(g.cogs)}</td></tr>
+        <tr><td>Imposto</td><td class="down">-${BRL(g.tax)}</td></tr>
+      </table>
+      <div class="vc-mrow" style="margin-top:8px"><label>💰 ADS deste dia (R$)</label>
+        <input type="number" step="0.01" id="impAds_${i}" class="vc-in" placeholder="0,00" style="width:160px"></div>
+    </div>`;
+  }).join('');
+  const body=`<p style="margin-bottom:10px">Loja: <b>${esc(lojaNome)}</b>. Informe o <b>ADS</b> de cada dia e confirme — o resto já foi somado da planilha (só pedidos <b>pagos</b>).</p>${linhas}
+    <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)"></div>`;
+  abrirModal('📤 Confirmar importação', body, 'Gravar tudo', ()=>salvarImport(dias, store_id));
+}
+
+async function salvarImport(dias, store_id){
+  modalBusy(true,'Gravando…');
+  const round2=n=>Math.round(n*100)/100;
+  let ok=0; const erros=[];
+  for(let i=0;i<dias.length;i++){
+    const g=dias[i];
+    const el=document.getElementById('impAds_'+i);
+    const ads=el?(parseFloat(String(el.value).replace(',','.'))||0):0;
+    const row={ date:g.date, store_id, quantity_sales:g.quantity_sales,
+      gross_revenue:round2(g.gross_revenue), marketplace_fees:round2(g.marketplace_fees),
+      subsidized_shipping:round2(g.subsidized_shipping), cogs:round2(g.cogs), tax:round2(g.tax),
+      ads_ml:round2(ads), ads_external:0 };
+    const existe=ALL.find(e=>e.date===g.date&&String(e.store_id)===String(store_id));
+    let r;
+    if(existe&&existe.id!=null){
+      r=await DB.updateFinanceiroRow('sales_entries',existe.id,row);
+      if(r&&!r.error){ const idx=ALL.findIndex(e=>e.id===existe.id); const saved=Array.isArray(r.rows)?r.rows[0]:{...existe,...row}; if(idx>=0) ALL[idx]=saved; }
+    } else {
+      r=await DB.addFinanceiroRow('sales_entries',row);
+      if(r&&!r.error){ const saved=Array.isArray(r&&r.rows)?r.rows[0]:row; ALL.unshift(saved); }
+    }
+    if(r&&r.error) erros.push(`${fmtDate(g.date)}: ${r.error}`); else ok++;
+  }
+  modalBusy(false);
+  if(erros.length){ eMsgErr('Erros: '+esc(erros.join(' · '))); if(ok>0) render(); return; }
+  fecharModal();
+  render();
+  impMsg(`✅ ${ok} lançamento(s) gravado(s) a partir da planilha.`,false);
 }
 
 document.getElementById('vcModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });

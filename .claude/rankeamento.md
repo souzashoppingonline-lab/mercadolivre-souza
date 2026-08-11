@@ -43,6 +43,14 @@ Preço/estoque/status vêm **de graça** do webhook de item (sem GET extra). Vis
 
 Isso corrige o gap em que vendas processadas em `silent` (importação/sync) ou sem transição real de status não entravam no rankeamento.
 
+## Vínculo tradicional ↔ catálogo (v75)
+
+No ML o mesmo produto pode ter **dois anúncios** com `ml_id` diferentes: o **tradicional** e o de **catálogo**. Como `onSale` casa a venda pelo `ml_id`, marcar só um deixava as vendas do outro "sem card". Solução: um card pode **vincular** outros `ml_id` (tabela `ranking_ad_links`, ver `database.md`).
+
+- **Contagem de venda** usa `getTracked(mlId, includeLinks=true)` — resolve a venda pelo `ml_id` principal **ou** por qualquer vinculado → conta tudo no mesmo card (idempotência por `order_id` + `ranking_ad_id` continua valendo).
+- **Preço/estoque/status/snapshot** usam `getTracked(mlId)` **sem** links (só o anúncio principal) — o card não fica alternando preço entre os dois anúncios; o catálogo só soma **vendas**.
+- **UI**: botão 🔗 no card abre um modal de busca (`buscarRankingItems`) pra escolher o anúncio a vincular (`POST /ads/:id/links`, `DB.vincularRankingAd`). Os vínculos aparecem como chips no card (com X pra desvincular → `DELETE /ads/:id/links/:linkId`). Sem auto-detecção: `catalog_product_id` (em `catalog_competition`) agrupa o mercado inteiro do produto, não só os anúncios da própria loja, então o vínculo é **manual**.
+
 ## Semente anti-alerta-falso
 
 Ao marcar um anúncio (`POST /ads`), os `last_price`/`last_available_quantity`/`last_status` são semeados a partir de `items`, e `base_price` guarda o preço de referência. Assim a 1ª alteração real dispara evento (não a leitura inicial). `onItemChange` também atualiza os `last_*` mesmo sem evento, para semear anúncios recém-marcados.

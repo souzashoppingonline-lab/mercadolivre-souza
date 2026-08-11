@@ -30,7 +30,10 @@ router.get('/ads', async (req, res) => {
               -- Faturamento acumulado (as vendas contam através dos ciclos).
               (SELECT COALESCE(SUM((e.detail->>'valor')::numeric), 0) FROM ranking_events e
                  WHERE e.ranking_ad_id = r.id AND e.event_type = 'venda') AS faturamento,
-              (SELECT COUNT(*)::int FROM ranking_ciclos c WHERE c.ranking_ad_id = r.id) AS ciclos_anteriores
+              (SELECT COUNT(*)::int FROM ranking_ciclos c WHERE c.ranking_ad_id = r.id) AS ciclos_anteriores,
+              (SELECT COALESCE(json_agg(json_build_object('id', l.id, 'ml_id', l.ml_id, 'tipo', l.tipo, 'title', li.title) ORDER BY l.id), '[]'::json)
+                 FROM ranking_ad_links l LEFT JOIN items li ON li.ml_id = l.ml_id
+                WHERE l.ranking_ad_id = r.id) AS links
          FROM ranking_ads r
          LEFT JOIN items i ON i.ml_id = r.ml_id
          LEFT JOIN marketplaces m ON m.id = i.marketplace_id
@@ -207,6 +210,40 @@ router.post('/ads/:id/ciclo', async (req, res) => {
     console.error('[ranking] POST /ads/:id/ciclo falhou:', e.message, e.stack);
     res.status(500).json({ error: e.message });
   } finally { client.release(); }
+});
+
+// Vincula um ml_id (ex.: anúncio de catálogo) ao card — a venda desse ml_id
+// passa a contar no mesmo card. Valida: o item existe, não é card principal de
+// outro rankeamento, e ainda não está vinculado.
+router.post('/ads/:id/links', async (req, res) => {
+  try {
+    const mlId = String(req.body.ml_id || '').trim();
+    if (!mlId) return res.status(400).json({ error: 'ml_id obrigatório' });
+    const tipo = ['catalogo', 'tradicional', 'outro'].includes(String(req.body.tipo || '').trim()) ? req.body.tipo.trim() : 'catalogo';
+
+    const it = await pool.query(`SELECT ml_id FROM items WHERE ml_id = $1`, [mlId]);
+    if (!it.rows.length) return res.status(404).json({ error: 'Anúncio não encontrado no banco (ainda não sincronizado).' });
+
+    const prim = await pool.query(`SELECT id FROM ranking_ads WHERE ml_id = $1`, [mlId]);
+    if (prim.rows.length) return res.status(400).json({ error: 'Esse anúncio já é um card de rankeamento próprio — remova o card dele antes de vincular.' });
+
+    const ja = await pool.query(`SELECT ranking_ad_id FROM ranking_ad_links WHERE ml_id = $1`, [mlId]);
+    if (ja.rows.length) return res.status(400).json({ error: 'Esse anúncio já está vinculado a um card.' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO ranking_ad_links (ranking_ad_id, ml_id, tipo) VALUES ($1, $2, $3) RETURNING *`,
+      [req.params.id, mlId, tipo]
+    );
+    res.json({ link: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Desvincula um ml_id do card.
+router.delete('/ads/:id/links/:linkId', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM ranking_ad_links WHERE id = $1 AND ranking_ad_id = $2`, [req.params.linkId, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Histórico de mudanças de PREÇO do anúncio (eventos 'preco' com de→para e data),

@@ -18,10 +18,23 @@ const linkOf = (mlId) => `https://www.mercadolivre.com.br/anuncios/${String(mlId
 // Anúncio em rankeamento ATIVO (ou null). Consulta barata (índice único ml_id) —
 // chamada nos handlers de venda/item; se o anúncio não está em rankeamento,
 // retorna null e o handler segue normal, custo desprezível.
-async function getTracked(mlId) {
+// Busca o anúncio monitorado por ml_id. Com includeLinks=true também resolve
+// via ranking_ad_links (anúncio de catálogo vinculado ao card) — usado só na
+// contagem de VENDA; preço/estoque/snapshot usam só o ml_id principal.
+async function getTracked(mlId, includeLinks = false) {
   if (!mlId) return null;
+  if (!includeLinks) {
+    const { rows } = await pool.query(
+      `SELECT * FROM ranking_ads WHERE ml_id = $1 AND active = true`, [String(mlId)]
+    );
+    return rows[0] || null;
+  }
   const { rows } = await pool.query(
-    `SELECT * FROM ranking_ads WHERE ml_id = $1 AND active = true`, [String(mlId)]
+    `SELECT r.* FROM ranking_ads r
+      WHERE r.active = true
+        AND (r.ml_id = $1 OR EXISTS (
+              SELECT 1 FROM ranking_ad_links l WHERE l.ranking_ad_id = r.id AND l.ml_id = $1))
+      LIMIT 1`, [String(mlId)]
   );
   return rows[0] || null;
 }
@@ -54,7 +67,7 @@ async function emit(ad, eventType, message, detail = {}, tgMode = 'normal') {
 // Uma venda de um anúncio em rankeamento. `valorNum` é o valor da LINHA do
 // pedido (unit_price × quantity) desse item, não o total do pedido.
 async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = true }) {
-  const ad = await getTracked(mlId);
+  const ad = await getTracked(mlId, true); // inclui anúncios de catálogo vinculados
   if (!ad) return;
 
   const orderId = order?.id || order?.ml_id || null;

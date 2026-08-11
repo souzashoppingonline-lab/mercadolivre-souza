@@ -585,7 +585,7 @@ staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
 ```
 Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).
 
-### `ranking_ads` / `ranking_events` / `ranking_ciclos` — v69/v72/v73/v74: Rankeamento de anúncios (ver `rankeamento.md`)
+### `ranking_ads` / `ranking_events` / `ranking_ciclos` / `ranking_ad_links` — v69/v72/v73/v74/v75: Rankeamento de anúncios (ver `rankeamento.md`)
 ```
 ranking_ads:
 id SERIAL PK, ml_id TEXT UNIQUE FK items(ml_id) ON DELETE CASCADE, store_id BIGINT FK stores
@@ -611,6 +611,12 @@ id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE, ml_id TEXT
 event_type TEXT   -- venda|preco|estoque|status|qualidade|buybox|visitas|marco
 message TEXT, detail JSONB, created_at TIMESTAMPTZ
 -- idx_ranking_events_ad (ranking_ad_id, created_at DESC)
+
+ranking_ad_links:  -- v75: ml_id extra vinculado a um card (anúncio de catálogo + tradicional do mesmo produto)
+id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE
+ml_id TEXT NOT NULL UNIQUE      -- ml_id vinculado; venda dele conta no card principal
+tipo TEXT DEFAULT 'catalogo', created_at TIMESTAMPTZ
+-- idx_ranking_ad_links_ad (ranking_ad_id)
 
 ranking_ciclos:  -- v72: histórico dos ciclos encerrados (1 linha por "Novo ciclo")
 id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE

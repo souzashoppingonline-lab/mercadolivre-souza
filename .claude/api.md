@@ -54,6 +54,8 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `POST /api/ranking/ads/:id/ciclo` | **v72/v73:** encerra o ciclo atual (snapshot ADS/ROAS/orçamento/preços + vendas e faturamento **acumulados** em `ranking_ciclos`) e começa o próximo: `ciclo++`, desloca `preco_anterior ← preco_atual`, novo `ciclo_iniciado_em`. **NÃO zera** o contador de vendas (cumulativo através dos ciclos) |
 | `GET /api/ranking/ads/:id/ciclos` | **v72:** histórico dos ciclos encerrados (mais recente primeiro) |
 | `GET /api/ranking/ads/:id/precos` | histórico de mudanças de preço (eventos `preco`: `created_at` + `detail{de,para}`), mais recente primeiro — alimenta o modal de preço no card |
+| `POST /api/ranking/ads/:id/links` `{ml_id, tipo?}` | **v75:** vincula um `ml_id` (ex.: anúncio de **catálogo**) ao card — a venda desse ml_id passa a contar no mesmo card. Valida: item existe, não é card próprio, não já vinculado. `/ads` devolve `links[]` |
+| `DELETE /api/ranking/ads/:id/links/:linkId` | **v75:** desvincula o ml_id do card |
 
 Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco a cada N vendas ficam em `server/src/ranking.js`, disparados pelos hooks do worker — não nestas rotas (só CRUD/leitura). Ver `rankeamento.md`.
 

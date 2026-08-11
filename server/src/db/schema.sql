@@ -897,3 +897,11 @@ CREATE TABLE IF NOT EXISTS ranking_events (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ranking_events_ad ON ranking_events(ranking_ad_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS ranking_ad_links (
+  id SERIAL PRIMARY KEY,
+  ranking_ad_id INT REFERENCES ranking_ads(id) ON DELETE CASCADE,
+  ml_id TEXT NOT NULL UNIQUE,
+  tipo TEXT DEFAULT 'catalogo',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ranking_ad_links_ad ON ranking_ad_links(ranking_ad_id);

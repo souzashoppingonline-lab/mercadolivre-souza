@@ -266,6 +266,8 @@ const DB = {
   async novoCicloRankingAd(id)       { return this._post(`/ranking/ads/${id}/ciclo`, {}); },
   async getRankingCiclos(id)         { return this._get(`/ranking/ads/${id}/ciclos`); },
   async getRankingPrecos(id)         { return this._get(`/ranking/ads/${id}/precos`); },
+  async vincularRankingAd(id, ml_id, tipo = 'catalogo') { return this._post(`/ranking/ads/${id}/links`, { ml_id, tipo }); },
+  async desvincularRankingLink(id, linkId)              { return this._delete(`/ranking/ads/${id}/links/${linkId}`); },
 
   // ── Inteligência de Negócio (BI) — dados operacionais (Postgres principal) ──
   async getBiPainel(period = 30, store_id = '') { return this._get('/bi/painel', { period, store_id }); },

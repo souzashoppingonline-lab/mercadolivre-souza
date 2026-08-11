@@ -73,7 +73,9 @@
     .rk-vinc-item img { width: 30px; height: 30px; border-radius: 5px; object-fit: cover; }
     .rk-vinc-item .b { margin-left: auto; }
     /* Seletor de estágio + monitoramento + notas */
-    .rk-fase-sel { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 7px; padding: 4px 6px; font-size: 10px; font-weight: 700; cursor: pointer; max-width: 130px; }
+    .rk-fase-sel { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
+    .rk-fase-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); font-weight: 700; margin: 8px 0 2px; flex-wrap: wrap; }
+    .rk-cyc, .rk-days, .rk-badge, .rk-chip-sug { white-space: nowrap; }
     .rk-badge-n { background: rgba(0,0,0,.25); border-radius: 8px; padding: 0 5px; font-size: 9px; font-weight: 800; margin-left: 2px; }
     .rk-mon-banner { background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.35); border-radius: 8px; padding: 8px 10px; margin: 8px 0 2px; font-size: 11px; color: var(--text-main); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .rk-mon-btn { background: #f59e0b; color: #1a1a1a; border: none; border-radius: 7px; padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer; margin-left: auto; }
@@ -264,8 +266,8 @@ function diasRank(startedAt) {
   return dias <= 0 ? 'hoje' : `${dias}d em rankeamento`;
 }
 const mktTag = m => m === 'SHOPEE'
-  ? '<span style="background:#ee4d2d;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Shopee</span>'
-  : '<span style="background:#ffe600;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px">Mercado Livre</span>';
+  ? '<span style="background:#ee4d2d;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;white-space:nowrap">Shopee</span>'
+  : '<span style="background:#ffe600;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;white-space:nowrap">Mercado Livre</span>';
 
 let MKT = '';        // filtro de canal atual ('', 'ML', 'SHOPEE')
 let LOJA = '';       // filtro de empresa/loja do ML (store_id) — '' = todas
@@ -374,8 +376,8 @@ function cardHtml(a) {
       <div id="rkcyc-${a.id}"><div class="rk-empty" style="border:none;font-size:10px">Carregando…</div></div>
     </details>` : '';
 
-  // Badge por estágio + seletor de estágio (transição manual).
-  const badge = `<span class="rk-badge" style="background:${F.cor};color:${F.txt}"><i class="fas ${F.icon}"></i> ${(rankeando && !a.active) ? 'Pausado' : F.label}</span>`;
+  // O estágio é mostrado pelo seletor (linha própria) + a cor da borda do card,
+  // então não repetimos um badge de fase aqui (evita o amontoado).
   const sug = (rankeando && a.sugerir_ranqueado) ? ` <span class="rk-chip-sug" title="Bateu critério (Mais Vendidos / buy-box / 10 vendas / 15 dias)">🎯 pronto pra ranqueado?</span>` : '';
   const notasBtn = `<button class="rk-icon-btn" title="Alterações / anotações" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-clipboard-list"></i>${a.notas_count>0?` <span class="rk-badge-n">${a.notas_count}</span>`:''}</button>`;
   const monBanner = (fase==='monitoramento') ? `<div class="rk-mon-banner">🔍 Monitorando o efeito das alterações. <button class="rk-mon-btn" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')">📋 Registrar/ver alterações${a.notas_count>0?` (${a.notas_count})`:''}</button></div>` : '';
@@ -409,13 +411,12 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${badge} ${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${sug}
+        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}
       </div>
       <div class="rk-card-actions">
-        ${faseSelect(a, fase)}
         <button class="rk-icon-btn" title="Histórico de preço" onclick="abrirPrecoModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-chart-line"></i></button>
         <button class="rk-icon-btn" title="Vincular anúncio de catálogo/tradicional (soma as vendas neste card)" onclick="abrirVincularModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-link"></i></button>
         ${notasBtn}
@@ -424,6 +425,7 @@ function cardHtml(a) {
         <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i></button>
       </div>
     </div>
+    <div class="rk-fase-row"><i class="fas ${F.icon}" style="color:${F.cor}"></i> Estágio: ${faseSelect(a, fase)}</div>
     ${monBanner}
     ${meio}
     ${rankeando ? adsBlock : ''}

@@ -751,7 +751,7 @@ async function onImportFile(input){
     const hdr=rows[0].map(normHdr);
     const col=name=>hdr.findIndex(h=>h===name);
     const iData=col('data'), iFat=col('faturamento ml'), iCusto=col('custo (-)'), iImp=col('imposto (-)'),
-          iTar=col('tarifa de venda (-)'), iFComp=col('frete comprador (-)'), iFVend=col('frete vendedor (-)'),
+          iTar=col('tarifa de venda (-)'), iFVend=col('frete vendedor (-)'),
           iStatus=col('status pedido'), iId=col('id da venda');
     if(iData<0||iFat<0||iStatus<0){ impMsg('⚠️ Não parece a exportação de pedidos do MercadoTurbo (faltam colunas Data / Faturamento ML / Status Pedido).',true); return; }
     const grp={}; let pagos=0;
@@ -764,7 +764,7 @@ async function onImportFile(input){
       g.quantity_sales+=1;
       g.gross_revenue+=impNum(r[iFat]);
       g.marketplace_fees+=iTar>=0?impNum(r[iTar]):0;
-      g.subsidized_shipping+=(iFVend>=0?impNum(r[iFVend]):0)+(iFComp>=0?impNum(r[iFComp]):0);
+      g.subsidized_shipping+=iFVend>=0?impNum(r[iFVend]):0;
       g.cogs+=iCusto>=0?impNum(r[iCusto]):0;
       g.tax+=iImp>=0?impNum(r[iImp]):0;
     }
@@ -789,7 +789,7 @@ function abrirImportModal(dias, store_id){
         <tr><td>Qtd. Vendas (pagas)</td><td>${g.quantity_sales}</td></tr>
         <tr><td>Receita Bruta (Faturamento ML)</td><td>${BRL(g.gross_revenue)}</td></tr>
         <tr><td>Taxas Marketplace</td><td class="down">-${BRL(g.marketplace_fees)}</td></tr>
-        <tr><td>Frete Subsidiado (vend+comp)</td><td class="down">-${BRL(g.subsidized_shipping)}</td></tr>
+        <tr><td>Frete Subsidiado (vendedor)</td><td class="down">-${BRL(g.subsidized_shipping)}</td></tr>
         <tr><td>CMV</td><td class="down">-${BRL(g.cogs)}</td></tr>
         <tr><td>Imposto</td><td class="down">-${BRL(g.tax)}</td></tr>
       </table>

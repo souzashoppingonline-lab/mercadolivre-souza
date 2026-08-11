@@ -777,27 +777,29 @@ async function onImportFile(input){
 }
 
 function abrirImportModal(dias, store_id){
+  const round2=n=>Math.round(n*100)/100;
   const lojaNome=STORES[store_id]||store_id;
+  const il=(rot,id,val,step)=>`<label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px">${rot}<input type="number" step="${step||'0.01'}" id="${id}" class="vc-in" value="${val}"></label>`;
   const linhas=dias.map((g,i)=>{
     const existe=ALL.find(e=>e.date===g.date&&String(e.store_id)===String(store_id));
-    return `<div class="vc-rc" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+    return `<div class="vc-rc" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px">
         <b>${fmtDate(g.date)}</b>
         ${existe?'<span class="vc-badge risco">já existe — vai substituir</span>':'<span class="vc-badge ahead">novo</span>'}
       </div>
-      <table class="vc-sum" style="margin-top:6px">
-        <tr><td>Qtd. Vendas (pagas)</td><td>${g.quantity_sales}</td></tr>
-        <tr><td>Receita Bruta (Faturamento ML)</td><td>${BRL(g.gross_revenue)}</td></tr>
-        <tr><td>Taxas Marketplace</td><td class="down">-${BRL(g.marketplace_fees)}</td></tr>
-        <tr><td>Frete Subsidiado (vendedor)</td><td class="down">-${BRL(g.subsidized_shipping)}</td></tr>
-        <tr><td>CMV</td><td class="down">-${BRL(g.cogs)}</td></tr>
-        <tr><td>Imposto</td><td class="down">-${BRL(g.tax)}</td></tr>
-      </table>
-      <div class="vc-mrow" style="margin-top:8px"><label>💰 ADS deste dia (R$)</label>
-        <input type="number" step="0.01" id="impAds_${i}" class="vc-in" placeholder="0,00" style="width:160px"></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+        <label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px">Data<input type="date" id="imp_date_${i}" class="vc-in" value="${g.date}"></label>
+        ${il('Qtd. Vendas','imp_qtd_'+i,g.quantity_sales,'1')}
+        ${il('Receita Bruta (R$)','imp_rec_'+i,round2(g.gross_revenue))}
+        ${il('Taxas Marketplace (R$)','imp_fees_'+i,round2(g.marketplace_fees))}
+        ${il('Frete Subsidiado (R$)','imp_frete_'+i,round2(g.subsidized_shipping))}
+        ${il('CMV (R$)','imp_cmv_'+i,round2(g.cogs))}
+        ${il('Imposto (R$)','imp_tax_'+i,round2(g.tax))}
+        ${il('💰 ADS (R$)','imp_ads_'+i,0)}
+      </div>
     </div>`;
   }).join('');
-  const body=`<p style="margin-bottom:10px">Loja: <b>${esc(lojaNome)}</b>. Informe o <b>ADS</b> de cada dia e confirme — o resto já foi somado da planilha (só pedidos <b>pagos</b>).</p>${linhas}
+  const body=`<p style="margin-bottom:10px">Loja: <b>${esc(lojaNome)}</b>. Confira/ajuste os campos (todos editáveis) e informe o <b>ADS</b> antes de gravar. Já vem somado da planilha (pedidos <b>aprovados</b>, canceladas fora).</p>${linhas}
     <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)"></div>`;
   abrirModal('📤 Confirmar importação', body, 'Gravar tudo', ()=>salvarImport(dias, store_id));
 }
@@ -805,16 +807,20 @@ function abrirImportModal(dias, store_id){
 async function salvarImport(dias, store_id){
   modalBusy(true,'Gravando…');
   const round2=n=>Math.round(n*100)/100;
+  const gv=id=>{ const el=document.getElementById(id); return el?(parseFloat(String(el.value).replace(',','.'))||0):0; };
+  const gs=id=>{ const el=document.getElementById(id); return el?String(el.value).trim():''; };
   let ok=0; const erros=[];
   for(let i=0;i<dias.length;i++){
-    const g=dias[i];
-    const el=document.getElementById('impAds_'+i);
-    const ads=el?(parseFloat(String(el.value).replace(',','.'))||0):0;
-    const row={ date:g.date, store_id, quantity_sales:g.quantity_sales,
-      gross_revenue:round2(g.gross_revenue), marketplace_fees:round2(g.marketplace_fees),
-      subsidized_shipping:round2(g.subsidized_shipping), cogs:round2(g.cogs), tax:round2(g.tax),
-      ads_ml:round2(ads), ads_external:0 };
-    const existe=ALL.find(e=>e.date===g.date&&String(e.store_id)===String(store_id));
+    const date=gs('imp_date_'+i)||dias[i].date;
+    const row={ date, store_id,
+      quantity_sales:Math.round(gv('imp_qtd_'+i)),
+      gross_revenue:round2(gv('imp_rec_'+i)),
+      marketplace_fees:round2(gv('imp_fees_'+i)),
+      subsidized_shipping:round2(gv('imp_frete_'+i)),
+      cogs:round2(gv('imp_cmv_'+i)),
+      tax:round2(gv('imp_tax_'+i)),
+      ads_ml:round2(gv('imp_ads_'+i)), ads_external:0 };
+    const existe=ALL.find(e=>e.date===date&&String(e.store_id)===String(store_id));
     let r;
     if(existe&&existe.id!=null){
       r=await DB.updateFinanceiroRow('sales_entries',existe.id,row);
@@ -823,7 +829,7 @@ async function salvarImport(dias, store_id){
       r=await DB.addFinanceiroRow('sales_entries',row);
       if(r&&!r.error){ const saved=Array.isArray(r&&r.rows)?r.rows[0]:row; ALL.unshift(saved); }
     }
-    if(r&&r.error) erros.push(`${fmtDate(g.date)}: ${r.error}`); else ok++;
+    if(r&&r.error) erros.push(`${fmtDate(date)}: ${r.error}`); else ok++;
   }
   modalBusy(false);
   if(erros.length){ eMsgErr('Erros: '+esc(erros.join(' · '))); if(ok>0) render(); return; }

@@ -59,9 +59,12 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
 
   const orderId = order?.id || order?.ml_id || null;
 
-  // Só conta vendas ocorridas DEPOIS que o anúncio entrou em rankeamento
-  // (started_at) — uma re-sincronização não deve contar o histórico antigo.
-  if (saleDate && ad.started_at && new Date(saleDate) < new Date(ad.started_at)) return;
+  // Só conta vendas do DIA em que o anúncio entrou em rankeamento em diante
+  // (comparação por data em SP, não timestamp) — assim uma venda mais cedo no
+  // mesmo dia da marcação conta, mas o histórico de dias anteriores (que o
+  // sync-vendas de 72h reprocessa) fica de fora e não infla o contador.
+  const spDate = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  if (saleDate && ad.started_at && spDate(saleDate) < spDate(ad.started_at)) return;
 
   // Idempotência por order_id: se a venda deste pedido já foi registrada para
   // este anúncio, não conta de novo. É o que permite chamar onSale sem medo em

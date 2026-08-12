@@ -648,16 +648,34 @@ function cadastrar(){
   const date=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
   const row={ type:tipoSel, description:desc, category_id:catId||null, value:val, date, is_recurring:rec, month:m, year:y,
     recorrencia_vezes_mes: rec?recVezes:1, gasto_fixo_mensal: rec?recFixo:false };
+  const mesOpts=MESES.map((nm,i)=>`<option value="${i+1}"${i+1===m?' selected':''}>${nm}</option>`).join('');
+  const anoOpts=[y-1,y,y+1,y+2].map(a=>`<option value="${a}"${a===y?' selected':''}>${a}</option>`).join('');
   const body=`<table class="dp-sum">
     <tr><td>Tipo</td><td>${tipoSel==='fixed'?'Custo Fixo':'Custo Operacional'}</td></tr>
     <tr><td>Categoria</td><td>${esc(CATMAP[catId]||'Sem categoria')}</td></tr>
     <tr><td>Descrição</td><td>${esc(desc)}</td></tr>
     <tr><td>Valor</td><td class="down">-${BRL(val)}</td></tr>
-    <tr><td>Competência</td><td>${MESES[m-1]}/${y}</td></tr>
+    <tr><td>Competência</td><td>
+      <select id="mCompMes" class="dp-in" style="width:auto;display:inline-block;padding:4px 8px">${mesOpts}</select>
+      <select id="mCompAno" class="dp-in" style="width:auto;display:inline-block;padding:4px 8px">${anoOpts}</select></td></tr>
     <tr><td>Recorrente</td><td>${rec?`Sim — ${recVezes}×/mês`:'Não'}</td></tr>
     ${rec?`<tr><td>Gasto fixo mensal</td><td>${recFixo?'Sim':'Não'}</td></tr>`:''}
-    </table><div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Confira antes de gravar.</div>`;
-  abrirModal('✅ Confirmar despesa', body, 'Confirmar e gravar', ()=>doInsert(row), false);
+    </table>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">💳 Ajuste a competência se a dívida cair em outro mês (ex.: compra no <b>cartão de crédito</b> que entra na fatura seguinte).</div>
+    <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)">Confira antes de gravar.</div>`;
+  abrirModal('✅ Confirmar despesa', body, 'Confirmar e gravar', ()=>doInsert(aplicarComp(row)), false);
+}
+// Lê o mês/ano de competência escolhidos no modal e ajusta o lançamento
+// (data recalculada: dia de hoje se for o mês corrente real, senão dia 1).
+function aplicarComp(row){
+  const cm=parseInt(document.getElementById('mCompMes').value,10);
+  const cy=parseInt(document.getElementById('mCompAno').value,10);
+  if(cm>=1&&cm<=12&&cy>1900){
+    const now=new Date();
+    const day=(now.getMonth()+1===cm&&now.getFullYear()===cy)?now.getDate():1;
+    row.month=cm; row.year=cy; row.date=`${cy}-${String(cm).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  }
+  return row;
 }
 async function doInsert(row){
   modalBusy(true,'Gravando…');

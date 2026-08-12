@@ -620,74 +620,82 @@ function setRComp(n){ rComp=n; segSet('segComp',{3:0,6:1,12:2}[n]); renderComp(s
 // ── Formulário ─────────────────────────────────────────────────────────────
 function setTipo(t){ tipoSel=t; document.getElementById('segFixo').classList.toggle('on',t==='fixed'); document.getElementById('segOper').classList.toggle('on',t==='operational'); }
 
-// Recorrência mensal: ao ligar o toggle, abre um modal pra informar quantas vezes
-// por mês a despesa se repete e se é um gasto fixo mensal. Desligar zera.
-let recVezes=1, recFixo=false;
+// Recorrência/parcelamento: ao ligar o toggle, abre um modal pra informar em
+// quantas parcelas/meses e opções (dividir valor total, gasto fixo). Parcelar
+// CRIA N lançamentos, um por mês a partir da competência. Desligar zera.
+let recVezes=1, recFixo=false, recDividir=false;
 function onRecToggle(){
-  if(!document.getElementById('fRec').checked){ recVezes=1; recFixo=false; return; }
+  if(!document.getElementById('fRec').checked){ recVezes=1; recFixo=false; recDividir=false; return; }
   const body=`<div style="display:grid;gap:14px">
-    <div><label style="font-size:12px;color:var(--text-muted)">Quantas vezes por mês essa despesa é recorrente?</label>
+    <div><label style="font-size:12px;color:var(--text-muted)">Em quantas parcelas/meses? (cria 1 lançamento por mês)</label>
       <input type="number" min="1" step="1" id="mRecVezes" class="dp-in" value="${recVezes}" style="margin-top:4px"></div>
-    <label class="dp-switch"><input type="checkbox" id="mRecFixo"${recFixo?' checked':''}><span class="track"></span> Marcar como gasto fixo mensal</label>
-    <div style="font-size:11px;color:var(--text-muted)">Gasto fixo mensal = custo garantido todo mês (ex.: aluguel, salário, software).</div>
+    <label class="dp-switch"><input type="checkbox" id="mRecDiv"${recDividir?' checked':''}><span class="track"></span> Dividir o valor total pelas parcelas</label>
+    <label class="dp-switch"><input type="checkbox" id="mRecFixo"${recFixo?' checked':''}><span class="track"></span> Gasto fixo mensal</label>
+    <div style="font-size:11px;color:var(--text-muted)">Ex.: parcelei em 10× → serão criados 10 lançamentos, um em cada mês a partir da competência. Com "dividir" ligado, cada mês recebe o valor total ÷ parcelas; desligado, cada mês recebe o valor cheio.</div>
   </div>`;
-  abrirModal('🔁 Recorrência mensal', body, 'Confirmar', ()=>{
+  abrirModal('🔁 Parcelamento / Recorrência', body, 'Confirmar', ()=>{
     const v=parseInt(document.getElementById('mRecVezes').value,10);
-    recVezes=(v>0)?v:1; recFixo=document.getElementById('mRecFixo').checked;
+    recVezes=(v>0)?v:1; recFixo=document.getElementById('mRecFixo').checked; recDividir=document.getElementById('mRecDiv').checked;
     fecharModal();
   }, false);
 }
 function fMsg(t,err){ const el=document.getElementById('dpFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
+// Avança k meses a partir de (m,y) — m em 1..12, com virada de ano.
+function addMonths(m,y,k){ const idx=(m-1)+k; return [(idx%12)+1, y+Math.floor(idx/12)]; }
+function dateForComp(m,y){ const now=new Date(); const day=(now.getMonth()+1===m&&now.getFullYear()===y)?now.getDate():1; return `${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
+const round2v=n=>Math.round((Number(n)||0)*100)/100;
 function cadastrar(){
   const desc=document.getElementById('fDesc').value.trim(), val=pNum(document.getElementById('fVal').value);
   const catId=document.getElementById('fCat').value, rec=document.getElementById('fRec').checked;
   if(!desc){ fMsg('Informe a descrição.',true); return; }
   if(val<=0){ fMsg('Informe um valor maior que zero.',true); return; }
-  const m=selM(), y=selY(), now=new Date();
-  const day=(now.getMonth()+1===m&&now.getFullYear()===y)?now.getDate():1;
-  const date=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-  const row={ type:tipoSel, description:desc, category_id:catId||null, value:val, date, is_recurring:rec, month:m, year:y,
-    recorrencia_vezes_mes: rec?recVezes:1, gasto_fixo_mensal: rec?recFixo:false };
+  const m=selM(), y=selY();
+  const base={ type:tipoSel, description:desc, category_id:catId||null, value:val, is_recurring:rec };
+  const N=rec?Math.max(1,recVezes):1;
+  const per=(rec&&recDividir)? round2v(val/N) : round2v(val);
   const mesOpts=MESES.map((nm,i)=>`<option value="${i+1}"${i+1===m?' selected':''}>${nm}</option>`).join('');
   const anoOpts=[y-1,y,y+1,y+2].map(a=>`<option value="${a}"${a===y?' selected':''}>${a}</option>`).join('');
+  const parcRow = (rec&&N>1)
+    ? `<tr><td>Parcelamento</td><td>${N}× de ${BRL(per)}${recDividir?` (total ${BRL(val)})`:''} — 1 por mês</td></tr>`
+    : (rec?`<tr><td>Recorrente</td><td>Sim${recFixo?' (fixo mensal)':''}</td></tr>`:'');
   const body=`<table class="dp-sum">
     <tr><td>Tipo</td><td>${tipoSel==='fixed'?'Custo Fixo':'Custo Operacional'}</td></tr>
     <tr><td>Categoria</td><td>${esc(CATMAP[catId]||'Sem categoria')}</td></tr>
     <tr><td>Descrição</td><td>${esc(desc)}</td></tr>
-    <tr><td>Valor</td><td class="down">-${BRL(val)}</td></tr>
-    <tr><td>Competência</td><td>
+    <tr><td>Valor${rec&&N>1?' (por parcela)':''}</td><td class="down">-${BRL(per)}</td></tr>
+    <tr><td>Competência${rec&&N>1?' (1ª parcela)':''}</td><td>
       <select id="mCompMes" class="dp-in" style="width:auto;display:inline-block;padding:4px 8px">${mesOpts}</select>
       <select id="mCompAno" class="dp-in" style="width:auto;display:inline-block;padding:4px 8px">${anoOpts}</select></td></tr>
-    <tr><td>Recorrente</td><td>${rec?`Sim — ${recVezes}×/mês`:'Não'}</td></tr>
-    ${rec?`<tr><td>Gasto fixo mensal</td><td>${recFixo?'Sim':'Não'}</td></tr>`:''}
+    ${parcRow}
+    ${rec&&recFixo?`<tr><td>Gasto fixo mensal</td><td>Sim</td></tr>`:''}
     </table>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">💳 Ajuste a competência se a dívida cair em outro mês (ex.: compra no <b>cartão de crédito</b> que entra na fatura seguinte).</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:8px">💳 A competência é o mês da 1ª parcela; as demais caem nos meses seguintes (ex.: compra no <b>cartão de crédito</b> parcelada).</div>
     <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)">Confira antes de gravar.</div>`;
-  abrirModal('✅ Confirmar despesa', body, 'Confirmar e gravar', ()=>doInsert(aplicarComp(row)), false);
+  abrirModal('✅ Confirmar despesa', body, rec&&N>1?`Gravar ${N} parcelas`:'Confirmar e gravar', ()=>doInsertFlow(base), false);
 }
-// Lê o mês/ano de competência escolhidos no modal e ajusta o lançamento
-// (data recalculada: dia de hoje se for o mês corrente real, senão dia 1).
-function aplicarComp(row){
-  const cm=parseInt(document.getElementById('mCompMes').value,10);
-  const cy=parseInt(document.getElementById('mCompAno').value,10);
-  if(cm>=1&&cm<=12&&cy>1900){
-    const now=new Date();
-    const day=(now.getMonth()+1===cm&&now.getFullYear()===cy)?now.getDate():1;
-    row.month=cm; row.year=cy; row.date=`${cy}-${String(cm).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+// Grava a despesa. Se recorrente/parcelada, cria N lançamentos (1 por mês) a
+// partir da competência escolhida no modal.
+async function doInsertFlow(base){
+  const cm=parseInt(document.getElementById('mCompMes').value,10), cy=parseInt(document.getElementById('mCompAno').value,10);
+  const N=base.is_recurring?Math.max(1,recVezes):1;
+  const per=(base.is_recurring&&recDividir)? round2v(base.value/N) : round2v(base.value);
+  modalBusy(true, N>1?`Gravando ${N}…`:'Gravando…');
+  const rows=[];
+  for(let i=0;i<N;i++){
+    const [mm,yy]=addMonths(cm,cy,i);
+    rows.push({ type:base.type, category_id:base.category_id,
+      description:(N>1?`${base.description} (${i+1}/${N})`:base.description),
+      value:per, date:dateForComp(mm,yy), month:mm, year:yy,
+      is_recurring:base.is_recurring, recorrencia_vezes_mes:N, gasto_fixo_mensal: base.is_recurring?recFixo:false });
   }
-  return row;
-}
-async function doInsert(row){
-  modalBusy(true,'Gravando…');
-  const r=await DB.addFinanceiroRow('expenses',row);
-  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
-  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null;
-  EXPENSES.unshift(saved||row);
+  let ok=0, err=null;
+  for(const r of rows){ const resp=await DB.addFinanceiroRow('expenses',r); if(resp&&resp.error){ err=resp.error; break; } const saved=Array.isArray(resp&&resp.rows)?resp.rows[0]:r; EXPENSES.unshift(saved); ok++; }
   document.getElementById('dpRecCnt').textContent=EXPENSES.filter(e=>e.is_recurring).length;
+  if(err){ modalBusy(false); eMsgErr(`Gravou ${ok} de ${rows.length}. Erro: `+esc(err)); render(); return; }
   fecharModal();
   document.getElementById('fDesc').value=''; document.getElementById('fVal').value=''; document.getElementById('fRec').checked=false;
-  recVezes=1; recFixo=false;
-  render(); fMsg('✅ Despesa cadastrada.',false);
+  recVezes=1; recFixo=false; recDividir=false;
+  render(); fMsg(`✅ ${ok} lançamento(s) criado(s).`,false);
 }
 function catOptions(sel){ return '<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}"${String(sel)===String(c.id)?' selected':''}>${esc(c.name)}</option>`).join(''); }
 function toggleERecBox(){ document.getElementById('eRecBox').style.display=document.getElementById('eRec').checked?'block':'none'; }
@@ -731,6 +739,22 @@ async function doUpdate(id){
   if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
   const saved=Array.isArray(r&&r.rows)?r.rows[0]:null, i=EXPENSES.findIndex(x=>String(x.id)===String(id));
   if(i>=0) EXPENSES[i]=saved||Object.assign({},EXPENSES[i],patch);
+  // Parcelas dos meses seguintes: se marcou recorrente com N>1, oferece criar as
+  // (N-1) parcelas restantes nos meses à frente (a partir da competência+1).
+  const N=patch.recorrencia_vezes_mes;
+  if(rec && N>1){
+    const criar=N-1;
+    if(confirm(`Criar também as ${criar} parcela(s) dos próximos meses? Cada uma com ${BRL(patch.value)} — "${patch.description}".`)){
+      let add=0;
+      for(let k=1;k<N;k++){ const [mm,yy]=addMonths(cm,cy,k);
+        const nr={ type:patch.type, category_id:patch.category_id, description:patch.description, value:patch.value,
+          date:dateForComp(mm,yy), month:mm, year:yy, is_recurring:true, recorrencia_vezes_mes:N, gasto_fixo_mensal:patch.gasto_fixo_mensal };
+        const resp=await DB.addFinanceiroRow('expenses',nr);
+        if(!(resp&&resp.error)){ EXPENSES.unshift(Array.isArray(resp&&resp.rows)?resp.rows[0]:nr); add++; }
+      }
+      fMsg(`✅ +${add} parcela(s) criada(s) nos meses seguintes.`,false);
+    }
+  }
   document.getElementById('dpRecCnt').textContent=EXPENSES.filter(e=>e.is_recurring).length;
   fecharModal(); render();
 }

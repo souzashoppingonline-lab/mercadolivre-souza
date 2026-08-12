@@ -690,21 +690,41 @@ async function doInsert(row){
   render(); fMsg('✅ Despesa cadastrada.',false);
 }
 function catOptions(sel){ return '<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}"${String(sel)===String(c.id)?' selected':''}>${esc(c.name)}</option>`).join(''); }
+function toggleERecBox(){ document.getElementById('eRecBox').style.display=document.getElementById('eRec').checked?'block':'none'; }
 function editarDespesa(id){
   const e=EXPENSES.find(x=>String(x.id)===String(id)); if(!e) return;
+  const em=+e.month||selM(), ey=+e.year||selY(), rec=!!e.is_recurring, vezes=+e.recorrencia_vezes_mes||1, fixo=!!e.gasto_fixo_mensal;
+  const mesOpts=MESES.map((nm,i)=>`<option value="${i+1}"${i+1===em?' selected':''}>${nm}</option>`).join('');
+  const anoOpts=[ey-1,ey,ey+1,ey+2].map(a=>`<option value="${a}"${a===ey?' selected':''}>${a}</option>`).join('');
   const body=`<div style="display:grid;gap:12px">
     <div><label style="font-size:11px;color:var(--text-muted)">Tipo</label><select id="eType" class="dp-in"><option value="fixed"${e.type==='fixed'?' selected':''}>Custo Fixo</option><option value="operational"${e.type==='operational'?' selected':''}>Custo Operacional</option></select></div>
     <div><label style="font-size:11px;color:var(--text-muted)">Categoria</label><select id="eCat" class="dp-in">${catOptions(e.category_id)}</select></div>
     <div><label style="font-size:11px;color:var(--text-muted)">Descrição</label><input id="eDesc" class="dp-in" value="${esc(e.description||'')}"></div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center">
       <div><label style="font-size:11px;color:var(--text-muted)">Valor (R$)</label><input type="number" step="0.01" id="eVal" class="dp-in" value="${+e.value||0}"></div>
-      <label class="dp-switch"><input type="checkbox" id="eRec"${e.is_recurring?' checked':''}><span class="track"></span> Recorrente</label>
-    </div></div>
+      <label class="dp-switch"><input type="checkbox" id="eRec"${rec?' checked':''} onchange="toggleERecBox()"><span class="track"></span> Recorrente</label>
+    </div>
+    <div><label style="font-size:11px;color:var(--text-muted)">Competência (mês de referência da dívida)</label>
+      <div style="display:flex;gap:10px"><select id="eCompMes" class="dp-in">${mesOpts}</select><select id="eCompAno" class="dp-in">${anoOpts}</select></div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">💳 Ajuste se a dívida cai em outra competência (ex.: cartão de crédito na fatura seguinte).</div></div>
+    <div id="eRecBox" style="display:${rec?'block':'none'};background:var(--bg-card2);border-radius:10px;padding:10px">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center">
+        <div><label style="font-size:11px;color:var(--text-muted)">Quantas vezes por mês (ou parcelas que faltam)</label><input type="number" min="1" step="1" id="eVezes" class="dp-in" value="${vezes}"></div>
+        <label class="dp-switch"><input type="checkbox" id="eFixo"${fixo?' checked':''}><span class="track"></span> Gasto fixo mensal</label>
+      </div></div>
+    </div>
     <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)"></div>`;
   abrirModal('✏️ Editar despesa', body, 'Salvar', ()=>doUpdate(id), false);
 }
 async function doUpdate(id){
-  const patch={ type:document.getElementById('eType').value, category_id:document.getElementById('eCat').value||null, description:document.getElementById('eDesc').value.trim(), value:pNum(document.getElementById('eVal').value), is_recurring:document.getElementById('eRec').checked };
+  const rec=document.getElementById('eRec').checked;
+  const cm=parseInt(document.getElementById('eCompMes').value,10), cy=parseInt(document.getElementById('eCompAno').value,10);
+  const now=new Date(), day=(now.getMonth()+1===cm&&now.getFullYear()===cy)?now.getDate():1;
+  const patch={ type:document.getElementById('eType').value, category_id:document.getElementById('eCat').value||null,
+    description:document.getElementById('eDesc').value.trim(), value:pNum(document.getElementById('eVal').value),
+    is_recurring:rec, month:cm, year:cy, date:`${cy}-${String(cm).padStart(2,'0')}-${String(day).padStart(2,'0')}`,
+    recorrencia_vezes_mes: rec?(parseInt(document.getElementById('eVezes').value,10)||1):1,
+    gasto_fixo_mensal: rec?document.getElementById('eFixo').checked:false };
   if(!patch.description){ eMsgErr('Informe a descrição.'); return; }
   modalBusy(true,'Salvando…');
   const r=await DB.updateFinanceiroRow('expenses',id,patch);

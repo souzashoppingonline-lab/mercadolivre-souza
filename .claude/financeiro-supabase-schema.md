@@ -460,6 +460,8 @@ Quando volta pra PENDENTE, deleta a entry.
 | `value` | numeric NOT NULL | default 0 |
 | `date` | date NOT NULL | |
 | `is_recurring` | boolean NOT NULL | default false |
+| `recorrencia_vezes_mes` | integer | default 1 — quantas vezes por mês a despesa recorrente ocorre (add. via MCP, migration `expenses_recorrencia_vezes_e_gasto_fixo`) |
+| `gasto_fixo_mensal` | boolean | default false — marca como gasto fixo mensal garantido |
 | `month` | integer NOT NULL | |
 | `year` | integer NOT NULL | |
 | `store_id` | uuid | |

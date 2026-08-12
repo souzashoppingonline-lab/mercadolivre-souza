@@ -175,7 +175,7 @@
               <label class="dp-lbl">Descrição<input type="text" id="fDesc" class="dp-in" placeholder="Ex: Aluguel de galpão, contador, software…"></label>
               <div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:end">
                 <label class="dp-lbl">Valor (R$)<input type="number" step="0.01" id="fVal" class="dp-in" placeholder="0,00"></label>
-                <label class="dp-switch"><input type="checkbox" id="fRec"><span class="track"></span> Recorrente mensal</label>
+                <label class="dp-switch"><input type="checkbox" id="fRec" onchange="onRecToggle()"><span class="track"></span> Recorrente mensal</label>
               </div>
               <button class="dp-cta" onclick="cadastrar()">+ Cadastrar</button>
             </div>
@@ -619,6 +619,24 @@ function setRComp(n){ rComp=n; segSet('segComp',{3:0,6:1,12:2}[n]); renderComp(s
 
 // ── Formulário ─────────────────────────────────────────────────────────────
 function setTipo(t){ tipoSel=t; document.getElementById('segFixo').classList.toggle('on',t==='fixed'); document.getElementById('segOper').classList.toggle('on',t==='operational'); }
+
+// Recorrência mensal: ao ligar o toggle, abre um modal pra informar quantas vezes
+// por mês a despesa se repete e se é um gasto fixo mensal. Desligar zera.
+let recVezes=1, recFixo=false;
+function onRecToggle(){
+  if(!document.getElementById('fRec').checked){ recVezes=1; recFixo=false; return; }
+  const body=`<div style="display:grid;gap:14px">
+    <div><label style="font-size:12px;color:var(--text-muted)">Quantas vezes por mês essa despesa é recorrente?</label>
+      <input type="number" min="1" step="1" id="mRecVezes" class="dp-in" value="${recVezes}" style="margin-top:4px"></div>
+    <label class="dp-switch"><input type="checkbox" id="mRecFixo"${recFixo?' checked':''}><span class="track"></span> Marcar como gasto fixo mensal</label>
+    <div style="font-size:11px;color:var(--text-muted)">Gasto fixo mensal = custo garantido todo mês (ex.: aluguel, salário, software).</div>
+  </div>`;
+  abrirModal('🔁 Recorrência mensal', body, 'Confirmar', ()=>{
+    const v=parseInt(document.getElementById('mRecVezes').value,10);
+    recVezes=(v>0)?v:1; recFixo=document.getElementById('mRecFixo').checked;
+    fecharModal();
+  }, false);
+}
 function fMsg(t,err){ const el=document.getElementById('dpFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
 function cadastrar(){
   const desc=document.getElementById('fDesc').value.trim(), val=pNum(document.getElementById('fVal').value);
@@ -628,14 +646,16 @@ function cadastrar(){
   const m=selM(), y=selY(), now=new Date();
   const day=(now.getMonth()+1===m&&now.getFullYear()===y)?now.getDate():1;
   const date=`${y}-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-  const row={ type:tipoSel, description:desc, category_id:catId||null, value:val, date, is_recurring:rec, month:m, year:y };
+  const row={ type:tipoSel, description:desc, category_id:catId||null, value:val, date, is_recurring:rec, month:m, year:y,
+    recorrencia_vezes_mes: rec?recVezes:1, gasto_fixo_mensal: rec?recFixo:false };
   const body=`<table class="dp-sum">
     <tr><td>Tipo</td><td>${tipoSel==='fixed'?'Custo Fixo':'Custo Operacional'}</td></tr>
     <tr><td>Categoria</td><td>${esc(CATMAP[catId]||'Sem categoria')}</td></tr>
     <tr><td>Descrição</td><td>${esc(desc)}</td></tr>
     <tr><td>Valor</td><td class="down">-${BRL(val)}</td></tr>
     <tr><td>Competência</td><td>${MESES[m-1]}/${y}</td></tr>
-    <tr><td>Recorrente</td><td>${rec?'Sim (mensal)':'Não'}</td></tr>
+    <tr><td>Recorrente</td><td>${rec?`Sim — ${recVezes}×/mês`:'Não'}</td></tr>
+    ${rec?`<tr><td>Gasto fixo mensal</td><td>${recFixo?'Sim':'Não'}</td></tr>`:''}
     </table><div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Confira antes de gravar.</div>`;
   abrirModal('✅ Confirmar despesa', body, 'Confirmar e gravar', ()=>doInsert(row), false);
 }
@@ -648,6 +668,7 @@ async function doInsert(row){
   document.getElementById('dpRecCnt').textContent=EXPENSES.filter(e=>e.is_recurring).length;
   fecharModal();
   document.getElementById('fDesc').value=''; document.getElementById('fVal').value=''; document.getElementById('fRec').checked=false;
+  recVezes=1; recFixo=false;
   render(); fMsg('✅ Despesa cadastrada.',false);
 }
 function catOptions(sel){ return '<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}"${String(sel)===String(c.id)?' selected':''}>${esc(c.name)}</option>`).join(''); }

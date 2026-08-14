@@ -585,7 +585,7 @@ staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
 ```
 Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).
 
-### `ranking_ads` / `ranking_events` / `ranking_ciclos` / `ranking_ad_links` — v69/v72/v73/v74/v75: Rankeamento de anúncios (ver `rankeamento.md`)
+### `ranking_ads` / `ranking_events` / `ranking_ciclos` / `ranking_ad_links` — v69/v72/v73/v74/v75/v76/v77: Rankeamento de anúncios (ver `rankeamento.md`)
 ```
 ranking_ads:
 id SERIAL PK, ml_id TEXT UNIQUE FK items(ml_id) ON DELETE CASCADE, store_id BIGINT FK stores
@@ -597,6 +597,7 @@ last_visits INT, last_seo_score NUMERIC, last_buybox BOOLEAN  -- semeados pelo s
 last_highlight_pos INT                             -- v70: posição nos Mais Vendidos da categoria (NULL=fora)
 fase TEXT DEFAULT 'rankeando'                       -- v71/v76: 'rankeando' | 'ranqueado' | 'monitoramento' (idx_ranking_ads_fase)
 ranqueado_em TIMESTAMPTZ                            -- v71: quando passou pra fase 2
+monitoramento_started_at TIMESTAMPTZ                -- v77: quando entrou em fase 'monitoramento' (nil se nunca entrou); rastreia dias em monitoramento no card
 ciclo INT DEFAULT 1                                -- v72: ciclo atual de rankeamento (1,2,3…); só em fase 'rankeando'
 campanha_nome TEXT                                 -- v74: nome da campanha de ADS do ciclo (MANUAL; substituiu o campo ADS R$)
 ads_investido, roas, orcamento_diario NUMERIC      -- v72: métricas de ADS do ciclo (roas/orçamento MANUAIS; ads_investido legado, fora do card)

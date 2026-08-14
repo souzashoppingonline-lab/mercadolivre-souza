@@ -138,13 +138,15 @@ router.patch('/ads/:id', async (req, res) => {
       }
     }
     // Mudança de fase (transição manual): 'ranqueado' carimba ranqueado_em;
-    // voltar pra 'rankeando' limpa o carimbo (reempurrar); 'monitoramento' não
-    // mexe no carimbo (o produto já foi ranqueado, só está sob observação).
+    // voltar pra 'rankeando' limpa o carimbo (reempurrar); 'monitoramento' carimba
+    // monitoramento_started_at (rastreia quando entrou em monitoramento para contar
+    // dias corretamente no card).
     const fase = String(req.body.fase || '').trim().toLowerCase();
     if (['rankeando', 'ranqueado', 'monitoramento'].includes(fase)) {
       sets.push(`fase = $${++n}`); vals.push(fase);
       if (fase === 'ranqueado') sets.push(`ranqueado_em = now()`);
       else if (fase === 'rankeando') sets.push(`ranqueado_em = NULL`);
+      else if (fase === 'monitoramento') sets.push(`monitoramento_started_at = now()`);
     }
     if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
     sets.push('updated_at = now()');

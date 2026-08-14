@@ -258,12 +258,14 @@ const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDT = d => new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
 const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀', esfriou:'💤' };
-// Dias em rankeamento — desde started_at (quando o anúncio foi marcado).
-// 0 = "hoje" (entrou hoje), senão "Nd" (ex.: 3d). Base do contador de dias.
-function diasRank(startedAt) {
-  if (!startedAt) return 'hoje';
-  const dias = Math.floor((Date.now() - new Date(startedAt).getTime()) / 86400000);
-  return dias <= 0 ? 'hoje' : `${dias}d em rankeamento`;
+// Dias em rankeamento/monitoramento — calcula a partir do timestamp apropriado por fase.
+// Quando fase = MONITORAMENTO, usa monitoramento_started_at; caso contrário, usa started_at.
+function diasRank(startedAt, fase, monitoramentoStartedAt) {
+  const timestamp = (fase === 'monitoramento' && monitoramentoStartedAt) ? monitoramentoStartedAt : startedAt;
+  if (!timestamp) return 'hoje';
+  const dias = Math.floor((Date.now() - new Date(timestamp).getTime()) / 86400000);
+  const label = fase === 'monitoramento' ? 'em monitoramento' : 'em rankeamento';
+  return dias <= 0 ? 'hoje' : `${dias}d ${label}`;
 }
 const mktTag = m => m === 'SHOPEE'
   ? '<span style="background:#ee4d2d;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;white-space:nowrap">Shopee</span>'
@@ -411,7 +413,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at)}</span>${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
+        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at, fase, a.monitoramento_started_at)}</span>${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}

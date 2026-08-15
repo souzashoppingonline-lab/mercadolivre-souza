@@ -269,7 +269,9 @@ const DB = {
   async vincularRankingAd(id, ml_id, tipo = 'catalogo') { return this._post(`/ranking/ads/${id}/links`, { ml_id, tipo }); },
   async desvincularRankingLink(id, linkId)              { return this._delete(`/ranking/ads/${id}/links/${linkId}`); },
   async getRankingNotas(id)          { return this._get(`/ranking/ads/${id}/notas`); },
-  async addRankingNota(id, texto)    { return this._post(`/ranking/ads/${id}/notas`, { texto }); },
+  // tipo (v80) transforma a nota em INTERVENÇÃO medida: carimba baseline e o
+  // efeito volta calculado no GET. Sem tipo = anotação livre, como antes.
+  async addRankingNota(id, texto, tipo) { return this._post(`/ranking/ads/${id}/notas`, { texto, tipo }); },
   async delRankingNota(id, notaId)   { return this._delete(`/ranking/ads/${id}/notas/${notaId}`); },
   async getRankingAlerts(id)         { return this._get(`/ranking/ads/${id}/alerts`); },
   async agendarRankingAlert(id, scheduled_at, message) { return this._post(`/ranking/ads/${id}/alerts`, { scheduled_at, message }); },

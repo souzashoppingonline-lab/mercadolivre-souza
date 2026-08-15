@@ -105,6 +105,12 @@ Fase de expansão da Shopee, totalmente isolada do Mercado Livre (arquivos/rotas
 - [ ] Decidir e documentar em `decisions.md`: remover o tópico WS `kpis_updated` (código morto) ou implementar sua publicação de fato (item 2 de `known-bugs.md`).
 - [ ] Avaliar se `PATCH /api/custos/:sku` deveria exigir/validar que o `sku` informado é de fato um `ml_id` válido, ou desacoplar de vez `sku_costs` de `items.cost` (item 3 de `known-bugs.md`).
 
+## Rankeamento — fase Recuperação (v80)
+
+- [ ] Alerta no Telegram quando uma intervenção fecha a janela de 7 dias **sem efeito** (hoje o veredito `sem_efeito`/`parcial` só aparece no card). Encaixa no snapshot de 6h, com idempotência por `ranking_notes.id` (mesmo padrão do `esfriou`/`sem_resultado`).
+- [ ] Calibrar os thresholds do diagnóstico depois de algumas semanas de uso (10 visitas/dia, 1% de conversão — hoje valores fixos em `routes/ranking.js`, documentados em `business-rules.md`). Avaliar torná-los por anúncio/categoria em vez de globais.
+- [ ] Corrigir `migrate-v78.sql` (SQL inválido, nunca aplicada) e `migrate-v77.sql` (não idempotente) — ver `known-bugs.md`.
+
 ## Manutenção da documentação
 
 - [ ] Ao adicionar qualquer rota nova em `routes/*.js`, atualizar `api.md` e o método correspondente em `js/db.js` na mesma tarefa.

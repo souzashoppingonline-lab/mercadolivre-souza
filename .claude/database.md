@@ -585,7 +585,7 @@ staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
 ```
 Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).
 
-### `ranking_ads` / `ranking_events` / `ranking_ciclos` / `ranking_ad_links` / `ranking_ads_alerts` — v69/v72/v73/v74/v75/v76/v77/v78/v79: Rankeamento de anúncios (ver `rankeamento.md`)
+### `ranking_ads` / `ranking_events` / `ranking_ciclos` / `ranking_ad_links` / `ranking_ads_alerts` — v69/v72/v73/v74/v75/v76/v77/v78/v79/v80: Rankeamento de anúncios (ver `rankeamento.md`)
 ```
 ranking_ads:
 id SERIAL PK, ml_id TEXT UNIQUE FK items(ml_id) ON DELETE CASCADE, store_id BIGINT FK stores
@@ -595,9 +595,10 @@ base_price NUMERIC                                 -- preço ao entrar em rankea
 last_price, last_available_quantity, last_status   -- últimos valores (detecção de mudança)
 last_visits INT, last_seo_score NUMERIC, last_buybox BOOLEAN  -- semeados pelo snapshot
 last_highlight_pos INT                             -- v70: posição nos Mais Vendidos da categoria (NULL=fora)
-fase TEXT DEFAULT 'rankeando'                       -- v71/v76: 'rankeando' | 'ranqueado' | 'monitoramento' (idx_ranking_ads_fase)
+fase TEXT DEFAULT 'rankeando'                       -- v71/v76/v80: 'rankeando' | 'ranqueado' | 'monitoramento' | 'recuperacao' (idx_ranking_ads_fase)
 ranqueado_em TIMESTAMPTZ                            -- v71: quando passou pra fase 2
 monitoramento_started_at TIMESTAMPTZ                -- v77: quando entrou em fase 'monitoramento' (nil se nunca entrou); rastreia dias em monitoramento no card
+recuperacao_started_at TIMESTAMPTZ                  -- v80: quando entrou em fase 'recuperacao'; separa as vendas "depois da intervenção" (vendas_na_fase) e ancora a idempotência do alerta sem_resultado
 nivel INT DEFAULT 1                                 -- v78: nível de progressão (1 + sales_count / 10), mostrado em RANQUEADO
 ciclo INT DEFAULT 1                                -- v72: ciclo atual de rankeamento (1,2,3…); só em fase 'rankeando'
 campanha_nome TEXT                                 -- v74: nome da campanha de ADS do ciclo (MANUAL; substituiu o campo ADS R$)
@@ -610,13 +611,15 @@ started_at, created_at, updated_at TIMESTAMPTZ
 
 ranking_events:
 id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE, ml_id TEXT
-event_type TEXT   -- venda|preco|estoque|status|qualidade|buybox|visitas|marco
+event_type TEXT   -- venda|preco|estoque|status|qualidade|buybox|visitas|marco|destaque|esfriou|sem_resultado (v80)
 message TEXT, detail JSONB, created_at TIMESTAMPTZ
 -- idx_ranking_events_ad (ranking_ad_id, created_at DESC)
 
 ranking_notes:  -- v76: log de alterações/anotações por card (usado no estágio Monitoramento)
 id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE
 texto TEXT NOT NULL, created_at TIMESTAMPTZ
+tipo TEXT                                          -- v80: titulo|keywords|fotos|descricao|preco|ads|atributos|frete|outro. NULL = anotação livre (v76)
+baseline JSONB                                     -- v80: métricas no momento da intervenção {visitas,conversao,score,vendas,preco,at}; o efeito é calculado na LEITURA (atual − baseline), não gravado
 -- idx_ranking_notes_ad (ranking_ad_id, created_at DESC)
 
 ranking_ad_links:  -- v75: ml_id extra vinculado a um card (anúncio de catálogo + tradicional do mesmo produto)

@@ -9,18 +9,64 @@ const redis = require('../db/redis');
 
 const router = express.Router();
 const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo
+// Estágios válidos (v80 acrescentou 'recuperacao'). Ver .claude/rankeamento.md.
+const FASES = ['rankeando', 'ranqueado', 'monitoramento', 'recuperacao'];
+
+// Diagnóstico da fase RECUPERAÇÃO: cruza tráfego × conversão pra dizer O QUE
+// mexer, em vez de deixar o usuário adivinhar. Thresholds em .claude/business-rules.md.
+const VISITAS_BAIXAS = 10;   // visitas/dia abaixo disso = problema de exposição
+const CONV_BAIXA = 0.01;     // conversão (0..1) abaixo disso = problema de oferta
+function diagnosticar({ visitasDia, conversao }) {
+  if (visitasDia == null) return { tipo: 'SEM_DADOS', titulo: 'Sem dados ainda', texto: 'Aguardando o primeiro snapshot de visitas (roda a cada 6h).', acao: '' };
+  if (visitasDia === 0) return { tipo: 'INVISIVEL', titulo: 'Invisível', texto: 'Nenhuma visita — o anúncio não está sendo exibido.', acao: 'Confira status, estoque e se a categoria está correta.' };
+  if (visitasDia < VISITAS_BAIXAS) return { tipo: 'EXPOSICAO', titulo: 'Exposição', texto: `${visitasDia} visita(s)/dia — quase ninguém está vendo o anúncio.`, acao: 'Mexa em ADS, título/palavras-chave, categoria e preço de entrada.' };
+  if (conversao == null || conversao < CONV_BAIXA) return { tipo: 'OFERTA', titulo: 'Oferta', texto: `${visitasDia} visitas/dia e conversão ${conversao == null ? 'sem histórico' : (conversao * 100).toFixed(1) + '%'} — está sendo visto e não converte.`, acao: 'Mexa em preço, fotos, descrição, frete e atributos.' };
+  return { tipo: 'VOLUME', titulo: 'Volume', texto: `Converte (${(conversao * 100).toFixed(1)}%) mas o tráfego não sustenta vendas.`, acao: 'Aumente o tráfego: ADS e posicionamento.' };
+}
+
+// Veredito de uma intervenção: compara o baseline carimbado no registro com os
+// números de agora. Só conclui depois da janela de N dias (antes disso, "medindo").
+const JANELA_EFEITO_DIAS = 7;
+function medirEfeito(baseline, atual, createdAt) {
+  if (!baseline) return null;
+  const dias = (Date.now() - new Date(createdAt).getTime()) / 86400000;
+  const vendas = (atual.vendas != null && baseline.vendas != null) ? Number(atual.vendas) - Number(baseline.vendas) : null;
+  const visitasDe = baseline.visitas != null ? Number(baseline.visitas) : null;
+  const visitasPara = atual.visitas != null ? Number(atual.visitas) : null;
+  const pct = (visitasDe && visitasPara != null) ? ((visitasPara - visitasDe) / visitasDe) * 100 : null;
+  const base = { dias: Number(dias.toFixed(1)), vendas, visitas_de: visitasDe, visitas_para: visitasPara, visitas_pct: pct != null ? Number(pct.toFixed(0)) : null };
+  if (dias < JANELA_EFEITO_DIAS) return { ...base, veredito: 'medindo', faltam: Math.ceil(JANELA_EFEITO_DIAS - dias) };
+  if (vendas > 0) return { ...base, veredito: 'funcionou' };
+  if (pct != null && pct >= 20) return { ...base, veredito: 'parcial' };   // mais tráfego, ainda sem venda
+  if (pct != null && pct <= -20) return { ...base, veredito: 'piorou' };
+  return { ...base, veredito: 'sem_efeito' };
+}
+
+// Métricas atuais de um card — usadas pra carimbar o baseline da intervenção e
+// pra medir o efeito depois. Uma query só, reaproveitada nas duas pontas.
+async function metricasAtuais(adId) {
+  const { rows } = await pool.query(
+    `SELECT r.last_visits AS visitas, r.sales_count AS vendas, r.last_seo_score AS score,
+            sq.conversion_rate AS conversao, i.price AS preco
+       FROM ranking_ads r
+       LEFT JOIN item_seo_score sq ON sq.item_id = r.ml_id
+       LEFT JOIN items i ON i.ml_id = r.ml_id
+      WHERE r.id = $1`, [adId]
+  );
+  return rows[0] || {};
+}
 
 // Lista os anúncios em rankeamento com estatísticas derivadas (ritmo, dias).
 router.get('/ads', async (req, res) => {
   try {
     const mkt = String(req.query.marketplace || '').trim().toUpperCase(); // '', 'ML' ou 'SHOPEE'
-    const fase = String(req.query.fase || '').trim().toLowerCase();       // '', 'rankeando', 'ranqueado' ou 'monitoramento'
+    const fase = String(req.query.fase || '').trim().toLowerCase();       // '' ou um de FASES
     const storeId = String(req.query.store_id || '').trim();              // '' ou id da loja
     const ciclo = String(req.query.ciclo || '').trim();                  // '' ou número do ciclo
     const params = [];
     const conds = [];
     if (mkt === 'ML' || mkt === 'SHOPEE') { params.push(mkt); conds.push(`COALESCE(m.code, 'ML') = $${params.length}`); }
-    if (['rankeando', 'ranqueado', 'monitoramento'].includes(fase)) { params.push(fase); conds.push(`r.fase = $${params.length}`); }
+    if (FASES.includes(fase)) { params.push(fase); conds.push(`r.fase = $${params.length}`); }
     if (storeId) { params.push(storeId); conds.push(`r.store_id = $${params.length}`); }
     if (ciclo && /^\d+$/.test(ciclo)) { params.push(ciclo); conds.push(`r.ciclo = $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
@@ -36,11 +82,33 @@ router.get('/ads', async (req, res) => {
                  FROM ranking_ad_links l LEFT JOIN items li ON li.ml_id = l.ml_id
                 WHERE l.ranking_ad_id = r.id) AS links,
               (SELECT COUNT(*)::int FROM ranking_notes nt WHERE nt.ranking_ad_id = r.id) AS notas_count,
-              0 AS devolucoes_count
+              0 AS devolucoes_count,
+              -- v80 (fase recuperação): tudo que o ML já nos deu e que diz O QUE mexer.
+              sq.conversion_rate, sq.score AS seo_score, sq.visits_30d, sq.sales_30d,
+              sq.pictures_count, sq.has_video, sq.title_length, sq.description_word_count,
+              sq.required_attrs_missing, sq.missing_required_attrs, sq.is_full,
+              cc.price_to_win, cc.status AS buybox_status,
+              (SELECT ROUND(AVG(v.visits)) FROM item_visits v
+                 WHERE v.item_id = r.ml_id AND v.date >= CURRENT_DATE - 7) AS visitas_media_7d,
+              -- vendas DESDE que entrou em recuperação (≠ sales_count cumulativo)
+              (SELECT COUNT(*)::int FROM ranking_events ev
+                 WHERE ev.ranking_ad_id = r.id AND ev.event_type = 'venda'
+                   AND ev.created_at >= r.recuperacao_started_at) AS vendas_na_fase,
+              -- Intervenções (notas tipadas) já no payload do card — evita 1 request
+              -- por card. Mesmo padrão do agregado de links acima; o card usa as 3
+              -- últimas (corte no JS, pra não aninhar subquery correlacionada).
+              (SELECT COALESCE(json_agg(json_build_object(
+                        'id', nt2.id, 'texto', nt2.texto, 'tipo', nt2.tipo,
+                        'baseline', nt2.baseline, 'created_at', nt2.created_at)
+                      ORDER BY nt2.created_at DESC), '[]'::json)
+                 FROM ranking_notes nt2
+                WHERE nt2.ranking_ad_id = r.id AND nt2.tipo IS NOT NULL) AS intervencoes
          FROM ranking_ads r
          LEFT JOIN items i ON i.ml_id = r.ml_id
          LEFT JOIN marketplaces m ON m.id = i.marketplace_id
          LEFT JOIN stores s ON s.id = r.store_id
+         LEFT JOIN item_seo_score sq ON sq.item_id = r.ml_id
+         LEFT JOIN catalog_competition cc ON cc.item_id = r.ml_id
         ${where}
         ORDER BY r.active DESC, r.last_sale_at DESC NULLS LAST, r.created_at DESC`,
       params
@@ -57,7 +125,29 @@ router.get('/ads', async (req, res) => {
         r.last_highlight_pos != null || r.last_buybox === true ||
         r.sales_count >= 10 || diasRank >= 15
       );
-      return { ...r, nivel, ritmo_dia: dias ? Number((r.sales_count / dias).toFixed(1)) : null, dias: dias ? Number(dias.toFixed(1)) : null, sugerir_ranqueado: sugerir };
+      // ── Fase recuperação (v80) ──────────────────────────────────────────
+      // Dias sem vender: desde a última venda; se NUNCA vendeu, desde que entrou
+      // em rankeamento (é exatamente o caso que motiva a fase).
+      const refSemVenda = r.last_sale_at || r.started_at;
+      const diasSemVenda = refSemVenda ? Math.floor((now - new Date(refSemVenda).getTime()) / 86400000) : null;
+      // Semáforo por tempo parado — só marca, nunca age sozinho (a exclusão é manual).
+      const semaforo = diasSemVenda == null ? null : (diasSemVenda >= 15 ? 'decisao' : (diasSemVenda >= 8 ? 'atencao' : 'observando'));
+      // Visitas/dia: o snapshot é mais fresco; a média de 7d é o retrato estável.
+      const visitasDia = r.last_visits != null ? Number(r.last_visits) : (r.visitas_media_7d != null ? Number(r.visitas_media_7d) : null);
+      const conversao = r.conversion_rate != null ? Number(r.conversion_rate) : null;
+      const diagnostico = r.fase === 'recuperacao' ? diagnosticar({ visitasDia, conversao }) : null;
+      // Efeito de cada intervenção medido contra os números de agora deste card.
+      const atual = { visitas: r.last_visits, vendas: r.sales_count };
+      const intervencoes = (r.intervencoes || []).slice(0, 3)
+        .map(n => ({ ...n, efeito: medirEfeito(n.baseline, atual, n.created_at) }));
+      return {
+        ...r, nivel,
+        ritmo_dia: dias ? Number((r.sales_count / dias).toFixed(1)) : null,
+        dias: dias ? Number(dias.toFixed(1)) : null,
+        sugerir_ranqueado: sugerir,
+        dias_sem_venda: diasSemVenda, semaforo, visitas_dia: visitasDia, diagnostico, intervencoes,
+        nunca_vendeu: !r.last_sale_at,
+      };
     });
     res.json({ ads });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -146,11 +236,12 @@ router.patch('/ads/:id', async (req, res) => {
     // monitoramento_started_at (rastreia quando entrou em monitoramento para contar
     // dias corretamente no card).
     const fase = String(req.body.fase || '').trim().toLowerCase();
-    if (['rankeando', 'ranqueado', 'monitoramento'].includes(fase)) {
+    if (FASES.includes(fase)) {
       sets.push(`fase = $${++n}`); vals.push(fase);
       if (fase === 'ranqueado') sets.push(`ranqueado_em = now()`);
       else if (fase === 'rankeando') sets.push(`ranqueado_em = NULL`);
       else if (fase === 'monitoramento') sets.push(`monitoramento_started_at = now()`);
+      else if (fase === 'recuperacao') sets.push(`recuperacao_started_at = now()`); // v80
     }
     if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
     sets.push('updated_at = now()');
@@ -223,22 +314,41 @@ router.post('/ads/:id/ciclo', async (req, res) => {
 
 // Log de alterações / anotações do card (usado no estágio Monitoramento, mas
 // disponível em qualquer fase). Mais recentes primeiro.
+// v80: cada nota pode ser uma INTERVENÇÃO tipada; o efeito é medido na leitura
+// comparando o baseline carimbado no registro com os números de agora.
 router.get('/ads/:id/notas', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, texto, created_at FROM ranking_notes WHERE ranking_ad_id = $1 ORDER BY created_at DESC`,
+      `SELECT id, texto, tipo, baseline, created_at FROM ranking_notes
+        WHERE ranking_ad_id = $1 ORDER BY created_at DESC`,
       [req.params.id]
     );
-    res.json({ notas: rows });
+    const atual = await metricasAtuais(req.params.id);
+    const notas = rows.map(n => ({ ...n, efeito: medirEfeito(n.baseline, atual, n.created_at) }));
+    res.json({ notas });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 router.post('/ads/:id/notas', async (req, res) => {
   try {
     const texto = String(req.body.texto || '').trim();
     if (!texto) return res.status(400).json({ error: 'texto obrigatório' });
+    const TIPOS = ['titulo', 'keywords', 'fotos', 'descricao', 'preco', 'ads', 'atributos', 'frete', 'outro'];
+    const tipo = TIPOS.includes(String(req.body.tipo || '').trim()) ? req.body.tipo.trim() : null;
+    // Baseline: só faz sentido quando a nota é uma intervenção tipada (é ela que
+    // vira "antes" da medição). Nota livre continua sendo só texto, como antes.
+    const m = tipo ? await metricasAtuais(req.params.id) : null;
+    const baseline = m ? JSON.stringify({
+      visitas: m.visitas != null ? Number(m.visitas) : null,
+      conversao: m.conversao != null ? Number(m.conversao) : null,
+      score: m.score != null ? Number(m.score) : null,
+      vendas: m.vendas != null ? Number(m.vendas) : null,
+      preco: m.preco != null ? Number(m.preco) : null,
+      at: new Date().toISOString(),
+    }) : null;
     const { rows } = await pool.query(
-      `INSERT INTO ranking_notes (ranking_ad_id, texto) VALUES ($1, $2) RETURNING id, texto, created_at`,
-      [req.params.id, texto.slice(0, 4000)]
+      `INSERT INTO ranking_notes (ranking_ad_id, texto, tipo, baseline)
+       VALUES ($1, $2, $3, $4) RETURNING id, texto, tipo, baseline, created_at`,
+      [req.params.id, texto.slice(0, 4000), tipo, baseline]
     );
     res.json({ nota: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }

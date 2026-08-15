@@ -249,3 +249,23 @@ A "Receita" da página é **bruta**: `SUM(total_amount)` de pedidos **não cance
 - **Casada com a VENDA** (data do pedido no período), não com a data da devolução — pra o líquido bater com as vendas daquele range. Consequência aceita: uma devolução que chega depois muda retroativamente o líquido do período da venda.
 - **Só pedidos não cancelados** (o cancelado já saiu do bruto — evita dupla baixa).
 - Segue sendo **bruto de tarifa/frete/imposto/custo** — líquido aqui é só "menos devoluções", não é lucro. Lucro real fica em Conciliação / Análise de Vendas do Mês (`finance.md`).
+
+## Rankeamento — fase Recuperação: diagnóstico e prazos (v80)
+
+Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abaixo são a régua do card; são **chute inicial calibrável**, não vêm do ML.
+
+**Diagnóstico** — cruza tráfego × conversão pra dizer *o que* mexer (`diagnosticar()` em `routes/ranking.js`); visitas/dia = `last_visits` (fallback: média 7d de `item_visits`), conversão = `item_seo_score.conversion_rate` (razão 0..1, janela de 30 dias):
+
+| Condição | Veredito | Ação sugerida no card |
+|---|---|---|
+| visitas/dia = 0 | `INVISIVEL` | status, estoque, categoria errada |
+| visitas/dia < **10** | `EXPOSICAO` | ADS, título/palavras-chave, categoria, preço de entrada |
+| visitas ≥ 10 e conversão < **1%** (ou sem histórico) | `OFERTA` | preço, fotos, descrição, frete, atributos |
+| visitas ≥ 10 e conversão ≥ 1% | `VOLUME` | falta tráfego: ADS e posicionamento |
+| sem `last_visits` ainda | `SEM_DADOS` | aguardar o snapshot (6/6h) |
+
+**Semáforo do tempo parado** (dias desde `last_sale_at`, ou desde `started_at` se **nunca** vendeu): 🟡 `observando` 0–7 · 🟠 `atencao` 8–14 · 🔴 `decisao` 15+. Ao entrar em `decisao` sai **um** alerta `sem_resultado` no Telegram por passagem pela fase. O semáforo **só marca** — excluir/encerrar é sempre decisão manual no card.
+
+**Janela de medição da intervenção: 7 dias.** Antes disso o veredito é `medindo`; depois: venda no período → `funcionou`; visitas **+20%** sem venda → `parcial`; visitas **−20%** → `piorou`; nada disso → `sem_efeito`. O baseline é carimbado no registro da intervenção e o efeito é calculado na leitura (nunca gravado, então sempre reflete o dado mais recente).
+
+**Checklist do card** (o que o ML já nos diz, via `item_seo_score`): fotos < 6 ❌ · sem vídeo ❌ · atributos obrigatórios faltando ❌ · título < 55 caracteres ⚠️ · descrição < 100 palavras ⚠️. Ordem de exibição: ❌ → ⚠️ → ✅ (pendência primeiro).

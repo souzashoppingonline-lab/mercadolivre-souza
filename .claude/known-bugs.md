@@ -95,3 +95,23 @@ etc.), porque migrations históricas não foram aplicadas nessa instância. Corr
 (idempotente), alinhando com o `CREATE TABLE` de `schema.sql`. Lição: quando `upsertAd`/`mapAd`
 ganham coluna nova, garantir a migration `ADD COLUMN IF NOT EXISTS` correspondente registrada
 em `migrate.js` (ver a regra do CLAUDE.md sobre migrations).
+
+## `migrate-v78.sql` é SQL inválido — nunca foi aplicada (nem em produção)
+
+O arquivo foi escrito na **notação abreviada da documentação**, não em SQL real:
+
+```sql
+CREATE TABLE IF NOT EXISTS ranking_return_issues (
+  id SERIAL PK,                                        -- PK não é SQL válido
+  ranking_ad_id INT NOT NULL FK ranking_ads ON DELETE CASCADE,  -- FK idem
+```
+
+Confirmado rodando o schema completo num Postgres 16 limpo: `ERROR: syntax error at or near "PK"`. É o mesmo erro que aparece em produção a cada `npm run migrate`.
+
+Consequência: como `db/migrate.js` manda o arquivo inteiro num único `pool.query` (um só batch, erro de parse rejeita tudo), **nada** da v78 foi aplicado — nem a tabela `ranking_return_issues`, nem a coluna `ranking_ads.nivel` (documentada em `database.md` como existente). Nada quebra na tela hoje porque o `nivel` mostrado no card é calculado em JS na rota (`1 + floor(sales_count/10)`) e a tabela `ranking_return_issues` não é usada por nenhum código; `devolucoes_count` está fixo em `0` na rota.
+
+**Correção esperada:** reescrever a v78 em SQL válido e idempotente — `ALTER TABLE ranking_ads ADD COLUMN IF NOT EXISTS nivel INT DEFAULT 1;` e, se a tabela de devoluções for mesmo necessária, `id SERIAL PRIMARY KEY` + `ranking_ad_id INT NOT NULL REFERENCES ranking_ads(id) ON DELETE CASCADE`. Se não for usada, remover a tabela do arquivo e da `database.md` em vez de criar schema morto. Enquanto não for feito, `database.md` está descrevendo uma coluna (`nivel`) e uma tabela que não existem no banco.
+
+## `migrate-v77.sql` não é idempotente
+
+`ALTER TABLE ranking_ads ADD COLUMN monitoramento_started_at ...` sem `IF NOT EXISTS` → toda reexecução loga `ERROR: column already exists`. Não causa dano (a coluna já está lá e `migrate.js` continua), mas polui o log de deploy e mascara erros reais. Correção: `ADD COLUMN IF NOT EXISTS`, como nas demais migrations.

@@ -91,6 +91,21 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
     if (dup.rows.length) return;
   }
 
+  // v80 — fase RECUPERAÇÃO: a 1ª venda depois da intervenção é exatamente a
+  // notícia que se espera, então ganha mensagem própria. Checado ANTES do emit
+  // (que grava o evento 'venda') e com o `ad` lido antes do UPDATE, pra ainda
+  // ter o último last_sale_at (quantos dias ficou parado).
+  let primeiraDaRecuperacao = false;
+  const paradoDesde = ad.last_sale_at || ad.started_at;
+  if (ad.fase === 'recuperacao' && ad.recuperacao_started_at) {
+    const { rows: anteriores } = await pool.query(
+      `SELECT 1 FROM ranking_events
+        WHERE ranking_ad_id = $1 AND event_type = 'venda' AND created_at >= $2 LIMIT 1`,
+      [ad.id, ad.recuperacao_started_at]
+    );
+    primeiraDaRecuperacao = !anteriores.length;
+  }
+
   const now = new Date();
   const { rows } = await pool.query(
     `UPDATE ranking_ads
@@ -110,9 +125,12 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
   const notify = (realtime && !isRanq) ? 'force' : 'silent';
   const every0 = ad.milestone_every || 5;
   const faltam = (every0 - (count % every0)) % every0;
-  await emit(ad, 'venda',
-    `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> em rankeamento\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`,
-    { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count }, notify);
+  const diasParado = paradoDesde ? Math.floor((now.getTime() - new Date(paradoDesde).getTime()) / 86400000) : null;
+  const msgVenda = primeiraDaRecuperacao
+    ? `🎉 <b>DESTRAVOU! 1ª venda desde a recuperação</b>\n📦 ${ad.title || ad.ml_id}\n${diasParado != null ? `⏳ Estava <b>${diasParado} dia(s)</b> sem vender\n` : ''}💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n✅ As alterações fizeram efeito — avalie voltar pra <b>Em rankeamento</b>.\n🔗 ${linkOf(ad.ml_id)}`
+    : `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> em rankeamento\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`;
+  await emit(ad, 'venda', msgVenda,
+    { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count, recuperou: primeiraDaRecuperacao || undefined }, notify);
 
   // Marco a cada N vendas — resumo de ritmo (Telegram só em tempo real).
   const every = ad.milestone_every || 5;
@@ -197,7 +215,8 @@ async function onItemChange({ mlId, price, availableQuantity, status, title }) {
 // negócio), não varre o catálogo, então não pesa no rate limit.
 async function snapshot(faseAlvo = 'rankeando') {
   const ml = require('./mlClient'); // require tardio: evita custo se o job nunca roda
-  const COLD_DAYS = 3; // "esfriou" = sem vender há N dias (só fase ranqueado)
+  const COLD_DAYS = 3;      // "esfriou" = sem vender há N dias (só fase ranqueado)
+  const DECISAO_DIAS = 15;  // v80: em recuperação, N dias parado = hora de decidir
   const { rows: ads } = await pool.query(
     `SELECT r.* FROM ranking_ads r
        JOIN items i ON i.ml_id = r.ml_id
@@ -289,6 +308,30 @@ async function snapshot(faseAlvo = 'rankeando') {
           );
           if (!já.length) {
             await emit(ad, 'esfriou', `💤 <b>Esfriou</b>\n📦 ${ad.title || ad.ml_id}\nSem vender há <b>${Math.floor(diasSemVenda)} dia(s)</b> (ranqueado)`, { dias: Math.floor(diasSemVenda) });
+          }
+        }
+      }
+      // v80 — fase RECUPERAÇÃO: bateu DECISAO_DIAS parado, avisa 1x que é hora de
+      // decidir (recuperou / segue tentando / encerra). NUNCA exclui sozinho: a
+      // decisão é sempre do usuário, no card.
+      if (faseAlvo === 'recuperacao') {
+        const ref = ad.last_sale_at || ad.started_at;
+        const diasParado = ref ? (Date.now() - new Date(ref).getTime()) / 86400000 : null;
+        if (diasParado != null && diasParado >= DECISAO_DIAS) {
+          const desde = ad.recuperacao_started_at || ad.started_at;
+          const { rows: já } = await pool.query(
+            `SELECT 1 FROM ranking_events
+              WHERE ranking_ad_id = $1 AND event_type = 'sem_resultado' AND created_at > $2 LIMIT 1`,
+            [ad.id, desde]
+          );
+          if (!já.length) {
+            const { rows: nt } = await pool.query(
+              `SELECT COUNT(*)::int AS n FROM ranking_notes WHERE ranking_ad_id = $1 AND tipo IS NOT NULL AND created_at >= $2`,
+              [ad.id, desde]
+            );
+            await emit(ad, 'sem_resultado',
+              `🔴 <b>Hora de decidir</b>\n📦 ${ad.title || ad.ml_id}\n⏳ <b>${Math.floor(diasParado)} dia(s)</b> sem vender\n🔧 ${nt[0].n} intervenção(ões) registrada(s) na recuperação\n👉 Abra o card e decida: <b>Recuperou</b>, seguir tentando ou <b>Encerrar</b>.`,
+              { dias: Math.floor(diasParado), intervencoes: nt[0].n });
           }
         }
       }

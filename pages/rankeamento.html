@@ -89,6 +89,32 @@
     .rk-nota .del { margin-left: auto; cursor: pointer; }
     .rk-nota .del:hover { color: var(--red); }
     .rk-nota-form textarea { width: 100%; background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 10px; padding: 10px; font-size: 13px; resize: vertical; min-height: 70px; font-family: inherit; box-sizing: border-box; }
+    /* Fase Recuperação (v80): diagnóstico + checklist + intervenções + veredito */
+    .rk-diag { border-radius: 8px; padding: 9px 11px; margin: 9px 0 2px; font-size: 11px; line-height: 1.45; border: 1px solid; }
+    .rk-diag b { display: block; font-size: 11.5px; margin-bottom: 2px; }
+    .rk-diag .acao { color: var(--text-muted); margin-top: 3px; display: block; }
+    .rk-check { background: var(--bg-card2); border-radius: 8px; padding: 8px 10px; margin: 8px 0 2px; }
+    .rk-check .t { font-size: 8px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-muted); font-weight: 800; margin-bottom: 5px; display: flex; justify-content: space-between; gap: 8px; }
+    .rk-check ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+    .rk-check li { font-size: 10.5px; display: flex; gap: 6px; align-items: flex-start; line-height: 1.35; }
+    .rk-interv { margin-top: 8px; }
+    .rk-interv-head { display: flex; align-items: center; gap: 8px; font-size: 8px; text-transform: uppercase; letter-spacing: .3px; color: var(--text-muted); font-weight: 800; margin-bottom: 4px; }
+    .rk-interv-item { border-bottom: 1px dashed var(--border); padding: 6px 0; font-size: 11px; }
+    .rk-interv-item:last-child { border-bottom: none; }
+    .rk-interv-item .when { color: var(--text-muted); font-size: 10px; }
+    .rk-efeito { font-size: 10px; margin-top: 2px; font-weight: 700; }
+    .rk-efeito.funcionou { color: #3fb950; }
+    .rk-efeito.parcial   { color: #58a6ff; }
+    .rk-efeito.piorou    { color: #f85149; }
+    .rk-efeito.sem_efeito{ color: #f0883e; }
+    .rk-efeito.medindo   { color: var(--text-muted); font-weight: 600; }
+    .rk-veredito { display: flex; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+    .rk-btn-ok   { background: #2ea043; color: #fff; border: none; border-radius: 7px; padding: 6px 10px; font-size: 11px; font-weight: 800; cursor: pointer; }
+    .rk-btn-stop { background: var(--bg-card2); color: var(--text-muted); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-size: 11px; font-weight: 800; cursor: pointer; }
+    .rk-btn-stop:hover { color: #fff; background: var(--red); border-color: var(--red); }
+    .rk-tipo-sel { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
+    .rk-tipo-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(88,166,255,.12); color: #58a6ff; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
+
     .rk-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
     .rk-stat { background: var(--bg-card2); border-radius: 8px; padding: 6px 4px; text-align: center; }
     .rk-stat .v { font-size: 13px; font-weight: 800; }
@@ -150,6 +176,7 @@
     <button class="rk-tab active" id="tab-rankeando" onclick="switchTab('rankeando')"><i class="fas fa-ranking-star"></i> Em rankeamento <span class="rk-tab-badge" id="cnt-rankeando">0</span></button>
     <button class="rk-tab" id="tab-ranqueado" onclick="switchTab('ranqueado')"><i class="fas fa-shield-halved"></i> Ranqueados <span class="rk-tab-badge" id="cnt-ranqueado">0</span></button>
     <button class="rk-tab" id="tab-monitoramento" onclick="switchTab('monitoramento')"><i class="fas fa-eye"></i> Monitoramento <span class="rk-tab-badge" id="cnt-monitoramento">0</span></button>
+    <button class="rk-tab" id="tab-recuperacao" onclick="switchTab('recuperacao')"><i class="fas fa-heart-pulse"></i> Recuperação <span class="rk-tab-badge" id="cnt-recuperacao">0</span></button>
     <button class="rk-tab" id="tab-todos" onclick="switchTab('todos')"><i class="fas fa-list"></i> Todos os anúncios</button>
     <select id="rkCiclo" onchange="onCicloChange()" title="Filtrar por ciclo de rankeamento" style="margin-left:auto;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px">
       <option value="">Todos os ciclos</option>
@@ -177,6 +204,13 @@
     <p class="rk-sub" style="margin-top:0">Produtos que <b>já ranquearam mas caíram</b>. Você fez alterações e está acompanhando o efeito. Cada card tem um <b>registro de alterações</b> (o que foi mudado) — clique em <b>📋 Alterações</b> para escrever e ler.</p>
     <div id="rkCardsMon" class="rk-cards"></div>
     <div id="rkCardsMonEmpty" class="rk-empty" style="display:none">Nenhum produto em monitoramento. Em um card <b>Ranqueado</b>, mude o estágio para <b>Monitoramento</b> quando as vendas caírem e você fizer alterações.</div>
+  </div>
+
+  <!-- Aba: Recuperação (anúncio sem vendas, em intervenção) -->
+  <div class="rk-panel" id="panel-recuperacao">
+    <p class="rk-sub" style="margin-top:0">Anúncios que <b>não vendem</b>. Aqui o foco é <b>destravar</b>: o card diz o que está travando (exposição × conversão), lista o que dá pra melhorar e mede o efeito de cada alteração. Se depois das tentativas continuar parado, você decide: <b>Recuperou</b> ou <b>Encerrar</b>.</p>
+    <div id="rkCardsRec" class="rk-cards"></div>
+    <div id="rkCardsRecEmpty" class="rk-empty" style="display:none">Nenhum anúncio em recuperação. Em qualquer card, mude o estágio para <b>Recuperação</b> quando o anúncio parar de vender (ou nunca tiver vendido).</div>
   </div>
 
   <!-- Aba: Todos os anúncios -->
@@ -244,6 +278,12 @@
     </div>
     <div class="rk-modal-body">
       <div class="rk-nota-form" style="margin-bottom:12px">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+          <select id="notaTipo" class="rk-tipo-sel" title="Classificar como intervenção mede o efeito (antes × depois)">
+            <option value="">Sem tipo (anotação livre)</option>
+          </select>
+          <span style="font-size:11px;color:var(--text-muted)">Escolher um tipo transforma em <b>intervenção medida</b>: guardamos visitas/conversão/vendas de agora e comparamos em 7 dias.</span>
+        </div>
         <textarea id="notaTexto" placeholder="O que foi alterado? Ex.: baixei o preço de 79,90 para 74,90, troquei a foto de capa e ajustei o título."></textarea>
         <div style="text-align:right;margin-top:6px"><button class="rk-add-btn" onclick="salvarNota()"><i class="fas fa-plus"></i> Registrar alteração</button></div>
       </div>
@@ -286,14 +326,28 @@
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDT = d => new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀', esfriou:'💤' };
+const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀', esfriou:'💤', sem_resultado:'🔴' };
+// Tipos de intervenção da fase Recuperação (v80) — o valor vai pro banco (ranking_notes.tipo).
+const TIPOS_INTERV = {
+  titulo:    { label:'Título',           ico:'🏷️' },
+  keywords:  { label:'Palavras-chave',   ico:'🔑' },
+  fotos:     { label:'Fotos',            ico:'🖼️' },
+  descricao: { label:'Descrição',        ico:'📝' },
+  preco:     { label:'Preço',            ico:'💲' },
+  ads:       { label:'ADS',              ico:'📊' },
+  atributos: { label:'Atributos/ficha',  ico:'🧩' },
+  frete:     { label:'Frete',            ico:'🚚' },
+  outro:     { label:'Outro',            ico:'⚙️' },
+};
 // Dias em rankeamento/monitoramento — calcula a partir do timestamp apropriado por fase.
 // Quando fase = MONITORAMENTO, usa monitoramento_started_at; caso contrário, usa started_at.
-function diasRank(startedAt, fase, monitoramentoStartedAt) {
-  const timestamp = (fase === 'monitoramento' && monitoramentoStartedAt) ? monitoramentoStartedAt : startedAt;
-  if (!timestamp) return 'hoje';
-  const dias = Math.floor((Date.now() - new Date(timestamp).getTime()) / 86400000);
-  const label = fase === 'monitoramento' ? 'em monitoramento' : 'em rankeamento';
+function diasRank(a, fase) {
+  const ts = (fase === 'monitoramento' && a.monitoramento_started_at) ? a.monitoramento_started_at
+           : (fase === 'recuperacao' && a.recuperacao_started_at) ? a.recuperacao_started_at
+           : a.started_at;
+  if (!ts) return 'hoje';
+  const dias = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
+  const label = { monitoramento: 'em monitoramento', recuperacao: 'em recuperação' }[fase] || 'em rankeamento';
   return dias <= 0 ? 'hoje' : `${dias}d ${label}`;
 }
 
@@ -345,7 +399,7 @@ const EVENTS = {};   // id do ranking_ad -> array de eventos
 
 function switchTab(t) {
   TAB = t;
-  ['rankeando','ranqueado','monitoramento','todos'].forEach(x => {
+  ['rankeando','ranqueado','monitoramento','recuperacao','todos'].forEach(x => {
     document.getElementById('tab-'+x).classList.toggle('active', x === t);
     document.getElementById('panel-'+x).classList.toggle('active', x === t);
   });
@@ -357,19 +411,22 @@ function onMktChange() {
   loadTable(document.getElementById('rkSearch').value);
 }
 
-// Carrega os 3 estágios (rankeando / ranqueado / monitoramento) e os contadores.
+// Carrega os 4 estágios (rankeando / ranqueado / monitoramento / recuperação) e os contadores.
 async function loadCards() {
-  const [d1, d2, d3] = await Promise.all([
+  const [d1, d2, d3, d4] = await Promise.all([
     DB.getRankingAds(MKT, 'rankeando', LOJA, CICLO),
     DB.getRankingAds(MKT, 'ranqueado', LOJA, CICLO),
     DB.getRankingAds(MKT, 'monitoramento', LOJA, CICLO),
+    DB.getRankingAds(MKT, 'recuperacao', LOJA, CICLO),
   ]);
   await renderPanel(d1.ads || [], 'rkCards', 'rkCardsEmpty');
   await renderPanel(d2.ads || [], 'rkCardsRanq', 'rkCardsRanqEmpty');
   await renderPanel(d3.ads || [], 'rkCardsMon', 'rkCardsMonEmpty');
+  await renderPanel(d4.ads || [], 'rkCardsRec', 'rkCardsRecEmpty');
   document.getElementById('cnt-rankeando').textContent = (d1.ads || []).length;
   document.getElementById('cnt-ranqueado').textContent = (d2.ads || []).length;
   document.getElementById('cnt-monitoramento').textContent = (d3.ads || []).length;
+  document.getElementById('cnt-recuperacao').textContent = (d4.ads || []).length;
 }
 
 async function renderPanel(ads, wrapId, emptyId) {
@@ -382,11 +439,83 @@ const FASES = {
   rankeando:     { label:'Em rankeamento', cor:'#ffd60a', txt:'#1a1a1a', icon:'fa-ranking-star',  glow:'rgba(255,214,10,.15)' },
   ranqueado:     { label:'Ranqueado',      cor:'#2ea043', txt:'#ffffff', icon:'fa-shield-halved', glow:'rgba(46,160,67,.15)' },
   monitoramento: { label:'Monitoramento',  cor:'#f59e0b', txt:'#1a1a1a', icon:'fa-eye',           glow:'rgba(245,158,11,.18)' },
+  recuperacao:   { label:'Recuperação',    cor:'#f85149', txt:'#ffffff', icon:'fa-heart-pulse',   glow:'rgba(248,81,73,.18)' },
 };
 function faseSelect(a, fase) {
   return `<select class="rk-fase-sel" title="Mudar estágio" onchange="mudarFase(${a.id}, this.value)">`
     + Object.entries(FASES).map(([k,f]) => `<option value="${k}"${k===fase?' selected':''}>${f.label}</option>`).join('')
     + `</select>`;
+}
+
+// ── Fase Recuperação (v80): diagnóstico, checklist, intervenções ────────────
+// Badge do tempo parado — é o KPI da fase (o back manda dias_sem_venda/semaforo).
+function badgeSemVenda(a) {
+  if (a.dias_sem_venda == null) return '';
+  const cor = { decisao:'#f85149', atencao:'#f0883e', observando:'#d29922' }[a.semaforo] || '#f85149';
+  const ico = { decisao:'🔴', atencao:'🟠', observando:'🟡' }[a.semaforo] || '🔴';
+  const txt = a.nunca_vendeu ? `${a.dias_sem_venda}d sem NENHUMA venda` : `${a.dias_sem_venda}d sem vender`;
+  return ` <span class="rk-days" title="${a.semaforo==='decisao'?'Hora de decidir: recuperou, segue tentando ou encerra':'Tempo parado'}" style="background:${cor};color:#fff;border-color:${cor}">${ico} ${txt}</span>`;
+}
+// Banner do diagnóstico (exposição × conversão) — diz O QUE mexer.
+function diagHtml(d) {
+  if (!d) return '';
+  const C = { EXPOSICAO:'#58a6ff', OFERTA:'#f0883e', INVISIVEL:'#f85149', VOLUME:'#58a6ff', SEM_DADOS:'#8b949e' }[d.tipo] || '#8b949e';
+  return `<div class="rk-diag" style="border-color:${C}66;background:${C}14">
+    <b style="color:${C}">🔍 Diagnóstico: ${esc(d.titulo)}</b>${esc(d.texto)}
+    ${d.acao ? `<span class="acao">👉 ${esc(d.acao)}</span>` : ''}
+  </div>`;
+}
+// Checklist do que dá pra melhorar — 100% derivado do que o ML já nos deu
+// (item_seo_score). Ordena pendência primeiro: ❌ → ⚠️ → ✅.
+function checklistHtml(a) {
+  const it = [];
+  if (a.pictures_count != null) it.push(a.pictures_count >= 6 ? ['✅', `${a.pictures_count} fotos`] : ['❌', `${a.pictures_count} foto(s) — recomendado 6+`]);
+  if (a.has_video != null) it.push(a.has_video ? ['✅', 'Tem vídeo'] : ['❌', 'Sem vídeo']);
+  if (a.title_length != null) it.push(a.title_length >= 55 ? ['✅', `Título com ${a.title_length} caracteres`] : ['⚠️', `Título com ${a.title_length} caracteres — ideal 55–60`]);
+  if (a.description_word_count != null) it.push(a.description_word_count >= 100 ? ['✅', `Descrição com ${a.description_word_count} palavras`] : ['⚠️', `Descrição com ${a.description_word_count} palavras — ideal 100+`]);
+  if (a.required_attrs_missing != null) {
+    const falt = (a.missing_required_attrs || []).slice(0, 4).join(', ');
+    it.push(a.required_attrs_missing > 0
+      ? ['❌', `Faltam ${a.required_attrs_missing} atributo(s) obrigatório(s)${falt ? ': ' + falt : ''}`]
+      : ['✅', 'Atributos obrigatórios completos']);
+  }
+  if (a.is_full === true) it.push(['✅', 'Full']);
+  if (!it.length) return '';
+  const ordem = { '❌':0, '⚠️':1, '✅':2 };
+  it.sort((x, y) => ordem[x[0]] - ordem[y[0]]);
+  const q = a.seo_score != null ? a.seo_score : a.last_seo_score;
+  return `<div class="rk-check">
+    <div class="t"><span>📋 O que dá pra melhorar</span><span>${q != null ? `Qualidade ${q}` : ''}</span></div>
+    <ul>${it.map(([i, t]) => `<li><span>${i}</span><span>${esc(t)}</span></li>`).join('')}</ul>
+  </div>`;
+}
+// Veredito medido de uma intervenção (o back calcula; aqui só formata).
+function efeitoHtml(e) {
+  if (!e) return '';
+  const M = {
+    medindo:    ['⏳', `medindo… faltam ${e.faltam} dia(s)`],
+    funcionou:  ['✅', `funcionou: ${e.vendas} venda(s) depois`],
+    parcial:    ['🔵', `mais tráfego (${e.visitas_pct > 0 ? '+' : ''}${e.visitas_pct}% visitas), ainda sem venda`],
+    piorou:     ['🔻', `piorou: visitas ${e.visitas_pct}%`],
+    sem_efeito: ['⚠️', 'sem efeito: nem tráfego nem venda'],
+  }[e.veredito];
+  if (!M) return '';
+  return `<div class="rk-efeito ${e.veredito}">${M[0]} ${M[1]}</div>`;
+}
+// Últimas 3 intervenções (vêm no payload do card, sem request extra).
+function intervHtml(a) {
+  const is = a.intervencoes || [];
+  const btn = `<button class="rk-icon-btn" style="margin-left:auto" title="Registrar alteração" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-plus"></i> Registrar</button>`;
+  const head = `<div class="rk-interv-head"><span>🔧 Intervenções</span>${btn}</div>`;
+  if (!is.length) return `<div class="rk-interv">${head}<div class="rk-empty" style="border:none;font-size:10px">Nada registrado. Cada alteração registrada aqui vira uma medição antes × depois.</div></div>`;
+  return `<div class="rk-interv">${head}${is.map(n => {
+    const T = TIPOS_INTERV[n.tipo] || TIPOS_INTERV.outro;
+    return `<div class="rk-interv-item">
+      <div><b>${T.ico} ${T.label}</b> <span class="when">· ${fmtDT(n.created_at)}</span></div>
+      <div>${esc(n.texto)}</div>
+      ${efeitoHtml(n.efeito)}
+    </div>`;
+  }).join('')}</div>`;
 }
 
 function cardHtml(a) {
@@ -421,9 +550,33 @@ function cardHtml(a) {
   const notasBtn = `<button class="rk-icon-btn" title="Alterações / anotações" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-clipboard-list"></i>${a.notas_count>0?` <span class="rk-badge-n">${a.notas_count}</span>`:''}</button>`;
   const monBanner = (fase==='monitoramento') ? `<div class="rk-mon-banner">🔍 Monitorando o efeito das alterações. <button class="rk-mon-btn" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')">📋 Registrar/ver alterações${a.notas_count>0?` (${a.notas_count})`:''}</button></div>` : '';
 
+  // Fase RECUPERAÇÃO (v80): o card troca "saúde" por diagnóstico + o que falta +
+  // o que já foi tentado. A pergunta aqui é "por que não vende e o que mudar",
+  // não "como está indo".
+  const recup = fase === 'recuperacao';
+  const conv = a.conversion_rate != null ? (Number(a.conversion_rate) * 100).toFixed(1) + '%' : '—';
+  const vendasFase = a.vendas_na_fase || 0;
+  const meioRec = `
+    ${diagHtml(a.diagnostico)}
+    <div class="rk-stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="rk-stat"><div class="v">${a.visitas_dia != null ? a.visitas_dia : '—'}</div><div class="k">👁️ Visitas/dia</div></div>
+      <div class="rk-stat"><div class="v">${conv}</div><div class="k">🎯 Conversão 30d</div></div>
+      <div class="rk-stat"><div class="v" style="color:${vendasFase > 0 ? '#3fb950' : '#f85149'}">${vendasFase}</div><div class="k">🏆 Vendas na fase</div></div>
+      <div class="rk-stat"><div class="v">${(a.seo_score != null ? a.seo_score : (a.last_seo_score != null ? a.last_seo_score : '—'))}</div><div class="k">⭐ Qualidade</div></div>
+      <div class="rk-stat"><div class="v">${a.estoque_atual != null ? a.estoque_atual : '—'}</div><div class="k">📦 Estoque</div></div>
+      <div class="rk-stat"><div class="v">${a.preco_atual != null ? BRL(a.preco_atual) : '—'}</div><div class="k">💲 Preço${a.price_to_win != null ? ` · ganhar ${BRL(a.price_to_win)}` : ''}</div></div>
+    </div>
+    ${checklistHtml(a)}
+    ${intervHtml(a)}`;
+  const vereditoBlock = recup ? `<div class="rk-veredito">
+      <button class="rk-btn-ok" title="Voltou a vender — retoma o acompanhamento venda-a-venda" onclick="marcarRecuperou(${a.id})">✅ Recuperou</button>
+      <button class="rk-btn-stop" title="Sem resultado — pausa o card e guarda o registro do que foi tentado" onclick="encerrarRecuperacao(${a.id})">⏹ Encerrar</button>
+      <button class="rk-icon-btn" style="margin-left:auto" title="Agendar reavaliação no Telegram" onclick="abrirAvisoAdsModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-bell"></i> Reavaliar em…</button>
+    </div>` : '';
+
   // Saúde (ranqueado/monitoramento) ou contador 5-em-5 (rankeando).
   const isRanqueado = fase === 'ranqueado';
-  const meio = !rankeando ? `
+  const meio = recup ? meioRec : !rankeando ? `
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${a.last_highlight_pos!=null?'#'+a.last_highlight_pos:'—'}</div><div class="k">Mais Vendidos</div></div>
       <div class="rk-stat"><div class="v">${a.last_buybox===true?'🥇 Sim':(a.last_buybox===false?'Não':'—')}</div><div class="k">Buy-box</div></div>
@@ -453,7 +606,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at, fase, a.monitoramento_started_at)}</span>${(fase === 'ranqueado' && a.ranqueado_em) ? ` <span class="rk-days" style="background:#2ea043;color:#fff;border-color:#2ea043">✅ ${diasRanqueado(a.ranqueado_em)}</span>` : ''}${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
+        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a, fase)}</span>${recup ? badgeSemVenda(a) : ''}${(fase === 'ranqueado' && a.ranqueado_em) ? ` <span class="rk-days" style="background:#2ea043;color:#fff;border-color:#2ea043">✅ ${diasRanqueado(a.ranqueado_em)}</span>` : ''}${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}
@@ -480,9 +633,10 @@ function cardHtml(a) {
     <div class="rk-fase-row"><i class="fas ${F.icon}" style="color:${F.cor}"></i> Estágio: ${faseSelect(a, fase)}</div>
     ${monBanner}
     ${meio}
-    ${rankeando ? adsBlock : ''}
+    ${(rankeando || recup) ? adsBlock : ''}
     <div class="rk-timeline" id="rktl-${a.id}">${evs}</div>
     ${rankeando ? ciclosBlock : ''}
+    ${vereditoBlock}
   </div>`;
 }
 
@@ -491,10 +645,28 @@ async function mudarFase(id, fase) {
     ranqueado: 'Mudar para RANQUEADO? As vendas passam a contar em silêncio e você só é avisado quando algo piora.',
     monitoramento: 'Mudar para MONITORAMENTO? Use quando o produto já ranqueou, as vendas caíram e você fez alterações para observar o efeito. Registre o que mudou em "Alterações".',
     rankeando: 'Mudar para EM RANKEAMENTO? Volta a acompanhar venda-a-venda com alerta forçado no Telegram.',
+    recuperacao: 'Mudar para RECUPERAÇÃO? Use quando o anúncio NÃO vende. O card passa a mostrar o diagnóstico (exposição × conversão), o que dá pra melhorar e a medição de cada alteração que você registrar.',
   }[fase];
   if (msg && !confirm(msg)) { loadCards(); return; } // reload reseta o select se cancelar
   const r = await DB.patchRankingAd(id, { fase });
   if (!r) alert('Não consegui mudar o estágio. Servidor reiniciado após o deploy?');
+  loadCards();
+}
+
+// Saída da fase Recuperação — as duas decisões são MANUAIS (nada é excluído
+// automaticamente, por mais tempo que o anúncio fique parado).
+async function marcarRecuperou(id) {
+  if (!confirm('Marcar como RECUPERADO?\n\nO anúncio volta para "Em rankeamento" e passa a ser acompanhado venda-a-venda de novo.')) return;
+  const r = await DB.patchRankingAd(id, { fase: 'rankeando' });
+  if (!r) { alert('Não consegui mudar o estágio. Servidor reiniciado após o deploy?'); return; }
+  loadCards();
+}
+async function encerrarRecuperacao(id) {
+  if (!confirm('Encerrar a recuperação deste anúncio?\n\nO card é PAUSADO (para de notificar) e fica registrado o que foi tentado — nada é apagado. Para apagar de vez, use o 🗑 Remover.')) return;
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  await DB.addRankingNota(id, `⏹ Recuperação encerrada em ${hoje} — sem resultado após as intervenções registradas.`, 'outro');
+  const r = await DB.patchRankingAd(id, { active: false });
+  if (!r) { alert('Não consegui pausar o card. Servidor reiniciado após o deploy?'); return; }
   loadCards();
 }
 
@@ -632,6 +804,9 @@ function abrirNotasModal(id, titulo) {
   NOTAS_AD = id;
   document.getElementById('notasModalSub').textContent = titulo || '';
   document.getElementById('notaTexto').value = '';
+  const sel = document.getElementById('notaTipo');
+  sel.innerHTML = '<option value="">Sem tipo (anotação livre)</option>'
+    + Object.entries(TIPOS_INTERV).map(([k, t]) => `<option value="${k}">${t.ico} ${t.label}</option>`).join('');
   document.getElementById('notasModal').classList.add('open');
   carregarNotas();
 }
@@ -642,15 +817,20 @@ async function carregarNotas() {
   const d = await DB.getRankingNotas(NOTAS_AD);
   const ns = (d && d.notas) || [];
   if (!ns.length) { box.innerHTML = '<div class="rk-empty" style="border:none">Nenhuma alteração registrada ainda. Escreva acima o que você mudou.</div>'; return; }
-  box.innerHTML = ns.map(n => `<div class="rk-nota">
-    <div class="when">🕐 ${fmtDT(n.created_at)} <i class="fas fa-trash del" title="Excluir" onclick="excluirNota(${n.id})"></i></div>
-    <div class="txt">${esc(n.texto)}</div>
-  </div>`).join('');
+  box.innerHTML = ns.map(n => {
+    const T = n.tipo ? (TIPOS_INTERV[n.tipo] || TIPOS_INTERV.outro) : null;
+    return `<div class="rk-nota">
+      <div class="when">🕐 ${fmtDT(n.created_at)} ${T ? `<span class="rk-tipo-chip">${T.ico} ${T.label}</span>` : ''} <i class="fas fa-trash del" title="Excluir" onclick="excluirNota(${n.id})"></i></div>
+      <div class="txt">${esc(n.texto)}</div>
+      ${efeitoHtml(n.efeito)}
+    </div>`;
+  }).join('');
 }
 async function salvarNota() {
   const t = document.getElementById('notaTexto').value.trim();
   if (!t) return;
-  const r = await DB.addRankingNota(NOTAS_AD, t);
+  const tipo = document.getElementById('notaTipo').value || undefined;
+  const r = await DB.addRankingNota(NOTAS_AD, t, tipo);
   if (!r || !r.nota) { alert('Falha ao salvar a anotação. Servidor reiniciado após o deploy?'); return; }
   document.getElementById('notaTexto').value = '';
   carregarNotas();

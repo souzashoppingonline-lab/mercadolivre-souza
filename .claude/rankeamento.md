@@ -76,9 +76,9 @@ Cada anúncio tem `ranking_ads.fase`:
 
 **Níveis de progressão (v78):** anúncio em **RANQUEADO** exibe seu **Nível** (1 + floor(sales_count / 10)) — a cada 10 vendas acumuladas, sobe de nível (Nível 1, Nível 2, Nível 3…). Também mostra **Devoluções** (contagem de `returns` com `item_id` = ml_id do anúncio), colorida em verde (nenhuma) ou vermelho (com devoluções) — só visível em RANQUEADO.
 
-A página tem 4 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento** (ver abaixo) e **Todos os anúncios** (tabela de seleção).
+A página tem 5 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento**, **Recuperação** (v80, ver abaixo) e **Todos os anúncios** (tabela de seleção).
 
-## Três estágios + mudança manual (v76)
+## Três estágios + mudança manual (v76) — quatro a partir da v80
 
 Além de `rankeando` e `ranqueado`, existe o 3º estágio **`monitoramento`**: um produto que **já ranqueou mas caiu**, no qual foram feitas alterações e agora se acompanha o efeito. A transição entre os 3 é **manual**, por um **seletor de estágio** (`<select>`) no card (`mudarFase` → `PATCH /ads/:id {fase}`). Regras do carimbo: `→ranqueado` seta `ranqueado_em=now()`, `→rankeando` limpa, `→monitoramento` seta `monitoramento_started_at=now()` (v77 — rastreia quando entrou em monitoramento). **Contador de dias:** adapta-se por fase — "X dias em rankeamento" (fases 1/2, baseado em `started_at`), "X dias em monitoramento" (fase 3, baseado em `monitoramento_started_at`). Layout de `monitoramento` = modo saúde (igual ranqueado) + um **banner âmbar** e o log de alterações. Cores dos badges: rankeando amarelo, ranqueado verde, monitoramento âmbar (#f59e0b).
 
@@ -95,6 +95,43 @@ Anúncios e pedidos das duas plataformas vivem nas mesmas tabelas `items`/`order
 ## Avisos de Revisão de ADS (v79)
 
 Um card pode agendar **múltiplos avisos** via Telegram para revisar os ADS — agenda uma data/hora, opcionalmente com observação. Tabela `ranking_ads_alerts` grava os avisos agendados. Job `syncRankingAlerts` (1x/h no worker) verifica avisos que chegaram à hora, dispara via Telegram (forçado, independente de silêncio) e marca `notified_at`. Modal na página com datetime-picker e formulário de observação; lista os avisos agendados (com status ✅/⏰). Rotas: `GET /api/ranking/ads/:id/alerts` (listar), `POST /api/ranking/ads/:id/alerts` (agendar).
+
+## 4º estágio: Recuperação (v80) — anúncio que NÃO vende
+
+`fase = 'recuperacao'` (badge 🩺 vermelho `#f85149`, aba própria). Enquanto `monitoramento` é "já ranqueou e caiu", **recuperação é "nunca decolou / parou de vender"**: o trabalho aqui é intervir (ADS, título, palavras-chave, fotos, preço) e medir se destravou. A escala das abas vira: *rankeando* (empurrar) → *ranqueado* (defender) → *monitoramento* (caiu, observando) → *recuperação* (parado, intervindo).
+
+Carimbo `recuperacao_started_at` na entrada (mesmo padrão da v77); o contador do card lê "Xd em recuperação". **Nenhuma transição é automática** e **nada é excluído sozinho**, por mais tempo que o anúncio fique parado — igual às outras fases.
+
+**O que o card mostra (tudo derivado de dado que já tínhamos, sem nova integração):**
+
+| Bloco | Fonte |
+|---|---|
+| `Xd sem vender` + semáforo 🟡 0–7 / 🟠 8–14 / 🔴 15+ | `last_sale_at` (ou `started_at` se nunca vendeu) → `dias_sem_venda`/`semaforo`/`nunca_vendeu` |
+| **Diagnóstico** (exposição × conversão) | `last_visits` × `item_seo_score.conversion_rate` → campo `diagnostico` (thresholds em `business-rules.md`) |
+| Visitas/dia · Conversão 30d · Vendas **na fase** · Qualidade · Estoque · Preço (+ `price_to_win`) | `last_visits`/`item_visits` (média 7d), `item_seo_score`, `ranking_events` desde `recuperacao_started_at`, `catalog_competition` |
+| **Checklist "o que dá pra melhorar"** | `item_seo_score`: `pictures_count`, `has_video`, `title_length`, `description_word_count`, `missing_required_attrs`, `is_full`. Ordena ❌ → ⚠️ → ✅ |
+| **Intervenções** com efeito medido | `ranking_notes` tipadas (abaixo) |
+| Rodapé: ✅ Recuperou · ⏹ Encerrar · 🔔 Reavaliar em… | `PATCH {fase:'rankeando'}` / `PATCH {active:false}` + nota de fecho / modal de aviso (v79) |
+
+O bloco de campanha de ADS (nome/ROAS/orçamento/preço) aparece nesta fase também — é justamente onde se mexe em ADS.
+
+**Intervenções medidas (`ranking_notes.tipo` + `baseline`):** ao registrar uma alteração escolhendo um **tipo** (`titulo`, `keywords`, `fotos`, `descricao`, `preco`, `ads`, `atributos`, `frete`, `outro`), o backend **carimba um baseline** (`{visitas, conversao, score, vendas, preco, at}`). O **efeito é calculado na leitura** (atual − baseline), sem job e sempre fresco:
+
+| Veredito | Regra |
+|---|---|
+| ⏳ `medindo` | menos de 7 dias desde o registro (mostra quantos faltam) |
+| ✅ `funcionou` | houve venda depois da alteração |
+| 🔵 `parcial` | visitas +20% ou mais, ainda sem venda (tráfego melhorou, oferta não converte) |
+| 🔻 `piorou` | visitas −20% ou mais |
+| ⚠️ `sem_efeito` | nem tráfego nem venda |
+
+Nota **sem tipo** continua sendo anotação livre (não carimba baseline) — o log da v76 segue funcionando igual nas outras fases.
+
+**Telegram nesta fase:** a **1ª venda depois de entrar** sai com mensagem própria ("🎉 DESTRAVOU!", com quantos dias ficou parado e sugestão de voltar pra rankeando — evento `venda` com `detail.recuperou`); ao bater **15 dias parado** sai 1 alerta `sem_resultado` 🔴 ("Hora de decidir", com a contagem de intervenções), idempotente por entrada na fase (mesmo padrão do `esfriou`). Visitas/qualidade/preço seguem a regra da fase 1 (qualquer mudança).
+
+**Snapshot:** roda junto com `sync-ranking` (6/6h, mesma rajada de chamadas ao ML) — quem está em intervenção precisa de visitas frescas pra medir efeito. Conta no mesmo teto `MAX_ADS=30`.
+
+> Ainda **não** implementado: alerta no Telegram quando uma intervenção fecha a janela de 7 dias sem efeito (hoje isso só aparece no card). Ver `todo.md`.
 
 ## Página `pages/rankeamento.html`
 

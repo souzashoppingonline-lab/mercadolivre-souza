@@ -1694,7 +1694,12 @@ async function syncRanking() {
     return await recordSync('sync-ranking', '0 */6 * * *', async () => {
       const r = await ranking.snapshot('rankeando');
       console.log(`[sync-ranking] snapshot rankeando: ${r.checked}/${r.total} anúncios`);
-      return r;
+      // v80 — fase 'recuperacao' roda na MESMA janela (mesma cadência de 6h e uma
+      // só rajada de chamadas ao ML): quem está em intervenção precisa de visitas
+      // frescas pra medir efeito, e o alerta de decisão sai daqui.
+      const rec = await ranking.snapshot('recuperacao');
+      console.log(`[sync-ranking] snapshot recuperacao: ${rec.checked}/${rec.total} anúncios`);
+      return { ...r, recuperacao: rec };
     });
   } finally {
     isSyncingRanking = false;

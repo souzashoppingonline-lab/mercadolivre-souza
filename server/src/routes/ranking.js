@@ -5,7 +5,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const ranking = require('../ranking');
-const redis = require('../redis');
+const redis = require('../db/redis');
 
 const router = express.Router();
 const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo

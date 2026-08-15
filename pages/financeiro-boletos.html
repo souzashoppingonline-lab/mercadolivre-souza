@@ -379,7 +379,8 @@ function renderCalendario(){
     if(o.pago) dots.push(`<span style="color:#3fb950">●</span>`.repeat(Math.min(o.pago,3)));
     if(o.rec) dots.push(`<span style="color:#3b82f6">●</span>`.repeat(Math.min(o.rec,3)));
     const cur=isCur&&d===td;
-    cells+=`<div style="border:1px solid ${cur?'#3fb950':'var(--border)'};border-radius:8px;min-height:64px;padding:6px;background:${cur?'rgba(46,160,67,.06)':'var(--bg-card2)'}">
+    const temDados = o.pend || o.atr || o.pago || o.rec;
+    cells+=`<div style="border:1px solid ${cur?'#3fb950':'var(--border)'};border-radius:8px;min-height:64px;padding:6px;background:${cur?'rgba(46,160,67,.06)':'var(--bg-card2)'};cursor:${temDados?'pointer':'default'}" ${temDados?`onclick="abrirDiaModal(${y},${m},${d})"`:''}>
       <div style="font-weight:700;font-size:12px">${d}${cur?' <span style="font-size:9px;background:#111;color:#fff;border-radius:4px;padding:1px 4px">HOJE</span>':''}</div>
       <div style="font-size:9px;line-height:1.3;margin-top:2px">${dots.join(' ')}</div>
       ${o.val?`<div style="font-size:9px;color:var(--text-muted);margin-top:2px">${BRL(o.val)}</div>`:''}</div>`;
@@ -871,6 +872,50 @@ function abrirModal(title,bodyHtml,okLabel,onOk,danger){
   const ok=document.getElementById('boModalOk'); ok.textContent=okLabel; ok.dataset.prev=okLabel; ok.disabled=false; ok.className='bo-btn-ok'+(danger?' danger':'');
   modalAction=onOk; document.getElementById('boModal').style.display='flex';
 }
+
+// Modal do dia — mostra dívidas e entradas do dia selecionado no calendário
+function abrirDiaModal(ano, mes, dia){
+  const diaStr = String(ano)+'-'+String(mes).padStart(2,'0')+'-'+String(dia).padStart(2,'0');
+  const dividas = BOLETOS.filter(b => (b.date||'').startsWith(diaStr));
+  const entradas = RECS.filter(r => (r.date||'').startsWith(diaStr));
+
+  let html = '<div style="font-size:13px">';
+
+  // Seção de dívidas
+  html += '<h4 style="margin:0 0 10px;font-size:14px;font-weight:800">📄 Dívidas do dia</h4>';
+  if(dividas.length){
+    html += '<table class="bo-sum" style="width:100%;margin-bottom:16px"><tr><th style="text-align:left;font-weight:800;color:var(--text-main);border-bottom:2px solid var(--border)">Descrição</th><th style="text-align:left;font-weight:800;color:var(--text-main);border-bottom:2px solid var(--border)">Tipo</th><th style="text-align:left;font-weight:800;color:var(--text-main);border-bottom:2px solid var(--border)">Status</th><th style="text-align:right;font-weight:800;color:var(--text-main);border-bottom:2px solid var(--border)">Valor</th></tr>';
+    dividas.forEach(b=>{
+      const st = statusReal(b);
+      const cor = st==='pago'?'#3fb950':(st==='atrasado'?'#f87171':'#f59e0b');
+      html += `<tr><td style="text-align:left">${esc(b.name||'—')}</td><td style="text-align:left;font-size:11px;color:var(--text-muted)">${tipoLabel(b.tipo)}</td><td><span class="bo-chip ${st}" style="font-size:10px">${st==='pago'?'Pago':st==='atrasado'?'Atrasado':'Pendente'}</span></td><td style="text-align:right;font-weight:700;color:${cor}">${BRL(+b.value||0)}</td></tr>`;
+    });
+    const totDividas = dividas.reduce((s,b)=>s+(+b.value||0),0);
+    html += `<tr style="border-top:2px solid var(--border);font-weight:800"><td colspan="3">TOTAL DÍVIDAS</td><td style="text-align:right;color:#f87171">${BRL(totDividas)}</td></tr></table>`;
+  } else {
+    html += '<div class="bo-empty" style="margin-bottom:16px">Sem dívidas neste dia.</div>';
+  }
+
+  // Seção de entradas
+  html += '<h4 style="margin:16px 0 10px;font-size:14px;font-weight:800">💰 Entradas (recebíveis) do dia</h4>';
+  if(entradas.length){
+    html += '<table class="bo-sum" style="width:100%"><tr><th style="text-align:left;font-weight:800;color:var(--text-main);border-bottom:2px solid var(--border)">Descrição</th><th style="text-align:left;font-weight:800;color:var(--text-main);border-bottom:2px solid var(--border)">Status</th><th style="text-align:right;font-weight:800;color:var(--text-main);border-bottom:2px solid var(--border)">Valor</th></tr>';
+    entradas.forEach(r=>{
+      const st = r.recebido?'pago':'pendente';
+      const cor = st==='pago'?'#3fb950':'#f59e0b';
+      html += `<tr><td style="text-align:left">${esc(r.description||'—')}</td><td><span class="bo-chip ${st}" style="font-size:10px">${r.recebido?'Recebido':'A receber'}</span></td><td style="text-align:right;font-weight:700;color:${cor}">${BRL(+r.value||0)}</td></tr>`;
+    });
+    const totEntradas = entradas.reduce((s,r)=>s+(+r.value||0),0);
+    html += `<tr style="border-top:2px solid var(--border);font-weight:800"><td colspan="2">TOTAL ENTRADAS</td><td style="text-align:right;color:#3fb950">${BRL(totEntradas)}</td></tr></table>`;
+  } else {
+    html += '<div class="bo-empty">Sem entradas neste dia.</div>';
+  }
+
+  html += '</div>';
+
+  abrirModal(`📅 ${dia}/${mes}/${ano}`, html, 'Fechar', ()=>fecharModal(), false);
+}
+
 function fecharModal(){ document.getElementById('boModal').style.display='none'; modalAction=null; }
 function modalBusy(on,label){ const ok=document.getElementById('boModalOk'); ok.disabled=on; ok.textContent=on&&label?label:(ok.dataset.prev||'Confirmar'); }
 function eMsgErr(t){ const m=document.getElementById('eMsg'); if(m) m.innerHTML='<span style="color:var(--red)">'+t+'</span>'; }

@@ -293,6 +293,14 @@ function diasRank(startedAt, fase, monitoramentoStartedAt) {
   const label = fase === 'monitoramento' ? 'em monitoramento' : 'em rankeamento';
   return dias <= 0 ? 'hoje' : `${dias}d ${label}`;
 }
+
+// Dias em ranqueado — mostra quantos dias desde que entrou na fase RANQUEADO.
+function diasRanqueado(ranqueadoEm) {
+  if (!ranqueadoEm) return null;
+  const dias = Math.floor((Date.now() - new Date(ranqueadoEm).getTime()) / 86400000);
+  return dias <= 0 ? 'hoje' : `${dias}d ranqueado`;
+}
+
 const mktTag = m => m === 'SHOPEE'
   ? '<span style="background:#ee4d2d;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;white-space:nowrap">Shopee</span>'
   : '<span style="background:#ffe600;color:#1a1a1a;font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;white-space:nowrap">Mercado Livre</span>';
@@ -442,7 +450,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at, fase, a.monitoramento_started_at)}</span>${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
+        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a.started_at, fase, a.monitoramento_started_at)}</span>${(fase === 'ranqueado' && a.ranqueado_em) ? ` <span class="rk-days" style="background:#2ea043;color:#fff;border-color:#2ea043">✅ ${diasRanqueado(a.ranqueado_em)}</span>` : ''}${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}

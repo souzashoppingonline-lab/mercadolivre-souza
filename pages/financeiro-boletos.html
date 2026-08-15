@@ -214,11 +214,11 @@ const EMPRESAS=['UNIFULL','TOP MIX','R SOUZA','SHOPEE'];
 const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
 const fmtDate=s=>{ if(!s) return '—'; const p=String(s).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s; };
 const hojeISO=()=>new Date().toISOString().slice(0,10);
-function tipoLabel(t){ return {boleto:'Boleto',manual:'Imposto',cartao:'Cartão',fatura_ml:'Fatura ML',flex:'Flex',pessoal:'Pessoal',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'}[t]||t||'—'; }
+function tipoLabel(t){ return {boleto:'Boleto',manual:'Imposto',cartao:'Cartão',fatura_ml:'Fatura ML',flex:'Flex',pessoal:'Pessoal',folha_pagamento:'Folha de Pagamento',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'}[t]||t||'—'; }
 function statusReal(b){ if(b.status==='pago') return 'pago'; if((b.date||'')< hojeISO()) return 'atrasado'; return 'pendente'; }
 
 let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], PARCELAS=[], CONTAS=[], CONTAEMP=[], fTipo='todos', listStatus='todos';
-const TIPOS=[['todos','Todos'],['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
+const TIPOS=[['todos','Todos'],['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['folha_pagamento','Folha de Pagamento'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
 const nfDe=b=>b.numero_nf||b.nf||b.nota_fiscal||'';
 function showStatus(t,err){ const el=document.getElementById('boStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
@@ -485,7 +485,7 @@ function renderCartoes(){
 
 // ── Formulário: tipo/status segmentado, empresa chips, bloco de cartão ──────
 let formTipo='boleto', formStatus='pendente';
-const FORM_TIPOS=[['boleto','Boleto','#3b82f6'],['cartao','Cartão','#ec4899'],['manual','Imposto','#22c55e'],['pessoal','Pessoal','#a78bfa'],['fatura_ml','Fatura ML','#eab308'],['flex','Flex','#06b6d4'],['custo_fixo','Custo Fixo','#f97316'],['custo_variavel','Custo Variável','#14b8a6']];
+const FORM_TIPOS=[['boleto','Boleto','#3b82f6'],['cartao','Cartão','#ec4899'],['manual','Imposto','#22c55e'],['pessoal','Pessoal','#a78bfa'],['fatura_ml','Fatura ML','#eab308'],['flex','Flex','#06b6d4'],['folha_pagamento','Folha de Pagamento','#db2777'],['custo_fixo','Custo Fixo','#f97316'],['custo_variavel','Custo Variável','#14b8a6']];
 const TIPO_COR={}; FORM_TIPOS.forEach(([k,,c])=>TIPO_COR[k]=c);
 function fMsg(t,err){ const el=document.getElementById('boFormMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
 function renderFormControls(){

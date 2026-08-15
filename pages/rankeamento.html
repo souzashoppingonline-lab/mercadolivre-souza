@@ -33,7 +33,9 @@
     .rk-days { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-card2); color: var(--text-main); font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--border); }
     .rk-card-title { font-weight: 700; font-size: 12.5px; margin-top: 4px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .rk-card-store { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
-    .rk-card-actions { margin-left: auto; display: flex; gap: 5px; }
+    .rk-card-actions { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+    .rk-btn-group { display: flex; gap: 2px; }
+    .rk-btn-sep { width: 1px; background: var(--border); height: 20px; margin: 0 3px; }
     .rk-icon-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-muted); border-radius: 7px; padding: 4px 7px; cursor: pointer; font-size: 11px; }
     .rk-icon-btn:hover { color: var(--text-main); border-color: var(--text-muted); }
     .rk-icon-btn.danger:hover { color: #fff; background: var(--red); border-color: var(--red); }
@@ -456,12 +458,24 @@ function cardHtml(a) {
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}
       </div>
       <div class="rk-card-actions">
-        <button class="rk-icon-btn" title="Histórico de preço" onclick="abrirPrecoModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-chart-line"></i></button>
-        <button class="rk-icon-btn" title="Vincular anúncio de catálogo/tradicional (soma as vendas neste card)" onclick="abrirVincularModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-link"></i></button>
-        ${notasBtn}
-        <button class="rk-icon-btn" title="Agendar aviso de revisão de ADS" onclick="abrirAvisoAdsModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-bell"></i></button>
-        ${rankeando ? `<button class="rk-icon-btn" title="Encerrar ciclo ${a.ciclo||1} e começar o ciclo ${(a.ciclo||1)+1}" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i></button>` : ''}
-        <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
+        <div class="rk-btn-group">
+          ${notasBtn}
+          <button class="rk-icon-btn" title="Histórico de preço" onclick="abrirPrecoModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-chart-line"></i></button>
+        </div>
+        <div class="rk-btn-sep"></div>
+        <div class="rk-btn-group">
+          <button class="rk-icon-btn" title="Agendar aviso de revisão de ADS" onclick="abrirAvisoAdsModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-bell"></i></button>
+        </div>
+        <div class="rk-btn-sep"></div>
+        <div class="rk-btn-group">
+          <button class="rk-icon-btn" title="Vincular anúncio de catálogo/tradicional (soma as vendas neste card)" onclick="abrirVincularModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-link"></i></button>
+          ${rankeando ? `<button class="rk-icon-btn" title="Encerrar ciclo ${a.ciclo||1} e começar o ciclo ${(a.ciclo||1)+1}" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i></button>` : ''}
+        </div>
+        <div class="rk-btn-sep"></div>
+        <div class="rk-btn-group">
+          <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
+        </div>
+        <div class="rk-btn-sep"></div>
         <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i></button>
       </div>
     </div>

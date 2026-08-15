@@ -35,8 +35,7 @@ router.get('/ads', async (req, res) => {
                  FROM ranking_ad_links l LEFT JOIN items li ON li.ml_id = l.ml_id
                 WHERE l.ranking_ad_id = r.id) AS links,
               (SELECT COUNT(*)::int FROM ranking_notes nt WHERE nt.ranking_ad_id = r.id) AS notas_count,
-              -- Contagem de devoluções do anúncio (só relevante em RANQUEADO)
-              (SELECT COUNT(*)::int FROM returns ret WHERE ret.item_id = r.ml_id) AS devolucoes_count
+              0 AS devolucoes_count
          FROM ranking_ads r
          LEFT JOIN items i ON i.ml_id = r.ml_id
          LEFT JOIN marketplaces m ON m.id = i.marketplace_id

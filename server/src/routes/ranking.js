@@ -34,7 +34,9 @@ router.get('/ads', async (req, res) => {
               (SELECT COALESCE(json_agg(json_build_object('id', l.id, 'ml_id', l.ml_id, 'tipo', l.tipo, 'title', li.title) ORDER BY l.id), '[]'::json)
                  FROM ranking_ad_links l LEFT JOIN items li ON li.ml_id = l.ml_id
                 WHERE l.ranking_ad_id = r.id) AS links,
-              (SELECT COUNT(*)::int FROM ranking_notes nt WHERE nt.ranking_ad_id = r.id) AS notas_count
+              (SELECT COUNT(*)::int FROM ranking_notes nt WHERE nt.ranking_ad_id = r.id) AS notas_count,
+              -- Contagem de devoluções do anúncio (só relevante em RANQUEADO)
+              (SELECT COUNT(*)::int FROM returns ret WHERE ret.item_id = r.ml_id) AS devolucoes_count
          FROM ranking_ads r
          LEFT JOIN items i ON i.ml_id = r.ml_id
          LEFT JOIN marketplaces m ON m.id = i.marketplace_id
@@ -47,13 +49,15 @@ router.get('/ads', async (req, res) => {
     const ads = rows.map((r) => {
       const dias = r.first_sale_at ? Math.max(1, (now - new Date(r.first_sale_at).getTime()) / 86400000) : null;
       const diasRank = r.started_at ? (now - new Date(r.started_at).getTime()) / 86400000 : 0;
+      // Nível: 1 + (sales_count / 10), mostrado em RANQUEADO
+      const nivel = 1 + Math.floor((r.sales_count || 0) / 10);
       // Sugestão de "pronto pra ranqueado" (só fase 1): bateu qualquer critério
       // objetivo que já capturamos. Quem confirma é o usuário (transição manual).
       const sugerir = r.fase === 'rankeando' && (
         r.last_highlight_pos != null || r.last_buybox === true ||
         r.sales_count >= 10 || diasRank >= 15
       );
-      return { ...r, ritmo_dia: dias ? Number((r.sales_count / dias).toFixed(1)) : null, dias: dias ? Number(dias.toFixed(1)) : null, sugerir_ranqueado: sugerir };
+      return { ...r, nivel, ritmo_dia: dias ? Number((r.sales_count / dias).toFixed(1)) : null, dias: dias ? Number(dias.toFixed(1)) : null, sugerir_ranqueado: sugerir };
     });
     res.json({ ads });
   } catch (e) { res.status(500).json({ error: e.message }); }

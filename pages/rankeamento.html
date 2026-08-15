@@ -385,6 +385,7 @@ function cardHtml(a) {
   const monBanner = (fase==='monitoramento') ? `<div class="rk-mon-banner">🔍 Monitorando o efeito das alterações. <button class="rk-mon-btn" onclick="abrirNotasModal(${a.id}, '${esc(a.title || a.ml_id)}')">📋 Registrar/ver alterações${a.notas_count>0?` (${a.notas_count})`:''}</button></div>` : '';
 
   // Saúde (ranqueado/monitoramento) ou contador 5-em-5 (rankeando).
+  const isRanqueado = fase === 'ranqueado';
   const meio = !rankeando ? `
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${a.last_highlight_pos!=null?'#'+a.last_highlight_pos:'—'}</div><div class="k">Mais Vendidos</div></div>
@@ -393,6 +394,8 @@ function cardHtml(a) {
       <div class="rk-stat"><div class="v">${a.last_seo_score!=null?a.last_seo_score:'—'}</div><div class="k">Qualidade</div></div>
       <div class="rk-stat"><div class="v">${a.estoque_atual!=null?a.estoque_atual:'—'}</div><div class="k">Estoque</div></div>
       <div class="rk-stat"><div class="v">${a.sales_count}</div><div class="k">Vendas</div></div>
+      ${isRanqueado?`<div class="rk-stat"><div class="v" style="color:#3b82f6;font-weight:900">Nível ${a.nivel||1}</div><div class="k">⭐ Progressão</div></div>`:''}
+      ${isRanqueado?`<div class="rk-stat"><div class="v" style="color:${(a.devolucoes_count||0)>0?'#f87171':'#3fb950'}">${a.devolucoes_count||0}</div><div class="k">📦 Devoluções</div></div>`:''}
     </div>` : `
     <div class="rk-counter">
       <div class="rk-counter-top">

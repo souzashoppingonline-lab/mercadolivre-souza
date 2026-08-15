@@ -1,23 +1,14 @@
--- v78: Sistema de níveis e rastreamento de devoluções para anúncios em RANQUEADO
--- Nível = 1 + (sales_count / 10), mostrando progressão do anúncio ranqueado
--- ranking_return_issues rastreia devoluções/reclamações associadas ao anúncio
+-- v78: Nível de progressão do anúncio em RANQUEADO.
+-- Nível = 1 + FLOOR(sales_count / 10) — calculado no backend (routes/ranking.js);
+-- a coluna existe para uso futuro/consulta direta.
+--
+-- REESCRITA (v80): o conteúdo original deste arquivo estava na notação abreviada
+-- da documentação (`id SERIAL PK`, `ranking_ad_id INT NOT NULL FK ...`), que NÃO é
+-- SQL válido. Como o migrate.js envia o arquivo inteiro em um único pool.query, o
+-- erro de parse rejeitava o batch todo e NADA da v78 era aplicado — nem esta coluna.
+-- A tabela `ranking_return_issues` que existia aqui foi removida de propósito:
+-- nenhum código a lê ou escreve (o card mostra devoluções como 0 fixo), então
+-- criá-la seria schema morto. Se um dia for necessária, criar em migration nova
+-- com SQL válido. Ver known-bugs.md.
 
-ALTER TABLE ranking_ads ADD COLUMN nivel INT DEFAULT 1;
--- Nível é calculado no backend: 1 + FLOOR(sales_count / 10)
-
--- Tabela de devoluções/reclamações do anúncio (cache para não varrer returns toda vez)
-CREATE TABLE IF NOT EXISTS ranking_return_issues (
-  id SERIAL PK,
-  ranking_ad_id INT NOT NULL FK ranking_ads ON DELETE CASCADE,
-  return_id BIGINT,  -- reference to returns.id (se houver)
-  item_id TEXT,
-  buyer_nickname TEXT,
-  reason TEXT,
-  status TEXT,
-  amount NUMERIC,
-  created_at TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ
-);
-
-CREATE INDEX IF NOT EXISTS idx_ranking_return_issues_ad
-  ON ranking_return_issues(ranking_ad_id);
+ALTER TABLE ranking_ads ADD COLUMN IF NOT EXISTS nivel INT DEFAULT 1;

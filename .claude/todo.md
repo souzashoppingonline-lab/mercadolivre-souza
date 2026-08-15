@@ -109,7 +109,7 @@ Fase de expansão da Shopee, totalmente isolada do Mercado Livre (arquivos/rotas
 
 - [ ] Alerta no Telegram quando uma intervenção fecha a janela de 7 dias **sem efeito** (hoje o veredito `sem_efeito`/`parcial` só aparece no card). Encaixa no snapshot de 6h, com idempotência por `ranking_notes.id` (mesmo padrão do `esfriou`/`sem_resultado`).
 - [ ] Calibrar os thresholds do diagnóstico depois de algumas semanas de uso (10 visitas/dia, 1% de conversão — hoje valores fixos em `routes/ranking.js`, documentados em `business-rules.md`). Avaliar torná-los por anúncio/categoria em vez de globais.
-- [ ] Corrigir `migrate-v78.sql` (SQL inválido, nunca aplicada) e `migrate-v77.sql` (não idempotente) — ver `known-bugs.md`.
+- [x] ~~Corrigir `migrate-v78.sql` (SQL inválido) e `migrate-v77.sql` (não idempotente)~~ — feito na v80; `migrate.js` roda limpo (76 ok, 0 erros) e é idempotente.
 
 ## Manutenção da documentação
 

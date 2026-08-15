@@ -341,21 +341,21 @@ const TIPOS_INTERV = {
 };
 // Dias em rankeamento/monitoramento — calcula a partir do timestamp apropriado por fase.
 // Quando fase = MONITORAMENTO, usa monitoramento_started_at; caso contrário, usa started_at.
+// Contador de dias do card — cada fase conta a partir do SEU marco de entrada,
+// não do started_at original: quem já ranqueou quer saber "há quantos dias está
+// ranqueado", não há quantos dias entrou em rankeamento.
 function diasRank(a, fase) {
-  const ts = (fase === 'monitoramento' && a.monitoramento_started_at) ? a.monitoramento_started_at
-           : (fase === 'recuperacao' && a.recuperacao_started_at) ? a.recuperacao_started_at
-           : a.started_at;
-  if (!ts) return 'hoje';
+  const MARCO = { ranqueado: a.ranqueado_em, monitoramento: a.monitoramento_started_at, recuperacao: a.recuperacao_started_at };
+  const LABEL = { ranqueado: 'ranqueado', monitoramento: 'em monitoramento', recuperacao: 'em recuperação' };
+  const label = LABEL[fase] || 'em rankeamento';
+  // Fase com marco próprio conta a partir DELE. Sem o carimbo (card antigo,
+  // movido antes da migration que criou a coluna) mostramos só o rótulo — dizer
+  // "40d ranqueado" usando o started_at seria número errado.
+  const ts = Object.prototype.hasOwnProperty.call(MARCO, fase) ? MARCO[fase] : a.started_at;
+  if (!ts) return label;
   const dias = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000);
-  const label = { monitoramento: 'em monitoramento', recuperacao: 'em recuperação' }[fase] || 'em rankeamento';
-  return dias <= 0 ? 'hoje' : `${dias}d ${label}`;
-}
-
-// Dias em ranqueado — mostra quantos dias desde que entrou na fase RANQUEADO.
-function diasRanqueado(ranqueadoEm) {
-  if (!ranqueadoEm) return null;
-  const dias = Math.floor((Date.now() - new Date(ranqueadoEm).getTime()) / 86400000);
-  return dias <= 0 ? 'hoje' : `${dias}d ranqueado`;
+  if (dias > 0) return `${dias}d ${label}`;
+  return fase === 'ranqueado' ? 'ranqueado hoje' : 'hoje';
 }
 
 const mktTag = m => m === 'SHOPEE'
@@ -562,7 +562,7 @@ function cardHtml(a) {
       <div class="rk-stat"><div class="v">${a.visitas_dia != null ? a.visitas_dia : '—'}</div><div class="k">👁️ Visitas/dia</div></div>
       <div class="rk-stat"><div class="v">${conv}</div><div class="k">🎯 Conversão 30d</div></div>
       <div class="rk-stat"><div class="v" style="color:${vendasFase > 0 ? '#3fb950' : '#f85149'}">${vendasFase}</div><div class="k">🏆 Vendas na fase</div></div>
-      <div class="rk-stat"><div class="v">${(a.seo_score != null ? a.seo_score : (a.last_seo_score != null ? a.last_seo_score : '—'))}</div><div class="k">⭐ Qualidade</div></div>
+      <div class="rk-stat"><div class="v">${a.qualidade != null ? a.qualidade : '—'}</div><div class="k">⭐ Qualidade</div></div>
       <div class="rk-stat"><div class="v">${a.estoque_atual != null ? a.estoque_atual : '—'}</div><div class="k">📦 Estoque</div></div>
       <div class="rk-stat"><div class="v">${a.preco_atual != null ? BRL(a.preco_atual) : '—'}</div><div class="k">💲 Preço${a.price_to_win != null ? ` · ganhar ${BRL(a.price_to_win)}` : ''}</div></div>
     </div>
@@ -579,9 +579,9 @@ function cardHtml(a) {
   const meio = recup ? meioRec : !rankeando ? `
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${a.last_highlight_pos!=null?'#'+a.last_highlight_pos:'—'}</div><div class="k">Mais Vendidos</div></div>
-      <div class="rk-stat"><div class="v">${a.last_buybox===true?'🥇 Sim':(a.last_buybox===false?'Não':'—')}</div><div class="k">Buy-box</div></div>
-      <div class="rk-stat"><div class="v">${a.last_visits!=null?a.last_visits:'—'}</div><div class="k">Visitas/dia</div></div>
-      <div class="rk-stat"><div class="v">${a.last_seo_score!=null?a.last_seo_score:'—'}</div><div class="k">Qualidade</div></div>
+      <div class="rk-stat"><div class="v">${a.buybox===true?'🥇 Sim':(a.buybox===false?'Não':'—')}</div><div class="k">Buy-box</div></div>
+      <div class="rk-stat"><div class="v">${a.visitas_dia!=null?a.visitas_dia:'—'}</div><div class="k">Visitas/dia</div></div>
+      <div class="rk-stat"><div class="v">${a.qualidade!=null?a.qualidade:'—'}</div><div class="k">Qualidade</div></div>
       <div class="rk-stat"><div class="v">${a.estoque_atual!=null?a.estoque_atual:'—'}</div><div class="k">Estoque</div></div>
       <div class="rk-stat"><div class="v">${a.sales_count}</div><div class="k">Vendas</div></div>
       ${isRanqueado?`<div class="rk-stat"><div class="v" style="color:#3b82f6;font-weight:900">Nível ${a.nivel||1}</div><div class="k">⭐ Progressão</div></div>`:''}
@@ -597,7 +597,7 @@ function cardHtml(a) {
     </div>
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${BRL(a.faturamento)}</div><div class="k">Faturamento</div></div>
-      <div class="rk-stat"><div class="v">${a.last_visits!=null?a.last_visits:'—'}</div><div class="k">Visitas</div></div>
+      <div class="rk-stat"><div class="v">${a.visitas_dia!=null?a.visitas_dia:'—'}</div><div class="k">Visitas</div></div>
       <div class="rk-stat"><div class="v">${a.estoque_atual!=null?a.estoque_atual:'—'}</div><div class="k">Estoque</div></div>
       <div class="rk-stat"><div class="v">${a.preco_atual!=null?BRL(a.preco_atual):'—'}</div><div class="k">Preço</div></div>
     </div>`;
@@ -606,7 +606,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days">🗓️ ${diasRank(a, fase)}</span>${recup ? badgeSemVenda(a) : ''}${(fase === 'ranqueado' && a.ranqueado_em) ? ` <span class="rk-days" style="background:#2ea043;color:#fff;border-color:#2ea043">✅ ${diasRanqueado(a.ranqueado_em)}</span>` : ''}${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
+        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days"${isRanqueado ? ' style="background:#2ea043;color:#fff;border-color:#2ea043"' : ''}>${isRanqueado ? '✅' : '🗓️'} ${diasRank(a, fase)}</span>${recup ? badgeSemVenda(a) : ''}${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}

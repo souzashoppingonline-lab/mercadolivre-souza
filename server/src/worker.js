@@ -1694,12 +1694,16 @@ async function syncRanking() {
     return await recordSync('sync-ranking', '0 */6 * * *', async () => {
       const r = await ranking.snapshot('rankeando');
       console.log(`[sync-ranking] snapshot rankeando: ${r.checked}/${r.total} anúncios`);
-      // v80 — fase 'recuperacao' roda na MESMA janela (mesma cadência de 6h e uma
-      // só rajada de chamadas ao ML): quem está em intervenção precisa de visitas
-      // frescas pra medir efeito, e o alerta de decisão sai daqui.
+      // v80 — 'recuperacao' e 'monitoramento' rodam na MESMA janela (mesma
+      // cadência de 6h, uma só rajada de chamadas ao ML). As duas são fases de
+      // intervenção: precisam de visitas/qualidade frescas pra medir o efeito
+      // das alterações. Antes da v80 'monitoramento' não era varrida por job
+      // nenhum, então o card ficava com visitas/qualidade vazias pra sempre.
       const rec = await ranking.snapshot('recuperacao');
       console.log(`[sync-ranking] snapshot recuperacao: ${rec.checked}/${rec.total} anúncios`);
-      return { ...r, recuperacao: rec };
+      const mon = await ranking.snapshot('monitoramento');
+      console.log(`[sync-ranking] snapshot monitoramento: ${mon.checked}/${mon.total} anúncios`);
+      return { ...r, recuperacao: rec, monitoramento: mon };
     });
   } finally {
     isSyncingRanking = false;

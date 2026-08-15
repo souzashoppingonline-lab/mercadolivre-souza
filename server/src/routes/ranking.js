@@ -87,7 +87,7 @@ router.get('/ads', async (req, res) => {
               sq.conversion_rate, sq.score AS seo_score, sq.visits_30d, sq.sales_30d,
               sq.pictures_count, sq.has_video, sq.title_length, sq.description_word_count,
               sq.required_attrs_missing, sq.missing_required_attrs, sq.is_full,
-              cc.price_to_win, cc.status AS buybox_status,
+              cc.price_to_win, cc.status AS buybox_status, cc.winner_item_id,
               (SELECT ROUND(AVG(v.visits)) FROM item_visits v
                  WHERE v.item_id = r.ml_id AND v.date >= CURRENT_DATE - 7) AS visitas_media_7d,
               -- vendas DESDE que entrou em recuperação (≠ sales_count cumulativo)
@@ -132,8 +132,15 @@ router.get('/ads', async (req, res) => {
       const diasSemVenda = refSemVenda ? Math.floor((now - new Date(refSemVenda).getTime()) / 86400000) : null;
       // Semáforo por tempo parado — só marca, nunca age sozinho (a exclusão é manual).
       const semaforo = diasSemVenda == null ? null : (diasSemVenda >= 15 ? 'decisao' : (diasSemVenda >= 8 ? 'atencao' : 'observando'));
-      // Visitas/dia: o snapshot é mais fresco; a média de 7d é o retrato estável.
+      // Visitas/qualidade/buy-box com FALLBACK: os campos `last_*` só existem
+      // depois que o snapshot roda naquela fase, então um card recém-movido (ou
+      // de fase que não era varrida) mostrava "—". Aqui caímos para o que já
+      // temos no banco: média de visitas de 7 dias (item_visits, populado pelo
+      // sync geral), score de item_seo_score e o vencedor do buy-box de
+      // catalog_competition. O snapshot continua sendo a fonte mais fresca.
       const visitasDia = r.last_visits != null ? Number(r.last_visits) : (r.visitas_media_7d != null ? Number(r.visitas_media_7d) : null);
+      const qualidade = r.last_seo_score != null ? Number(r.last_seo_score) : (r.seo_score != null ? Number(r.seo_score) : null);
+      const buybox = r.last_buybox != null ? r.last_buybox : (r.winner_item_id ? String(r.winner_item_id) === String(r.ml_id) : null);
       const conversao = r.conversion_rate != null ? Number(r.conversion_rate) : null;
       const diagnostico = r.fase === 'recuperacao' ? diagnosticar({ visitasDia, conversao }) : null;
       // Efeito de cada intervenção medido contra os números de agora deste card.
@@ -146,7 +153,7 @@ router.get('/ads', async (req, res) => {
         dias: dias ? Number(dias.toFixed(1)) : null,
         sugerir_ranqueado: sugerir,
         dias_sem_venda: diasSemVenda, semaforo, visitas_dia: visitasDia, diagnostico, intervencoes,
-        nunca_vendeu: !r.last_sale_at,
+        qualidade, buybox, nunca_vendeu: !r.last_sale_at,
       };
     });
     res.json({ ads });

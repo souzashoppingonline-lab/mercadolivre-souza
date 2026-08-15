@@ -92,9 +92,13 @@ Anúncios e pedidos das duas plataformas vivem nas mesmas tabelas `items`/`order
 - **Faturamento do marco**: somado dos próprios `ranking_events` (campo `detail.valor`), não de `orders.item_id` — a Shopee não popula `item_id` em `orders`, então essa era a única forma agnóstica.
 - **Limitações Shopee (hoje)**: o snapshot `sync-ranking` (visitas/qualidade/buy-box/destaque) roda **só para anúncios ML** (usa a API do ML); e preço/estoque/status **não** notificam para Shopee (o hook `onItemChange` está só no `handleItem` do pipeline ML). Shopee recebe venda/marco em tempo real; o resto é gap conhecido.
 
+## Avisos de Revisão de ADS (v79)
+
+Um card pode agendar **múltiplos avisos** via Telegram para revisar os ADS — agenda uma data/hora, opcionalmente com observação. Tabela `ranking_ads_alerts` grava os avisos agendados. Job `syncRankingAlerts` (1x/h no worker) verifica avisos que chegaram à hora, dispara via Telegram (forçado, independente de silêncio) e marca `notified_at`. Modal na página com datetime-picker e formulário de observação; lista os avisos agendados (com status ✅/⏰). Rotas: `GET /api/ranking/ads/:id/alerts` (listar), `POST /api/ranking/ads/:id/alerts` (agendar).
+
 ## Página `pages/rankeamento.html`
 
-Duas partes: (1) **cards dos anúncios em rankeamento** no topo — badge "Anúncio em rankeamento", contador com barra de progresso 5-em-5, stats (faturamento/visitas/estoque/preço) e **timeline venda-a-venda ao vivo** (WS `ranking_event` insere no topo na hora); botões pausar/remover. (2) **tabela com todos os anúncios** (busca por título/MLB) com botão "Acompanhar" que promove o anúncio a card. Métodos em `js/db.js`: `getRankingAds`, `buscarRankingItems`, `addRankingAd`, `patchRankingAd`, `removeRankingAd`, `getRankingEventos`.
+Duas partes: (1) **cards dos anúncios em rankeamento** no topo — badge "Anúncio em rankeamento", contador com barra de progresso 5-em-5, stats (faturamento/visitas/estoque/preço) e **timeline venda-a-venda ao vivo** (WS `ranking_event` insere no topo na hora); botões pausar/remover + **🔔 Aviso ADS** (agendar lembrete). (2) **tabela com todos os anúncios** (busca por título/MLB) com botão "Acompanhar" que promove o anúncio a card. Métodos em `js/db.js`: `getRankingAds`, `buscarRankingItems`, `addRankingAd`, `patchRankingAd`, `removeRankingAd`, `getRankingEventos`, `getRankingAlerts`, `agendarRankingAlert`.
 
 **Filtro por empresa/loja (ML):** select global `rkLoja` (topo, ao lado das abas) populado por `GET /api/lojas` (`DB.getLojas`) — filtra os cards (rankeando/ranqueado) **e** a tabela por `store_id`. As rotas `GET /api/ranking/ads?...&store_id` e `GET /api/ranking/buscar?...&store_id` aceitam o filtro (`r.store_id`/`i.store_id`). Cada card já mostra a loja (`store_nickname`).
 

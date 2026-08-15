@@ -271,6 +271,8 @@ const DB = {
   async getRankingNotas(id)          { return this._get(`/ranking/ads/${id}/notas`); },
   async addRankingNota(id, texto)    { return this._post(`/ranking/ads/${id}/notas`, { texto }); },
   async delRankingNota(id, notaId)   { return this._delete(`/ranking/ads/${id}/notas/${notaId}`); },
+  async getRankingAlerts(id)         { return this._get(`/ranking/ads/${id}/alerts`); },
+  async agendarRankingAlert(id, scheduled_at, message) { return this._post(`/ranking/ads/${id}/alerts`, { scheduled_at, message }); },
 
   // ── Inteligência de Negócio (BI) — dados operacionais (Postgres principal) ──
   async getBiPainel(period = 30, store_id = '') { return this._get('/bi/painel', { period, store_id }); },

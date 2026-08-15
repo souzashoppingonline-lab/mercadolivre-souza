@@ -310,4 +310,35 @@ router.get('/ads/:id/ciclos', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Agendar um aviso de revisão de ADS para o anúncio.
+router.post('/ads/:id/alerts', async (req, res) => {
+  try {
+    const { scheduled_at, message } = req.body;
+    if (!scheduled_at) return res.status(400).json({ error: 'scheduled_at obrigatório' });
+    const { rows } = await pool.query(
+      `INSERT INTO ranking_ads_alerts (ranking_ad_id, scheduled_at, message, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (ranking_ad_id, scheduled_at) DO UPDATE
+           SET message = EXCLUDED.message, updated_at = NOW()
+         RETURNING id, ranking_ad_id, scheduled_at, message, notified_at, created_at`,
+      [req.params.id, scheduled_at, message || null]
+    );
+    redis.del('ranking:alerts:*'); // invalida cache
+    res.json({ alert: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Listar alertas agendados para o anúncio.
+router.get('/ads/:id/alerts', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, ranking_ad_id, scheduled_at, message, notified_at, created_at
+         FROM ranking_ads_alerts WHERE ranking_ad_id = $1
+         ORDER BY scheduled_at DESC`,
+      [req.params.id]
+    );
+    res.json({ alerts: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

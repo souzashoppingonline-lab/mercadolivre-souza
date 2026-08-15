@@ -585,7 +585,7 @@ staff_user_name TEXT, detail TEXT, file_path TEXT, created_at TIMESTAMPTZ
 ```
 Registrada por `logEmbalagemError` no `POST /api/embalagem/finalizar` sempre que salvar o vídeo falha. Lida pela aba "Erros" (`GET /embalagem/erros`).
 
-### `ranking_ads` / `ranking_events` / `ranking_ciclos` / `ranking_ad_links` — v69/v72/v73/v74/v75/v76/v77/v78: Rankeamento de anúncios (ver `rankeamento.md`)
+### `ranking_ads` / `ranking_events` / `ranking_ciclos` / `ranking_ad_links` / `ranking_ads_alerts` — v69/v72/v73/v74/v75/v76/v77/v78/v79: Rankeamento de anúncios (ver `rankeamento.md`)
 ```
 ranking_ads:
 id SERIAL PK, ml_id TEXT UNIQUE FK items(ml_id) ON DELETE CASCADE, store_id BIGINT FK stores
@@ -634,5 +634,14 @@ preco_anterior, preco_atual NUMERIC                -- v73: snapshot da transiç�
 sales_count INT, faturamento NUMERIC               -- vendas e faturamento ACUMULADOS no momento da troca (soma dos ranking_events)
 iniciado_em, encerrado_em, created_at TIMESTAMPTZ
 -- idx_ranking_ciclos_ad (ranking_ad_id, ciclo DESC)
+
+ranking_ads_alerts:  -- v79: avisos agendados de revisão de ADS
+id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE
+scheduled_at TIMESTAMPTZ NOT NULL                 -- quando disparar o alerta
+message TEXT                                       -- observação opcional do usuário
+notified_at TIMESTAMPTZ                           -- NULL até o job sincronizar e enviar via Telegram
+created_at, updated_at TIMESTAMPTZ
+-- UQ (ranking_ad_id, scheduled_at) — impede duplicatas
+-- idx_ranking_alerts_scheduled (scheduled_at, notified_at) WHERE notified_at IS NULL
 ```
 Preenchidas por `server/src/ranking.js` (hooks no `handleOrder`/`handleItem` + job `sync-ranking`). Lidas por `/api/ranking/*`.

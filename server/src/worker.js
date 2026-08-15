@@ -1720,6 +1720,54 @@ async function syncRankingRanqueado() {
   }
 }
 
+// Dispara alertas agendados de revisão de ADS de anúncios em rankeamento.
+// Verifica a cada hora e envia via Telegram quando a hora chegar.
+let isSyncingRankingAlerts = false;
+async function syncRankingAlerts() {
+  if (isSyncingRankingAlerts) return;
+  isSyncingRankingAlerts = true;
+  try {
+    const { rows: alerts } = await pool.query(
+      `SELECT ra.id, ra.ranking_ad_id, ra.scheduled_at, ra.message,
+              ad.ml_id, ad.title, ad.store_id, st.nickname AS store_nickname
+       FROM ranking_ads_alerts ra
+       JOIN ranking_ads ad ON ad.id = ra.ranking_ad_id
+       JOIN stores st ON st.id = ad.store_id
+       WHERE ra.notified_at IS NULL
+         AND ra.scheduled_at <= NOW()
+       ORDER BY ra.scheduled_at ASC
+       LIMIT 100`
+    );
+
+    let count = 0;
+    for (const alrt of alerts) {
+      try {
+        const title = esc(alrt.title || alrt.ml_id);
+        const store = esc(alrt.store_nickname || '');
+        const msg = `🔔 <b>Revisar ADS do anúncio</b>\n\n<b>${title}</b>\n<code>${alrt.ml_id}</code>\n📦 ${store}${alrt.message ? '\n\n' + esc(alrt.message) : ''}`;
+
+        // Dispara via Telegram (força, independente de silêncio/throttle).
+        await tgNotifyForce('tg_rankeamento', msg);
+
+        // Marca como notificado
+        await pool.query(
+          `UPDATE ranking_ads_alerts SET notified_at = NOW() WHERE id = $1`,
+          [alrt.id]
+        );
+        count++;
+      } catch (e) {
+        console.error(`[sync-ranking-alerts] erro ao notificar alerta ${alrt.id}:`, e.message);
+      }
+    }
+
+    if (count > 0) console.log(`[sync-ranking-alerts] ${count} alerta(s) disparado(s)`);
+  } catch (e) {
+    console.error('[sync-ranking-alerts] erro:', e.message);
+  } finally {
+    isSyncingRankingAlerts = false;
+  }
+}
+
 // Reconsulta em segundo plano o status das devoluções PENDENTES (claim status
 // opened/analysis) — 1 GET por devolução, espaçado no tempo pra respeitar o
 // rate limit apertado da API de claims do ML. Disparado manualmente pelo botão
@@ -3003,6 +3051,7 @@ scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
 scheduleEvery(4,   syncTopVendas, 'top-vendas');
 scheduleEvery(6,   syncRanking, 'sync-ranking'); // fase 1 (rankeando) — qualquer mudança, a cada 6h
 scheduleAt(5, 15,  syncRankingRanqueado, 'sync-ranking-ranqueado'); // fase 2 (ranqueado) — só regressão, 1x/dia
+scheduleEvery(1,   syncRankingAlerts, 'sync-ranking-alerts'); // alertas de revisão de ADS — a cada 1h
 
 // Notion Tarefas — 2ª feira 08:00 (usa setTimeout próprio, não scheduleAt)
 setTimeout(() => syncNotionTarefas().catch(e => console.error('[notion] boot erro:', e.message)), (() => {

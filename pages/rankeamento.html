@@ -249,6 +249,32 @@
   </div>
 </div>
 
+<!-- Modal: agendar aviso de revisão de ADS -->
+<div class="rk-modal-ov" id="avisoAdsModal" onclick="if(event.target===this)fecharAvisoAdsModal()">
+  <div class="rk-modal">
+    <div class="rk-modal-head">
+      <i class="fas fa-bell" style="color:#ef4444"></i>
+      <div style="flex:1;min-width:0"><h3>Agendar aviso ADS</h3><div class="sub" id="avisoAdsModalSub"></div></div>
+      <button class="rk-modal-close" onclick="fecharAvisoAdsModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="rk-modal-body">
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px"><strong>⏰ Agende um lembrete</strong> para revisar os ADS deste anúncio. Você receberá um aviso via Telegram na data e hora escolhida.</p>
+      <div style="display:grid;gap:10px">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text-muted);font-weight:700;margin-bottom:4px;text-transform:uppercase">Data e hora</label>
+          <input id="avisoAdsDataHora" type="datetime-local" style="width:100%;background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:10px;padding:10px 14px;font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text-muted);font-weight:700;margin-bottom:4px;text-transform:uppercase">Observação (opcional)</label>
+          <textarea id="avisoAdsMensagem" placeholder="Ex.: revisar performance, testar novo valor de ADS" style="width:100%;background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:10px;padding:10px 14px;font-size:13px;resize:vertical;min-height:60px;box-sizing:border-box;font-family:inherit"></textarea>
+        </div>
+      </div>
+      <div style="text-align:right;margin-top:12px"><button class="rk-add-btn" onclick="salvarAvisoAds()"><i class="fas fa-calendar-check"></i> Agendar</button></div>
+      <div id="avisoAdsList" style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)"></div>
+    </div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
@@ -425,6 +451,7 @@ function cardHtml(a) {
         <button class="rk-icon-btn" title="Histórico de preço" onclick="abrirPrecoModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-chart-line"></i></button>
         <button class="rk-icon-btn" title="Vincular anúncio de catálogo/tradicional (soma as vendas neste card)" onclick="abrirVincularModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-link"></i></button>
         ${notasBtn}
+        <button class="rk-icon-btn" title="Agendar aviso de revisão de ADS" onclick="abrirAvisoAdsModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-bell"></i></button>
         ${rankeando ? `<button class="rk-icon-btn" title="Encerrar ciclo ${a.ciclo||1} e começar o ciclo ${(a.ciclo||1)+1}" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i></button>` : ''}
         <button class="rk-icon-btn" title="${a.active?'Pausar':'Retomar'}" onclick="togglePause(${a.id}, ${!a.active})"><i class="fas ${a.active?'fa-pause':'fa-play'}"></i></button>
         <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i></button>
@@ -615,7 +642,54 @@ async function excluirNota(notaId) {
   carregarNotas();
   loadCards();
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); fecharNotasModal(); } });
+
+// ── Agendar avisos de revisão de ADS ──────────────────────────────────────────
+let AVISO_ADS_ID = null;
+function abrirAvisoAdsModal(id, titulo) {
+  AVISO_ADS_ID = id;
+  document.getElementById('avisoAdsModalSub').textContent = titulo || '';
+  document.getElementById('avisoAdsDataHora').value = '';
+  document.getElementById('avisoAdsMensagem').value = '';
+  document.getElementById('avisoAdsModal').classList.add('open');
+  carregarAvisos();
+  // Define o datetime-local com um padrão (próximo dia, 9:00)
+  const amanha = new Date();
+  amanha.setDate(amanha.getDate() + 1);
+  amanha.setHours(9, 0, 0, 0);
+  const iso = amanha.toISOString().slice(0, 16);
+  document.getElementById('avisoAdsDataHora').value = iso;
+}
+function fecharAvisoAdsModal() { document.getElementById('avisoAdsModal').classList.remove('open'); AVISO_ADS_ID = null; }
+async function carregarAvisos() {
+  const box = document.getElementById('avisoAdsList');
+  box.innerHTML = '<div class="rk-empty" style="border:none;font-size:11px">Carregando…</div>';
+  const d = await DB.getRankingAlerts(AVISO_ADS_ID);
+  const avs = (d && d.alerts) || [];
+  if (!avs.length) { box.innerHTML = '<div class="rk-empty" style="border:none;font-size:11px">Nenhum aviso agendado.</div>'; return; }
+  box.innerHTML = avs.map(av => `<div style="background:var(--bg-card2);border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-weight:700">${av.notified_at ? '✅' : '⏰'} ${fmtDT(av.scheduled_at)}</div>
+        ${av.message ? `<div style="color:var(--text-muted);margin-top:2px">${esc(av.message)}</div>` : ''}
+      </div>
+    </div>
+  </div>`).join('');
+}
+async function salvarAvisoAds() {
+  const dtLocal = document.getElementById('avisoAdsDataHora').value;
+  if (!dtLocal) { alert('Escolha uma data e hora.'); return; }
+  const msg = document.getElementById('avisoAdsMensagem').value.trim();
+  // Converte datetime-local para ISO (tipo 2026-08-20T09:00:00Z)
+  const dt = new Date(dtLocal + ':00');
+  const iso = dt.toISOString();
+
+  const r = await DB.agendarRankingAlert(AVISO_ADS_ID, iso, msg || null);
+  if (!r || !r.alert) { alert('Falha ao agendar o aviso.'); return; }
+  document.getElementById('avisoAdsDataHora').value = '';
+  document.getElementById('avisoAdsMensagem').value = '';
+  carregarAvisos();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); fecharNotasModal(); fecharAvisoAdsModal(); } });
 
 async function togglePause(id, activate) { await DB.patchRankingAd(id, { active: activate }); loadCards(); }
 async function removeAd(id) {

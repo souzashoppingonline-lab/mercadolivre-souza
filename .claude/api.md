@@ -59,6 +59,8 @@ Score/buy-box calculados 1x/dia pelos jobs `sync-seo-score`/`sync-catalog-compet
 | `GET /api/ranking/ads/:id/notas` | **v76:** log de alterações/anotações (mais recente primeiro). `/ads` devolve `notas_count` |
 | `POST /api/ranking/ads/:id/notas` `{texto}` | **v76:** registra uma anotação livre (o que foi alterado) |
 | `DELETE /api/ranking/ads/:id/notas/:notaId` | **v76:** exclui uma anotação |
+| `GET /api/ranking/ads/:id/alerts` | **v79:** alertas agendados (mais recente primeiro): `id`, `scheduled_at`, `message`, `notified_at` (NULL se ainda não disparou) |
+| `POST /api/ranking/ads/:id/alerts` `{scheduled_at, message?}` | **v79:** agenda um aviso para revisar ADS em data/hora específica (`scheduled_at` ISO 8601, ex: `2026-08-20T09:00:00Z`); dispara via Telegram quando chegar a hora; `message` opcional para observação do usuário. UQ `(ranking_ad_id, scheduled_at)` dedup re-agendamento da mesma hora |
 
 Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco a cada N vendas ficam em `server/src/ranking.js`, disparados pelos hooks do worker — não nestas rotas (só CRUD/leitura). Ver `rankeamento.md`.
 

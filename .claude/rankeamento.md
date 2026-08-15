@@ -72,7 +72,9 @@ Cada anúncio tem `ranking_ads.fase`:
 | Snapshot | qualquer mudança (subiu/caiu), a cada 6h (`sync-ranking`) | **só regressão**, 1x/dia (`sync-ranking-ranqueado`, 05:15) |
 | Regressão vigiada | — | perdeu buy-box, saiu/caiu nos Mais Vendidos, visitas **−40%+**, qualidade piorou, estoque, **esfriou** (sem vender há 3 dias) |
 
-**Transição manual** (`PATCH /api/ranking/ads/:id {fase}`): botão "Marcar como ranqueado" / "Voltar pra rankeamento". Passar pra `ranqueado` carimba `ranqueado_em`; voltar limpa. A rota `/ads` devolve `sugerir_ranqueado` (bool) — sugere quando bate qualquer critério objetivo (entrou nos Mais Vendidos **ou** ganhou buy-box **ou** ≥ 10 vendas **ou** ≥ 15 dias); quem confirma é o usuário (nunca automático). Novo evento `esfriou` 💤.
+**Transição manual** (`PATCH /api/ranking/ads/:id {fase}`): botão "Marcar como ranqueado" / "Voltar pra ranqueamento". Passar pra `ranqueado` carimba `ranqueado_em`; voltar limpa. A rota `/ads` devolve `sugerir_ranqueado` (bool) — sugere quando bate qualquer critério objetivo (entrou nos Mais Vendidos **ou** ganhou buy-box **ou** ≥ 10 vendas **ou** ≥ 15 dias); quem confirma é o usuário (nunca automático). Novo evento `esfriou` 💤.
+
+**Níveis de progressão (v78):** anúncio em **RANQUEADO** exibe seu **Nível** (1 + floor(sales_count / 10)) — a cada 10 vendas acumuladas, sobe de nível (Nível 1, Nível 2, Nível 3…). Também mostra **Devoluções** (contagem de `returns` com `item_id` = ml_id do anúncio), colorida em verde (nenhuma) ou vermelho (com devoluções) — só visível em RANQUEADO.
 
 A página tem 4 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento** (ver abaixo) e **Todos os anúncios** (tabela de seleção).
 

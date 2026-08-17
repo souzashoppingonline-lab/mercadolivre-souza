@@ -129,3 +129,9 @@ Para valer, precisa de um caminho real devolução → anúncio: `returns` guard
 Como o ambiente de dev **não tem egress pro Supabase**, não dá pra confirmar qual é o real sem estar em produção. A gestão de contas do Fluxo de Caixa (v80) foi escrita **tolerante aos dois**: lê qualquer um dos nomes e, ao gravar, tenta primeiro o formato das linhas que já existem, caindo no outro se o PostgREST recusar.
 
 **Correção esperada:** abrir `pages/financeiro.html` (explorador de tabelas) em produção, ver a prévia real de `conta_empresas`, corrigir o guia e então simplificar o código pra um formato só. Enquanto isso, o filtro de contas por empresa em Boletos pode estar silenciosamente vazio (ele cai pra "todas as contas" quando não casa nenhuma, então não quebra a tela — só não filtra).
+
+## Trava de recebível duplicado é só na tela (sem índice único no Supabase)
+
+A regra "uma empresa entra uma única vez por dia" em Recebíveis (v80) é validada no navegador, sobre as linhas que a página já carregou. Cobre o uso normal, mas **não** é garantia de banco: duas abas abertas ao mesmo tempo, ou uma inserção feita por fora da tela (outro cliente, o ERP no Readdy, importação), passam sem checagem.
+
+**Correção esperada:** criar no Supabase um índice único `create unique index on receivables (empresa, date)` — o mesmo caminho de migration via MCP já usado para as colunas novas de `expenses`. Antes de aplicar, limpar as duplicatas que já existirem (o índice falha se houver). Com ele no ar, a tela passa a receber o erro do PostgREST como segunda barreira e a mensagem amigável continua sendo a primeira.

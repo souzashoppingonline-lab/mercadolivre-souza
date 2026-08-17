@@ -30,6 +30,12 @@
     .rc-row .chk { width:20px; height:20px; border-radius:6px; border:1px solid var(--border); cursor:pointer; display:flex; align-items:center; justify-content:center; background:var(--bg-card2); }
     .rc-row .chk.on { background:#3fb950; color:#03210d; border-color:#3fb950; }
     .rc-row .val { font-weight:800; text-align:right; }
+    .rc-row-edit { grid-template-columns:150px 130px 1fr 120px auto; background:rgba(63,185,80,.06); }
+    .rc-row-edit input, .rc-row-edit select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-size:12.5px; width:100%; box-sizing:border-box; }
+    .rc-edit { background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; color:var(--text-muted); font-size:11px; padding:3px 8px; }
+    .rc-edit:hover { color:var(--text-main); border-color:var(--text-muted); }
+    .rc-aviso { font-size:12px; margin:-6px 0 12px; color:var(--text-muted); }
+    .rc-aviso b { color:var(--text-main); }
     .rc-emp-brk { padding:6px 14px; font-size:11px; color:var(--text-muted); border-top:1px dashed var(--border); display:flex; gap:14px; flex-wrap:wrap; }
     .rc-chip { border-radius:999px; padding:2px 9px; font-size:10px; font-weight:800; background:var(--bg-card2); color:var(--text-muted); border:1px solid var(--border); }
     .rc-ok { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:11px; font-weight:800; border:1px solid var(--border); border-radius:8px; padding:3px 9px; }
@@ -74,6 +80,7 @@
         <button class="go" onclick="adicionar()">+ Adicionar</button>
       </div>
       <div id="aMsg" style="font-size:12px;margin:-6px 0 12px"></div>
+      <div id="aAviso" class="rc-aviso"></div>
 
       <div class="rc-note">⚠️ <b>Regra de cálculo:</b> Apenas recebíveis <b>pendentes</b> entram nos indicadores financeiros (Cobertura e Capacidade de Compra). Recebidos ficam somente no histórico.</div>
 
@@ -96,7 +103,7 @@ const EMPCOR={'UNIFULL':'#3fb950','TOP MIX':'#f59e0b','R SOUZA':'#f97316','SHOPE
 const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
 const hojeISO=()=>new Date().toISOString().slice(0,10);
 
-let RECS=[], tab='todos';
+let RECS=[], tab='todos', editId=null;
 function showStatus(t,err){ const el=document.getElementById('rcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
 async function load(){
@@ -130,12 +137,12 @@ function render(){
     const brk=Object.entries(emps).map(([e,v])=>`<span><span style="color:${EMPCOR[e]||'#94a3b8'}">●</span> ${esc(e)} ${BRL(v)}</span>`).join('');
     return `<div class="rc-day">
       <div class="rc-day-h"><span class="d">${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}</span><span class="w">${DOW[dt.getDay()]}</span><span class="tot">${BRL(tot)}</span><span class="cnt">${rows.length} rec.</span></div>
-      ${rows.map(r=>`<div class="rc-row">
+      ${rows.map(r=> String(editId)===String(r.id) ? linhaEdicao(r) : `<div class="rc-row">
         <div class="chk ${r.recebido?'on':''}" onclick="toggle('${esc(r.id)}')">${r.recebido?'<i class="fas fa-check"></i>':''}</div>
         <span class="rc-chip" style="border-color:${(EMPCOR[(r.empresa||'').trim()]||'#334155')}55">${esc((r.empresa||'—').trim())}</span>
         <span>${esc(r.description||'Recebível')}</span>
         <span class="val" style="color:${r.recebido?'#3fb950':'var(--text-main)'}">${BRL(+r.value||0)}</span>
-        <span style="display:flex;gap:6px;align-items:center"><button class="rc-ok ${r.recebido?'on':''}" onclick="toggle('${esc(r.id)}')">${r.recebido?'OK':'Receber'}</button><button class="rc-del" onclick="excluir('${esc(r.id)}')"><i class="fas fa-trash"></i></button></span>
+        <span style="display:flex;gap:6px;align-items:center"><button class="rc-ok ${r.recebido?'on':''}" onclick="toggle('${esc(r.id)}')">${r.recebido?'OK':'Receber'}</button><button class="rc-edit" title="Editar lançamento" onclick="editar('${esc(r.id)}')"><i class="fas fa-pen"></i></button><button class="rc-del" onclick="excluir('${esc(r.id)}')"><i class="fas fa-trash"></i></button></span>
       </div>`).join('')}
       <div class="rc-emp-brk"><b>POR EMPRESA</b> ${brk}</div>
     </div>`;
@@ -143,6 +150,34 @@ function render(){
   const pend=all.filter(r=>!r.recebido).reduce((s,r)=>s+(+r.value||0),0);
   const receb=all.filter(r=>r.recebido).reduce((s,r)=>s+(+r.value||0),0);
   document.getElementById('rcFoot').innerHTML=`<span>Pendente: <b class="down">${BRL(pend)}</b></span><span>Recebido no mês: <b class="up">${BRL(receb)}</b></span><span style="color:var(--text-muted)">Total previsto: <b>${BRL(pend+receb)}</b></span>`;
+  atualizarAviso();
+}
+
+// ── Trava: uma empresa só pode ter UM recebível por dia ─────────────────────
+// Vale no cadastro e na edição (mover um lançamento para um dia/empresa que já
+// tem lançamento também é bloqueado). A checagem é na tela, sobre RECS — que
+// carrega a tabela inteira (5000 linhas, date.asc) — então enxerga qualquer
+// mês, não só o filtrado. Ver known-bugs.md sobre a trava no banco.
+const diaISO = v => String(v || '').slice(0, 10);
+const empKey = v => String(v || '').trim().toUpperCase();
+const fmtBR  = d => diaISO(d).split('-').reverse().join('/');
+function lancamentoDoDia(date, empresa, ignorarId){
+  const d = diaISO(date), e = empKey(empresa);
+  return RECS.find(r => String(r.id) !== String(ignorarId || '')
+    && diaISO(r.date) === d && empKey(r.empresa) === e) || null;
+}
+// Mostra, embaixo do formulário, quem já foi lançado na data escolhida — a
+// trava fica visível ANTES de tentar gravar, não só depois do erro.
+function atualizarAviso(){
+  const box = document.getElementById('aAviso'); if (!box) return;
+  const d = document.getElementById('aData').value || hojeISO();
+  const doDia = RECS.filter(r => diaISO(r.date) === diaISO(d));
+  if (!doDia.length) { box.innerHTML = `Nenhuma empresa lançada em <b>${fmtBR(d)}</b> — as 4 estão liberadas.`; return; }
+  const usadas = doDia.map(r => `<b>${esc((r.empresa || '—').trim())}</b> ${BRL(+r.value || 0)}`).join(' · ');
+  const livres = EMPRESAS.filter(e => !doDia.some(r => empKey(r.empresa) === empKey(e)));
+  box.innerHTML = `Já lançado em ${fmtBR(d)}: ${usadas}.` + (livres.length
+    ? ` Ainda liberadas: ${livres.map(esc).join(' · ')}.`
+    : ' <b>Todas as empresas já foram lançadas neste dia.</b>');
 }
 
 async function adicionar(){
@@ -150,12 +185,54 @@ async function adicionar(){
   const date=document.getElementById('aData').value||hojeISO(), empresa=document.getElementById('aEmp').value;
   const msg=document.getElementById('aMsg');
   if(value<=0){ msg.innerHTML='<span class="down">Informe o valor.</span>'; return; }
+  const dup = lancamentoDoDia(date, empresa);
+  if (dup) {
+    msg.innerHTML = `<span class="down">🚫 <b>${esc(empresa)}</b> já tem lançamento em <b>${fmtBR(date)}</b>: "${esc(dup.description || 'Recebível')}" — ${BRL(+dup.value || 0)}. Cada empresa entra <b>uma única vez por dia</b>: edite (✏️) ou exclua o lançamento existente.</span>`;
+    return;
+  }
   msg.textContent='Gravando…';
   const r=await DB.addFinanceiroRow('receivables',{description:description||'Recebível',value,date,empresa,recebido:false});
   if(r&&r.error){ msg.innerHTML='<span class="down">Erro: '+esc(r.error)+'</span>'; return; }
   const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) RECS.push(saved);
   document.getElementById('aDesc').value=''; document.getElementById('aVal').value='';
   msg.innerHTML='<span class="up">✅ Recebível adicionado.</span>'; render();
+}
+
+// ── Edição do lançamento ────────────────────────────────────────────────────
+function editar(id){ editId = id; render(); }
+function cancelarEdicao(){ editId = null; render(); }
+function linhaEdicao(r){
+  const emp = (r.empresa || '').trim();
+  return `<div class="rc-row rc-row-edit">
+    <input type="date" id="eData" value="${esc(diaISO(r.date))}">
+    <select id="eEmp">${EMPRESAS.map(e => `<option${empKey(e) === empKey(emp) ? ' selected' : ''}>${esc(e)}</option>`).join('')}</select>
+    <input id="eDesc" value="${esc(r.description || '')}" placeholder="Descrição">
+    <input type="number" step="0.01" id="eVal" value="${(+r.value || 0)}">
+    <span style="display:flex;gap:6px;align-items:center">
+      <button class="rc-ok on" onclick="salvarEdicao('${esc(r.id)}')">Salvar</button>
+      <button class="rc-edit" onclick="cancelarEdicao()">Cancelar</button>
+    </span>
+  </div>`;
+}
+async function salvarEdicao(id){
+  const atual = RECS.find(x => String(x.id) === String(id)); if (!atual) return;
+  const date = document.getElementById('eData').value || diaISO(atual.date);
+  const empresa = document.getElementById('eEmp').value;
+  const description = document.getElementById('eDesc').value.trim();
+  const value = pNum(document.getElementById('eVal').value);
+  if (value <= 0) { showStatus('⚠️ Informe um valor maior que zero.', true); return; }
+  const dup = lancamentoDoDia(date, empresa, id);   // a mesma trava vale aqui
+  if (dup) {
+    showStatus(`🚫 <b>${esc(empresa)}</b> já tem lançamento em <b>${fmtBR(date)}</b>: "${esc(dup.description || 'Recebível')}" — ${BRL(+dup.value || 0)}. Cada empresa entra uma única vez por dia.`, true);
+    return;
+  }
+  const r = await DB.updateFinanceiroRow('receivables', id, { date, empresa, description: description || 'Recebível', value });
+  if (r && r.error) { showStatus('⚠️ ' + esc(r.error), true); return; }
+  const saved = Array.isArray(r && r.rows) ? r.rows[0] : null;
+  const i = RECS.findIndex(x => String(x.id) === String(id));
+  RECS[i] = saved || { ...atual, date, empresa, description: description || 'Recebível', value };
+  editId = null; render();
+  showStatus('✅ Recebível atualizado.', false);
 }
 async function toggle(id){
   const r0=RECS.find(x=>String(x.id)===String(id)); if(!r0) return;
@@ -201,6 +278,7 @@ function init(){
   document.getElementById('aEmp').innerHTML=EMPRESAS.map(e=>`<option>${e}</option>`).join('');
   document.getElementById('aData').value=now.toISOString().slice(0,10);
   [sm,sa,document.getElementById('rcEmp')].forEach(s=>s.addEventListener('change',render));
+  document.getElementById('aData').addEventListener('change', atualizarAviso); // trava visível antes de gravar
   load();
 }
 init();

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usuários — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Usuários'; window.ACTIVE_NAV='usuarios.html';</script>
+  <style>
+    .us-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 18px; max-width:80ch; }
+    .us-alerta { border-radius:12px; padding:12px 14px; margin-bottom:16px; font-size:13px; display:flex; gap:10px; align-items:flex-start; }
+    .us-alerta.off { background:rgba(248,81,73,.10); border:1px solid rgba(248,81,73,.45); }
+    .us-alerta.info { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); }
+    .us-alerta b { color:var(--text-main); }
+    .us-grid { display:grid; grid-template-columns:1fr 340px; gap:16px; align-items:start; }
+    @media(max-width:900px){ .us-grid { grid-template-columns:1fr; } }
+    .us-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; }
+    .us-card h3 { margin:0 0 4px; font-size:15px; font-weight:800; }
+    .us-card .hint { font-size:11.5px; color:var(--text-muted); margin:0 0 14px; }
+    .us-lbl { display:block; font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-top:12px; }
+    .us-in { display:block; width:100%; margin-top:5px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:9px; padding:10px 12px; font-size:13.5px; box-sizing:border-box; }
+    .us-in:focus { border-color:var(--primary); outline:none; }
+    .us-btn { background:#3fb950; color:#03210d; border:none; border-radius:9px; padding:10px 18px; font-weight:800; font-size:13px; cursor:pointer; margin-top:16px; width:100%; }
+    .us-btn:disabled { opacity:.5; cursor:not-allowed; }
+    .us-msg { font-size:12px; margin-top:10px; min-height:16px; }
+    .us-msg .err { color:#f87171; } .us-msg .ok { color:#3fb950; }
+
+    .us-row { display:grid; grid-template-columns:1fr 150px auto; gap:12px; align-items:center; padding:12px 0; border-top:1px solid var(--border); }
+    .us-row:first-of-type { border-top:none; }
+    .us-user { font-weight:700; font-size:14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .us-meta { font-size:11px; color:var(--text-muted); margin-top:2px; }
+    .us-eu { background:var(--primary); color:#1a1a1a; font-size:9px; font-weight:900; padding:2px 6px; border-radius:5px; letter-spacing:.3px; }
+    .us-papel { border-radius:999px; padding:3px 10px; font-size:10.5px; font-weight:800; border:1px solid; white-space:nowrap; }
+    .us-papel.admin { color:#f0883e; border-color:rgba(240,136,62,.5); background:rgba(240,136,62,.10); }
+    .us-papel.embalagem { color:#3fb950; border-color:rgba(63,185,80,.5); background:rgba(63,185,80,.10); }
+    .us-papel\.shopee-demo, .us-papel.shopee { color:#ee4d2d; border-color:rgba(238,77,45,.5); background:rgba(238,77,45,.10); }
+    .us-sel { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:12px; }
+    .us-acts { display:flex; gap:5px; }
+    .us-ico { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:6px 9px; font-size:12px; cursor:pointer; }
+    .us-ico:hover { color:var(--text-main); border-color:var(--text-muted); }
+    .us-ico.del:hover { color:#fff; background:var(--red); border-color:var(--red); }
+    .us-ico:disabled { opacity:.35; cursor:not-allowed; }
+    .us-senha-box { grid-column:1/-1; display:flex; gap:8px; align-items:center; padding:8px 0 2px; }
+    .us-senha-box input { flex:1; }
+    .us-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+    .us-acesso { font-size:11.5px; color:var(--text-muted); line-height:1.5; }
+    .us-acesso li { margin-bottom:5px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <p class="us-sub">Quem entra no sistema e até onde vai. O <b>papel</b> define o alcance: quem é de <b>Embalagem</b> só abre a tela de bipagem — digitar outra URL devolve ele pra lá.</p>
+
+      <div id="usAviso"></div>
+
+      <div class="us-grid">
+        <div class="us-card">
+          <h3>Usuários</h3>
+          <p class="hint" id="usContagem">Carregando…</p>
+          <div id="usLista"></div>
+        </div>
+
+        <div>
+          <div class="us-card">
+            <h3>Novo usuário</h3>
+            <p class="hint">A senha é gravada com hash — ninguém consegue lê-la depois, nem você. Se esquecerem, defina uma nova aqui.</p>
+            <label class="us-lbl">Usuário<input id="nvUser" class="us-in" placeholder="ex.: joao.silva" autocomplete="off"></label>
+            <label class="us-lbl">Senha<input id="nvSenha" class="us-in" type="text" placeholder="mínimo 6 caracteres" autocomplete="new-password"></label>
+            <label class="us-lbl">Papel<select id="nvPapel" class="us-in"></select></label>
+            <div class="us-acesso" id="nvAcesso" style="margin-top:10px"></div>
+            <button class="us-btn" id="nvBtn" onclick="criar()">Criar usuário</button>
+            <div class="us-msg" id="nvMsg"></div>
+          </div>
+
+          <div class="us-card" style="margin-top:16px">
+            <h3>O que cada papel enxerga</h3>
+            <ul class="us-acesso" style="margin:8px 0 0;padding-left:18px">
+              <li><b>Admin</b> — tudo, inclusive esta tela, o Financeiro e a Inteligência de Negócio.</li>
+              <li><b>Embalagem</b> — só a tela de Embalagem (bipagem + vídeo). O menu dele mostra só esse item.</li>
+              <li><b>Shopee (demo)</b> — só as telas da Shopee. Criado para revisor externo; não vê nada do Mercado Livre nem do financeiro.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const PAPEL_LABEL = { admin:'Admin', embalagem:'Embalagem', 'shopee-demo':'Shopee (demo)' };
+const PAPEL_ACESSO = {
+  admin: 'Acesso total ao sistema, inclusive a esta tela.',
+  embalagem: 'Abre só a tela de Embalagem — qualquer outra URL volta pra lá.',
+  'shopee-demo': 'Abre só as telas da Shopee. Não vê Mercado Livre nem financeiro.',
+};
+let USUARIOS = [], ATUAL = null, GATE = true, PAPEIS = ['admin','embalagem','shopee-demo'], senhaAberta = null;
+
+const fmtData = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+
+async function load(){
+  const r = await DB.getUsuarios();
+  if (!r || r.error) {
+    document.getElementById('usLista').innerHTML = `<div class="us-empty">Não consegui carregar: ${esc((r&&r.error)||'sem resposta do servidor')}<br><span style="font-size:11px">Se acabou de fazer o deploy, reinicie o ml-dashboard-novo.</span></div>`;
+    document.getElementById('usContagem').textContent = '';
+    return;
+  }
+  USUARIOS = r.usuarios || []; ATUAL = r.atual; GATE = !!r.gate_ativo; PAPEIS = r.papeis || PAPEIS;
+  document.getElementById('nvPapel').innerHTML = PAPEIS.map(p=>`<option value="${esc(p)}"${p==='embalagem'?' selected':''}>${esc(PAPEL_LABEL[p]||p)}</option>`).join('');
+  pintaAcesso();
+  render();
+}
+
+function pintaAcesso(){
+  const p = document.getElementById('nvPapel').value;
+  document.getElementById('nvAcesso').textContent = PAPEL_ACESSO[p] || '';
+}
+document.getElementById('nvPapel').addEventListener('change', pintaAcesso);
+
+function render(){
+  const admins = USUARIOS.filter(u=>u.role==='admin').length;
+  document.getElementById('usContagem').textContent =
+    `${USUARIOS.length} usuário(s) · ${admins} administrador(es)`;
+
+  document.getElementById('usAviso').innerHTML = GATE
+    ? `<div class="us-alerta info"><span>🔒</span><span>O login está <b>ligado</b>: cada pessoa entra com o próprio usuário e o papel vale de verdade.</span></div>`
+    : `<div class="us-alerta off"><span>⚠️</span><span><b>O login está DESLIGADO</b> (<code>STAFF_AUTH_ENABLED=false</code> no <code>.env</code> do servidor). Qualquer pessoa com o endereço abre o sistema inteiro e <b>estes papéis não têm efeito nenhum</b>. Os usuários abaixo já ficam cadastrados — para valer, ligue a chave e reinicie o <code>ml-dashboard-novo</code>.</span></div>`;
+
+  const box = document.getElementById('usLista');
+  if (!USUARIOS.length) { box.innerHTML = '<div class="us-empty">Nenhum usuário cadastrado ainda.</div>'; return; }
+
+  box.innerHTML = USUARIOS.map(u => {
+    const eu = ATUAL && String(ATUAL.username) === String(u.username);
+    const ultimoAdmin = u.role === 'admin' && admins === 1;
+    const travaExcluir = eu ? 'Você não pode excluir o próprio usuário'
+                        : ultimoAdmin ? 'É o último administrador — crie outro antes' : 'Excluir';
+    const travaPapel = eu ? 'Você não pode mudar o próprio papel'
+                       : ultimoAdmin ? 'É o último administrador' : 'Mudar o papel';
+    const bloqueado = eu || ultimoAdmin;
+    return `<div class="us-row">
+      <div>
+        <div class="us-user">${esc(u.username)}${eu?' <span class="us-eu">VOCÊ</span>':''}</div>
+        <div class="us-meta">criado em ${fmtData(u.created_at)}</div>
+      </div>
+      <div>
+        <select class="us-sel" title="${esc(travaPapel)}" ${bloqueado?'disabled':''} onchange="mudarPapel(${u.id}, this.value, '${esc(u.username)}')">
+          ${PAPEIS.map(p=>`<option value="${esc(p)}"${p===u.role?' selected':''}>${esc(PAPEL_LABEL[p]||p)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="us-acts">
+        <button class="us-ico" title="Definir nova senha" onclick="abrirSenha(${u.id})"><i class="fas fa-key"></i></button>
+        <button class="us-ico del" title="${esc(travaExcluir)}" ${bloqueado?'disabled':''} onclick="excluir(${u.id}, '${esc(u.username)}')"><i class="fas fa-trash"></i></button>
+      </div>
+      ${senhaAberta === u.id ? `<div class="us-senha-box">
+        <input id="sn-${u.id}" class="us-in" type="text" placeholder="Nova senha para ${esc(u.username)} (mín. 6)" autocomplete="new-password" style="margin-top:0">
+        <button class="us-ico" style="background:#3fb950;color:#03210d;border-color:#3fb950;font-weight:800" onclick="salvarSenha(${u.id}, '${esc(u.username)}')">Salvar</button>
+        <button class="us-ico" onclick="senhaAberta=null;render()">Cancelar</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function abrirSenha(id){ senhaAberta = id; render(); setTimeout(()=>{ const el=document.getElementById('sn-'+id); if(el) el.focus(); }, 30); }
+
+function msg(t, erro){ document.getElementById('nvMsg').innerHTML = `<span class="${erro?'err':'ok'}">${t}</span>`; }
+
+async function criar(){
+  const username = document.getElementById('nvUser').value.trim().toLowerCase();
+  const password = document.getElementById('nvSenha').value;
+  const role = document.getElementById('nvPapel').value;
+  if (!username || !password) { msg('Preencha usuário e senha.', true); return; }
+  const btn = document.getElementById('nvBtn'); btn.disabled = true; msg('Criando…');
+  const r = await DB.addUsuario(username, password, role);
+  btn.disabled = false;
+  if (!r || r.error) { msg('Erro: ' + esc((r&&r.error)||'falha ao criar'), true); return; }
+  document.getElementById('nvUser').value = ''; document.getElementById('nvSenha').value = '';
+  msg(`✅ Usuário <b>${esc(username)}</b> criado. Passe o login e a senha para a pessoa.`);
+  await load();
+}
+
+async function mudarPapel(id, role, username){
+  if (!confirm(`Mudar o papel de "${username}" para ${PAPEL_LABEL[role]||role}?\n\n${PAPEL_ACESSO[role]||''}`)) { render(); return; }
+  const r = await DB.updateUsuario(id, { role });
+  if (!r || r.error) { alert('Não consegui mudar: ' + ((r&&r.error) || 'erro desconhecido')); render(); return; }
+  await load();
+}
+
+async function salvarSenha(id, username){
+  const el = document.getElementById('sn-' + id);
+  const password = el ? el.value : '';
+  if (!password || password.length < 6) { alert('A senha precisa ter no mínimo 6 caracteres.'); return; }
+  const r = await DB.updateUsuario(id, { password });
+  if (!r || r.error) { alert('Não consegui salvar: ' + ((r&&r.error) || 'erro desconhecido')); return; }
+  senhaAberta = null;
+  await load();
+  msg(`🔑 Senha de <b>${esc(username)}</b> atualizada.`);
+}
+
+async function excluir(id, username){
+  if (!confirm(`Excluir o usuário "${username}"?\n\nEle deixa de conseguir entrar com uma senha nova. ATENÇÃO: se ele estiver com o sistema aberto, a sessão dele continua valendo até expirar — para cortar na hora é preciso trocar o STAFF_JWT_SECRET e reiniciar o servidor (isso desloga todo mundo).`)) return;
+  const r = await DB.removeUsuario(id);
+  if (!r || r.error) { alert('Não consegui excluir: ' + ((r&&r.error) || 'erro desconhecido')); return; }
+  await load();
+}
+
+load();
+</script>
+</body>
+</html>

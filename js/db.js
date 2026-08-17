@@ -276,6 +276,12 @@ const DB = {
   async getRankingAlerts(id)         { return this._get(`/ranking/ads/${id}/alerts`); },
   async agendarRankingAlert(id, scheduled_at, message) { return this._post(`/ranking/ads/${id}/alerts`, { scheduled_at, message }); },
 
+  // ── Usuários de acesso restrito (staff) — só admin, ver auth-staff.md ──
+  async getUsuarios()                    { return this._get('/usuarios'); },
+  async addUsuario(username, password, role) { return this._post('/usuarios', { username, password, role }); },
+  async updateUsuario(id, body)          { return this._patch(`/usuarios/${id}`, body); },
+  async removeUsuario(id)                { return this._delete(`/usuarios/${id}`); },
+
   // ── Inteligência de Negócio (BI) — dados operacionais (Postgres principal) ──
   async getBiPainel(period = 30, store_id = '') { return this._get('/bi/painel', { period, store_id }); },
 

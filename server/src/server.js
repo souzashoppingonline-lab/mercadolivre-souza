@@ -63,6 +63,8 @@ app.use('/api/ranking', require('./routes/ranking'));
 // Módulo Financeiro — lê do Supabase separado, read-only (só admin — ver MODULES). Ver .claude/modules.md.
 app.use('/api/financeiro', require('./routes/financeiro'));
 app.use('/api/bi', require('./routes/bi'));
+// Gestão de usuários de acesso restrito — só admin (gate em staffAuth.js).
+app.use('/api/usuarios', require('./routes/staffUsers'));
 
 // Only Mercado Livre talks to this.
 app.use('/webhooks', webhookGateway);

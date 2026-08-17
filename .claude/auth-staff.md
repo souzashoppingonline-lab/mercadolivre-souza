@@ -48,6 +48,19 @@ Montado globalmente em `server.js`, **antes** de todas as outras rotas (inclusiv
 - **`pages/login.html`** — autocontido (CSS inline, sem dependência de `css/style.css` nem CDN), pra funcionar mesmo se o resto do estático não estiver acessível. Formulário simples (usuário/senha) → `POST /auth/staff/login` → redireciona por papel (`embalagem` → `embalagem.html`, `shopee-demo` → `dashboard-shopee.html`, senão → `../index.html`) — evita um duplo-redirect (login.html manda pra `index.html`, que o `requireStaffAuth` rejeitaria e mandaria de novo pra `dashboard-shopee.html`). Se `GET /auth/staff/me` já resolver ao carregar, redireciona sem mostrar o formulário.
 - **`js/layout.js`** — no `DOMContentLoaded`, busca `GET /auth/staff/me` (falha silenciosamente pra `null` se não houver sessão ou o gate estiver desligado — **nunca força redirect no cliente**, a proteção real é 100% server-side em `requireStaffAuth`). Se `role === 'embalagem'`: `navItemsForRole()` reduz a sidebar a só o item Embalagem, e o switcher de marketplace (Amazon/Shopee) some do topbar. Se houver sessão (qualquer papel), mostra usuário + botão "Sair" no topbar (`POST /auth/staff/logout` → redireciona pro login).
 
+## Tela de gestão de usuários (v80) — `pages/usuarios.html`
+
+Menu **Sistema → Usuários**, **só admin**. Substitui o script no dia a dia (o script continua existindo e é o único caminho pro 1º admin, quando ainda não dá pra logar).
+
+- **Rotas** `GET/POST /api/usuarios`, `PATCH/DELETE /api/usuarios/:id` (`server/src/routes/staffUsers.js`), espelhadas em `js/db.js` (`getUsuarios`, `addUsuario`, `updateUsuario`, `removeUsuario`).
+- **Por que sob `/api` e não `/auth/staff`**: `/auth/*` está em `PUBLIC_PREFIXES` — é acessível **sem sessão**. Gestão de credenciais ali seria um buraco aberto. Sob `/api` passa pelo gate, e a rota ainda checa `role === 'admin'` (segunda tranca).
+- **Gate**: `ADMIN_ONLY = ['/pages/usuarios.html', '/api/usuarios']` em `requireStaffAuth` — qualquer papel que não seja admin leva 403 (API) ou volta pra `/` (página). O item some da sidebar via `adminOnly` em `NAV_ITEMS`/`navItemsForRole` (isso é só cosmético; a proteção real é o gate).
+- **Travas contra perder o acesso** (no servidor, não só na tela): não dá pra rebaixar nem excluir **o próprio usuário**, nem tirar o papel/excluir o **último admin**. A tela desabilita esses botões e explica o motivo no `title`.
+- **Validações**: usuário `^[a-z0-9._-]{3,32}$` normalizado pra minúsculo, senha ≥ 6, papel dentro de `admin|embalagem|shopee-demo`, nome único. `password_hash` **nunca** sai na resposta.
+- **Kill switch**: com `STAFF_AUTH_ENABLED=false` a rota não exige admin (não haveria sessão pra checar, e sem isso seria impossível cadastrar pela tela) — e a página mostra um **aviso vermelho** de que o login está desligado e os papéis não valem.
+
+⚠️ **Excluir ou trocar a senha NÃO derruba a sessão aberta** — o JWT é stateless e vale 180 dias. Ver `known-bugs.md`.
+
 ## Criar/atualizar usuário — `server/scripts/createStaffUser.js`
 
 ```bash
@@ -68,7 +81,7 @@ Enquanto o nginx não for atualizado, o `express.static` novo fica sem efeito (n
 
 ## Fora de escopo (deliberado)
 
-- UI de gerenciamento de usuários (criar/listar/desativar) — só o script `createStaffUser.js`.
+- ~~UI de gerenciamento de usuários~~ — feita na v80 (seção acima). O script segue como caminho de emergência/1º admin.
 - Recuperação de senha — sessão de 180 dias reduz a necessidade; se esquecer, roda o script de novo.
 - Rate limiting / lockout de tentativas de login — volume de usuários é baixo (poucos funcionários), risco aceito por ora.
 - Notificação de login suspeito.

@@ -111,6 +111,15 @@ const EMBALAGEM_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 const SHOPEE_DEMO_PAGES = ['/pages/dashboard-shopee.html', '/pages/shopee-vendas.html', '/pages/shopee-anuncios.html', '/pages/shopee-financeiro.html', '/pages/shopee-chat.html', '/pages/shopee-lojas.html', '/pages/shopee-precos-estoque.html', '/pages/shopee-precificador.html', '/pages/shopee-promocoes.html', '/pages/shopee-problemas.html', '/pages/shopee-performance.html', '/pages/shopee-ia-socio.html', '/pages/shopee-score.html', '/pages/shopee-devolucoes.html'];
 const SHOPEE_DEMO_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 
+// Caminhos que exigem papel 'admin' e não pertencem a um módulo (MODULES é
+// para os 3 módulos do sistema; isto aqui é gestão de acesso). A tela de
+// usuários cria/remove credenciais — nenhum papel além de admin pode nem
+// carregá-la, muito menos chamar a API.
+const ADMIN_ONLY = ['/pages/usuarios.html', '/api/usuarios'];
+function isAdminOnlyPath(p) {
+  return ADMIN_ONLY.some(prefix => p === prefix || p.startsWith(prefix + '/'));
+}
+
 function isPublicPath(p) {
   return PUBLIC_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix + '/'));
 }
@@ -154,6 +163,12 @@ function requireStaffAuth(req, res, next) {
   if (payload.role === 'shopee-demo' && !isShopeeDemoAllowed(req.path)) {
     if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — esse usuário só tem permissão pro dashboard Shopee' });
     return res.redirect('/pages/dashboard-shopee.html');
+  }
+
+  // Gestão de usuários: só admin, qualquer que seja o papel do resto.
+  if (isAdminOnlyPath(req.path) && payload.role !== 'admin') {
+    if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — só administradores gerenciam usuários' });
+    return res.redirect('/');
   }
 
   // Autorização de módulos: se o path pertence a um módulo restrito e o papel

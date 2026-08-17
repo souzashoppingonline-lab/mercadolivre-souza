@@ -55,6 +55,7 @@ const NAV_ITEMS = [
     { href: 'schedule.html', icon: 'fa-calendar-check', label: 'Schedule' },
     { href: 'webhook.html', icon: 'fa-plug', label: 'Webhooks' },
     { href: 'saude-sistema.html', icon: 'fa-heart-pulse', label: 'Saúde do Sistema' },
+    { href: 'usuarios.html', icon: 'fa-user-shield', label: 'Usuários', adminOnly: true },
   ]},
 ];
 
@@ -64,6 +65,11 @@ const NAV_ITEMS = [
 // não mostrar links que vão redirecionar de volta). Sem sessão (staffAuth
 // desligado, ou página pública) staffUser fica null e o menu é o de sempre.
 function navItemsForRole(role) {
+  // Itens marcados `adminOnly` só aparecem pro admin (o servidor bloqueia de
+  // verdade em requireStaffAuth — isto é só pra não mostrar link que redireciona).
+  // Sem sessão (gate desligado) o menu é o de sempre, inclusive esses itens.
+  const semAdmin = (items) => items.map(s => ({ ...s, items: s.items.filter(i => !i.adminOnly) })).filter(s => s.items.length);
+  if (role && role !== 'admin' && role !== 'embalagem') return semAdmin(NAV_ITEMS);
   if (role !== 'embalagem') return NAV_ITEMS;
   return [
     { section: 'Operação', items: [

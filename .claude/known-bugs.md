@@ -135,3 +135,11 @@ Como o ambiente de dev **não tem egress pro Supabase**, não dá pra confirmar 
 A regra "uma empresa entra uma única vez por dia" em Recebíveis (v80) é validada no navegador, sobre as linhas que a página já carregou. Cobre o uso normal, mas **não** é garantia de banco: duas abas abertas ao mesmo tempo, ou uma inserção feita por fora da tela (outro cliente, o ERP no Readdy, importação), passam sem checagem.
 
 **Correção esperada:** criar no Supabase um índice único `create unique index on receivables (empresa, date)` — o mesmo caminho de migration via MCP já usado para as colunas novas de `expenses`. Antes de aplicar, limpar as duplicatas que já existirem (o índice falha se houver). Com ele no ar, a tela passa a receber o erro do PostgREST como segunda barreira e a mensagem amigável continua sendo a primeira.
+
+## Excluir usuário (ou trocar a senha) não derruba a sessão já aberta
+
+O `staff_session` é um JWT stateless com validade de **180 dias**: `requireStaffAuth` só confere a assinatura, nunca consulta `staff_users`. Consequência: excluir o usuário, trocar a senha dele ou rebaixar o papel **não expulsa quem já está logado** — o cookie continua valendo até expirar. A tela de usuários avisa isso na confirmação de exclusão.
+
+Hoje, cortar o acesso na hora exige trocar `STAFF_JWT_SECRET` no `.env` e reiniciar o `ml-dashboard-novo` — o que **desloga todo mundo**, inclusive o admin.
+
+**Correção esperada:** coluna `sessions_valid_from TIMESTAMPTZ` (ou `token_version INT`) em `staff_users`, carimbada em toda troca de senha/papel/exclusão, e conferida no `requireStaffAuth` contra um snapshot em memória revalidado a cada ~30s (uma query por meio minuto no processo inteiro, não por requisição — o gate está no caminho crítico de toda página e toda API, então não pode virar um SELECT por request).

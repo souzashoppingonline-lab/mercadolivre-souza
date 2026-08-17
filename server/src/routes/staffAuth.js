@@ -124,11 +124,17 @@ function isPublicPath(p) {
   return PUBLIC_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix + '/'));
 }
 
-function isEmbalagemAllowed(p) {
+function isEmbalagemAllowed(p, method) {
   if (p.startsWith('/api/embalagem')) return true;
   if (EMBALAGEM_EXTRA_API.includes(p)) return true;
   if (EMBALAGEM_EXTRA_PAGES.includes(p)) return true;
   if (EMBALAGEM_ASSET_PREFIXES.some(prefix => p.startsWith(prefix))) return true;
+  // Impressão automática da etiqueta (print agent) — a própria tela de
+  // Embalagem chama estas duas, então sem elas o funcionário não imprime:
+  // enfileirar o job e listar as estações pra escolher a impressora do PC.
+  // Só estes dois verbos: cadastrar estação e ver a fila seguem sendo de admin.
+  if (p === '/api/print/jobs' && method === 'POST') return true;
+  if (p === '/api/print/stations' && method === 'GET') return true;
   return false;
 }
 
@@ -155,7 +161,7 @@ function requireStaffAuth(req, res, next) {
     return res.redirect('/pages/login.html');
   }
 
-  if (payload.role === 'embalagem' && !isEmbalagemAllowed(req.path)) {
+  if (payload.role === 'embalagem' && !isEmbalagemAllowed(req.path, req.method)) {
     if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — esse usuário só tem permissão pra Embalagem' });
     return res.redirect('/pages/embalagem.html');
   }

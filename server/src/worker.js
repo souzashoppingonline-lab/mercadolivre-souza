@@ -1731,17 +1731,25 @@ async function syncRankingRanqueado() {
 
 // Dispara alertas agendados de revisão de ADS de anúncios em rankeamento.
 // Verifica a cada hora e envia via Telegram quando a hora chegar.
+// Escapa texto para o parse_mode HTML do Telegram (título de anúncio com &, <
+// ou > faz a API recusar a mensagem inteira). Existia como `esc(...)` no job de
+// alertas, mas nunca foi definido: toda execução caía em "esc is not defined",
+// o erro era engolido pelo catch de cada alerta e nada era enviado.
+const escHtml = (s) => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
 let isSyncingRankingAlerts = false;
 async function syncRankingAlerts() {
   if (isSyncingRankingAlerts) return;
   isSyncingRankingAlerts = true;
   try {
     const { rows: alerts } = await pool.query(
+      // LEFT JOIN em stores: com INNER, um anúncio sem store_id sumia do alerta
+      // pra sempre (a linha nunca casava e nunca era marcada como notificada).
       `SELECT ra.id, ra.ranking_ad_id, ra.scheduled_at, ra.message,
               ad.ml_id, ad.title, ad.store_id, st.nickname AS store_nickname
        FROM ranking_ads_alerts ra
        JOIN ranking_ads ad ON ad.id = ra.ranking_ad_id
-       JOIN stores st ON st.id = ad.store_id
+       LEFT JOIN stores st ON st.id = ad.store_id
        WHERE ra.notified_at IS NULL
          AND ra.scheduled_at <= NOW()
        ORDER BY ra.scheduled_at ASC
@@ -1751,9 +1759,10 @@ async function syncRankingAlerts() {
     let count = 0;
     for (const alrt of alerts) {
       try {
-        const title = esc(alrt.title || alrt.ml_id);
-        const store = esc(alrt.store_nickname || '');
-        const msg = `🔔 <b>Revisar ADS do anúncio</b>\n\n<b>${title}</b>\n<code>${alrt.ml_id}</code>\n📦 ${store}${alrt.message ? '\n\n' + esc(alrt.message) : ''}`;
+        const title = escHtml(alrt.title || alrt.ml_id);
+        const store = escHtml(alrt.store_nickname || '');
+        const quando = new Date(alrt.scheduled_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
+        const msg = `🔔 <b>Revisar ADS do anúncio</b>\n\n<b>${title}</b>\n<code>${alrt.ml_id}</code>${store ? `\n📦 ${store}` : ''}\n🗓️ Agendado para ${quando}${alrt.message ? `\n\n📝 ${escHtml(alrt.message)}` : ''}\n🔗 ${ranking.linkOf(alrt.ml_id)}`;
 
         // Dispara via Telegram (força, independente de silêncio/throttle).
         await tgNotifyForce('tg_rankeamento', msg);
@@ -1774,6 +1783,10 @@ async function syncRankingAlerts() {
     console.error('[sync-ranking-alerts] erro:', e.message);
   } finally {
     isSyncingRankingAlerts = false;
+    // `scheduleEvery` é setTimeout de UMA vez: sem re-armar aqui, o job rodava
+    // uma única vez depois do boot e nunca mais — todo aviso agendado depois
+    // disso ficava parado no banco. Mesmo padrão dos demais jobs.
+    scheduleEvery(1, syncRankingAlerts, 'sync-ranking-alerts');
   }
 }
 
@@ -3157,6 +3170,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'syncNotionTarefas') {
       console.log('[worker] syncNotionTarefas disparado manualmente');
       syncNotionTarefas().catch(e => console.error('[worker] syncNotionTarefas erro:', e.message));
+    }
+    if (cmd === 'sync-ranking-alerts' || cmd === 'syncRankingAlerts') {
+      console.log('[worker] syncRankingAlerts disparado manualmente');
+      syncRankingAlerts().catch(e => console.error('[worker] syncRankingAlerts erro:', e.message));
     }
     if (cmd === 'reprocessSkipped') {
       console.log('[worker] reprocessSkipped disparado manualmente');

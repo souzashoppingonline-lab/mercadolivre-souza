@@ -94,7 +94,7 @@ Anúncios e pedidos das duas plataformas vivem nas mesmas tabelas `items`/`order
 
 ## Avisos de Revisão de ADS (v79)
 
-Um card pode agendar **múltiplos avisos** via Telegram para revisar os ADS — agenda uma data/hora, opcionalmente com observação. Tabela `ranking_ads_alerts` grava os avisos agendados. Job `syncRankingAlerts` (1x/h no worker) verifica avisos que chegaram à hora, dispara via Telegram (forçado, independente de silêncio) e marca `notified_at`. Modal na página com datetime-picker e formulário de observação; lista os avisos agendados (com status ✅/⏰). Rotas: `GET /api/ranking/ads/:id/alerts` (listar), `POST /api/ranking/ads/:id/alerts` (agendar).
+Um card pode agendar **múltiplos avisos** via Telegram para revisar os ADS — agenda uma data/hora, opcionalmente com observação. Tabela `ranking_ads_alerts` grava os avisos agendados. Job `syncRankingAlerts` (1x/h no worker) verifica avisos que chegaram à hora, dispara via Telegram (forçado, independente de silêncio) e marca `notified_at` — a mensagem leva título, MLB, loja, data agendada, a observação e o link do anúncio. Dá pra forçar sem esperar a hora cheia com `redis-cli PUBLISH worker:cmd '{"cmd":"sync-ranking-alerts"}'`. (Três defeitos que impediam o disparo foram corrigidos na v80 — ver `workers.md`.) Modal na página com datetime-picker e formulário de observação; lista os avisos agendados (com status ✅/⏰). Rotas: `GET /api/ranking/ads/:id/alerts` (listar), `POST /api/ranking/ads/:id/alerts` (agendar).
 
 ## Visitas / qualidade / buy-box: snapshot com fallback (v80)
 

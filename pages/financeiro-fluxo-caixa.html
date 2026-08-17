@@ -55,6 +55,18 @@
     .fx-tab.on { background:#1f2937; color:#fff; }
     .up{ color:#3fb950;} .down{ color:#f87171;}
     .fx-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    /* Gestão de contas bancárias (modal) */
+    .fx-conta { border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+    .fx-conta-top { display:flex; align-items:flex-start; gap:10px; }
+    .fx-conta-top > div:first-child { flex:1; min-width:0; }
+    .fx-conta-acts { display:flex; gap:2px; flex-shrink:0; }
+    .fx-mut { color:var(--text-muted); font-weight:400; }
+    .fx-sm { font-size:11px; color:var(--text-muted); margin-top:2px; }
+    .fx-badge-off { background:var(--bg-card2); color:var(--text-muted); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; padding:2px 6px; border-radius:5px; border:1px solid var(--border); }
+    .fx-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+    .fx-chip { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px; cursor:pointer; }
+    .fx-chip:hover { color:var(--text-main); border-color:var(--text-muted); }
+    .fx-chip.on { background:#3fb950; border-color:#3fb950; color:#03210d; }
     .fx-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
     .fx-modal-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
     .fx-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:560px; max-height:90vh; overflow:auto; }
@@ -387,14 +399,161 @@ async function addCat(){ const nome=document.getElementById('mCat').value.trim()
 async function excluirCat(id){ const r=await DB.deleteFinanceiroRow('cash_flow_categories',id); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } CATS=CATS.filter(c=>c.id!==id); load(); abrirCategorias(); }
 
 // ── Contas bancárias ────────────────────────────────────────────────────────
-function abrirContas(){
-  const list=CONTAS.length?CONTAS.map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span><b>${esc(c.nome||'—')}</b> <span style="font-size:11px;color:var(--text-muted)">${esc(c.banco_nome||'')}${c.ativa===false?' · inativa':''}</span></span><button class="fx-icon del" onclick="excluirConta('${esc(c.id)}')"><i class="fas fa-trash"></i></button></div>`).join(''):'<div class="fx-empty">Nenhuma conta.</div>';
-  abrirModalInfo('🏦 Contas Bancárias', `<div style="margin-bottom:12px">${list}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="mcNome" class="fx-in" placeholder="Nome (ex: Itaú PJ)"><input id="mcBanco" class="fx-in" placeholder="Banco"></div>
-    <div id="eMsg" style="font-size:12px;margin-top:8px"></div><button class="fx-btn-ok" style="margin-top:12px" onclick="addConta()">Adicionar conta</button>`);
+// Gestão completa: renomear (trocar "Sicoob" por "Santander UNIFULL" sem perder
+// o histórico), inativar em vez de excluir, e vincular a conta às empresas —
+// é esse vínculo (conta_empresas) que faz a conta aparecer no modal "de qual
+// conta saiu o pagamento?" da tela de Boletos.
+const EMPRESAS_CONTA = ['UNIFULL','TOP MIX','R SOUZA','SHOPEE'];
+let contaEdit = null; // id da conta aberta em edição dentro do modal
+
+// `conta_empresas` tem divergência de nomenclatura: o guia do ERP documenta
+// conta_bancaria_id/empresa, mas o código em produção (Boletos) lê
+// conta_id/empresa_nome. Sem egress pro Supabase no dev não dá pra confirmar
+// qual é o real — então lemos os dois nomes e, ao gravar, tentamos primeiro o
+// formato das linhas que já existem, caindo no outro se o PostgREST recusar.
+const ceConta = ce => ce.conta_id != null ? ce.conta_id : (ce.conta_bancaria_id != null ? ce.conta_bancaria_id : null);
+const ceEmp   = ce => String(ce.empresa_nome != null ? ce.empresa_nome : (ce.empresa || '')).trim();
+function ceFormatoConhecido(){
+  const amostra = CONTAEMP.find(ce => ce.conta_id != null || ce.conta_bancaria_id != null);
+  if (!amostra) return null;
+  return amostra.conta_id != null ? 'conta_id' : 'conta_bancaria_id';
 }
-async function addConta(){ const nome=document.getElementById('mcNome').value.trim(); if(!nome){ eMsgErr('Informe o nome.'); return; } const r=await DB.addFinanceiroRow('contas_bancarias',{nome,banco_nome:document.getElementById('mcBanco').value.trim()||null,ativa:true}); if(r&&r.error){ eMsgErr('Erro: '+esc(r.error)); return; } load(); abrirContas(); }
-async function excluirConta(id){ const r=await DB.deleteFinanceiroRow('contas_bancarias',id); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } load(); abrirContas(); }
+async function ceVincular(contaId, empresa){
+  const A = { conta_id: contaId, empresa_nome: empresa };
+  const B = { conta_bancaria_id: contaId, empresa: empresa };
+  const tentativas = ceFormatoConhecido() === 'conta_bancaria_id' ? [B, A] : [A, B];
+  let erro = null;
+  for (const body of tentativas){
+    const r = await DB.addFinanceiroRow('conta_empresas', body);
+    if (!(r && r.error)) return r;
+    erro = r.error;
+  }
+  return { error: erro };
+}
+
+function lancamentosDaConta(id){ return ENTRIES.filter(e => e.conta_bancaria_id === id).length; }
+
+function abrirContas(){
+  const list = CONTAS.length ? CONTAS.map(c => {
+    if (contaEdit === c.id) return formContaEdit(c);
+    const n = lancamentosDaConta(c.id);
+    const vinculadas = CONTAEMP.filter(ce => String(ceConta(ce)) === String(c.id)).map(ceEmp);
+    const chips = EMPRESAS_CONTA.map(e => {
+      const on = vinculadas.includes(e);
+      return `<button class="fx-chip${on ? ' on' : ''}" title="${on ? 'Desvincular' : 'Vincular'} ${esc(e)}" onclick="toggleContaEmpresa('${esc(c.id)}','${esc(e)}',${on})">${esc(e)}</button>`;
+    }).join('');
+    const dados = [c.banco_agencia ? `ag. ${esc(c.banco_agencia)}` : '', c.banco_conta ? `cc ${esc(c.banco_conta)}` : ''].filter(Boolean).join(' · ');
+    return `<div class="fx-conta">
+      <div class="fx-conta-top">
+        <div>
+          <b>${esc(c.nome || '—')}</b> ${c.banco_nome ? `<span class="fx-mut">${esc(c.banco_nome)}</span>` : ''}${c.ativa === false ? ' <span class="fx-badge-off">inativa</span>' : ''}
+          <div class="fx-sm">${n} lançamento(s)${dados ? ' · ' + dados : ''}</div>
+        </div>
+        <div class="fx-conta-acts">
+          <button class="fx-icon" title="Editar nome / banco" onclick="editarConta('${esc(c.id)}')"><i class="fas fa-pen"></i></button>
+          <button class="fx-icon" title="${c.ativa === false ? 'Reativar conta' : 'Inativar (some dos formulários, mantém o histórico)'}" onclick="toggleContaAtiva('${esc(c.id)}',${c.ativa === false})"><i class="fas ${c.ativa === false ? 'fa-toggle-off' : 'fa-toggle-on'}"></i></button>
+          <button class="fx-icon del" title="Excluir" onclick="excluirConta('${esc(c.id)}',${n})"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+      <div class="fx-chips">${chips}</div>
+    </div>`;
+  }).join('') : '<div class="fx-empty">Nenhuma conta cadastrada.</div>';
+
+  abrirModalInfo('🏦 Contas Bancárias', `<div style="margin-bottom:14px">${list}</div>
+    <div style="border-top:1px dashed var(--border);padding-top:12px">
+      <div style="font-size:11px;color:var(--text-muted);font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Nova conta</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="mcNome" class="fx-in" placeholder="Nome (ex: Santander UNIFULL)">
+        <input id="mcBanco" class="fx-in" placeholder="Banco (ex: Santander)">
+        <input id="mcAg" class="fx-in" placeholder="Agência (opcional)">
+        <input id="mcCc" class="fx-in" placeholder="Conta (opcional)">
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Empresas desta conta (dá pra mudar depois nos chips):</div>
+      <div class="fx-chips" id="mcEmps">${EMPRESAS_CONTA.map(e => `<button class="fx-chip" data-emp="${esc(e)}" onclick="this.classList.toggle('on')">${esc(e)}</button>`).join('')}</div>
+      <div id="eMsg" style="font-size:12px;margin-top:8px"></div>
+      <button class="fx-btn-ok" style="margin-top:12px" onclick="addConta()">Adicionar conta</button>
+    </div>`);
+}
+
+function formContaEdit(c){
+  return `<div class="fx-conta" style="border-color:#3fb950">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label class="fx-lbl" style="margin-top:0">Nome<input id="ecNome" class="fx-in" value="${esc(c.nome || '')}"></label>
+      <label class="fx-lbl" style="margin-top:0">Banco<input id="ecBanco" class="fx-in" value="${esc(c.banco_nome || '')}"></label>
+      <label class="fx-lbl" style="margin-top:0">Agência<input id="ecAg" class="fx-in" value="${esc(c.banco_agencia || '')}"></label>
+      <label class="fx-lbl" style="margin-top:0">Conta<input id="ecCc" class="fx-in" value="${esc(c.banco_conta || '')}"></label>
+    </div>
+    <div id="eMsg" style="font-size:12px;margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <button class="fx-btn-ok" onclick="salvarConta('${esc(c.id)}')">Salvar</button>
+      <button class="fx-icon" onclick="contaEdit=null;abrirContas()">Cancelar</button>
+      <span class="fx-sm" style="margin-left:auto">Renomear mantém todos os lançamentos já feitos nesta conta.</span>
+    </div>
+  </div>`;
+}
+
+function editarConta(id){ contaEdit = id; abrirContas(); }
+
+async function addConta(){
+  const nome = document.getElementById('mcNome').value.trim();
+  if (!nome) { eMsgErr('Informe o nome.'); return; }
+  const val = id => { const el = document.getElementById(id); return el && el.value.trim() ? el.value.trim() : null; };
+  const r = await DB.addFinanceiroRow('contas_bancarias', {
+    nome, banco_nome: val('mcBanco'), banco_agencia: val('mcAg'), banco_conta: val('mcCc'), ativa: true,
+  });
+  if (r && r.error) { eMsgErr('Erro: ' + esc(r.error)); return; }
+  // Vincula as empresas marcadas — sem isso a conta não aparece no modal de
+  // pagamento da tela de Boletos.
+  const nova = Array.isArray(r && r.rows) ? r.rows[0] : null;
+  const marcadas = [...document.querySelectorAll('#mcEmps .fx-chip.on')].map(b => b.dataset.emp);
+  if (nova && nova.id) {
+    for (const emp of marcadas) {
+      const rv = await ceVincular(nova.id, emp);
+      if (rv && rv.error) { showStatus('⚠️ Conta criada, mas falhou vincular ' + esc(emp) + ': ' + esc(rv.error), true); break; }
+    }
+  }
+  contaEdit = null; await load(); abrirContas();
+}
+
+async function salvarConta(id){
+  const nome = document.getElementById('ecNome').value.trim();
+  if (!nome) { eMsgErr('Informe o nome.'); return; }
+  const val = i => { const el = document.getElementById(i); return el && el.value.trim() ? el.value.trim() : null; };
+  const r = await DB.updateFinanceiroRow('contas_bancarias', id, {
+    nome, banco_nome: val('ecBanco'), banco_agencia: val('ecAg'), banco_conta: val('ecCc'),
+  });
+  if (r && r.error) { eMsgErr('Erro: ' + esc(r.error)); return; }
+  contaEdit = null; await load(); abrirContas();
+}
+
+async function toggleContaAtiva(id, reativar){
+  const r = await DB.updateFinanceiroRow('contas_bancarias', id, { ativa: !!reativar });
+  if (r && r.error) { showStatus('⚠️ ' + esc(r.error), true); return; }
+  await load(); abrirContas();
+}
+
+async function toggleContaEmpresa(contaId, empresa, vinculada){
+  if (vinculada) {
+    const linha = CONTAEMP.find(ce => String(ceConta(ce)) === String(contaId) && ceEmp(ce) === empresa);
+    if (!linha) return;
+    const r = await DB.deleteFinanceiroRow('conta_empresas', linha.id);
+    if (r && r.error) { showStatus('⚠️ ' + esc(r.error), true); return; }
+  } else {
+    const r = await ceVincular(contaId, empresa);
+    if (r && r.error) { showStatus('⚠️ Não consegui vincular a empresa: ' + esc(r.error), true); return; }
+  }
+  await load(); abrirContas();
+}
+
+async function excluirConta(id, n){
+  const msg = n > 0
+    ? `Excluir esta conta?\n\n${n} lançamento(s) já foram feitos nela e vão ficar SEM conta (o valor continua no fluxo, mas some do resumo por conta).\n\nSe a conta só não é mais usada, prefira INATIVAR — ou EDITAR e renomear.`
+    : 'Excluir esta conta?';
+  if (!confirm(msg)) return;
+  const r = await DB.deleteFinanceiroRow('contas_bancarias', id);
+  if (r && r.error) { showStatus('⚠️ ' + esc(r.error), true); return; }
+  contaEdit = null; await load(); abrirContas();
+}
 
 // ── Recorrentes ─────────────────────────────────────────────────────────────
 function abrirRecorrentes(){

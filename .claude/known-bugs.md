@@ -121,3 +121,11 @@ Consequência: como `db/migrate.js` manda o arquivo inteiro num único `pool.que
 `GET /api/ranking/ads` trazia `(SELECT COUNT(*) FROM returns ret WHERE ret.item_id = r.ml_id)`, mas `returns` **não tem** a coluna `item_id`: a rota inteira respondia 500 e todos os cards sumiam da tela. Corrigido trocando a subquery por `0 AS devolucoes_count` — a página voltou, mas o número é **decorativo**.
 
 Para valer, precisa de um caminho real devolução → anúncio: `returns` guarda a reclamação/pedido, então o casamento teria de passar por `orders` (pedido → item → `ml_id`) ou por uma coluna nova preenchida no handler `post_purchase`. Enquanto isso não existir, não exibir número diferente de 0 nem prometer o dado na doc.
+
+## `conta_empresas` — divergência de nomes de coluna entre a doc e o código
+
+`financeiro-clone-guide.md` documenta a tabela como `conta_bancaria_id` + `empresa`. O código que roda em produção (`pages/financeiro-boletos.html`, filtro do modal de pagamento) lê `ce.conta_id` + `ce.empresa_nome`. Os dois não podem estar certos.
+
+Como o ambiente de dev **não tem egress pro Supabase**, não dá pra confirmar qual é o real sem estar em produção. A gestão de contas do Fluxo de Caixa (v80) foi escrita **tolerante aos dois**: lê qualquer um dos nomes e, ao gravar, tenta primeiro o formato das linhas que já existem, caindo no outro se o PostgREST recusar.
+
+**Correção esperada:** abrir `pages/financeiro.html` (explorador de tabelas) em produção, ver a prévia real de `conta_empresas`, corrigir o guia e então simplificar o código pra um formato só. Enquanto isso, o filtro de contas por empresa em Boletos pode estar silenciosamente vazio (ele cai pra "todas as contas" quando não casa nenhuma, então não quebra a tela — só não filtra).

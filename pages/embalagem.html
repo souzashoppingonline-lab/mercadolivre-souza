@@ -181,6 +181,33 @@
     .emb-modal h3 { font-size: 14px; font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
     .emb-modal h3 .close { cursor: pointer; color: var(--text-muted); }
     .emb-modal video { width: 100%; border-radius: 10px; background: #000; max-height: 70vh; }
+
+    /* ── Aba Relatório do Dia / Semana / Mês ── */
+    .rd-controles { justify-content: flex-start; align-items: center; }
+    .rd-periodo-btns { display: inline-flex; background: var(--bg-card2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; gap: 3px; }
+    .rd-pbtn { background: transparent; border: 0; color: var(--text-muted); border-radius: 7px; padding: 7px 16px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .rd-pbtn.active { background: rgba(255,230,0,.12); color: var(--primary); }
+    .rd-nav { display: flex; align-items: center; gap: 6px; }
+    .rd-nav input[type=date] { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 7px 10px; font-size: 12px; }
+    .rd-nav-btn { padding: 8px 11px; }
+    .rd-pdf { margin-left: auto; background: var(--primary); border-color: var(--primary); color: #111; font-weight: 800; }
+    .rd-pdf:hover { color: #111; opacity: .9; }
+    .rd-titulo { font-size: 15px; font-weight: 800; margin: 4px 0 2px; }
+    .rd-titulo .rd-range { color: var(--text-muted); font-weight: 600; font-size: 12px; margin-left: 8px; }
+    .rd-sec { margin-top: 22px; }
+    .rd-sec > h4 { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; font-weight: 700; }
+    .rd-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .rd-charts { grid-template-columns: 1fr; } }
+    .rd-chart-box { background: var(--bg-card2); border-radius: 12px; padding: 14px; }
+    .rd-chart-box .rd-chart-t { font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+    .rd-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .rd-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .rd-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); }
+    .rd-table td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .rd-table tbody tr:last-child td { border-bottom: 0; }
+    .rd-destaques { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .rd-chip { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 13px; font-size: 12px; }
+    .rd-chip b { color: var(--primary); }
   </style>
 </head>
 <body>
@@ -200,6 +227,7 @@
         <button class="emb-tab-btn" id="tabBtnConferencia" onclick="switchTab('conferencia')"><i class="fas fa-clipboard-check"></i> Conferência do Dia</button>
         <button class="emb-tab-btn" id="tabBtnHistorico" onclick="switchTab('historico')"><i class="fas fa-chart-line"></i> Histórico</button>
         <button class="emb-tab-btn" id="tabBtnRelatorios" onclick="switchTab('relatorios')"><i class="fas fa-file-chart-bar"></i> Relatórios</button>
+        <button class="emb-tab-btn" id="tabBtnRelDia" onclick="switchTab('reldia')"><i class="fas fa-file-pdf"></i> Relatório do Dia</button>
         <button class="emb-tab-btn" id="tabBtnAuditoria" onclick="switchTab('auditoria')"><i class="fas fa-list-check"></i> Auditoria <span id="audBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
         <button class="emb-tab-btn" id="tabBtnErros" onclick="switchTab('erros')"><i class="fas fa-triangle-exclamation"></i> Erros <span id="errosBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
       </div>
@@ -332,6 +360,32 @@
             <canvas id="relChart" height="90"></canvas>
           </div>
           <div class="emb-video-list" id="relTableList"><div class="emb-placeholder">Carregando dados...</div></div>
+        </div>
+      </div>
+
+      <!-- ═══ ABA: RELATÓRIO DO DIA / SEMANA / MÊS ═══ -->
+      <div class="emb-panel" id="panelRelDia">
+        <div class="emb-card rd-tela">
+          <p class="emb-subtitle" style="margin-top:0">Fechamento da expedição: tudo que aconteceu no período — produtos, tempo, performance e erros — pronto pra baixar em PDF.</p>
+
+          <div class="emb-filters rd-controles">
+            <div class="rd-periodo-btns">
+              <button class="rd-pbtn active" id="rdBtnDia" onclick="rdSetTipo('dia')">Dia</button>
+              <button class="rd-pbtn" id="rdBtnSemana" onclick="rdSetTipo('semana')">Semana</button>
+              <button class="rd-pbtn" id="rdBtnMes" onclick="rdSetTipo('mes')">Mês</button>
+            </div>
+            <div class="rd-nav">
+              <button class="emb-btn rd-nav-btn" onclick="rdNavegar(-1)" title="Período anterior"><i class="fas fa-chevron-left"></i></button>
+              <input type="date" id="rdData" onchange="loadRelDia()">
+              <button class="emb-btn rd-nav-btn" onclick="rdNavegar(1)" title="Próximo período"><i class="fas fa-chevron-right"></i></button>
+              <button class="emb-btn" onclick="rdHoje()">Hoje</button>
+            </div>
+            <div class="emb-field"><label>Marketplace</label><select id="rdMkt" onchange="loadRelDia()"><option value="">Todos</option><option value="ML">Mercado Livre</option><option value="SHOPEE">Shopee</option></select></div>
+            <div class="emb-field"><label>Loja</label><select id="rdLoja" onchange="loadRelDia()"><option value="">Todas</option></select></div>
+            <button class="emb-btn rd-pdf" onclick="rdImprimir()"><i class="fas fa-file-pdf"></i> Baixar PDF</button>
+          </div>
+
+          <div id="rdConteudo"><div class="emb-placeholder">Carregando relatório…</div></div>
         </div>
       </div>
 
@@ -924,6 +978,7 @@ function switchTab(tab) {
   document.getElementById('panelConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('panelHistorico').classList.toggle('active', tab === 'historico');
   document.getElementById('panelRelatorios').classList.toggle('active', tab === 'relatorios');
+  document.getElementById('panelRelDia').classList.toggle('active', tab === 'reldia');
   document.getElementById('panelAuditoria').classList.toggle('active', tab === 'auditoria');
   document.getElementById('panelErros').classList.toggle('active', tab === 'erros');
   document.getElementById('tabBtnBipar').classList.toggle('active', tab === 'bipar');
@@ -931,12 +986,14 @@ function switchTab(tab) {
   document.getElementById('tabBtnConferencia').classList.toggle('active', tab === 'conferencia');
   document.getElementById('tabBtnHistorico').classList.toggle('active', tab === 'historico');
   document.getElementById('tabBtnRelatorios').classList.toggle('active', tab === 'relatorios');
+  document.getElementById('tabBtnRelDia').classList.toggle('active', tab === 'reldia');
   document.getElementById('tabBtnAuditoria').classList.toggle('active', tab === 'auditoria');
   document.getElementById('tabBtnErros').classList.toggle('active', tab === 'erros');
   if (tab === 'bipar') refocusScan();
   if (tab === 'conferencia') loadConferenciaDia();
   if (tab === 'historico') loadHistorico();
   if (tab === 'relatorios') loadRelatorios();
+  if (tab === 'reldia') loadRelDia();
   if (tab === 'auditoria') loadAuditoria();
   if (tab === 'erros') loadErros();
 }
@@ -1431,6 +1488,337 @@ function renderRelatorioChart(rows) {
       },
     },
   });
+}
+
+// ═══ Aba: Relatório do Dia / Semana / Mês ═══════════════════
+// Uma única aba serve os três recortes — só muda o intervalo [from, to] mandado
+// pra GET /embalagem/relatorio-periodo, que já devolve todo o payload agregado.
+// SEMANA é sempre SEGUNDA A SEXTA (não há expedição no fim de semana): domingo
+// é tratado como pertencente à semana que acabou, não à que vai começar.
+let rdTipo = 'dia';
+let rdDados = null;   // último payload — reaproveitado pelo PDF, sem recarregar
+let rdIntervalo = null;
+
+const RD_MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function rdParse(iso) { return new Date(iso + 'T12:00:00'); } // meio-dia: imune a virada de fuso
+function rdISO(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function rdAddDias(iso, n) { const d = rdParse(iso); d.setDate(d.getDate() + n); return rdISO(d); }
+function rdSegunda(iso) { const d = rdParse(iso); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return rdISO(d); }
+function rdBR(iso) { const d = rdParse(iso); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+// Intervalo efetivo do recorte atual, a partir da data de referência do input.
+function rdCalcIntervalo() {
+  const ref = document.getElementById('rdData').value || todayISO();
+  if (rdTipo === 'semana') { const seg = rdSegunda(ref); return { from: seg, to: rdAddDias(seg, 4) }; }
+  if (rdTipo === 'mes') {
+    const d = rdParse(ref);
+    const ini = new Date(d.getFullYear(), d.getMonth(), 1);
+    const fim = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return { from: rdISO(ini), to: rdISO(fim) };
+  }
+  return { from: ref, to: ref };
+}
+function rdTituloPeriodo(iv) {
+  const d = rdParse(iv.from);
+  if (rdTipo === 'semana') return `Semana de ${rdBR(iv.from)} a ${rdBR(iv.to)} — segunda a sexta`;
+  if (rdTipo === 'mes') return `${RD_MESES[d.getMonth()][0].toUpperCase()}${RD_MESES[d.getMonth()].slice(1)} de ${d.getFullYear()}`;
+  return rdParse(iv.from).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+function rdSetTipo(tipo) {
+  rdTipo = tipo;
+  ['Dia', 'Semana', 'Mes'].forEach(t => document.getElementById('rdBtn' + t).classList.toggle('active', t.toLowerCase() === tipo));
+  rdSnap();
+  loadRelDia();
+}
+// Ancora o input no início do recorte — em semana/mês a data solta confunde
+// (o usuário escolhe "quarta" e o relatório mostra a semana inteira).
+function rdSnap() {
+  const el = document.getElementById('rdData');
+  if (!el.value) el.value = todayISO();
+  const iv = rdCalcIntervalo();
+  if (rdTipo !== 'dia') el.value = iv.from;
+}
+function rdNavegar(delta) {
+  const el = document.getElementById('rdData');
+  const ref = el.value || todayISO();
+  if (rdTipo === 'dia') el.value = rdAddDias(ref, delta);
+  else if (rdTipo === 'semana') el.value = rdSegunda(rdAddDias(rdSegunda(ref), delta * 7));
+  else { const d = rdParse(ref); el.value = rdISO(new Date(d.getFullYear(), d.getMonth() + delta, 1)); }
+  loadRelDia();
+}
+function rdHoje() { document.getElementById('rdData').value = todayISO(); rdSnap(); loadRelDia(); }
+// Rótulo dos filtros ativos — aparece no cabeçalho da tela e do PDF.
+function rdFiltrosLabel() {
+  const mkt = document.getElementById('rdMkt'), loja = document.getElementById('rdLoja');
+  return [mkt.value ? mkt.selectedOptions[0].text : null, loja.value ? loja.selectedOptions[0].text : null]
+    .filter(Boolean).join(' · ');
+}
+
+async function loadRelDia() {
+  await loadLojasSelect('rdLoja');
+  const el = document.getElementById('rdData');
+  if (!el.value) { el.value = todayISO(); rdSnap(); }
+  const iv = rdCalcIntervalo();
+  rdIntervalo = iv;
+
+  const alvo = document.getElementById('rdConteudo');
+  alvo.innerHTML = '<div class="emb-placeholder">Carregando relatório…</div>';
+
+  const params = { from: iv.from, to: iv.to };
+  const loja = document.getElementById('rdLoja').value; if (loja) params.store_id = loja;
+  const mkt = document.getElementById('rdMkt').value; if (mkt) params.marketplace = mkt;
+
+  const d = await DB.getRelatorioPeriodo(params);
+  if (!d || d.error) { rdDados = null; alvo.innerHTML = `<div class="emb-placeholder">Erro ao carregar: ${escapeHtml(d?.error || 'falha na requisição')}</div>`; return; }
+  rdDados = d;
+  rdRender(d, iv);
+}
+
+function rdRender(d, iv) {
+  const r = d.resumo;
+  const multiDia = d.periodo.dias_no_periodo > 1;
+  const filtros = rdFiltrosLabel();
+
+  const chips = [];
+  if (r.melhor_dia && multiDia) chips.push(`<div class="rd-chip">Melhor dia: <b>${rdBR(r.melhor_dia.date)}</b> — ${r.melhor_dia.count} bipagens</div>`);
+  if (r.hora_pico) chips.push(`<div class="rd-chip">Horário de pico: <b>${String(r.hora_pico.hour).padStart(2,'0')}h</b> — ${r.hora_pico.qty} bipagens</div>`);
+  if (multiDia) chips.push(`<div class="rd-chip">Dias com movimento: <b>${r.dias_com_movimento}</b> de ${d.periodo.dias_no_periodo}</div>`);
+  if (multiDia) chips.push(`<div class="rd-chip">Média por dia trabalhado: <b>${r.media_por_dia}</b> bipagens</div>`);
+
+  document.getElementById('rdConteudo').innerHTML = `
+    <div class="rd-titulo">${escapeHtml(rdTituloPeriodo(iv))}${filtros ? `<span class="rd-range">${escapeHtml(filtros)}</span>` : ''}</div>
+    ${r.bipagens === 0 ? '<div class="emb-placeholder" style="margin:14px 0">Nenhuma bipagem registrada neste período.</div>' : ''}
+
+    <div class="card-grid" style="margin:14px 0 0">
+      <div class="stat-card"><div class="label">Pedidos embalados</div><div class="value">${r.pedidos}</div></div>
+      <div class="stat-card"><div class="label">Envios bipados</div><div class="value">${r.bipagens}</div></div>
+      <div class="stat-card"><div class="label">Tempo médio / pedido</div><div class="value" style="color:var(--teal)">${fmtDuration(r.tempo_medio_pedido)}</div></div>
+      <div class="stat-card"><div class="label">Tempo total embalando</div><div class="value" style="color:var(--teal)">${fmtDuration(r.tempo_total || null)}</div></div>
+      <div class="stat-card"><div class="label">Embaladores</div><div class="value">${r.embaladores}</div></div>
+      <div class="stat-card"><div class="label">Erros</div><div class="value" style="color:${r.erros ? 'var(--red)' : 'var(--text-main)'}">${r.erros}</div></div>
+    </div>
+    ${chips.length ? `<div class="rd-destaques">${chips.join('')}</div>` : ''}
+
+    ${multiDia ? `<div class="rd-sec"><h4>Volume e tempo por dia</h4>
+      <div class="rd-chart-box"><canvas id="rdChartDia" height="90"></canvas></div></div>` : ''}
+
+    <div class="rd-sec"><h4>Ritmo e produtividade</h4>
+      <div class="rd-charts">
+        <div class="rd-chart-box"><div class="rd-chart-t">Bipagens por hora do dia</div><canvas id="rdChartHora" height="170"></canvas></div>
+        <div class="rd-chart-box"><div class="rd-chart-t">Pedidos por embalador</div><canvas id="rdChartEmb" height="170"></canvas></div>
+      </div>
+    </div>
+
+    <div class="rd-sec"><h4>Distribuição</h4>
+      <div class="rd-charts">
+        <div class="rd-chart-box"><div class="rd-chart-t">Por logística</div><canvas id="rdChartLog" height="170"></canvas></div>
+        <div class="rd-chart-box"><div class="rd-chart-t">Por loja</div><canvas id="rdChartLoja" height="170"></canvas></div>
+      </div>
+    </div>
+
+    <div class="rd-sec"><h4>Performance por embalador</h4>${rdTabelaEmbaladores(d)}</div>
+    <div class="rd-sec"><h4>Produtos embalados (top 30)</h4>${rdTabelaProdutos(d)}</div>
+    <div class="rd-sec"><h4>Erros no período</h4>${rdTabelaErros(d)}</div>`;
+
+  rdMontarGraficos(d, multiDia, 'escuro');
+}
+
+function rdTabelaEmbaladores(d) {
+  if (!d.por_embalador.length) return '<div class="emb-placeholder">Sem bipagens no período.</div>';
+  const linhas = d.por_embalador.map(e => {
+    const tot = Number(e.duration_sum) || 0;
+    const med = e.duration_orders > 0 ? tot / e.duration_orders : null;
+    return `<tr><td>${escapeHtml(e.embalador)}</td><td class="n">${e.pedidos}</td><td class="n">${e.bipagens}</td><td class="n">${fmtDuration(tot || null)}</td><td class="n">${fmtDuration(med)}</td></tr>`;
+  }).join('');
+  return `<div class="table-responsive"><table class="rd-table">
+    <thead><tr><th>Embalador</th><th class="n">Pedidos</th><th class="n">Envios</th><th class="n">Tempo total</th><th class="n">Média / pedido</th></tr></thead>
+    <tbody>${linhas}</tbody></table></div>`;
+}
+function rdTabelaProdutos(d) {
+  if (!d.top_produtos.length) return '<div class="emb-placeholder">Nenhum produto identificado (pedidos sem título cadastrado).</div>';
+  const linhas = d.top_produtos.map((p, i) =>
+    `<tr><td class="n">${i + 1}</td><td>${escapeHtml(p.produto)}</td><td class="n">${p.pedidos}</td><td class="n">${p.unidades}</td></tr>`).join('');
+  return `<div class="table-responsive"><table class="rd-table">
+    <thead><tr><th class="n">#</th><th>Produto</th><th class="n">Pedidos</th><th class="n">Unidades</th></tr></thead>
+    <tbody>${linhas}</tbody></table></div>`;
+}
+function rdTabelaErros(d) {
+  const porTipo = d.erros.por_tipo, recentes = d.erros.recentes;
+  if (!porTipo.length) return '<div class="emb-placeholder">Nenhum erro registrado no período. 🎉</div>';
+  const resumo = porTipo.map(e => `<div class="rd-chip">${escapeHtml(ERR_LABEL[e.error_type] || e.error_type)}: <b>${e.count}</b></div>`).join('');
+  const linhas = recentes.slice(0, 30).map(e => `<tr>
+      <td style="white-space:nowrap">${new Date(e.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+      <td>${escapeHtml(ERR_LABEL[e.error_type] || e.error_type)}</td>
+      <td>${escapeHtml(e.shipping_id || '—')}</td>
+      <td>${escapeHtml(e.store_nickname || '—')}</td>
+      <td>${escapeHtml(e.staff_user_name || '—')}</td>
+    </tr>`).join('');
+  return `<div class="rd-destaques" style="margin:0 0 12px">${resumo}</div>
+    <div class="table-responsive"><table class="rd-table">
+      <thead><tr><th>Quando</th><th>Tipo</th><th>Envio</th><th>Loja</th><th>Embalador</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div>`;
+}
+
+// ── Gráficos ────────────────────────────────────────────────
+// A mesma fábrica de configs serve a tela (tema escuro) e o PDF (tema claro,
+// impresso em papel branco) — assim o gráfico do relatório é exatamente o que
+// está na tela, sem duas implementações pra manter em sincronia.
+const RD_TEMA = {
+  escuro: { tick: '#888', grid: 'rgba(255,255,255,.04)', legenda: '#ccc', barra: '#FFE600', linha: '#1abc9c' },
+  claro:  { tick: '#444', grid: 'rgba(0,0,0,.09)',       legenda: '#333', barra: '#E6B800', linha: '#0e8a70' },
+};
+function rdConfigs(d, multiDia, tema) {
+  const T = RD_TEMA[tema];
+  const eixo = (extra = {}) => Object.assign({
+    ticks: { color: T.tick, font: { size: 10 } }, grid: { color: T.grid }, beginAtZero: true,
+  }, extra);
+  const base = { responsive: false, animation: false, plugins: { legend: { display: false } } };
+  const cfgs = [];
+
+  if (multiDia) {
+    cfgs.push({ key: 'rdChartDia', titulo: 'Volume e tempo por dia', cfg: {
+      type: 'bar',
+      data: {
+        labels: d.por_dia.map(x => rdBR(x.date)),
+        datasets: [
+          { label: 'Envios bipados', data: d.por_dia.map(x => x.count), backgroundColor: T.barra + 'cc', borderColor: T.barra, borderWidth: 1.5, borderRadius: 5, yAxisID: 'y' },
+          { label: 'Tempo médio / pedido (s)', type: 'line', data: d.por_dia.map(x => x.duration_orders > 0 ? Math.round(Number(x.duration_sum) / x.duration_orders) : null),
+            borderColor: T.linha, backgroundColor: T.linha, tension: .3, spanGaps: true, pointRadius: 3, yAxisID: 'y1' },
+        ],
+      },
+      options: Object.assign({}, base, {
+        plugins: { legend: { position: 'bottom', labels: { color: T.legenda, boxWidth: 10, font: { size: 11 } } } },
+        scales: { x: eixo({ grid: { display: false } }), y: eixo(), y1: eixo({ position: 'right', grid: { display: false } }) },
+      }),
+    } });
+  }
+
+  cfgs.push({ key: 'rdChartHora', titulo: 'Bipagens por hora do dia', cfg: {
+    type: 'bar',
+    data: { labels: d.por_hora.map(h => `${String(h.hour).padStart(2, '0')}h`),
+            datasets: [{ label: 'Bipagens', data: d.por_hora.map(h => h.qty), backgroundColor: T.barra + 'cc', borderColor: T.barra, borderWidth: 1, borderRadius: 4 }] },
+    options: Object.assign({}, base, { scales: { x: eixo({ grid: { display: false } }), y: eixo() } }),
+  } });
+
+  cfgs.push({ key: 'rdChartEmb', titulo: 'Pedidos por embalador', cfg: {
+    type: 'bar',
+    data: { labels: d.por_embalador.map(e => e.embalador),
+            datasets: [{ label: 'Pedidos', data: d.por_embalador.map(e => e.pedidos),
+                         backgroundColor: d.por_embalador.map((_, i) => STORE_PALETTE[i % STORE_PALETTE.length] + 'cc'),
+                         borderColor: d.por_embalador.map((_, i) => STORE_PALETTE[i % STORE_PALETTE.length]), borderWidth: 1.5, borderRadius: 5 }] },
+    options: Object.assign({}, base, { indexAxis: 'y', scales: { x: eixo(), y: eixo({ grid: { display: false } }) } }),
+  } });
+
+  const rosca = (key, titulo, labels, valores) => ({ key, titulo, cfg: {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: valores, backgroundColor: labels.map((_, i) => STORE_PALETTE[i % STORE_PALETTE.length]), borderWidth: 0 }] },
+    options: Object.assign({}, base, { cutout: '58%', plugins: { legend: { position: 'right', labels: { color: T.legenda, boxWidth: 10, font: { size: 11 } } } } }),
+  } });
+  cfgs.push(rosca('rdChartLog', 'Por logística', d.por_logistica.map(l => l.logistica), d.por_logistica.map(l => l.count)));
+  cfgs.push(rosca('rdChartLoja', 'Por loja', d.por_loja.map(l => l.loja), d.por_loja.map(l => l.count)));
+  return cfgs;
+}
+
+function rdMontarGraficos(d, multiDia, tema) {
+  for (const { key, cfg } of rdConfigs(d, multiDia, tema)) {
+    const canvas = document.getElementById(key);
+    if (!canvas) continue;
+    destroyChart(key);
+    // Na tela: responsive com o height do <canvas> definindo a proporção —
+    // mesmo padrão dos gráficos das outras abas desta página.
+    charts[key] = new Chart(canvas, Object.assign({}, cfg, {
+      options: Object.assign({}, cfg.options, { responsive: true, animation: { duration: 600, easing: 'easeOutQuart' } }),
+    }));
+  }
+}
+
+// ── PDF ─────────────────────────────────────────────────────
+// Mesmo padrão do resto do projeto (DRE/Recebíveis): monta um HTML próprio e
+// deixa o navegador imprimir/salvar em PDF. Os gráficos entram como PNG gerado
+// fora da tela com o tema claro — canvas do Chart.js é transparente, então um
+// plugin pinta o fundo branco antes, senão o gráfico sai invisível no papel.
+const RD_FUNDO_BRANCO = { id: 'rdFundoBranco', beforeDraw(c) {
+  const x = c.ctx; x.save(); x.globalCompositeOperation = 'destination-over'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.restore();
+} };
+function rdGraficosPNG(d, multiDia) {
+  const imagens = [];
+  for (const { titulo, cfg } of rdConfigs(d, multiDia, 'claro')) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1000; canvas.height = cfg.type === 'doughnut' ? 300 : 340;
+    const chart = new Chart(canvas, Object.assign({}, cfg, { plugins: [RD_FUNDO_BRANCO] }));
+    imagens.push({ titulo, src: chart.toBase64Image('image/png', 1) });
+    chart.destroy();
+  }
+  return imagens;
+}
+
+function rdImprimir() {
+  if (!rdDados || !rdIntervalo) { alert('Carregue o relatório antes de gerar o PDF.'); return; }
+  const d = rdDados, iv = rdIntervalo, r = d.resumo;
+  const multiDia = d.periodo.dias_no_periodo > 1;
+  const filtros = rdFiltrosLabel();
+
+  const kpi =(l, v) => `<div class="k"><div class="kl">${l}</div><div class="kv">${v}</div></div>`;
+  const kpis = [
+    kpi('Pedidos embalados', r.pedidos),
+    kpi('Envios bipados', r.bipagens),
+    kpi('Tempo médio / pedido', fmtDuration(r.tempo_medio_pedido)),
+    kpi('Tempo total embalando', fmtDuration(r.tempo_total || null)),
+    kpi('Embaladores', r.embaladores),
+    kpi('Erros', r.erros),
+  ];
+  if (multiDia) {
+    kpis.push(kpi('Dias com movimento', `${r.dias_com_movimento} / ${d.periodo.dias_no_periodo}`));
+    kpis.push(kpi('Média por dia trabalhado', r.media_por_dia));
+  }
+  if (r.melhor_dia && multiDia) kpis.push(kpi('Melhor dia', `${rdBR(r.melhor_dia.date)} (${r.melhor_dia.count})`));
+  if (r.hora_pico) kpis.push(kpi('Horário de pico', `${String(r.hora_pico.hour).padStart(2, '0')}h (${r.hora_pico.qty})`));
+
+  const graficos = rdGraficosPNG(d, multiDia)
+    .map(g => `<div class="g"><div class="gt">${escapeHtml(g.titulo)}</div><img src="${g.src}"></div>`).join('');
+
+  // As tabelas da tela já são HTML puro com as mesmas classes — só o CSS muda.
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+  <title>Relatório de Embalagem — ${escapeHtml(rdTituloPeriodo(iv))}</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
+    h1 { font-size: 17px; margin: 0 0 2px; }
+    .sub { color: #555; font-size: 11px; margin-bottom: 14px; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #444; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin: 18px 0 10px; }
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .k { border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; }
+    .kl { font-size: 9px; text-transform: uppercase; letter-spacing: .4px; color: #666; }
+    .kv { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .g { margin-bottom: 14px; page-break-inside: avoid; }
+    .gt { font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+    .g img { width: 100%; border: 1px solid #eee; border-radius: 6px; }
+    table.rd-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    table.rd-table th { text-align: left; font-size: 9px; text-transform: uppercase; color: #666; border-bottom: 1px solid #bbb; padding: 5px 6px; }
+    table.rd-table td { padding: 4px 6px; border-bottom: 1px solid #eee; }
+    table.rd-table td.n, table.rd-table th.n { text-align: right; }
+    .rd-destaques { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .rd-chip { border: 1px solid #ddd; border-radius: 20px; padding: 3px 10px; font-size: 10px; }
+    .emb-placeholder { font-size: 11px; color: #666; }
+    .table-responsive { page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    .rodape { margin-top: 18px; border-top: 1px solid #ddd; padding-top: 6px; font-size: 9px; color: #777; }
+  </style></head><body>
+  <h1>Relatório de Embalagem — ${escapeHtml(rdTituloPeriodo(iv))}</h1>
+  <div class="sub">Período ${rdBR(iv.from)} a ${rdBR(iv.to)}${filtros ? ' · Filtros: ' + escapeHtml(filtros) : ''} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+  <h2>Resumo</h2><div class="kpis">${kpis.join('')}</div>
+  <h2>Gráficos</h2>${graficos}
+  <h2>Performance por embalador</h2>${rdTabelaEmbaladores(d)}
+  <h2>Produtos embalados</h2>${rdTabelaProdutos(d)}
+  <h2>Erros no período</h2>${rdTabelaErros(d)}
+  <div class="rodape">ML Dashboard — módulo Embalagem. Tempo médio por pedido calculado como tempo total ÷ pedidos com vídeo cronometrado.</div>
+  <script>window.onload=function(){window.print();}<\/script></body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permita pop-ups neste site para gerar o PDF.'); return; }
+  w.document.write(html);
+  w.document.close();
 }
 
 // ── Init ────────────────────────────────────────────────────

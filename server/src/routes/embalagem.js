@@ -866,4 +866,158 @@ router.post('/print-label', async (req, res) => {
   }
 });
 
+// GET /api/embalagem/relatorio-periodo?from&to&store_id&marketplace — payload
+// ÚNICO do relatório fechado de um período (dia, semana ou mês). Existe porque
+// nenhuma rota anterior serve pra isso: `/videos` tem LIMIT 100 (não cobre um
+// mês), `/historico` só devolve a série diária, `/relatorio` só agrupa por
+// embalador, e não havia nada agregando PRODUTO embalado.
+//
+// São várias queries pequenas em paralelo em vez de uma gigante: cada uma usa
+// os índices de packing_videos(created_at) direto e o conjunto é legível. O
+// recorte de período é sempre por DATA LOCAL (America/Sao_Paulo), igual ao
+// resto do módulo — ver decisions.md sobre fuso em colunas TIMESTAMPTZ.
+router.get('/relatorio-periodo', async (req, res) => {
+  try {
+    const from = String(req.query.from || '').slice(0, 10);
+    const to = String(req.query.to || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return res.status(400).json({ error: 'from e to são obrigatórios (YYYY-MM-DD)' });
+    }
+    if (from > to) return res.status(400).json({ error: 'from não pode ser depois de to' });
+
+    const storeId = req.query.store_id ? Number(req.query.store_id) : null;
+    const mkt = String(req.query.marketplace || '');
+    const p = [from, to, storeId, mkt];
+
+    // Filtro comum a todas as agregações de packing_videos.
+    const F = `(pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date
+       AND ($3::bigint IS NULL OR pv.store_id = $3)
+       AND ($4 = '' OR pv.store_id IN (
+             SELECT st.id FROM stores st LEFT JOIN marketplaces mk ON mk.id = st.marketplace_id
+             WHERE COALESCE(mk.code,'ML') = $4))`;
+
+    const [resumo, porDia, porHora, porEmbalador, porLoja, porMkt, porLogistica, topProdutos, erros, errosTipo] =
+      await Promise.all([
+        // 1. Resumo do período. `pedidos` conta os order_ids (um envio pode
+        // agrupar vários pedidos); o tempo médio é SUM/SUM, nunca média das
+        // médias — mesmo critério do card da Conferência do Dia.
+        pool.query(
+          `SELECT COUNT(*)::int AS bipagens,
+                  COALESCE(SUM(cardinality(pv.order_ids)),0)::int AS pedidos,
+                  COALESCE(SUM(pv.duration_seconds) FILTER (WHERE pv.duration_seconds IS NOT NULL),0)::numeric AS tempo_total,
+                  COALESCE(SUM(cardinality(pv.order_ids)) FILTER (WHERE pv.duration_seconds IS NOT NULL),0)::int AS pedidos_com_tempo,
+                  COUNT(DISTINCT (pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date)::int AS dias_com_movimento,
+                  COUNT(DISTINCT pv.staff_user_name) FILTER (WHERE pv.staff_user_name IS NOT NULL)::int AS embaladores
+             FROM packing_videos pv WHERE ${F}`, p),
+        // 2. Série diária (zero-fill entre from e to).
+        pool.query(
+          `WITH agg AS (
+             SELECT (pv.created_at AT TIME ZONE 'America/Sao_Paulo')::date AS d,
+                    COUNT(*)::int AS count,
+                    COALESCE(SUM(pv.duration_seconds) FILTER (WHERE pv.duration_seconds IS NOT NULL),0)::numeric AS duration_sum,
+                    COALESCE(SUM(cardinality(pv.order_ids)) FILTER (WHERE pv.duration_seconds IS NOT NULL),0)::int AS duration_orders
+               FROM packing_videos pv WHERE ${F} GROUP BY 1)
+           SELECT to_char(g.d,'YYYY-MM-DD') AS date,
+                  COALESCE(a.count,0)::int AS count,
+                  COALESCE(a.duration_sum,0)::numeric AS duration_sum,
+                  COALESCE(a.duration_orders,0)::int AS duration_orders
+             FROM generate_series($1::date, $2::date, interval '1 day') AS g(d)
+             LEFT JOIN agg a ON a.d = g.d::date
+            ORDER BY 1`, p),
+        // 3. Distribuição por hora no período inteiro (0-23, zero-fill).
+        pool.query(
+          `SELECT h.hour, COALESCE(a.qty,0)::int AS qty
+             FROM generate_series(0,23) AS h(hour)
+             LEFT JOIN (
+               SELECT EXTRACT(HOUR FROM pv.created_at AT TIME ZONE 'America/Sao_Paulo')::int AS hour, COUNT(*)::int AS qty
+                 FROM packing_videos pv WHERE ${F} GROUP BY 1
+             ) a ON a.hour = h.hour
+            ORDER BY h.hour`, p),
+        // 4. Produtividade por embalador.
+        pool.query(
+          `SELECT COALESCE(pv.staff_user_name,'(não identificado)') AS embalador,
+                  COUNT(*)::int AS bipagens,
+                  COALESCE(SUM(cardinality(pv.order_ids)),0)::int AS pedidos,
+                  COALESCE(SUM(pv.duration_seconds) FILTER (WHERE pv.duration_seconds IS NOT NULL),0)::numeric AS duration_sum,
+                  COALESCE(SUM(cardinality(pv.order_ids)) FILTER (WHERE pv.duration_seconds IS NOT NULL),0)::int AS duration_orders
+             FROM packing_videos pv WHERE ${F}
+            GROUP BY 1 ORDER BY 3 DESC`, p),
+        // 5. Por loja.
+        pool.query(
+          `SELECT COALESCE(s.nickname,'(sem loja)') AS loja, COUNT(*)::int AS count
+             FROM packing_videos pv LEFT JOIN stores s ON s.id = pv.store_id
+            WHERE ${F} GROUP BY 1 ORDER BY 2 DESC`, p),
+        // 6. Por marketplace.
+        pool.query(
+          `SELECT COALESCE(mk.code,'ML') AS marketplace, COUNT(*)::int AS count
+             FROM packing_videos pv
+             LEFT JOIN stores s ON s.id = pv.store_id
+             LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
+            WHERE ${F} GROUP BY 1 ORDER BY 2 DESC`, p),
+        // 7. Por logística — tipo do 1º pedido do envio (mesmo critério do
+        // sample_shipping_type de /videos); rotulado no JS com mlLogLabel.
+        pool.query(
+          `SELECT COALESCE(ord.shipping_type,'') AS tipo, COUNT(*)::int AS count
+             FROM packing_videos pv
+             LEFT JOIN LATERAL (SELECT shipping_type FROM orders WHERE ml_id = pv.order_ids[1]) ord ON true
+            WHERE ${F} GROUP BY 1 ORDER BY 2 DESC`, p),
+        // 8. Produtos embalados: expande order_ids e casa com orders.
+        // Agrupa por título (o mesmo produto pode vir de pedidos diferentes).
+        pool.query(
+          `SELECT o.title AS produto, COUNT(*)::int AS pedidos, COALESCE(SUM(o.quantity),0)::int AS unidades
+             FROM packing_videos pv
+             CROSS JOIN LATERAL unnest(pv.order_ids) AS oid
+             JOIN orders o ON o.ml_id = oid
+            WHERE ${F} AND o.title IS NOT NULL AND o.title <> ''
+            GROUP BY 1 ORDER BY 2 DESC, 3 DESC LIMIT 30`, p),
+        // 9. Erros do período (lista recente).
+        pool.query(
+          `SELECT id, error_type, shipping_id, store_nickname, staff_user_name, detail, created_at
+             FROM embalagem_errors
+            WHERE (created_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date
+            ORDER BY created_at DESC LIMIT 100`, [from, to]),
+        // 10. Erros agrupados por tipo.
+        pool.query(
+          `SELECT error_type, COUNT(*)::int AS count
+             FROM embalagem_errors
+            WHERE (created_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date
+            GROUP BY 1 ORDER BY 2 DESC`, [from, to]),
+      ]);
+
+    const r = resumo.rows[0];
+    const dias = porDia.rows;
+    const melhor = dias.reduce((m, d) => (!m || d.count > m.count ? d : m), null);
+    const horaPico = porHora.rows.reduce((m, h) => (!m || h.qty > m.qty ? h : m), null);
+
+    res.json({
+      periodo: { from, to, dias_no_periodo: dias.length },
+      resumo: {
+        bipagens: r.bipagens,
+        pedidos: r.pedidos,
+        tempo_total: Number(r.tempo_total),
+        pedidos_com_tempo: r.pedidos_com_tempo,
+        // segundos por pedido — SUM/SUM (não média das médias)
+        tempo_medio_pedido: r.pedidos_com_tempo > 0 ? Number(r.tempo_total) / r.pedidos_com_tempo : null,
+        dias_com_movimento: r.dias_com_movimento,
+        embaladores: r.embaladores,
+        media_por_dia: r.dias_com_movimento > 0 ? Number((r.bipagens / r.dias_com_movimento).toFixed(1)) : 0,
+        melhor_dia: melhor && melhor.count > 0 ? { date: melhor.date, count: melhor.count } : null,
+        hora_pico: horaPico && horaPico.qty > 0 ? { hour: horaPico.hour, qty: horaPico.qty } : null,
+        erros: errosTipo.rows.reduce((s, e) => s + e.count, 0),
+      },
+      por_dia: dias,
+      por_hora: porHora.rows,
+      por_embalador: porEmbalador.rows,
+      por_loja: porLoja.rows,
+      por_marketplace: porMkt.rows,
+      por_logistica: porLogistica.rows.map(l => ({ logistica: mlLogLabel(l.tipo), count: l.count })),
+      top_produtos: topProdutos.rows,
+      erros: { por_tipo: errosTipo.rows, recentes: erros.rows },
+    });
+  } catch (e) {
+    console.error('[api/embalagem] GET /relatorio-periodo', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

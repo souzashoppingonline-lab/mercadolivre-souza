@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`.
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`, … até `v81` (a lista completa e canônica está em `db/migrate.js` — cada arquivo roda isolado: se um falhar, loga e continua, pra um erro antigo não bloquear as migrations seguintes).
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -500,8 +500,12 @@ order_ids TEXT[] NOT NULL         -- pode ter mais de 1 (pack — vários pedido
 file_path TEXT NOT NULL           -- caminho absoluto em server/storage/embalagem-videos/ (fora do git)
 duration_seconds INT
 store_id BIGINT FK stores
+staff_user_id INT                 -- v81: quem embalou (sem FK — o vídeo sobrevive à exclusão do usuário)
+staff_user_name TEXT              -- v81: nome no momento da bipagem (snapshot; não segue rename do usuário)
 created_at TIMESTAMPTZ
 ```
+Índice `packing_videos(staff_user_id, created_at DESC)` (v81) — as abas Relatórios e Relatório do Dia filtram/agrupam por embalador dentro de um período. **As colunas de embalador só passaram a existir na v81**: `POST /finalizar` já as inseria e `/relatorio` já as lia, mas nenhuma migration as criava (a doc atribuía à v45, que é da chave composta da Shopee) — num banco criado do zero pelo `migrate.js` o INSERT do vídeo falhava e virava `embalagem_errors('db_insert')`.
+
 Sem FK entre `order_ids` e `orders.ml_id` (é `TEXT[]`, não dá pra fazer FK de array em Postgres) — a integridade é só de convenção, resolvida via `= ANY(order_ids)` nas queries. Apagado automaticamente (arquivo + linha) 30 dias após `created_at` pelo job `cleanupPackingVideos` (ver `workers.md`).
 
 ### `staff_users` — v22: login de acesso restrito (funcionários), ver `auth-staff.md`

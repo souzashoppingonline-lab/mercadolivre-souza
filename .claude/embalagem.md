@@ -30,7 +30,7 @@ Não existia antes: o `shipping_id` (`order.shipping.id` na resposta `/orders/:i
 
 ## Fluxo da tela (`pages/embalagem.html`)
 
-Quatro abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre), **Conferência do Dia** (consulta sempre travada em "hoje") e **Histórico** (tendência ao longo de semanas/meses).
+Abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre), **Conferência do Dia** (consulta sempre travada em "hoje"), **Histórico** (tendência ao longo de semanas/meses), **Relatórios** (produtividade por embalador), **Relatório do Dia** (fechamento em PDF de dia/semana/mês), **Auditoria** (o que falta bipar) e **Erros**.
 
 ### Aba Bipar — máquina de estado
 
@@ -129,7 +129,7 @@ Complementa a Conferência do Dia (que só compara "dia selecionado vs. dia ante
 
 Mostra breakdown de produtividade da equipe: quem embalou quantos pedidos, e em qual marketplace (ML vs. Shopee). Rastreia `staff_user_id` e `staff_user_name` em cada vídeo gravado, permitindo análise de desempenho por embalador.
 
-- **Rastreamento de staff**: quando o embalador grava um vídeo em `POST /api/embalagem/finalizar`, o frontend captura o usuário logado (`GET /auth/staff/me`) e envia `staff_user_id`/`staff_user_name` no upload. Migration v45 adicionou as colunas em `packing_videos` + índice em `(staff_user_id, created_at DESC)` pra queries rápidas.
+- **Rastreamento de staff**: quando o embalador grava um vídeo em `POST /api/embalagem/finalizar`, o frontend captura o usuário logado (`GET /auth/staff/me`) e envia `staff_user_id`/`staff_user_name` no upload. As colunas em `packing_videos` + o índice `(staff_user_id, created_at DESC)` são criados pela **migration v81** — antes dela nenhuma migration criava essas colunas (a doc atribuía erradamente à v45, que trata de chave composta da Shopee), então num banco criado do zero o INSERT do vídeo falhava e caía em `logEmbalagemError('db_insert')`.
 - **Rota**: `GET /api/embalagem/relatorio?date_from&date_to&staff_user_name&marketplace` — agregação por embalador e marketplace, devolvendo `staff_user_name`, `marketplace` (`ML`/`SHOPEE`), `count` (quantidade de pedidos embalados), `total_duration` (tempo total de gravação), `total_orders` (número de pedidos — diferente de `count` se houver packs com múltiplos pedidos).
 - **Cards de resumo**: total embalado no período, número de embaladores únicos, tempo total, tempo médio por pedido.
 - **Gráfico** (colunas agrupadas): embalador no eixo X, duas cores (ML/Shopee) por coluna, altura = quantidade de pedidos. Cada marketplace com cor distinta (ML amarelo, Shopee vermelho).
@@ -137,6 +137,23 @@ Mostra breakdown de produtividade da equipe: quem embalou quantos pedidos, e em 
 - **Filtros**: data de/até, embalador (dropdown), marketplace (Todos/ML/Shopee).
 
 Serve pra insights de produtividade ("Quem embalou mais pedidos?", "Qual marketplace demanda mais tempo?") sem necessidade de consulta SQL manual.
+
+### Aba Relatório do Dia — fechamento em PDF (dia / semana / mês)
+
+Relatório fechado da expedição pra impressão/arquivo: tudo que aconteceu no período, com gráficos, pronto pra salvar em PDF. É a aba de **fechamento** (o que aconteceu), enquanto Conferência do Dia é operação ao vivo e Relatórios é só produtividade por pessoa.
+
+- **Três recortes no mesmo lugar**, botões Dia / Semana / Mês. Não são três telas: só muda o intervalo `[from, to]` mandado pra `GET /api/embalagem/relatorio-periodo`, que devolve o payload inteiro numa chamada.
+  - **Dia**: a data escolhida.
+  - **Semana**: **segunda a sexta** — não há expedição no fim de semana, então o relatório semanal nunca inclui sábado/domingo. Domingo é tratado como pertencente à semana que **acabou** (não à que vai começar).
+  - **Mês**: dia 1 ao último dia do mês.
+  - Setas `◀ ▶` navegam pro período anterior/seguinte respeitando o recorte (±1 dia, ±1 semana, ±1 mês) e o input de data é ancorado no início do período em semana/mês (`rdSnap`), pra não ficar ambíguo qual semana está na tela.
+- **Filtros**: marketplace (Todos/ML/Shopee) e loja — repassados como `marketplace`/`store_id`; aparecem no cabeçalho da tela e do PDF.
+- **Cards**: pedidos embalados, envios bipados, tempo médio por pedido, tempo total embalando, embaladores, erros. Em período de mais de um dia entram ainda dias com movimento, média por dia trabalhado, melhor dia e horário de pico.
+- **Gráficos** (Chart.js): volume e tempo por dia (colunas de bipagens + linha de tempo médio/pedido em eixo secundário — só quando o período tem mais de um dia), bipagens por hora (0-23), pedidos por embalador (barras horizontais), rosca por logística e rosca por loja.
+- **Tabelas**: performance por embalador (pedidos, envios, tempo total, média/pedido), produtos embalados (top 30, com pedidos e unidades) e erros do período (resumo por tipo + as 30 ocorrências mais recentes).
+- **PDF**: botão "Baixar PDF" monta um HTML próprio (A4 retrato, tema claro) e chama `window.print()` numa aba nova — mesmo padrão do DRE e de Recebíveis, sem biblioteca de PDF. Os gráficos entram como PNG gerado **fora da tela** com `chart.toBase64Image()`: a mesma fábrica de configs (`rdConfigs`) serve tela e papel, só trocando o tema (`RD_TEMA.escuro` / `RD_TEMA.claro`) — assim não existem duas implementações do gráfico pra manter em sincronia. Como o canvas do Chart.js é transparente, um plugin (`rdFundoBranco`) pinta o fundo antes de exportar, senão o gráfico sairia invisível no papel. Exige pop-up liberado (avisa se estiver bloqueado).
+- **Tempo médio é SUM/SUM**, nunca média das médias — mesmo critério do card da Conferência do Dia (um envio com 5 pedidos pesa mais que um com 1). Só entram no divisor os envios que têm duração gravada.
+- **Papel `embalagem` tem acesso**: a rota está sob `/api/embalagem`, já liberada pelo gate (ver `auth-staff.md`).
 
 ## Alerta de gravação anormal (aba Bipar)
 

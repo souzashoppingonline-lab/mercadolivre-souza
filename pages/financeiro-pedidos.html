@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gerador de Pedido — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Gerador de Pedido'; window.ACTIVE_NAV='financeiro-pedidos.html';</script>
+  <style>
+    .pd-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .pd-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .pd-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .pd-card h3 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin:0 0 12px; font-weight:800; }
+
+    /* Empresas — cartões selecionáveis, cada uma com sua cor */
+    .pd-emps { display:flex; gap:10px; flex-wrap:wrap; }
+    .pd-emp { flex:1 1 220px; text-align:left; background:var(--bg-card2); border:2px solid var(--border); border-radius:12px; padding:12px 14px; cursor:pointer; color:var(--text-main); position:relative; }
+    .pd-emp .n { font-weight:800; font-size:13.5px; display:block; }
+    .pd-emp .d { font-size:11.5px; color:var(--text-muted); margin-top:3px; display:block; font-variant-numeric:tabular-nums; }
+    .pd-emp.on { border-color:var(--c); background:color-mix(in srgb, var(--c) 12%, transparent); }
+    .pd-emp .bar { position:absolute; left:0; top:12px; bottom:12px; width:4px; border-radius:4px; background:var(--c); }
+    .pd-emp .txt { padding-left:12px; display:block; }
+
+    .pd-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+    .pd-f { display:flex; flex-direction:column; gap:5px; }
+    .pd-f label { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); font-weight:700; }
+    .pd-f input, .pd-f select, .pd-f textarea { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:9px; padding:9px 11px; font-size:13px; font-family:inherit; }
+    .pd-f textarea { resize:vertical; min-height:60px; }
+
+    /* Itens */
+    .pd-itens { width:100%; border-collapse:collapse; }
+    .pd-itens th { font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); text-align:left; padding:0 6px 8px; font-weight:700; }
+    .pd-itens th.r, .pd-itens td.r { text-align:right; }
+    .pd-itens td { padding:4px 6px; }
+    .pd-itens input { width:100%; box-sizing:border-box; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:8px 9px; font-size:12.5px; }
+    .pd-itens input.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .pd-itens .tot { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .pd-itens .un { font-size:11px; color:var(--text-muted); white-space:nowrap; }
+    .pd-x { background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); cursor:pointer; padding:6px 9px; }
+    .pd-x:hover { color:#f87171; border-color:#f87171; }
+    .pd-addl { background:var(--bg-card2); border:1px dashed var(--border); border-radius:10px; color:var(--text-muted); cursor:pointer; padding:9px 14px; font-size:12.5px; font-weight:700; margin-top:10px; }
+    .pd-addl:hover { color:#22c55e; border-color:#22c55e; }
+    .pd-wrap { overflow-x:auto; }
+
+    .pd-totais { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+    .pd-t { flex:1 1 150px; background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:11px 14px; }
+    .pd-t .l { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); font-weight:700; }
+    .pd-t .v { font-size:19px; font-weight:800; margin-top:2px; font-variant-numeric:tabular-nums; }
+    .pd-t.big .v { color:#22c55e; }
+
+    .pd-acoes { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    .pd-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:11px 18px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+    .pd-btn:hover { border-color:#22c55e; }
+    .pd-btn.pri { background:#22c55e; border-color:#22c55e; color:#04240f; }
+    .pd-btn.pri:hover { opacity:.9; }
+
+    /* Histórico */
+    .pd-h { display:grid; grid-template-columns:auto 1fr auto auto auto; gap:12px; align-items:center; padding:10px 12px; border-top:1px solid var(--border); font-size:13px; }
+    .pd-h:first-child { border-top:0; }
+    .pd-h .num { font-weight:800; font-variant-numeric:tabular-nums; }
+    .pd-h .v { font-weight:800; font-variant-numeric:tabular-nums; }
+    .pd-chip { border-radius:999px; padding:2px 10px; font-size:10px; font-weight:800; border:1px solid var(--border); white-space:nowrap; }
+    .pd-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+
+    /* Modal empresas */
+    .pd-back { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:900; padding:20px; }
+    .pd-back.on { display:flex; }
+    .pd-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; width:100%; max-width:720px; max-height:85vh; overflow:auto; padding:20px; }
+    .pd-modal h3 { font-size:15px; font-weight:800; margin:0 0 14px; display:flex; justify-content:space-between; align-items:center; }
+    .pd-modal h3 .x { cursor:pointer; color:var(--text-muted); }
+    .pd-erow { display:grid; grid-template-columns:1fr 150px 70px 44px 40px; gap:8px; margin-bottom:8px; align-items:center; }
+    @media(max-width:640px){ .pd-erow { grid-template-columns:1fr 1fr; } }
+    .pd-erow input { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:12.5px; width:100%; box-sizing:border-box; }
+    .pd-erow input[type=color] { padding:2px; height:34px; cursor:pointer; }
+    .pd-sql { background:#0b1020; border:1px solid var(--border); border-radius:10px; padding:12px; font-family:ui-monospace,Menlo,monospace; font-size:11px; color:#9fb4d1; white-space:pre; overflow:auto; margin-top:10px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="pd-sub">Monte o pedido, escolha a empresa emitente e baixe o PDF. Os dados da empresa (nome, CNPJ, UF) saem do cadastro e podem ser alterados a qualquer momento.</p>
+      <div id="pdStatus" class="pd-status"></div>
+
+      <div class="pd-card">
+        <h3>1 · Empresa emitente</h3>
+        <div class="pd-emps" id="pdEmps"></div>
+        <div class="pd-acoes" style="margin-top:12px">
+          <button class="pd-btn" onclick="abrirEmpresas()"><i class="fas fa-building"></i> Editar empresas</button>
+        </div>
+      </div>
+
+      <div class="pd-card">
+        <h3>2 · Dados do pedido</h3>
+        <div class="pd-grid">
+          <div class="pd-f"><label>Número do pedido</label><input id="pdNumero" placeholder="0001/2026"></div>
+          <div class="pd-f"><label>Data</label><input type="date" id="pdData"></div>
+          <div class="pd-f"><label>Fornecedor / destinatário</label><input id="pdForn" placeholder="Opcional"></div>
+          <div class="pd-f"><label>CNPJ do fornecedor</label><input id="pdFornCnpj" placeholder="Opcional"></div>
+        </div>
+        <div class="pd-f" style="margin-top:12px"><label>Observações</label><textarea id="pdObs" placeholder="Condições de pagamento, prazo de entrega, transportadora…"></textarea></div>
+      </div>
+
+      <div class="pd-card">
+        <h3>3 · Itens do pedido</h3>
+        <div class="pd-wrap">
+          <table class="pd-itens">
+            <thead><tr>
+              <th style="width:120px">Código</th><th>Descrição do produto</th>
+              <th class="r" style="width:90px">Qtd. unit.</th>
+              <th class="r" style="width:80px">Caixas</th>
+              <th class="r" style="width:80px">Un/caixa</th>
+              <th class="r" style="width:110px">Valor unit.</th>
+              <th class="r" style="width:130px">Total</th><th style="width:40px"></th>
+            </tr></thead>
+            <tbody id="pdItens"></tbody>
+          </table>
+        </div>
+        <button class="pd-addl" onclick="addItem()"><i class="fas fa-plus"></i> Adicionar item</button>
+        <div class="pd-totais" id="pdTotais"></div>
+        <div class="pd-acoes">
+          <button class="pd-btn pri" onclick="gerarPDF()"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
+          <button class="pd-btn" onclick="salvarPedido()"><i class="fas fa-floppy-disk"></i> Salvar pedido</button>
+          <button class="pd-btn" onclick="limparPedido()"><i class="fas fa-eraser"></i> Limpar</button>
+        </div>
+      </div>
+
+      <div class="pd-card">
+        <h3>Pedidos salvos</h3>
+        <div id="pdHist"><div class="pd-empty">Carregando…</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal de cadastro de empresas -->
+<div class="pd-back" id="pdBack" onclick="if(event.target===this)fecharEmpresas()">
+  <div class="pd-modal">
+    <h3>Empresas emitentes <span class="x" onclick="fecharEmpresas()"><i class="fas fa-xmark"></i></span></h3>
+    <div class="pd-erow" style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700">
+      <span>Razão social / nome</span><span>CNPJ</span><span>UF</span><span>Cor</span><span></span>
+    </div>
+    <div id="pdEmpEdit"></div>
+    <div class="pd-acoes">
+      <button class="pd-btn" onclick="addEmpresaLinha()"><i class="fas fa-plus"></i> Nova empresa</button>
+      <button class="pd-btn pri" onclick="salvarEmpresas()"><i class="fas fa-check"></i> Salvar empresas</button>
+    </div>
+    <div id="pdEmpAviso"></div>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const NUM = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pNum = v => { const n=parseFloat(String(v==null?'':v).replace(/\./g,'').replace(',','.')); return isNaN(n)?0:n; };
+const pInt = v => { const n=parseInt(String(v==null?'':v).replace(/\D/g,''),10); return isNaN(n)?0:n; };
+const hojeISO = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=iso.slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+
+// As 3 empresas do negócio. Ficam aqui como SEMENTE: na 1ª carga são gravadas
+// em `pedido_empresas` (aí viram editáveis e persistem). Se a tabela ainda não
+// existir no Supabase, a tela continua funcionando com esta lista em memória —
+// o gerador de PDF nunca depende do banco.
+const EMPRESAS_PADRAO = [
+  { nome:'MULTIMIX VENDAS ONLINE', cnpj:'', uf:'SP', cor:'#22c55e' },
+  { nome:'R SOUZA VENDAS ONLINE',  cnpj:'', uf:'SP', cor:'#3b82f6' },
+  { nome:'TOP MIX',                cnpj:'', uf:'SP', cor:'#f59e0b' },
+];
+const SQL_TABELAS = `create table if not exists pedido_empresas (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null, cnpj text, uf text,
+  cor text default '#22c55e', ativa boolean default true,
+  created_at timestamptz default now()
+);
+create table if not exists pedidos (
+  id uuid primary key default gen_random_uuid(),
+  numero text, data date,
+  empresa_id uuid, empresa_nome text, empresa_cnpj text, empresa_uf text,
+  fornecedor text, fornecedor_cnpj text, observacoes text,
+  total_itens int, total_unidades int, valor_total numeric,
+  itens jsonb, created_at timestamptz default now()
+);`;
+
+let EMPS = [], PEDIDOS = [], empSel = null, itens = [], semBanco = false;
+
+function showStatus(t, err){ const el=document.getElementById('pdStatus'); el.style.display='block'; el.style.borderColor=err?'#f59e0b':'var(--border)'; el.innerHTML=t; }
+
+// ── Carga ───────────────────────────────────────────────────────────────────
+async function load(){
+  const [re, rp] = await Promise.all([
+    DB.getFinanceiroDados('pedido_empresas', 200, 'created_at.asc'),
+    DB.getFinanceiroDados('pedidos', 500, 'created_at.desc'),
+  ]);
+
+  if (!re || re.error) {
+    // Tabela ausente/sem permissão: modo offline — 3 empresas padrão, sem gravar.
+    semBanco = true;
+    EMPS = EMPRESAS_PADRAO.map((e,i)=>({ ...e, id:'local-'+i }));
+    PEDIDOS = [];
+    showStatus('⚠️ <b>Cadastro de empresas ainda não existe no banco.</b> A tela funciona normalmente e o PDF sai igual, mas as alterações de empresa e os pedidos salvos não persistem. Rode o SQL em <b>Editar empresas</b> pra ligar a gravação.', true);
+  } else {
+    semBanco = false; // a tabela pode ter sido criada depois — sem isso a tela
+                      // ficava recusando gravar até o usuário dar F5.
+    EMPS = (re.rows||[]).filter(e => e.ativa !== false);
+    if (!EMPS.length) EMPS = await semearEmpresas();
+    PEDIDOS = (rp && rp.rows) || [];
+    showStatus(`✅ ${EMPS.length} empresa(s) cadastrada(s) · ${PEDIDOS.length} pedido(s) salvo(s).`, false);
+  }
+
+  empSel = EMPS[0] ? EMPS[0].id : null;
+  if (!itens.length) addItem();
+  renderEmpresas(); renderHist(); sugerirNumero(); render();
+}
+
+// 1ª execução: grava as 3 empresas do negócio pra que já apareçam editáveis.
+async function semearEmpresas(){
+  const criadas = [];
+  for (const e of EMPRESAS_PADRAO) {
+    const r = await DB.addFinanceiroRow('pedido_empresas', e);
+    if (r && r.rows && r.rows[0]) criadas.push(r.rows[0]);
+  }
+  return criadas.length ? criadas : EMPRESAS_PADRAO.map((e,i)=>({ ...e, id:'local-'+i }));
+}
+
+function empresaAtual(){ return EMPS.find(e => String(e.id) === String(empSel)) || EMPS[0] || EMPRESAS_PADRAO[0]; }
+
+function renderEmpresas(){
+  document.getElementById('pdEmps').innerHTML = EMPS.map(e => `
+    <button class="pd-emp ${String(e.id)===String(empSel)?'on':''}" style="--c:${esc(e.cor||'#22c55e')}" onclick="selEmpresa('${esc(e.id)}')">
+      <span class="bar"></span>
+      <span class="txt">
+        <span class="n">${esc(e.nome)}</span>
+        <span class="d">${e.cnpj ? 'CNPJ ' + esc(e.cnpj) : 'CNPJ não cadastrado'}${e.uf ? ' · ' + esc(e.uf) : ''}</span>
+      </span>
+    </button>`).join('') || '<div class="pd-empty">Nenhuma empresa cadastrada.</div>';
+}
+function selEmpresa(id){ empSel = id; renderEmpresas(); sugerirNumero(); }
+
+// Numeração sequencial por empresa dentro do ano — continua de onde parou.
+function sugerirNumero(){
+  const el = document.getElementById('pdNumero');
+  if (el.dataset.manual === '1') return;
+  const ano = new Date().getFullYear();
+  const nome = empresaAtual().nome;
+  const usados = PEDIDOS
+    .filter(p => p.empresa_nome === nome && String(p.numero||'').endsWith('/'+ano))
+    .map(p => pInt(String(p.numero).split('/')[0]));
+  const prox = (usados.length ? Math.max(...usados) : 0) + 1;
+  el.value = `${String(prox).padStart(4,'0')}/${ano}`;
+}
+
+// ── Itens ───────────────────────────────────────────────────────────────────
+function addItem(){ itens.push({ codigo:'', descricao:'', qtd:0, caixas:0, un_caixa:0, valor:0 }); render(); }
+function delItem(i){ itens.splice(i,1); if(!itens.length) addItem(); render(); }
+// NÃO redesenha a tabela a cada tecla — reescrever o innerHTML tiraria o foco
+// do campo que está sendo digitado. Só as células calculadas e os totais mudam.
+function setItem(i, campo, v){
+  const it = itens[i]; if (!it) return;
+  it[campo] = (campo==='codigo'||campo==='descricao') ? v : (campo==='valor' ? pNum(v) : pInt(v));
+  const cel = document.getElementById('pdLinha'+i);
+  if (cel) cel.innerHTML = `<span class="tot">${BRL(totalItem(it))}</span><br><span class="un">${NUM(unidades(it))} un</span>`;
+  renderTotais();
+}
+// Unidades do item = avulsas + (caixas × un/caixa). Sem un/caixa, as caixas
+// entram só como informação no PDF e não multiplicam o valor.
+function unidades(it){ return (+it.qtd||0) + (+it.caixas||0) * (+it.un_caixa||0); }
+function totalItem(it){ return unidades(it) * (+it.valor||0); }
+function itensValidos(){ return itens.filter(it => (it.codigo||it.descricao) && totalItem(it) >= 0 && (unidades(it) > 0 || (+it.valor||0) > 0)); }
+
+function render(){
+  document.getElementById('pdItens').innerHTML = itens.map((it,i) => `
+    <tr>
+      <td><input value="${esc(it.codigo)}" placeholder="SKU" oninput="setItem(${i},'codigo',this.value)"></td>
+      <td><input value="${esc(it.descricao)}" placeholder="Descrição do produto" oninput="setItem(${i},'descricao',this.value)"></td>
+      <td><input class="num" value="${it.qtd||''}" placeholder="0" oninput="setItem(${i},'qtd',this.value)"></td>
+      <td><input class="num" value="${it.caixas||''}" placeholder="0" oninput="setItem(${i},'caixas',this.value)"></td>
+      <td><input class="num" value="${it.un_caixa||''}" placeholder="0" oninput="setItem(${i},'un_caixa',this.value)"></td>
+      <td><input class="num" value="${it.valor?String(it.valor).replace('.',','):''}" placeholder="0,00" oninput="setItem(${i},'valor',this.value)"></td>
+      <td class="r" id="pdLinha${i}"><span class="tot">${BRL(totalItem(it))}</span><br><span class="un">${NUM(unidades(it))} un</span></td>
+      <td><button class="pd-x" onclick="delItem(${i})" title="Remover item"><i class="fas fa-trash"></i></button></td>
+    </tr>`).join('');
+  renderTotais();
+}
+function renderTotais(){
+  const vs = itensValidos();
+  const un = vs.reduce((s,it)=>s+unidades(it),0);
+  const cx = vs.reduce((s,it)=>s+(+it.caixas||0),0);
+  const tot = vs.reduce((s,it)=>s+totalItem(it),0);
+  document.getElementById('pdTotais').innerHTML = `
+    <div class="pd-t"><div class="l">Itens</div><div class="v">${vs.length}</div></div>
+    <div class="pd-t"><div class="l">Unidades</div><div class="v">${NUM(un)}</div></div>
+    <div class="pd-t"><div class="l">Caixas fechadas</div><div class="v">${NUM(cx)}</div></div>
+    <div class="pd-t big"><div class="l">Valor total</div><div class="v">${BRL(tot)}</div></div>`;
+}
+
+function pedidoAtual(){
+  const e = empresaAtual(), vs = itensValidos();
+  return {
+    numero: document.getElementById('pdNumero').value.trim(),
+    data: document.getElementById('pdData').value || hojeISO(),
+    empresa_id: String(e.id).startsWith('local-') ? null : e.id,
+    empresa_nome: e.nome, empresa_cnpj: e.cnpj || '', empresa_uf: e.uf || '',
+    empresa_cor: e.cor || '#22c55e',
+    fornecedor: document.getElementById('pdForn').value.trim(),
+    fornecedor_cnpj: document.getElementById('pdFornCnpj').value.trim(),
+    observacoes: document.getElementById('pdObs').value.trim(),
+    total_itens: vs.length,
+    total_unidades: vs.reduce((s,it)=>s+unidades(it),0),
+    valor_total: vs.reduce((s,it)=>s+totalItem(it),0),
+    itens: vs,
+  };
+}
+
+function limparPedido(){
+  if (!confirm('Limpar todos os itens e recomeçar o pedido?')) return;
+  itens = []; addItem();
+  ['pdForn','pdFornCnpj','pdObs'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pdNumero').dataset.manual = '';
+  document.getElementById('pdData').value = hojeISO();
+  sugerirNumero();
+}
+
+async function salvarPedido(){
+  const p = pedidoAtual();
+  if (!p.itens.length) { alert('Adicione pelo menos um item com quantidade ou valor.'); return; }
+  if (semBanco) { alert('Cadastro ainda não existe no banco — o pedido não pode ser salvo, mas o PDF funciona normalmente. Rode o SQL em "Editar empresas".'); return; }
+  const { empresa_cor, ...linha } = p; // cor vem da empresa, não se guarda no pedido
+  const r = await DB.addFinanceiroRow('pedidos', linha);
+  if (!r || r.error) { alert('Falha ao salvar: ' + ((r && r.error) || 'erro desconhecido')); return; }
+  PEDIDOS.unshift((r.rows && r.rows[0]) || linha);
+  renderHist(); sugerirNumero();
+  showStatus(`✅ Pedido <b>${esc(p.numero)}</b> salvo — ${p.total_itens} item(ns), ${BRL(p.valor_total)}.`, false);
+}
+
+function renderHist(){
+  const el = document.getElementById('pdHist');
+  if (!PEDIDOS.length) { el.innerHTML = '<div class="pd-empty">Nenhum pedido salvo ainda.</div>'; return; }
+  el.innerHTML = PEDIDOS.map(p => {
+    const cor = (EMPS.find(e => e.nome === p.empresa_nome) || {}).cor || '#64748b';
+    return `<div class="pd-h">
+      <span class="num">${esc(p.numero||'—')}</span>
+      <span><span class="pd-chip" style="border-color:${esc(cor)}66;color:${esc(cor)}">${esc(p.empresa_nome||'—')}</span> ${esc(p.fornecedor||'')}</span>
+      <span style="font-size:12px;color:var(--text-muted)">${dataBR(p.data)}</span>
+      <span class="v">${BRL(p.valor_total)}</span>
+      <span style="display:flex;gap:6px">
+        <button class="pd-x" title="Abrir no formulário" onclick="abrirPedido('${esc(p.id)}')"><i class="fas fa-folder-open"></i></button>
+        <button class="pd-x" title="Gerar PDF" onclick="pdfDe('${esc(p.id)}')"><i class="fas fa-file-pdf"></i></button>
+        <button class="pd-x" title="Excluir" onclick="excluirPedido('${esc(p.id)}')"><i class="fas fa-trash"></i></button>
+      </span>
+    </div>`;
+  }).join('');
+}
+function acharPedido(id){ return PEDIDOS.find(p => String(p.id) === String(id)); }
+function abrirPedido(id){
+  const p = acharPedido(id); if (!p) return;
+  const e = EMPS.find(x => x.nome === p.empresa_nome); if (e) empSel = e.id;
+  document.getElementById('pdNumero').value = p.numero || '';
+  document.getElementById('pdNumero').dataset.manual = '1';
+  document.getElementById('pdData').value = (p.data||'').slice(0,10) || hojeISO();
+  document.getElementById('pdForn').value = p.fornecedor || '';
+  document.getElementById('pdFornCnpj').value = p.fornecedor_cnpj || '';
+  document.getElementById('pdObs').value = p.observacoes || '';
+  itens = (p.itens || []).map(it => ({ ...it }));
+  if (!itens.length) addItem();
+  renderEmpresas(); render();
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+function pdfDe(id){
+  const p = acharPedido(id); if (!p) return;
+  const e = EMPS.find(x => x.nome === p.empresa_nome);
+  imprimir({ ...p, empresa_cor: (e && e.cor) || '#22c55e' });
+}
+async function excluirPedido(id){
+  const p = acharPedido(id); if (!p) return;
+  if (!confirm(`Excluir o pedido ${p.numero||''}? Não dá pra desfazer.`)) return;
+  const r = await DB.deleteFinanceiroRow('pedidos', id);
+  if (r && r.error) { alert('Falha ao excluir: ' + r.error); return; }
+  PEDIDOS = PEDIDOS.filter(x => String(x.id) !== String(id));
+  renderHist();
+}
+
+// ── Cadastro de empresas ────────────────────────────────────────────────────
+let empEdit = [];
+function abrirEmpresas(){
+  empEdit = EMPS.map(e => ({ ...e }));
+  renderEmpEdit();
+  document.getElementById('pdEmpAviso').innerHTML = semBanco
+    ? `<div style="font-size:12px;color:var(--text-muted);margin-top:14px">As tabelas ainda não existem no Supabase do Financeiro. Rode este SQL no <b>SQL Editor</b> do Supabase e recarregue a página:</div><div class="pd-sql">${esc(SQL_TABELAS)}</div>`
+    : '';
+  document.getElementById('pdBack').classList.add('on');
+}
+function fecharEmpresas(){ document.getElementById('pdBack').classList.remove('on'); }
+function renderEmpEdit(){
+  document.getElementById('pdEmpEdit').innerHTML = empEdit.map((e,i) => `
+    <div class="pd-erow">
+      <input value="${esc(e.nome)}" placeholder="Razão social" oninput="empEdit[${i}].nome=this.value">
+      <input value="${esc(e.cnpj||'')}" placeholder="00.000.000/0001-00" oninput="empEdit[${i}].cnpj=this.value">
+      <input value="${esc(e.uf||'')}" placeholder="UF" maxlength="2" oninput="empEdit[${i}].uf=this.value.toUpperCase()">
+      <input type="color" value="${esc(e.cor||'#22c55e')}" oninput="empEdit[${i}].cor=this.value">
+      <button class="pd-x" onclick="empEdit.splice(${i},1);renderEmpEdit()" title="Remover"><i class="fas fa-trash"></i></button>
+    </div>`).join('');
+}
+function addEmpresaLinha(){ empEdit.push({ nome:'', cnpj:'', uf:'', cor:'#22c55e' }); renderEmpEdit(); }
+
+async function salvarEmpresas(){
+  const validas = empEdit.filter(e => (e.nome||'').trim());
+  if (!validas.length) { alert('Cadastre pelo menos uma empresa.'); return; }
+  if (semBanco) {
+    EMPS = validas.map((e,i) => ({ ...e, id: e.id || ('local-'+i) }));
+    empSel = EMPS[0].id; renderEmpresas(); fecharEmpresas();
+    alert('Salvo só nesta sessão — sem as tabelas no Supabase os dados se perdem ao recarregar.');
+    return;
+  }
+  const antes = new Map(EMPS.map(e => [String(e.id), e]));
+  for (const e of validas) {
+    const dados = { nome: e.nome.trim(), cnpj: (e.cnpj||'').trim(), uf: (e.uf||'').trim(), cor: e.cor || '#22c55e' };
+    if (e.id && antes.has(String(e.id))) await DB.updateFinanceiroRow('pedido_empresas', e.id, dados);
+    else await DB.addFinanceiroRow('pedido_empresas', dados);
+  }
+  // Removidas na tela: desativa (não apaga — pedidos antigos referenciam o id).
+  const mantidos = new Set(validas.map(e => String(e.id)));
+  for (const e of EMPS) if (!mantidos.has(String(e.id))) await DB.updateFinanceiroRow('pedido_empresas', e.id, { ativa:false });
+  fecharEmpresas();
+  await load();
+}
+
+// ── PDF ─────────────────────────────────────────────────────────────────────
+// Mesmo padrão do resto do módulo (DRE/Recebíveis): HTML próprio + janela de
+// impressão do navegador, sem lib de PDF. `print-color-adjust: exact` é o que
+// garante que as faixas coloridas saiam impressas, e não em branco.
+function gerarPDF(){
+  const p = pedidoAtual();
+  if (!p.itens.length) { alert('Adicione pelo menos um item com quantidade ou valor.'); return; }
+  imprimir(p);
+}
+
+function imprimir(p){
+  const cor = p.empresa_cor || '#22c55e';
+  const linhas = (p.itens||[]).map((it,i) => {
+    const un = unidades(it);
+    const cx = (+it.caixas||0) ? `<span class="cx">${NUM(it.caixas)} cx${(+it.un_caixa||0) ? ' × ' + NUM(it.un_caixa) : ''}</span>` : '';
+    return `<tr>
+      <td class="c">${i+1}</td>
+      <td class="cod">${esc(it.codigo||'—')}</td>
+      <td>${esc(it.descricao||'—')}</td>
+      <td class="r">${NUM(it.qtd)}</td>
+      <td class="r">${cx || '—'}</td>
+      <td class="r"><b>${NUM(un)}</b></td>
+      <td class="r">${BRL(it.valor)}</td>
+      <td class="r tot">${BRL(totalItem(it))}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Pedido ${esc(p.numero||'')} — ${esc(p.empresa_nome||'')}</title>
+<style>
+  @page { size:A4 portrait; margin:0; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; }
+  body { font-family:'Segoe UI',Arial,Helvetica,sans-serif; color:#12161f; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .pg { padding:0 0 22mm; }
+  /* Faixa do topo na cor da empresa */
+  .top { background:${cor}; color:#fff; padding:20mm 14mm 12mm; display:flex; justify-content:space-between; align-items:flex-start; gap:14mm; }
+  .top .emp { font-size:22px; font-weight:800; letter-spacing:-.3px; line-height:1.15; }
+  .top .meta { font-size:11px; opacity:.92; margin-top:6px; line-height:1.6; }
+  .selo { background:#fff; color:#12161f; border-radius:10px; padding:10px 16px; text-align:right; min-width:52mm; box-shadow:0 2px 0 rgba(0,0,0,.08); }
+  .selo .t { font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:#6b7280; font-weight:800; }
+  .selo .n { font-size:21px; font-weight:800; line-height:1.1; margin-top:2px; }
+  .selo .d { font-size:10.5px; color:#6b7280; margin-top:4px; }
+  .faixa { height:5px; background:linear-gradient(90deg, ${cor} 0%, ${cor}55 60%, ${cor}18 100%); }
+
+  .body { padding:10mm 14mm 0; }
+  .boxes { display:flex; gap:8mm; margin-bottom:8mm; }
+  .box { flex:1; border:1px solid #e5e7eb; border-radius:10px; padding:10px 13px; }
+  .box .t { font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase; color:#9ca3af; font-weight:800; margin-bottom:4px; }
+  .box .n { font-size:12.5px; font-weight:700; }
+  .box .l { font-size:10.5px; color:#6b7280; margin-top:2px; }
+
+  table { width:100%; border-collapse:collapse; font-size:10.5px; }
+  thead th { background:${cor}14; color:#374151; font-size:8.5px; letter-spacing:.8px; text-transform:uppercase; font-weight:800; text-align:left; padding:8px 7px; border-bottom:2px solid ${cor}; }
+  thead th.r { text-align:right; }
+  tbody td { padding:8px 7px; border-bottom:1px solid #eef1f5; vertical-align:top; }
+  tbody tr:nth-child(even) td { background:#fafbfc; }
+  td.r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.c { text-align:center; color:#9ca3af; width:22px; }
+  td.cod { font-family:ui-monospace,Menlo,monospace; font-size:10px; color:#4b5563; white-space:nowrap; }
+  td.tot { font-weight:800; }
+  .cx { background:${cor}1f; color:#374151; border-radius:20px; padding:2px 8px; font-size:9.5px; font-weight:700; white-space:nowrap; }
+  tr { page-break-inside:avoid; }
+
+  .fim { display:flex; gap:8mm; margin-top:8mm; align-items:flex-start; }
+  .obs { flex:1; border:1px solid #e5e7eb; border-radius:10px; padding:10px 13px; font-size:10.5px; color:#374151; min-height:26mm; white-space:pre-wrap; }
+  .obs .t { font-size:8.5px; letter-spacing:1.2px; text-transform:uppercase; color:#9ca3af; font-weight:800; margin-bottom:5px; }
+  .somas { width:66mm; border-radius:10px; overflow:hidden; border:1px solid #e5e7eb; }
+  .somas .l { display:flex; justify-content:space-between; padding:7px 12px; font-size:10.5px; border-bottom:1px solid #eef1f5; }
+  .somas .l span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
+  .somas .g { background:${cor}; color:#fff; padding:11px 12px; display:flex; justify-content:space-between; align-items:baseline; }
+  .somas .g .t { font-size:9px; letter-spacing:1.2px; text-transform:uppercase; font-weight:800; opacity:.9; }
+  .somas .g .v { font-size:17px; font-weight:800; font-variant-numeric:tabular-nums; }
+
+  .assin { display:flex; gap:14mm; margin-top:16mm; }
+  .assin div { flex:1; border-top:1px solid #9ca3af; padding-top:5px; font-size:9.5px; color:#6b7280; text-align:center; }
+  .rodape { margin-top:10mm; padding:6px 14mm 0; border-top:1px solid #eef1f5; font-size:8.5px; color:#9ca3af; display:flex; justify-content:space-between; }
+</style></head><body>
+<div class="pg">
+  <div class="top">
+    <div>
+      <div class="emp">${esc(p.empresa_nome||'')}</div>
+      <div class="meta">${p.empresa_cnpj ? 'CNPJ: ' + esc(p.empresa_cnpj) : 'CNPJ não informado'}${p.empresa_uf ? ' &nbsp;·&nbsp; UF: ' + esc(p.empresa_uf) : ''}</div>
+    </div>
+    <div class="selo">
+      <div class="t">Pedido nº</div>
+      <div class="n">${esc(p.numero||'—')}</div>
+      <div class="d">${dataBR(p.data)}</div>
+    </div>
+  </div>
+  <div class="faixa"></div>
+
+  <div class="body">
+    <div class="boxes">
+      <div class="box">
+        <div class="t">Emitente</div>
+        <div class="n">${esc(p.empresa_nome||'')}</div>
+        <div class="l">${p.empresa_cnpj ? 'CNPJ ' + esc(p.empresa_cnpj) : '—'}${p.empresa_uf ? ' · ' + esc(p.empresa_uf) : ''}</div>
+      </div>
+      <div class="box">
+        <div class="t">Fornecedor / destinatário</div>
+        <div class="n">${esc(p.fornecedor || '—')}</div>
+        <div class="l">${p.fornecedor_cnpj ? 'CNPJ ' + esc(p.fornecedor_cnpj) : '—'}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th></th><th>Código</th><th>Descrição do produto</th>
+        <th class="r">Qtd. unit.</th><th class="r">Caixas fechadas</th><th class="r">Total un.</th>
+        <th class="r">Valor unit.</th><th class="r">Total</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+
+    <div class="fim">
+      <div class="obs"><div class="t">Observações</div>${esc(p.observacoes || '—')}</div>
+      <div class="somas">
+        <div class="l"><span>Itens</span><span>${NUM(p.total_itens)}</span></div>
+        <div class="l"><span>Unidades</span><span>${NUM(p.total_unidades)}</span></div>
+        <div class="l"><span>Caixas fechadas</span><span>${NUM((p.itens||[]).reduce((s,it)=>s+(+it.caixas||0),0))}</span></div>
+        <div class="g"><span class="t">Valor total</span><span class="v">${BRL(p.valor_total)}</span></div>
+      </div>
+    </div>
+
+    <div class="assin">
+      <div>Responsável pelo pedido</div>
+      <div>Recebido por</div>
+    </div>
+  </div>
+
+  <div class="rodape">
+    <span>${esc(p.empresa_nome||'')}${p.empresa_cnpj ? ' · CNPJ ' + esc(p.empresa_cnpj) : ''}</span>
+    <span>Emitido em ${new Date().toLocaleString('pt-BR')}</span>
+  </div>
+</div>
+<script>window.onload=function(){window.print();}<\/script></body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permita pop-ups neste site para gerar o PDF.'); return; }
+  w.document.write(html); w.document.close();
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+function init(){
+  document.getElementById('pdData').value = hojeISO();
+  document.getElementById('pdNumero').addEventListener('input', function(){ this.dataset.manual = '1'; });
+  load();
+}
+init();
+</script>
+</body>
+</html>

@@ -285,38 +285,17 @@ router.get('/ads/:id/eventos', async (req, res) => {
 // vira o "preço anterior" do próximo). NÃO zera o contador de vendas — as
 // vendas seguem cumulativas através dos ciclos.
 router.post('/ads/:id/ciclo', async (req, res) => {
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    const { rows: ad } = await client.query(`SELECT * FROM ranking_ads WHERE id = $1 FOR UPDATE`, [req.params.id]);
-    if (!ad.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'anúncio não encontrado' }); }
-    const r = ad[0];
-    // Faturamento acumulado (snapshot no momento da troca de ciclo).
-    const { rows: fat } = await client.query(
-      `SELECT COALESCE(SUM((detail->>'valor')::numeric), 0) AS f FROM ranking_events
-        WHERE ranking_ad_id = $1 AND event_type = 'venda'`,
-      [r.id]
-    );
-    await client.query(
-      `INSERT INTO ranking_ciclos (ranking_ad_id, ciclo, campanha_nome, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [r.id, r.ciclo || 1, r.campanha_nome, r.ads_investido, r.roas, r.orcamento_diario, r.preco_anterior, r.preco_atual, r.sales_count, fat[0].f, r.ciclo_iniciado_em]
-    );
-    const { rows } = await client.query(
-      `UPDATE ranking_ads
-          SET ciclo = COALESCE(ciclo,1) + 1,
-              preco_anterior = preco_atual,   -- o preço do ciclo que fecha vira o "anterior"
-              ciclo_iniciado_em = now(), updated_at = now()
-        WHERE id = $1 RETURNING *`,
-      [r.id]
-    );
-    await client.query('COMMIT');
-    res.json({ ad: rows[0] });
+    // Mesma transação usada pela troca AUTOMÁTICA no marco de N vendas
+    // (server/src/ranking.js). Aqui é o botão do card, pra forçar a virada
+    // antes do marco.
+    const ad = await ranking.avancarCiclo(req.params.id);
+    if (!ad) return res.status(404).json({ error: 'anúncio não encontrado' });
+    res.json({ ad });
   } catch (e) {
-    await client.query('ROLLBACK').catch(() => {});
     console.error('[ranking] POST /ads/:id/ciclo falhou:', e.message, e.stack);
     res.status(500).json({ error: e.message });
-  } finally { client.release(); }
+  }
 });
 
 // Log de alterações / anotações do card (usado no estágio Monitoramento, mas

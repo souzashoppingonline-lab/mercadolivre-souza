@@ -650,3 +650,12 @@ Pedido do usuário: emitir pedido em PDF personalizado por empresa (nome/CNPJ/UF
 - **A tela não depende do banco pra funcionar.** O dev não tem egress pro Supabase e as tabelas do Financeiro são criadas à mão (SQL Editor/MCP), então a página trata "tabela ausente" como estado normal: cai nas 3 empresas padrão em memória, avisa no topo, mostra o SQL de criação dentro do modal — e o gerador de PDF continua 100%. A carga seguinte religa a gravação sozinha (`semBanco = false` no caminho de sucesso). Sem isso, a feature ficaria inutilizável entre o deploy e o momento em que alguém roda o SQL.
 
 Detalhe de UI que virou regra: digitar num item **não** redesenha a tabela (`setItem` atualiza só a célula de total e o painel de somas). Reescrever o `innerHTML` a cada tecla tira o foco do campo — erro fácil de cometer em tabela editável renderizada por template string.
+
+## Ciclo do rankeamento: automático no marco, incremental (não derivado das vendas)
+
+Pedido: o ciclo devia virar sozinho a cada 5 vendas (múltiplos de 5 → Ciclo 2, 3, 4…), em vez de depender do botão. Duas decisões dentro disso:
+
+- **`ciclo + 1`, e não `floor(sales_count / N) + 1`.** A fórmula derivada seria mais "pura", mas quebraria o botão "Novo ciclo": quem virasse o ciclo manualmente na 2ª venda voltaria pro ciclo anterior no marco seguinte, porque a fórmula recalcularia a partir das vendas. Incrementando, os dois caminhos compõem — manual adianta, automático continua de onde está.
+- **Uma função só (`ranking.avancarCiclo`), usada pelos dois caminhos.** A transação de virada (arquivar snapshot em `ranking_ciclos` + incrementar + deslocar preços) estava inline na rota `POST /ads/:id/ciclo`. O caminho automático teria duplicado esse INSERT+UPDATE, e as duas cópias divergiriam na primeira mudança de schema. A rota agora é uma casca de 5 linhas em volta da mesma função, com `SELECT … FOR UPDATE` — o worker pode estar processando outra venda do mesmo anúncio no momento da virada.
+
+A troca só acontece na fase `rankeando`: ranqueado/monitoramento/recuperação não trabalham por ciclo de campanha, e virar ciclo lá só poluiria o histórico. Falha na virada não derruba o marco (é capturada e logada) — perder o aviso de 5 vendas por causa de um erro de banco seria pior que ficar um ciclo atrasado.

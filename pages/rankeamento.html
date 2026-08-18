@@ -326,7 +326,7 @@
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDT = d => new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});
-const EV_ICO = { venda:'🏆', marco:'🎯', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀', esfriou:'💤', sem_resultado:'🔴' };
+const EV_ICO = { venda:'🏆', marco:'🎯', ciclo:'🔄', preco:'💲', estoque:'📦', status:'🚦', visitas:'👁️', qualidade:'⭐', buybox:'🥇', destaque:'🚀', esfriou:'💤', sem_resultado:'🔴' };
 // Tipos de intervenção da fase Recuperação (v80) — o valor vai pro banco (ranking_notes.tipo).
 const TIPOS_INTERV = {
   titulo:    { label:'Título',           ico:'🏷️' },
@@ -593,7 +593,7 @@ function cardHtml(a) {
         <div class="rk-counter-meta">${a.dias!=null?`${a.dias} dia(s)`:'—'}<br>${a.ritmo_dia!=null?`${a.ritmo_dia}/dia`:''}</div>
       </div>
       <div class="rk-progress">${pips}</div>
-      <div class="rk-next">${falta === 0 ? '🎯 Marco atingido!' : `Faltam <b>${falta}</b> venda(s) para o próximo marco (a cada ${every})`}</div>
+      <div class="rk-next">${falta === 0 ? `🎯 Marco atingido — ciclo virou automaticamente` : `Faltam <b>${falta}</b> venda(s) para o <b>Ciclo ${(a.ciclo||1)+1}</b> (vira sozinho a cada ${every})`}</div>
     </div>
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${BRL(a.faturamento)}</div><div class="k">Faturamento</div></div>
@@ -626,7 +626,7 @@ function cardHtml(a) {
     </div>
     <div class="rk-card-footer-actions">
       <button class="rk-icon-btn" title="Vincular anúncio de catálogo/tradicional (soma as vendas neste card)" onclick="abrirVincularModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-link"></i> Vincular</button>
-      ${rankeando ? `<button class="rk-icon-btn" title="Encerrar ciclo ${a.ciclo||1} e começar o ciclo ${(a.ciclo||1)+1}" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i> Novo ciclo</button>` : ''}
+      ${rankeando ? `<button class="rk-icon-btn" title="Virar agora para o ciclo ${(a.ciclo||1)+1} — sem esperar as ${every} vendas" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i> Novo ciclo</button>` : ''}
       <div style="flex:1"></div>
       <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i> Remover</button>
     </div>

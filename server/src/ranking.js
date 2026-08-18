@@ -154,11 +154,39 @@ async function milestone(ad, realtime = true) {
     [ad.id]
   );
   const fat = rows[0].fat;
-  // A cada múltiplo de N vendas o marco lembra de avaliar/trocar o ciclo
-  // manualmente (o card tem o botão "Novo ciclo"; a troca nunca é automática).
-  await emit(ad, 'marco',
-    `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento acumulado: ${BRL(fat)}\n🔄 <b>Atingiu múltiplo de ${ad.milestone_every || 5} — avalie trocar o ciclo manualmente no card.</b>\n🔗 ${linkOf(ad.ml_id)}`,
-    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat), ciclo: ad.ciclo || 1 },
+
+  // TROCA AUTOMÁTICA DE CICLO: a cada múltiplo de N vendas o ciclo avança
+  // sozinho (5 vendas → ciclo 2, 10 → ciclo 3, e assim por diante). Só na fase
+  // `rankeando` — ranqueado/monitoramento/recuperação não trabalham por ciclo
+  // de campanha. O botão "Novo ciclo" do card continua existindo pra forçar a
+  // virada antes do marco; como aqui é `ciclo + 1` (e não `sales/N + 1`), os
+  // dois caminhos convivem sem brigar pelo número.
+  const de = ad.ciclo || 1;
+  let para = de;
+  if (ad.fase === 'rankeando') {
+    try {
+      const novo = await avancarCiclo(ad.id);
+      if (novo) {
+        para = novo.ciclo;
+        // Evento próprio na linha do tempo do card (silencioso: quem avisa no
+        // Telegram é a mensagem de marco logo abaixo, pra não mandar duas).
+        await emit({ ...ad, ciclo: para }, 'ciclo',
+          `🔄 <b>Ciclo ${de} encerrado → Ciclo ${para}</b>\n📦 ${ad.title || ad.ml_id}\n🔢 ${ad.sales_count} vendas acumuladas`,
+          { de, para, sales_count: ad.sales_count, automatico: true }, 'silent');
+      }
+    } catch (e) {
+      // Falhar a virada não pode engolir o marco — o número de vendas segue
+      // correto e a troca pode ser feita no botão do card.
+      console.error(`[ranking] troca automática de ciclo falhou (ad ${ad.id}):`, e.message);
+    }
+  }
+
+  const linhaCiclo = para > de
+    ? `🔄 <b>Ciclo ${de} encerrado — agora no Ciclo ${para}</b> (automático a cada ${ad.milestone_every || 5} vendas)`
+    : `🔄 Ciclo ${de}`;
+  await emit({ ...ad, ciclo: para }, 'marco',
+    `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento acumulado: ${BRL(fat)}\n${linhaCiclo}\n🔗 ${linkOf(ad.ml_id)}`,
+    { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat), ciclo: para, ciclo_anterior: de },
     (ad.fase === 'ranqueado' || !realtime) ? 'silent' : 'force');
 }
 
@@ -349,4 +377,51 @@ async function snapshot(faseAlvo = 'rankeando') {
   return { checked, total: ads.length };
 }
 
-module.exports = { getTracked, onSale, onItemChange, milestone, emit, snapshot, BRL, linkOf };
+// Encerra o ciclo atual e abre o próximo. Usado nos dois caminhos: automático
+// (marco de N vendas, ver `milestone`) e manual (botão do card →
+// POST /api/ranking/ads/:id/ciclo). É uma função só de propósito — antes a
+// rota tinha essa transação inline e o caminho automático teria duplicado o
+// mesmo INSERT+UPDATE, com risco de os dois divergirem.
+//
+// O que faz, numa transação com a linha travada (FOR UPDATE — o worker pode
+// estar processando outra venda do mesmo anúncio ao mesmo tempo):
+//  1. arquiva um snapshot do ciclo que fecha em `ranking_ciclos` (campanha,
+//     ROAS, orçamento, preços, vendas e faturamento ACUMULADOS até aqui);
+//  2. incrementa `ciclo`, desloca `preco_anterior ← preco_atual` e carimba
+//     `ciclo_iniciado_em`.
+// NÃO zera `sales_count` nem faturamento: eles são cumulativos através dos
+// ciclos por decisão de negócio (ver business-rules.md).
+async function avancarCiclo(adId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: ad } = await client.query(`SELECT * FROM ranking_ads WHERE id = $1 FOR UPDATE`, [adId]);
+    if (!ad.length) { await client.query('ROLLBACK'); return null; }
+    const r = ad[0];
+    const { rows: fat } = await client.query(
+      `SELECT COALESCE(SUM((detail->>'valor')::numeric), 0) AS f FROM ranking_events
+        WHERE ranking_ad_id = $1 AND event_type = 'venda'`,
+      [r.id]
+    );
+    await client.query(
+      `INSERT INTO ranking_ciclos (ranking_ad_id, ciclo, campanha_nome, ads_investido, roas, orcamento_diario, preco_anterior, preco_atual, sales_count, faturamento, iniciado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [r.id, r.ciclo || 1, r.campanha_nome, r.ads_investido, r.roas, r.orcamento_diario, r.preco_anterior, r.preco_atual, r.sales_count, fat[0].f, r.ciclo_iniciado_em]
+    );
+    const { rows } = await client.query(
+      `UPDATE ranking_ads
+          SET ciclo = COALESCE(ciclo,1) + 1,
+              preco_anterior = preco_atual,   -- o preço do ciclo que fecha vira o "anterior"
+              ciclo_iniciado_em = now(), updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [r.id]
+    );
+    await client.query('COMMIT');
+    return rows[0];
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally { client.release(); }
+}
+
+module.exports = { getTracked, onSale, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf };

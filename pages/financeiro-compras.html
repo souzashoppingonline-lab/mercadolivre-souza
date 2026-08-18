@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Compras & CMV — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Compras & CMV'; window.ACTIVE_NAV='financeiro-compras.html';</script>
+  <style>
+    .cp-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 14px; }
+    .cp-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+    .cp-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .cp-card h3 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--text-muted); margin:0 0 12px; font-weight:800; }
+
+    .cp-tabs { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+    .cp-tab { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:10px; padding:9px 15px; font-size:12.5px; font-weight:800; cursor:pointer; }
+    .cp-tab.on { color:#22c55e; border-color:#22c55e; background:rgba(34,197,94,.07); }
+    .cp-tab.soon { opacity:.55; }
+    .cp-pane { display:none; } .cp-pane.on { display:block; }
+
+    /* Empresas */
+    .cp-emps { display:flex; gap:9px; flex-wrap:wrap; }
+    .cp-emp { background:var(--bg-card2); border:2px solid var(--border); color:var(--text-main); border-radius:11px; padding:10px 20px; font-size:13px; font-weight:800; cursor:pointer; }
+    .cp-emp.on { border-color:var(--c); background:color-mix(in srgb, var(--c) 14%, transparent); color:var(--c); }
+    .cp-aviso { background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.3); color:#f59e0b; border-radius:10px; padding:9px 14px; font-size:12.5px; margin-top:10px; }
+    .cp-badge { border-radius:999px; padding:2px 10px; font-size:10px; font-weight:800; white-space:nowrap; }
+
+    /* Form rápido */
+    .cp-form { display:grid; grid-template-columns:1.4fr .9fr .9fr .9fr 1.2fr .9fr auto; gap:9px; align-items:end; }
+    @media(max-width:1100px){ .cp-form { grid-template-columns:1fr 1fr; } }
+    .cp-f { display:flex; flex-direction:column; gap:5px; }
+    .cp-f label { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); font-weight:700; }
+    .cp-f input, .cp-f select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:9px; padding:9px 11px; font-size:13px; width:100%; box-sizing:border-box; }
+    .cp-go { background:#22c55e; border:1px solid #22c55e; color:#04240f; border-radius:9px; padding:10px 20px; font-size:13px; font-weight:800; cursor:pointer; white-space:nowrap; }
+    .cp-go:disabled { background:var(--bg-card2); border-color:var(--border); color:var(--text-muted); cursor:not-allowed; }
+    .cp-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:9px; padding:9px 15px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+    .cp-btn:hover:not(:disabled) { border-color:#22c55e; }
+    .cp-btn:disabled { opacity:.5; cursor:not-allowed; }
+
+    /* Tabela */
+    .cp-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .cp-tbl th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); padding:7px 8px; border-bottom:1px solid var(--border); font-weight:700; }
+    .cp-tbl td { padding:8px; border-bottom:1px solid var(--border); }
+    .cp-tbl td.n, .cp-tbl th.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .cp-tbl tbody tr:hover td { background:var(--bg-card2); }
+    .cp-wrap { overflow-x:auto; }
+    .cp-mini { background:none; border:1px solid var(--border); border-radius:7px; color:var(--text-muted); cursor:pointer; padding:5px 9px; font-size:11px; }
+    .cp-mini:hover { color:var(--text-main); border-color:var(--text-muted); }
+    .cp-mini.del:hover { color:#f87171; border-color:#f87171; }
+    .cp-st { border:1px solid var(--border); border-radius:999px; padding:3px 11px; font-size:10.5px; font-weight:800; cursor:pointer; background:var(--bg-card2); color:var(--text-muted); }
+    .cp-st.ok { background:rgba(34,197,94,.14); color:#22c55e; border-color:rgba(34,197,94,.4); }
+
+    /* Resumo inferior */
+    .cp-bars { display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+    .cp-bar { display:grid; grid-template-columns:110px 1fr 130px; gap:12px; align-items:center; font-size:12.5px; }
+    .cp-bar .track { background:var(--bg-card2); border-radius:999px; height:9px; overflow:hidden; }
+    .cp-bar .fill { height:100%; border-radius:999px; }
+    .cp-bar .val { text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
+
+    /* Painel de saúde (Comparação) */
+    .cp-saude { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+    .cp-anel { width:118px; height:118px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-direction:column; font-weight:800; }
+    .cp-anel .p { font-size:23px; } .cp-anel .l { font-size:9.5px; text-transform:uppercase; letter-spacing:.6px; opacity:.85; }
+    .cp-diag { flex:1; min-width:260px; font-size:12.5px; line-height:1.65; }
+    .cp-diag li { margin-bottom:5px; }
+    .cp-ind { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-top:14px; }
+    .cp-i { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+    .cp-i .l { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); font-weight:700; }
+    .cp-i .v { font-size:20px; font-weight:800; margin-top:3px; font-variant-numeric:tabular-nums; }
+    .cp-i .h { font-size:11px; color:var(--text-muted); margin-top:3px; }
+    .cp-delta { font-size:11.5px; font-weight:800; }
+
+    .cp-sub2 { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+    .cp-sb { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:9px; padding:7px 14px; font-size:12px; font-weight:700; cursor:pointer; }
+    .cp-sb.on { background:#1f2937; color:#fff; border-color:#374151; }
+    .cp-empty { color:var(--text-muted); font-size:13px; padding:24px; text-align:center; }
+    .cp-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .cp-top select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; }
+    .cp-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media(max-width:900px){ .cp-grid2 { grid-template-columns:1fr; } }
+
+    /* Modal */
+    .cp-back { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:900; padding:20px; }
+    .cp-back.on { display:flex; }
+    .cp-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; width:100%; max-width:640px; max-height:85vh; overflow:auto; padding:20px; }
+    .cp-modal h3 { font-size:15px; font-weight:800; margin:0 0 14px; display:flex; justify-content:space-between; align-items:center; }
+    .cp-modal h3 .x { cursor:pointer; color:var(--text-muted); }
+    .cp-mgrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    @media(max-width:560px){ .cp-mgrid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="cp-sub">Controle de compras por empresa: registro rápido, histórico, relatórios e o cruzamento Compras × CMV × Obrigações.</p>
+      <div id="cpStatus" class="cp-status"></div>
+
+      <div class="cp-tabs">
+        <button class="cp-tab on" id="cpTabCompras"   onclick="setAba('compras')">Compras</button>
+        <button class="cp-tab"    id="cpTabRelat"     onclick="setAba('relat')">Relatórios</button>
+        <button class="cp-tab"    id="cpTabComp"      onclick="setAba('comp')">Comparação</button>
+        <button class="cp-tab soon" onclick="emBreve('XML Fiscal')">XML Fiscal</button>
+        <button class="cp-tab soon" onclick="emBreve('NFE Entradas')">NFE Entradas</button>
+        <button class="cp-tab soon" onclick="emBreve('Relatórios NFE')">Relatórios NFE</button>
+        <button class="cp-tab soon" onclick="emBreve('Fechamento')">Fechamento</button>
+        <button class="cp-tab soon" onclick="emBreve('Conciliação')">Conciliação</button>
+        <button class="cp-tab soon" onclick="emBreve('Acesso Contador')">Acesso Contador</button>
+      </div>
+
+      <!-- ═══ ABA COMPRAS ═══ -->
+      <div class="cp-pane on" id="cpPaneCompras">
+        <div class="card-grid" id="cpCards" style="margin-bottom:16px"></div>
+        <div class="cp-card" id="cpCardNfe" style="display:none"></div>
+
+        <div class="cp-card">
+          <h3>1 · Empresa da compra <span style="color:#f59e0b">(obrigatória)</span></h3>
+          <div class="cp-emps" id="cpEmps"></div>
+          <div class="cp-aviso" id="cpAvisoEmp">⚠️ Selecione uma empresa para registrar compras.</div>
+          <div class="cp-top" style="margin:14px 0 0">
+            <button class="cp-btn" disabled title="Próxima etapa — depende do bucket de XML no Supabase"><i class="fas fa-file-import"></i> Importar XML</button>
+          </div>
+        </div>
+
+        <div class="cp-card">
+          <h3>2 · Registro rápido</h3>
+          <div class="cp-form">
+            <div class="cp-f"><label>Fornecedor</label><input id="cFornecedor" list="cpForns" placeholder="Nome do fornecedor"><datalist id="cpForns"></datalist></div>
+            <div class="cp-f"><label>Valor total (R$)</label><input id="cValor" placeholder="0,00"></div>
+            <div class="cp-f"><label>Data da compra</label><input type="date" id="cData"></div>
+            <div class="cp-f"><label>Data de entrega</label><input type="date" id="cEntrega"></div>
+            <div class="cp-f"><label>Observação</label><input id="cObs" placeholder="Opcional"></div>
+            <div class="cp-f"><label>Status</label><select id="cStatus"><option value="pendente">Pendente</option><option value="entregue">Entregue</option></select></div>
+            <button class="cp-go" id="cpBtnSalvar" onclick="salvarCompra()" disabled>Registrar</button>
+          </div>
+        </div>
+
+        <div class="cp-card">
+          <h3 style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <span>3 · Histórico de compras</span>
+            <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <span class="cp-emps" id="cpFiltro" style="gap:6px"></span>
+              <button class="cp-btn" onclick="exportarCSV()"><i class="fas fa-file-csv"></i> CSV</button>
+            </span>
+          </h3>
+          <div class="cp-wrap"><table class="cp-tbl">
+            <thead><tr>
+              <th>Data</th><th>Empresa</th><th>Fornecedor</th><th class="n">Valor</th>
+              <th>Entrega</th><th>Status</th><th>Observação</th><th style="width:90px"></th>
+            </tr></thead>
+            <tbody id="cpLista"></tbody>
+          </table></div>
+        </div>
+
+        <div class="cp-card">
+          <h3>4 · Resumo consolidado</h3>
+          <div class="card-grid" id="cpResumo"></div>
+          <div class="cp-bars" id="cpPorEmpresa"></div>
+        </div>
+      </div>
+
+      <!-- ═══ ABA RELATÓRIOS ═══ -->
+      <div class="cp-pane" id="cpPaneRelat">
+        <div class="cp-sub2">
+          <button class="cp-sb on" id="cpSbMes"  onclick="setSub('mes')">Compras por mês</button>
+          <button class="cp-sb"    id="cpSbForn" onclick="setSub('forn')">Por fornecedor</button>
+          <button class="cp-sb"    id="cpSbEmp"  onclick="setSub('emp')">Por empresa</button>
+          <button class="cp-sb"    id="cpSbNfe"  onclick="setSub('nfe')">Divergência NF-e</button>
+        </div>
+        <div id="cpRelat"></div>
+      </div>
+
+      <!-- ═══ ABA COMPARAÇÃO ═══ -->
+      <div class="cp-pane" id="cpPaneComp">
+        <div class="cp-top">
+          <select id="cpMes" onchange="renderComparacao()"></select>
+          <select id="cpAno" onchange="renderComparacao()"></select>
+          <button class="cp-btn" id="cpBtnComparar" onclick="toggleComparar()"><i class="fas fa-right-left"></i> Comparar meses</button>
+          <span id="cpComparaSel" style="display:none;gap:8px" class="cp-top">
+            <select id="cpMes2" onchange="renderComparacao()"></select>
+            <select id="cpAno2" onchange="renderComparacao()"></select>
+          </span>
+          <button class="cp-btn" onclick="exportarComparacaoCSV()"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div id="cpComp"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal editar compra -->
+<div class="cp-back" id="cpBack" onclick="if(event.target===this)fecharEdit()">
+  <div class="cp-modal">
+    <h3>Editar compra <span class="x" onclick="fecharEdit()"><i class="fas fa-xmark"></i></span></h3>
+    <div class="cp-mgrid">
+      <div class="cp-f"><label>Fornecedor</label><input id="eFornecedor"></div>
+      <div class="cp-f"><label>Valor total (R$)</label><input id="eValor"></div>
+      <div class="cp-f"><label>Data da compra</label><input type="date" id="eData"></div>
+      <div class="cp-f"><label>Data de entrega</label><input type="date" id="eEntrega"></div>
+      <div class="cp-f"><label>Empresa</label><select id="eEmpresa"></select></div>
+      <div class="cp-f"><label>Status</label><select id="eStatus"><option value="pendente">Pendente</option><option value="entregue">Entregue</option></select></div>
+    </div>
+    <div class="cp-f" style="margin-top:12px"><label>Observação</label><input id="eObs"></div>
+    <div class="cp-top" style="margin-top:16px">
+      <button class="cp-go" onclick="salvarEdicao()">Salvar alterações</button>
+      <button class="cp-btn" onclick="fecharEdit()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const NUM = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
+const PCT = n => (Number(n)||0).toFixed(1).replace('.',',') + '%';
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pNum = v => { const n=parseFloat(String(v==null?'':v).replace(/\./g,'').replace(',','.')); return isNaN(n)?0:n; };
+const hojeISO = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+// As 3 empresas de compra (constants.ts do Readdy). Cor identifica na tela.
+const EMPRESAS = [
+  { nome:'UNIFULL', cor:'#3b82f6' },
+  { nome:'TOP MIX', cor:'#22c55e' },
+  { nome:'R SOUZA', cor:'#f59e0b' },
+];
+const corEmp = e => (EMPRESAS.find(x => x.nome === String(e||'').trim()) || {}).cor || '#64748b';
+
+let COMPRAS = [], FORNECEDORES = [], SALES = [], BOLETOS = [], PARCELAS = [];
+let empSel = null, filtroEmp = '', aba = 'compras', sub = 'mes', editId = null, comparando = false, semBanco = false;
+const charts = {};
+function destroyChart(k){ if (charts[k]) { charts[k].destroy(); charts[k] = null; } }
+
+function showStatus(t, err){ const el=document.getElementById('cpStatus'); el.style.display='block'; el.style.borderColor=err?'#f59e0b':'var(--border)'; el.innerHTML=t; }
+// As escritas do db.js devolvem null e guardam o motivo em DB.lastError.
+function motivoErro(r){
+  const m = (r && r.error) || DB.lastError || 'erro desconhecido';
+  return /column|coluna|does not exist|schema cache/i.test(m)
+    ? m + '\n\nParece faltar coluna/tabela no Supabase — confira o schema de compras_cmv.'
+    : m;
+}
+function emBreve(nome){
+  alert(`A aba "${nome}" entra na próxima etapa.\n\nEla depende da importação de XML de NF-e (bucket de Storage no Supabase, parse da chave de 44 dígitos e as tabelas compras_xml / auditoria_xml_importacao).`);
+}
+
+// ── Carga ───────────────────────────────────────────────────────────────────
+async function load(){
+  const [rc, rf, rs, rb, rp] = await Promise.all([
+    DB.getFinanceiroDados('compras_cmv', 5000, 'data_compra.desc'),
+    DB.getFinanceiroDados('boleto_categories', 500),
+    DB.getFinanceiroDados('sales_entries', 5000, 'date.desc'),
+    DB.getFinanceiroDados('boletos_mensais', 5000, 'date.desc'),
+    DB.getFinanceiroDados('parcelas_cartao', 5000),
+  ]);
+  semBanco = !rc || !!rc.error;
+  COMPRAS = (!semBanco && rc.rows) || [];
+  // Fornecedores vêm de boleto_categories com type='fornecedor' (é o que o
+  // useCmvData do Readdy usa — não a fornecedores_cmv, que é do fluxo legado
+  // de compra item-a-item).
+  FORNECEDORES = ((rf && !rf.error && rf.rows) || []).filter(c => String(c.type||'').toLowerCase() === 'fornecedor');
+  SALES    = (rs && !rs.error && rs.rows) || [];
+  BOLETOS  = (rb && !rb.error && rb.rows) || [];
+  PARCELAS = (rp && !rp.error && rp.rows) || [];
+
+  if (semBanco) showStatus('⚠️ <b>Tabela <code>compras_cmv</code> não encontrada no Supabase.</b> A tela abre, mas não lista nem grava compras. Crie a tabela no SQL Editor (o schema está em <code>.claude/financeiro-supabase-schema.md</code>).', true);
+  else showStatus(`✅ ${COMPRAS.length} compra(s) · ${FORNECEDORES.length} fornecedor(es) · ${SALES.length} lançamento(s) de venda.`, false);
+
+  document.getElementById('cpForns').innerHTML = FORNECEDORES.map(f => `<option value="${esc(f.name)}">`).join('');
+  document.getElementById('eEmpresa').innerHTML = EMPRESAS.map(e => `<option>${esc(e.nome)}</option>`).join('');
+  renderEmpresas(); renderTudo();
+}
+
+function setAba(a){
+  aba = a;
+  [['Compras','compras'], ['Relat','relat'], ['Comp','comp']].forEach(([suf, chave]) => {
+    document.getElementById('cpPane'+suf).classList.toggle('on', a === chave);
+    document.getElementById('cpTab'+suf).classList.toggle('on', a === chave);
+  });
+  if (a === 'relat') renderRelatorios();
+  if (a === 'comp') renderComparacao();
+}
+function setSub(s){
+  sub = s;
+  [['Mes','mes'], ['Forn','forn'], ['Emp','emp'], ['Nfe','nfe']].forEach(([suf, chave]) =>
+    document.getElementById('cpSb'+suf).classList.toggle('on', s === chave));
+  renderRelatorios();
+}
+
+// ── Empresa (obrigatória pra registrar) ─────────────────────────────────────
+function renderEmpresas(){
+  document.getElementById('cpEmps').innerHTML = EMPRESAS.map(e =>
+    `<button class="cp-emp ${empSel === e.nome ? 'on' : ''}" style="--c:${e.cor}" onclick="selEmpresa('${e.nome}')">${esc(e.nome)}</button>`).join('');
+  document.getElementById('cpFiltro').innerHTML =
+    `<button class="cp-emp ${!filtroEmp ? 'on' : ''}" style="--c:#94a3b8;padding:7px 13px;font-size:11.5px" onclick="setFiltro('')">Todas</button>` +
+    EMPRESAS.map(e => `<button class="cp-emp ${filtroEmp === e.nome ? 'on' : ''}" style="--c:${e.cor};padding:7px 13px;font-size:11.5px" onclick="setFiltro('${e.nome}')">${esc(e.nome)}</button>`).join('');
+  document.getElementById('cpAvisoEmp').style.display = empSel ? 'none' : '';
+  document.getElementById('cpBtnSalvar').disabled = !empSel || semBanco;
+}
+function selEmpresa(nome){ empSel = (empSel === nome) ? null : nome; renderEmpresas(); }
+function setFiltro(nome){ filtroEmp = nome; renderEmpresas(); renderTudo(); }
+
+const comprasFiltradas = () => filtroEmp ? COMPRAS.filter(c => String(c.empresa||'').trim() === filtroEmp) : COMPRAS;
+const valorDe = c => Number(c.valor_total) || 0;
+
+// ── Cards de resumo ─────────────────────────────────────────────────────────
+function renderTudo(){ renderCards(); renderNfe(); renderLista(); renderResumo(); }
+
+function renderCards(){
+  const total = COMPRAS.reduce((s,c) => s + valorDe(c), 0);
+  const porEmp = EMPRESAS.map(e => ({
+    ...e, total: COMPRAS.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0),
+  }));
+  document.getElementById('cpCards').innerHTML =
+    `<div class="stat-card"><div class="label">Total geral</div><div class="value">${BRL(total)}</div></div>` +
+    porEmp.map(e => `<div class="stat-card"><div class="label">${esc(e.nome)}</div><div class="value" style="color:${e.cor}">${BRL(e.total)}</div></div>`).join('');
+}
+
+// Card NF-e: só aparece quando existem compras com nota (valor_nfe preenchido).
+// "Economia" = quanto o valor pago ficou abaixo da nota, em % da nota.
+function renderNfe(){
+  const comNota = COMPRAS.filter(c => c.valor_nfe != null && Number(c.valor_nfe) > 0);
+  const box = document.getElementById('cpCardNfe');
+  if (!comNota.length) { box.style.display = 'none'; return; }
+  const vNota = comNota.reduce((s,c) => s + Number(c.valor_nfe || 0), 0);
+  const vPago = comNota.reduce((s,c) => s + Number(c.valor_pago != null ? c.valor_pago : c.valor_total || 0), 0);
+  const dif = vNota - vPago;
+  box.style.display = '';
+  box.innerHTML = `<h3>Compras com NF-e (${comNota.length})</h3>
+    <div class="cp-ind" style="margin-top:0">
+      <div class="cp-i"><div class="l">Valor da nota</div><div class="v">${BRL(vNota)}</div></div>
+      <div class="cp-i"><div class="l">Valor pago</div><div class="v">${BRL(vPago)}</div></div>
+      <div class="cp-i"><div class="l">Diferença</div><div class="v" style="color:${dif >= 0 ? '#22c55e' : '#f87171'}">${BRL(dif)}</div></div>
+      <div class="cp-i"><div class="l">Economia</div><div class="v" style="color:${dif >= 0 ? '#22c55e' : '#f87171'}">${vNota ? PCT(dif / vNota * 100) : '—'}</div></div>
+    </div>`;
+}
+
+// ── Registro rápido ─────────────────────────────────────────────────────────
+async function salvarCompra(){
+  if (!empSel) { alert('Selecione a empresa antes de registrar a compra.'); return; }
+  const valor = pNum(document.getElementById('cValor').value);
+  const fornecedor = document.getElementById('cFornecedor').value.trim();
+  if (!fornecedor) { alert('Informe o fornecedor.'); return; }
+  if (valor <= 0) { alert('Informe o valor total da compra.'); return; }
+  const linha = {
+    empresa: empSel,
+    fornecedor_nome: fornecedor,
+    valor_total: valor,
+    data_compra: document.getElementById('cData').value || hojeISO(),
+    data_entrada: document.getElementById('cEntrega').value || null,
+    observacao: document.getElementById('cObs').value.trim() || null,
+    status_entrega: document.getElementById('cStatus').value,
+    tipo_compra: 'normal',
+    origem: 'MANUAL',   // compras_cmv.origem distingue lançamento manual de XML
+  };
+  const r = await DB.addFinanceiroRow('compras_cmv', linha);
+  if (!r || r.error) { alert('Falha ao registrar a compra:\n\n' + motivoErro(r)); return; }
+  COMPRAS.unshift((r.rows && r.rows[0]) || linha);
+  ['cFornecedor','cValor','cObs'].forEach(id => document.getElementById(id).value = '');
+  renderTudo();
+  showStatus(`✅ Compra de <b>${esc(fornecedor)}</b> registrada em <b>${esc(empSel)}</b> — ${BRL(valor)}.`, false);
+}
+
+// ── Histórico ───────────────────────────────────────────────────────────────
+function renderLista(){
+  const lista = comprasFiltradas();
+  const el = document.getElementById('cpLista');
+  if (!lista.length) { el.innerHTML = `<tr><td colspan="8"><div class="cp-empty">${COMPRAS.length ? 'Nenhuma compra dessa empresa.' : 'Nenhuma compra registrada ainda.'}</div></td></tr>`; return; }
+  el.innerHTML = lista.map(c => {
+    const entregue = String(c.status_entrega||'').toLowerCase() === 'entregue';
+    return `<tr>
+      <td style="white-space:nowrap">${dataBR(c.data_compra)}</td>
+      <td><span class="cp-badge" style="border:1px solid ${corEmp(c.empresa)}66;color:${corEmp(c.empresa)}">${esc(c.empresa||'—')}</span></td>
+      <td>${esc(c.fornecedor_nome || '—')}${c.chave_nfe ? ` <span class="cp-badge" style="border:1px solid #3b82f666;color:#3b82f6" title="Chave ${esc(c.chave_nfe)}">NF-e ${esc(c.numero_nf || '')}</span>` : ''}</td>
+      <td class="n">${BRL(valorDe(c))}</td>
+      <td style="white-space:nowrap">${dataBR(c.data_entrada)}</td>
+      <td><button class="cp-st ${entregue ? 'ok' : ''}" onclick="alternarStatus('${esc(c.id)}')">${entregue ? 'Entregue' : 'Pendente'}</button></td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(c.observacao||'')}">${esc(c.observacao || '—')}</td>
+      <td style="white-space:nowrap">
+        <button class="cp-mini" title="Editar" onclick="abrirEdit('${esc(c.id)}')"><i class="fas fa-pen"></i></button>
+        <button class="cp-mini del" title="Excluir" onclick="excluirCompra('${esc(c.id)}')"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function alternarStatus(id){
+  const c = COMPRAS.find(x => String(x.id) === String(id)); if (!c) return;
+  const novo = String(c.status_entrega||'').toLowerCase() === 'entregue' ? 'pendente' : 'entregue';
+  const r = await DB.updateFinanceiroRow('compras_cmv', id, { status_entrega: novo });
+  if (!r || r.error) { alert('Falha ao mudar o status:\n\n' + motivoErro(r)); return; }
+  c.status_entrega = novo;
+  renderTudo();
+}
+async function excluirCompra(id){
+  const c = COMPRAS.find(x => String(x.id) === String(id)); if (!c) return;
+  if (!confirm(`Excluir a compra de ${c.fornecedor_nome || '—'} (${BRL(valorDe(c))})? Não dá pra desfazer.`)) return;
+  const r = await DB.deleteFinanceiroRow('compras_cmv', id);
+  if (!r || r.error) { alert('Falha ao excluir:\n\n' + motivoErro(r)); return; }
+  COMPRAS = COMPRAS.filter(x => String(x.id) !== String(id));
+  renderTudo();
+}
+
+function abrirEdit(id){
+  const c = COMPRAS.find(x => String(x.id) === String(id)); if (!c) return;
+  editId = c.id;
+  document.getElementById('eFornecedor').value = c.fornecedor_nome || '';
+  document.getElementById('eValor').value = valorDe(c) ? String(valorDe(c)).replace('.', ',') : '';
+  document.getElementById('eData').value = (c.data_compra || '').slice(0,10);
+  document.getElementById('eEntrega').value = (c.data_entrada || '').slice(0,10);
+  document.getElementById('eEmpresa').value = c.empresa || EMPRESAS[0].nome;
+  document.getElementById('eStatus').value = String(c.status_entrega||'pendente').toLowerCase() === 'entregue' ? 'entregue' : 'pendente';
+  document.getElementById('eObs').value = c.observacao || '';
+  document.getElementById('cpBack').classList.add('on');
+}
+function fecharEdit(){ document.getElementById('cpBack').classList.remove('on'); editId = null; }
+async function salvarEdicao(){
+  if (!editId) return;
+  const o = {
+    fornecedor_nome: document.getElementById('eFornecedor').value.trim(),
+    valor_total: pNum(document.getElementById('eValor').value),
+    data_compra: document.getElementById('eData').value || null,
+    data_entrada: document.getElementById('eEntrega').value || null,
+    empresa: document.getElementById('eEmpresa').value,
+    status_entrega: document.getElementById('eStatus').value,
+    observacao: document.getElementById('eObs').value.trim() || null,
+  };
+  if (!o.fornecedor_nome) { alert('Informe o fornecedor.'); return; }
+  const r = await DB.updateFinanceiroRow('compras_cmv', editId, o);
+  if (!r || r.error) { alert('Falha ao salvar:\n\n' + motivoErro(r)); return; }
+  COMPRAS = COMPRAS.map(c => String(c.id) === String(editId) ? { ...c, ...o } : c);
+  fecharEdit(); renderTudo();
+}
+
+// ── Resumo consolidado ──────────────────────────────────────────────────────
+function renderResumo(){
+  const lista = comprasFiltradas();
+  const total = lista.reduce((s,c) => s + valorDe(c), 0);
+  const entregue = lista.filter(c => String(c.status_entrega||'').toLowerCase() === 'entregue').reduce((s,c) => s + valorDe(c), 0);
+  document.getElementById('cpResumo').innerHTML = `
+    <div class="stat-card"><div class="label">Total comprado</div><div class="value">${BRL(total)}</div></div>
+    <div class="stat-card"><div class="label">Total entregue</div><div class="value" style="color:#22c55e">${BRL(entregue)}</div></div>
+    <div class="stat-card"><div class="label">Total pendente</div><div class="value" style="color:#f59e0b">${BRL(total - entregue)}</div></div>`;
+
+  const geral = COMPRAS.reduce((s,c) => s + valorDe(c), 0);
+  document.getElementById('cpPorEmpresa').innerHTML = EMPRESAS.map(e => {
+    const v = COMPRAS.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0);
+    const p = geral ? v / geral * 100 : 0;
+    return `<div class="cp-bar">
+      <span style="color:${e.cor};font-weight:800">${esc(e.nome)}</span>
+      <span class="track"><span class="fill" style="width:${p.toFixed(1)}%;background:${e.cor}"></span></span>
+      <span class="val">${BRL(v)} · ${PCT(p)}</span>
+    </div>`;
+  }).join('');
+}
+
+function exportarCSV(){
+  const lista = comprasFiltradas();
+  const linhas = [['Data','Empresa','Fornecedor','Valor','Entrega','Status','Observação']]
+    .concat(lista.map(c => [dataBR(c.data_compra), c.empresa||'', c.fornecedor_nome||'', String(valorDe(c)).replace('.',','), dataBR(c.data_entrada), c.status_entrega||'', (c.observacao||'').replace(/[\r\n;]/g,' ')]));
+  const csv = linhas.map(l => l.map(x => `"${String(x).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8' }));
+  a.download = `compras-${filtroEmp || 'todas'}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Relatórios ──────────────────────────────────────────────────────────────
+const mesDe = c => String(c.data_compra || '').slice(0,7);   // YYYY-MM
+const mesBR = ym => { const [y,m] = String(ym).split('-'); return `${MESES[(+m||1)-1].slice(0,3)}/${y}`; };
+
+function renderRelatorios(){
+  const el = document.getElementById('cpRelat');
+  if (!COMPRAS.length) { el.innerHTML = '<div class="cp-card"><div class="cp-empty">Sem compras registradas para relatar.</div></div>'; return; }
+  if (sub === 'mes') return relatorioPorMes(el);
+  if (sub === 'forn') return relatorioPorFornecedor(el);
+  if (sub === 'emp') return relatorioPorEmpresa(el);
+  return relatorioNfe(el);
+}
+
+function agrupar(lista, chave){
+  const m = new Map();
+  lista.forEach(c => { const k = chave(c) || '—'; const a = m.get(k) || { total:0, qtd:0 }; a.total += valorDe(c); a.qtd++; m.set(k, a); });
+  return [...m.entries()].map(([k, v]) => ({ chave:k, ...v }));
+}
+
+function relatorioPorMes(el){
+  const dados = agrupar(COMPRAS, mesDe).sort((a,b) => a.chave.localeCompare(b.chave));
+  const total = dados.reduce((s,d) => s + d.total, 0);
+  el.innerHTML = `<div class="cp-card"><h3>Compras por mês</h3><canvas id="cpChartMes" height="90"></canvas></div>
+    <div class="cp-card"><div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th>Mês</th><th class="n">Compras</th><th class="n">Total</th><th class="n">Ticket médio</th><th class="n">% do período</th></tr></thead>
+      <tbody>${dados.slice().reverse().map(d => `<tr>
+        <td>${mesBR(d.chave)}</td><td class="n">${NUM(d.qtd)}</td><td class="n">${BRL(d.total)}</td>
+        <td class="n">${BRL(d.qtd ? d.total / d.qtd : 0)}</td><td class="n">${total ? PCT(d.total / total * 100) : '—'}</td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+  destroyChart('mes');
+  charts.mes = new Chart(document.getElementById('cpChartMes'), {
+    type: 'bar',
+    data: { labels: dados.map(d => mesBR(d.chave)),
+            datasets: [{ label:'Compras', data: dados.map(d => d.total), backgroundColor:'rgba(34,197,94,.75)', borderColor:'#22c55e', borderWidth:1.5, borderRadius:5 }] },
+    options: { responsive:true, plugins:{ legend:{ display:false } },
+      scales:{ x:{ ticks:{ color:'#888', font:{ size:10 } }, grid:{ display:false } },
+               y:{ ticks:{ color:'#888', callback:v => BRL(v) }, grid:{ color:'rgba(255,255,255,.04)' }, beginAtZero:true } } },
+  });
+}
+
+function relatorioPorFornecedor(el){
+  const dados = agrupar(COMPRAS, c => (c.fornecedor_nome || '').trim()).sort((a,b) => b.total - a.total);
+  const total = dados.reduce((s,d) => s + d.total, 0);
+  const top = dados.slice(0, 10);
+  el.innerHTML = `<div class="cp-grid2">
+      <div class="cp-card"><h3>Top 10 fornecedores</h3><canvas id="cpChartForn" height="200"></canvas></div>
+      <div class="cp-card"><h3>Participação</h3>
+        <div class="cp-bars">${top.map((d,i) => {
+          const p = total ? d.total / total * 100 : 0;
+          const cor = ['#22c55e','#3b82f6','#f59e0b','#a855f7','#ec4899','#14b8a6','#ef4444','#84cc16','#06b6d4','#f97316'][i % 10];
+          return `<div class="cp-bar"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(d.chave)}">${esc(d.chave)}</span>
+            <span class="track"><span class="fill" style="width:${p.toFixed(1)}%;background:${cor}"></span></span>
+            <span class="val">${BRL(d.total)}</span></div>`;
+        }).join('')}</div>
+      </div>
+    </div>
+    <div class="cp-card"><h3>Todos os fornecedores</h3><div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th>Fornecedor</th><th class="n">Compras</th><th class="n">Total</th><th class="n">Ticket médio</th><th class="n">%</th><th></th></tr></thead>
+      <tbody>${dados.map(d => `<tr>
+        <td>${esc(d.chave)}</td><td class="n">${NUM(d.qtd)}</td><td class="n">${BRL(d.total)}</td>
+        <td class="n">${BRL(d.qtd ? d.total / d.qtd : 0)}</td><td class="n">${total ? PCT(d.total / total * 100) : '—'}</td>
+        <td><button class="cp-mini" onclick="verFornecedor('${esc(d.chave).replace(/'/g,"\\'")}')">Ver compras</button></td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+  destroyChart('forn');
+  charts.forn = new Chart(document.getElementById('cpChartForn'), {
+    type: 'doughnut',
+    data: { labels: top.map(d => d.chave),
+            datasets: [{ data: top.map(d => d.total), borderWidth:0,
+              backgroundColor: ['#22c55e','#3b82f6','#f59e0b','#a855f7','#ec4899','#14b8a6','#ef4444','#84cc16','#06b6d4','#f97316'] }] },
+    options: { responsive:true, cutout:'58%', plugins:{ legend:{ position:'right', labels:{ color:'#ccc', boxWidth:10, font:{ size:10 } } } } },
+  });
+}
+function verFornecedor(nome){
+  const lista = COMPRAS.filter(c => (c.fornecedor_nome || '').trim() === nome);
+  const total = lista.reduce((s,c) => s + valorDe(c), 0);
+  alert(`${nome}\n\n${lista.length} compra(s) — ${BRL(total)}\n\n` +
+    lista.slice(0, 20).map(c => `${dataBR(c.data_compra)}  ${c.empresa || '—'}  ${BRL(valorDe(c))}`).join('\n') +
+    (lista.length > 20 ? `\n… e mais ${lista.length - 20}` : ''));
+}
+
+function relatorioPorEmpresa(el){
+  const dados = EMPRESAS.map(e => ({ ...e, total: COMPRAS.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0),
+                                     qtd: COMPRAS.filter(c => String(c.empresa||'').trim() === e.nome).length }));
+  const semEmp = COMPRAS.filter(c => !EMPRESAS.some(e => e.nome === String(c.empresa||'').trim()));
+  const total = dados.reduce((s,d) => s + d.total, 0) + semEmp.reduce((s,c) => s + valorDe(c), 0);
+  el.innerHTML = `<div class="cp-grid2">
+      <div class="cp-card"><h3>Compras por empresa</h3><canvas id="cpChartEmp" height="200"></canvas></div>
+      <div class="cp-card"><h3>Detalhe</h3><div class="cp-wrap"><table class="cp-tbl">
+        <thead><tr><th>Empresa</th><th class="n">Compras</th><th class="n">Total</th><th class="n">%</th></tr></thead>
+        <tbody>${dados.map(d => `<tr><td><span class="cp-badge" style="border:1px solid ${d.cor}66;color:${d.cor}">${esc(d.nome)}</span></td>
+          <td class="n">${NUM(d.qtd)}</td><td class="n">${BRL(d.total)}</td><td class="n">${total ? PCT(d.total / total * 100) : '—'}</td></tr>`).join('')}
+          ${semEmp.length ? `<tr><td style="color:var(--text-muted)">Sem empresa</td><td class="n">${NUM(semEmp.length)}</td><td class="n">${BRL(semEmp.reduce((s,c) => s + valorDe(c), 0))}</td><td class="n">—</td></tr>` : ''}
+        </tbody></table></div></div>
+    </div>`;
+  destroyChart('emp');
+  charts.emp = new Chart(document.getElementById('cpChartEmp'), {
+    type: 'doughnut',
+    data: { labels: dados.map(d => d.nome), datasets: [{ data: dados.map(d => d.total), backgroundColor: dados.map(d => d.cor), borderWidth:0 }] },
+    options: { responsive:true, cutout:'58%', plugins:{ legend:{ position:'right', labels:{ color:'#ccc', boxWidth:10, font:{ size:11 } } } } },
+  });
+}
+
+function relatorioNfe(el){
+  const comNota = COMPRAS.filter(c => c.valor_nfe != null && Number(c.valor_nfe) > 0);
+  if (!comNota.length) {
+    el.innerHTML = `<div class="cp-card"><div class="cp-empty">Nenhuma compra com NF-e registrada.<br><br>
+      A divergência compara <b>valor da nota</b> com <b>valor pago</b> — os dois só existem em compras importadas por XML, que entram na próxima etapa.</div></div>`;
+    return;
+  }
+  const linhas = comNota.map(c => {
+    const nota = Number(c.valor_nfe || 0), pago = Number(c.valor_pago != null ? c.valor_pago : c.valor_total || 0);
+    return { c, nota, pago, dif: nota - pago };
+  }).sort((a,b) => Math.abs(b.dif) - Math.abs(a.dif));
+  el.innerHTML = `<div class="cp-card"><h3>Divergência NF-e (valor da nota × valor pago)</h3><div class="cp-wrap"><table class="cp-tbl">
+    <thead><tr><th>Data</th><th>Empresa</th><th>Fornecedor</th><th class="n">Nota</th><th class="n">Pago</th><th class="n">Diferença</th><th class="n">%</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td style="white-space:nowrap">${dataBR(l.c.data_compra)}</td>
+      <td><span class="cp-badge" style="border:1px solid ${corEmp(l.c.empresa)}66;color:${corEmp(l.c.empresa)}">${esc(l.c.empresa||'—')}</span></td>
+      <td>${esc(l.c.fornecedor_nome || '—')}</td>
+      <td class="n">${BRL(l.nota)}</td><td class="n">${BRL(l.pago)}</td>
+      <td class="n" style="color:${l.dif >= 0 ? '#22c55e' : '#f87171'}">${BRL(l.dif)}</td>
+      <td class="n">${l.nota ? PCT(l.dif / l.nota * 100) : '—'}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+// ── Comparação: Compras × CMV × Obrigações ──────────────────────────────────
+// Cruza 4 fontes no mesmo mês. Compras e boletos têm `empresa`; sales_entries
+// não tem — por isso este painel é sempre do negócio inteiro, não por empresa.
+function metricasDoMes(ym){
+  const compras = COMPRAS.filter(c => mesDe(c) === ym).reduce((s,c) => s + valorDe(c), 0);
+  const vendas = SALES.filter(v => String(v.date||'').slice(0,7) === ym);
+  const cmv = vendas.reduce((s,v) => s + (Number(v.cogs) || 0), 0);
+  const faturamento = vendas.reduce((s,v) => s + (Number(v.gross_revenue) || 0), 0);
+  const mc = vendas.reduce((s,v) => s + (Number(v.gross_revenue)||0) - (Number(v.marketplace_fees)||0) - (Number(v.subsidized_shipping)||0)
+    - (Number(v.cogs)||0) - (Number(v.ads_ml)||0) - (Number(v.ads_external)||0) - (Number(v.tax)||0), 0);
+  // Obrigações = boletos do mês que NÃO são de cartão + parcelas de cartão da
+  // fatura do mês (o boleto do tipo 'cartao' é a dívida-mãe; contar os dois
+  // dobraria o valor).
+  const boletos = BOLETOS.filter(b => (b.mes_referencia === ym || String(b.date||'').slice(0,7) === ym) && String(b.tipo||'') !== 'cartao')
+    .reduce((s,b) => s + (Number(b.value) || 0), 0);
+  const cartoes = PARCELAS.filter(p => p.fatura_mes === ym).reduce((s,p) => s + (Number(p.valor) || 0), 0);
+  const obrigacoes = boletos + cartoes;
+  return {
+    ym, compras, cmv, faturamento, mc, boletos, cartoes, obrigacoes,
+    saldo: cmv - obrigacoes,
+    cobertura: cmv ? compras / cmv : 0,          // meses de estoque
+    variacao: compras - cmv,                     // estoque cresceu/diminuiu
+    eficiencia: compras ? cmv / compras * 100 : 0,
+    pressao: cmv ? obrigacoes / cmv : 0,         // obrigações sobre o CMV
+  };
+}
+function saudeDe(p){
+  if (p <= 1.1) return { cor:'#22c55e', label:'Saudável' };
+  if (p <= 1.5) return { cor:'#f59e0b', label:'Atenção' };
+  return { cor:'#ef4444', label:'Crítico' };
+}
+function diagnostico(m){
+  const d = [];
+  if (!m.cmv) d.push('Sem CMV lançado no mês — sem venda registrada não dá pra avaliar cobertura nem giro. Lance as vendas em <b>Vendas & Custos</b>.');
+  else {
+    if (m.cobertura > 2) d.push(`Cobertura de <b>${m.cobertura.toFixed(1)} meses</b> — estoque alto para o volume de vendas. Reduza o ritmo de compras até girar o que já entrou.`);
+    else if (m.cobertura < 0.7) d.push(`Cobertura de <b>${m.cobertura.toFixed(1)} mês</b> — comprando menos do que vende. Risco de ruptura se a demanda seguir.`);
+    else d.push(`Cobertura de <b>${m.cobertura.toFixed(1)} mês</b> — ritmo de compra alinhado ao de venda.`);
+
+    if (m.variacao > 0) d.push(`Estoque <b>cresceu ${BRL(m.variacao)}</b> no mês (comprou mais do que vendeu).`);
+    else if (m.variacao < 0) d.push(`Estoque <b>diminuiu ${BRL(Math.abs(m.variacao))}</b> no mês (vendeu mais do que comprou).`);
+
+    const s = saudeDe(m.pressao);
+    if (s.label === 'Crítico') d.push(`⚠️ Obrigações somam <b>${m.pressao.toFixed(1)}×</b> o CMV — a operação está descapitalizando. Renegocie prazos ou segure compras.`);
+    else if (s.label === 'Atenção') d.push(`Obrigações em <b>${m.pressao.toFixed(1)}×</b> o CMV — aperto de caixa à vista, acompanhe de perto.`);
+    else d.push(`Obrigações em <b>${m.pressao.toFixed(1)}×</b> o CMV — pressão de caixa sob controle.`);
+  }
+  if (m.faturamento) {
+    const mgm = m.mc / m.faturamento * 100;
+    d.push(`Margem de contribuição de <b>${PCT(mgm)}</b> sobre ${BRL(m.faturamento)} de faturamento.`);
+  }
+  return d;
+}
+
+function toggleComparar(){
+  comparando = !comparando;
+  document.getElementById('cpComparaSel').style.display = comparando ? 'flex' : 'none';
+  document.getElementById('cpBtnComparar').classList.toggle('on', comparando);
+  renderComparacao();
+}
+const ymSel  = () => `${document.getElementById('cpAno').value}-${String(document.getElementById('cpMes').value).padStart(2,'0')}`;
+const ymSel2 = () => `${document.getElementById('cpAno2').value}-${String(document.getElementById('cpMes2').value).padStart(2,'0')}`;
+
+function renderComparacao(){
+  const m = metricasDoMes(ymSel());
+  const m2 = comparando ? metricasDoMes(ymSel2()) : null;
+  const s = saudeDe(m.pressao);
+  const delta = (a, b) => {
+    if (!b) return '';
+    const v = b ? (a - b) / Math.abs(b) * 100 : 0;
+    const up = a >= b;
+    return `<span class="cp-delta" style="color:${up ? '#22c55e' : '#f87171'}"> ${up ? '↑' : '↓'} ${PCT(Math.abs(v))}</span>`;
+  };
+  const card = (l, v, chave, hint) => `<div class="cp-i"><div class="l">${l}</div>
+    <div class="v">${BRL(v)}${m2 ? delta(v, m2[chave]) : ''}</div>${hint ? `<div class="h">${hint}</div>` : ''}</div>`;
+
+  document.getElementById('cpComp').innerHTML = `
+    <div class="cp-card">
+      <h3>${MESES[+document.getElementById('cpMes').value - 1]} de ${document.getElementById('cpAno').value}${m2 ? ` — comparado com ${MESES[+document.getElementById('cpMes2').value - 1]}/${document.getElementById('cpAno2').value}` : ''}</h3>
+      <div class="cp-ind" style="margin-top:0">
+        ${card('Compras do mês', m.compras, 'compras')}
+        ${card('CMV do mês', m.cmv, 'cmv', 'custo da mercadoria vendida')}
+        ${card('Obrigações', m.obrigacoes, 'obrigacoes', `boletos ${BRL(m.boletos)} + cartões ${BRL(m.cartoes)}`)}
+        ${card('Saldo operacional', m.saldo, 'saldo', 'CMV − obrigações')}
+        ${card('Faturamento', m.faturamento, 'faturamento')}
+        ${card('Margem de contribuição', m.mc, 'mc')}
+      </div>
+    </div>
+
+    <div class="cp-card">
+      <h3>Painel estratégico</h3>
+      <div class="cp-saude">
+        <div class="cp-anel" style="border:9px solid ${s.cor};color:${s.cor}">
+          <span class="p">${m.pressao ? m.pressao.toFixed(1) + '×' : '—'}</span><span class="l">${s.label}</span>
+        </div>
+        <ul class="cp-diag">${diagnostico(m).map(x => `<li>${x}</li>`).join('')}</ul>
+      </div>
+      <div class="cp-ind">
+        <div class="cp-i"><div class="l">Cobertura de estoque</div><div class="v">${m.cobertura ? m.cobertura.toFixed(1) + ' mês' : '—'}</div><div class="h">Compras ÷ CMV</div></div>
+        <div class="cp-i"><div class="l">Variação de estoque</div><div class="v" style="color:${m.variacao >= 0 ? '#22c55e' : '#f87171'}">${BRL(m.variacao)}</div><div class="h">Compras − CMV</div></div>
+        <div class="cp-i"><div class="l">Eficiência de giro</div><div class="v">${m.eficiencia ? PCT(m.eficiencia) : '—'}</div><div class="h">CMV ÷ Compras</div></div>
+      </div>
+      <div class="cp-aviso" style="margin-top:14px">Este painel é do negócio inteiro: <code>sales_entries</code> não tem o campo <b>empresa</b>, então CMV e faturamento não se separam por empresa como as compras.</div>
+    </div>`;
+}
+
+function exportarComparacaoCSV(){
+  const m = metricasDoMes(ymSel());
+  const linhas = [['Métrica','Valor'],
+    ['Mês', m.ym], ['Compras', m.compras], ['CMV', m.cmv], ['Boletos', m.boletos], ['Cartões', m.cartoes],
+    ['Obrigações', m.obrigacoes], ['Saldo operacional', m.saldo], ['Faturamento', m.faturamento],
+    ['Margem de contribuição', m.mc], ['Cobertura (meses)', m.cobertura.toFixed(2)],
+    ['Variação de estoque', m.variacao], ['Eficiência de giro (%)', m.eficiencia.toFixed(1)], ['Pressão (obrig./CMV)', m.pressao.toFixed(2)]];
+  const csv = linhas.map(l => l.map(x => `"${String(x).replace('.',',').replace(/"/g,'""')}"`).join(';')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8' }));
+  a.download = `comparacao-compras-${m.ym}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+function init(){
+  const agora = new Date();
+  [['cpMes','cpAno', agora.getMonth() + 1, agora.getFullYear()],
+   ['cpMes2','cpAno2', agora.getMonth() || 12, agora.getMonth() ? agora.getFullYear() : agora.getFullYear() - 1]]
+    .forEach(([idM, idA, mm, aa]) => {
+      const sm = document.getElementById(idM), sa = document.getElementById(idA);
+      sm.innerHTML = MESES.map((n,i) => `<option value="${i+1}">${n}</option>`).join('');
+      sa.innerHTML = Array.from({length:5}, (_,i) => agora.getFullYear() - i).map(y => `<option value="${y}">${y}</option>`).join('');
+      sm.value = mm; sa.value = aa;
+    });
+  document.getElementById('cData').value = hojeISO();
+  load();
+}
+init();
+</script>
+</body>
+</html>

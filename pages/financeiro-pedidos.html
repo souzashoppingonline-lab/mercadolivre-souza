@@ -102,6 +102,12 @@
     .pd-fc .mini:hover { color:var(--text-main); border-color:var(--text-muted); }
     .pd-fc .mini.del:hover { color:#f87171; border-color:#f87171; }
     .pd-fbusca { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; min-width:240px; }
+
+    /* Filtro de categoria da agenda */
+    .pd-catfiltro { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:14px; }
+    .pd-catbtn { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:999px; padding:6px 14px; font-size:12px; font-weight:700; cursor:pointer; }
+    .pd-catbtn.on { background:rgba(34,197,94,.12); border-color:#22c55e; color:#22c55e; }
+    .pd-fc .cat { display:inline-block; border-radius:999px; padding:2px 10px; font-size:10px; font-weight:800; background:rgba(34,197,94,.12); color:#22c55e; margin-top:5px; }
   </style>
 </head>
 <body>
@@ -116,6 +122,7 @@
       <div class="pd-tabs">
         <button class="pd-tab on" id="pdTabPedido" onclick="setAba('pedido')"><i class="fas fa-file-signature"></i> Pedido</button>
         <button class="pd-tab" id="pdTabForn" onclick="setAba('forn')"><i class="fas fa-truck-field"></i> Cadastro de fornecedor</button>
+        <button class="pd-tab" id="pdTabCont" onclick="setAba('cont')"><i class="fas fa-address-book"></i> Lista de contatos</button>
       </div>
 
       <div class="pd-pane on" id="pdPanePedido">
@@ -216,6 +223,47 @@
           <div id="pdForns"><div class="pd-empty">Carregando…</div></div>
         </div>
       </div>
+
+      <!-- ═══ ABA: LISTA DE CONTATOS (agenda geral) ═══ -->
+      <div class="pd-pane" id="pdPaneCont">
+        <div class="pd-card">
+          <h3 id="pdContTitulo">Novo contato</h3>
+          <p class="pd-sub" style="margin:-4px 0 14px">Agenda de quem não é fornecedor: transportadora, contador, representante, banco, prefeitura, manutenção — tudo num lugar só, com WhatsApp num clique.</p>
+          <div class="pd-grid">
+            <div class="pd-f"><label>Nome *</label><input id="cNome" placeholder="Nome da pessoa ou da empresa"></div>
+            <div class="pd-f"><label>Categoria</label>
+              <input id="cCategoria" list="pdCategorias" placeholder="Transportadora, Contador…">
+              <datalist id="pdCategorias"></datalist>
+            </div>
+            <div class="pd-f"><label>Empresa / onde trabalha</label><input id="cEmpresa" placeholder="Opcional"></div>
+            <div class="pd-f"><label>Cargo / função</label><input id="cCargo" placeholder="Opcional"></div>
+          </div>
+          <div class="pd-linha-wa" style="margin-top:12px">
+            <div class="pd-f"><label>Telefone / WhatsApp</label><input id="cTelefone" placeholder="(11) 91234-5678" oninput="atualizarWaContato()"></div>
+            <button class="pd-wa" id="cBtnWa" onclick="waDoFormContato()" disabled title="Abre a conversa no WhatsApp"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+          </div>
+          <div class="pd-grid" style="margin-top:12px">
+            <div class="pd-f"><label>Telefone alternativo</label><input id="cTelefone2" placeholder="Opcional"></div>
+            <div class="pd-f"><label>E-mail</label><input id="cEmail" placeholder="Opcional"></div>
+            <div class="pd-f"><label>Cidade</label><input id="cCidade" placeholder="Opcional"></div>
+            <div class="pd-f"><label>UF</label><input id="cUf" maxlength="2" placeholder="SP"></div>
+          </div>
+          <div class="pd-f" style="margin-top:12px"><label>Observações</label><textarea id="cObs" placeholder="Horário de atendimento, o que resolve, histórico…"></textarea></div>
+          <div class="pd-acoes">
+            <button class="pd-btn pri" onclick="salvarContato()"><i class="fas fa-check"></i> <span id="cBtnLabel">Cadastrar contato</span></button>
+            <button class="pd-btn" onclick="limparFormContato()"><i class="fas fa-eraser"></i> Limpar formulário</button>
+          </div>
+        </div>
+
+        <div class="pd-card">
+          <h3 style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <span>Contatos</span>
+            <input class="pd-fbusca" id="cBusca" placeholder="Buscar por nome, categoria, empresa, telefone…" oninput="renderContatos()">
+          </h3>
+          <div class="pd-catfiltro" id="pdCatFiltro"></div>
+          <div id="pdContatos"><div class="pd-empty">Carregando…</div></div>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -280,9 +328,16 @@ create table if not exists pedido_fornecedores (
   condicao_pagamento text, prazo_entrega text, pedido_minimo numeric,
   observacoes text, ativo boolean default true,
   created_at timestamptz default now()
+);
+create table if not exists pedido_contatos (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null, categoria text, empresa text, cargo text,
+  telefone text, telefone2 text, email text,
+  cidade text, uf text, observacoes text,
+  ativo boolean default true, created_at timestamptz default now()
 );`;
 
-let EMPS = [], PEDIDOS = [], FORNS = [], empSel = null, itens = [], semBanco = false, fornEdit = null;
+let EMPS = [], PEDIDOS = [], FORNS = [], CONTATOS = [], empSel = null, itens = [], semBanco = false, fornEdit = null, contEdit = null, catFiltro = '';
 
 function showStatus(t, err){ const el=document.getElementById('pdStatus'); el.style.display='block'; el.style.borderColor=err?'#f59e0b':'var(--border)'; el.innerHTML=t; }
 
@@ -299,14 +354,16 @@ function motivoErro(r){
 
 // ── Carga ───────────────────────────────────────────────────────────────────
 async function load(){
-  const [re, rp, rf] = await Promise.all([
+  const [re, rp, rf, rc] = await Promise.all([
     DB.getFinanceiroDados('pedido_empresas', 200, 'created_at.asc'),
     DB.getFinanceiroDados('pedidos', 500, 'created_at.desc'),
     DB.getFinanceiroDados('pedido_fornecedores', 1000, 'nome.asc'),
+    DB.getFinanceiroDados('pedido_contatos', 2000, 'nome.asc'),
   ]);
   // A tabela de fornecedores pode faltar mesmo com as outras já criadas
   // (foi adicionada depois) — nesse caso a aba fica vazia, sem quebrar o pedido.
   FORNS = (rf && !rf.error && (rf.rows||[]).filter(f => f.ativo !== false)) || [];
+  CONTATOS = (rc && !rc.error && (rc.rows||[]).filter(c => c.ativo !== false)) || [];
 
   if (!re || re.error) {
     // Tabela ausente/sem permissão: modo offline — 3 empresas padrão, sem gravar.
@@ -325,15 +382,15 @@ async function load(){
 
   empSel = EMPS[0] ? EMPS[0].id : null;
   if (!itens.length) addItem();
-  renderEmpresas(); renderHist(); renderForns(); renderFornSelect(); sugerirNumero(); render();
+  renderEmpresas(); renderHist(); renderForns(); renderFornSelect(); renderContatos(); sugerirNumero(); render();
 }
 
 // ── Abas ────────────────────────────────────────────────────────────────────
 function setAba(a){
-  document.getElementById('pdPanePedido').classList.toggle('on', a === 'pedido');
-  document.getElementById('pdPaneForn').classList.toggle('on', a === 'forn');
-  document.getElementById('pdTabPedido').classList.toggle('on', a === 'pedido');
-  document.getElementById('pdTabForn').classList.toggle('on', a === 'forn');
+  [['Pedido','pedido'], ['Forn','forn'], ['Cont','cont']].forEach(([suf, chave]) => {
+    document.getElementById('pdPane'+suf).classList.toggle('on', a === chave);
+    document.getElementById('pdTab'+suf).classList.toggle('on', a === chave);
+  });
 }
 
 // 1ª execução: grava as 3 empresas do negócio pra que já apareçam editáveis.
@@ -730,6 +787,122 @@ function usarNoPedido(id){
   aplicarFornecedor();
   setAba('pedido');
   window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+// ── Lista de contatos (agenda geral) ────────────────────────────────────────
+// Quem NÃO é fornecedor: transportadora, contador, banco, prefeitura,
+// manutenção. Fica separado de `pedido_fornecedores` de propósito — fornecedor
+// tem CNPJ, condição de pagamento e é vinculado a pedido; contato é agenda.
+const C_CAMPOS = {
+  cNome:'nome', cCategoria:'categoria', cEmpresa:'empresa', cCargo:'cargo',
+  cTelefone:'telefone', cTelefone2:'telefone2', cEmail:'email',
+  cCidade:'cidade', cUf:'uf', cObs:'observacoes',
+};
+// Sugestões iniciais do campo Categoria; as que o usuário criar entram sozinhas.
+const CATEGORIAS_BASE = ['Transportadora', 'Contador', 'Representante', 'Banco', 'Prefeitura/Órgão', 'Manutenção', 'Marketplace', 'Cliente', 'Outro'];
+
+function atualizarWaContato(){
+  document.getElementById('cBtnWa').disabled = !waNumero(document.getElementById('cTelefone').value);
+}
+function waDoFormContato(){ waAbrir(document.getElementById('cTelefone').value, ''); }
+function waContato(id){
+  const c = CONTATOS.find(x => String(x.id) === String(id)); if (!c) return;
+  waAbrir(c.telefone, `Olá${c.nome ? ' ' + String(c.nome).split(' ')[0] : ''}, aqui é da ${empresaAtual().nome}.`);
+}
+
+function limparFormContato(){
+  contEdit = null;
+  Object.keys(C_CAMPOS).forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pdContTitulo').textContent = 'Novo contato';
+  document.getElementById('cBtnLabel').textContent = 'Cadastrar contato';
+  atualizarWaContato();
+}
+function editarContato(id){
+  const c = CONTATOS.find(x => String(x.id) === String(id)); if (!c) return;
+  contEdit = c.id;
+  Object.entries(C_CAMPOS).forEach(([el, col]) => document.getElementById(el).value = c[col] || '');
+  document.getElementById('pdContTitulo').textContent = 'Editando: ' + (c.nome || '');
+  document.getElementById('cBtnLabel').textContent = 'Salvar alterações';
+  atualizarWaContato();
+  setAba('cont');
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+async function salvarContato(){
+  const o = {};
+  Object.entries(C_CAMPOS).forEach(([el, col]) => o[col] = document.getElementById(el).value.trim());
+  o.uf = o.uf.toUpperCase();
+  if (!o.nome) { alert('O nome do contato é obrigatório.'); return; }
+  if (semBanco) { alert('As tabelas ainda não existem no Supabase — rode o SQL em "Editar empresas" (aba Pedido) antes de cadastrar contatos.'); return; }
+  const r = contEdit
+    ? await DB.updateFinanceiroRow('pedido_contatos', contEdit, o)
+    : await DB.addFinanceiroRow('pedido_contatos', o);
+  if (!r || r.error) { alert('Falha ao salvar o contato:\n\n' + motivoErro(r)); return; }
+  const salvo = (r.rows && r.rows[0]) || { ...o, id: contEdit };
+  if (contEdit) CONTATOS = CONTATOS.map(c => String(c.id) === String(contEdit) ? { ...c, ...salvo } : c);
+  else CONTATOS.push(salvo);
+  CONTATOS.sort((a,b) => String(a.nome||'').localeCompare(String(b.nome||''), 'pt-BR'));
+  limparFormContato(); renderContatos();
+  showStatus(`✅ Contato <b>${esc(salvo.nome || o.nome)}</b> salvo.`, false);
+}
+// Desativa em vez de apagar — mesmo critério de empresas e fornecedores.
+async function excluirContato(id){
+  const c = CONTATOS.find(x => String(x.id) === String(id)); if (!c) return;
+  if (!confirm(`Remover "${c.nome}" da agenda?`)) return;
+  const r = await DB.updateFinanceiroRow('pedido_contatos', id, { ativo:false });
+  if (!r || r.error) { alert('Falha ao remover:\n\n' + motivoErro(r)); return; }
+  CONTATOS = CONTATOS.filter(x => String(x.id) !== String(id));
+  if (String(contEdit) === String(id)) limparFormContato();
+  renderContatos();
+}
+
+function categoriasEmUso(){
+  return [...new Set(CONTATOS.map(c => (c.categoria||'').trim()).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, 'pt-BR'));
+}
+function setCatFiltro(cat){ catFiltro = (catFiltro === cat) ? '' : cat; renderContatos(); }
+
+function renderContatos(){
+  // Sugestões do campo Categoria = as padrão + as que já existem na agenda.
+  const usadas = categoriasEmUso();
+  document.getElementById('pdCategorias').innerHTML =
+    [...new Set([...usadas, ...CATEGORIAS_BASE])].map(c => `<option value="${esc(c)}">`).join('');
+
+  // Filtro por categoria só aparece quando há mais de uma.
+  document.getElementById('pdCatFiltro').innerHTML = usadas.length > 1
+    ? `<button class="pd-catbtn ${catFiltro ? '' : 'on'}" onclick="setCatFiltro('')">Todos (${CONTATOS.length})</button>` +
+      usadas.map(c => `<button class="pd-catbtn ${catFiltro === c ? 'on' : ''}" onclick="setCatFiltro('${esc(c).replace(/'/g,"\\'")}')">${esc(c)} (${CONTATOS.filter(x => (x.categoria||'').trim() === c).length})</button>`).join('')
+    : '';
+
+  const q = (document.getElementById('cBusca').value || '').trim().toLowerCase();
+  const lista = CONTATOS
+    .filter(c => !catFiltro || (c.categoria||'').trim() === catFiltro)
+    .filter(c => !q || [c.nome, c.categoria, c.empresa, c.cargo, c.telefone, c.telefone2, c.email, c.cidade]
+      .some(v => String(v||'').toLowerCase().includes(q)));
+
+  const el = document.getElementById('pdContatos');
+  if (!lista.length) {
+    el.innerHTML = `<div class="pd-empty">${CONTATOS.length ? 'Nenhum contato com esse filtro.' : 'Nenhum contato cadastrado ainda — preencha o formulário acima.'}</div>`;
+    return;
+  }
+  const linha = (rot, val) => val ? `<dt>${rot}</dt><dd>${esc(val)}</dd>` : '';
+  el.innerHTML = `<div class="pd-fcards">${lista.map(c => `
+    <div class="pd-fc">
+      <div class="nome">${esc(c.nome)}</div>
+      ${c.empresa || c.cargo ? `<div class="fant">${esc([c.cargo, c.empresa].filter(Boolean).join(' · '))}</div>` : ''}
+      ${c.categoria ? `<div class="cat">${esc(c.categoria)}</div>` : ''}
+      <dl>
+        ${linha('Telefone', c.telefone)}
+        ${linha('Alt.', c.telefone2)}
+        ${linha('E-mail', c.email)}
+        ${linha('Cidade', [c.cidade, c.uf].filter(Boolean).join(' / '))}
+        ${linha('Obs.', c.observacoes)}
+      </dl>
+      <div class="acoes">
+        <button class="pd-wa" ${waNumero(c.telefone) ? '' : 'disabled'} onclick="waContato('${esc(c.id)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+        <button class="mini" onclick="editarContato('${esc(c.id)}')"><i class="fas fa-pen"></i> Editar</button>
+        <button class="mini del" onclick="excluirContato('${esc(c.id)}')"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('')}</div>`;
 }
 
 // ── PDF ─────────────────────────────────────────────────────────────────────

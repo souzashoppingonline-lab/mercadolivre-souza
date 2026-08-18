@@ -6,6 +6,14 @@
 const DB = {
   BASE: localStorage.getItem('ml_backend_url') || '/api',
 
+  // Última mensagem de erro de uma escrita (_post/_patch/_delete). Essas três
+  // devolvem `null` em qualquer falha — dezenas de telas já dependem disso
+  // (`if (!r)`), então mudar o retorno pra objeto quebraria todas. O efeito
+  // colateral era a tela só conseguir dizer "erro desconhecido" enquanto a
+  // causa real (ex.: coluna faltando no Supabase) ficava só no console.
+  // Guardar aqui é aditivo: quem quiser mostrar o motivo lê `DB.lastError`.
+  lastError: null,
+
   async _get(path, params = {}) {
     const url = new URL(`${this.BASE}${path}`, location.origin);
     Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
@@ -36,6 +44,7 @@ const DB = {
       return await res.json();
     } catch (e) {
       console.error('[DB] PATCH error', path, e);
+      this.lastError = e.message;
       return null;
     }
   },
@@ -54,6 +63,7 @@ const DB = {
       return await res.json();
     } catch (e) {
       console.error('[DB] POST error', path, e);
+      this.lastError = e.message; // ver comentário em lastError
       return null;
     }
   },
@@ -91,6 +101,7 @@ const DB = {
       return await res.json();
     } catch (e) {
       console.error('[DB] DELETE error', path, e);
+      this.lastError = e.message;
       return null;
     }
   },

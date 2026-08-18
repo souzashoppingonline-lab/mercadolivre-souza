@@ -150,9 +150,9 @@
           <table class="pd-itens">
             <thead><tr>
               <th style="width:120px">Código</th><th>Descrição do produto</th>
-              <th class="r" style="width:90px">Qtd. unit.</th>
               <th class="r" style="width:80px">Caixas</th>
-              <th class="r" style="width:80px">Un/caixa</th>
+              <th class="r" style="width:85px">Un/caixa</th>
+              <th class="r" style="width:100px">Quantidade</th>
               <th class="r" style="width:110px">Valor unit.</th>
               <th class="r" style="width:130px">Total</th><th style="width:40px"></th>
             </tr></thead>
@@ -286,6 +286,17 @@ let EMPS = [], PEDIDOS = [], FORNS = [], empSel = null, itens = [], semBanco = f
 
 function showStatus(t, err){ const el=document.getElementById('pdStatus'); el.style.display='block'; el.style.borderColor=err?'#f59e0b':'var(--border)'; el.innerHTML=t; }
 
+// Mensagem de erro legível de uma gravação. As escritas do db.js devolvem
+// `null` na falha e guardam o motivo em DB.lastError — sem isso a tela só
+// conseguia dizer "erro desconhecido" e a causa real (quase sempre coluna
+// faltando no Supabase) ficava escondida no console.
+function motivoErro(r){
+  const m = (r && r.error) || DB.lastError || 'erro desconhecido';
+  return /column|coluna|does not exist|schema cache/i.test(m)
+    ? m + '\n\nParece faltar uma coluna no Supabase. Rode de novo o SQL que aparece em "Editar empresas" — ele é seguro de repetir e cria o que estiver faltando.'
+    : m;
+}
+
 // ── Carga ───────────────────────────────────────────────────────────────────
 async function load(){
   const [re, rp, rf] = await Promise.all([
@@ -370,13 +381,25 @@ function delItem(i){ itens.splice(i,1); if(!itens.length) addItem(); render(); }
 function setItem(i, campo, v){
   const it = itens[i]; if (!it) return;
   it[campo] = (campo==='codigo'||campo==='descricao') ? v : (campo==='valor' ? pNum(v) : pInt(v));
+
+  // Mexeu em caixas ou un/caixa: a QUANTIDADE é recalculada sozinha
+  // (caixas × un/caixa) e escrita no campo. É como o pedido é montado na
+  // prática — pede-se "50 caixas de 4" e a quantidade é consequência, não
+  // um número digitado à parte. Digitar direto na quantidade continua
+  // valendo (produto avulso, sem caixa) até mexer nas caixas de novo.
+  if ((campo === 'caixas' || campo === 'un_caixa') && it.caixas > 0 && it.un_caixa > 0) {
+    it.qtd = it.caixas * it.un_caixa;
+    const inp = document.getElementById('pdQtd'+i);
+    if (inp) inp.value = it.qtd;
+  }
+
   const cel = document.getElementById('pdLinha'+i);
   if (cel) cel.innerHTML = `<span class="tot">${BRL(totalItem(it))}</span><br><span class="un">${NUM(unidades(it))} un</span>`;
   renderTotais();
 }
-// Unidades do item = avulsas + (caixas × un/caixa). Sem un/caixa, as caixas
-// entram só como informação no PDF e não multiplicam o valor.
-function unidades(it){ return (+it.qtd||0) + (+it.caixas||0) * (+it.un_caixa||0); }
+// A quantidade É o total de unidades do item (preenchida por caixas × un/caixa
+// ou digitada à mão). O valor unitário multiplica essa quantidade.
+function unidades(it){ return (+it.qtd||0); }
 function totalItem(it){ return unidades(it) * (+it.valor||0); }
 function itensValidos(){ return itens.filter(it => (it.codigo||it.descricao) && totalItem(it) >= 0 && (unidades(it) > 0 || (+it.valor||0) > 0)); }
 
@@ -385,9 +408,9 @@ function render(){
     <tr>
       <td><input value="${esc(it.codigo)}" placeholder="SKU" oninput="setItem(${i},'codigo',this.value)"></td>
       <td><input value="${esc(it.descricao)}" placeholder="Descrição do produto" oninput="setItem(${i},'descricao',this.value)"></td>
-      <td><input class="num" value="${it.qtd||''}" placeholder="0" oninput="setItem(${i},'qtd',this.value)"></td>
       <td><input class="num" value="${it.caixas||''}" placeholder="0" oninput="setItem(${i},'caixas',this.value)"></td>
       <td><input class="num" value="${it.un_caixa||''}" placeholder="0" oninput="setItem(${i},'un_caixa',this.value)"></td>
+      <td><input class="num" id="pdQtd${i}" value="${it.qtd||''}" placeholder="0" oninput="setItem(${i},'qtd',this.value)" title="Preenchida sozinha por caixas × un/caixa — dá pra digitar por cima"></td>
       <td><input class="num" value="${it.valor?String(it.valor).replace('.',','):''}" placeholder="0,00" oninput="setItem(${i},'valor',this.value)"></td>
       <td class="r" id="pdLinha${i}"><span class="tot">${BRL(totalItem(it))}</span><br><span class="un">${NUM(unidades(it))} un</span></td>
       <td><button class="pd-x" onclick="delItem(${i})" title="Remover item"><i class="fas fa-trash"></i></button></td>
@@ -446,7 +469,7 @@ async function salvarPedido(){
   // na linha do pedido (o vínculo é `fornecedor_id`).
   const { empresa_cor, fornecedor_contato, ...linha } = p;
   const r = await DB.addFinanceiroRow('pedidos', linha);
-  if (!r || r.error) { alert('Falha ao salvar: ' + ((r && r.error) || 'erro desconhecido')); return; }
+  if (!r || r.error) { alert('Falha ao salvar o pedido:\n\n' + motivoErro(r)); return; }
   PEDIDOS.unshift((r.rows && r.rows[0]) || linha);
   renderHist(); sugerirNumero();
   showStatus(`✅ Pedido <b>${esc(p.numero)}</b> salvo — ${p.total_itens} item(ns), ${BRL(p.valor_total)}.`, false);
@@ -498,7 +521,7 @@ async function excluirPedido(id){
   const p = acharPedido(id); if (!p) return;
   if (!confirm(`Excluir o pedido ${p.numero||''}? Não dá pra desfazer.`)) return;
   const r = await DB.deleteFinanceiroRow('pedidos', id);
-  if (r && r.error) { alert('Falha ao excluir: ' + r.error); return; }
+  if (!r || r.error) { alert('Falha ao excluir:\n\n' + motivoErro(r)); return; }
   PEDIDOS = PEDIDOS.filter(x => String(x.id) !== String(id));
   renderHist();
 }
@@ -650,7 +673,7 @@ async function salvarFornecedor(){
   const r = fornEdit
     ? await DB.updateFinanceiroRow('pedido_fornecedores', fornEdit, o)
     : await DB.addFinanceiroRow('pedido_fornecedores', o);
-  if (!r || r.error) { alert('Falha ao salvar fornecedor: ' + ((r && r.error) || 'erro desconhecido')); return; }
+  if (!r || r.error) { alert('Falha ao salvar o fornecedor:\n\n' + motivoErro(r)); return; }
   const salvo = (r.rows && r.rows[0]) || { ...o, id: fornEdit };
   if (fornEdit) FORNS = FORNS.map(f => String(f.id) === String(fornEdit) ? { ...f, ...salvo } : f);
   else FORNS.push(salvo);
@@ -663,7 +686,7 @@ async function excluirFornecedor(id){
   const f = FORNS.find(x => String(x.id) === String(id)); if (!f) return;
   if (!confirm(`Remover "${f.nome}" da lista de fornecedores?`)) return;
   const r = await DB.updateFinanceiroRow('pedido_fornecedores', id, { ativo:false });
-  if (r && r.error) { alert('Falha ao remover: ' + r.error); return; }
+  if (!r || r.error) { alert('Falha ao remover:\n\n' + motivoErro(r)); return; }
   FORNS = FORNS.filter(x => String(x.id) !== String(id));
   if (String(fornEdit) === String(id)) limparFormForn();
   renderForns(); renderFornSelect();
@@ -729,7 +752,6 @@ function imprimir(p){
       <td class="c">${i+1}</td>
       <td class="cod">${esc(it.codigo||'—')}</td>
       <td>${esc(it.descricao||'—')}</td>
-      <td class="r">${NUM(it.qtd)}</td>
       <td class="r">${cx || '—'}</td>
       <td class="r"><b>${NUM(un)}</b></td>
       <td class="r">${BRL(it.valor)}</td>
@@ -821,7 +843,7 @@ function imprimir(p){
     <table>
       <thead><tr>
         <th></th><th>Código</th><th>Descrição do produto</th>
-        <th class="r">Qtd. unit.</th><th class="r">Caixas fechadas</th><th class="r">Total un.</th>
+        <th class="r">Caixas fechadas</th><th class="r">Quantidade</th>
         <th class="r">Valor unit.</th><th class="r">Total</th>
       </tr></thead>
       <tbody>${linhas}</tbody>

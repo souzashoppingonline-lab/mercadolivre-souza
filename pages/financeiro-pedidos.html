@@ -75,6 +75,33 @@
     .pd-erow input { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:12.5px; width:100%; box-sizing:border-box; }
     .pd-erow input[type=color] { padding:2px; height:34px; cursor:pointer; }
     .pd-sql { background:#0b1020; border:1px solid var(--border); border-radius:10px; padding:12px; font-family:ui-monospace,Menlo,monospace; font-size:11px; color:#9fb4d1; white-space:pre; overflow:auto; margin-top:10px; }
+
+    /* Abas */
+    .pd-tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+    .pd-tab { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:11px; padding:10px 18px; font-size:13px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+    .pd-tab.on { color:#22c55e; border-color:#22c55e; background:rgba(34,197,94,.07); }
+    .pd-pane { display:none; } .pd-pane.on { display:block; }
+
+    /* WhatsApp */
+    .pd-wa { background:#25d366; border:1px solid #25d366; color:#04240f; border-radius:9px; padding:9px 14px; font-size:12.5px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }
+    .pd-wa:hover { opacity:.9; }
+    .pd-wa:disabled { background:var(--bg-card2); border-color:var(--border); color:var(--text-muted); cursor:not-allowed; opacity:1; }
+    .pd-linha-wa { display:flex; gap:8px; align-items:flex-end; }
+    .pd-linha-wa .pd-f { flex:1; }
+
+    /* Fornecedores */
+    .pd-fcards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+    .pd-fc { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+    .pd-fc .nome { font-weight:800; font-size:14px; }
+    .pd-fc .fant { font-size:11.5px; color:var(--text-muted); }
+    .pd-fc dl { margin:10px 0 0; display:grid; grid-template-columns:auto 1fr; gap:3px 10px; font-size:12px; }
+    .pd-fc dt { color:var(--text-muted); font-size:10px; text-transform:uppercase; letter-spacing:.4px; font-weight:700; align-self:center; }
+    .pd-fc dd { margin:0; }
+    .pd-fc .acoes { display:flex; gap:7px; margin-top:12px; flex-wrap:wrap; }
+    .pd-fc .mini { background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); cursor:pointer; padding:6px 10px; font-size:11.5px; font-weight:700; }
+    .pd-fc .mini:hover { color:var(--text-main); border-color:var(--text-muted); }
+    .pd-fc .mini.del:hover { color:#f87171; border-color:#f87171; }
+    .pd-fbusca { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; min-width:240px; }
   </style>
 </head>
 <body>
@@ -86,6 +113,12 @@
       <p class="pd-sub">Monte o pedido, escolha a empresa emitente e baixe o PDF. Os dados da empresa (nome, CNPJ, UF) saem do cadastro e podem ser alterados a qualquer momento.</p>
       <div id="pdStatus" class="pd-status"></div>
 
+      <div class="pd-tabs">
+        <button class="pd-tab on" id="pdTabPedido" onclick="setAba('pedido')"><i class="fas fa-file-signature"></i> Pedido</button>
+        <button class="pd-tab" id="pdTabForn" onclick="setAba('forn')"><i class="fas fa-truck-field"></i> Cadastro de fornecedor</button>
+      </div>
+
+      <div class="pd-pane on" id="pdPanePedido">
       <div class="pd-card">
         <h3>1 · Empresa emitente</h3>
         <div class="pd-emps" id="pdEmps"></div>
@@ -99,8 +132,14 @@
         <div class="pd-grid">
           <div class="pd-f"><label>Número do pedido</label><input id="pdNumero" placeholder="0001/2026"></div>
           <div class="pd-f"><label>Data</label><input type="date" id="pdData"></div>
+          <div class="pd-f"><label>Fornecedor cadastrado</label>
+            <select id="pdFornSel" onchange="aplicarFornecedor()"><option value="">— digitar manualmente —</option></select>
+          </div>
           <div class="pd-f"><label>Fornecedor / destinatário</label><input id="pdForn" placeholder="Opcional"></div>
           <div class="pd-f"><label>CNPJ do fornecedor</label><input id="pdFornCnpj" placeholder="Opcional"></div>
+        </div>
+        <div class="pd-acoes" style="margin-top:12px">
+          <button class="pd-wa" id="pdBtnWaPedido" onclick="waPedido()" disabled><i class="fab fa-whatsapp"></i> Enviar pedido no WhatsApp</button>
         </div>
         <div class="pd-f" style="margin-top:12px"><label>Observações</label><textarea id="pdObs" placeholder="Condições de pagamento, prazo de entrega, transportadora…"></textarea></div>
       </div>
@@ -132,6 +171,50 @@
       <div class="pd-card">
         <h3>Pedidos salvos</h3>
         <div id="pdHist"><div class="pd-empty">Carregando…</div></div>
+      </div>
+      </div><!-- /pane pedido -->
+
+      <!-- ═══ ABA: CADASTRO DE FORNECEDOR ═══ -->
+      <div class="pd-pane" id="pdPaneForn">
+        <div class="pd-card">
+          <h3 id="pdFormTitulo">Novo fornecedor</h3>
+          <div class="pd-grid">
+            <div class="pd-f"><label>Razão social / nome *</label><input id="fNome" placeholder="DISTRIBUIDORA EXEMPLO LTDA"></div>
+            <div class="pd-f"><label>Nome fantasia</label><input id="fFantasia" placeholder="Como é conhecido"></div>
+            <div class="pd-f"><label>CNPJ</label><input id="fCnpj" placeholder="00.000.000/0001-00"></div>
+            <div class="pd-f"><label>Inscrição estadual</label><input id="fIe" placeholder="Isento / número"></div>
+            <div class="pd-f"><label>Pessoa de contato</label><input id="fContato" placeholder="Nome do vendedor / representante"></div>
+          </div>
+          <div class="pd-linha-wa" style="margin-top:12px">
+            <div class="pd-f"><label>Telefone / WhatsApp</label><input id="fTelefone" placeholder="(11) 91234-5678" oninput="atualizarWaForm()"></div>
+            <button class="pd-wa" id="fBtnWa" onclick="waDoForm()" disabled title="Abre a conversa no WhatsApp"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+          </div>
+          <div class="pd-grid" style="margin-top:12px">
+            <div class="pd-f"><label>E-mail</label><input id="fEmail" placeholder="compras@fornecedor.com.br"></div>
+            <div class="pd-f"><label>Cidade</label><input id="fCidade" placeholder="São Paulo"></div>
+            <div class="pd-f"><label>UF</label><input id="fUf" maxlength="2" placeholder="SP"></div>
+            <div class="pd-f"><label>CEP</label><input id="fCep" placeholder="00000-000"></div>
+          </div>
+          <div class="pd-f" style="margin-top:12px"><label>Endereço</label><input id="fEndereco" placeholder="Rua, número, bairro"></div>
+          <div class="pd-grid" style="margin-top:12px">
+            <div class="pd-f"><label>Condição de pagamento</label><input id="fPagamento" placeholder="30/60/90 dias"></div>
+            <div class="pd-f"><label>Prazo de entrega</label><input id="fPrazo" placeholder="10 dias úteis"></div>
+            <div class="pd-f"><label>Pedido mínimo (R$)</label><input id="fMinimo" placeholder="0,00"></div>
+          </div>
+          <div class="pd-f" style="margin-top:12px"><label>Observações</label><textarea id="fObs" placeholder="Transportadora, restrições, histórico de negociação…"></textarea></div>
+          <div class="pd-acoes">
+            <button class="pd-btn pri" onclick="salvarFornecedor()"><i class="fas fa-check"></i> <span id="fBtnLabel">Cadastrar fornecedor</span></button>
+            <button class="pd-btn" onclick="limparFormForn()"><i class="fas fa-eraser"></i> Limpar formulário</button>
+          </div>
+        </div>
+
+        <div class="pd-card">
+          <h3 style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <span>Fornecedores cadastrados</span>
+            <input class="pd-fbusca" id="fBusca" placeholder="Buscar por nome, CNPJ, contato ou cidade…" oninput="renderForns()">
+          </h3>
+          <div id="pdForns"><div class="pd-empty">Carregando…</div></div>
+        </div>
       </div>
     </div>
   </main>
@@ -184,21 +267,35 @@ create table if not exists pedidos (
   id uuid primary key default gen_random_uuid(),
   numero text, data date,
   empresa_id uuid, empresa_nome text, empresa_cnpj text, empresa_uf text,
-  fornecedor text, fornecedor_cnpj text, observacoes text,
+  fornecedor_id uuid, fornecedor text, fornecedor_cnpj text, observacoes text,
   total_itens int, total_unidades int, valor_total numeric,
   itens jsonb, created_at timestamptz default now()
+);
+alter table pedidos add column if not exists fornecedor_id uuid;
+create table if not exists pedido_fornecedores (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null, nome_fantasia text, cnpj text, inscricao_estadual text,
+  contato text, telefone text, email text,
+  endereco text, cidade text, uf text, cep text,
+  condicao_pagamento text, prazo_entrega text, pedido_minimo numeric,
+  observacoes text, ativo boolean default true,
+  created_at timestamptz default now()
 );`;
 
-let EMPS = [], PEDIDOS = [], empSel = null, itens = [], semBanco = false;
+let EMPS = [], PEDIDOS = [], FORNS = [], empSel = null, itens = [], semBanco = false, fornEdit = null;
 
 function showStatus(t, err){ const el=document.getElementById('pdStatus'); el.style.display='block'; el.style.borderColor=err?'#f59e0b':'var(--border)'; el.innerHTML=t; }
 
 // ── Carga ───────────────────────────────────────────────────────────────────
 async function load(){
-  const [re, rp] = await Promise.all([
+  const [re, rp, rf] = await Promise.all([
     DB.getFinanceiroDados('pedido_empresas', 200, 'created_at.asc'),
     DB.getFinanceiroDados('pedidos', 500, 'created_at.desc'),
+    DB.getFinanceiroDados('pedido_fornecedores', 1000, 'nome.asc'),
   ]);
+  // A tabela de fornecedores pode faltar mesmo com as outras já criadas
+  // (foi adicionada depois) — nesse caso a aba fica vazia, sem quebrar o pedido.
+  FORNS = (rf && !rf.error && (rf.rows||[]).filter(f => f.ativo !== false)) || [];
 
   if (!re || re.error) {
     // Tabela ausente/sem permissão: modo offline — 3 empresas padrão, sem gravar.
@@ -217,7 +314,15 @@ async function load(){
 
   empSel = EMPS[0] ? EMPS[0].id : null;
   if (!itens.length) addItem();
-  renderEmpresas(); renderHist(); sugerirNumero(); render();
+  renderEmpresas(); renderHist(); renderForns(); renderFornSelect(); sugerirNumero(); render();
+}
+
+// ── Abas ────────────────────────────────────────────────────────────────────
+function setAba(a){
+  document.getElementById('pdPanePedido').classList.toggle('on', a === 'pedido');
+  document.getElementById('pdPaneForn').classList.toggle('on', a === 'forn');
+  document.getElementById('pdTabPedido').classList.toggle('on', a === 'pedido');
+  document.getElementById('pdTabForn').classList.toggle('on', a === 'forn');
 }
 
 // 1ª execução: grava as 3 empresas do negócio pra que já apareçam editáveis.
@@ -309,8 +414,12 @@ function pedidoAtual(){
     empresa_id: String(e.id).startsWith('local-') ? null : e.id,
     empresa_nome: e.nome, empresa_cnpj: e.cnpj || '', empresa_uf: e.uf || '',
     empresa_cor: e.cor || '#22c55e',
+    fornecedor_id: document.getElementById('pdFornSel').value || null,
     fornecedor: document.getElementById('pdForn').value.trim(),
     fornecedor_cnpj: document.getElementById('pdFornCnpj').value.trim(),
+    // Contato só pro PDF — não é gravado no pedido (fica no cadastro, que é a
+    // fonte de verdade e pode mudar; o pedido guarda só o vínculo por id).
+    fornecedor_contato: fornecedorSel(),
     observacoes: document.getElementById('pdObs').value.trim(),
     total_itens: vs.length,
     total_unidades: vs.reduce((s,it)=>s+unidades(it),0),
@@ -322,7 +431,8 @@ function pedidoAtual(){
 function limparPedido(){
   if (!confirm('Limpar todos os itens e recomeçar o pedido?')) return;
   itens = []; addItem();
-  ['pdForn','pdFornCnpj','pdObs'].forEach(id => document.getElementById(id).value = '');
+  ['pdForn','pdFornCnpj','pdObs','pdFornSel'].forEach(id => document.getElementById(id).value = '');
+  atualizarWaPedido();
   document.getElementById('pdNumero').dataset.manual = '';
   document.getElementById('pdData').value = hojeISO();
   sugerirNumero();
@@ -332,7 +442,9 @@ async function salvarPedido(){
   const p = pedidoAtual();
   if (!p.itens.length) { alert('Adicione pelo menos um item com quantidade ou valor.'); return; }
   if (semBanco) { alert('Cadastro ainda não existe no banco — o pedido não pode ser salvo, mas o PDF funciona normalmente. Rode o SQL em "Editar empresas".'); return; }
-  const { empresa_cor, ...linha } = p; // cor vem da empresa, não se guarda no pedido
+  // cor e contato do fornecedor são derivados dos cadastros — não se duplicam
+  // na linha do pedido (o vínculo é `fornecedor_id`).
+  const { empresa_cor, fornecedor_contato, ...linha } = p;
   const r = await DB.addFinanceiroRow('pedidos', linha);
   if (!r || r.error) { alert('Falha ao salvar: ' + ((r && r.error) || 'erro desconhecido')); return; }
   PEDIDOS.unshift((r.rows && r.rows[0]) || linha);
@@ -368,15 +480,19 @@ function abrirPedido(id){
   document.getElementById('pdForn').value = p.fornecedor || '';
   document.getElementById('pdFornCnpj').value = p.fornecedor_cnpj || '';
   document.getElementById('pdObs').value = p.observacoes || '';
+  // Só reseleciona o fornecedor se ele ainda existir no cadastro.
+  document.getElementById('pdFornSel').value = FORNS.find(f => String(f.id) === String(p.fornecedor_id)) ? p.fornecedor_id : '';
+  atualizarWaPedido();
   itens = (p.itens || []).map(it => ({ ...it }));
   if (!itens.length) addItem();
-  renderEmpresas(); render();
+  setAba('pedido'); renderEmpresas(); render();
   window.scrollTo({ top:0, behavior:'smooth' });
 }
 function pdfDe(id){
   const p = acharPedido(id); if (!p) return;
   const e = EMPS.find(x => x.nome === p.empresa_nome);
-  imprimir({ ...p, empresa_cor: (e && e.cor) || '#22c55e' });
+  const f = FORNS.find(x => String(x.id) === String(p.fornecedor_id));
+  imprimir({ ...p, empresa_cor: (e && e.cor) || '#22c55e', fornecedor_contato: f || null });
 }
 async function excluirPedido(id){
   const p = acharPedido(id); if (!p) return;
@@ -432,6 +548,167 @@ async function salvarEmpresas(){
   await load();
 }
 
+// ── WhatsApp ────────────────────────────────────────────────────────────────
+// `wa.me` abre no app instalado (desktop ou celular) ou no WhatsApp Web — é o
+// link oficial e não depende de nenhuma API. Só precisa do número em E.164 SEM
+// sinais: números digitados como "(11) 91234-5678" viram "5511912345678".
+function waNumero(tel){
+  let d = String(tel||'').replace(/\D/g,'');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);            // 00 = prefixo internacional
+  if (d.length === 10 || d.length === 11) d = '55' + d;  // DDD + número, sem país
+  return (d.length >= 12 && d.length <= 15) ? d : '';     // fora disso não é telefone
+}
+function waAbrir(tel, texto){
+  const n = waNumero(tel);
+  if (!n) { alert('Telefone inválido. Use DDD + número, ex.: (11) 91234-5678.'); return; }
+  window.open('https://wa.me/' + n + (texto ? '?text=' + encodeURIComponent(texto) : ''), '_blank');
+}
+// Botão do formulário de cadastro: habilita/desabilita conforme o que foi digitado.
+function atualizarWaForm(){
+  document.getElementById('fBtnWa').disabled = !waNumero(document.getElementById('fTelefone').value);
+}
+function waDoForm(){ waAbrir(document.getElementById('fTelefone').value, ''); }
+function waFornecedor(id){
+  const f = FORNS.find(x => String(x.id) === String(id)); if (!f) return;
+  waAbrir(f.telefone, `Olá${f.contato ? ' ' + f.contato : ''}, aqui é da ${empresaAtual().nome}.`);
+}
+
+// ── Fornecedor no pedido ────────────────────────────────────────────────────
+function fornecedorSel(){ return FORNS.find(f => String(f.id) === String(document.getElementById('pdFornSel').value)) || null; }
+function renderFornSelect(){
+  const sel = document.getElementById('pdFornSel'), atual = sel.value;
+  sel.innerHTML = '<option value="">— digitar manualmente —</option>' +
+    FORNS.map(f => `<option value="${esc(f.id)}">${esc(f.nome_fantasia || f.nome)}</option>`).join('');
+  sel.value = FORNS.find(f => String(f.id) === String(atual)) ? atual : '';
+  atualizarWaPedido();
+}
+// Escolher um fornecedor cadastrado preenche nome e CNPJ — os campos seguem
+// editáveis (dá pra ajustar a razão social num pedido específico sem mexer no
+// cadastro).
+function aplicarFornecedor(){
+  const f = fornecedorSel();
+  if (f) {
+    document.getElementById('pdForn').value = f.nome || '';
+    document.getElementById('pdFornCnpj').value = f.cnpj || '';
+  }
+  atualizarWaPedido();
+}
+function atualizarWaPedido(){
+  const f = fornecedorSel();
+  document.getElementById('pdBtnWaPedido').disabled = !(f && waNumero(f.telefone));
+}
+// Manda o resumo do pedido pro WhatsApp do fornecedor. Não substitui o PDF —
+// serve pra avisar/combinar; o documento formal continua sendo o PDF.
+function waPedido(){
+  const f = fornecedorSel(); if (!f) return;
+  const p = pedidoAtual();
+  if (!p.itens.length) { alert('Adicione pelo menos um item antes de mandar no WhatsApp.'); return; }
+  const linhas = p.itens.map(it => `• ${it.codigo ? it.codigo + ' — ' : ''}${it.descricao || ''}: ${NUM(unidades(it))} un${(+it.caixas||0) ? ` (${NUM(it.caixas)} cx)` : ''} — ${BRL(totalItem(it))}`).join('\n');
+  waAbrir(f.telefone,
+    `*PEDIDO ${p.numero}* — ${p.empresa_nome}\nData: ${dataBR(p.data)}\n\n${linhas}\n\n*Total: ${BRL(p.valor_total)}* (${NUM(p.total_unidades)} un)` +
+    (p.observacoes ? `\n\nObs.: ${p.observacoes}` : ''));
+}
+
+// ── Cadastro de fornecedores ────────────────────────────────────────────────
+const F_CAMPOS = {
+  fNome:'nome', fFantasia:'nome_fantasia', fCnpj:'cnpj', fIe:'inscricao_estadual',
+  fContato:'contato', fTelefone:'telefone', fEmail:'email', fEndereco:'endereco',
+  fCidade:'cidade', fUf:'uf', fCep:'cep', fPagamento:'condicao_pagamento',
+  fPrazo:'prazo_entrega', fObs:'observacoes',
+};
+function limparFormForn(){
+  fornEdit = null;
+  Object.keys(F_CAMPOS).forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fMinimo').value = '';
+  document.getElementById('pdFormTitulo').textContent = 'Novo fornecedor';
+  document.getElementById('fBtnLabel').textContent = 'Cadastrar fornecedor';
+  atualizarWaForm();
+}
+function editarFornecedor(id){
+  const f = FORNS.find(x => String(x.id) === String(id)); if (!f) return;
+  fornEdit = f.id;
+  Object.entries(F_CAMPOS).forEach(([el, col]) => document.getElementById(el).value = f[col] || '');
+  document.getElementById('fMinimo').value = f.pedido_minimo ? String(f.pedido_minimo).replace('.', ',') : '';
+  document.getElementById('pdFormTitulo').textContent = 'Editando: ' + (f.nome || '');
+  document.getElementById('fBtnLabel').textContent = 'Salvar alterações';
+  atualizarWaForm();
+  setAba('forn');
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+function formFornecedor(){
+  const o = {};
+  Object.entries(F_CAMPOS).forEach(([el, col]) => o[col] = document.getElementById(el).value.trim());
+  o.uf = o.uf.toUpperCase();
+  o.pedido_minimo = pNum(document.getElementById('fMinimo').value) || null;
+  return o;
+}
+async function salvarFornecedor(){
+  const o = formFornecedor();
+  if (!o.nome) { alert('A razão social / nome do fornecedor é obrigatória.'); return; }
+  if (semBanco) { alert('As tabelas ainda não existem no Supabase — rode o SQL em "Editar empresas" (aba Pedido) antes de cadastrar fornecedores.'); return; }
+  const r = fornEdit
+    ? await DB.updateFinanceiroRow('pedido_fornecedores', fornEdit, o)
+    : await DB.addFinanceiroRow('pedido_fornecedores', o);
+  if (!r || r.error) { alert('Falha ao salvar fornecedor: ' + ((r && r.error) || 'erro desconhecido')); return; }
+  const salvo = (r.rows && r.rows[0]) || { ...o, id: fornEdit };
+  if (fornEdit) FORNS = FORNS.map(f => String(f.id) === String(fornEdit) ? { ...f, ...salvo } : f);
+  else FORNS.push(salvo);
+  FORNS.sort((a,b) => String(a.nome||'').localeCompare(String(b.nome||''), 'pt-BR'));
+  limparFormForn(); renderForns(); renderFornSelect();
+  showStatus(`✅ Fornecedor <b>${esc(salvo.nome || o.nome)}</b> salvo.`, false);
+}
+// Desativa em vez de apagar: pedidos antigos apontam pro id do fornecedor.
+async function excluirFornecedor(id){
+  const f = FORNS.find(x => String(x.id) === String(id)); if (!f) return;
+  if (!confirm(`Remover "${f.nome}" da lista de fornecedores?`)) return;
+  const r = await DB.updateFinanceiroRow('pedido_fornecedores', id, { ativo:false });
+  if (r && r.error) { alert('Falha ao remover: ' + r.error); return; }
+  FORNS = FORNS.filter(x => String(x.id) !== String(id));
+  if (String(fornEdit) === String(id)) limparFormForn();
+  renderForns(); renderFornSelect();
+}
+
+function renderForns(){
+  const el = document.getElementById('pdForns');
+  const q = (document.getElementById('fBusca').value || '').trim().toLowerCase();
+  const lista = !q ? FORNS : FORNS.filter(f =>
+    [f.nome, f.nome_fantasia, f.cnpj, f.contato, f.cidade, f.telefone, f.email]
+      .some(v => String(v||'').toLowerCase().includes(q)));
+  if (!lista.length) {
+    el.innerHTML = `<div class="pd-empty">${FORNS.length ? 'Nenhum fornecedor com esse filtro.' : 'Nenhum fornecedor cadastrado ainda — preencha o formulário acima.'}</div>`;
+    return;
+  }
+  const linha = (rot, val) => val ? `<dt>${rot}</dt><dd>${esc(val)}</dd>` : '';
+  el.innerHTML = `<div class="pd-fcards">${lista.map(f => `
+    <div class="pd-fc">
+      <div class="nome">${esc(f.nome_fantasia || f.nome)}</div>
+      ${f.nome_fantasia && f.nome !== f.nome_fantasia ? `<div class="fant">${esc(f.nome)}</div>` : ''}
+      <dl>
+        ${linha('CNPJ', f.cnpj)}
+        ${linha('Contato', f.contato)}
+        ${linha('Telefone', f.telefone)}
+        ${linha('E-mail', f.email)}
+        ${linha('Cidade', [f.cidade, f.uf].filter(Boolean).join(' / '))}
+        ${linha('Pagamento', f.condicao_pagamento)}
+        ${linha('Prazo', f.prazo_entrega)}
+        ${f.pedido_minimo ? `<dt>Mínimo</dt><dd>${BRL(f.pedido_minimo)}</dd>` : ''}
+      </dl>
+      <div class="acoes">
+        <button class="pd-wa" ${waNumero(f.telefone) ? '' : 'disabled'} onclick="waFornecedor('${esc(f.id)}')"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+        <button class="mini" onclick="usarNoPedido('${esc(f.id)}')"><i class="fas fa-file-signature"></i> Usar no pedido</button>
+        <button class="mini" onclick="editarFornecedor('${esc(f.id)}')"><i class="fas fa-pen"></i> Editar</button>
+        <button class="mini del" onclick="excluirFornecedor('${esc(f.id)}')"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('')}</div>`;
+}
+function usarNoPedido(id){
+  document.getElementById('pdFornSel').value = id;
+  aplicarFornecedor();
+  setAba('pedido');
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
 // ── PDF ─────────────────────────────────────────────────────────────────────
 // Mesmo padrão do resto do módulo (DRE/Recebíveis): HTML próprio + janela de
 // impressão do navegador, sem lib de PDF. `print-color-adjust: exact` é o que
@@ -444,6 +721,7 @@ function gerarPDF(){
 
 function imprimir(p){
   const cor = p.empresa_cor || '#22c55e';
+  const fc = p.fornecedor_contato || null; // dados do cadastro, quando houver
   const linhas = (p.itens||[]).map((it,i) => {
     const un = unidades(it);
     const cx = (+it.caixas||0) ? `<span class="cx">${NUM(it.caixas)} cx${(+it.un_caixa||0) ? ' × ' + NUM(it.un_caixa) : ''}</span>` : '';
@@ -535,6 +813,8 @@ function imprimir(p){
         <div class="t">Fornecedor / destinatário</div>
         <div class="n">${esc(p.fornecedor || '—')}</div>
         <div class="l">${p.fornecedor_cnpj ? 'CNPJ ' + esc(p.fornecedor_cnpj) : '—'}</div>
+        ${fc ? `<div class="l">${[fc.contato && ('A/C ' + fc.contato), fc.telefone, fc.email].filter(Boolean).map(esc).join(' · ')}</div>` : ''}
+        ${fc && (fc.endereco || fc.cidade) ? `<div class="l">${esc([fc.endereco, [fc.cidade, fc.uf].filter(Boolean).join('/'), fc.cep].filter(Boolean).join(' — '))}</div>` : ''}
       </div>
     </div>
 
@@ -581,6 +861,7 @@ function init(){
   document.getElementById('pdNumero').addEventListener('input', function(){ this.dataset.manual = '1'; });
   load();
 }
+
 init();
 </script>
 </body>

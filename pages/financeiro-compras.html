@@ -123,7 +123,9 @@
           <div class="cp-emps" id="cpEmps"></div>
           <div class="cp-aviso" id="cpAvisoEmp">⚠️ Selecione uma empresa para registrar compras.</div>
           <div class="cp-top" style="margin:14px 0 0">
-            <button class="cp-btn" disabled title="Próxima etapa — depende do bucket de XML no Supabase"><i class="fas fa-file-import"></i> Importar XML</button>
+            <button class="cp-btn" id="cpBtnXml" onclick="escolherXml()"><i class="fas fa-file-import"></i> Importar XML da NF-e</button>
+            <input type="file" id="cpFileXml" accept=".xml,text/xml" multiple style="display:none" onchange="lerXmls(this.files)">
+            <span style="font-size:11.5px;color:var(--text-muted)">Pode selecionar vários arquivos de uma vez.</span>
           </div>
         </div>
 
@@ -191,6 +193,18 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- Modal importar XML -->
+<div class="cp-back" id="cpBackXml" onclick="if(event.target===this)fecharXml()">
+  <div class="cp-modal" style="max-width:960px">
+    <h3>Importar NF-e <span class="x" onclick="fecharXml()"><i class="fas fa-xmark"></i></span></h3>
+    <div id="cpXmlBody"></div>
+    <div class="cp-top" style="margin-top:16px">
+      <button class="cp-go" id="cpXmlOk" onclick="confirmarImportacao()">Importar</button>
+      <button class="cp-btn" onclick="fecharXml()">Cancelar</button>
+    </div>
+  </div>
 </div>
 
 <!-- Modal editar compra -->
@@ -469,6 +483,199 @@ function exportarCSV(){
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8' }));
   a.download = `compras-${filtroEmp || 'todas'}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+
+
+// ── Importação de XML da NF-e ───────────────────────────────────────────────
+// Parse no NAVEGADOR (DOMParser), sem lib nova — mesmo padrão da importação da
+// planilha MercadoTurbo na tela de Vendas. O XML original vai inteiro pra
+// `compras_xml.xml_original` (coluna text que já existe) em vez do bucket
+// `xml-notas`: nosso backend só fala PostgREST (/rest/v1), não a Storage API do
+// Supabase, e abrir isso seria um proxy novo pra guardar 30 KB de texto.
+// Por isso `compras_cmv.xml_url` fica nulo em importações feitas por aqui.
+let XMLS = [];   // notas lidas, aguardando confirmação
+
+function escolherXml(){
+  if (semBanco) { alert('A tabela compras_cmv não está acessível — importar agora não gravaria nada.'); return; }
+  if (!empSel) { alert('Escolha a empresa da compra antes de importar o XML.'); return; }
+  const inp = document.getElementById('cpFileXml');
+  inp.value = '';       // permite reescolher o mesmo arquivo
+  inp.click();
+}
+
+const txt = (no, tag) => { const e = no && no.getElementsByTagName(tag)[0]; return e ? String(e.textContent || '').trim() : ''; };
+const num = (no, tag) => { const v = parseFloat(txt(no, tag)); return isNaN(v) ? 0 : v; };
+
+// Extrai da NF-e o que a compras_cmv guarda. Só campos que existem no layout
+// oficial — nada de adivinhar tag.
+function parseNfe(xml, nomeArquivo){
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('arquivo não é um XML válido');
+  const inf = doc.getElementsByTagName('infNFe')[0];
+  if (!inf) throw new Error('não é um XML de NF-e (sem infNFe)');
+  const chave = String(inf.getAttribute('Id') || '').replace(/\D/g, '');
+  if (chave.length !== 44) throw new Error('chave da NF-e inválida (esperado 44 dígitos)');
+
+  const ide = doc.getElementsByTagName('ide')[0];
+  const emit = doc.getElementsByTagName('emit')[0];
+  const dest = doc.getElementsByTagName('dest')[0];
+  const tot = doc.getElementsByTagName('ICMSTot')[0];
+  const emissao = (txt(ide, 'dhEmi') || txt(ide, 'dEmi')).slice(0, 10);
+  const enderEmit = emit && emit.getElementsByTagName('enderEmit')[0];
+
+  const vNF = num(tot, 'vNF');
+  return {
+    arquivo: nomeArquivo, xml, chave_nfe: chave,
+    numero_nf: txt(ide, 'nNF'), serie: txt(ide, 'serie'),
+    data_emissao: /^\d{4}-\d{2}-\d{2}$/.test(emissao) ? emissao : hojeISO(),
+    cnpj_emitente: txt(emit, 'CNPJ') || txt(emit, 'CPF'),
+    razao_emitente: txt(emit, 'xNome'),
+    uf_emitente: enderEmit ? txt(enderEmit, 'UF') : '',
+    cnpj_destinatario: txt(dest, 'CNPJ') || txt(dest, 'CPF'),
+    razao_destinatario: txt(dest, 'xNome'),
+    valor_nfe: vNF, valor_pago: vNF,     // pago começa igual à nota; o usuário ajusta
+    v_icms: num(tot, 'vICMS'), v_ipi: num(tot, 'vIPI'), v_pis: num(tot, 'vPIS'),
+    v_cofins: num(tot, 'vCOFINS'), v_frete: num(tot, 'vFrete'), v_st: num(tot, 'vST'),
+    v_desconto: num(tot, 'vDesc'), v_icms_base: num(tot, 'vBC'), v_st_base: num(tot, 'vBCST'),
+    possui_st: num(tot, 'vST') > 0,
+    motivo: '', erro: null, duplicada: false,
+  };
+}
+
+async function sha256(texto){
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return null; }   // contexto sem crypto.subtle (http): segue sem hash
+}
+
+async function lerXmls(files){
+  if (!files || !files.length) return;
+  XMLS = [];
+  for (const f of files) {
+    try {
+      const nota = parseNfe(await f.text(), f.name);
+      XMLS.push(nota);
+    } catch (e) {
+      XMLS.push({ arquivo: f.name, erro: e.message });
+    }
+  }
+  // Antiduplicidade: a chave já importada em compras_xml OU já gravada numa
+  // compra. As duas checagens porque uma compra pode ter sido criada à mão com
+  // a chave e sem passar por compras_xml.
+  const jaImportadas = await DB.getFinanceiroDados('compras_xml', 5000);
+  const chaves = new Set([
+    ...((jaImportadas && !jaImportadas.error && jaImportadas.rows) || []).map(x => String(x.chave_nfe || '')),
+    ...COMPRAS.map(c => String(c.chave_nfe || '')),
+  ].filter(Boolean));
+  XMLS.forEach(n => { if (!n.erro && chaves.has(n.chave_nfe)) n.duplicada = true; });
+  renderModalXml();
+  document.getElementById('cpBackXml').classList.add('on');
+}
+
+function renderModalXml(){
+  const validas = XMLS.filter(n => !n.erro && !n.duplicada);
+  const linhas = XMLS.map((n, i) => {
+    if (n.erro) return `<tr><td colspan="7" style="color:#f87171">⚠️ ${esc(n.arquivo)} — ${esc(n.erro)}</td></tr>`;
+    const dif = n.valor_nfe - n.valor_pago;
+    return `<tr${n.duplicada ? ' style="opacity:.5"' : ''}>
+      <td>${n.duplicada ? '<span class="cp-badge" style="border:1px solid #f59e0b66;color:#f59e0b">já importada</span>' : '<span class="cp-badge" style="border:1px solid #22c55e66;color:#22c55e">nova</span>'}</td>
+      <td>${esc(n.numero_nf)}/${esc(n.serie)}</td>
+      <td>${esc(n.razao_emitente || '—')}${n.uf_emitente ? ` · ${esc(n.uf_emitente)}` : ''}</td>
+      <td style="white-space:nowrap">${dataBR(n.data_emissao)}</td>
+      <td class="n">${BRL(n.valor_nfe)}</td>
+      <td class="n"><input class="cp-in-pago" style="width:110px;text-align:right;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px"
+            value="${String(n.valor_pago).replace('.', ',')}" ${n.duplicada ? 'disabled' : ''} oninput="setPago(${i}, this.value)"></td>
+      <td class="n" id="cpDif${i}" style="color:${dif >= 0 ? '#22c55e' : '#f87171'}">${BRL(dif)}</td>
+    </tr>
+    ${(!n.duplicada && Math.abs(dif) > 0.009) ? `<tr><td></td><td colspan="6">
+      <input placeholder="Motivo da diferença entre nota e valor pago (desconto negociado, devolução…)"
+             style="width:100%;box-sizing:border-box;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:12px"
+             value="${esc(n.motivo)}" oninput="setMotivo(${i}, this.value)"></td></tr>` : ''}`;
+  }).join('');
+
+  document.getElementById('cpXmlBody').innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+      Empresa da compra: <b style="color:${corEmp(empSel)}">${esc(empSel || '—')}</b> ·
+      ${validas.length} nota(s) nova(s) de ${XMLS.length} arquivo(s).
+    </div>
+    <div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th></th><th>NF / Série</th><th>Emitente</th><th>Emissão</th><th class="n">Valor da nota</th><th class="n">Valor pago</th><th class="n">Diferença</th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table></div>
+    <div class="cp-aviso" style="margin-top:12px">O XML original fica guardado junto da nota (em <code>compras_xml</code>), com hash e registro de auditoria.</div>`;
+  document.getElementById('cpXmlOk').disabled = !validas.length;
+  document.getElementById('cpXmlOk').textContent = validas.length ? `Importar ${validas.length} nota(s)` : 'Nada a importar';
+}
+function setPago(i, v){
+  const n = XMLS[i]; if (!n) return;
+  n.valor_pago = pNum(v);
+  const cel = document.getElementById('cpDif' + i);
+  if (cel) { const d = n.valor_nfe - n.valor_pago; cel.textContent = BRL(d); cel.style.color = d >= 0 ? '#22c55e' : '#f87171'; }
+}
+function setMotivo(i, v){ if (XMLS[i]) XMLS[i].motivo = v; }
+function fecharXml(){ document.getElementById('cpBackXml').classList.remove('on'); XMLS = []; }
+
+// Grava as 3 tabelas por nota, na ordem: compra → xml → auditoria. Sem
+// transação (PostgREST não tem), então cada passo checa o anterior: se o XML
+// falhar depois da compra entrar, a compra permanece e o erro é mostrado —
+// melhor do que apagar uma compra que já pode ter sido conferida.
+async function confirmarImportacao(){
+  const alvo = XMLS.filter(n => !n.erro && !n.duplicada);
+  if (!alvo.length) return;
+  const btn = document.getElementById('cpXmlOk');
+  btn.disabled = true; btn.textContent = 'Importando…';
+
+  const usuario = (window.__staffUser || '') || 'dashboard';
+  let okCount = 0; const falhas = [];
+  for (const n of alvo) {
+    try {
+      const dif = +(n.valor_nfe - n.valor_pago).toFixed(2);
+      const compra = {
+        empresa: empSel, fornecedor_nome: n.razao_emitente || '—', fornecedor_uf: n.uf_emitente || null,
+        data_compra: n.data_emissao, valor_total: n.valor_pago,
+        valor_nfe: n.valor_nfe, valor_pago: n.valor_pago, diferenca_nfe: dif,
+        valor_alterado: Math.abs(dif) > 0.009, motivo_alteracao: n.motivo || null,
+        chave_nfe: n.chave_nfe, numero_nf: n.numero_nf, serie_nf: n.serie,
+        origem: 'XML', tipo_compra: 'normal', status_entrega: 'pendente',
+        v_icms: n.v_icms, v_ipi: n.v_ipi, v_pis: n.v_pis, v_cofins: n.v_cofins,
+        v_frete: n.v_frete, v_st: n.v_st, v_desconto: n.v_desconto,
+        v_icms_base: n.v_icms_base, v_st_base: n.v_st_base,
+        observacao: `NF-e ${n.numero_nf}/${n.serie} importada do XML`,
+      };
+      const rc = await DB.addFinanceiroRow('compras_cmv', compra);
+      if (!rc || rc.error) throw new Error('compra: ' + motivoErro(rc));
+      const compraSalva = (rc.rows && rc.rows[0]) || compra;
+
+      const rx = await DB.addFinanceiroRow('compras_xml', {
+        empresa_id: empSel, compra_id: compraSalva.id || null,
+        chave_nfe: n.chave_nfe, numero_nf: n.numero_nf, serie: n.serie,
+        cnpj_emitente: n.cnpj_emitente, razao_emitente: n.razao_emitente,
+        cnpj_destinatario: n.cnpj_destinatario, razao_destinatario: n.razao_destinatario,
+        data_emissao: n.data_emissao, valor_xml: n.valor_nfe,
+        xml_original: n.xml, hash_xml: await sha256(n.xml),
+        usuario, ip_usuario: null, possui_st: n.possui_st,
+      });
+      const xmlSalvo = (rx && !rx.error && rx.rows && rx.rows[0]) || null;
+
+      await DB.addFinanceiroRow('auditoria_xml_importacao', {
+        compra_id: compraSalva.id || null, compras_xml_id: xmlSalvo ? xmlSalvo.id : null,
+        usuario, empresa: empSel, ip: null, numero_nf: n.numero_nf,
+        fornecedor: n.razao_emitente, valor_xml: n.valor_nfe, valor_final: n.valor_pago,
+        acao: 'IMPORTACAO_XML',
+      });
+
+      COMPRAS.unshift(compraSalva);
+      okCount++;
+      if (rx && rx.error) falhas.push(`NF ${n.numero_nf}: compra criada, mas o XML não foi guardado (${rx.error})`);
+    } catch (e) {
+      falhas.push(`NF ${n.numero_nf || n.arquivo}: ${e.message}`);
+    }
+  }
+
+  fecharXml(); renderTudo();
+  showStatus(`✅ ${okCount} nota(s) importada(s) em <b>${esc(empSel)}</b>.` + (falhas.length ? ` ⚠️ ${falhas.length} com problema.` : ''), falhas.length > 0);
+  if (falhas.length) alert('Problemas na importação:\n\n' + falhas.join('\n'));
 }
 
 // ── Relatórios ──────────────────────────────────────────────────────────────

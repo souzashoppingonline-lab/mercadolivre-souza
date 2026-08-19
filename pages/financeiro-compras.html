@@ -257,10 +257,7 @@
   <div class="cp-modal" style="max-width:960px">
     <h3>Importar NF-e <span class="x" onclick="fecharXml()"><i class="fas fa-xmark"></i></span></h3>
     <div id="cpXmlBody"></div>
-    <div class="cp-top" style="margin-top:16px">
-      <button class="cp-go" id="cpXmlOk" onclick="confirmarImportacao()">Importar</button>
-      <button class="cp-btn" onclick="fecharXml()">Cancelar</button>
-    </div>
+    <div class="cp-top" id="cpXmlFoot" style="margin-top:16px"></div>
   </div>
 </div>
 
@@ -600,7 +597,9 @@ function exportarCSV(){
 // `xml-notas`: nosso backend só fala PostgREST (/rest/v1), não a Storage API do
 // Supabase, e abrir isso seria um proxy novo pra guardar 30 KB de texto.
 // Por isso `compras_cmv.xml_url` fica nulo em importações feitas por aqui.
-let XMLS = [];   // notas lidas, aguardando confirmação
+let XMLS = [];            // notas lidas, aguardando confirmação
+let xmlEtapa = 1;         // 1 = conferência, 2 = informar valores pagos
+let entregaPadrao = '';   // data de entrega do lote (vale pra todas as notas)
 
 function escolherXml(){
   if (semBanco) { alert('A tabela compras_cmv não está acessível — importar agora não gravaria nada.'); return; }
@@ -645,6 +644,7 @@ function parseNfe(xml, nomeArquivo){
     v_cofins: num(tot, 'vCOFINS'), v_frete: num(tot, 'vFrete'), v_st: num(tot, 'vST'),
     v_desconto: num(tot, 'vDesc'), v_icms_base: num(tot, 'vBC'), v_st_base: num(tot, 'vBCST'),
     possui_st: num(tot, 'vST') > 0,
+    pagoInformado: null,   // null = não informado → paga o valor da nota
     motivo: '', erro: null, duplicada: false,
   };
 }
@@ -676,62 +676,151 @@ async function lerXmls(files){
     ...COMPRAS.map(c => String(c.chave_nfe || '')),
   ].filter(Boolean));
   XMLS.forEach(n => { if (!n.erro && chaves.has(n.chave_nfe)) n.duplicada = true; });
+  xmlEtapa = 1; entregaPadrao = hojeISO();
   renderModalXml();
   document.getElementById('cpBackXml').classList.add('on');
 }
 
+// O modal tem DUAS etapas. Etapa 1: confere o que veio no XML, pede a data de
+// entrega e faz a pergunta que decide o resto — "o valor pago é o mesmo da
+// nota?". Sim importa direto; Não abre a etapa 2, com um campo VAZIO por nota
+// pra digitar o valor realmente pago. Assim o caso comum (pagou o da nota) é
+// um clique, e o caso de exceção é explícito em vez de um campo já preenchido
+// que se aceita sem olhar.
 function renderModalXml(){
   const validas = XMLS.filter(n => !n.erro && !n.duplicada);
-  const linhas = XMLS.map((n, i) => {
-    if (n.erro) return `<tr><td colspan="7" style="color:#f87171">⚠️ ${esc(n.arquivo)} — ${esc(n.erro)}</td></tr>`;
-    const dif = n.valor_nfe - n.valor_pago;
+  const cab = `<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
+      Empresa da compra: <b style="color:${corEmp(empSel)}">${esc(empSel || '—')}</b> ·
+      ${validas.length} nota(s) nova(s) de ${XMLS.length} arquivo(s).
+    </div>`;
+  (xmlEtapa === 2 ? renderEtapaValores : renderEtapaConferencia)(cab, validas);
+}
+
+function renderEtapaConferencia(cab, validas){
+  const linhas = XMLS.map(n => {
+    if (n.erro) return `<tr><td colspan="5" style="color:#f87171">⚠️ ${esc(n.arquivo)} — ${esc(n.erro)}</td></tr>`;
     return `<tr${n.duplicada ? ' style="opacity:.5"' : ''}>
       <td>${n.duplicada ? '<span class="cp-badge" style="border:1px solid #f59e0b66;color:#f59e0b">já importada</span>' : '<span class="cp-badge" style="border:1px solid #22c55e66;color:#22c55e">nova</span>'}</td>
       <td>${esc(n.numero_nf)}/${esc(n.serie)}</td>
       <td>${esc(n.razao_emitente || '—')}${n.uf_emitente ? ` · ${esc(n.uf_emitente)}` : ''}</td>
       <td style="white-space:nowrap">${dataBR(n.data_emissao)}</td>
       <td class="n">${BRL(n.valor_nfe)}</td>
-      <td class="n"><input class="cp-in-pago" style="width:110px;text-align:right;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px"
-            value="${String(n.valor_pago).replace('.', ',')}" ${n.duplicada ? 'disabled' : ''} oninput="setPago(${i}, this.value)"></td>
-      <td class="n" id="cpDif${i}" style="color:${dif >= 0 ? '#22c55e' : '#f87171'}">${BRL(dif)}</td>
+    </tr>`;
+  }).join('');
+  const total = validas.reduce((s,n) => s + n.valor_nfe, 0);
+
+  document.getElementById('cpXmlBody').innerHTML = cab + `
+    <div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th></th><th>NF / Série</th><th>Emitente</th><th>Emissão</th><th class="n">Valor da nota</th></tr></thead>
+      <tbody>${linhas}</tbody>
+      ${validas.length > 1 ? `<tfoot><tr><td colspan="4" style="text-align:right;font-weight:800">Total das notas novas</td><td class="n" style="font-weight:800">${BRL(total)}</td></tr></tfoot>` : ''}
+    </table></div>
+
+    <div class="cp-card" style="margin:16px 0 0;background:var(--bg-card2)">
+      <div class="cp-form" style="grid-template-columns:220px 1fr">
+        <div class="cp-f"><label>Data de entrega</label><input type="date" id="cpXmlEntrega" value="${esc(entregaPadrao)}"></div>
+        <div style="font-size:12px;color:var(--text-muted);align-self:center">
+          Vale para todas as notas deste lote. Data preenchida e não futura já marca a compra como <b>entregue</b>; em branco ou no futuro, fica <b>pendente</b>.
+        </div>
+      </div>
+    </div>
+
+    ${validas.length ? `<div class="cp-card" style="margin:14px 0 0;background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.3)">
+      <div style="font-size:14px;font-weight:800;margin-bottom:4px">O valor pago é o mesmo da nota?</div>
+      <div style="font-size:12.5px;color:var(--text-muted)">Nota${validas.length > 1 ? 's somam' : ''} <b>${BRL(total)}</b>. Se pagou exatamente isso, é só confirmar.</div>
+    </div>` : '<div class="cp-aviso" style="margin-top:14px">Nada novo pra importar neste lote.</div>'}`;
+
+  document.getElementById('cpXmlFoot').innerHTML = validas.length
+    ? `<button class="cp-go" onclick="pagoIgualNota()"><i class="fas fa-check"></i> Sim — importar ${validas.length} nota(s)</button>
+       <button class="cp-btn" onclick="irParaValores()"><i class="fas fa-pen"></i> Não — informar o valor pago</button>
+       <button class="cp-btn" onclick="fecharXml()">Cancelar</button>`
+    : `<button class="cp-btn" onclick="fecharXml()">Fechar</button>`;
+}
+
+// Etapa 2: campo VAZIO por nota. Em branco = pagou o da nota (nada muda).
+function renderEtapaValores(cab, validas){
+  const linhas = validas.map((n, i) => {
+    const dif = n.pagoInformado === null ? 0 : n.valor_nfe - n.pagoInformado;
+    return `<tr>
+      <td>${esc(n.numero_nf)}/${esc(n.serie)}</td>
+      <td>${esc(n.razao_emitente || '—')}</td>
+      <td class="n">${BRL(n.valor_nfe)}</td>
+      <td class="n"><input id="cpPago${i}" placeholder="0,00" value="${n.pagoInformado === null ? '' : String(n.pagoInformado).replace('.', ',')}"
+            style="width:120px;text-align:right;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:12.5px"
+            oninput="informarPago(${i}, this.value)"></td>
+      <td class="n" id="cpDif${i}" style="color:${dif >= 0 ? '#22c55e' : '#f87171'}">${n.pagoInformado === null ? '—' : BRL(dif)}</td>
     </tr>
-    ${(!n.duplicada && Math.abs(dif) > 0.009) ? `<tr><td></td><td colspan="6">
-      <input placeholder="Motivo da diferença entre nota e valor pago (desconto negociado, devolução…)"
+    <tr id="cpMotLinha${i}" style="${Math.abs(dif) > 0.009 ? '' : 'display:none'}"><td></td><td colspan="4">
+      <input id="cpMot${i}" placeholder="Motivo da diferença (desconto negociado, devolução, frete à parte…)"
              style="width:100%;box-sizing:border-box;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:12px"
-             value="${esc(n.motivo)}" oninput="setMotivo(${i}, this.value)"></td></tr>` : ''}`;
+             value="${esc(n.motivo)}" oninput="setMotivo(indiceReal(${i}), this.value)"></td></tr>`;
   }).join('');
 
-  document.getElementById('cpXmlBody').innerHTML = `
-    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px">
-      Empresa da compra: <b style="color:${corEmp(empSel)}">${esc(empSel || '—')}</b> ·
-      ${validas.length} nota(s) nova(s) de ${XMLS.length} arquivo(s).
-    </div>
+  document.getElementById('cpXmlBody').innerHTML = cab + `
+    <div class="cp-aviso" style="margin:0 0 12px">Digite o <b>valor realmente pago</b> de cada nota. Deixar em branco significa que pagou o valor da nota.</div>
     <div class="cp-wrap"><table class="cp-tbl">
-      <thead><tr><th></th><th>NF / Série</th><th>Emitente</th><th>Emissão</th><th class="n">Valor da nota</th><th class="n">Valor pago</th><th class="n">Diferença</th></tr></thead>
+      <thead><tr><th>NF / Série</th><th>Emitente</th><th class="n">Valor da nota</th><th class="n">Valor pago</th><th class="n">Diferença</th></tr></thead>
       <tbody>${linhas}</tbody>
     </table></div>
-    <div class="cp-aviso" style="margin-top:12px">O XML original fica guardado junto da nota (em <code>compras_xml</code>), com hash e registro de auditoria.</div>`;
-  document.getElementById('cpXmlOk').disabled = !validas.length;
-  document.getElementById('cpXmlOk').textContent = validas.length ? `Importar ${validas.length} nota(s)` : 'Nada a importar';
+    <div class="cp-card" style="margin:14px 0 0;background:var(--bg-card2)">
+      <div class="cp-form" style="grid-template-columns:220px 1fr">
+        <div class="cp-f"><label>Data de entrega</label><input type="date" id="cpXmlEntrega" value="${esc(entregaPadrao)}"></div>
+        <div style="font-size:12px;color:var(--text-muted);align-self:center">Vale para todas as notas deste lote.</div>
+      </div>
+    </div>`;
+  document.getElementById('cpXmlFoot').innerHTML =
+    `<button class="cp-go" onclick="confirmarImportacao()"><i class="fas fa-check"></i> Importar ${validas.length} nota(s)</button>
+     <button class="cp-btn" onclick="voltarConferencia()"><i class="fas fa-arrow-left"></i> Voltar</button>
+     <button class="cp-btn" onclick="fecharXml()">Cancelar</button>`;
 }
-function setPago(i, v){
-  const n = XMLS[i]; if (!n) return;
-  n.valor_pago = pNum(v);
+
+// A etapa 2 lista só as notas válidas; o índice ali não é o mesmo do XMLS.
+const validasXml = () => XMLS.filter(n => !n.erro && !n.duplicada);
+const indiceReal = i => XMLS.indexOf(validasXml()[i]);
+
+function guardarEntrega(){
+  const el = document.getElementById('cpXmlEntrega');
+  if (el) entregaPadrao = el.value || '';
+}
+// Devolve a promise da importação — sem isso quem chama não consegue esperar
+// o fim (nem ver um erro que aconteça durante a gravação).
+function pagoIgualNota(){
+  guardarEntrega();
+  validasXml().forEach(n => { n.valor_pago = n.valor_nfe; n.pagoInformado = null; n.motivo = ''; });
+  return confirmarImportacao();
+}
+function irParaValores(){ guardarEntrega(); xmlEtapa = 2; renderModalXml(); }
+function voltarConferencia(){ guardarEntrega(); xmlEtapa = 1; renderModalXml(); }
+
+function informarPago(i, v){
+  const n = validasXml()[i]; if (!n) return;
+  const limpo = String(v || '').trim();
+  n.pagoInformado = limpo === '' ? null : pNum(limpo);
+  n.valor_pago = n.pagoInformado === null ? n.valor_nfe : n.pagoInformado;
+  const dif = n.valor_nfe - n.valor_pago;
   const cel = document.getElementById('cpDif' + i);
-  if (cel) { const d = n.valor_nfe - n.valor_pago; cel.textContent = BRL(d); cel.style.color = d >= 0 ? '#22c55e' : '#f87171'; }
+  if (cel) { cel.textContent = n.pagoInformado === null ? '—' : BRL(dif); cel.style.color = dif >= 0 ? '#22c55e' : '#f87171'; }
+  const linha = document.getElementById('cpMotLinha' + i);
+  if (linha) linha.style.display = Math.abs(dif) > 0.009 ? '' : 'none';
 }
 function setMotivo(i, v){ if (XMLS[i]) XMLS[i].motivo = v; }
-function fecharXml(){ document.getElementById('cpBackXml').classList.remove('on'); XMLS = []; }
+
+function fecharXml(){ document.getElementById('cpBackXml').classList.remove('on'); XMLS = []; xmlEtapa = 1; }
 
 // Grava as 3 tabelas por nota, na ordem: compra → xml → auditoria. Sem
 // transação (PostgREST não tem), então cada passo checa o anterior: se o XML
 // falhar depois da compra entrar, a compra permanece e o erro é mostrado —
 // melhor do que apagar uma compra que já pode ter sido conferida.
 async function confirmarImportacao(){
-  const alvo = XMLS.filter(n => !n.erro && !n.duplicada);
+  guardarEntrega();
+  const alvo = validasXml();
   if (!alvo.length) return;
-  const btn = document.getElementById('cpXmlOk');
-  btn.disabled = true; btn.textContent = 'Importando…';
+  // Entrega preenchida e não futura = já chegou. Em branco ou data futura fica
+  // pendente — a compra ainda vai ser conferida na chegada.
+  const entrega = entregaPadrao || null;
+  const statusEntrega = (entrega && entrega <= hojeISO()) ? 'entregue' : 'pendente';
+  const foot = document.getElementById('cpXmlFoot');
+  foot.innerHTML = '<button class="cp-go" disabled>Importando…</button>';
 
   const usuario = (window.__staffUser || '') || 'dashboard';
   let okCount = 0; const falhas = [];
@@ -740,11 +829,11 @@ async function confirmarImportacao(){
       const dif = +(n.valor_nfe - n.valor_pago).toFixed(2);
       const compra = {
         empresa: empSel, fornecedor_nome: n.razao_emitente || '—', fornecedor_uf: n.uf_emitente || null,
-        data_compra: n.data_emissao, valor_total: n.valor_pago,
+        data_compra: n.data_emissao, data_entrada: entrega, valor_total: n.valor_pago,
         valor_nfe: n.valor_nfe, valor_pago: n.valor_pago, diferenca_nfe: dif,
         valor_alterado: Math.abs(dif) > 0.009, motivo_alteracao: n.motivo || null,
         chave_nfe: n.chave_nfe, numero_nf: n.numero_nf, serie_nf: n.serie,
-        origem: 'XML', tipo_compra: 'normal', status_entrega: 'pendente',
+        origem: 'XML', tipo_compra: 'normal', status_entrega: statusEntrega,
         v_icms: n.v_icms, v_ipi: n.v_ipi, v_pis: n.v_pis, v_cofins: n.v_cofins,
         v_frete: n.v_frete, v_st: n.v_st, v_desconto: n.v_desconto,
         v_icms_base: n.v_icms_base, v_st_base: n.v_st_base,

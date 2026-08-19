@@ -116,6 +116,15 @@
 
       <!-- ═══ ABA COMPRAS ═══ -->
       <div class="cp-pane on" id="cpPaneCompras">
+        <div class="cp-top">
+          <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700">Período</span>
+          <span class="cp-emps" style="gap:6px">
+            <button class="cp-emp" id="cpPer30"   style="--c:#3b82f6;padding:8px 16px;font-size:12px" onclick="setPeriodo('30d')">Últimos 30 dias</button>
+            <button class="cp-emp on" id="cpPerMes" style="--c:#22c55e;padding:8px 16px;font-size:12px" onclick="setPeriodo('mes')">Mês atual</button>
+            <button class="cp-emp" id="cpPerTot"  style="--c:#94a3b8;padding:8px 16px;font-size:12px" onclick="setPeriodo('total')">Total de compras</button>
+          </span>
+          <span id="cpPerLabel" style="font-size:12px;color:var(--text-muted)"></span>
+        </div>
         <div class="card-grid" id="cpCards" style="margin-bottom:16px"></div>
         <div class="cp-card" id="cpCardNfe" style="display:none"></div>
 
@@ -298,6 +307,11 @@ const corEmp = e => (EMPRESAS.find(x => x.nome === String(e||'').trim()) || {}).
 
 let COMPRAS = [], FORNECEDORES = [], SALES = [], BOLETOS = [], PARCELAS = [], NOTAS = [];
 let empSel = null, filtroEmp = '', aba = 'compras', sub = 'mes', editId = null, comparando = false, semBanco = false;
+// Recorte da aba Compras. Abre sempre no MÊS ATUAL — é o que se olha no dia a
+// dia; "Total de compras" existe pra conferir o acumulado, não pra ser o padrão.
+// As abas Relatórios e Comparação têm recorte próprio (histórico e mês a mês) e
+// não seguem este filtro.
+let periodo = 'mes';
 const charts = {};
 function destroyChart(k){ if (charts[k]) { charts[k].destroy(); charts[k] = null; } }
 
@@ -371,26 +385,63 @@ function renderEmpresas(){
 function selEmpresa(nome){ empSel = (empSel === nome) ? null : nome; renderEmpresas(); }
 function setFiltro(nome){ filtroEmp = nome; renderEmpresas(); renderTudo(); }
 
-const comprasFiltradas = () => filtroEmp ? COMPRAS.filter(c => String(c.empresa||'').trim() === filtroEmp) : COMPRAS;
 const valorDe = c => Number(c.valor_total) || 0;
 
-// ── Cards de resumo ─────────────────────────────────────────────────────────
-function renderTudo(){ renderCards(); renderNfe(); renderLista(); renderResumo(); }
+// Início do recorte, em data local (YYYY-MM-DD): '' = sem limite (total).
+function inicioPeriodo(){
+  const h = new Date();
+  if (periodo === 'mes') return `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-01`;
+  if (periodo === '30d') { const d = new Date(h); d.setDate(d.getDate() - 29); return rdISO(d); }
+  return '';
+}
+function rdISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+const noPeriodo = c => { const ini = inicioPeriodo(); return !ini || String(c.data_compra || '').slice(0,10) >= ini; };
+// Base de TUDO na aba Compras: período + empresa. Os cards de resumo por
+// empresa também respeitam o período (mas não o filtro de empresa — senão as
+// outras zerariam e o comparativo perderia sentido).
+const comprasDoPeriodo = () => COMPRAS.filter(noPeriodo);
+const comprasFiltradas = () => { const l = comprasDoPeriodo(); return filtroEmp ? l.filter(c => String(c.empresa||'').trim() === filtroEmp) : l; };
 
+function setPeriodo(p){ periodo = p; renderTudo(); }
+// O estado marcado sai daqui, não da classe escrita no HTML — assim a marcação
+// não pode divergir do recorte que está de fato aplicado.
+function syncBotoesPeriodo(){
+  [['30d','cpPer30'], ['mes','cpPerMes'], ['total','cpPerTot']].forEach(([k, id]) => {
+    const el = document.getElementById(id); if (el) el.classList.toggle('on', periodo === k);
+  });
+}
+function labelPeriodo(){
+  const ini = inicioPeriodo();
+  if (periodo === 'mes') { const h = new Date(); return `${MESES[h.getMonth()]} de ${h.getFullYear()} — a partir de ${dataBR(ini)}`; }
+  if (periodo === '30d') return `de ${dataBR(ini)} até hoje`;
+  return 'todas as compras registradas';
+}
+
+// ── Cards de resumo ─────────────────────────────────────────────────────────
+function renderTudo(){
+  syncBotoesPeriodo();
+  const lbl = document.getElementById('cpPerLabel');
+  if (lbl) lbl.textContent = labelPeriodo();
+  renderCards(); renderNfe(); renderLista(); renderResumo();
+}
+
+const TITULO_PERIODO = { mes: 'no mês', '30d': 'em 30 dias', total: 'total' };
 function renderCards(){
-  const total = COMPRAS.reduce((s,c) => s + valorDe(c), 0);
+  const base = comprasDoPeriodo();
+  const total = base.reduce((s,c) => s + valorDe(c), 0);
   const porEmp = EMPRESAS.map(e => ({
-    ...e, total: COMPRAS.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0),
+    ...e, total: base.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0),
   }));
   document.getElementById('cpCards').innerHTML =
-    `<div class="stat-card"><div class="label">Total geral</div><div class="value">${BRL(total)}</div></div>` +
+    `<div class="stat-card"><div class="label">Compras ${TITULO_PERIODO[periodo]}</div><div class="value">${BRL(total)}</div>
+       <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${NUM(base.length)} compra(s)</div></div>` +
     porEmp.map(e => `<div class="stat-card"><div class="label">${esc(e.nome)}</div><div class="value" style="color:${e.cor}">${BRL(e.total)}</div></div>`).join('');
 }
 
 // Card NF-e: só aparece quando existem compras com nota (valor_nfe preenchido).
 // "Economia" = quanto o valor pago ficou abaixo da nota, em % da nota.
 function renderNfe(){
-  const comNota = COMPRAS.filter(c => c.valor_nfe != null && Number(c.valor_nfe) > 0);
+  const comNota = comprasDoPeriodo().filter(c => c.valor_nfe != null && Number(c.valor_nfe) > 0);
   const box = document.getElementById('cpCardNfe');
   if (!comNota.length) { box.style.display = 'none'; return; }
   const vNota = comNota.reduce((s,c) => s + Number(c.valor_nfe || 0), 0);
@@ -436,7 +487,12 @@ async function salvarCompra(){
 function renderLista(){
   const lista = comprasFiltradas();
   const el = document.getElementById('cpLista');
-  if (!lista.length) { el.innerHTML = `<tr><td colspan="8"><div class="cp-empty">${COMPRAS.length ? 'Nenhuma compra dessa empresa.' : 'Nenhuma compra registrada ainda.'}</div></td></tr>`; return; }
+  if (!lista.length) {
+    const msg = !COMPRAS.length ? 'Nenhuma compra registrada ainda.'
+      : comprasDoPeriodo().length ? 'Nenhuma compra dessa empresa no período.'
+      : `Nenhuma compra ${periodo === 'total' ? 'registrada' : 'nesse período'} — experimente "Total de compras".`;
+    el.innerHTML = `<tr><td colspan="8"><div class="cp-empty">${msg}</div></td></tr>`; return;
+  }
   el.innerHTML = lista.map(c => {
     const entregue = String(c.status_entrega||'').toLowerCase() === 'entregue';
     return `<tr>
@@ -513,9 +569,10 @@ function renderResumo(){
     <div class="stat-card"><div class="label">Total entregue</div><div class="value" style="color:#22c55e">${BRL(entregue)}</div></div>
     <div class="stat-card"><div class="label">Total pendente</div><div class="value" style="color:#f59e0b">${BRL(total - entregue)}</div></div>`;
 
-  const geral = COMPRAS.reduce((s,c) => s + valorDe(c), 0);
+  const base = comprasDoPeriodo();
+  const geral = base.reduce((s,c) => s + valorDe(c), 0);
   document.getElementById('cpPorEmpresa').innerHTML = EMPRESAS.map(e => {
-    const v = COMPRAS.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0);
+    const v = base.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0);
     const p = geral ? v / geral * 100 : 0;
     return `<div class="cp-bar">
       <span style="color:${e.cor};font-weight:800">${esc(e.nome)}</span>
@@ -532,7 +589,7 @@ function exportarCSV(){
   const csv = linhas.map(l => l.map(x => `"${String(x).replace(/"/g,'""')}"`).join(';')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8' }));
-  a.download = `compras-${filtroEmp || 'todas'}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  a.download = `compras-${filtroEmp || 'todas'}-${periodo}.csv`; a.click(); URL.revokeObjectURL(a.href);
 }
 
 

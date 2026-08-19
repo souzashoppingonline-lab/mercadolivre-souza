@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>window.PAGE_TITLE='Compras & CMV'; window.ACTIVE_NAV='financeiro-compras.html';</script>
   <style>
     .cp-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 14px; }
@@ -105,12 +106,12 @@
         <button class="cp-tab on" id="cpTabCompras"   onclick="setAba('compras')">Compras</button>
         <button class="cp-tab"    id="cpTabRelat"     onclick="setAba('relat')">Relatórios</button>
         <button class="cp-tab"    id="cpTabComp"      onclick="setAba('comp')">Comparação</button>
-        <button class="cp-tab soon" onclick="emBreve('XML Fiscal')">XML Fiscal</button>
-        <button class="cp-tab soon" onclick="emBreve('NFE Entradas')">NFE Entradas</button>
-        <button class="cp-tab soon" onclick="emBreve('Relatórios NFE')">Relatórios NFE</button>
-        <button class="cp-tab soon" onclick="emBreve('Fechamento')">Fechamento</button>
-        <button class="cp-tab soon" onclick="emBreve('Conciliação')">Conciliação</button>
-        <button class="cp-tab soon" onclick="emBreve('Acesso Contador')">Acesso Contador</button>
+        <button class="cp-tab" id="cpTabXml"     onclick="setAba('xml')">XML Fiscal</button>
+        <button class="cp-tab" id="cpTabNfe"     onclick="setAba('nfe')">NFE Entradas</button>
+        <button class="cp-tab" id="cpTabRelNfe"  onclick="setAba('relnfe')">Relatórios NFE</button>
+        <button class="cp-tab" id="cpTabFech"    onclick="setAba('fech')">Fechamento</button>
+        <button class="cp-tab" id="cpTabConc"    onclick="setAba('conc')">Conciliação</button>
+        <button class="cp-tab" id="cpTabCont"    onclick="setAba('cont')">Acesso Contador</button>
       </div>
 
       <!-- ═══ ABA COMPRAS ═══ -->
@@ -191,8 +192,55 @@
         </div>
         <div id="cpComp"></div>
       </div>
+
+      <!-- ═══ ABAS DA NF-e ═══ -->
+      <div class="cp-pane" id="cpPaneXml">
+        <div class="cp-top">
+          <select id="cpXmlMes" onchange="renderXmlFiscal()"></select>
+          <select id="cpXmlAno" onchange="renderXmlFiscal()"></select>
+          <select id="cpXmlEmp" onchange="renderXmlFiscal()"></select>
+          <button class="cp-btn" onclick="baixarZip()"><i class="fas fa-file-zipper"></i> Baixar XMLs em ZIP</button>
+        </div>
+        <div id="cpXmlFiscal"></div>
+      </div>
+
+      <div class="cp-pane" id="cpPaneNfe">
+        <div class="cp-top">
+          <input id="cpNfeBusca" class="cp-fbusca" placeholder="Buscar por nº, chave, emitente ou CNPJ…" oninput="renderNfeEntradas()"
+                 style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px;min-width:280px">
+          <select id="cpNfeEmp" onchange="renderNfeEntradas()"></select>
+        </div>
+        <div id="cpNfeEntradas"></div>
+      </div>
+
+      <div class="cp-pane" id="cpPaneRelNfe"><div id="cpRelNfe"></div></div>
+
+      <div class="cp-pane" id="cpPaneFech">
+        <div class="cp-top"><select id="cpFechAno" onchange="renderFechamento()"></select></div>
+        <div id="cpFechamento"></div>
+      </div>
+
+      <div class="cp-pane" id="cpPaneConc"><div id="cpConciliacao"></div></div>
+
+      <div class="cp-pane" id="cpPaneCont">
+        <div class="cp-top">
+          <select id="cpContMes" onchange="renderContador()"></select>
+          <select id="cpContAno" onchange="renderContador()"></select>
+          <button class="cp-btn" onclick="exportarContadorCSV()"><i class="fas fa-file-csv"></i> CSV do contador</button>
+          <button class="cp-btn" onclick="baixarZipContador()"><i class="fas fa-file-zipper"></i> XMLs do mês</button>
+        </div>
+        <div id="cpContador"></div>
+      </div>
     </div>
   </main>
+</div>
+
+<!-- Modal ver XML -->
+<div class="cp-back" id="cpBackVer" onclick="if(event.target===this)fecharVer()">
+  <div class="cp-modal" style="max-width:900px">
+    <h3 id="cpVerTitulo">NF-e <span class="x" onclick="fecharVer()"><i class="fas fa-xmark"></i></span></h3>
+    <div id="cpVerBody"></div>
+  </div>
 </div>
 
 <!-- Modal importar XML -->
@@ -248,7 +296,7 @@ const EMPRESAS = [
 ];
 const corEmp = e => (EMPRESAS.find(x => x.nome === String(e||'').trim()) || {}).cor || '#64748b';
 
-let COMPRAS = [], FORNECEDORES = [], SALES = [], BOLETOS = [], PARCELAS = [];
+let COMPRAS = [], FORNECEDORES = [], SALES = [], BOLETOS = [], PARCELAS = [], NOTAS = [];
 let empSel = null, filtroEmp = '', aba = 'compras', sub = 'mes', editId = null, comparando = false, semBanco = false;
 const charts = {};
 function destroyChart(k){ if (charts[k]) { charts[k].destroy(); charts[k] = null; } }
@@ -261,18 +309,17 @@ function motivoErro(r){
     ? m + '\n\nParece faltar coluna/tabela no Supabase — confira o schema de compras_cmv.'
     : m;
 }
-function emBreve(nome){
-  alert(`A aba "${nome}" entra na próxima etapa.\n\nEla depende da importação de XML de NF-e (bucket de Storage no Supabase, parse da chave de 44 dígitos e as tabelas compras_xml / auditoria_xml_importacao).`);
-}
+
 
 // ── Carga ───────────────────────────────────────────────────────────────────
 async function load(){
-  const [rc, rf, rs, rb, rp] = await Promise.all([
+  const [rc, rf, rs, rb, rp, rx] = await Promise.all([
     DB.getFinanceiroDados('compras_cmv', 5000, 'data_compra.desc'),
     DB.getFinanceiroDados('boleto_categories', 500),
     DB.getFinanceiroDados('sales_entries', 5000, 'date.desc'),
     DB.getFinanceiroDados('boletos_mensais', 5000, 'date.desc'),
     DB.getFinanceiroDados('parcelas_cartao', 5000),
+    DB.getFinanceiroDados('compras_xml', 5000, 'data_emissao.desc'),
   ]);
   semBanco = !rc || !!rc.error;
   COMPRAS = (!semBanco && rc.rows) || [];
@@ -283,23 +330,26 @@ async function load(){
   SALES    = (rs && !rs.error && rs.rows) || [];
   BOLETOS  = (rb && !rb.error && rb.rows) || [];
   PARCELAS = (rp && !rp.error && rp.rows) || [];
+  NOTAS    = (rx && !rx.error && rx.rows) || [];   // compras_xml (NF-e importadas)
 
   if (semBanco) showStatus('⚠️ <b>Tabela <code>compras_cmv</code> não encontrada no Supabase.</b> A tela abre, mas não lista nem grava compras. Crie a tabela no SQL Editor (o schema está em <code>.claude/financeiro-supabase-schema.md</code>).', true);
-  else showStatus(`✅ ${COMPRAS.length} compra(s) · ${FORNECEDORES.length} fornecedor(es) · ${SALES.length} lançamento(s) de venda.`, false);
+  else showStatus(`✅ ${COMPRAS.length} compra(s) · ${NOTAS.length} NF-e importada(s) · ${FORNECEDORES.length} fornecedor(es) · ${SALES.length} lançamento(s) de venda.`, false);
 
   document.getElementById('cpForns').innerHTML = FORNECEDORES.map(f => `<option value="${esc(f.name)}">`).join('');
   document.getElementById('eEmpresa').innerHTML = EMPRESAS.map(e => `<option>${esc(e.nome)}</option>`).join('');
   renderEmpresas(); renderTudo();
 }
 
+const ABAS = [['Compras','compras'], ['Relat','relat'], ['Comp','comp'], ['Xml','xml'],
+              ['Nfe','nfe'], ['RelNfe','relnfe'], ['Fech','fech'], ['Conc','conc'], ['Cont','cont']];
 function setAba(a){
   aba = a;
-  [['Compras','compras'], ['Relat','relat'], ['Comp','comp']].forEach(([suf, chave]) => {
+  ABAS.forEach(([suf, chave]) => {
     document.getElementById('cpPane'+suf).classList.toggle('on', a === chave);
     document.getElementById('cpTab'+suf).classList.toggle('on', a === chave);
   });
-  if (a === 'relat') renderRelatorios();
-  if (a === 'comp') renderComparacao();
+  ({ relat: renderRelatorios, comp: renderComparacao, xml: renderXmlFiscal, nfe: renderNfeEntradas,
+     relnfe: renderRelNfe, fech: renderFechamento, conc: renderConciliacao, cont: renderContador }[a] || (() => {}))();
 }
 function setSub(s){
   sub = s;
@@ -676,6 +726,362 @@ async function confirmarImportacao(){
   fecharXml(); renderTudo();
   showStatus(`✅ ${okCount} nota(s) importada(s) em <b>${esc(empSel)}</b>.` + (falhas.length ? ` ⚠️ ${falhas.length} com problema.` : ''), falhas.length > 0);
   if (falhas.length) alert('Problemas na importação:\n\n' + falhas.join('\n'));
+}
+
+
+// ═══ ABAS DA NF-e ═══════════════════════════════════════════════════════════
+// Todas leem `compras_xml` (NOTAS), preenchida pela importação. O XML original
+// mora em `xml_original`, então o download é montado a partir do banco — não
+// existe bucket de Storage envolvido.
+const mesNota = n => String(n.data_emissao || '').slice(0, 7);
+const compraDaNota = n => COMPRAS.find(c => String(c.chave_nfe || '') === String(n.chave_nfe || ''));
+const nomeArquivoXml = n => `${n.chave_nfe || 'nfe'}.xml`;
+
+function selectEmpresaHtml(id, fn){
+  return `<option value="">Todas as empresas</option>` + EMPRESAS.map(e => `<option>${esc(e.nome)}</option>`).join('');
+}
+function popularSelectsNfe(){
+  ['cpXmlEmp','cpNfeEmp'].forEach(id => { const el = document.getElementById(id); if (el && !el.innerHTML) el.innerHTML = selectEmpresaHtml(id); });
+  [['cpXmlMes','cpXmlAno'], ['cpContMes','cpContAno']].forEach(([m, a]) => {
+    const sm = document.getElementById(m), sa = document.getElementById(a);
+    if (sm && !sm.innerHTML) {
+      const agora = new Date();
+      sm.innerHTML = '<option value="">Todos os meses</option>' + MESES.map((n,i) => `<option value="${i+1}">${n}</option>`).join('');
+      sa.innerHTML = Array.from({length:5}, (_,i) => agora.getFullYear() - i).map(y => `<option value="${y}">${y}</option>`).join('');
+      sm.value = agora.getMonth() + 1; sa.value = agora.getFullYear();
+    }
+  });
+  const fa = document.getElementById('cpFechAno');
+  if (fa && !fa.innerHTML) {
+    const agora = new Date();
+    fa.innerHTML = Array.from({length:5}, (_,i) => agora.getFullYear() - i).map(y => `<option value="${y}">${y}</option>`).join('');
+    fa.value = agora.getFullYear();
+  }
+}
+
+// ── XML Fiscal: as notas do período, com download individual e em ZIP ───────
+function notasDoFiltro(idMes, idAno, idEmp){
+  const mes = document.getElementById(idMes).value, ano = document.getElementById(idAno).value;
+  const emp = idEmp ? document.getElementById(idEmp).value : '';
+  return NOTAS.filter(n => {
+    if (ano && String(n.data_emissao || '').slice(0,4) !== String(ano)) return false;
+    if (mes && String(n.data_emissao || '').slice(5,7) !== String(mes).padStart(2,'0')) return false;
+    if (emp && String(n.empresa_id || '').trim() !== emp) return false;
+    return true;
+  });
+}
+function renderXmlFiscal(){
+  popularSelectsNfe();
+  const lista = notasDoFiltro('cpXmlMes','cpXmlAno','cpXmlEmp');
+  const total = lista.reduce((s,n) => s + (Number(n.valor_xml) || 0), 0);
+  const comXml = lista.filter(n => n.xml_original).length;
+  document.getElementById('cpXmlFiscal').innerHTML = `
+    <div class="card-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Notas no período</div><div class="value">${NUM(lista.length)}</div></div>
+      <div class="stat-card"><div class="label">Valor das notas</div><div class="value">${BRL(total)}</div></div>
+      <div class="stat-card"><div class="label">Com XML guardado</div><div class="value" style="color:${comXml === lista.length ? '#22c55e' : '#f59e0b'}">${NUM(comXml)}/${NUM(lista.length)}</div></div>
+    </div>
+    <div class="cp-card">${lista.length ? `<div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th>NF / Série</th><th>Emitente</th><th>Empresa</th><th>Emissão</th><th class="n">Valor</th><th>Chave</th><th style="width:150px"></th></tr></thead>
+      <tbody>${lista.map(n => `<tr>
+        <td>${esc(n.numero_nf || '—')}/${esc(n.serie || '')}</td>
+        <td>${esc(n.razao_emitente || '—')}</td>
+        <td><span class="cp-badge" style="border:1px solid ${corEmp(n.empresa_id)}66;color:${corEmp(n.empresa_id)}">${esc(n.empresa_id || '—')}</span></td>
+        <td style="white-space:nowrap">${dataBR(n.data_emissao)}</td>
+        <td class="n">${BRL(n.valor_xml)}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:10.5px">${esc(String(n.chave_nfe || '').slice(0,8))}…${esc(String(n.chave_nfe || '').slice(-6))}</td>
+        <td style="white-space:nowrap">
+          <button class="cp-mini" onclick="verNota('${esc(n.id)}')"><i class="fas fa-eye"></i> Ver</button>
+          <button class="cp-mini" ${n.xml_original ? '' : 'disabled'} onclick="baixarXml('${esc(n.id)}')"><i class="fas fa-download"></i> XML</button>
+        </td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="cp-empty">Nenhuma NF-e importada nesse período.</div>'}</div>`;
+}
+
+function baixarTexto(nome, texto, tipo = 'text/xml;charset=utf-8'){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([texto], { type: tipo }));
+  a.download = nome; a.click(); URL.revokeObjectURL(a.href);
+}
+function baixarXml(id){
+  const n = NOTAS.find(x => String(x.id) === String(id));
+  if (!n || !n.xml_original) { alert('Essa nota não tem o XML guardado.'); return; }
+  baixarTexto(nomeArquivoXml(n), n.xml_original);
+}
+// ZIP com JSZip (mesmo padrão do SheetJS na tela de Vendas — lib por CDN, tudo
+// no navegador). Notas sem `xml_original` (importadas por fora) ficam de fora.
+async function zipDeNotas(lista, nomeZip){
+  const comXml = lista.filter(n => n.xml_original);
+  if (!comXml.length) { alert('Nenhuma nota com XML guardado nesse período.'); return; }
+  if (typeof JSZip === 'undefined') { alert('A biblioteca de ZIP não carregou. Verifique a conexão e recarregue a página.'); return; }
+  const zip = new JSZip();
+  comXml.forEach(n => zip.file(nomeArquivoXml(n), n.xml_original));
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = nomeZip; a.click(); URL.revokeObjectURL(a.href);
+  if (comXml.length < lista.length) alert(`${lista.length - comXml.length} nota(s) sem XML guardado ficaram de fora do ZIP.`);
+}
+function baixarZip(){
+  const lista = notasDoFiltro('cpXmlMes','cpXmlAno','cpXmlEmp');
+  const mes = document.getElementById('cpXmlMes').value, ano = document.getElementById('cpXmlAno').value;
+  zipDeNotas(lista, `xmls-${ano}${mes ? '-' + String(mes).padStart(2,'0') : ''}.zip`);
+}
+
+// ── NFE Entradas: consulta com busca livre ─────────────────────────────────
+function renderNfeEntradas(){
+  popularSelectsNfe();
+  const q = (document.getElementById('cpNfeBusca').value || '').trim().toLowerCase();
+  const emp = document.getElementById('cpNfeEmp').value;
+  const lista = NOTAS.filter(n => {
+    if (emp && String(n.empresa_id || '').trim() !== emp) return false;
+    if (!q) return true;
+    return [n.numero_nf, n.chave_nfe, n.razao_emitente, n.cnpj_emitente, n.razao_destinatario]
+      .some(v => String(v || '').toLowerCase().includes(q));
+  });
+  document.getElementById('cpNfeEntradas').innerHTML = `<div class="cp-card">
+    <h3>${lista.length} nota(s) de entrada</h3>
+    ${lista.length ? `<div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th>NF</th><th>Emitente</th><th>CNPJ</th><th>Destinatário</th><th>Emissão</th><th class="n">Valor</th><th>ST</th><th>Compra</th><th></th></tr></thead>
+      <tbody>${lista.map(n => {
+        const c = compraDaNota(n);
+        return `<tr>
+          <td>${esc(n.numero_nf || '—')}/${esc(n.serie || '')}</td>
+          <td>${esc(n.razao_emitente || '—')}</td>
+          <td style="font-size:11px">${esc(n.cnpj_emitente || '—')}</td>
+          <td style="font-size:11px">${esc(n.razao_destinatario || '—')}</td>
+          <td style="white-space:nowrap">${dataBR(n.data_emissao)}</td>
+          <td class="n">${BRL(n.valor_xml)}</td>
+          <td>${n.possui_st ? '<span class="cp-badge" style="border:1px solid #a855f766;color:#a855f7">ST</span>' : '—'}</td>
+          <td>${c ? `<span class="cp-badge" style="border:1px solid #22c55e66;color:#22c55e">${BRL(c.valor_total)}</span>` : '<span class="cp-badge" style="border:1px solid #f8717166;color:#f87171">sem compra</span>'}</td>
+          <td><button class="cp-mini" onclick="verNota('${esc(n.id)}')"><i class="fas fa-eye"></i></button></td>
+        </tr>`;
+      }).join('')}</tbody></table></div>` : '<div class="cp-empty">Nenhuma nota com esse filtro.</div>'}</div>`;
+}
+
+function verNota(id){
+  const n = NOTAS.find(x => String(x.id) === String(id)); if (!n) return;
+  const c = compraDaNota(n);
+  const li = (r, v) => v ? `<tr><td style="color:var(--text-muted)">${r}</td><td>${esc(v)}</td></tr>` : '';
+  document.getElementById('cpVerTitulo').innerHTML =
+    `NF-e ${esc(n.numero_nf || '')}/${esc(n.serie || '')} — ${esc(n.razao_emitente || '')} <span class="x" onclick="fecharVer()"><i class="fas fa-xmark"></i></span>`;
+  document.getElementById('cpVerBody').innerHTML = `
+    <table class="cp-tbl" style="margin-bottom:14px"><tbody>
+      ${li('Chave', n.chave_nfe)}
+      ${li('Emitente', `${n.razao_emitente || ''} — ${n.cnpj_emitente || ''}`)}
+      ${li('Destinatário', `${n.razao_destinatario || ''} — ${n.cnpj_destinatario || ''}`)}
+      ${li('Emissão', dataBR(n.data_emissao))}
+      ${li('Empresa', n.empresa_id)}
+      ${li('Valor da nota', BRL(n.valor_xml))}
+      ${c ? li('Valor pago na compra', BRL(c.valor_pago != null ? c.valor_pago : c.valor_total)) : ''}
+      ${c && c.motivo_alteracao ? li('Motivo da diferença', c.motivo_alteracao) : ''}
+      ${c ? li('Impostos', `ICMS ${BRL(c.v_icms)} · ST ${BRL(c.v_st)} · IPI ${BRL(c.v_ipi)} · PIS ${BRL(c.v_pis)} · COFINS ${BRL(c.v_cofins)}`) : ''}
+      ${li('Substituição tributária', n.possui_st ? 'sim' : 'não')}
+      ${li('Importado por', `${n.usuario || '—'} em ${n.data_hora ? new Date(n.data_hora).toLocaleString('pt-BR') : '—'}`)}
+      ${li('Hash do XML', n.hash_xml ? String(n.hash_xml).slice(0,32) + '…' : '')}
+    </tbody></table>
+    <div class="cp-top">
+      <button class="cp-btn" ${n.xml_original ? '' : 'disabled'} onclick="baixarXml('${esc(n.id)}')"><i class="fas fa-download"></i> Baixar XML</button>
+    </div>
+    ${n.xml_original ? `<details><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Ver o XML</summary>
+      <pre style="background:#0b1020;border:1px solid var(--border);border-radius:10px;padding:12px;font-size:10.5px;color:#9fb4d1;overflow:auto;max-height:300px;white-space:pre-wrap">${esc(n.xml_original.slice(0, 6000))}${n.xml_original.length > 6000 ? '\n…' : ''}</pre></details>` : ''}`;
+  document.getElementById('cpBackVer').classList.add('on');
+}
+function fecharVer(){ document.getElementById('cpBackVer').classList.remove('on'); }
+
+// ── Relatórios NFE: impostos e emitentes das notas importadas ───────────────
+function renderRelNfe(){
+  if (!NOTAS.length) { document.getElementById('cpRelNfe').innerHTML = '<div class="cp-card"><div class="cp-empty">Nenhuma NF-e importada ainda. Use "Importar XML da NF-e" na aba Compras.</div></div>'; return; }
+  // Os impostos moram na COMPRA (compras_cmv), não em compras_xml — a nota casa
+  // pela chave.
+  const comCompra = NOTAS.map(n => ({ n, c: compraDaNota(n) })).filter(x => x.c);
+  const soma = campo => comCompra.reduce((s,x) => s + (Number(x.c[campo]) || 0), 0);
+  const totalNotas = NOTAS.reduce((s,n) => s + (Number(n.valor_xml) || 0), 0);
+
+  const porEmitente = [...NOTAS.reduce((m,n) => {
+    const k = (n.razao_emitente || '—').trim();
+    const a = m.get(k) || { qtd:0, total:0, cnpj:n.cnpj_emitente };
+    a.qtd++; a.total += Number(n.valor_xml) || 0; m.set(k, a); return m;
+  }, new Map()).entries()].map(([nome, v]) => ({ nome, ...v })).sort((a,b) => b.total - a.total);
+
+  const porMes = [...NOTAS.reduce((m,n) => {
+    const k = mesNota(n) || '—'; m.set(k, (m.get(k) || 0) + (Number(n.valor_xml) || 0)); return m;
+  }, new Map()).entries()].sort((a,b) => a[0].localeCompare(b[0]));
+
+  document.getElementById('cpRelNfe').innerHTML = `
+    <div class="card-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Notas importadas</div><div class="value">${NUM(NOTAS.length)}</div></div>
+      <div class="stat-card"><div class="label">Valor total das notas</div><div class="value">${BRL(totalNotas)}</div></div>
+      <div class="stat-card"><div class="label">Emitentes distintos</div><div class="value">${NUM(porEmitente.length)}</div></div>
+      <div class="stat-card"><div class="label">Notas com ST</div><div class="value" style="color:#a855f7">${NUM(NOTAS.filter(n => n.possui_st).length)}</div></div>
+    </div>
+    <div class="cp-card"><h3>Impostos das notas (das compras vinculadas)</h3>
+      <div class="cp-ind" style="margin-top:0">
+        ${[['ICMS','v_icms'],['ICMS-ST','v_st'],['IPI','v_ipi'],['PIS','v_pis'],['COFINS','v_cofins'],['Frete','v_frete'],['Descontos','v_desconto']]
+          .map(([l,k]) => `<div class="cp-i"><div class="l">${l}</div><div class="v">${BRL(soma(k))}</div></div>`).join('')}
+      </div>
+      ${comCompra.length < NOTAS.length ? `<div class="cp-aviso" style="margin-top:12px">${NOTAS.length - comCompra.length} nota(s) sem compra vinculada não entram nos impostos.</div>` : ''}
+    </div>
+    <div class="cp-grid2">
+      <div class="cp-card"><h3>Notas por mês</h3><canvas id="cpChartNfeMes" height="180"></canvas></div>
+      <div class="cp-card"><h3>Por emitente</h3><div class="cp-wrap"><table class="cp-tbl">
+        <thead><tr><th>Emitente</th><th>CNPJ</th><th class="n">Notas</th><th class="n">Total</th><th class="n">%</th></tr></thead>
+        <tbody>${porEmitente.map(e => `<tr><td>${esc(e.nome)}</td><td style="font-size:11px">${esc(e.cnpj || '—')}</td>
+          <td class="n">${NUM(e.qtd)}</td><td class="n">${BRL(e.total)}</td><td class="n">${totalNotas ? PCT(e.total/totalNotas*100) : '—'}</td></tr>`).join('')}
+        </tbody></table></div></div>
+    </div>`;
+  destroyChart('nfeMes');
+  charts.nfeMes = new Chart(document.getElementById('cpChartNfeMes'), {
+    type: 'bar',
+    data: { labels: porMes.map(([k]) => k === '—' ? '—' : mesBR(k)),
+            datasets: [{ label:'Notas', data: porMes.map(([,v]) => v), backgroundColor:'rgba(59,130,246,.75)', borderColor:'#3b82f6', borderWidth:1.5, borderRadius:5 }] },
+    options: { responsive:true, plugins:{ legend:{ display:false } },
+      scales:{ x:{ ticks:{ color:'#888', font:{ size:10 } }, grid:{ display:false } },
+               y:{ ticks:{ color:'#888', callback:v => BRL(v) }, grid:{ color:'rgba(255,255,255,.04)' }, beginAtZero:true } } },
+  });
+}
+
+// ── Conciliação NF-e × compra ──────────────────────────────────────────────
+// Três divergências que importam: nota que não virou compra, compra marcada
+// como XML sem a nota guardada, e diferença entre valor da nota e valor pago.
+function renderConciliacao(){
+  const semCompra = NOTAS.filter(n => !compraDaNota(n));
+  const chavesNota = new Set(NOTAS.map(n => String(n.chave_nfe || '')));
+  const semNota = COMPRAS.filter(c => c.chave_nfe && !chavesNota.has(String(c.chave_nfe)));
+  const divergentes = NOTAS.map(n => ({ n, c: compraDaNota(n) })).filter(x => x.c)
+    .map(x => ({ ...x, dif: (Number(x.n.valor_xml) || 0) - Number(x.c.valor_pago != null ? x.c.valor_pago : x.c.valor_total || 0) }))
+    .filter(x => Math.abs(x.dif) > 0.009).sort((a,b) => Math.abs(b.dif) - Math.abs(a.dif));
+  const conciliadas = NOTAS.length - semCompra.length - divergentes.length;
+
+  const tabela = (titulo, vazio, linhas, cabecalho) => `<div class="cp-card"><h3>${titulo}</h3>
+    ${linhas ? `<div class="cp-wrap"><table class="cp-tbl"><thead><tr>${cabecalho}</tr></thead><tbody>${linhas}</tbody></table></div>`
+             : `<div class="cp-empty">${vazio}</div>`}</div>`;
+
+  document.getElementById('cpConciliacao').innerHTML = `
+    <div class="card-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Conciliadas</div><div class="value" style="color:#22c55e">${NUM(Math.max(conciliadas,0))}</div></div>
+      <div class="stat-card"><div class="label">Nota sem compra</div><div class="value" style="color:${semCompra.length ? '#f87171' : 'var(--text-main)'}">${NUM(semCompra.length)}</div></div>
+      <div class="stat-card"><div class="label">Compra sem nota guardada</div><div class="value" style="color:${semNota.length ? '#f59e0b' : 'var(--text-main)'}">${NUM(semNota.length)}</div></div>
+      <div class="stat-card"><div class="label">Valor divergente</div><div class="value" style="color:${divergentes.length ? '#f59e0b' : 'var(--text-main)'}">${NUM(divergentes.length)}</div></div>
+    </div>
+    ${tabela('Diferença entre a nota e o valor pago', 'Nenhuma divergência de valor. 🎉',
+      divergentes.map(x => `<tr>
+        <td>${esc(x.n.numero_nf || '—')}/${esc(x.n.serie || '')}</td>
+        <td>${esc(x.n.razao_emitente || '—')}</td>
+        <td style="white-space:nowrap">${dataBR(x.n.data_emissao)}</td>
+        <td class="n">${BRL(x.n.valor_xml)}</td>
+        <td class="n">${BRL(x.c.valor_pago != null ? x.c.valor_pago : x.c.valor_total)}</td>
+        <td class="n" style="color:${x.dif >= 0 ? '#22c55e' : '#f87171'}">${BRL(x.dif)}</td>
+        <td>${esc(x.c.motivo_alteracao || '<sem motivo registrado>')}</td>
+      </tr>`).join(''),
+      '<th>NF</th><th>Emitente</th><th>Emissão</th><th class="n">Nota</th><th class="n">Pago</th><th class="n">Diferença</th><th>Motivo</th>')}
+    ${tabela('NF-e importada sem compra correspondente', 'Toda nota tem sua compra.',
+      semCompra.map(n => `<tr><td>${esc(n.numero_nf || '—')}</td><td>${esc(n.razao_emitente || '—')}</td>
+        <td style="white-space:nowrap">${dataBR(n.data_emissao)}</td><td class="n">${BRL(n.valor_xml)}</td>
+        <td><button class="cp-mini" onclick="verNota('${esc(n.id)}')">Ver nota</button></td></tr>`).join(''),
+      '<th>NF</th><th>Emitente</th><th>Emissão</th><th class="n">Valor</th><th></th>')}
+    ${tabela('Compra com chave de NF-e, mas sem o XML guardado', 'Toda compra com chave tem o XML.',
+      semNota.map(c => `<tr><td>${esc(c.numero_nf || '—')}</td><td>${esc(c.fornecedor_nome || '—')}</td>
+        <td style="white-space:nowrap">${dataBR(c.data_compra)}</td><td class="n">${BRL(c.valor_total)}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:10.5px">${esc(String(c.chave_nfe).slice(0,10))}…</td></tr>`).join(''),
+      '<th>NF</th><th>Fornecedor</th><th>Compra</th><th class="n">Valor</th><th>Chave</th>')}`;
+}
+
+// ── Fechamento mensal de compras ───────────────────────────────────────────
+function renderFechamento(){
+  popularSelectsNfe();
+  const ano = document.getElementById('cpFechAno').value;
+  const linhas = MESES.map((nome, i) => {
+    const ym = `${ano}-${String(i+1).padStart(2,'0')}`;
+    const doMes = COMPRAS.filter(c => mesDe(c) === ym);
+    const notas = NOTAS.filter(n => mesNota(n) === ym);
+    const total = doMes.reduce((s,c) => s + valorDe(c), 0);
+    const pendentes = doMes.filter(c => String(c.status_entrega||'').toLowerCase() !== 'entregue').length;
+    const semNota = doMes.filter(c => !c.chave_nfe).length;
+    const porEmp = EMPRESAS.map(e => doMes.filter(c => String(c.empresa||'').trim() === e.nome).reduce((s,c) => s + valorDe(c), 0));
+    return { nome, ym, qtd: doMes.length, total, notas: notas.length, pendentes, semNota, porEmp };
+  });
+  const tot = linhas.reduce((s,l) => s + l.total, 0);
+  document.getElementById('cpFechamento').innerHTML = `
+    <div class="card-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Compras no ano</div><div class="value">${BRL(tot)}</div></div>
+      <div class="stat-card"><div class="label">Meses com movimento</div><div class="value">${NUM(linhas.filter(l => l.qtd).length)}</div></div>
+      <div class="stat-card"><div class="label">Entregas pendentes</div><div class="value" style="color:#f59e0b">${NUM(linhas.reduce((s,l) => s + l.pendentes, 0))}</div></div>
+      <div class="stat-card"><div class="label">Compras sem NF-e</div><div class="value" style="color:${linhas.reduce((s,l)=>s+l.semNota,0) ? '#f87171' : 'var(--text-main)'}">${NUM(linhas.reduce((s,l) => s + l.semNota, 0))}</div></div>
+    </div>
+    <div class="cp-card"><h3>Fechamento por mês — ${esc(ano)}</h3><div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th>Mês</th><th class="n">Compras</th><th class="n">Total</th>
+        ${EMPRESAS.map(e => `<th class="n" style="color:${e.cor}">${esc(e.nome)}</th>`).join('')}
+        <th class="n">NF-e</th><th class="n">Sem NF-e</th><th class="n">Pendentes</th><th>Situação</th></tr></thead>
+      <tbody>${linhas.map(l => {
+        const fechado = l.qtd > 0 && l.pendentes === 0 && l.semNota === 0;
+        const situacao = !l.qtd ? '<span style="color:var(--text-muted)">sem movimento</span>'
+          : fechado ? '<span class="cp-badge" style="border:1px solid #22c55e66;color:#22c55e">fechado</span>'
+                    : '<span class="cp-badge" style="border:1px solid #f59e0b66;color:#f59e0b">em aberto</span>';
+        return `<tr${l.qtd ? '' : ' style="opacity:.45"'}>
+          <td>${l.nome}</td><td class="n">${NUM(l.qtd)}</td><td class="n">${BRL(l.total)}</td>
+          ${l.porEmp.map(v => `<td class="n">${v ? BRL(v) : '—'}</td>`).join('')}
+          <td class="n">${NUM(l.notas)}</td>
+          <td class="n" style="color:${l.semNota ? '#f87171' : 'inherit'}">${l.semNota || '—'}</td>
+          <td class="n" style="color:${l.pendentes ? '#f59e0b' : 'inherit'}">${l.pendentes || '—'}</td>
+          <td>${situacao}</td></tr>`;
+      }).join('')}</tbody></table></div>
+      <div class="cp-aviso" style="margin-top:12px">Um mês só fecha quando <b>toda compra foi entregue</b> e <b>toda compra tem NF-e</b>. É conferência de compras — o fechamento contábil do mês continua na tela de Fechamento Mensal.</div>
+    </div>`;
+}
+
+// ── Acesso Contador ────────────────────────────────────────────────────────
+// O que o contador precisa do mês: as notas com chave, CNPJ e impostos, em
+// tabela, CSV e os XMLs em ZIP. Sem números gerenciais (margem, CMV) — não é
+// papel dele e não é o que ele pede.
+function contadorDoMes(){
+  const mes = document.getElementById('cpContMes').value, ano = document.getElementById('cpContAno').value;
+  const ym = mes ? `${ano}-${String(mes).padStart(2,'0')}` : null;
+  const notas = NOTAS.filter(n => !ym || mesNota(n) === ym);
+  return { ym: ym || String(ano), notas: notas.map(n => ({ n, c: compraDaNota(n) })) };
+}
+function renderContador(){
+  popularSelectsNfe();
+  const { ym, notas } = contadorDoMes();
+  const soma = campo => notas.reduce((s,x) => s + (x.c ? Number(x.c[campo]) || 0 : 0), 0);
+  const totalNotas = notas.reduce((s,x) => s + (Number(x.n.valor_xml) || 0), 0);
+  document.getElementById('cpContador').innerHTML = `
+    <div class="card-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Notas em ${esc(ym)}</div><div class="value">${NUM(notas.length)}</div></div>
+      <div class="stat-card"><div class="label">Valor total</div><div class="value">${BRL(totalNotas)}</div></div>
+      <div class="stat-card"><div class="label">ICMS</div><div class="value">${BRL(soma('v_icms'))}</div></div>
+      <div class="stat-card"><div class="label">ICMS-ST</div><div class="value" style="color:#a855f7">${BRL(soma('v_st'))}</div></div>
+      <div class="stat-card"><div class="label">IPI</div><div class="value">${BRL(soma('v_ipi'))}</div></div>
+      <div class="stat-card"><div class="label">PIS / COFINS</div><div class="value">${BRL(soma('v_pis') + soma('v_cofins'))}</div></div>
+    </div>
+    <div class="cp-card"><h3>Notas de entrada — ${esc(ym)}</h3>
+    ${notas.length ? `<div class="cp-wrap"><table class="cp-tbl">
+      <thead><tr><th>NF/Série</th><th>Emitente</th><th>CNPJ</th><th>Emissão</th><th>Empresa</th>
+        <th class="n">Valor</th><th class="n">ICMS</th><th class="n">ST</th><th class="n">IPI</th><th class="n">PIS</th><th class="n">COFINS</th><th>Chave</th></tr></thead>
+      <tbody>${notas.map(({ n, c }) => `<tr>
+        <td>${esc(n.numero_nf || '—')}/${esc(n.serie || '')}</td>
+        <td>${esc(n.razao_emitente || '—')}</td>
+        <td style="font-size:11px">${esc(n.cnpj_emitente || '—')}</td>
+        <td style="white-space:nowrap">${dataBR(n.data_emissao)}</td>
+        <td>${esc(n.empresa_id || '—')}</td>
+        <td class="n">${BRL(n.valor_xml)}</td>
+        <td class="n">${c ? BRL(c.v_icms) : '—'}</td><td class="n">${c ? BRL(c.v_st) : '—'}</td>
+        <td class="n">${c ? BRL(c.v_ipi) : '—'}</td><td class="n">${c ? BRL(c.v_pis) : '—'}</td><td class="n">${c ? BRL(c.v_cofins) : '—'}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:10px">${esc(n.chave_nfe || '—')}</td>
+      </tr>`).join('')}</tbody></table></div>` : '<div class="cp-empty">Nenhuma nota nesse período.</div>'}</div>`;
+}
+function exportarContadorCSV(){
+  const { ym, notas } = contadorDoMes();
+  if (!notas.length) { alert('Nenhuma nota nesse período.'); return; }
+  const linhas = [['NF','Serie','Chave','Emitente','CNPJ emitente','Destinatario','CNPJ destinatario','Emissao','Empresa','Valor nota','ICMS','ICMS-ST','IPI','PIS','COFINS','Frete','Desconto','Possui ST']]
+    .concat(notas.map(({ n, c }) => [n.numero_nf||'', n.serie||'', n.chave_nfe||'', n.razao_emitente||'', n.cnpj_emitente||'',
+      n.razao_destinatario||'', n.cnpj_destinatario||'', n.data_emissao||'', n.empresa_id||'',
+      n.valor_xml||0, c?c.v_icms||0:'', c?c.v_st||0:'', c?c.v_ipi||0:'', c?c.v_pis||0:'', c?c.v_cofins||0:'',
+      c?c.v_frete||0:'', c?c.v_desconto||0:'', n.possui_st ? 'sim' : 'nao']));
+  const csv = linhas.map(l => l.map(x => `"${String(x).replace('.',',').replace(/"/g,'""')}"`).join(';')).join('\n');
+  baixarTexto(`contador-${ym}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
+}
+function baixarZipContador(){
+  const { ym, notas } = contadorDoMes();
+  zipDeNotas(notas.map(x => x.n), `xmls-contador-${ym}.zip`);
 }
 
 // ── Relatórios ──────────────────────────────────────────────────────────────

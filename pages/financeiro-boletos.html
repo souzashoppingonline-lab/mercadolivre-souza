@@ -119,7 +119,12 @@
             <label class="bo-lbl" id="lblVenc">Vencimento<input type="date" id="fDate" class="bo-in"></label>
             <label class="bo-lbl">Categoria<select id="fCat" class="bo-in"><option value="">Sem categoria</option></select></label>
           </div>
-          <label class="bo-lbl">Fornecedor (opcional)<input id="fSup" class="bo-in" placeholder="Nenhum fornecedor"></label>
+          <label class="bo-lbl">Fornecedor (opcional)
+            <span style="display:flex;gap:6px">
+              <select id="fSup" class="bo-in" style="flex:1"><option value="">Nenhum fornecedor</option></select>
+              <button type="button" class="bo-btn" title="Cadastrar fornecedor novo" onclick="novoFornecedor()"><i class="fas fa-plus"></i></button>
+            </span>
+          </label>
           <label class="bo-lbl">Empresa (opcional)<select id="fEmp" class="bo-in"><option value="">— Selecione —</option></select></label>
           <div id="boEmpChips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
           <label class="bo-lbl">Número NF (opcional)<input id="fNf" class="bo-in" placeholder="Ex: 5644560"></label>
@@ -217,7 +222,7 @@ const hojeISO=()=>new Date().toISOString().slice(0,10);
 function tipoLabel(t){ return {boleto:'Boleto',manual:'Imposto',cartao:'Cartão',fatura_ml:'Fatura ML',flex:'Flex',pessoal:'Pessoal',folha_pagamento:'Folha de Pagamento',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'}[t]||t||'—'; }
 function statusReal(b){ if(b.status==='pago') return 'pago'; if((b.date||'')< hojeISO()) return 'atrasado'; return 'pendente'; }
 
-let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATMAP={}, RECORRENTES=[], PARCELAS=[], CONTAS=[], CONTAEMP=[], fTipo='todos', listStatus='todos';
+let BOLETOS=[], RECS=[], CARTOES=[], CATS=[], CATEGORIAS=[], FORNS=[], CATMAP={}, RECORRENTES=[], PARCELAS=[], CONTAS=[], CONTAEMP=[], fTipo='todos', listStatus='todos';
 const TIPOS=[['todos','Todos'],['boleto','Boleto'],['cartao','Cartão'],['manual','Imposto'],['pessoal','Pessoal'],['fatura_ml','Fatura ML'],['flex','Flex'],['folha_pagamento','Folha de Pagamento'],['custo_fixo','Custo Fixo'],['custo_variavel','Custo Variável']];
 const nfDe=b=>b.numero_nf||b.nf||b.nota_fiscal||'';
 function showStatus(t,err){ const el=document.getElementById('boStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
@@ -226,7 +231,12 @@ async function load(){
   const rB=await DB.getFinanceiroDados('boletos_mensais',5000,'date.asc'); BOLETOS=rB.rows||[];
   const rR=await DB.getFinanceiroDados('receivables',3000,'date.asc'); RECS=rR.rows||[];
   const rCa=await DB.getFinanceiroDados('cartoes',500); CARTOES=rCa.rows||[];
+  // boleto_categories guarda DUAS coisas na mesma tabela, separadas por `type`:
+  // categorias de despesa e fornecedores. Sem esse split o select de categoria
+  // listava fornecedor (MARTINS ATACADO, SANTANDER…) junto com Aluguel/Imposto.
   const rCt=await DB.getFinanceiroDados('boleto_categories',1000); CATS=rCt.rows||[]; CATMAP={}; CATS.forEach(c=>CATMAP[c.id]=c.name);
+  CATEGORIAS=CATS.filter(c=>String(c.type||'').toLowerCase()!=='fornecedor');
+  FORNS=CATS.filter(c=>String(c.type||'').toLowerCase()==='fornecedor');
   const rRe=await DB.getFinanceiroDados('boletos_recorrentes',2000); RECORRENTES=rRe.rows||[];
   const rPc=await DB.getFinanceiroDados('parcelas_cartao',10000,'data_vencimento.asc'); PARCELAS=rPc.rows||[];
   const rBk=await DB.getFinanceiroDados('contas_bancarias',1000); CONTAS=(rBk.error?[]:rBk.rows)||[];
@@ -234,7 +244,7 @@ async function load(){
   const errs=[['boletos_mensais',rB],['receivables',rR],['cartoes',rCa],['boleto_categories',rCt]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
   if(errs.length) showStatus(`⚠️ <b>Falha ao ler o banco.</b> ${esc(errs.join(' · '))}.`,true);
   else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.`,false);
-  document.getElementById('fCat').innerHTML='<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  popularCatSelect(); popularFornSelect();
   document.getElementById('fCartao').innerHTML=CARTOES.length?CARTOES.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||'—')}${c.limite?` · limite ${BRL(c.limite)}`:''}</option>`).join(''):'<option value="">— cadastre um cartão —</option>';
   popularFiltroSelects();
   renderFormControls();
@@ -242,7 +252,7 @@ async function load(){
 }
 function popularFiltroSelects(){
   const uniq=(arr)=>[...new Set(arr.map(x=>String(x||'').trim()).filter(Boolean))].sort();
-  const sup=uniq(BOLETOS.map(b=>b.supplier)), banco=uniq(BOLETOS.map(b=>b.banco));
+  const sup=uniq([...FORNS.map(f=>f.name), ...BOLETOS.map(b=>b.supplier)]), banco=uniq(BOLETOS.map(b=>b.banco));
   const cart=uniq([...CARTOES.map(c=>c.nome), ...BOLETOS.map(b=>b.cartao_credito)]);
   document.getElementById('boSup').innerHTML='<option value="">Fornecedor: Todos</option>'+sup.map(s=>`<option>${esc(s)}</option>`).join('');
   document.getElementById('boBanco').innerHTML='<option value="">Banco: Todos</option>'+banco.map(s=>`<option>${esc(s)}</option>`).join('');
@@ -659,7 +669,7 @@ function editarBoleto(id){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><label style="font-size:11px;color:var(--text-muted)">Valor (R$)</label><input type="number" step="0.01" id="eVal" class="bo-in" value="${+b.value||0}"></div>
-      <div><label style="font-size:11px;color:var(--text-muted)">Fornecedor</label><input id="eSup" class="bo-in" value="${esc(b.supplier||'')}"></div>
+      <div><label style="font-size:11px;color:var(--text-muted)">Fornecedor</label>${selectFornHtml('eSup', b.supplier)}</div>
     </div></div>
     <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)"></div>`;
   abrirModal('✏️ Editar conta', body, 'Salvar', ()=>doEditBoleto(id), false);
@@ -840,19 +850,57 @@ async function gerarRecorrentesMes(){
   if(erro){ eMsgErr('Erro: '+esc(erro)); render(); return; }
   eMsgErr(''); fecharModal(); render(); fMsg(`✅ ${criados} gerado(s), ${pulados} já existiam.`,false);
 }
-function abrirCategorias(){
-  const list=CATS.length?CATS.map(c=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(c.name)}</span></div>`).join(''):'<div class="bo-empty">Nenhuma categoria ainda.</div>';
-  const body=`<div style="margin-bottom:12px">${list}</div><label style="font-size:12px;color:var(--text-muted)">Nova categoria<input id="cCatNome" class="bo-in" placeholder="Ex: Fornecedor, Imposto, Aluguel…"></label><div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
-  abrirModal('🏷️ Categorias de Boleto', body, 'Adicionar', doAddCat, false);
+// ── Categorias e fornecedores (mesma tabela, `type` diferente) ──────────────
+function popularCatSelect(){
+  const sel=document.getElementById('fCat'); if(!sel) return;
+  sel.innerHTML='<option value="">Sem categoria</option>'+CATEGORIAS.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
 }
-async function doAddCat(){
+// O fornecedor é gravado por NOME em boletos_mensais.supplier (não por id), então
+// o value da option é o nome. Um fornecedor antigo que não esteja mais no cadastro
+// entra como opção extra pra edição não apagar o que já estava gravado.
+function selectFornHtml(id, atual){
+  const nomes=[...new Set([...FORNS.map(f=>f.name), atual].filter(Boolean).map(n=>String(n).trim()))].sort();
+  return `<select id="${id}" class="bo-in"><option value="">Nenhum fornecedor</option>`+
+    nomes.map(n=>`<option${String(atual||'').trim()===n?' selected':''}>${esc(n)}</option>`).join('')+'</select>';
+}
+function popularFornSelect(){
+  const sel=document.getElementById('fSup'); if(!sel) return;
+  const atual=sel.value;
+  sel.innerHTML='<option value="">Nenhum fornecedor</option>'+
+    FORNS.map(f=>`<option>${esc(f.name)}</option>`).join('');
+  if(atual && FORNS.some(f=>f.name===atual)) sel.value=atual;
+}
+function novoFornecedor(){ abrirCadastroBC('fornecedor'); }
+
+function abrirCategorias(){ abrirCadastroBC('categoria'); }
+// Um modal só pros dois cadastros — o botão "＋" ao lado do fornecedor abre já
+// no tipo certo. `tipo` decide o que lista e o que grava em boleto_categories.
+function abrirCadastroBC(tipo){
+  const fornecedor = tipo === 'fornecedor';
+  const lista = fornecedor ? FORNS : CATEGORIAS;
+  const list = lista.length
+    ? lista.map(c=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(c.name)}</span></div>`).join('')
+    : `<div class="bo-empty">Nenhum${fornecedor?' fornecedor':'a categoria'} ainda.</div>`;
+  const body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${fornecedor?`${FORNS.length} fornecedor(es) cadastrado(s)`:`${CATEGORIAS.length} categoria(s) cadastrada(s)`}</div>
+    <div style="margin-bottom:12px;max-height:220px;overflow:auto">${list}</div>
+    <label style="font-size:12px;color:var(--text-muted)">${fornecedor?'Novo fornecedor':'Nova categoria'}
+      <input id="cCatNome" class="bo-in" placeholder="${fornecedor?'Ex: MARTINS ATACADO':'Ex: Imposto, Aluguel, Energia…'}"></label>
+    <div id="eMsg" style="font-size:12px;margin-top:8px"></div>`;
+  abrirModal(fornecedor?'🚚 Fornecedores':'🏷️ Categorias de Boleto', body, 'Adicionar', ()=>doAddCat(tipo), false);
+}
+async function doAddCat(tipo){
   const nome=document.getElementById('cCatNome').value.trim();
   if(!nome){ eMsgErr('Informe o nome.'); return; }
+  const type = tipo === 'fornecedor' ? 'fornecedor' : 'categoria';
+  if(CATS.some(c=>String(c.name||'').trim().toLowerCase()===nome.toLowerCase() && String(c.type||'')===type)){ eMsgErr('Esse nome já está cadastrado.'); return; }
   modalBusy(true,'Salvando…');
-  const r=await DB.addFinanceiroRow('boleto_categories',{name:nome,type:'categoria'});
-  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
-  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved){ CATS.push(saved); CATMAP[saved.id]=saved.name; }
-  const sel=document.getElementById('fCat'); sel.innerHTML='<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  const r=await DB.addFinanceiroRow('boleto_categories',{name:nome,type});
+  if(!r||r.error){ modalBusy(false); eMsgErr('Erro: '+esc((r&&r.error)||DB.lastError||'falha ao gravar')); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:{name:nome,type};
+  CATS.push(saved); if(saved.id) CATMAP[saved.id]=saved.name;
+  if(type==='fornecedor'){ FORNS.push(saved); popularFornSelect(); document.getElementById('fSup').value=saved.name; }
+  else { CATEGORIAS.push(saved); popularCatSelect(); }
+  popularFiltroSelects();
   fecharModal(); render();
 }
 

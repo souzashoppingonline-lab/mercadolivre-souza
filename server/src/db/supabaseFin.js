@@ -131,6 +131,55 @@ async function insertRow(nome, obj) { assertWritable(nome); return writeReq('POS
 async function updateRow(nome, id, obj) { assertWritable(nome); return writeReq('PATCH', `/${nome}?id=eq.${encodeURIComponent(id)}`, obj); }
 async function deleteRow(nome, id) { assertWritable(nome); return writeReq('DELETE', `/${nome}?id=eq.${encodeURIComponent(id)}`); }
 
+// ── STORAGE (comprovantes fiscais) ──────────────────────────────────────────
+// Documento de aluguel/água/luz/serviço/frete nem sempre é XML — pode ser PDF
+// ou foto. Texto cabe numa coluna (é o que compras_xml.xml_original faz com o
+// XML), binário não: virar base64 numa linha inflaria a tabela e o payload de
+// toda leitura. Então aqui o backend fala com a Storage API do Supabase, que é
+// um endpoint diferente do PostgREST (/storage/v1, não /rest/v1).
+const BUCKET = process.env.SUPABASE_FIN_BUCKET || 'documentos-fiscais';
+
+async function ensureBucket() {
+  // Idempotente: 409 = já existe, e é o caso normal depois da primeira vez.
+  const r = await fetch(`${BASE()}/storage/v1/bucket`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: BUCKET, name: BUCKET, public: false }),
+  });
+  if (r.ok || r.status === 409) return true;
+  const t = await r.text();
+  if (/already exists/i.test(t)) return true;
+  const e = new Error(`Não consegui criar o bucket "${BUCKET}": ${t}`); e.status = r.status; throw e;
+}
+
+// `caminho` já vem sanitizado pela rota. Devolve o caminho gravado.
+async function uploadObject(caminho, buffer, contentType) {
+  if (!isConfigured()) { const e = new Error('Módulo Financeiro não configurado.'); e.code = 'NOT_CONFIGURED'; throw e; }
+  await ensureBucket();
+  const r = await fetch(`${BASE()}/storage/v1/object/${BUCKET}/${caminho}`, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': contentType || 'application/octet-stream', 'x-upsert': 'true' },
+    body: buffer,
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    const e = new Error(`Supabase Storage ${r.status}: ${t}`); e.status = r.status; throw e;
+  }
+  return `${BUCKET}/${caminho}`;
+}
+
+// Baixa o objeto. O bucket é privado, então o download passa por aqui (com a
+// chave do servidor) em vez de uma URL pública.
+async function downloadObject(caminho) {
+  if (!isConfigured()) { const e = new Error('Módulo Financeiro não configurado.'); e.code = 'NOT_CONFIGURED'; throw e; }
+  const semBucket = String(caminho).replace(new RegExp(`^${BUCKET}/`), '');
+  const r = await fetch(`${BASE()}/storage/v1/object/${BUCKET}/${semBucket}`, { headers: headers() });
+  if (!r.ok) {
+    const e = new Error(`Supabase Storage ${r.status} ao baixar "${semBucket}"`); e.status = r.status; throw e;
+  }
+  return { buffer: Buffer.from(await r.arrayBuffer()), contentType: r.headers.get('content-type') || 'application/octet-stream' };
+}
+
 // Teste de conexão leve (usado pela tela de status do módulo).
 async function ping() {
   if (!isConfigured()) return { configured: false, key_hint: keyHint(), url: BASE() || null };
@@ -142,4 +191,4 @@ async function ping() {
   }
 }
 
-module.exports = { isConfigured, get, listTables, previewTable, selectRows, insertRow, updateRow, deleteRow, ping, keyHint };
+module.exports = { isConfigured, get, listTables, previewTable, selectRows, insertRow, updateRow, deleteRow, ping, keyHint, uploadObject, downloadObject, BUCKET };

@@ -112,6 +112,7 @@
         <button class="cp-tab" id="cpTabFech"    onclick="setAba('fech')">Fechamento</button>
         <button class="cp-tab" id="cpTabConc"    onclick="setAba('conc')">Conciliação</button>
         <button class="cp-tab" id="cpTabCont"    onclick="setAba('cont')">Acesso Contador</button>
+        <button class="cp-tab" id="cpTabFiscal"  onclick="setAba('fiscal')">Relatório Fiscal</button>
       </div>
 
       <!-- ═══ ABA COMPRAS ═══ -->
@@ -140,7 +141,17 @@
         </div>
 
         <div class="cp-card">
-          <h3>2 · Registro rápido</h3>
+          <h3>2 · NF-e / Central Fiscal</h3>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);font-weight:700;margin-bottom:9px">Categoria do documento</div>
+          <div class="cp-emps" id="cpCats"></div>
+          <div id="cpCatHint" class="cp-aviso" style="margin-top:10px"></div>
+
+          <div class="cp-top" style="margin:14px 0 4px">
+            <button class="cp-btn" onclick="escolherDoc()"><i class="fas fa-paperclip"></i> Anexar comprovante</button>
+            <input type="file" id="cpFileDoc" accept=".xml,.pdf,.png,.jpg,.jpeg,.webp" style="display:none" onchange="anexarDoc(this.files[0])">
+            <span id="cpDocInfo" style="font-size:12px;color:var(--text-muted)">XML, PDF ou foto — até 20 MB.</span>
+          </div>
+
           <div class="cp-form">
             <div class="cp-f"><label>Fornecedor</label><input id="cFornecedor" list="cpForns" placeholder="Nome do fornecedor"><datalist id="cpForns"></datalist></div>
             <div class="cp-f"><label>Valor total (R$)</label><input id="cValor" placeholder="0,00"></div>
@@ -239,6 +250,19 @@
           <button class="cp-btn" onclick="baixarZipContador()"><i class="fas fa-file-zipper"></i> XMLs do mês</button>
         </div>
         <div id="cpContador"></div>
+      </div>
+
+      <!-- ═══ ABA: RELATÓRIO FISCAL (categorias da Central Fiscal) ═══ -->
+      <div class="cp-pane" id="cpPaneFiscal">
+        <div class="cp-top">
+          <select id="cpFisMes" onchange="renderFiscal()"></select>
+          <select id="cpFisAno" onchange="renderFiscal()"></select>
+          <select id="cpFisCat" onchange="renderFiscal()"></select>
+          <select id="cpFisEmp" onchange="renderFiscal()"></select>
+          <button class="cp-btn" onclick="fiscalPDF()"><i class="fas fa-file-pdf"></i> Relatório mensal (PDF)</button>
+          <button class="cp-btn" onclick="fiscalCSV()"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div id="cpFiscal"></div>
       </div>
     </div>
   </main>
@@ -348,11 +372,11 @@ async function load(){
 
   document.getElementById('cpForns').innerHTML = FORNECEDORES.map(f => `<option value="${esc(f.name)}">`).join('');
   document.getElementById('eEmpresa').innerHTML = EMPRESAS.map(e => `<option>${esc(e.nome)}</option>`).join('');
-  renderEmpresas(); renderTudo();
+  renderEmpresas(); renderCategorias(); renderTudo();
 }
 
 const ABAS = [['Compras','compras'], ['Relat','relat'], ['Comp','comp'], ['Xml','xml'],
-              ['Nfe','nfe'], ['RelNfe','relnfe'], ['Fech','fech'], ['Conc','conc'], ['Cont','cont']];
+              ['Nfe','nfe'], ['RelNfe','relnfe'], ['Fech','fech'], ['Conc','conc'], ['Cont','cont'], ['Fiscal','fiscal']];
 function setAba(a){
   aba = a;
   ABAS.forEach(([suf, chave]) => {
@@ -360,7 +384,8 @@ function setAba(a){
     document.getElementById('cpTab'+suf).classList.toggle('on', a === chave);
   });
   ({ relat: renderRelatorios, comp: renderComparacao, xml: renderXmlFiscal, nfe: renderNfeEntradas,
-     relnfe: renderRelNfe, fech: renderFechamento, conc: renderConciliacao, cont: renderContador }[a] || (() => {}))();
+     relnfe: renderRelNfe, fech: renderFechamento, conc: renderConciliacao, cont: renderContador,
+     fiscal: renderFiscal }[a] || (() => {}))();
 }
 function setSub(s){
   sub = s;
@@ -454,7 +479,77 @@ function renderNfe(){
     </div>`;
 }
 
-// ── Registro rápido ─────────────────────────────────────────────────────────
+
+// ── Central Fiscal: categorias de documento ─────────────────────────────────
+// A categoria vai em `compras_cmv.tipo_compra` (coluna text que já existe e
+// hoje é sempre 'normal') — sem schema novo. É o que permite lançar aluguel,
+// água, luz, serviço e frete no mesmo lugar da NF-e de mercadoria: documento
+// sem chave de 44 dígitos é normal fora de "Documentos Fiscais".
+const CATEGORIAS_FISCAIS = [
+  { key:'documentos', nome:'Documentos Fiscais', cor:'#3b82f6', ico:'fa-file-invoice',
+    hint:'Notas e documentos de pagamento — inclusive os que <b>não têm chave de acesso</b>, como aluguel, água e luz.' },
+  { key:'despesas',   nome:'Despesas',           cor:'#f59e0b', ico:'fa-receipt',
+    hint:'Consolidação de gastos do dia a dia que não viram mercadoria em estoque.' },
+  { key:'ativos',     nome:'Ativos',             cor:'#a855f7', ico:'fa-boxes-packing',
+    hint:'Bens e equipamentos — o que fica na empresa, não é revendido.' },
+  { key:'servicos',   nome:'Serviços',           cor:'#14b8a6', ico:'fa-screwdriver-wrench',
+    hint:'NFS-e — nota de serviço tomado (contador, manutenção, agência…).' },
+  { key:'fretes',     nome:'Fretes',             cor:'#ec4899', ico:'fa-truck-fast',
+    hint:'CT-e — conhecimento de transporte das entregas e coletas.' },
+];
+const CAT_MAP = Object.fromEntries(CATEGORIAS_FISCAIS.map(c => [c.key, c]));
+const catDe = c => CAT_MAP[String(c.tipo_compra || '').trim()] || null;
+const rotuloCat = c => { const k = catDe(c); return k ? k.nome : 'Mercadoria'; };
+let catSel = 'documentos';
+let docAnexado = null;   // { path, nome, tamanho } depois do upload
+
+function renderCategorias(){
+  document.getElementById('cpCats').innerHTML = CATEGORIAS_FISCAIS.map(c =>
+    `<button class="cp-emp ${catSel === c.key ? 'on' : ''}" style="--c:${c.cor};padding:9px 16px;font-size:12.5px"
+       onclick="selCategoria('${c.key}')"><i class="fas ${c.ico}"></i> ${esc(c.nome)}</button>`).join('');
+  const c = CAT_MAP[catSel];
+  document.getElementById('cpCatHint').innerHTML = c ? c.hint : '';
+}
+function selCategoria(k){ catSel = k; renderCategorias(); }
+
+// ── Comprovante (XML, PDF ou foto) ──────────────────────────────────────────
+// XML de NF-e cai no fluxo de importação (que já extrai tudo). Qualquer outro
+// arquivo sobe pro Storage e fica anexado à compra que for registrada em
+// seguida — o caminho vai em `compras_cmv.xml_url`.
+function escolherDoc(){
+  if (!empSel) { alert('Escolha a empresa antes de anexar o comprovante.'); return; }
+  const inp = document.getElementById('cpFileDoc'); inp.value = ''; inp.click();
+}
+async function anexarDoc(file){
+  if (!file) return;
+  const info = document.getElementById('cpDocInfo');
+  if (/\.xml$/i.test(file.name)) {
+    info.textContent = 'XML detectado — abrindo a importação de NF-e…';
+    await lerXmls([file]);
+    info.textContent = 'XML, PDF ou foto — até 20 MB.';
+    return;
+  }
+  info.textContent = `Enviando ${file.name}…`;
+  const fd = new FormData();
+  fd.append('arquivo', file);
+  fd.append('empresa', empSel || '');
+  fd.append('competencia', (document.getElementById('cData').value || hojeISO()).slice(0, 7));
+  const r = await DB.uploadFinanceiroArquivo(fd);
+  if (!r || r.error) {
+    docAnexado = null;
+    info.innerHTML = `<span style="color:#f87171">Falha ao enviar: ${esc((r && r.error) || 'verifique se o bucket existe e se a chave é service_role')}</span>`;
+    return;
+  }
+  docAnexado = r;
+  info.innerHTML = `<span style="color:#22c55e"><i class="fas fa-check"></i> ${esc(r.nome)}</span> anexado — some ao registrar.
+    <button class="cp-mini" onclick="removerDoc()">remover</button>`;
+}
+function removerDoc(){
+  docAnexado = null;
+  document.getElementById('cpDocInfo').textContent = 'XML, PDF ou foto — até 20 MB.';
+}
+
+// ── Registro do documento ───────────────────────────────────────────────────
 async function salvarCompra(){
   if (!empSel) { alert('Selecione a empresa antes de registrar a compra.'); return; }
   const valor = pNum(document.getElementById('cValor').value);
@@ -469,15 +564,18 @@ async function salvarCompra(){
     data_entrada: document.getElementById('cEntrega').value || null,
     observacao: document.getElementById('cObs').value.trim() || null,
     status_entrega: document.getElementById('cStatus').value,
-    tipo_compra: 'normal',
-    origem: 'MANUAL',   // compras_cmv.origem distingue lançamento manual de XML
+    tipo_compra: catSel,          // categoria fiscal (ver CATEGORIAS_FISCAIS)
+    origem: 'MANUAL',             // compras_cmv.origem distingue lançamento manual de XML
+    xml_url: docAnexado ? docAnexado.path : null,
   };
   const r = await DB.addFinanceiroRow('compras_cmv', linha);
   if (!r || r.error) { alert('Falha ao registrar a compra:\n\n' + motivoErro(r)); return; }
   COMPRAS.unshift((r.rows && r.rows[0]) || linha);
+  const anexou = !!docAnexado;
   ['cFornecedor','cValor','cObs'].forEach(id => document.getElementById(id).value = '');
+  removerDoc();
   renderTudo();
-  showStatus(`✅ Compra de <b>${esc(fornecedor)}</b> registrada em <b>${esc(empSel)}</b> — ${BRL(valor)}.`, false);
+  showStatus(`✅ <b>${esc(CAT_MAP[catSel] ? CAT_MAP[catSel].nome : 'Documento')}</b> de <b>${esc(fornecedor)}</b> registrado em <b>${esc(empSel)}</b> — ${BRL(valor)}${anexou ? ' · comprovante anexado' : ''}.`, false);
 }
 
 // ── Histórico ───────────────────────────────────────────────────────────────
@@ -833,7 +931,7 @@ async function confirmarImportacao(){
         valor_nfe: n.valor_nfe, valor_pago: n.valor_pago, diferenca_nfe: dif,
         valor_alterado: Math.abs(dif) > 0.009, motivo_alteracao: n.motivo || null,
         chave_nfe: n.chave_nfe, numero_nf: n.numero_nf, serie_nf: n.serie,
-        origem: 'XML', tipo_compra: 'normal', status_entrega: statusEntrega,
+        origem: 'XML', tipo_compra: 'documentos', status_entrega: statusEntrega,
         v_icms: n.v_icms, v_ipi: n.v_ipi, v_pis: n.v_pis, v_cofins: n.v_cofins,
         v_frete: n.v_frete, v_st: n.v_st, v_desconto: n.v_desconto,
         v_icms_base: n.v_icms_base, v_st_base: n.v_st_base,
@@ -1228,6 +1326,177 @@ function exportarContadorCSV(){
 function baixarZipContador(){
   const { ym, notas } = contadorDoMes();
   zipDeNotas(notas.map(x => x.n), `xmls-contador-${ym}.zip`);
+}
+
+
+// ═══ RELATÓRIO FISCAL ═══════════════════════════════════════════════════════
+// Só o que passou pela Central Fiscal — os lançamentos com categoria. Compra de
+// mercadoria antiga (tipo_compra 'normal') fica de fora de propósito: quem
+// analisa isso é a aba Relatórios.
+function popularSelectsFiscal(){
+  const sm = document.getElementById('cpFisMes');
+  if (sm && !sm.innerHTML) {
+    const agora = new Date();
+    sm.innerHTML = '<option value="">Ano inteiro</option>' + MESES.map((n,i) => `<option value="${i+1}">${n}</option>`).join('');
+    document.getElementById('cpFisAno').innerHTML =
+      Array.from({length:5}, (_,i) => agora.getFullYear() - i).map(y => `<option value="${y}">${y}</option>`).join('');
+    sm.value = agora.getMonth() + 1;
+    document.getElementById('cpFisAno').value = agora.getFullYear();
+    document.getElementById('cpFisCat').innerHTML = '<option value="">Todas as categorias</option>' +
+      CATEGORIAS_FISCAIS.map(c => `<option value="${c.key}">${esc(c.nome)}</option>`).join('');
+    document.getElementById('cpFisEmp').innerHTML = '<option value="">Todas as empresas</option>' +
+      EMPRESAS.map(e => `<option>${esc(e.nome)}</option>`).join('');
+  }
+}
+function periodoFiscal(){
+  const mes = document.getElementById('cpFisMes').value, ano = document.getElementById('cpFisAno').value;
+  return { mes, ano, ym: mes ? `${ano}-${String(mes).padStart(2,'0')}` : null,
+           label: mes ? `${MESES[+mes-1]} de ${ano}` : `Ano de ${ano}` };
+}
+function docsFiscais(){
+  const { ym, ano } = periodoFiscal();
+  const cat = document.getElementById('cpFisCat').value, emp = document.getElementById('cpFisEmp').value;
+  return COMPRAS.filter(c => {
+    if (!catDe(c)) return false;                                  // só o que tem categoria fiscal
+    const d = String(c.data_compra || '');
+    if (ym ? d.slice(0,7) !== ym : d.slice(0,4) !== String(ano)) return false;
+    if (cat && String(c.tipo_compra) !== cat) return false;
+    if (emp && String(c.empresa || '').trim() !== emp) return false;
+    return true;
+  }).sort((a,b) => String(b.data_compra).localeCompare(String(a.data_compra)));
+}
+
+function renderFiscal(){
+  popularSelectsFiscal();
+  const docs = docsFiscais();
+  const { label } = periodoFiscal();
+  const total = docs.reduce((s,c) => s + valorDe(c), 0);
+  const comAnexo = docs.filter(c => c.xml_url || c.chave_nfe).length;
+
+  const porCat = CATEGORIAS_FISCAIS.map(k => {
+    const l = docs.filter(c => String(c.tipo_compra) === k.key);
+    return { ...k, qtd: l.length, total: l.reduce((s,c) => s + valorDe(c), 0) };
+  }).filter(k => k.qtd);
+  const porForn = [...docs.reduce((m,c) => {
+    const k = (c.fornecedor_nome || '—').trim();
+    const a = m.get(k) || { qtd:0, total:0 }; a.qtd++; a.total += valorDe(c); m.set(k, a); return m;
+  }, new Map()).entries()].map(([nome, v]) => ({ nome, ...v })).sort((a,b) => b.total - a.total);
+
+  document.getElementById('cpFiscal').innerHTML = `
+    <div class="card-grid" style="margin-bottom:16px">
+      <div class="stat-card"><div class="label">Documentos — ${esc(label)}</div><div class="value">${NUM(docs.length)}</div></div>
+      <div class="stat-card"><div class="label">Valor total</div><div class="value">${BRL(total)}</div></div>
+      <div class="stat-card"><div class="label">Com comprovante</div><div class="value" style="color:${comAnexo === docs.length && docs.length ? '#22c55e' : '#f59e0b'}">${NUM(comAnexo)}/${NUM(docs.length)}</div></div>
+      <div class="stat-card"><div class="label">Categorias usadas</div><div class="value">${NUM(porCat.length)}</div></div>
+    </div>
+
+    ${porCat.length ? `<div class="cp-grid2">
+      <div class="cp-card"><h3>Por categoria</h3><canvas id="cpChartFis" height="200"></canvas></div>
+      <div class="cp-card"><h3>Detalhe por categoria</h3><div class="cp-bars">
+        ${porCat.map(k => {
+          const p = total ? k.total / total * 100 : 0;
+          return `<div class="cp-bar"><span style="color:${k.cor};font-weight:800"><i class="fas ${k.ico}"></i> ${esc(k.nome)}</span>
+            <span class="track"><span class="fill" style="width:${p.toFixed(1)}%;background:${k.cor}"></span></span>
+            <span class="val">${BRL(k.total)} · ${NUM(k.qtd)}</span></div>`;
+        }).join('')}
+      </div></div>
+    </div>` : ''}
+
+    <div class="cp-card"><h3>Por fornecedor</h3>
+      ${porForn.length ? `<div class="cp-wrap"><table class="cp-tbl">
+        <thead><tr><th>Fornecedor</th><th class="n">Documentos</th><th class="n">Total</th><th class="n">%</th></tr></thead>
+        <tbody>${porForn.map(f => `<tr><td>${esc(f.nome)}</td><td class="n">${NUM(f.qtd)}</td>
+          <td class="n">${BRL(f.total)}</td><td class="n">${total ? PCT(f.total/total*100) : '—'}</td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="cp-empty">Sem documentos no período.</div>'}
+    </div>
+
+    <div class="cp-card"><h3>Documentos do período</h3>
+      ${docs.length ? `<div class="cp-wrap"><table class="cp-tbl">
+        <thead><tr><th>Data</th><th>Categoria</th><th>Empresa</th><th>Fornecedor</th><th class="n">Valor</th><th>Comprovante</th><th>Observação</th></tr></thead>
+        <tbody>${docs.map(c => { const k = catDe(c); return `<tr>
+          <td style="white-space:nowrap">${dataBR(c.data_compra)}</td>
+          <td><span class="cp-badge" style="border:1px solid ${k.cor}66;color:${k.cor}"><i class="fas ${k.ico}"></i> ${esc(k.nome)}</span></td>
+          <td><span class="cp-badge" style="border:1px solid ${corEmp(c.empresa)}66;color:${corEmp(c.empresa)}">${esc(c.empresa||'—')}</span></td>
+          <td>${esc(c.fornecedor_nome || '—')}</td>
+          <td class="n">${BRL(valorDe(c))}</td>
+          <td>${c.xml_url ? `<a class="cp-mini" href="${esc(DB.financeiroArquivoUrl(c.xml_url))}" target="_blank" rel="noopener"><i class="fas fa-paperclip"></i> abrir</a>`
+                : (c.chave_nfe ? '<span class="cp-badge" style="border:1px solid #3b82f666;color:#3b82f6">NF-e</span>'
+                               : '<span style="color:#f59e0b;font-size:11px">sem comprovante</span>')}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.observacao || '—')}</td>
+        </tr>`; }).join('')}</tbody></table></div>`
+        : `<div class="cp-empty">Nenhum documento fiscal em ${esc(label)}.<br><br>Lance em <b>NF-e / Central Fiscal</b> escolhendo a categoria — aluguel, água, luz, serviço e frete entram aqui mesmo sem chave de acesso.</div>`}
+    </div>`;
+
+  if (porCat.length) {
+    destroyChart('fiscal');
+    charts.fiscal = new Chart(document.getElementById('cpChartFis'), {
+      type: 'doughnut',
+      data: { labels: porCat.map(k => k.nome), datasets: [{ data: porCat.map(k => k.total), backgroundColor: porCat.map(k => k.cor), borderWidth: 0 }] },
+      options: { responsive:true, cutout:'58%', plugins:{ legend:{ position:'right', labels:{ color:'#ccc', boxWidth:10, font:{ size:11 } } } } },
+    });
+  }
+}
+
+function fiscalCSV(){
+  const docs = docsFiscais(); const { label } = periodoFiscal();
+  if (!docs.length) { alert('Sem documentos no período.'); return; }
+  const linhas = [['Data','Categoria','Empresa','Fornecedor','Valor','Comprovante','Chave NF-e','Observacao']]
+    .concat(docs.map(c => [dataBR(c.data_compra), rotuloCat(c), c.empresa||'', c.fornecedor_nome||'',
+      String(valorDe(c)).replace('.',','), c.xml_url || (c.chave_nfe ? 'NF-e' : 'sem comprovante'),
+      c.chave_nfe || '', (c.observacao||'').replace(/[\r\n;]/g,' ')]));
+  const csv = linhas.map(l => l.map(x => `"${String(x).replace(/"/g,'""')}"`).join(';')).join('\n');
+  baixarTexto(`relatorio-fiscal-${label.replace(/\s+/g,'-').toLowerCase()}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
+}
+
+// PDF pela janela de impressão — mesmo padrão do resto do projeto.
+function fiscalPDF(){
+  const docs = docsFiscais(); const { label } = periodoFiscal();
+  if (!docs.length) { alert('Sem documentos no período pra gerar o relatório.'); return; }
+  const total = docs.reduce((s,c) => s + valorDe(c), 0);
+  const porCat = CATEGORIAS_FISCAIS.map(k => {
+    const l = docs.filter(c => String(c.tipo_compra) === k.key);
+    return { ...k, qtd: l.length, total: l.reduce((s,c) => s + valorDe(c), 0) };
+  }).filter(k => k.qtd);
+  const emp = document.getElementById('cpFisEmp').value, cat = document.getElementById('cpFisCat').value;
+  const filtros = [emp, cat ? CAT_MAP[cat].nome : ''].filter(Boolean).join(' · ');
+
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Relatório Fiscal — ${esc(label)}</title>
+<style>
+  @page { size:A4 portrait; margin:12mm; }
+  body { font-family:Arial,Helvetica,sans-serif; color:#111; margin:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  h1 { font-size:17px; margin:0 0 2px; } .sub { color:#555; font-size:11px; margin-bottom:14px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#444; border-bottom:1px solid #ccc; padding-bottom:4px; margin:16px 0 9px; }
+  table { width:100%; border-collapse:collapse; font-size:10px; }
+  th { text-align:left; font-size:9px; text-transform:uppercase; color:#666; border-bottom:1px solid #bbb; padding:5px 6px; }
+  td { padding:4px 6px; border-bottom:1px solid #eee; } td.n, th.n { text-align:right; }
+  tr { page-break-inside:avoid; }
+  .tot { display:flex; gap:8mm; margin-bottom:6mm; }
+  .k { flex:1; border:1px solid #ddd; border-radius:6px; padding:8px 10px; }
+  .kl { font-size:9px; text-transform:uppercase; color:#666; } .kv { font-size:15px; font-weight:700; }
+  .rod { margin-top:10mm; border-top:1px solid #ddd; padding-top:6px; font-size:9px; color:#777; }
+</style></head><body>
+<h1>Relatório Fiscal — ${esc(label)}</h1>
+<div class="sub">${filtros ? esc(filtros) + ' · ' : ''}${docs.length} documento(s) · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+<div class="tot">
+  <div class="k"><div class="kl">Total do período</div><div class="kv">${BRL(total)}</div></div>
+  <div class="k"><div class="kl">Documentos</div><div class="kv">${NUM(docs.length)}</div></div>
+  <div class="k"><div class="kl">Com comprovante</div><div class="kv">${NUM(docs.filter(c => c.xml_url || c.chave_nfe).length)}</div></div>
+</div>
+<h2>Por categoria</h2>
+<table><thead><tr><th>Categoria</th><th class="n">Documentos</th><th class="n">Total</th><th class="n">%</th></tr></thead>
+<tbody>${porCat.map(k => `<tr><td>${esc(k.nome)}</td><td class="n">${NUM(k.qtd)}</td><td class="n">${BRL(k.total)}</td><td class="n">${total ? PCT(k.total/total*100) : '—'}</td></tr>`).join('')}</tbody></table>
+<h2>Documentos</h2>
+<table><thead><tr><th>Data</th><th>Categoria</th><th>Empresa</th><th>Fornecedor</th><th class="n">Valor</th><th>Comprovante</th></tr></thead>
+<tbody>${docs.map(c => `<tr><td>${dataBR(c.data_compra)}</td><td>${esc(rotuloCat(c))}</td><td>${esc(c.empresa||'—')}</td>
+  <td>${esc(c.fornecedor_nome||'—')}</td><td class="n">${BRL(valorDe(c))}</td>
+  <td>${c.xml_url ? 'arquivo' : (c.chave_nfe ? 'NF-e ' + esc(c.numero_nf || '') : '—')}</td></tr>`).join('')}
+<tr><td colspan="4" style="text-align:right;font-weight:700">Total</td><td class="n" style="font-weight:700">${BRL(total)}</td><td></td></tr></tbody></table>
+<div class="rod">ML Dashboard — Central Fiscal. Só documentos categorizados; compra de mercadoria sem categoria fiscal não entra neste relatório.</div>
+<script>window.onload=function(){window.print();}<\/script></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permita pop-ups neste site para gerar o PDF.'); return; }
+  w.document.write(html); w.document.close();
 }
 
 // ── Relatórios ──────────────────────────────────────────────────────────────

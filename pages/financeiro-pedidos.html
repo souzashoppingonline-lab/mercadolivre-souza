@@ -63,6 +63,15 @@
     .pd-h .v { font-weight:800; font-variant-numeric:tabular-nums; }
     .pd-chip { border-radius:999px; padding:2px 10px; font-size:10px; font-weight:800; border:1px solid var(--border); white-space:nowrap; }
     .pd-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+    .pd-cont { background:var(--border); color:var(--text-muted); border-radius:999px; padding:1px 8px; font-size:11px; font-weight:800; }
+    .pd-tab.on .pd-cont { background:rgba(34,197,94,.18); color:#22c55e; }
+    .pd-hfiltros { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    .pd-hfiltros select { background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:9px; padding:8px 12px; font-size:12.5px; }
+    .pd-htot { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+    .pd-htot div { flex:1; min-width:150px; border:1px solid var(--border); border-radius:10px; padding:9px 12px; }
+    .pd-htot .l { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); }
+    .pd-htot .v2 { font-size:17px; font-weight:800; font-variant-numeric:tabular-nums; }
+    .pd-h.novo { background:rgba(34,197,94,.09); }
 
     /* Modal empresas */
     .pd-back { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:900; padding:20px; }
@@ -123,6 +132,7 @@
         <button class="pd-tab on" id="pdTabPedido" onclick="setAba('pedido')"><i class="fas fa-file-signature"></i> Pedido</button>
         <button class="pd-tab" id="pdTabForn" onclick="setAba('forn')"><i class="fas fa-truck-field"></i> Cadastro de fornecedor</button>
         <button class="pd-tab" id="pdTabCont" onclick="setAba('cont')"><i class="fas fa-address-book"></i> Lista de contatos</button>
+        <button class="pd-tab" id="pdTabHist" onclick="setAba('hist')"><i class="fas fa-rectangle-list"></i> Pedidos criados <span class="pd-cont" id="pdHistCont">0</span></button>
       </div>
 
       <div class="pd-pane on" id="pdPanePedido">
@@ -175,11 +185,28 @@
         </div>
       </div>
 
-      <div class="pd-card">
-        <h3>Pedidos salvos</h3>
-        <div id="pdHist"><div class="pd-empty">Carregando…</div></div>
-      </div>
       </div><!-- /pane pedido -->
+
+      <!-- ═══ ABA: PEDIDOS CRIADOS (consulta) ═══ -->
+      <div class="pd-pane" id="pdPaneHist">
+        <div class="pd-card">
+          <h3 style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <span>Pedidos criados</span>
+            <input class="pd-fbusca" id="pdHBusca" placeholder="Buscar por número, fornecedor, empresa, item…" oninput="renderHist()">
+          </h3>
+          <div class="pd-hfiltros">
+            <select id="pdHEmp" onchange="renderHist()"></select>
+            <select id="pdHPer" onchange="renderHist()">
+              <option value="">Todo o período</option>
+              <option value="mes">Mês atual</option>
+              <option value="30">Últimos 30 dias</option>
+              <option value="ano">Ano atual</option>
+            </select>
+          </div>
+          <div class="pd-htot" id="pdHTotais"></div>
+          <div id="pdHist"><div class="pd-empty">Carregando…</div></div>
+        </div>
+      </div>
 
       <!-- ═══ ABA: CADASTRO DE FORNECEDOR ═══ -->
       <div class="pd-pane" id="pdPaneForn">
@@ -340,7 +367,7 @@ create table if not exists pedido_contatos (
 -- OBRIGATÓRIO: o Supabase cria a tabela com RLS ligado e sem policy nenhuma.
 -- Sem isto a leitura volta VAZIA em silêncio e a gravação responde
 -- "401 new row violates row-level security policy". Mesma liberação que as
--- outras tabelas deste banco já têm. `to public` vale para qualquer role —
+-- outras tabelas deste banco já têm. "to public" vale para qualquer role —
 -- não depende de qual chave o servidor está usando.
 alter table public.pedidos              enable row level security;
 alter table public.pedido_empresas      enable row level security;
@@ -411,10 +438,11 @@ async function load(){
 
 // ── Abas ────────────────────────────────────────────────────────────────────
 function setAba(a){
-  [['Pedido','pedido'], ['Forn','forn'], ['Cont','cont']].forEach(([suf, chave]) => {
+  [['Pedido','pedido'], ['Forn','forn'], ['Cont','cont'], ['Hist','hist']].forEach(([suf, chave]) => {
     document.getElementById('pdPane'+suf).classList.toggle('on', a === chave);
     document.getElementById('pdTab'+suf).classList.toggle('on', a === chave);
   });
+  if (a === 'hist') renderHist();
 }
 
 // 1ª execução: grava as 3 empresas do negócio pra que já apareçam editáveis.
@@ -551,18 +579,78 @@ async function salvarPedido(){
   const { empresa_cor, fornecedor_contato, ...linha } = p;
   const r = await DB.addFinanceiroRow('pedidos', linha);
   if (!r || r.error) { alert('Falha ao salvar o pedido:\n\n' + motivoErro(r)); return; }
-  PEDIDOS.unshift((r.rows && r.rows[0]) || linha);
-  renderHist(); sugerirNumero();
-  showStatus(`✅ Pedido <b>${esc(p.numero)}</b> salvo — ${p.total_itens} item(ns), ${BRL(p.valor_total)}.`, false);
+  const salvo = (r.rows && r.rows[0]) || linha;
+  PEDIDOS.unshift(salvo);
+  ultimoSalvo = salvo.id || null;
+  sugerirNumero();
+  showStatus(`✅ Pedido <b>${esc(p.numero)}</b> salvo — ${p.total_itens} item(ns), ${BRL(p.valor_total)}. Aberto em <b>Pedidos criados</b>.`, false);
+  // Todo pedido salvo cai na aba de consulta, já destacado — é lá que ele vive
+  // a partir de agora, não no fim do formulário.
+  limparFiltrosHist();
+  setAba('hist');
+  window.scrollTo({ top:0, behavior:'smooth' });
 }
 
+// ── Aba "Pedidos criados": consulta dos pedidos salvos ──────────────────────
+let ultimoSalvo = null;   // destaca na lista o que acabou de ser gravado
+
+function limparFiltrosHist(){
+  ['pdHBusca'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['pdHEmp','pdHPer'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+}
+function popularFiltrosHist(){
+  const se = document.getElementById('pdHEmp');
+  if (!se) return;
+  const atual = se.value;
+  const nomes = [...new Set(PEDIDOS.map(p => (p.empresa_nome||'').trim()).filter(Boolean))].sort();
+  se.innerHTML = '<option value="">Todas as empresas</option>' + nomes.map(n => `<option>${esc(n)}</option>`).join('');
+  se.value = nomes.includes(atual) ? atual : '';
+}
+// Recorte do período pelo campo `data` do pedido (a data do documento, não a
+// de gravação — é por ela que se procura um pedido).
+function pedidosFiltrados(){
+  const busca = (document.getElementById('pdHBusca')?.value || '').trim().toLowerCase();
+  const emp = document.getElementById('pdHEmp')?.value || '';
+  const per = document.getElementById('pdHPer')?.value || '';
+  const hoje = new Date(); const ym = hojeISO().slice(0,7); const ano = hojeISO().slice(0,4);
+  const limite30 = new Date(hoje.getTime() - 30*864e5).toISOString().slice(0,10);
+  return PEDIDOS.filter(p => {
+    if (emp && (p.empresa_nome||'').trim() !== emp) return false;
+    const d = String(p.data || '').slice(0,10);
+    if (per === 'mes' && d.slice(0,7) !== ym) return false;
+    if (per === 'ano' && d.slice(0,4) !== ano) return false;
+    if (per === '30' && !(d && d >= limite30)) return false;
+    if (busca) {
+      const itensTxt = (p.itens || []).map(i => `${i.codigo||''} ${i.descricao||''}`).join(' ');
+      const alvo = `${p.numero||''} ${p.fornecedor||''} ${p.fornecedor_cnpj||''} ${p.empresa_nome||''} ${p.observacoes||''} ${itensTxt}`.toLowerCase();
+      if (!alvo.includes(busca)) return false;
+    }
+    return true;
+  });
+}
 function renderHist(){
   const el = document.getElementById('pdHist');
-  if (!PEDIDOS.length) { el.innerHTML = '<div class="pd-empty">Nenhum pedido salvo ainda.</div>'; return; }
-  el.innerHTML = PEDIDOS.map(p => {
+  if (!el) return;
+  popularFiltrosHist();
+  const cont = document.getElementById('pdHistCont');
+  if (cont) cont.textContent = String(PEDIDOS.length);
+  const lista = pedidosFiltrados();
+  const tot = document.getElementById('pdHTotais');
+  if (tot) {
+    const valor = lista.reduce((s,p) => s + (Number(p.valor_total)||0), 0);
+    const unid = lista.reduce((s,p) => s + (Number(p.total_unidades)||0), 0);
+    tot.innerHTML = PEDIDOS.length ? `
+      <div><div class="l">Pedidos${lista.length !== PEDIDOS.length ? ' no filtro' : ''}</div><div class="v2">${lista.length}</div></div>
+      <div><div class="l">Unidades</div><div class="v2">${unid.toLocaleString('pt-BR')}</div></div>
+      <div><div class="l">Valor total</div><div class="v2" style="color:#22c55e">${BRL(valor)}</div></div>` : '';
+  }
+  if (!PEDIDOS.length) { el.innerHTML = '<div class="pd-empty">Nenhum pedido salvo ainda.<br><br>Monte o pedido na aba <b>Pedido</b> e clique em <b>Salvar pedido</b> — ele aparece aqui.</div>'; return; }
+  if (!lista.length) { el.innerHTML = '<div class="pd-empty">Nenhum pedido encontrado com esse filtro.</div>'; return; }
+  el.innerHTML = lista.map(p => {
     const cor = (EMPS.find(e => e.nome === p.empresa_nome) || {}).cor || '#64748b';
-    return `<div class="pd-h">
-      <span class="num">${esc(p.numero||'—')}</span>
+    const novo = ultimoSalvo && String(p.id) === String(ultimoSalvo);
+    return `<div class="pd-h${novo ? ' novo' : ''}">
+      <span class="num">${esc(p.numero||'—')}${novo ? ' <span class="pd-chip" style="border-color:#22c55e66;color:#22c55e">novo</span>' : ''}</span>
       <span><span class="pd-chip" style="border-color:${esc(cor)}66;color:${esc(cor)}">${esc(p.empresa_nome||'—')}</span> ${esc(p.fornecedor||'')}</span>
       <span style="font-size:12px;color:var(--text-muted)">${dataBR(p.data)}</span>
       <span class="v">${BRL(p.valor_total)}</span>

@@ -335,7 +335,21 @@ create table if not exists pedido_contatos (
   telefone text, telefone2 text, email text,
   cidade text, uf text, observacoes text,
   ativo boolean default true, created_at timestamptz default now()
-);`;
+);
+
+-- OBRIGATÓRIO: o Supabase cria a tabela com RLS ligado e sem policy nenhuma.
+-- Sem isto a leitura volta VAZIA em silêncio e a gravação responde
+-- "401 new row violates row-level security policy". Mesma liberação que as
+-- outras tabelas deste banco já têm.
+do $$
+declare t text;
+begin
+  foreach t in array array['pedido_empresas','pedidos','pedido_fornecedores','pedido_contatos'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "app_acesso_total" on public.%I', t);
+    execute format('create policy "app_acesso_total" on public.%I for all to anon, authenticated using (true) with check (true)', t);
+  end loop;
+end $$;`;
 
 let EMPS = [], PEDIDOS = [], FORNS = [], CONTATOS = [], empSel = null, itens = [], semBanco = false, fornEdit = null, contEdit = null, catFiltro = '';
 

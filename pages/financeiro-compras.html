@@ -246,8 +246,11 @@
         <div class="cp-top">
           <select id="cpContMes" onchange="renderContador()"></select>
           <select id="cpContAno" onchange="renderContador()"></select>
+          <select id="cpContEmp" onchange="renderContador()"></select>
           <button class="cp-btn" onclick="exportarContadorCSV()"><i class="fas fa-file-csv"></i> CSV do contador</button>
           <button class="cp-btn" onclick="baixarZipContador()"><i class="fas fa-file-zipper"></i> XMLs do mês</button>
+          <button class="cp-btn" onclick="baixarComprovantesContador()"><i class="fas fa-paperclip"></i> Comprovantes do mês</button>
+          <button class="cp-btn" onclick="fiscalPDFContador()"><i class="fas fa-file-pdf"></i> Relatório fiscal (PDF)</button>
         </div>
         <div id="cpContador"></div>
       </div>
@@ -985,7 +988,7 @@ function selectEmpresaHtml(id, fn){
   return `<option value="">Todas as empresas</option>` + EMPRESAS.map(e => `<option>${esc(e.nome)}</option>`).join('');
 }
 function popularSelectsNfe(){
-  ['cpXmlEmp','cpNfeEmp'].forEach(id => { const el = document.getElementById(id); if (el && !el.innerHTML) el.innerHTML = selectEmpresaHtml(id); });
+  ['cpXmlEmp','cpNfeEmp','cpContEmp'].forEach(id => { const el = document.getElementById(id); if (el && !el.innerHTML) el.innerHTML = selectEmpresaHtml(id); });
   [['cpXmlMes','cpXmlAno'], ['cpContMes','cpContAno']].forEach(([m, a]) => {
     const sm = document.getElementById(m), sa = document.getElementById(a);
     if (sm && !sm.innerHTML) {
@@ -1067,7 +1070,7 @@ async function zipDeNotas(lista, nomeZip){
 function baixarZip(){
   const lista = notasDoFiltro('cpXmlMes','cpXmlAno','cpXmlEmp');
   const mes = document.getElementById('cpXmlMes').value, ano = document.getElementById('cpXmlAno').value;
-  zipDeNotas(lista, `xmls-${ano}${mes ? '-' + String(mes).padStart(2,'0') : ''}.zip`);
+  return zipDeNotas(lista, `xmls-${ano}${mes ? '-' + String(mes).padStart(2,'0') : ''}.zip`);
 }
 
 // ── NFE Entradas: consulta com busca livre ─────────────────────────────────
@@ -1276,27 +1279,56 @@ function renderFechamento(){
 // O que o contador precisa do mês: as notas com chave, CNPJ e impostos, em
 // tabela, CSV e os XMLs em ZIP. Sem números gerenciais (margem, CMV) — não é
 // papel dele e não é o que ele pede.
-function contadorDoMes(){
+// Cada empresa tem CNPJ e contador próprios, então o recorte por empresa é o
+// que sai daqui — tabela, CSV, ZIP e PDF seguem todos o mesmo filtro.
+function filtroContador(){
   const mes = document.getElementById('cpContMes').value, ano = document.getElementById('cpContAno').value;
+  const emp = (document.getElementById('cpContEmp') || {}).value || '';
   const ym = mes ? `${ano}-${String(mes).padStart(2,'0')}` : null;
-  const notas = NOTAS.filter(n => !ym || mesNota(n) === ym);
-  return { ym: ym || String(ano), notas: notas.map(n => ({ n, c: compraDaNota(n) })) };
+  return { mes, ano, emp, ym,
+           periodo: ym || String(ano),
+           label: mes ? `${MESES[+mes-1]} de ${ano}` : `Ano de ${ano}`,
+           // Sufixo de nome de arquivo: "2026-07" ou "2026-07-top-mix".
+           slug: `${ym || ano}${emp ? '-' + emp.toLowerCase().replace(/\s+/g,'-') : ''}` };
+}
+function contadorDoMes(){
+  const f = filtroContador();
+  const notas = NOTAS.filter(n => {
+    if (f.ym ? mesNota(n) !== f.ym : String(n.data_emissao||'').slice(0,4) !== String(f.ano)) return false;
+    if (f.emp && String(n.empresa_id || '').trim() !== f.emp) return false;
+    return true;
+  });
+  return { ...f, ym: f.periodo, notas: notas.map(n => ({ n, c: compraDaNota(n) })) };
+}
+// Comprovantes anexados no período: tudo que tem arquivo no Storage — nota de
+// aluguel/água/luz, NFS-e, CT-e. É o que o contador não recebe pelo XML.
+function comprovantesContador(){
+  const f = filtroContador();
+  return COMPRAS.filter(c => {
+    if (!c.xml_url) return false;
+    const d = String(c.data_compra || '');
+    if (f.ym ? d.slice(0,7) !== f.ym : d.slice(0,4) !== String(f.ano)) return false;
+    if (f.emp && String(c.empresa || '').trim() !== f.emp) return false;
+    return true;
+  }).sort((a,b) => String(b.data_compra).localeCompare(String(a.data_compra)));
 }
 function renderContador(){
   popularSelectsNfe();
-  const { ym, notas } = contadorDoMes();
+  const { ym, notas, emp } = contadorDoMes();
+  const comprovantes = comprovantesContador();
   const soma = campo => notas.reduce((s,x) => s + (x.c ? Number(x.c[campo]) || 0 : 0), 0);
   const totalNotas = notas.reduce((s,x) => s + (Number(x.n.valor_xml) || 0), 0);
   document.getElementById('cpContador').innerHTML = `
     <div class="card-grid" style="margin-bottom:16px">
-      <div class="stat-card"><div class="label">Notas em ${esc(ym)}</div><div class="value">${NUM(notas.length)}</div></div>
+      <div class="stat-card"><div class="label">Notas em ${esc(ym)}${emp ? ' · ' + esc(emp) : ''}</div><div class="value">${NUM(notas.length)}</div></div>
       <div class="stat-card"><div class="label">Valor total</div><div class="value">${BRL(totalNotas)}</div></div>
+      <div class="stat-card"><div class="label">Comprovantes anexados</div><div class="value" style="color:#14b8a6">${NUM(comprovantes.length)}</div></div>
       <div class="stat-card"><div class="label">ICMS</div><div class="value">${BRL(soma('v_icms'))}</div></div>
       <div class="stat-card"><div class="label">ICMS-ST</div><div class="value" style="color:#a855f7">${BRL(soma('v_st'))}</div></div>
       <div class="stat-card"><div class="label">IPI</div><div class="value">${BRL(soma('v_ipi'))}</div></div>
       <div class="stat-card"><div class="label">PIS / COFINS</div><div class="value">${BRL(soma('v_pis') + soma('v_cofins'))}</div></div>
     </div>
-    <div class="cp-card"><h3>Notas de entrada — ${esc(ym)}</h3>
+    <div class="cp-card"><h3>Notas de entrada — ${esc(ym)}${emp ? ' · ' + esc(emp) : ''}</h3>
     ${notas.length ? `<div class="cp-wrap"><table class="cp-tbl">
       <thead><tr><th>NF/Série</th><th>Emitente</th><th>CNPJ</th><th>Emissão</th><th>Empresa</th>
         <th class="n">Valor</th><th class="n">ICMS</th><th class="n">ST</th><th class="n">IPI</th><th class="n">PIS</th><th class="n">COFINS</th><th>Chave</th></tr></thead>
@@ -1310,7 +1342,30 @@ function renderContador(){
         <td class="n">${c ? BRL(c.v_icms) : '—'}</td><td class="n">${c ? BRL(c.v_st) : '—'}</td>
         <td class="n">${c ? BRL(c.v_ipi) : '—'}</td><td class="n">${c ? BRL(c.v_pis) : '—'}</td><td class="n">${c ? BRL(c.v_cofins) : '—'}</td>
         <td style="font-family:ui-monospace,monospace;font-size:10px">${esc(n.chave_nfe || '—')}</td>
-      </tr>`).join('')}</tbody></table></div>` : '<div class="cp-empty">Nenhuma nota nesse período.</div>'}</div>`;
+      </tr>`).join('')}</tbody></table></div>` : '<div class="cp-empty">Nenhuma nota nesse período.</div>'}</div>
+
+    <div class="cp-card"><h3>Comprovantes inseridos no período</h3>
+      ${comprovantes.length ? `<div class="cp-wrap"><table class="cp-tbl">
+        <thead><tr><th>Data</th><th>Categoria</th><th>Empresa</th><th>Fornecedor</th><th class="n">Valor</th><th>Arquivo</th></tr></thead>
+        <tbody>${comprovantes.map(c => { const k = catDe(c); return `<tr>
+          <td style="white-space:nowrap">${dataBR(c.data_compra)}</td>
+          <td>${k ? `<span class="cp-badge" style="border:1px solid ${k.cor}66;color:${k.cor}"><i class="fas ${k.ico}"></i> ${esc(k.nome)}</span>` : 'Mercadoria'}</td>
+          <td><span class="cp-badge" style="border:1px solid ${corEmp(c.empresa)}66;color:${corEmp(c.empresa)}">${esc(c.empresa||'—')}</span></td>
+          <td>${esc(c.fornecedor_nome || '—')}</td>
+          <td class="n">${BRL(valorDe(c))}</td>
+          <td><a class="cp-mini" href="${esc(DB.financeiroArquivoUrl(c.xml_url))}" target="_blank" rel="noopener"><i class="fas fa-paperclip"></i> ${esc(nomeComprovante(c))}</a></td>
+        </tr>`; }).join('')}
+        <tr><td colspan="4" style="text-align:right;font-weight:700">Total</td>
+          <td class="n" style="font-weight:700">${BRL(comprovantes.reduce((s,c) => s + valorDe(c), 0))}</td><td></td></tr>
+        </tbody></table></div>`
+        : '<div class="cp-empty">Nenhum comprovante anexado nesse período.<br><br>Anexe o PDF/foto em <b>NF-e / Central Fiscal</b> — aluguel, água, luz, serviço e frete entram aqui mesmo sem chave de acesso.</div>'}
+    </div>`;
+}
+// Nome legível dentro do ZIP/tabela: o caminho no Storage é
+// "empresa/AAAA-MM/1712345678-nota.pdf" — o nome original vem depois do carimbo.
+function nomeComprovante(c){
+  const base = String(c.xml_url || '').split('/').pop() || 'comprovante';
+  return base.replace(/^\d{10,}-/, '');
 }
 function exportarContadorCSV(){
   const { ym, notas } = contadorDoMes();
@@ -1321,11 +1376,48 @@ function exportarContadorCSV(){
       n.valor_xml||0, c?c.v_icms||0:'', c?c.v_st||0:'', c?c.v_ipi||0:'', c?c.v_pis||0:'', c?c.v_cofins||0:'',
       c?c.v_frete||0:'', c?c.v_desconto||0:'', n.possui_st ? 'sim' : 'nao']));
   const csv = linhas.map(l => l.map(x => `"${String(x).replace('.',',').replace(/"/g,'""')}"`).join(';')).join('\n');
-  baixarTexto(`contador-${ym}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
+  baixarTexto(`contador-${filtroContador().slug}.csv`, '﻿' + csv, 'text/csv;charset=utf-8');
 }
+// Devolve a promise: `zipDeNotas` é assíncrona e quem chama (teste ou outra
+// tela) precisa saber quando o arquivo saiu.
 function baixarZipContador(){
-  const { ym, notas } = contadorDoMes();
-  zipDeNotas(notas.map(x => x.n), `xmls-contador-${ym}.zip`);
+  const { notas, slug } = contadorDoMes();
+  return zipDeNotas(notas.map(x => x.n), `xmls-contador-${slug}.zip`);
+}
+
+// Comprovantes moram no Storage privado do Supabase, então o ZIP é montado
+// baixando cada arquivo pela rota do servidor (mesma URL do link da tabela).
+// Arquivo que falhar não derruba o pacote — sai listado no aviso do fim.
+async function baixarComprovantesContador(){
+  const lista = comprovantesContador(), { slug } = filtroContador();
+  if (!lista.length) { alert('Nenhum comprovante anexado nesse período.'); return; }
+  if (typeof JSZip === 'undefined') { alert('A biblioteca de ZIP não carregou. Verifique a conexão e recarregue a página.'); return; }
+  const zip = new JSZip(), falhas = [], usados = new Set();
+  for (const c of lista) {
+    try {
+      const r = await fetch(DB.financeiroArquivoUrl(c.xml_url), { credentials: 'include' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      // Prefixo com a data evita colisão de nome entre meses e ordena o ZIP.
+      let nome = `${String(c.data_compra || '').slice(0,10)}-${nomeComprovante(c)}`;
+      let i = 2; while (usados.has(nome)) nome = nome.replace(/(\.[^.]+)?$/, `-${i++}$1`);
+      usados.add(nome);
+      zip.file(nome, await r.blob());
+    } catch (e) { falhas.push(nomeComprovante(c)); }
+  }
+  if (!usados.size) { alert('Não consegui baixar nenhum comprovante do período.'); return; }
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `comprovantes-${slug}.zip`; a.click(); URL.revokeObjectURL(a.href);
+  if (falhas.length) alert(`${falhas.length} comprovante(s) não baixaram e ficaram de fora:\n${falhas.join('\n')}`);
+}
+
+// Relatório fiscal já recortado pela empresa/período desta aba — o contador de
+// cada CNPJ leva só o que é dele. Mesmo gerador da aba Relatório Fiscal.
+function fiscalPDFContador(){
+  const { ym, ano, emp, label } = filtroContador();
+  const docs = filtrarDocsFiscais({ ym, ano, cat: '', emp });
+  if (!docs.length) { alert('Sem documentos fiscais no período pra gerar o relatório.'); return; }
+  montarFiscalPDF(docs, label, emp || 'Todas as empresas');
 }
 
 
@@ -1353,9 +1445,9 @@ function periodoFiscal(){
   return { mes, ano, ym: mes ? `${ano}-${String(mes).padStart(2,'0')}` : null,
            label: mes ? `${MESES[+mes-1]} de ${ano}` : `Ano de ${ano}` };
 }
-function docsFiscais(){
-  const { ym, ano } = periodoFiscal();
-  const cat = document.getElementById('cpFisCat').value, emp = document.getElementById('cpFisEmp').value;
+// Filtro puro (sem DOM) — a aba Relatório Fiscal e a aba Acesso Contador têm
+// selects diferentes mas a mesma regra de recorte.
+function filtrarDocsFiscais({ ym, ano, cat, emp }){
   return COMPRAS.filter(c => {
     if (!catDe(c)) return false;                                  // só o que tem categoria fiscal
     const d = String(c.data_compra || '');
@@ -1364,6 +1456,12 @@ function docsFiscais(){
     if (emp && String(c.empresa || '').trim() !== emp) return false;
     return true;
   }).sort((a,b) => String(b.data_compra).localeCompare(String(a.data_compra)));
+}
+function docsFiscais(){
+  const { ym, ano } = periodoFiscal();
+  return filtrarDocsFiscais({ ym, ano,
+    cat: document.getElementById('cpFisCat').value,
+    emp: document.getElementById('cpFisEmp').value });
 }
 
 function renderFiscal(){
@@ -1452,13 +1550,15 @@ function fiscalCSV(){
 function fiscalPDF(){
   const docs = docsFiscais(); const { label } = periodoFiscal();
   if (!docs.length) { alert('Sem documentos no período pra gerar o relatório.'); return; }
+  const emp = document.getElementById('cpFisEmp').value, cat = document.getElementById('cpFisCat').value;
+  montarFiscalPDF(docs, label, [emp, cat ? CAT_MAP[cat].nome : ''].filter(Boolean).join(' · '));
+}
+function montarFiscalPDF(docs, label, filtros){
   const total = docs.reduce((s,c) => s + valorDe(c), 0);
   const porCat = CATEGORIAS_FISCAIS.map(k => {
     const l = docs.filter(c => String(c.tipo_compra) === k.key);
     return { ...k, qtd: l.length, total: l.reduce((s,c) => s + valorDe(c), 0) };
   }).filter(k => k.qtd);
-  const emp = document.getElementById('cpFisEmp').value, cat = document.getElementById('cpFisCat').value;
-  const filtros = [emp, cat ? CAT_MAP[cat].nome : ''].filter(Boolean).join(' · ');
 
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <title>Relatório Fiscal — ${esc(label)}</title>

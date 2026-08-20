@@ -340,16 +340,26 @@ create table if not exists pedido_contatos (
 -- OBRIGATÓRIO: o Supabase cria a tabela com RLS ligado e sem policy nenhuma.
 -- Sem isto a leitura volta VAZIA em silêncio e a gravação responde
 -- "401 new row violates row-level security policy". Mesma liberação que as
--- outras tabelas deste banco já têm.
-do $$
-declare t text;
-begin
-  foreach t in array array['pedido_empresas','pedidos','pedido_fornecedores','pedido_contatos'] loop
-    execute format('alter table public.%I enable row level security', t);
-    execute format('drop policy if exists "app_acesso_total" on public.%I', t);
-    execute format('create policy "app_acesso_total" on public.%I for all to anon, authenticated using (true) with check (true)', t);
-  end loop;
-end $$;`;
+-- outras tabelas deste banco já têm. `to public` vale para qualquer role —
+-- não depende de qual chave o servidor está usando.
+alter table public.pedidos              enable row level security;
+alter table public.pedido_empresas      enable row level security;
+alter table public.pedido_fornecedores  enable row level security;
+alter table public.pedido_contatos      enable row level security;
+
+drop policy if exists app_acesso_total on public.pedidos;
+drop policy if exists app_acesso_total on public.pedido_empresas;
+drop policy if exists app_acesso_total on public.pedido_fornecedores;
+drop policy if exists app_acesso_total on public.pedido_contatos;
+
+create policy app_acesso_total on public.pedidos             for all to public using (true) with check (true);
+create policy app_acesso_total on public.pedido_empresas     for all to public using (true) with check (true);
+create policy app_acesso_total on public.pedido_fornecedores for all to public using (true) with check (true);
+create policy app_acesso_total on public.pedido_contatos     for all to public using (true) with check (true);
+
+-- Confere: tem que devolver 4 linhas.
+select tablename, policyname, roles, cmd from pg_policies
+where schemaname='public' and tablename like 'pedido%';`;
 
 let EMPS = [], PEDIDOS = [], FORNS = [], CONTATOS = [], empSel = null, itens = [], semBanco = false, fornEdit = null, contEdit = null, catFiltro = '';
 

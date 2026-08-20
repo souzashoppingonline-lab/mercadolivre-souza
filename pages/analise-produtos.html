@@ -91,6 +91,27 @@
     .ia-nums div { background:var(--bg-card,#1c1d21);border-radius:9px;padding:7px 10px; }
     .ia-nums small { display:block;font-size:.66rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px; }
     .ia-nums b { display:block;font-size:1rem;font-weight:800;color:var(--green,#27ae60);text-transform:none;letter-spacing:0;margin:2px 0 0; }
+    /* SEO / palavras-chave — leitura dos títulos dos concorrentes */
+    .seo-head { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px; }
+    .seo-head h4 { font-size:.9rem;font-weight:800;display:flex;align-items:center;gap:8px; }
+    .seo-tools { display:flex;gap:7px;flex-wrap:wrap;align-items:center; }
+    .seo-tools select { background:var(--bg-card,#1c1d21);border:1px solid var(--border,#3a3b40);color:var(--text-main,#ddd);border-radius:8px;padding:6px 10px;font-size:.75rem; }
+    .seo-nums { display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px; }
+    .seo-nums div { background:var(--bg-card,#1c1d21);border:1px solid var(--border,#3a3b40);border-radius:9px;padding:8px 11px; }
+    .seo-nums small { display:block;font-size:.64rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px; }
+    .seo-nums b { font-size:1.05rem;font-weight:800; }
+    .seo-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px; }
+    .seo-lista { max-height:340px;overflow:auto; }
+    .seo-l { display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--border,#3a3b40);font-size:.83rem; }
+    .seo-l:first-child { border-top:0; }
+    .seo-l .termo { display:flex;align-items:center;gap:7px;min-width:0; }
+    .seo-l .termo span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .seo-l .barra { width:52px;height:5px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;flex:none; }
+    .seo-l .barra i { display:block;height:100%;border-radius:3px; }
+    .seo-l .qtd { font-size:.74rem;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap; }
+    .seo-l b.n { font-weight:800; }
+    .seo-leg { font-size:.7rem;color:var(--text-muted);margin-top:9px;display:flex;gap:12px;flex-wrap:wrap; }
+    .seo-leg i { width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:4px; }
     .ia-cria { margin-top:16px;border-top:1px solid var(--border,#3a3b40);padding-top:14px; }
     .ia-cria-hd { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap; }
     .ia-cria-hd h4 { font-size:.86rem;font-weight:800;display:flex;align-items:center;gap:7px; }
@@ -253,6 +274,8 @@
           </div>
 
           <div id="iaPanel" style="display:none;margin-top:16px"></div>
+
+          <div id="seoPanel" style="display:none;margin-top:16px"></div>
 
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:16px 0 4px">
             <h3 style="font-size:.9rem;font-weight:800"><i class="fas fa-users"></i> Concorrentes coletados (<span id="dQtd">0</span>/10)</h3>
@@ -534,7 +557,159 @@ function renderCards(anuncios) {
   const wrap = document.getElementById('cardsConc');
   document.getElementById('cardsVazio').style.display = ANUNCIOS.length ? 'none' : 'block';
   wrap.innerHTML = ANUNCIOS.map(cardHtml).join('');
+  renderSeo();   // a leitura de SEO acompanha os cards: cada anúncio novo recalcula
 }
+// ═══ SEO / palavras-chave ═══════════════════════════════════════════════════
+// O título é o que ranqueia o anúncio no ML. Com os concorrentes já coletados
+// na tela, dá pra ver QUAL termo o mercado inteiro usa — sem consulta nova e
+// sem IA: é contagem, roda no navegador a cada card que entra.
+//
+// A métrica que manda é COBERTURA (em quantos anúncios o termo aparece), não a
+// ocorrência bruta: uma palavra repetida 10× num anúncio só é vício daquele
+// vendedor; a que está em 8 de 10 anúncios é o núcleo obrigatório do título.
+const SEO_STOP = new Set(['de','da','do','das','dos','e','com','sem','para','pra','por','em','no','na','nos','nas',
+  'o','a','os','as','um','uma','uns','umas','ao','aos','que','se','sob','ou','the','of','and','p','x']);
+const semAcento = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+let seoFonte = 'titulo';   // 'titulo' | 'tudo'
+
+// Mantém número+unidade junto (90ml, 1,5l, 10%) — isso é palavra-chave de
+// verdade no ML. Descarta pontuação solta e token de 1 letra.
+function seoTokens(txt) {
+  return String(txt || '').toLowerCase()
+    .replace(/[|/\\]+/g, ' ')
+    .replace(/[^\p{L}\p{N}%.,'-]+/gu, ' ')
+    .split(/\s+/)
+    .map((t) => t.replace(/^[.,'-]+|[.,'-]+$/g, ''))
+    .filter((t) => t.length >= 2 && !/^[\d.,]+$/.test(t));
+}
+function seoTextoDe(a) {
+  if (seoFonte === 'titulo') return a.titulo || '';
+  const hl = Array.isArray(a.highlights) ? a.highlights.join(' ') : '';
+  return [a.titulo, hl, a.descricao].filter(Boolean).join(' ');
+}
+// Conta termos de `n` palavras. Chave = sem acento (agrupa "xícara"/"xicara");
+// exibe a grafia mais usada. N-grama nunca começa nem termina em stopword,
+// senão "de café com" viraria frase-chave.
+function seoContar(anuncios, n) {
+  const mapa = new Map();
+  anuncios.forEach((a) => {
+    const toks = seoTokens(seoTextoDe(a));
+    const vistos = new Set();
+    for (let i = 0; i + n <= toks.length; i++) {
+      const grupo = toks.slice(i, i + n);
+      if (SEO_STOP.has(grupo[0]) || SEO_STOP.has(grupo[n - 1])) continue;
+      const exibe = grupo.join(' ');
+      const chave = semAcento(exibe);
+      const it = mapa.get(chave) || { chave, formas: new Map(), ocorrencias: 0, anuncios: 0 };
+      it.ocorrencias++;
+      it.formas.set(exibe, (it.formas.get(exibe) || 0) + 1);
+      if (!vistos.has(chave)) { it.anuncios++; vistos.add(chave); }
+      mapa.set(chave, it);
+    }
+  });
+  return [...mapa.values()]
+    .map((it) => ({ ...it, termo: [...it.formas.entries()].sort((x, y) => y[1] - x[1])[0][0] }))
+    .filter((it) => it.anuncios >= 2)              // termo de um anúncio só não é padrão
+    .sort((x, y) => y.anuncios - x.anuncios || y.ocorrencias - x.ocorrencias || x.termo.localeCompare(y.termo));
+}
+// Faixas de cobertura: ≥60% é o núcleo que todo título do nicho tem.
+function seoCor(pct) { return pct >= 60 ? '#22c55e' : pct >= 30 ? '#eab308' : '#94a3b8'; }
+
+function renderSeo() {
+  const panel = document.getElementById('seoPanel');
+  if (!panel) return;
+  const ads = ANUNCIOS.filter((a) => seoTextoDe(a).trim());
+  if (ads.length < 2) {                    // com 1 anúncio não há "o que se repete"
+    panel.style.display = 'none'; panel.innerHTML = ''; return;
+  }
+  const total = ads.length;
+  const palavras = seoContar(ads, 1);
+  const frases = [...seoContar(ads, 2), ...seoContar(ads, 3)]
+    .sort((x, y) => y.anuncios - x.anuncios || y.ocorrencias - x.ocorrencias);
+  const nucleo = palavras.filter((p) => p.anuncios / total >= 0.6);
+  const tamMedio = Math.round(ads.reduce((s, a) => s + String(a.titulo || '').length, 0) / total);
+
+  const linha = (it) => {
+    const pct = it.anuncios / total * 100;
+    const cor = seoCor(pct);
+    return `<div class="seo-l">
+      <span class="termo"><span class="barra"><i style="width:${pct.toFixed(0)}%;background:${cor}"></i></span>
+        <span title="${esc(it.termo)}">${esc(it.termo)}</span></span>
+      <span class="qtd"><b class="n" style="color:${cor}">${it.anuncios}</b>/${total} · ${pct.toFixed(0)}%${it.ocorrencias > it.anuncios ? ` · ${it.ocorrencias}×` : ''}</span>
+    </div>`;
+  };
+  const bloco = (titulo, ico, lista, vazio) => `<div class="ia-card">
+    <h4><i class="fas ${ico}"></i> ${titulo} <span class="ap-muted" style="font-weight:600">(${lista.length})</span></h4>
+    <div class="seo-lista">${lista.length ? lista.slice(0, 40).map(linha).join('') : `<span class="ap-muted" style="font-size:.82rem">${vazio}</span>`}</div>
+  </div>`;
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="ia-card">
+      <div class="seo-head">
+        <h4><i class="fas fa-magnifying-glass-chart"></i> SEO / palavras-chave dos concorrentes</h4>
+        <div class="seo-tools">
+          <select onchange="setSeoFonte(this.value)">
+            <option value="titulo"${seoFonte === 'titulo' ? ' selected' : ''}>Só os títulos</option>
+            <option value="tudo"${seoFonte === 'tudo' ? ' selected' : ''}>Títulos + destaques + descrição</option>
+          </select>
+          <button class="ap-btn ghost" style="padding:6px 12px;font-size:.75rem" onclick="copiarSeo('nucleo')"><i class="fas fa-copy"></i> Copiar núcleo</button>
+          <button class="ap-btn ghost" style="padding:6px 12px;font-size:.75rem" onclick="copiarSeo('tudo')"><i class="fas fa-list"></i> Copiar lista</button>
+          <button class="ap-btn ghost" style="padding:6px 12px;font-size:.75rem" onclick="baixarSeoCsv()"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+      </div>
+      <div class="seo-nums">
+        <div><small>Anúncios lidos</small><b>${total}</b></div>
+        <div><small>Termos que se repetem</small><b>${palavras.length + frases.length}</b></div>
+        <div><small>Núcleo (≥60%)</small><b style="color:#22c55e">${nucleo.length}</b></div>
+        <div><small>Título médio</small><b>${tamMedio} car.</b></div>
+      </div>
+      ${nucleo.length ? `<div style="margin-bottom:12px">
+        <b style="display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.4px;color:#22c55e;margin-bottom:6px">Núcleo — está em pelo menos 60% dos títulos</b>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${nucleo.map((p) => `<span class="ap-badge" style="border:1px solid #22c55e55;color:#22c55e">${esc(p.termo)} <b style="margin-left:4px">${(p.anuncios / total * 100).toFixed(0)}%</b></span>`).join('')}</div>
+      </div>` : ''}
+      <div class="seo-grid">
+        ${bloco('Palavras', 'fa-tag', palavras, 'Nenhuma palavra aparece em 2+ anúncios.')}
+        ${bloco('Frases (2-3 palavras)', 'fa-quote-left', frases, 'Nenhuma frase se repete entre os anúncios.')}
+      </div>
+      <div class="seo-leg">
+        <span><i style="background:#22c55e"></i> ≥60% — núcleo do título</span>
+        <span><i style="background:#eab308"></i> 30-59% — comum no nicho</span>
+        <span><i style="background:#94a3b8"></i> &lt;30% — diferenciação</span>
+        <span>Ordenado por <b>em quantos anúncios aparece</b>, não pela repetição bruta.</span>
+      </div>
+    </div>`;
+}
+function setSeoFonte(v) { seoFonte = v; renderSeo(); }
+// Lista em texto pronta pra colar no anúncio/planilha.
+function seoLinhas() {
+  const ads = ANUNCIOS.filter((a) => seoTextoDe(a).trim());
+  const total = ads.length;
+  return { total, itens: [...seoContar(ads, 1), ...seoContar(ads, 2), ...seoContar(ads, 3)]
+    .sort((x, y) => y.anuncios - x.anuncios || y.ocorrencias - x.ocorrencias) };
+}
+function copiarSeo(modo) {
+  const { total, itens } = seoLinhas();
+  const lista = modo === 'nucleo' ? itens.filter((i) => i.anuncios / total >= 0.6) : itens;
+  if (!lista.length) return toast('Nada pra copiar ainda.');
+  const txt = lista.map((i) => i.termo).join(', ');
+  navigator.clipboard.writeText(txt)
+    .then(() => toast(`${lista.length} palavra(s)-chave copiada(s).`))
+    .catch(() => toast('Não consegui copiar — o navegador bloqueou a área de transferência.'));
+}
+function baixarSeoCsv() {
+  const { total, itens } = seoLinhas();
+  if (!itens.length) return toast('Nada pra exportar ainda.');
+  const linhas = [['Termo', 'Palavras', 'Anuncios', 'Total de anuncios', '% cobertura', 'Ocorrencias']]
+    .concat(itens.map((i) => [i.termo, i.termo.split(' ').length, i.anuncios, total,
+      (i.anuncios / total * 100).toFixed(0).replace('.', ','), i.ocorrencias]));
+  const csv = linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+  const nome = `seo-${(CURRENT && CURRENT.produto ? CURRENT.produto : 'produto').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.csv`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = nome; a.click(); URL.revokeObjectURL(a.href);
+}
+
 function cardHtml(a) {
   const foto = a.fotos && a.fotos[0] ? `<img class="thumb" src="${esc(a.fotos[0])}" onerror="this.outerHTML='<div class=&quot;thumb ph&quot;><i class=&quot;fas fa-image&quot;></i></div>'">` : `<div class="thumb ph"><i class="fas fa-image"></i></div>`;
   // Medalha MercadoLíder: 3 níveis (MercadoLíder, Gold, Platinum) + "Sem medalha"

@@ -14,7 +14,9 @@ Construído em **fases** (evita virar um monstro):
   (custo, preço sugerido, margem líquida, lucro/un.) e **Decisão** (VALE/ATENÇÃO/
   NÃO_VALE + riscos + próximos passos). Uma única chamada estruturada (JSON), barata.
 - **Fase 3 — resto (futuro):** os outros 6 agentes (mercado, comercial, marketing,
-  perguntas, criativos, SEO).
+  perguntas, criativos, SEO). O **SEO por contagem** (palavras-chave que se repetem
+  nos títulos dos concorrentes) já está feito **sem IA** — ver seção própria abaixo;
+  o agente de SEO seria a camada de redação em cima dessa lista.
 
 ## Fluxo (o pulo do gato)
 
@@ -161,6 +163,35 @@ host_permission pro servidor + permissão `downloads`. Rota antiga
 
 Limite do body: `express.json({ limit: '1mb' })` (o pageText cabe; o innerHTML não
 é enviado).
+
+## SEO / palavras-chave dos concorrentes (v67)
+
+Painel na tela do produto (`#seoPanel`, entre a análise de IA e os cards) que lê
+**todos os concorrentes coletados** e devolve a lista dos termos que mais se
+repetem. **100% no navegador**, a partir do que o `GET /produtos/:id` já trouxe —
+sem rota nova, sem consulta, **sem custo de IA**. Recalcula sozinho a cada card
+que entra (o `renderCards` chama `renderSeo()`, e o WS `analise_anuncio` passa
+por ele).
+
+- **Métrica que ordena: cobertura** — em quantos anúncios o termo aparece, não a
+  repetição bruta. Palavra repetida 10× num anúncio só é vício daquele vendedor;
+  a que está em 8 de 10 é o núcleo obrigatório do título. Faixas: **≥60% = núcleo**
+  (verde, sai também em chips no topo), 30-59% comum no nicho, <30% diferenciação.
+- **Fonte escolhível**: *só os títulos* (padrão — é o que ranqueia no ML) ou
+  *títulos + destaques + descrição* (mais volume, mais ruído).
+- **Palavras e frases**: conta unigramas, bigramas e trigramas. N-grama nunca
+  começa nem termina em stopword (senão "de café com" viraria frase-chave), por
+  isso frases ligadas por preposição aparecem como trigrama ("xícaras de café",
+  "café com pires"). Termo presente em **um único anúncio é descartado** — não é
+  padrão de mercado.
+- **Tokenização**: minúsculas, pontuação fora, **número+unidade preservado**
+  (`90ml`, `1,5l`, `10%` são palavra-chave de verdade no ML), token de 1 letra e
+  número puro descartados. Agrupamento por forma **sem acento** (une
+  "xícara"/"xicara") exibindo a grafia mais usada.
+- **Saídas**: *Copiar núcleo* (só os ≥60%), *Copiar lista* (tudo, separado por
+  vírgula, pronto pra colar) e **CSV** (termo, nº de palavras, anúncios, total,
+  % de cobertura, ocorrências).
+- Some com menos de 2 anúncios — não existe "o que se repete" com um só.
 
 ## Motor de IA (Fase 3 núcleo)
 

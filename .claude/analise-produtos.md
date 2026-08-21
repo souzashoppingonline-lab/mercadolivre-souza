@@ -193,6 +193,31 @@ por ele).
   % de cobertura, ocorrências).
 - Some com menos de 2 anúncios — não existe "o que se repete" com um só.
 
+### Títulos sugeridos (dentro do mesmo painel)
+
+O ML corta o título em **60 caracteres**, então o jogo é escolher QUAIS termos
+cabem. O bloco monta **5 a 7 sugestões**, todas ≤60 — não é sorteio: cada uma é
+uma **estratégia de ordenação diferente** dos termos que o painel já contou, com
+a explicação do porquê ao lado, contador de caracteres e botão de copiar (uma ou
+todas). Título duplicado é descartado, por isso o número varia com o nicho.
+
+- **Cobertura decide QUEM entra; posição decide ONDE entra.** Cada termo carrega
+  a **posição média** em que aparece nos títulos reais (`pos`, 0 = começo), e a
+  ordem de escrita segue ela — é o que faz o título abrir por "Xícaras Café
+  Pires…" em vez de "Porcelana Pires…", que é o termo mais repetido mas não é o
+  substantivo do produto.
+- **Estratégias**: cobertura máxima · frase-chave na frente · atributo (medida)
+  na frente · núcleo + diferencial (termo de cauda longa) · espelho do
+  concorrente que cobre mais o núcleo, cortado em 60 · termo mais repetido na
+  frente · núcleo + 2º diferencial.
+- **Sempre a partir dos títulos**, mesmo com a fonte do painel em "tudo" —
+  descrição não ranqueia título.
+- Nunca repete palavra no mesmo título, e **não mistura singular e plural**
+  ("Xícara" + "Xícaras"): a comparação corta o `-s`/`-es` final (`seoRadical`,
+  não é stemmer — é o caso real de título de marketplace).
+- Caixa do ML: inicial maiúscula por palavra, stopword em minúscula (menos a
+  primeira), unidade intacta (`90ml`, nunca `90Ml`).
+
 ## Motor de IA (Fase 3 núcleo)
 
 - `server/src/ai/llm.js` — cliente Anthropic compartilhado (Messages API, mesmo

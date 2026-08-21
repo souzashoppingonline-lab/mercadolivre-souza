@@ -47,6 +47,15 @@
     .pj-t tr.maxe td { background:rgba(59,130,246,.07); }
     .pj-evt { border-radius:999px; padding:1px 7px; font-size:9px; font-weight:800; cursor:pointer; margin-right:3px; }
     .pj-tag { font-size:9px; color:var(--text-muted); }
+    .pj-proj { display:inline-flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .pj-proj select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:9px; padding:5px 9px; font-size:12px; font-weight:700; }
+    .pj-step { display:inline-flex; align-items:center; gap:2px; background:var(--bg-card2); border:1px solid var(--border); border-radius:9px; padding:2px 4px; }
+    .pj-step button { width:24px; height:24px; border:0; border-radius:6px; background:transparent; color:var(--text-main); font-size:15px; font-weight:800; cursor:pointer; line-height:1; }
+    .pj-step button:hover { background:rgba(148,163,184,.18); }
+    .pj-step input { width:52px; background:transparent; border:0; color:var(--text-main); font-size:13px; font-weight:800; text-align:right; font-variant-numeric:tabular-nums; }
+    .pj-step input::-webkit-outer-spin-button, .pj-step input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+    .pj-proj-res { font-size:12px; color:var(--text-muted); }
+    .pj-proj-obs { display:block; font-size:11px; color:var(--text-muted); margin-top:4px; text-align:right; }
     .pj-badge { border-radius:999px; padding:1px 7px; font-size:9px; font-weight:800; margin-left:4px; }
     .pj-costcards { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
     .pj-cc { border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--bg-card2); }
@@ -137,6 +146,11 @@ const custoVar=e=>(+e.marketplace_fees||0)+(+e.subsidized_shipping||0)+(+e.cogs|
 
 let ENTRIES=[], RECV=[], BOLETOS=[], PARCELAS=[], EXPENSES=[], RECOR=[], SALES=[], CLOSING=[], MANUAL=[], STARTBAL=[];
 let periodo=30, mediaOverride=null, chartPer, chart, chartAno;
+// Base da projeção de entradas e ajuste de tendência.
+//  'rec7'    → média dos últimos 7 dias de RECEBÍVEIS (padrão: é o que de fato entra)
+//  'fluxo30' → média de 30 dias dos lançamentos de entrada do fluxo (comportamento antigo)
+//  'manual'  → valor digitado (mediaOverride)
+let baseProj='rec7', ajustePct=0;
 function showStatus(t,err){ const el=document.getElementById('pjStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
 async function load(){
@@ -154,17 +168,43 @@ async function load(){
 }
 
 function caixaAtual(){ return ENTRIES.reduce((s,e)=>s+(e.type==='income'?(+e.value||0):-(+e.value||0)),0); }
-function mediaDiaria(){
-  if(mediaOverride!=null) return mediaOverride;
+// Último dia que TEM recebível lançado. É o corte: até ele, só valor real; a
+// partir do dia seguinte, projeção. Sem isso, um buraco no meio dos recebíveis
+// já lançados era preenchido com média — dinheiro que não existe.
+function ultimoRecebivel(){
+  return RECV.reduce((max,r)=>{ const k=(r.date||'').slice(0,10); return k>max?k:max; },'');
+}
+// Média dos últimos 7 dias CORRIDOS de recebíveis, contados a partir do último
+// dia lançado (não de hoje — senão os dias vazios depois do último lançamento
+// derrubariam a média). Divide por 7 de propósito: fim de semana sem recebimento
+// faz parte da média semanal real.
+function mediaRecebiveis7(){
+  const fim=ultimoRecebivel();
+  if(!fim) return 0;
+  const ini=iso(addDays(new Date(fim+'T00:00:00'),-6));
+  const soma=RECV.filter(r=>{ const k=(r.date||'').slice(0,10); return k>=ini && k<=fim; })
+                 .reduce((s,r)=>s+(+r.value||0),0);
+  return soma/7;
+}
+function mediaFluxo30(){
   const hoje=new Date(), ini=iso(addDays(hoje,-30));
   const inc=ENTRIES.filter(e=>e.type==='income' && (e.date||'')>=ini).reduce((s,e)=>s+(+e.value||0),0);
   return inc/30;
 }
+// Média ANTES do ajuste de tendência.
+function mediaBase(){
+  if(baseProj==='manual' && mediaOverride!=null) return mediaOverride;
+  if(baseProj==='rec7'){ const m=mediaRecebiveis7(); if(m>0) return m; }   // sem recebível, cai no fluxo
+  return mediaFluxo30();
+}
+// Média que a projeção usa: base × (1 + ajuste). Nunca negativa.
+function mediaDiaria(){ return Math.max(mediaBase()*(1+ajustePct/100), 0); }
 // Constrói o mapa de eventos por dia dentro da janela.
 function buildDias(dias){
   const hoje=new Date(); hoje.setHours(0,0,0,0);
   const arr=[];
   const media=mediaDiaria();
+  const corte=ultimoRecebivel();   // projeta só DEPOIS do último recebível lançado
   for(let i=0;i<=dias;i++){
     const d=addDays(hoje,i), k=iso(d);
     const recs=RECV.filter(r=>!r.recebido && (r.date||'').slice(0,10)===k);
@@ -173,7 +213,7 @@ function buildDias(dias){
     const parc=PARCELAS.filter(p=>p.status!=='pago' && (p.data_vencimento||'').slice(0,10)===k);
     const entReal=recs.reduce((s,r)=>s+(+r.value||0),0)+recorr.reduce((s,t)=>s+(+t.value||0),0);
     const temReal=recs.length||recorr.length;
-    const entProj=temReal?0:(i===0?0:media);
+    const entProj=(temReal||i===0||(corte&&k<=corte))?0:media;
     const sai=bols.reduce((s,b)=>s+(+b.value||0),0)+parc.reduce((s,p)=>s+(+p.valor||0),0);
     arr.push({ d, k, dow:DOW[d.getDay()], recs, recorr, bols, parc, entReal, entProj, ent:entReal+entProj, sai, temReal });
   }
@@ -187,7 +227,7 @@ function render(){
   document.getElementById('pjPeriodo').innerHTML=[7,15,21,30,45,60].map(p=>`<button class="pj-pill ${periodo===p?'on':''}" onclick="setPeriodo(${p})">${p}d</button>`).join('');
   const dias=buildDias(periodo);
   document.getElementById('pjResLbl').textContent=`— próximos ${periodo} dias`;
-  document.getElementById('pjMediaLbl').innerHTML=`Média diária projetada: <b>${BRL(mediaDiaria())}</b> ${mediaOverride!=null?`<button class="pj-btn" style="padding:3px 8px;margin-left:6px" onclick="restaurarMedia()">Restaurar automático</button>`:`<button class="pj-btn" style="padding:3px 8px;margin-left:6px" onclick="editarMedia()">Editar projeção</button>`}`;
+  renderControleProj();
   renderResumo(dias); renderKpis(dias); renderPeriodos(); renderAlerts(dias); renderChart(dias); renderDaily(dias); renderCost(); renderAnual();
 }
 
@@ -280,7 +320,7 @@ function renderDaily(dias){
     if(o.parc.length) badges.push(`<span class="pj-evt" style="background:rgba(236,72,153,.15);color:#ec4899" onclick="verEventos('${o.k}','parc')">${o.parc.length} parcela</span>`);
     return `<tr class="${cls}">
       <td>${o.dow} ${o.d.getDate()}/${o.d.getMonth()+1}${i===0?'<span class="pj-badge" style="background:#3fb950;color:#03210d">HOJE</span>':''}${o.saldo<0?'<span class="pj-badge" style="background:#f87171;color:#2a0a0a">NEG</span>':''}</td>
-      <td style="color:#3fb950">${o.ent?BRL(o.ent):'—'} ${o.entProj>0&&!o.temReal?'<span class="pj-tag">proj.</span>':(o.temReal?'<span class="pj-tag">real</span>':'')}</td>
+      <td style="color:#3fb950">${o.ent?BRL(o.ent):'—'} ${o.entProj>0&&!o.temReal?`<span class="pj-tag">proj.${ajustePct!==0?` ${ajustePct>0?'+':''}${ajustePct}%`:''}</span>`:(o.temReal?'<span class="pj-tag">real</span>':'')}</td>
       <td style="color:#f87171">${o.sai?BRL(o.sai):'—'}</td>
       <td style="font-weight:700;color:${o.saldo>=0?'#3fb950':'#f87171'}">${BRL(o.saldo)}</td>
       <td>${badges.join('')||'<span style="color:var(--text-muted)">—</span>'}</td></tr>`;
@@ -367,8 +407,44 @@ function verEventos(k,tipo){
   document.getElementById('pjModalTitle').textContent=titulo; document.getElementById('pjModalBody').innerHTML=body; document.getElementById('pjModal').style.display='flex';
 }
 function fecharModal(){ document.getElementById('pjModal').style.display='none'; }
-function editarMedia(){ const v=prompt('Média diária de entradas projetada (R$):', mediaDiaria().toFixed(2)); if(v==null) return; mediaOverride=pNum(v); render(); }
-function restaurarMedia(){ mediaOverride=null; render(); }
+// ── Controle da projeção (base + tendência) ────────────────────────────────
+function renderControleProj(){
+  const el=document.getElementById('pjMediaLbl'); if(!el) return;
+  const base=mediaBase(), fim=mediaDiaria(), corte=ultimoRecebivel();
+  const m7=mediaRecebiveis7();
+  const rotBase={ rec7:'Média 7 dias de recebíveis', fluxo30:'Média 30 dias do fluxo', manual:'Valor manual' }[baseProj];
+  const semRec7 = baseProj==='rec7' && !(m7>0);
+  const cor = ajustePct>0?'#3fb950':ajustePct<0?'#f87171':'var(--text-muted)';
+  el.innerHTML=`
+    <span class="pj-proj">
+      <select onchange="setBaseProj(this.value)" title="De onde sai a média diária projetada">
+        <option value="rec7"${baseProj==='rec7'?' selected':''}>Média 7 dias de recebíveis</option>
+        <option value="fluxo30"${baseProj==='fluxo30'?' selected':''}>Média 30 dias do fluxo</option>
+        <option value="manual"${baseProj==='manual'?' selected':''}>Valor manual</option>
+      </select>
+      ${baseProj==='manual'?`<button class="pj-btn" style="padding:3px 9px" onclick="editarMedia()">${mediaOverride!=null?'Alterar':'Definir'} valor</button>`:''}
+      <span class="pj-step" title="Aumento ou queda esperada nas vendas — multiplica a média projetada">
+        <button onclick="ajustarVendas(-5)">−</button>
+        <input type="number" step="1" value="${ajustePct}" oninput="setAjuste(this.value)" onfocus="this.select()">
+        <b style="color:${cor}">%</b>
+        <button onclick="ajustarVendas(5)">+</button>
+      </span>
+      ${ajustePct!==0?`<button class="pj-btn" style="padding:3px 9px" onclick="setAjuste(0)">zerar</button>`:''}
+      <span class="pj-proj-res">
+        ${esc(rotBase)}: <b>${BRL(base)}</b>
+        ${ajustePct!==0?` → projetado <b style="color:${cor}">${BRL(fim)}</b>/dia (${ajustePct>0?'+':''}${ajustePct}%)`:` · <b>${BRL(fim)}</b>/dia`}
+      </span>
+    </span>
+    <span class="pj-proj-obs">${
+      semRec7 ? '⚠️ Nenhum recebível lançado — usando a média de 30 dias do fluxo.'
+      : corte ? `Recebíveis lançados até <b>${corte.split('-').reverse().join('/')}</b>; a partir do dia seguinte é projeção.`
+      : 'Sem recebível lançado: projeta desde amanhã.'}</span>`;
+}
+function setBaseProj(v){ baseProj=v; if(v==='manual'&&mediaOverride==null) editarMedia(); else render(); }
+function setAjuste(v){ const n=parseFloat(String(v).replace(',','.')); ajustePct=isNaN(n)?0:Math.max(Math.round(n),-100); render(); }
+function ajustarVendas(delta){ setAjuste(ajustePct+delta); }
+function editarMedia(){ const v=prompt('Média diária de entradas projetada (R$):', mediaBase().toFixed(2)); if(v==null){ render(); return; } mediaOverride=pNum(v); baseProj='manual'; render(); }
+function restaurarMedia(){ mediaOverride=null; baseProj='rec7'; render(); }
 function setPeriodo(p){ periodo=p; render(); }
 
 function init(){

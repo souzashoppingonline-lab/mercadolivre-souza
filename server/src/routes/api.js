@@ -372,6 +372,18 @@ router.get('/vendas/detalhado', async (req, res) => {
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
        o.title, o.quantity, o.unit_price,
        o.total_amount as faturamento,
+       o.buyer_nickname,
+       -- Tela "Resumo por venda" (card): campos que só existem dentro do
+       -- payload cru do pedido — não valia coluna própria só pra isso.
+       -- Nome real do comprador nem sempre vem preenchido pelo ML.
+       o.raw_data->'buyer'->>'first_name' as buyer_first,
+       o.raw_data->'buyer'->>'last_name' as buyer_last,
+       o.raw_data->>'pack_id' as pack_id,
+       COALESCE(
+         o.raw_data->'order_items'->0->'item'->>'seller_sku',
+         o.raw_data->'order_items'->0->'item'->>'seller_custom_field'
+       ) as sku,
+       i.thumbnail, i.available_quantity as estoque_atual,
        CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
             WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
             ELSE COALESCE(o.ml_fee, 0) END as tarifa,

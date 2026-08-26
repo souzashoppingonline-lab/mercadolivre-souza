@@ -4,6 +4,7 @@
 
 const BI_NAV_ITEMS = [
   { href: 'inteligencia-negocio.html', icon: 'fa-chart-pie', label: 'Painel Estratégico' },
+  { href: 'bi-vendas.html',            icon: 'fa-id-card',   label: 'Resumo por Venda' },
 ];
 
 function buildModuleSwitcherBi(active) {

@@ -71,7 +71,7 @@ router.get('/me', (req, res) => {
 const MODULES = {
   operacional: { label: 'Operacional', roles: '*', pages: [], apiPrefixes: [] },
   financeiro:  { label: 'Financeiro', roles: ['admin'], pages: ['/pages/financeiro.html'], apiPrefixes: ['/api/financeiro'] },
-  bi:          { label: 'Inteligência de Negócio', roles: ['admin'], pages: ['/pages/inteligencia-negocio.html'], apiPrefixes: ['/api/bi'] },
+  bi:          { label: 'Inteligência de Negócio', roles: ['admin'], pages: ['/pages/inteligencia-negocio.html', '/pages/bi-vendas.html'], apiPrefixes: ['/api/bi'] },
 };
 
 function roleCanModule(role, key) {

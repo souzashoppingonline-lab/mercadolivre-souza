@@ -143,3 +143,11 @@ O `staff_session` é um JWT stateless com validade de **180 dias**: `requireStaf
 Hoje, cortar o acesso na hora exige trocar `STAFF_JWT_SECRET` no `.env` e reiniciar o `ml-dashboard-novo` — o que **desloga todo mundo**, inclusive o admin.
 
 **Correção esperada:** coluna `sessions_valid_from TIMESTAMPTZ` (ou `token_version INT`) em `staff_users`, carimbada em toda troca de senha/papel/exclusão, e conferida no `requireStaffAuth` contra um snapshot em memória revalidado a cada ~30s (uma query por meio minuto no processo inteiro, não por requisição — o gate está no caminho crítico de toda página e toda API, então não pode virar um SELECT por request).
+
+## `MODULES.financeiro.pages` só lista uma página — as `financeiro-*.html` não estão gateadas pelo backend
+
+`restrictedModuleForPath` (`staffAuth.js`) faz **match exato** contra `pages: [...]`, não por prefixo (`(m.pages || []).includes(p)`). `MODULES.financeiro.pages` tem só `['/pages/financeiro.html']` — mas o módulo cresceu para várias telas (`financeiro-compras.html`, `financeiro-pedidos.html`, `financeiro-boletos.html`, etc.) que **nunca foram adicionadas ao array**. Consequência: um papel não-`admin` não vê esses links no switcher (o gate de UI em `applyModuleAuth`/`js/layout.js` cobre isso), mas se souber/adivinhar a URL, o backend **não bloqueia** — a página carrega normalmente pra qualquer papel logado.
+
+Ao criar `pages/bi-vendas.html` nesta tarefa, o caminho foi adicionado corretamente em `MODULES.bi.pages` — não repetir o gap do Financeiro em telas novas do BI.
+
+**Correção esperada:** ou trocar `pages: [...]` por um prefixo (`financeiro`/`financeiro-*.html` batendo por `startsWith`), ou completar o array do Financeiro com todas as páginas `financeiro-*.html` existentes hoje. A 1ª opção evita esquecer de novo a cada tela nova.

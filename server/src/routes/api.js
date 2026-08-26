@@ -406,6 +406,11 @@ function calcularMargemLinha(r) {
   const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
   return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
 }
+// Exportadas como propriedades do próprio router (padrão Express: o router é
+// uma função, dá pra pendurar propriedade nele) — reusadas por routes/bi.js
+// (Inteligência de Margem) pra não duplicar SQL/fórmula pela 3ª vez.
+router.VENDA_DETALHE_SELECT = VENDA_DETALHE_SELECT;
+router.calcularMargemLinha = calcularMargemLinha;
 
 router.get('/vendas/detalhado', async (req, res) => {
   try {

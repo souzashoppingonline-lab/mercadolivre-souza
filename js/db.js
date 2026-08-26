@@ -299,6 +299,7 @@ const DB = {
 
   // ── Inteligência de Negócio (BI) — dados operacionais (Postgres principal) ──
   async getBiPainel(period = 30, store_id = '') { return this._get('/bi/painel', { period, store_id }); },
+  async getBiMargem(days = 30, store_id = '') { return this._get('/bi/margem', { days, store_id }); },
 
   // ── Módulo Financeiro (Supabase separado, read-only) ─────────
   async getFinanceiroStatus()        { return this._get('/financeiro/status'); },

@@ -269,3 +269,27 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 **Janela de medição da intervenção: 7 dias.** Antes disso o veredito é `medindo`; depois: venda no período → `funcionou`; visitas **+20%** sem venda → `parcial`; visitas **−20%** → `piorou`; nada disso → `sem_efeito`. O baseline é carimbado no registro da intervenção e o efeito é calculado na leitura (nunca gravado, então sempre reflete o dado mais recente).
 
 **Checklist do card** (o que o ML já nos diz, via `item_seo_score`): fotos < 6 ❌ · sem vídeo ❌ · atributos obrigatórios faltando ❌ · título < 55 caracteres ⚠️ · descrição < 100 palavras ⚠️. Ordem de exibição: ❌ → ⚠️ → ✅ (pendência primeiro).
+
+## Inteligência de Margem — motor determinístico (`GET /api/bi/margem`)
+
+> Fonte de verdade dos limiares usados por `pages/bi-margem.html`. Todo campo é agregação real sobre `orders`/`items`/`stores` — o motor NUNCA inventa número (pedido explícito do usuário); nada aqui passa por LLM. Fórmula de margem por pedido é a mesma de `finance.md`/`vendas/detalhado`, só agregada por anúncio (`item_id`).
+
+- **Comparação de período**: sempre janela atual vs. janela **anterior de mesma duração** (não o mês inteiro anterior) — mesmo princípio do Painel Estratégico.
+- **"Alto faturamento"** = o anúncio pertence à **Curva A** (mesma regra de `/api/comparativos/curva-abc`: ≤80% do faturamento **acumulado**, ordenado do maior pro menor, acumula-e-só-depois-confere). Por **fatia** de faturamento, não por contagem de SKUs — um corte por índice (ex.: "top 20% dos anúncios") fica frágil com poucos produtos (facilmente ninguém passa do corte). **Exceção**: se o portfólio é tão concentrado que nem o próprio líder de faturamento chega aos 80% sozinho (situação comum com poucos SKUs — o item, sozinho, já é 100% de si mesmo), o líder por faturamento sempre entra no grupo — é definicionalmente quem mais fatura, não pode ficar de fora.
+- **MC% baixa = < 15%. MC% alta = ≥ 30%.** Pontos percentuais, ajustáveis — não é uma verdade universal, é o limiar desta tela (compatível com o exemplo do próprio usuário: Whiskas Kit 6 a 13,1% MC é sinalizado como baixa margem).
+- **Classificação** (nessa ordem — a primeira regra que bater decide):
+  1. `margem < 0` → **PREJUÍZO** (⚫), sempre, independente de volume.
+  2. Alto faturamento + MC ≥ 30% → **ESTRELA** (🟢).
+  3. Alto faturamento + MC < 15% → **VOLUME COM BAIXA MARGEM** (🟡) — "esse grupo é crítico" (linguagem do próprio usuário).
+  4. Não-alto faturamento + MC ≥ 30% → **ALTA MARGEM / BAIXO VOLUME** (🔵).
+  5. MC < 15% (fora dos casos acima, ou seja, volume médio/baixo) → **DESTRUIDOR DE MARGEM** (🔴) — gera faturamento mas contribui pouco.
+  6. Resto (MC entre 15% e 30%, faturamento não classificado acima) → **NEUTRO**.
+- **Estoque & ruptura** — mesma fórmula de `getRupturaEstoque` (`reports.js`): `venda/dia = unidades vendidas no período ÷ dias`; `dias de estoque = estoque atual ÷ venda/dia`; `data de ruptura = hoje + dias de estoque`. Faixas: **RUPTURA_IMINENTE** ≤7 dias (mesmo limiar já usado como "iminente" em `getRupturaEstoque`, não uma constante nova) · **SAUDÁVEL** 8–60 dias · **EXCESSO** > 60 dias · **SEM_VENDA_NO_PERIODO** (tem estoque, zero venda no período — não dá pra estimar velocidade) · **ZERADO** (estoque = 0). Sem estoque sincronizado (`estoque_atual = null`) não quebra: fica `SEM_VENDA_NO_PERIODO` sem dias/data.
+- **Score 0-100**, com breakdown sempre visível (nunca um número sem explicação): percentil de MC% dentro do portfólio analisado × 35 + percentil de faturamento × 25 + percentil de margem R$ × 25 + pontos de estoque (SAUDÁVEL=15 · EXCESSO=8 · RUPTURA_IMINENTE=5 · sem dado=12, neutro — não penaliza por falta de dado). Percentil com 1 único item analisado = 1 (não penaliza por falta de comparação).
+- **Ações recomendadas** — cada uma com premissa explícita, nunca uma previsão disfarçada de fato:
+  - **PREJUÍZO** → pausar/renegociar; impacto = prejuízo já realizado no período (premissa: repetir o período repetiria o prejuízo).
+  - **VOLUME_BAIXA_MARGEM/DESTRUIDOR_MARGEM** → reprecificar +5%; impacto = `0,05 × (faturamento − imposto − tarifa)` — premissa: volume constante, tarifa/imposto escalam com o preço (são %), custo do produto e frete do vendedor ficam fixos por unidade.
+  - **ALTA_MARGEM_BAIXO_VOLUME** → aumentar exposição; impacto = margem atual do período — premissa: dobrar o volume mantém a mesma MC%.
+  - **RUPTURA_IMINENTE com margem positiva** → repor estoque; impacto = `venda/dia × 7 × margem por unidade` — premissa: 7 dias de ruptura na mesma velocidade de venda do período.
+  - **Frete do vendedor > 15% do faturamento do anúncio** → revisar frete; sem estimativa em R$ (depende de qual alternativa for escolhida) — mostrado como "sem estimativa em R$", nunca inventado.
+  - Ranking final: as 10 de maior `impacto_estimado` (ações sem impacto em R$ ficam no fim, nunca em 1º).

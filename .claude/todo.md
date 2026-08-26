@@ -105,6 +105,15 @@ Fase de expansão da Shopee, totalmente isolada do Mercado Livre (arquivos/rotas
 - [ ] Decidir e documentar em `decisions.md`: remover o tópico WS `kpis_updated` (código morto) ou implementar sua publicação de fato (item 2 de `known-bugs.md`).
 - [ ] Avaliar se `PATCH /api/custos/:sku` deveria exigir/validar que o `sku` informado é de fato um `ml_id` válido, ou desacoplar de vez `sku_costs` de `items.cost` (item 3 de `known-bugs.md`).
 
+## Inteligência de Margem — Fase 2/3 (deliberadamente fora desta tarefa)
+
+O usuário pediu um analista financeiro completo (30 seções de especificação: causa raiz textual, resumo executivo, score, simulação de preço multi-cenário, tabela de histórico com feedback loop). Implementada a **Fase 1 — motor determinístico** (`GET /api/bi/margem`, `pages/bi-margem.html`, ver `modules.md`/`business-rules.md`): tudo que dá pra calcular sem IA, com número real e premissa explícita. Fora do escopo desta tarefa, de propósito (ver `decisions.md`):
+
+- [ ] **Camada de LLM** escrevendo a narrativa em português (causa raiz decomposta — "a margem caiu X p.p., a causa principal foi..."; resumo executivo diário; "o que eu faria agora" em texto corrido) em cima do JSON já calculado pela Fase 1 — nunca deixar o LLM fazer conta financeira, só interpretar o que o backend já calculou (mesma separação backend-determinístico/LLM-narrativo pedida pelo usuário). Reusar `server/src/ai/llm.js` (padrão Haiku barato de `analise-produtos.md`).
+- [ ] **Simulação de preço multi-cenário** (+3%/+5%/+10%, não só +5%) — hoje `bi-margem.html` só simula 1 cenário dentro da ação "Reprecificar".
+- [ ] **Tabela `business_insights`** (histórico de insights com status novo/em_analise/executado/ignorado/resolvido) + feedback loop (impacto estimado vs. realizado) — precisa de UI de acompanhamento, não é só a tela de análise atual.
+- [ ] Decomposição de causa raiz por variação de período (§19 do pedido original: "a margem caiu 3,4 p.p., 62% disso veio do aumento do peso de SKUs com MC<15%") — hoje a Fase 1 mostra o "antes/depois" agregado mas não decompõe QUANTO de cada causa (mix de produto vs. custo vs. frete vs. tarifa) contribuiu pra variação.
+
 ## Rankeamento — fase Recuperação (v80)
 
 - [ ] Alerta no Telegram quando uma intervenção fecha a janela de 7 dias **sem efeito** (hoje o veredito `sem_efeito`/`parcial` só aparece no card). Encaixa no snapshot de 6h, com idempotência por `ranking_notes.id` (mesmo padrão do `esfriou`/`sem_resultado`).

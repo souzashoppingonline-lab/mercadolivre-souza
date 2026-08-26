@@ -125,6 +125,10 @@ const DB = {
   async getVendas(params = {})         { return this._get('/vendas', params); },
   async getVendasDiarias(days=30)      { return this._get('/vendas/diarias', { days }); },
   async getVendasDetalhado(params={})  { return this._get('/vendas/detalhado', params); },
+  // Reconsulta 1 pedido na API do ML na hora (tarifa/frete vendedor/ml_fee) —
+  // usado no card "Resumo por Venda" (BI) quando a venda é recente demais
+  // pra Conciliação/webhook já terem chegado. Ver modules.md.
+  async atualizarVendaDetalhe(orderId) { return this._post(`/vendas/${orderId}/atualizar`, {}); },
   async getProdutoDetalhe(id)          { return this._get(`/produtos/${id}/detalhe`); },
   async getVendasHoje()                { return this._get('/vendas/hoje'); },
   async getVendasHojeVsOntem(store_id='') { return this._get(`/vendas/hoje-vs-ontem${store_id ? '?store_id='+store_id : ''}`); },

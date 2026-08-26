@@ -341,39 +341,16 @@ router.get('/vendas/diarias', async (req, res) => {
   res.json({ rows: rows.map(r => ({ ...r, liquido: Number(r.bruto) * 0.88, taxas: Number(r.bruto) * 0.12 })), summary: {} });
 });
 
-router.get('/vendas/detalhado', async (req, res) => {
-  try {
-  const { store_id = '', status = 'paid', days = 30, search = '', date_from = '', date_to = '' } = req.query;
-  const dateFrom = date_from || null;
-  const dateTo   = date_to   || null;
-  const params = [store_id, status, Number(days), search, dateFrom, dateTo];
-  // Cache curto (60s) — LATERAL por pedido em 2 tabelas (conciliação + pagamento)
-  // + agregação; bounda a carga sob range grande. Sem invalidação por
-  // order_updated de propósito (evento frequente demais). Ver decisions.md.
-  const cacheKey = `vendas:detalhado:${store_id}:${status}:${days}:${search}:${dateFrom||''}:${dateTo||''}`;
-  const cachedHit = await redis.get(cacheKey);
-  if (cachedHit) return res.json(JSON.parse(cachedHit));
-  const whereClause = `
-     WHERE ($1 = '' OR o.store_id = $1::bigint)
-       AND ($2 = '' OR o.status = $2)
-       AND ($5::date IS NULL OR o.date_created::date >= $5::date)
-       AND ($6::date IS NULL OR o.date_created::date <= $6::date)
-       AND ($5::date IS NOT NULL OR o.date_created >= CURRENT_DATE - $3::int)
-       AND ($4 = '' OR o.title ILIKE '%'||$4||'%')`;
-
-  // Linhas para a tabela — cap de 1000 (payload/render), não usado para os totais.
-  // Precedência da taxa por pedido (ver finance.md):
-  //  1. Conciliação Bancária (mp_account_movements) — separa Tarifa e Frete Vendedor.
-  //  2. ml_payments (tempo real, por venda): taxa = transaction_amount − net_received_amount
-  //     (comissão + frete juntos) → tudo em `tarifa`, frete_vendedor=0 (evita contar 2x).
-  //  3. ml_fee / shipping_seller_cost do próprio pedido.
-  const { rows } = await pool.query(
-    `SELECT
+// SELECT compartilhado entre a listagem (/vendas/detalhado) e a atualização
+// pontual de 1 pedido (/vendas/:orderId/atualizar) — mesma precedência de
+// taxa (Conciliação → ml_payments → orders), ver finance.md. Só o WHERE muda.
+const VENDA_DETALHE_SELECT = `
+     SELECT
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
        o.title, o.quantity, o.unit_price,
        o.total_amount as faturamento,
        o.buyer_nickname,
-       -- Tela "Resumo por venda" (card): campos que só existem dentro do
+       -- Tela "Resumo por venda" (card BI): campos que só existem dentro do
        -- payload cru do pedido — não valia coluna própria só pra isso.
        -- Nome real do comprador nem sempre vem preenchido pelo ML.
        o.raw_data->'buyer'->>'first_name' as buyer_first,
@@ -413,23 +390,57 @@ router.get('/vendas/detalhado', async (req, res) => {
        FROM ml_payments p
        WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
          AND p.status = 'approved'
-     ) pg ON true
+     ) pg ON true`;
+
+// Aplica a fórmula de margem (finance.md) em cima de 1 linha crua da query
+// acima. Extraída pra função porque a listagem e a atualização pontual
+// precisam do MESMO cálculo — nunca duas fórmulas de margem no mesmo arquivo.
+function calcularMargemLinha(r) {
+  const fat = Number(r.faturamento) || 0;
+  const custo = Number(r.custo) * (Number(r.quantity) || 1);
+  const imposto = fat * (Number(r.imposto_pct) / 100);
+  const tarifa = Number(r.tarifa) || 0;
+  const freteVend = Number(r.frete_vendedor) || 0;
+  const freteComp = Number(r.frete_comprador) || 0;
+  const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
+  const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
+  return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
+}
+
+router.get('/vendas/detalhado', async (req, res) => {
+  try {
+  const { store_id = '', status = 'paid', days = 30, search = '', date_from = '', date_to = '' } = req.query;
+  const dateFrom = date_from || null;
+  const dateTo   = date_to   || null;
+  const params = [store_id, status, Number(days), search, dateFrom, dateTo];
+  // Cache curto (60s) — LATERAL por pedido em 2 tabelas (conciliação + pagamento)
+  // + agregação; bounda a carga sob range grande. Sem invalidação por
+  // order_updated de propósito (evento frequente demais). Ver decisions.md.
+  const cacheKey = `vendas:detalhado:${store_id}:${status}:${days}:${search}:${dateFrom||''}:${dateTo||''}`;
+  const cachedHit = await redis.get(cacheKey);
+  if (cachedHit) return res.json(JSON.parse(cachedHit));
+  const whereClause = `
+     WHERE ($1 = '' OR o.store_id = $1::bigint)
+       AND ($2 = '' OR o.status = $2)
+       AND ($5::date IS NULL OR o.date_created::date >= $5::date)
+       AND ($6::date IS NULL OR o.date_created::date <= $6::date)
+       AND ($5::date IS NOT NULL OR o.date_created >= CURRENT_DATE - $3::int)
+       AND ($4 = '' OR o.title ILIKE '%'||$4||'%')`;
+
+  // Linhas para a tabela — cap de 1000 (payload/render), não usado para os totais.
+  // Precedência da taxa por pedido (ver finance.md):
+  //  1. Conciliação Bancária (mp_account_movements) — separa Tarifa e Frete Vendedor.
+  //  2. ml_payments (tempo real, por venda): taxa = transaction_amount − net_received_amount
+  //     (comissão + frete juntos) → tudo em `tarifa`, frete_vendedor=0 (evita contar 2x).
+  //  3. ml_fee / shipping_seller_cost do próprio pedido.
+  const { rows } = await pool.query(
+    `${VENDA_DETALHE_SELECT}
      ${whereClause}
      ORDER BY o.date_created DESC LIMIT 1000`,
     params
   );
 
-  const result = rows.map(r => {
-    const fat = Number(r.faturamento) || 0;
-    const custo = Number(r.custo) * (Number(r.quantity) || 1);
-    const imposto = fat * (Number(r.imposto_pct) / 100);
-    const tarifa = Number(r.tarifa) || 0;
-    const freteVend = Number(r.frete_vendedor) || 0;
-    const freteComp = Number(r.frete_comprador) || 0;
-    const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
-    const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
-    return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
-  });
+  const result = rows.map(calcularMargemLinha);
 
   // Totais — agregados no banco sobre TODO o range filtrado (sem LIMIT), agrupados
   // por status para separar aprovadas/canceladas. Corrige bug: antes os cards de
@@ -505,6 +516,123 @@ router.get('/vendas/detalhado', async (req, res) => {
   res.json(payload);
   } catch (e) {
     console.error('[api] /vendas/detalhado error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Atualização PONTUAL de 1 pedido — ação explícita de rota, não leitura de
+// listagem (regra de arquitetura #3 do CLAUDE.md: mlClient.js só aqui ou no
+// worker). Existe porque Tarifa/Frete Vendedor de venda recém-feita ("Hoje")
+// costumam vir zerados: a Conciliação oficial (relatório do Mercado Pago) só
+// fecha no dia seguinte, e o webhook de pagamento/envio pode ainda não ter
+// chegado. Refaz na hora o que os webhooks fariam: /orders/:id (ml_fee,
+// raw_data — também atualiza buyer/pack_id/sku do card), /shipments/:id/costs
+// (frete vendedor) e /collections/:id (tarifa real via ml_payments) — mesma
+// lógica de handleOrder/handleShipment/handlePayment do worker.js, replicada
+// aqui (não importa worker.js: ele inicia filas/crons ao carregar, perigoso
+// requerer do processo HTTP — mesmo motivo do /conciliacao/.../reprocessar).
+router.post('/vendas/:orderId/atualizar', async (req, res) => {
+  try {
+    const orderId = req.params.orderId;
+    const { rows: ord } = await pool.query(`SELECT store_id, shipping_id FROM orders WHERE ml_id=$1`, [orderId]);
+    if (!ord.length) return res.status(404).json({ error: 'pedido não encontrado' });
+    const storeId = ord[0].store_id;
+    const shippingIdAntigo = ord[0].shipping_id;
+
+    const ml = require('../mlClient');
+
+    // 1) Pedido: ml_fee (item.sale_fee), shipping_cost/type, raw_data inteiro.
+    const order = await ml.getOrder(orderId, storeId);
+    const item0 = order.order_items?.[0] || {};
+    await pool.query(
+      `UPDATE orders SET
+         ml_fee = $2, shipping_cost = $3,
+         shipping_type = COALESCE(NULLIF($4, ''), shipping_type),
+         shipping_id = COALESCE($5, shipping_id),
+         raw_data = $6, updated_at = now()
+       WHERE ml_id = $1`,
+      [
+        orderId, item0.sale_fee || 0, order.shipping?.cost || 0,
+        order.shipping?.logistic_type || '',
+        order.shipping?.id ? String(order.shipping.id) : null,
+        JSON.stringify(order),
+      ]
+    );
+
+    // 2) Frete do vendedor: /shipments/:id/costs → senders_cost. Mesma
+    // extração de handleShipment (worker.js).
+    const shippingId = (order.shipping?.id ? String(order.shipping.id) : null) || shippingIdAntigo;
+    let shippingError = null;
+    if (shippingId) {
+      try {
+        const costs = await ml.getShipmentCosts(shippingId, storeId);
+        const senders = costs?.senders;
+        let sellerCost = null;
+        if (Array.isArray(senders)) sellerCost = senders.reduce((a, s) => a + (Number(s?.cost) || 0), 0);
+        else if (senders && senders.cost != null) sellerCost = Number(senders.cost) || 0;
+        if (sellerCost != null) {
+          await pool.query(`UPDATE orders SET shipping_seller_cost=$2 WHERE ml_id=$1`, [orderId, sellerCost]);
+        }
+      } catch (e) {
+        shippingError = e.message;   // logística sem custo exposto (ex: coleta) — não é erro fatal
+      }
+    }
+
+    // 3) Tarifa real: /collections/:id → ml_payments (upsert, mesmo shape de
+    // handlePayment). Sem payment ainda (pedido novíssimo) → segue sem erro,
+    // a tarifa fica no nível 3 (orders.ml_fee) até o pagamento existir.
+    let paymentError = null;
+    const paymentId = order.payments?.[0]?.id;
+    if (paymentId) {
+      try {
+        const payment = await ml.getPayment(paymentId, storeId);
+        const c = payment?.collection || payment;
+        await pool.query(
+          `INSERT INTO ml_payments (
+             payment_id, order_id, store_id, status, status_detail, transaction_amount,
+             date_created, date_approved, net_received_amount, money_release_date, released,
+             marketplace_fee, mercadopago_fee, discount_fee, coupon_fee, finance_fee,
+             amount_refunded, shipping_cost, payment_method_id, payment_type, installments,
+             raw_data, updated_at
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now())
+           ON CONFLICT (payment_id) DO UPDATE SET
+             status = EXCLUDED.status, status_detail = EXCLUDED.status_detail,
+             transaction_amount = EXCLUDED.transaction_amount,
+             net_received_amount = EXCLUDED.net_received_amount,
+             money_release_date = EXCLUDED.money_release_date, released = EXCLUDED.released,
+             marketplace_fee = EXCLUDED.marketplace_fee, mercadopago_fee = EXCLUDED.mercadopago_fee,
+             discount_fee = EXCLUDED.discount_fee, coupon_fee = EXCLUDED.coupon_fee,
+             finance_fee = EXCLUDED.finance_fee, amount_refunded = EXCLUDED.amount_refunded,
+             shipping_cost = EXCLUDED.shipping_cost, payment_method_id = EXCLUDED.payment_method_id,
+             payment_type = EXCLUDED.payment_type, installments = EXCLUDED.installments,
+             raw_data = EXCLUDED.raw_data, updated_at = now()`,
+          [
+            paymentId, orderId, storeId, c?.status || null, c?.status_detail || null,
+            c?.transaction_amount || null, c?.date_created || null, c?.date_approved || null,
+            c?.net_received_amount ?? null, c?.money_release_date || null, c?.released ?? null,
+            c?.marketplace_fee ?? null, c?.mercadopago_fee ?? null, c?.discount_fee ?? null,
+            c?.coupon_fee ?? null, c?.finance_fee ?? null, c?.amount_refunded ?? null,
+            c?.shipping_cost ?? null, c?.payment_method_id || null, c?.payment_type || null,
+            c?.installments ?? null, JSON.stringify(payment),
+          ]
+        );
+      } catch (e) {
+        paymentError = e.message;
+      }
+    }
+
+    await redis.del(`kpis:${storeId}`);
+    await redis.del('kpis:summary');
+
+    // Devolve a linha já recalculada (mesma fórmula/SELECT da listagem) —
+    // o card troca só esse pedido no cliente, sem esperar o cache de 60s de
+    // /vendas/detalhado (que continua, de propósito, sem invalidação — ver
+    // comentário ali e decisions.md).
+    const { rows: fresh } = await pool.query(`${VENDA_DETALHE_SELECT} WHERE o.ml_id = $1 LIMIT 1`, [orderId]);
+    if (!fresh.length) return res.status(404).json({ error: 'pedido não encontrado após atualizar' });
+    res.json({ row: calcularMargemLinha(fresh[0]), shipping_error: shippingError, payment_error: paymentError });
+  } catch (e) {
+    console.error('[api] /vendas/:orderId/atualizar error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

@@ -52,6 +52,9 @@
     .vc-margem .pct { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; background:rgba(63,185,80,.15); color:#3fb950; }
     .vc-margem.neg .pct { background:rgba(248,113,113,.15); color:#f87171; }
     .vc-editcusto { background:none; border:0; color:var(--text-muted); cursor:pointer; padding:0 0 0 4px; font-size:9px; vertical-align:1px; }
+    .vc-refresh { background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:5px; padding:2px 6px; font-size:10px; cursor:pointer; display:inline-flex; align-items:center; }
+    .vc-refresh:hover { color:#8b5cf6; border-color:#8b5cf6; }
+    .vc-refresh:disabled { opacity:.5; cursor:default; }
     .vc-editcusto:hover { color:#8b5cf6; }
     .vc-custoinput { width:60px; background:var(--bg-card2); border:1px solid var(--border); border-radius:5px; padding:3px 5px; color:var(--text-main); font-size:11px; text-align:right; }
     .vc-custoinput.err { border-color:#f87171; }
@@ -223,6 +226,36 @@ async function salvarCusto(mlId, itemId){
   renderGrid();
 }
 
+// Reconsulta o pedido na API do ML na hora (tarifa/frete vendedor/ml_fee) —
+// pra venda recente ("Hoje") a Conciliação oficial só fecha no dia seguinte
+// e o webhook de pagamento/envio pode ainda não ter chegado. Só troca ESSE
+// card (a linha volta pronta do backend, mesma fórmula de margem).
+async function atualizarVenda(mlId, btn){
+  const icon = btn.querySelector('i'); const original = icon.className;
+  icon.className = 'fas fa-spinner fa-spin'; btn.disabled = true;
+  const res = await DB.atualizarVendaDetalhe(mlId);
+  btn.disabled = false;
+  if (!res || res.error) {
+    icon.className = original;
+    alert('Não consegui atualizar essa venda: ' + (res && res.error || DB.lastError || 'erro desconhecido'));
+    return;
+  }
+  const idx = ROWS.findIndex(r => r.ml_id === mlId);
+  if (idx >= 0) {
+    const margemAntiga = ROWS[idx].status !== 'cancelled' ? Number(ROWS[idx].margem) || 0 : 0;
+    const margemNova = res.row.status !== 'cancelled' ? Number(res.row.margem) || 0 : 0;
+    ROWS[idx] = res.row;
+    if (SUMMARY.margem_total != null) {
+      SUMMARY.margem_total += (margemNova - margemAntiga);
+      SUMMARY.mc_pct = SUMMARY.vendas_aprovadas > 0 ? (SUMMARY.margem_total / SUMMARY.vendas_aprovadas) * 100 : 0;
+      renderKpis(SUMMARY);
+    }
+  }
+  renderGrid();
+  if (res.shipping_error) console.warn('[bi-vendas] frete do vendedor não veio (logística sem custo exposto ou envio ainda não gerado):', res.shipping_error);
+  if (res.payment_error) console.warn('[bi-vendas] tarifa real não veio (pagamento ainda não processado pelo ML):', res.payment_error);
+}
+
 function cardHtml(r){
   const neg = Number(r.mc_pct) < 0;
   const foto = r.thumbnail
@@ -242,6 +275,7 @@ function cardHtml(r){
           <span class="vc-badge ${fmtFreteClass(r.frete_tipo)}">${esc(fmtFreteLabel(r.frete_tipo))}</span>
           ${sku ? copyBtn(sku, 'SKU') : ''}
           ${r.item_id ? copyBtn(r.item_id, 'Anúncio (MLB)') : ''}
+          <button class="vc-refresh" title="Buscar tarifa/frete atualizados no Mercado Livre (venda recente ainda não conciliada)" onclick="atualizarVenda('${jsStr(r.ml_id)}', this)"><i class="fas fa-rotate"></i></button>
         </div>
       </div>
     </div>

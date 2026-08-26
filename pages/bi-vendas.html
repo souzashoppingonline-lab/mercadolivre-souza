@@ -256,7 +256,7 @@ function cardHtml(r){
     </div>
     <div class="vc-fin">
       <div><div class="l">Venda</div><div class="v">${BRL(r.faturamento)}</div></div>
-      <div><div class="l">Frete compr.</div><div class="v" style="color:var(--text-muted)">${BRL(r.frete_comprador)}</div></div>
+      <div><div class="l">Frete vend.</div><div class="v" style="color:#f87171">-${BRL(r.freteVend)}</div></div>
       <div><div class="l">Tarifa</div><div class="v" style="color:#f87171">-${BRL(r.tarifa)}</div></div>
       <div>${custoCellHtml(r)}</div>
       <div><div class="l">Imposto</div><div class="v" style="color:#f87171">-${BRL(r.imposto)}</div></div>

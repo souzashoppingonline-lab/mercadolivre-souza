@@ -48,6 +48,9 @@
     .badge-frete.Flex            { background: rgba(155,89,182,0.15); color: #a569bd; }
     .badge-frete.MercadoEnvios   { background: rgba(230,126,34,0.15); color: var(--orange); }
     .badge-frete.Coleta          { background: rgba(41,128,185,0.15); color: #5dade2; }
+    .tbl-refresh { background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:5px; padding:1px 5px; font-size:9px; cursor:pointer; margin-left:4px; }
+    .tbl-refresh:hover { color:var(--primary); border-color:var(--primary); }
+    .tbl-refresh:disabled { opacity:.5; cursor:default; }
     /* Máscara de dados sensíveis */
     .masked .col-sensivel { filter: blur(6px); user-select: none; pointer-events: none; transition: filter .25s; }
     #maskBtn.active { background: rgba(255,230,0,.12); border-color: var(--primary); color: var(--primary); }
@@ -283,6 +286,8 @@ function fmtFreteClass(raw) {
 }
 const set   = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
 
+let ROWS = [], SUMMARY = {};
+
 async function initStores() {
   const data = await DB.getLojas() || { stores:[] };
   const sel = document.getElementById('filterStore');
@@ -317,7 +322,19 @@ async function load() {
     return;
   }
 
-  const s = data.summary || {};
+  SUMMARY = data.summary || {};
+  renderSummary();
+
+  ROWS = data.rows || [];
+  const totalPedidosFiltro = (SUMMARY.pedidos_aprovados||0) + (SUMMARY.pedidos_cancelados||0);
+  set('s-count', ROWS.length < totalPedidosFiltro
+    ? `mostrando ${ROWS.length} de ${totalPedidosFiltro} pedidos (totais acima já refletem os ${totalPedidosFiltro})`
+    : `${ROWS.length} registros`);
+  renderRows();
+}
+
+function renderSummary() {
+  const s = SUMMARY;
   set('s-fat',   R(s.vendas_aprovadas));
   set('s-fat2',  R(s.vendas_aprovadas));
   set('s-canc',  R(s.vendas_canceladas));
@@ -339,20 +356,15 @@ async function load() {
   set('s-ticket', R(s.ticket_medio));
   set('s-mcmed',  R(s.pedidos_aprovados > 0 ? (s.margem_total/s.pedidos_aprovados) : 0));
   set('s-mcmedpct', N(s.mc_pct)+'%');
-  const totalPedidos = (s.pedidos_aprovados||0) + (s.pedidos_cancelados||0);
-  const rowsShown = (data.rows||[]).length;
-  set('s-count', rowsShown < totalPedidos
-    ? `mostrando ${rowsShown} de ${totalPedidos} pedidos (totais acima já refletem os ${totalPedidos})`
-    : `${rowsShown} registros`);
 
   const mcEl = document.getElementById('s-mcpct');
   if (mcEl) { mcEl.textContent = N(s.mc_pct)+'%'; mcEl.className = 'mc-pct'+(s.mc_pct<0?' neg':''); }
+}
 
-  const rows = data.rows || [];
-  tbody.innerHTML = rows.length ? rows.map(r => {
-    const neg = Number(r.mc_pct) < 0;
-    const hasCusto = Number(r.custo) > 0;
-    return `<tr>
+function rowHtml(r) {
+  const neg = Number(r.mc_pct) < 0;
+  const hasCusto = Number(r.custo) > 0;
+  return `<tr>
       <td class="tbl-anuncio col-sensivel" title="${r.title||''}" style="cursor:pointer;color:var(--primary)" onclick="openModal('${r.ml_id}')">${r.title||'—'}</td>
       <td class="col-sensivel" style="font-size:11px;white-space:nowrap">${r.conta||'—'}</td>
       <td class="col-sensivel" style="font-size:10px;color:var(--text-muted)">${r.item_id||'—'}</td>
@@ -365,11 +377,50 @@ async function load() {
       <td class="tbl-neg">${R(r.imposto)}</td>
       <td class="${Number(r.tarifa)>0?'tbl-neg':'tbl-neg0'}">${R(r.tarifa)}</td>
       <td class="${Number(r.frete_comprador)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_comprador)}</td>
-      <td class="${Number(r.frete_vendedor)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_vendedor)}</td>
+      <td class="${Number(r.frete_vendedor)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_vendedor)}
+        <button class="tbl-refresh" title="Buscar tarifa/frete do vendedor atualizados no Mercado Livre (venda recente ainda não conciliada)" onclick="atualizarLinha('${r.ml_id}', this)"><i class="fas fa-rotate"></i></button>
+      </td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${R(r.margem)}</td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${N(r.mc_pct)}%</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="15" class="empty-state">Nenhuma venda encontrada</td></tr>';
+}
+
+function renderRows() {
+  const tbody = document.getElementById('vendasTbody');
+  tbody.innerHTML = ROWS.length ? ROWS.map(rowHtml).join('') : '<tr><td colspan="15" class="empty-state">Nenhuma venda encontrada</td></tr>';
+}
+
+// Reconsulta 1 pedido na API do ML na hora (tarifa/frete vendedor/ml_fee) —
+// venda recente ("Hoje"/período curto) costuma vir zerada porque a
+// Conciliação oficial (relatório do Mercado Pago) só fecha no dia seguinte, e
+// o webhook de pagamento/envio pode não ter chegado ainda. Mesma ideia e
+// mesmo endpoint do card "Resumo por Venda" do módulo BI — ver modules.md.
+async function atualizarLinha(mlId, btn) {
+  const icon = btn.querySelector('i'); const original = icon.className;
+  icon.className = 'fas fa-spinner fa-spin'; btn.disabled = true;
+  const res = await DB.atualizarVendaDetalhe(mlId);
+  btn.disabled = false;
+  if (!res || res.error) {
+    icon.className = original;
+    alert('Não consegui atualizar essa venda: ' + (res && res.error || DB.lastError || 'erro desconhecido'));
+    return;
+  }
+  const idx = ROWS.findIndex(r => r.ml_id === mlId);
+  if (idx >= 0) {
+    const antiga = ROWS[idx];
+    const aprovado = antiga.status !== 'cancelled';
+    if (aprovado && SUMMARY.tarifa_total != null) {
+      SUMMARY.tarifa_total        += (Number(res.row.tarifa)||0)          - (Number(antiga.tarifa)||0);
+      SUMMARY.frete_vendedor_total += (Number(res.row.frete_vendedor)||0) - (Number(antiga.frete_vendedor)||0);
+      SUMMARY.margem_total        += (Number(res.row.margem)||0)         - (Number(antiga.margem)||0);
+      SUMMARY.mc_pct = SUMMARY.vendas_aprovadas > 0 ? (SUMMARY.margem_total / SUMMARY.vendas_aprovadas) * 100 : 0;
+      renderSummary();
+    }
+    ROWS[idx] = res.row;
+  }
+  renderRows();
+  if (res.shipping_error) console.warn('[vendas] frete do vendedor não atualizado:', res.shipping_error);
+  if (res.payment_error) console.warn('[vendas] tarifa não atualizada:', res.payment_error);
 }
 
 // ── Vendas Hoje ────────────────────────────────────────────

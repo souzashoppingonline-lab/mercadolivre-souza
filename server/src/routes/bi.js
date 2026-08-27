@@ -748,4 +748,68 @@ router.post('/margem/narrativa', async (req, res) => {
   }
 });
 
+// GET /api/bi/margem/produto/:itemId — drill-down de UM anúncio (Fase B):
+// série diária (não semanal — a Visão Geral já tem a semanal) de todas as
+// métricas, pra alimentar o gráfico temporal e a decomposição em cascata do
+// modal de detalhe em bi-margem-produtos.html. Consulta dedicada (não reusa
+// computarMargem, que processa o portfólio inteiro) — pedir a série de 1
+// SKU não deveria pagar o custo de agregar todos os outros.
+router.get('/margem/produto/:itemId', async (req, res) => {
+  try {
+    const itemId = req.params.itemId;
+    const dias = Math.min(Math.max(Number(req.query.days) || 60, 7), 365);
+    const storeId = String(req.query.store_id || '').trim();
+    const params = [itemId, dias];
+    let filtro = '';
+    if (storeId) { params.push(storeId); filtro = `AND o.store_id = $${params.length}::bigint`; }
+    const { rows } = await pool.query(
+      `${VENDA_DETALHE_SELECT}
+       WHERE o.item_id = $1
+         AND o.status <> 'cancelled'
+         AND o.date_created >= (CURRENT_DATE - $2::int + 1)
+         ${filtro}
+       ORDER BY o.date_created ASC
+       LIMIT 5000`,
+      params
+    );
+    if (!rows.length) return res.json({ item_id: itemId, dias, serie: [], resumo: null });
+    const linhas = rows.map(calcularMargemLinha);
+
+    const porDia = new Map();
+    for (const r of linhas) {
+      const dia = String(r.date_created).slice(0, 10);
+      let b = porDia.get(dia);
+      if (!b) { b = { dia, faturamento: 0, margem: 0, custo: 0, imposto: 0, tarifa: 0, frete_vendedor: 0, qtd: 0, pedidos: 0, preco_soma: 0 }; porDia.set(dia, b); }
+      b.faturamento += Number(r.faturamento) || 0;
+      b.margem += r.margem;
+      b.custo += r.custo; b.imposto += r.imposto; b.tarifa += r.tarifa; b.frete_vendedor += r.freteVend;
+      b.qtd += Number(r.quantity) || 0;
+      b.pedidos += 1;
+      b.preco_soma += Number(r.unit_price) || 0;
+    }
+    const serie = [...porDia.values()].sort((a, b) => a.dia.localeCompare(b.dia)).map(b => ({
+      dia: b.dia, faturamento: b.faturamento, margem: b.margem,
+      mc_pct: b.faturamento > 0 ? Number(((b.margem / b.faturamento) * 100).toFixed(2)) : 0,
+      preco_medio: b.pedidos > 0 ? b.preco_soma / b.pedidos : 0,
+      frete_vendedor: b.frete_vendedor, tarifa: b.tarifa, custo: b.custo, qtd: b.qtd, pedidos: b.pedidos,
+    }));
+
+    const somar = (campo) => linhas.reduce((s, r) => s + (campo === 'faturamento' ? Number(r.faturamento) || 0 : r[campo]), 0);
+    const fat = somar('faturamento'), margem = somar('margem');
+    const ultima = linhas[linhas.length - 1];
+    const resumo = {
+      item_id: itemId, title: ultima.title, thumbnail: ultima.thumbnail,
+      faturamento: fat, margem, mc_pct: fat > 0 ? (margem / fat) * 100 : 0,
+      custo: somar('custo'), imposto: somar('imposto'), tarifa: somar('tarifa'), frete_vendedor: somar('freteVend'),
+      qtd: linhas.reduce((s, r) => s + (Number(r.quantity) || 0), 0), pedidos: linhas.length,
+      unit_price_atual: Number(ultima.unit_price) || 0,
+      imposto_pct: Number(ultima.imposto_pct) || 0, // % fixo por loja — necessário pro simulador de preço recalcular imposto em cada cenário
+    };
+    res.json({ item_id: itemId, dias, serie, resumo });
+  } catch (e) {
+    console.error('[bi] /margem/produto/:itemId error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

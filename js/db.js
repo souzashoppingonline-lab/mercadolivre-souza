@@ -305,6 +305,7 @@ const DB = {
   // backend ignora `days` e usa o intervalo explícito — ver business-rules.md.
   async getBiMargem(days = 30, store_id = '', extra = {}) { return this._get('/bi/margem', { days, store_id, ...extra }); },
   async getBiMargemNarrativa(days = 30, store_id = '', extra = {}) { return this._post('/bi/margem/narrativa', { days, store_id, ...extra }); },
+  async getBiMargemProduto(itemId, days = 60, store_id = '') { return this._get(`/bi/margem/produto/${encodeURIComponent(itemId)}`, { days, store_id }); },
 
   // ── Módulo Financeiro (Supabase separado, read-only) ─────────
   async getFinanceiroStatus()        { return this._get('/financeiro/status'); },

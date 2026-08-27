@@ -133,9 +133,11 @@ Plano técnico apresentado e aprovado ("todas em sequência A→F"). Fase A conc
 - [x] ~~Filtros expandidos na Visão Geral~~ (Hoje/Ontem/14 dias/Mês atual/Mês anterior/personalizado/categoria) — `resolverPeriodo()`, `date_from`/`date_to` no backend.
 - [x] ~~Badges de contagem no menu~~ (`js/biMargemTabs.js` já suportava `contadores`, só faltava popular) — `skus_ruptura_iminente`/`acoes.length`, em todas as 6 páginas.
 
-Pendente (Fases B-F, ver `decisions.md` pro plano completo por fase):
+Fase B concluída nesta rodada:
 
-- [ ] **B — Produtos**: tabela ordenável por coluna, drill-down por produto (modal com série temporal multi-métrica — precisa query nova agregando por dia/semana), decomposição em cascata visual, simulador de preço com % livre (client-side).
+- [x] ~~B — Produtos: tabela ordenável, drill-down, cascata, simulador~~ — `GET /api/bi/margem/produto/:itemId` (série diária dedicada), modal em `bi-margem-produtos.html` (Chart.js, cascata, simulador de % livre client-side, ações do produto reaproveitadas).
+
+Pendente (Fases C-F, ver `decisions.md` pro plano completo por fase):
 - [ ] **C — Portfólio**: matriz scatter volume×margem (Chart.js), cenário de mix (simulação client-side). Canibalização automática **decidido não implementar** (ver `decisions.md` — risco de dado inventado).
 - [ ] **D — Frete & Tarifa**: ranking "MC antes/depois do frete/tarifa" por produto, detecção de anomalia (desvio da média por grupo).
 - [ ] **E — Estoque**: capital parado (estoque × custo), valor em risco (venda perdida estimada × MC unitária), priorização ponderada por risco×MC×velocidade.

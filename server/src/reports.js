@@ -218,12 +218,17 @@ async function getMargemPorLoja({ dateFrom, dateTo, days, considerarFC = false }
     params = [d];
   }
   const freteMotoboy = await buscarFreteMotoboy();
-  const freteVendCalculado = `CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
+  // frete_vendedor_manual (v86) vence tudo, inclusive o motoboy — mesmo
+  // escape hatch de tarifa_manual.
+  const freteVendCalculado = `CASE WHEN o.frete_vendedor_manual IS NOT NULL THEN o.frete_vendedor_manual
+             WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
              WHEN pg.taxa_pgto IS NOT NULL THEN 0
              ELSE COALESCE(o.shipping_seller_cost,0) END`;
   // Frete motoboy Flex (business-rules.md) — mesma substituição de calcularMargemLinha.
   const freteVendSql = freteMotoboy.ativo
-    ? `CASE WHEN o.shipping_type = 'self_service' THEN GREATEST(0, ${freteMotoboy.valor} - COALESCE(o.shipping_seller_reembolso,0)) ELSE ${freteVendCalculado} END`
+    ? `CASE WHEN o.frete_vendedor_manual IS NOT NULL THEN o.frete_vendedor_manual
+            WHEN o.shipping_type = 'self_service' THEN GREATEST(0, ${freteMotoboy.valor} - COALESCE(o.shipping_seller_reembolso,0))
+            ELSE ${freteVendCalculado} END`
     : freteVendCalculado;
   const { rows } = await pool.query(`
     WITH per_order AS (

@@ -79,14 +79,23 @@ const VENDA_DETALHE_SELECT = `
             ELSE COALESCE(o.ml_fee, 0) END as tarifa,
        o.shipping_type as frete_tipo,
        o.shipping_cost as frete_comprador,
-       CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real, 0)
+       -- frete_vendedor_manual (v86, botão "editar frete" em bi-vendas.html)
+       -- tem precedência sobre TUDO, inclusive a substituição do custo
+       -- motoboy Flex abaixo — mesmo escape hatch de tarifa_manual (v84).
+       CASE WHEN o.frete_vendedor_manual IS NOT NULL THEN o.frete_vendedor_manual
+            WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real, 0)
             WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
             ELSE COALESCE(o.shipping_seller_cost, 0) END as frete_vendedor,
+       o.frete_vendedor_manual as frete_vendedor_manual,
        (c.tarifa_real IS NOT NULL) as tem_conciliacao,
        CASE WHEN o.tarifa_manual IS NOT NULL THEN 'manual'
             WHEN c.tarifa_real IS NOT NULL THEN 'conciliacao'
             WHEN pg.taxa_pgto IS NOT NULL THEN 'pagamento'
             ELSE 'pedido' END as fonte_taxa,
+       CASE WHEN o.frete_vendedor_manual IS NOT NULL THEN 'manual'
+            WHEN c.tarifa_real IS NOT NULL THEN 'conciliacao'
+            WHEN pg.taxa_pgto IS NOT NULL THEN 'pagamento'
+            ELSE 'pedido' END as fonte_frete,
        o.status, o.date_created,
        o.finance_synced, o.last_finance_sync_at,
        COALESCE(o.shipping_seller_reembolso, 0) as frete_vendedor_reembolso,
@@ -140,13 +149,19 @@ async function buscarFreteMotoboy() {
 // no lugar do frete_vendedor que vem da Conciliação/ml_fee/etc — nunca soma
 // aos dois, substitui (custo real de quem entrega de fato a mercadoria).
 // Nunca fica negativo (Math.max(0, ...)).
+// `r.frete_vendedor_manual` (v86, escape hatch por pedido, mesmo padrão de
+// tarifa_manual): quando não-NULL, `r.frete_vendedor` já vem da query com
+// essa precedência aplicada (maior de todas) — aqui só decide se o indicador
+// 🛵 (freteMotoboyAplicado) deve aparecer ou não, nunca recalcula por cima
+// de uma edição manual.
 function calcularMargemLinha(r, impostoFlexAtivo = false, freteMotoboy = null) {
   const fat = Number(r.faturamento) || 0;
   const custo = Number(r.custo) * (Number(r.quantity) || 1);
   const isFlex = r.frete_tipo === 'self_service';
   const imposto = (isFlex && !impostoFlexAtivo) ? 0 : fat * (Number(r.imposto_pct) / 100);
   const tarifa = Number(r.tarifa) || 0;
-  const freteMotoboyAplicado = !!(freteMotoboy?.ativo && isFlex);
+  const freteVendManual = r.frete_vendedor_manual != null;
+  const freteMotoboyAplicado = !!(freteMotoboy?.ativo && isFlex && !freteVendManual);
   const freteVend = freteMotoboyAplicado
     ? Math.max(0, freteMotoboy.valor - (Number(r.frete_vendedor_reembolso) || 0))
     : Number(r.frete_vendedor) || 0;

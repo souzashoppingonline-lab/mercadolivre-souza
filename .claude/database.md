@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`, … até `v85` (a lista completa e canônica está em `db/migrate.js` — cada arquivo roda isolado: se um falhar, loga e continua, pra um erro antigo não bloquear as migrations seguintes). **A cadeia inteira (81 arquivos) foi validada de ponta a ponta contra um Postgres 16 real nesta tarefa** (fresh install + re-run idempotente, 0 erros) — ver `known-bugs.md` pro gap de views `SELECT *` descoberto no processo. `v85` adiciona `orders.shipping_seller_reembolso` e recria `vw_ml_orders` na mesma migration (mesma disciplina de `v84`, ver `known-bugs.md`).
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`, … até `v86` (a lista completa e canônica está em `db/migrate.js` — cada arquivo roda isolado: se um falhar, loga e continua, pra um erro antigo não bloquear as migrations seguintes). **A cadeia inteira (82 arquivos) foi validada de ponta a ponta contra um Postgres 16 real nesta tarefa** (fresh install, 0 erros) — ver `known-bugs.md` pro gap de views `SELECT *` descoberto no processo. `v85` adiciona `orders.shipping_seller_reembolso`; `v86` adiciona `orders.frete_vendedor_manual`/`_by`/`_at` — ambas recriam `vw_ml_orders` na mesma migration (mesma disciplina de `v84`, ver `known-bugs.md`).
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -128,6 +128,15 @@ shipping_seller_reembolso NUMERIC DEFAULT 0  -- v85: o que a API do ML de fato d
                                    -- em shipmentCosts.js). Usada só quando a flag "custo motoboy
                                    -- Flex" está ativa: freteVend = MAX(0, valor_motoboy − este
                                    -- campo). Ver business-rules.md.
+frete_vendedor_manual NUMERIC            -- v86: edição manual do frete do vendedor (botão
+                                   -- ✏️ em bi-vendas.html), mesmo escape hatch de
+                                   -- tarifa_manual — maior precedência de todas as fontes
+                                   -- (vence Conciliação/ml_payments/shipping_seller_cost e
+                                   -- até a substituição do custo motoboy Flex). Precedência
+                                   -- PRÓPRIA, independente de tarifa_manual. NULL = sem
+                                   -- edição. Ver business-rules.md.
+frete_vendedor_manual_by TEXT            -- v86: staff_user_name de quem editou (NULL ao remover)
+frete_vendedor_manual_at TIMESTAMPTZ     -- v86: quando editou (NULL ao remover)
 updated_at TIMESTAMPTZ
 ```
 Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data`, `shopee_order_data`). `orders` só guarda os campos comuns entre marketplaces.

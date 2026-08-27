@@ -370,6 +370,18 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **UI** (`bi-vendas.html`, card "Resumo por Venda"): botão ✏️ ao lado de "Tarifa" abre um input inline (mesmo padrão visual do editor de custo já existente), salva via `PATCH /api/vendas/:orderId/tarifa`, e a linha volta **recalculada pelo backend** (nunca um recálculo no cliente, ao contrário do custo — que só muda 1 termo simples; tarifa muda a `fonte_taxa` inteira). Card com tarifa manual mostra "editado manualmente" abaixo do valor.
 - **Validado contra um Postgres real**: a `VENDA_DETALHE_SELECT` completa (string real do módulo, não uma reimplementação) rodou contra um schema réplica das colunas usadas, confirmando que `tarifa_manual` vence a Conciliação mesmo quando esta tem dado disponível.
 
+## Frete do vendedor — edição manual por pedido (`orders.frete_vendedor_manual`, v86)
+
+> Pedido explícito do usuário, mesmo escape hatch da tarifa acima: "o frete do vendedor também pode ser alterado" (referindo-se ao campo "Frete vend." do card "Resumo por Venda").
+
+- **Precedência PRÓPRIA, independente da tarifa** — `frete_vendedor_manual` e `tarifa_manual` são colunas/edições separadas; editar o frete de um pedido não mexe na fonte da tarifa dele, e vice-versa (podem inclusive vir de fontes diferentes: tarifa automática + frete editado, ou o contrário).
+- **Vence TUDO, inclusive a substituição do custo motoboy Flex** (`frete_motoboy_ativo`, v85) — é o mesmo tipo de escape hatch: se a Conciliação, o `ml_payments`, o `shipping_seller_cost` OU o valor fixo de motoboy estiverem errados pra um pedido específico, a edição manual é a fonte de verdade final. Quando aplicada numa venda Flex, o indicador 🛵 (que sinaliza "veio do motoboy") **não aparece** — o valor mostrado é o editado, não o calculado.
+- **Replicada nos mesmos 4 lugares que calculam frete_vendedor** (mesma disciplina de `tarifa_manual`/`frete_motoboy`): `calcularMargemLinha`/`VENDA_DETALHE_SELECT` (`vendaMargem.js`), o card de totais de `/vendas/detalhado`, `/pedidos/:id/detalhes`, `getMargemPorLoja` (`reports.js`). Novo campo `fonte_frete` (`'manual'`\|`'conciliacao'`\|`'pagamento'`\|`'pedido'`) — espelha `fonte_taxa`, mas pro frete.
+- **`frete_vendedor_manual=NULL` (padrão)** = sem edição, cálculo automático de sempre. **`=0` é uma edição válida** (frete grátis de verdade decidido pelo vendedor), nunca confundido com "sem edição" — o código sempre checa `!= null`, nunca truthiness do valor.
+- **Por PEDIDO, não por anúncio** — mesmo raciocínio de `tarifa_manual`: frete varia por venda (motoboy, distância, promoção), editar um card nunca afeta outro.
+- **UI** (`bi-vendas.html`): botão ✏️ ao lado de "Frete vend." (mesmo padrão visual/interação da tarifa — input inline, `PATCH /api/vendas/:orderId/frete`, linha recalculada pelo backend, "editado manualmente" abaixo do valor, botão de desfazer que manda `frete_vendedor: null`).
+- **Validado contra um Postgres real**: `VENDA_DETALHE_SELECT` completa e o SQL de totais de `/vendas/detalhado`/`getMargemPorLoja` (strings reais dos módulos) rodaram contra um schema réplica, confirmando que a edição vence Conciliação/`shipping_seller_cost`/motoboy em todos os 4 pontos.
+
 ## Imposto — vendas Flex isentas por padrão (flag geral `imposto_flex_ativo`)
 
 > Pedido explícito do usuário: vendas por **Mercado Envios Flex** (`orders.shipping_type='self_service'`) não têm nota fiscal emitida, então por padrão elas não devem entrar com imposto em nenhum cálculo de margem.

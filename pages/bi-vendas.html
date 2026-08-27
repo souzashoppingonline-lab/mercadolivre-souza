@@ -328,6 +328,53 @@ async function removerTarifaManual(mlId){
   renderGrid();
 }
 
+// ── Frete do vendedor (editável no card) ─────────────────────────────────
+// Mesmo escape hatch da tarifa acima (v86, pedido explícito do usuário: "o
+// frete do vendedor também pode ser alterado") — vence TUDO, inclusive a
+// substituição do custo motoboy Flex. Por PEDIDO (não por anúncio), salva no
+// backend (orders.frete_vendedor_manual) e volta com a linha recalculada.
+let editandoFrete = new Set();   // ml_id dos cards com o campo de frete aberto
+
+function freteCellHtml(r){
+  if (!editandoFrete.has(r.ml_id)) {
+    const manual = r.fonte_frete === 'manual';
+    return `<div class="l">Frete vend.${r.freteMotoboyAplicado?' <span title="Substituído pelo custo real do motoboy terceirizado, não é o que o Mercado Livre cobra do vendedor — ver business-rules.md" style="cursor:help">🛵</span>':''}
+        <button class="vc-editcusto" title="Editar frete do vendedor manualmente" onclick="abrirEdicaoFrete('${jsStr(r.ml_id)}')"><i class="fas fa-pen"></i></button>
+        ${manual ? `<button class="vc-editcusto" title="Remover edição manual (voltar ao cálculo automático)" onclick="removerFreteManual('${jsStr(r.ml_id)}')"><i class="fas fa-rotate-left"></i></button>` : ''}
+      </div>
+      <div class="v" style="color:#f87171">-${BRL(r.freteVend)}</div>
+      ${manual ? `<div style="font-size:9px;color:var(--text-muted);margin-top:1px">editado manualmente</div>` : ''}`;
+  }
+  return `<div class="l">Frete vend.</div>
+    <div class="v" style="display:flex;gap:4px;align-items:center;justify-content:center">
+      <input type="number" class="vc-custoinput" id="freteInput_${esc(r.ml_id)}" min="0" step="0.01" value="${Number(r.freteVend||0).toFixed(2)}"
+        onkeydown="if(event.key==='Enter')salvarFrete('${jsStr(r.ml_id)}');if(event.key==='Escape')cancelarEdicaoFrete('${jsStr(r.ml_id)}')">
+      <button class="vc-custobtn ok" title="Salvar" onclick="salvarFrete('${jsStr(r.ml_id)}')"><i class="fas fa-check"></i></button>
+      <button class="vc-custobtn cancel" title="Cancelar" onclick="cancelarEdicaoFrete('${jsStr(r.ml_id)}')"><i class="fas fa-xmark"></i></button>
+    </div>`;
+}
+function abrirEdicaoFrete(mlId){ editandoFrete.add(mlId); renderGrid();
+  setTimeout(() => { const el = document.getElementById('freteInput_'+mlId); if (el) { el.focus(); el.select(); } }, 0); }
+function cancelarEdicaoFrete(mlId){ editandoFrete.delete(mlId); renderGrid(); }
+
+async function salvarFrete(mlId){
+  const input = document.getElementById('freteInput_'+mlId);
+  if (!input) return;
+  const val = parseFloat(String(input.value).replace(',', '.'));
+  if (isNaN(val) || val < 0) { input.classList.add('err'); input.focus(); return; }
+  const res = await DB.setFreteManual(mlId, val);
+  if (!res || res.error || !res.row) { input.classList.add('err'); return; }
+  aplicarLinhaAtualizada(mlId, res.row);
+  editandoFrete.delete(mlId);
+  renderGrid();
+}
+async function removerFreteManual(mlId){
+  const res = await DB.setFreteManual(mlId, null);
+  if (!res || res.error || !res.row) return;
+  aplicarLinhaAtualizada(mlId, res.row);
+  renderGrid();
+}
+
 async function salvarCusto(mlId, itemId){
   const input = document.getElementById('custoInput_'+mlId);
   if (!input) return;
@@ -457,7 +504,7 @@ function cardHtml(r){
     </div>
     <div class="vc-fin">
       <div><div class="l">Venda</div><div class="v">${BRL(r.faturamento)}</div></div>
-      <div><div class="l">Frete vend.${r.freteMotoboyAplicado?' <span title="Substituído pelo custo real do motoboy terceirizado, não é o que o Mercado Livre cobra do vendedor — ver business-rules.md" style="cursor:help">🛵</span>':''}</div><div class="v" style="color:#f87171">-${BRL(r.freteVend)}</div></div>
+      <div>${freteCellHtml(r)}</div>
       <div>${tarifaCellHtml(r)}</div>
       <div>${custoCellHtml(r)}</div>
       <div><div class="l">Imposto</div><div class="v" style="color:#f87171">-${BRL(r.imposto)}</div></div>
@@ -505,6 +552,8 @@ async function carregar(){
   SUMMARY = d.summary || {};
   renderKpis(SUMMARY);
   editandoCusto = new Set();   // filtro novo: fecha qualquer edição pendente da busca anterior
+  editandoTarifa = new Set();
+  editandoFrete = new Set();
   ROWS = d.rows || [];
   MOSTRADOS = Math.min(PASSO, ROWS.length);
   document.getElementById('biStatus').textContent = `${INT(ROWS.length)} venda(s) encontrada(s).`;

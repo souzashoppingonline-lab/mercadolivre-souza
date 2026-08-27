@@ -130,6 +130,7 @@ const DB = {
   // pra Conciliação/webhook já terem chegado. Ver modules.md.
   async atualizarVendaDetalhe(orderId) { return this._post(`/vendas/${orderId}/atualizar`, {}); },
   async setTarifaManual(orderId, tarifa) { return this._patch(`/vendas/${orderId}/tarifa`, { tarifa }); },
+  async setFreteManual(orderId, frete_vendedor) { return this._patch(`/vendas/${orderId}/frete`, { frete_vendedor }); },
   async getProdutoDetalhe(id)          { return this._get(`/produtos/${id}/detalhe`); },
   async getVendasHoje()                { return this._get('/vendas/hoje'); },
   async getVendasHojeVsOntem(store_id='') { return this._get(`/vendas/hoje-vs-ontem${store_id ? '?store_id='+store_id : ''}`); },

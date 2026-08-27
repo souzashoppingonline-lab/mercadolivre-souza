@@ -395,11 +395,16 @@ router.get('/vendas/detalhado', async (req, res) => {
   // Frete motoboy Flex (business-rules.md): quando ativo, SUBSTITUI o frete
   // do vendedor calculado normalmente por um valor fixo (editável) menos o
   // que o ML de fato reembolsar ao vendedor — só pra vendas Flex.
-  const freteVendCalculado = `CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
+  // frete_vendedor_manual (v86) vence TUDO, inclusive o motoboy — mesmo
+  // escape hatch de tarifa_manual.
+  const freteVendCalculado = `CASE WHEN o.frete_vendedor_manual IS NOT NULL THEN o.frete_vendedor_manual
+                         WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
                          WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
                          ELSE COALESCE(o.shipping_seller_cost,0) END`;
   const freteVendSql = freteMotoboy.ativo
-    ? `CASE WHEN o.shipping_type = 'self_service' THEN GREATEST(0, ${freteMotoboy.valor} - COALESCE(o.shipping_seller_reembolso,0)) ELSE ${freteVendCalculado} END`
+    ? `CASE WHEN o.frete_vendedor_manual IS NOT NULL THEN o.frete_vendedor_manual
+            WHEN o.shipping_type = 'self_service' THEN GREATEST(0, ${freteMotoboy.valor} - COALESCE(o.shipping_seller_reembolso,0))
+            ELSE ${freteVendCalculado} END`
     : freteVendCalculado;
   const { rows: aggRows } = await pool.query(
     `SELECT
@@ -512,6 +517,36 @@ router.patch('/vendas/:orderId/tarifa', async (req, res) => {
     res.json({ ok: true, row: calcularMargemLinha(rows[0], impostoFlexAtivo, freteMotoboy) });
   } catch (e) {
     console.error('[api] PATCH /vendas/:orderId/tarifa error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Edição manual do FRETE DO VENDEDOR — mesmo escape hatch de tarifa acima
+// (v86, pedido explícito do usuário: "o frete do vendedor também pode ser
+// alterado"). Vence TODAS as fontes, inclusive a substituição do custo
+// motoboy Flex. `frete_vendedor: null` remove a edição e volta pro cálculo
+// automático (Conciliação → ml_payments → shipping_seller_cost/motoboy).
+// Maior precedência — `orders.frete_vendedor_manual` (v86).
+router.patch('/vendas/:orderId/frete', async (req, res) => {
+  try {
+    const { frete_vendedor } = req.body || {};
+    if (frete_vendedor !== null && (frete_vendedor === undefined || isNaN(Number(frete_vendedor)) || Number(frete_vendedor) < 0)) {
+      return res.status(400).json({ error: 'frete_vendedor deve ser um número >= 0, ou null pra remover a edição manual' });
+    }
+    const valor = frete_vendedor === null ? null : Number(frete_vendedor);
+    const updatedBy = req.staffUser?.username || null;
+    const { rowCount } = await pool.query(
+      `UPDATE orders SET frete_vendedor_manual=$2, frete_vendedor_manual_by=$3, frete_vendedor_manual_at=(CASE WHEN $2::numeric IS NULL THEN NULL ELSE now() END)
+       WHERE ml_id=$1`,
+      [req.params.orderId, valor, valor === null ? null : updatedBy]
+    );
+    if (!rowCount) return res.status(404).json({ error: `Pedido ${req.params.orderId} não encontrado` });
+    const [impostoFlexAtivo, freteMotoboy] = await Promise.all([buscarImpostoFlexAtivo(), buscarFreteMotoboy()]);
+    const { rows } = await pool.query(`${VENDA_DETALHE_SELECT} WHERE o.ml_id = $1 LIMIT 1`, [req.params.orderId]);
+    if (!rows.length) return res.status(404).json({ error: `Pedido ${req.params.orderId} não encontrado` });
+    res.json({ ok: true, row: calcularMargemLinha(rows[0], impostoFlexAtivo, freteMotoboy) });
+  } catch (e) {
+    console.error('[api] PATCH /vendas/:orderId/frete error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -718,7 +753,7 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
               o.total_amount, o.quantity, o.unit_price, o.ml_fee,
               o.shipping_type, o.shipping_cost, o.shipping_seller_cost,
               o.status, o.date_created, o.date_closed,
-              o.raw_data, o.tarifa_manual, COALESCE(o.shipping_seller_reembolso,0) AS shipping_seller_reembolso,
+              o.raw_data, o.tarifa_manual, o.frete_vendedor_manual, COALESCE(o.shipping_seller_reembolso,0) AS shipping_seller_reembolso,
               s.nickname as store_name, s.imposto_pct,
               COALESCE(i.cost, 0) as custo_unitario,
               c.tarifa_real, c.frete_vend_real, pg.taxa_pgto
@@ -741,34 +776,47 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
     const custo = Number(row.custo_unitario) * (Number(row.quantity) || 1);
     const imposto = fat * (Number(row.imposto_pct) / 100);
     const ssc = Number(row.shipping_seller_cost) || 0;
-    let tarifa, freteVend, fonte;
+    let tarifa, fonte;
     if (row.tarifa_manual != null) {
       tarifa = Number(row.tarifa_manual) || 0;
-      freteVend = row.tarifa_real != null ? Number(row.frete_vend_real) || 0
-        : row.taxa_pgto != null ? Math.min(ssc, Number(row.taxa_pgto) || 0) : ssc;
       fonte = 'manual';
     } else if (row.tarifa_real != null) {
       tarifa = Number(row.tarifa_real) || 0;
-      freteVend = Number(row.frete_vend_real) || 0;
       fonte = 'conciliacao';
     } else if (row.taxa_pgto != null) {
       const taxa = Number(row.taxa_pgto) || 0;
-      freteVend = Math.min(ssc, taxa);   // separa frete da tarifa sem contar 2×
-      tarifa = taxa - freteVend;
+      tarifa = taxa - Math.min(ssc, taxa);   // separa frete da tarifa sem contar 2×
       fonte = 'pagamento';
     } else {
       tarifa = Number(row.ml_fee) || 0;
-      freteVend = ssc;
       fonte = 'pedido';
     }
+    // Frete do vendedor: mesma precedência de VENDA_DETALHE_SELECT, mas com
+    // precedência PRÓPRIA (independente da tarifa acima) — frete_vendedor_manual
+    // (v86) vence tudo, mesmo com tarifa vindo automática ou vice-versa.
+    let freteVend, fonteFrete;
+    if (row.frete_vendedor_manual != null) {
+      freteVend = Number(row.frete_vendedor_manual) || 0;
+      fonteFrete = 'manual';
+    } else if (row.tarifa_real != null) {
+      freteVend = Number(row.frete_vend_real) || 0;
+      fonteFrete = 'conciliacao';
+    } else if (row.taxa_pgto != null) {
+      freteVend = Math.min(ssc, Number(row.taxa_pgto) || 0);
+      fonteFrete = 'pagamento';
+    } else {
+      freteVend = ssc;
+      fonteFrete = 'pedido';
+    }
     // Frete motoboy Flex (business-rules.md) — substitui o freteVend calculado
-    // acima quando ativo, só pra vendas Flex, mesma regra de calcularMargemLinha.
+    // acima quando ativo, só pra vendas Flex, mesma regra de calcularMargemLinha
+    // — nunca por cima de uma edição manual (fonteFrete==='manual').
     const freteMotoboy = await buscarFreteMotoboy();
-    const freteMotoboyAplicado = freteMotoboy.ativo && row.shipping_type === 'self_service';
+    const freteMotoboyAplicado = freteMotoboy.ativo && row.shipping_type === 'self_service' && fonteFrete !== 'manual';
     if (freteMotoboyAplicado) freteVend = Math.max(0, freteMotoboy.valor - (Number(row.shipping_seller_reembolso) || 0));
     const freteComp = Number(row.shipping_cost) || 0;
     const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
-    res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, freteMotoboyAplicado, fonte_taxa: fonte, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
+    res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, freteMotoboyAplicado, fonte_taxa: fonte, fonte_frete: fonteFrete, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
   } catch(e) {
     console.error('[/pedidos/:id/detalhes]', e.message);
     res.status(500).json({ error: e.message });

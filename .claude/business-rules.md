@@ -326,6 +326,17 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Decomposição em cascata** = a mesma fórmula de margem (`finance.md`) aplicada passo a passo: Venda → −Tarifa → −Frete do vendedor → −CMV → −Imposto → MC, somado no período inteiro (não por pedido individual).
 - **Simulador de preço com % livre**: diferente das ações `REPRECIFICAR` (só 3 cenários fixos +3/+5/+10%), o modal deixa o analista digitar qualquer %. Calculado **100% no cliente** (sem round-trip) usando a mesma fórmula: `impacto = max(0, pct% × (faturamento − imposto − tarifa))` — tarifa/imposto escalam com o preço (são %), custo e frete do vendedor ficam fixos por unidade, volume constante. Precisa de `unit_price_atual`/`imposto_pct` do resumo do produto (únicos campos extras que a série de produto expõe além do que `produtos[]` já tem).
 - **Ordenação de coluna na tabela de Produtos** é client-side (`SORT`/`aplicarOrdenacao`, `bi-margem-produtos.html`) — sem endpoint novo, já que os dados da página inteira (até milhares de linhas de portfólio) já vêm num único payload.
+- **Modal de detalhe compartilhado** (`js/biMargemProdutoModal.js`): extraído de `bi-margem-produtos.html` na Fase C porque `bi-margem-portfolio.html` também precisava abrir o mesmo modal (clique num ponto da matriz) — nunca uma 2ª cópia da mesma lógica. O script se auto-instala (injeta HTML+CSS no `<body>`/`<head>` na primeira chamada) porque páginas estáticas sem build não têm como "incluir um componente" de outra forma; depende de `document.getElementById('imDays')`/`'imLoja'` (filtros da página que chamou) e da variável `DADOS` (`let` no topo do `<script>` de cada página — visível globalmente entre `<script>` clássicos do mesmo documento, não precisa de `window.DADOS`).
+
+## Matriz de portfólio e cenário de mix (`bi-margem-portfolio.html`)
+
+- **Matriz** (scatter/bubble, Chart.js): eixo X = volume (unidades vendidas, `qtd`), eixo Y = MC%, raio do ponto = `4 + sqrt(faturamento/faturamentoMáximo)×16` (proporcional à raiz do faturamento, não linear — evita que 1 produto muito maior que os outros esmague visualmente o resto). Cor por classificação (mesma paleta da tabela de Produtos). Clicar num ponto abre o modal de detalhe compartilhado (acima).
+- **Cenário de mix** (`renderCenarioMix()`, 100% client-side sobre `DADOS.produtos` já carregado — sem endpoint novo): simula deslocar N pontos percentuais do faturamento TOTAL de anúncios com MC < 15% pra anúncios com MC ≥ 30%, mantendo:
+  - faturamento total constante;
+  - a MC% média de cada grupo (alta/baixa margem) constante — só a PARTICIPAÇÃO de cada grupo no faturamento muda;
+  - o grupo "resto" (MC entre 15% e 30%) intocado.
+  - **Limitado ao que hoje existe em baixa margem** — pedir 50 p.p. de deslocamento quando só há 27,8% do faturamento em baixa margem usa 27,8% (não inventa faturamento negativo) e mostra aviso explícito de que o limite foi aplicado.
+  - Premissa sempre visível na tela — é simulação, não previsão (mesmo princípio de "nunca inventar número" das ações recomendadas).
 
 ## Reconciliação automática de frete/tarifa (`financeReconciliationJob`, v82)
 

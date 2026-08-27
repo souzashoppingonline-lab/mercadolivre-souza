@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>window.PAGE_TITLE='Inteligência de Margem'; window.ACTIVE_NAV='bi-margem.html';</script>
   <style>
     .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
@@ -31,6 +32,16 @@
     @media(max-width:640px){ .im-bar-row { grid-template-columns:70px 1fr; } .im-bar-row .num { grid-column:1/-1; text-align:left; } }
     .im-bar-track { height:16px; border-radius:8px; background:var(--bg-card2); overflow:hidden; }
     .im-bar-fill { height:100%; border-radius:8px; }
+    .matriz-legenda { display:flex; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11px; color:var(--text-muted); }
+    .matriz-legenda span { display:inline-flex; align-items:center; gap:5px; }
+    .matriz-legenda i { width:9px; height:9px; border-radius:50%; display:inline-block; }
+    .mix-row { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+    .mix-row input[type=number] { width:70px; background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:8px; padding:7px 10px; font-size:13px; text-align:right; }
+    .mix-compare { display:grid; grid-template-columns:1fr auto 1fr; gap:14px; align-items:center; }
+    .mix-col { background:var(--bg-card2); border-radius:12px; padding:14px 16px; text-align:center; }
+    .mix-col .k { font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase; }
+    .mix-col .v { font-size:22px; font-weight:900; margin-top:6px; }
+    .mix-arrow { font-size:20px; color:#8b5cf6; }
   </style>
 </head>
 <body>
@@ -56,9 +67,28 @@
       <div class="im-tabs" id="imTabs"></div>
 
       <div class="bi-kpis" id="imConcentracao"></div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-braille"></i> Matriz do portfólio <span class="hint">eixo X = volume (unidades) · eixo Y = MC% · tamanho do ponto = faturamento · clique pra abrir o produto</span></h3>
+        <canvas id="matrizChart" height="110"></canvas>
+        <div class="matriz-legenda" id="matrizLegenda"></div>
+      </div>
+
       <div class="im-card">
         <h3><i class="fas fa-chart-pie"></i> % do faturamento por faixa de margem <span class="hint">quanto do faturamento vem de produtos com margem perigosa</span></h3>
         <div class="im-bars" id="imBandas"></div>
+      </div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-shuffle"></i> Cenário de mix <span class="hint">simulação — não é previsão</span></h3>
+        <div class="mix-row">
+          <span>Deslocar</span>
+          <input type="number" id="mixPct" value="10" min="0" step="1" oninput="renderCenarioMix()">
+          <span>p.p. do faturamento de anúncios com MC &lt; 15% pra anúncios com MC ≥ 30%:</span>
+        </div>
+        <div class="mix-compare" id="mixCompare"></div>
+        <div id="mixAviso"></div>
+        <p class="sim-premissa" style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:10px"><i class="fas fa-circle-info"></i> Faturamento total mantido constante; assume que a MC% média de cada grupo (alta/baixa margem) não muda, só a participação de cada um desloca. Limitado ao que hoje é baixa margem (não inventa faturamento que não existe).</p>
       </div>
     </div>
   </main>
@@ -68,6 +98,7 @@
 <script src="../js/layout-bi.js"></script>
 <script src="../js/sidebar.js"></script>
 <script src="../js/biMargemTabs.js"></script>
+<script src="../js/biMargemProdutoModal.js"></script>
 <script>
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
@@ -111,6 +142,79 @@ function renderPortfolio(){
       <span class="im-bar-track"><span class="im-bar-fill" style="width:${(b.pct_faturamento/max*100).toFixed(1)}%;background:${CORES[i]}"></span></span>
       <span class="num">${BRL(b.faturamento)} · ${PCT1(b.pct_faturamento)} · ${INT(b.qtd_skus)} anúncio(s)</span>
     </div>`).join('');
+  renderMatriz();
+  renderCenarioMix();
+}
+
+// ── Matriz do portfólio (X=volume, Y=MC%, tamanho=faturamento) ──────────
+const CLS_LABEL = { ESTRELA:'Estrela', VOLUME_BAIXA_MARGEM:'Volume/baixa margem', ALTA_MARGEM_BAIXO_VOLUME:'Alta margem/baixo vol.', DESTRUIDOR_MARGEM:'Destruidor de margem', PREJUIZO:'Prejuízo', NEUTRO:'Neutro' };
+const CLS_COR = { ESTRELA:'#3fb950', VOLUME_BAIXA_MARGEM:'#f59e0b', ALTA_MARGEM_BAIXO_VOLUME:'#60a5fa', DESTRUIDOR_MARGEM:'#f87171', PREJUIZO:'#7f1d1d', NEUTRO:'#9ca3af' };
+let matrizChartInstance = null;
+function renderMatriz(){
+  document.getElementById('matrizLegenda').innerHTML = Object.entries(CLS_LABEL).map(([k,label]) =>
+    `<span><i style="background:${CLS_COR[k]}"></i>${label}</span>`).join('');
+  if (matrizChartInstance) { matrizChartInstance.destroy(); matrizChartInstance = null; }
+  if (typeof Chart === 'undefined' || !DADOS.produtos.length) return;
+  const raioMax = Math.max(...DADOS.produtos.map(p => p.faturamento), 1);
+  const pontos = DADOS.produtos.map(p => ({
+    x: p.qtd, y: p.mc_pct, r: 4 + Math.sqrt(p.faturamento / raioMax) * 16,
+    item_id: p.item_id, title: p.title || p.item_id, classificacao: p.classificacao,
+  }));
+  const ctx = document.getElementById('matrizChart').getContext('2d');
+  matrizChartInstance = new Chart(ctx, {
+    type: 'bubble',
+    data: { datasets: [{ data: pontos, backgroundColor: pontos.map(p => (CLS_COR[p.classificacao] || '#8b5cf6') + 'cc') }] },
+    options: {
+      responsive: true,
+      onClick: (evt, els) => { if (els.length) abrirDetalheProduto(pontos[els[0].index].item_id); },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => { const p = pontos[c.dataIndex]; return `${p.title} — ${INT(p.x)} un., MC ${p.y.toFixed(1)}%, ${BRL(DADOS.produtos.find(d=>d.item_id===p.item_id)?.faturamento||0)}`; } } },
+      },
+      scales: {
+        x: { title: { display: true, text: 'Volume (unidades)', color: '#9ca3af' }, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,.06)' } },
+        y: { title: { display: true, text: 'MC %', color: '#9ca3af' }, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,.06)' } },
+      },
+    },
+  });
+}
+
+// ── Cenário de mix (simulação client-side, não é previsão) ──────────────
+function calcularGruposMix(produtos){
+  const g = { fatAlta:0, margemAlta:0, fatBaixa:0, margemBaixa:0, fatResto:0, margemResto:0 };
+  produtos.forEach(p => {
+    if (p.mc_pct >= 30) { g.fatAlta += p.faturamento; g.margemAlta += p.margem; }
+    else if (p.mc_pct < 15) { g.fatBaixa += p.faturamento; g.margemBaixa += p.margem; }
+    else { g.fatResto += p.faturamento; g.margemResto += p.margem; }
+  });
+  return g;
+}
+function renderCenarioMix(){
+  const el = document.getElementById('mixCompare');
+  if (!DADOS.produtos.length) { el.innerHTML = '<div class="im-empty">Sem produtos no período.</div>'; return; }
+  const g = calcularGruposMix(DADOS.produtos);
+  const fatTotal = g.fatAlta + g.fatBaixa + g.fatResto;
+  const margemTotal = g.margemAlta + g.margemBaixa + g.margemResto;
+  const mcAtual = fatTotal > 0 ? (margemTotal / fatTotal) * 100 : 0;
+  if (fatTotal <= 0) { el.innerHTML = '<div class="im-empty">Sem faturamento no período.</div>'; return; }
+
+  const pctAtualBaixa = (g.fatBaixa / fatTotal) * 100;
+  const pctPedido = Math.max(0, Number(document.getElementById('mixPct').value) || 0);
+  const deslocamento = Math.min(pctPedido, pctAtualBaixa); // não desloca mais do que existe em baixa margem
+  const deltaFat = (deslocamento / 100) * fatTotal;
+  const novoFatAlta = g.fatAlta + deltaFat, novoFatBaixa = g.fatBaixa - deltaFat;
+  const mcMedioAlta = g.fatAlta > 0 ? g.margemAlta / g.fatAlta : 0;
+  const mcMedioBaixa = g.fatBaixa > 0 ? g.margemBaixa / g.fatBaixa : 0;
+  const novaMargem = novoFatAlta * mcMedioAlta + novoFatBaixa * mcMedioBaixa + g.margemResto;
+  const novaMc = (novaMargem / fatTotal) * 100;
+
+  el.innerHTML = `
+    <div class="mix-col"><div class="k">MC% atual</div><div class="v">${PCT1(mcAtual)}</div></div>
+    <div class="mix-arrow"><i class="fas fa-arrow-right"></i></div>
+    <div class="mix-col"><div class="k">MC% simulada</div><div class="v" style="color:${novaMc>=mcAtual?'#3fb950':'#f87171'}">${PCT1(novaMc)}</div></div>`;
+  document.getElementById('mixAviso').innerHTML = deslocamento < pctPedido
+    ? `<p style="font-size:11px;color:#f59e0b;margin-top:8px"><i class="fas fa-triangle-exclamation"></i> Só havia ${pctAtualBaixa.toFixed(1)} p.p. de faturamento em anúncios de baixa margem — usado esse limite em vez dos ${pctPedido} p.p. pedidos.</p>`
+    : '';
 }
 
 const qInit = biMargemQueryAtual();

@@ -985,7 +985,12 @@ function insightsEstagios(buckets, comparacaoOntem, comparacao7d) {
 }
 const FASE_LABEL_PT = { rankeando: 'Em rankeamento', ranqueado: 'Ranqueado', monitoramento: 'Monitoramento', recuperacao: 'Recuperação', sem_rankeamento: 'Sem rankeamento' };
 
-async function computarRankeamento(days, storeId) {
+// Período: ou `days` (padrão, N dias terminando hoje) ou `dateFrom`/`dateTo`
+// explícitos (Hoje/período personalizado, resolvidos no frontend — mesmo
+// contrato de computarMargem/Fase A, business-rules.md). "Hoje" sozinho já
+// funciona com days=1 (periodoIni = hoje - 0 = hoje), sem precisar de
+// dateFrom/dateTo — só o período PERSONALIZADO precisa deles.
+async function computarRankeamento({ days, storeId, dateFrom, dateTo } = {}) {
   const impostoFlexAtivo = await buscarImpostoFlexAtivo();
   const buscarPeriodo = async (dIni, dFim, marcador) => {
     const p = [dIni, dFim];
@@ -1003,11 +1008,24 @@ async function computarRankeamento(days, storeId) {
 
   const hojeISO = addDiasISO(0);
   const ontemISO = addDiasStr(hojeISO, -1);
-  const periodoIni = addDiasStr(hojeISO, -(days - 1));
+  // "hoje"/"ontem"/"7 dias" ficam SEMPRE ancorados no hoje real, independente
+  // do período personalizado escolhido — são comparações de "como está indo
+  // agora", não do fim do intervalo navegado (mesmo princípio de
+  // computarMargem: período anterior sempre relativo, essas 3 janelas aqui
+  // são absolutas de propósito).
+  let periodoIni, periodoFim, duracaoDias;
+  if (dateFrom && dateTo) {
+    periodoIni = dateFrom; periodoFim = dateTo;
+    duracaoDias = Math.round((new Date(periodoFim + 'T00:00:00Z') - new Date(periodoIni + 'T00:00:00Z')) / 86400000) + 1;
+  } else {
+    periodoFim = hojeISO;
+    periodoIni = addDiasStr(hojeISO, -(days - 1));
+    duracaoDias = days;
+  }
   const sete_dIni = addDiasStr(hojeISO, -7), sete_dFim = ontemISO; // últimos 7 dias FECHADOS (exclui hoje, que é parcial)
 
   const [linhasPeriodo, linhasHoje, linhasOntem, linhas7d] = await Promise.all([
-    buscarPeriodo(periodoIni, hojeISO, 'periodo'),
+    buscarPeriodo(periodoIni, periodoFim, 'periodo'),
     buscarPeriodo(hojeISO, hojeISO, 'hoje'),
     buscarPeriodo(ontemISO, ontemISO, 'ontem'),
     buscarPeriodo(sete_dIni, sete_dFim, '7d'),
@@ -1052,7 +1070,7 @@ async function computarRankeamento(days, storeId) {
   }
   const serieDiaria = [...porDiaFase.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([dia, fases]) => ({ dia, fases }));
   const diasNoPeriodoMap = new Map([...diasComVendaPorFase.entries()].map(([f, s]) => [f, s.size]));
-  diasNoPeriodoMap.set('__total_dias__', days);
+  diasNoPeriodoMap.set('__total_dias__', duracaoDias);
 
   // Por anúncio dentro do estágio (§16) — agregação por item_id, já com fase.
   const bySku = new Map();
@@ -1118,7 +1136,7 @@ async function computarRankeamento(days, storeId) {
   const liderHoje = [...porFaseHoje].filter(b => FASES_RANKEAMENTO.includes(b.fase)).sort((a, b) => b.pedidos - a.pedidos)[0] || null;
 
   return {
-    periodo: { dias: days, de: periodoIni, ate: hojeISO },
+    periodo: { dias: duracaoDias, de: periodoIni, ate: periodoFim },
     visao_executiva: {
       estagio_lider_hoje: liderHoje ? { fase: liderHoje.fase, pedidos: liderHoje.pedidos, faturamento: liderHoje.faturamento, margem: liderHoje.margem } : null,
       score,
@@ -1137,9 +1155,15 @@ async function computarRankeamento(days, storeId) {
 
 router.get('/rankeamento', async (req, res) => {
   try {
-    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
-    const storeId = String(req.query.store_id || '').trim();
-    res.json(await computarRankeamento(days, storeId));
+    const q = req.query;
+    const temIntervalo = q.date_from && q.date_to;
+    const days = Math.min(Math.max(Number(q.days) || 30, 1), 365);
+    const storeId = String(q.store_id || '').trim();
+    res.json(await computarRankeamento({
+      days, storeId,
+      dateFrom: temIntervalo ? q.date_from : null,
+      dateTo: temIntervalo ? q.date_to : null,
+    }));
   } catch (e) {
     console.error('[bi] /rankeamento error:', e.message);
     res.status(500).json({ error: e.message });

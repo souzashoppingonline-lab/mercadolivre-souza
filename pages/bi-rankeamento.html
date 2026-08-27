@@ -70,13 +70,20 @@
       <p class="bi-sub">Cruza o estágio atual de cada anúncio (módulo Rankeamento) com as vendas/margem do período. O estágio mostrado é sempre o ATUAL do anúncio — não existe histórico confiável de mudança de estágio (ver <code>business-rules.md</code>), então uma venda de 20 dias atrás aparece com o estágio de HOJE, não o de quando foi vendida.</p>
 
       <div class="im-filters">
-        <select id="imDays">
+        <select id="imPeriodo" onchange="onPeriodoChange()">
+          <option value="hoje">Hoje</option>
           <option value="7">Últimos 7 dias</option>
           <option value="14">Últimos 14 dias</option>
           <option value="30" selected>Últimos 30 dias</option>
           <option value="60">Últimos 60 dias</option>
           <option value="90">Últimos 90 dias</option>
+          <option value="custom">Período personalizado</option>
         </select>
+        <span id="imCustomDates" style="display:none;gap:6px;align-items:center">
+          <input type="date" id="imDateFrom" style="background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:8px;padding:8px 10px;font-size:12.5px">
+          <span style="color:var(--text-muted);font-size:12px">até</span>
+          <input type="date" id="imDateTo" style="background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:8px;padding:8px 10px;font-size:12.5px">
+        </span>
         <select id="imLoja"><option value="">Todas as empresas</option></select>
         <button class="btn-primary" onclick="carregar()"><i class="fas fa-sync"></i> Atualizar</button>
         <span class="im-status" id="imStatus"></span>
@@ -206,9 +213,31 @@ async function popularLojas(){
   }catch(e){}
 }
 
+// ── Resolução de período (Hoje/N dias/personalizado) em { days } OU
+// { date_from, date_to } — mesmo contrato de bi-margem.html (business-rules.md).
+// "Hoje" não precisa de date_from/date_to: days=1 já resolve sozinho
+// (periodoIni = hoje - 0 dias = hoje, ver computarRankeamento).
+function onPeriodoChange(){
+  document.getElementById('imCustomDates').style.display = document.getElementById('imPeriodo').value === 'custom' ? 'inline-flex' : 'none';
+}
+function isoLocal(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function resolverPeriodo(){
+  const v = document.getElementById('imPeriodo').value;
+  if (v === 'hoje') return { days: 1 };
+  if (v === 'custom') {
+    const de = document.getElementById('imDateFrom').value, ate = document.getElementById('imDateTo').value;
+    if (de && ate) return { date_from: de, date_to: ate };
+    return { days: 30 }; // datas ainda não escolhidas — cai no padrão até o usuário preencher
+  }
+  return { days: Number(v) }; // 7/14/30/60/90
+}
+
 async function carregar(){
   document.getElementById('imStatus').textContent = 'Carregando…';
-  const d = await DB.getBiRankeamento(document.getElementById('imDays').value, document.getElementById('imLoja').value);
+  const periodo = resolverPeriodo();
+  const d = await DB.getBiRankeamento(periodo.days || 30, document.getElementById('imLoja').value, {
+    date_from: periodo.date_from || null, date_to: periodo.date_to || null,
+  });
   if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
   DADOS = d;
   document.getElementById('imStatus').textContent = `Período de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)} (${d.periodo.dias} dia(s)).`;

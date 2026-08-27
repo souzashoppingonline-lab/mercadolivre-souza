@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inteligência de Margem — Ações Recomendadas</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Inteligência de Margem'; window.ACTIVE_NAV='bi-margem.html';</script>
+  <style>
+    .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .im-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .im-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; }
+    .im-status { font-size:12px; color:var(--text-muted); margin-left:auto; }
+    .im-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:5px; }
+    .im-tab { background:transparent; border:0; color:var(--text-muted); padding:9px 16px; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; text-decoration:none; }
+    .im-tab.on { background:#8b5cf6; color:#fff; }
+    .im-tab .n { background:rgba(255,255,255,.2); border-radius:999px; padding:0 6px; font-size:10.5px; }
+    .im-tab.on .n { background:rgba(255,255,255,.3); }
+    .im-tab:not(.on) .n { background:var(--bg-card2); }
+    .im-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .im-card h3 { font-size:14.5px; font-weight:800; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .im-card .hint { font-size:11.5px; color:var(--text-muted); font-weight:500; margin-left:auto; }
+    .im-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+    .im-csv { background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:7px; padding:5px 11px; font-size:11.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+    .im-csv:hover { color:#8b5cf6; border-color:#8b5cf6; }
+    .prio { font-size:10px; font-weight:800; padding:2px 8px; border-radius:5px; }
+    .prio.ALTA { background:rgba(248,113,113,.18); color:#f87171; }
+    .prio.MEDIA { background:rgba(245,158,11,.18); color:#f59e0b; }
+    .acao-card { border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px; background:var(--bg-card2); }
+    .acao-hd { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+    .acao-hd .rank { width:22px; height:22px; border-radius:6px; background:#8b5cf6; color:#fff; font-weight:800; font-size:11.5px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+    .acao-hd .tit { font-size:13.5px; font-weight:800; }
+    .acao-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; font-size:12px; margin-top:8px; }
+    @media(max-width:760px){ .acao-grid { grid-template-columns:1fr; } }
+    .acao-grid b { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.3px; color:var(--text-muted); margin-bottom:1px; }
+    .acao-impacto { font-size:16px; font-weight:900; color:#3fb950; }
+    .acao-premissa { font-size:11px; color:var(--text-muted); font-style:italic; margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); }
+    .im-cenarios { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+    .im-cenario { font-size:10.5px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:2px 7px; }
+    .im-cenario b { color:#3fb950; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="bi-sub">Motor determinístico — nenhum número aqui é estimado por IA. Limiares/fórmulas em <code>business-rules.md</code>.</p>
+
+      <div class="im-filters">
+        <select id="imDays">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <select id="imLoja"><option value="">Todas as empresas</option></select>
+        <button class="btn-primary" onclick="carregar()"><i class="fas fa-sync"></i> Atualizar</button>
+        <span class="im-status" id="imStatus"></span>
+      </div>
+
+      <div class="im-tabs" id="imTabs"></div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-list-check"></i> Top ações — impacto financeiro estimado <span class="hint">cada uma com a premissa usada; nenhuma é garantia</span>
+          <button class="im-csv" onclick="exportarAcoesCSV()"><i class="fas fa-file-csv"></i> CSV</button>
+        </h3>
+        <div id="listaAcoes"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-bi.js"></script>
+<script src="../js/sidebar.js"></script>
+<script src="../js/biMargemTabs.js"></script>
+<script src="../js/tableExport.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+const TIPO_LABEL = { PAUSAR_OU_RENEGOCIAR:'Pausar ou renegociar', REPRECIFICAR:'Reprecificar', AUMENTAR_EXPOSICAO:'Aumentar exposição', REPOR_ESTOQUE:'Repor estoque', REVISAR_FRETE:'Revisar frete' };
+
+let DADOS = null;
+
+async function popularLojas(selecionado){
+  try{ const d=await DB.getLojas(); const sel=document.getElementById('imLoja');
+    (d.stores||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.nickname; sel.appendChild(o); });
+    if (selecionado) sel.value = selecionado;
+  }catch(e){}
+}
+
+function atualizarTabs(){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem-acoes.html'); }
+
+async function carregar(){
+  atualizarTabs();
+  document.getElementById('imStatus').textContent = 'Carregando…';
+  const d = await DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value);
+  if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
+  DADOS = d;
+  document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
+  atualizarTabs();
+  renderAcoes();
+}
+
+function cenariosHtml(cenarios){
+  if (!cenarios || !cenarios.length) return '';
+  return `<div class="im-cenarios">${cenarios.map(c => `<span class="im-cenario">+${c.aumento_pct}% preço → <b>${BRL(c.impacto_estimado)}</b>/período</span>`).join('')}</div>`;
+}
+function acaoCardHtml(a, i){
+  return `<div class="acao-card">
+    <div class="acao-hd">
+      <span class="rank">#${i+1}</span>
+      <span class="prio ${a.prioridade}">${a.prioridade}</span>
+      <span class="acao-hd tit">${esc(TIPO_LABEL[a.tipo]||a.tipo)} — ${esc(a.title||a.item_id||'—')}</span>
+    </div>
+    <div class="acao-grid">
+      <div><b>Problema</b>${esc(a.problema)}</div>
+      <div><b>Evidência</b>${esc(a.evidencia)}</div>
+      <div><b>Ação recomendada</b>${esc(a.acao)}</div>
+      <div><b>Impacto estimado</b><span class="acao-impacto">${a.impacto_estimado!=null?BRL(a.impacto_estimado)+'/período':'sem estimativa em R$'}</span>${cenariosHtml(a.cenarios)}</div>
+      <div><b>Esforço</b>${esc(a.esforco)}</div>
+      <div><b>Confiança</b>${esc(a.confianca)}</div>
+    </div>
+    <div class="acao-premissa"><i class="fas fa-circle-info"></i> Premissa: ${esc(a.premissa)}</div>
+  </div>`;
+}
+function renderAcoes(){
+  const el = document.getElementById('listaAcoes');
+  el.innerHTML = DADOS.acoes.length ? DADOS.acoes.map((a,i) => acaoCardHtml(a,i)).join('')
+    : '<div class="im-empty">Nenhuma ação prioritária identificada neste período.</div>';
+}
+// Ações são cards, não uma <table> — exportTableCSV (genérico, lê DOM de
+// tabela) não serve aqui; monta a matriz na mão a partir de DADOS.acoes.
+function exportarAcoesCSV(){
+  if (!DADOS || !DADOS.acoes.length) { alert('Sem ações para exportar.'); return; }
+  const header = ['Prioridade','Tipo','Anúncio','Problema','Evidência','Ação','Impacto estimado (R$)','Esforço','Confiança','Premissa'];
+  const rows = DADOS.acoes.map(a => [
+    a.prioridade, TIPO_LABEL[a.tipo]||a.tipo, a.title||a.item_id||'—', a.problema, a.evidencia, a.acao,
+    a.impacto_estimado!=null ? a.impacto_estimado.toFixed(2) : '', a.esforco, a.confianca, a.premissa,
+  ]);
+  downloadCSVRows([header, ...rows], 'inteligencia-margem-acoes.csv');
+}
+
+const qInit = biMargemQueryAtual();
+document.getElementById('imDays').value = qInit.days;
+popularLojas(qInit.store_id).then(carregar);
+atualizarTabs();
+</script>
+</body>
+</html>

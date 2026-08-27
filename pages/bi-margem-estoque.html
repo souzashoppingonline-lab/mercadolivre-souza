@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inteligência de Margem — Estoque &amp; Ruptura</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Inteligência de Margem'; window.ACTIVE_NAV='bi-margem.html';</script>
+  <style>
+    .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .im-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .im-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; }
+    .im-status { font-size:12px; color:var(--text-muted); margin-left:auto; }
+    .im-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:5px; }
+    .im-tab { background:transparent; border:0; color:var(--text-muted); padding:9px 16px; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; text-decoration:none; }
+    .im-tab.on { background:#8b5cf6; color:#fff; }
+    .im-tab .n { background:rgba(255,255,255,.2); border-radius:999px; padding:0 6px; font-size:10.5px; }
+    .im-tab.on .n { background:rgba(255,255,255,.3); }
+    .im-tab:not(.on) .n { background:var(--bg-card2); }
+    .im-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .im-card h3 { font-size:14.5px; font-weight:800; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+    .im-card .hint { font-size:11.5px; color:var(--text-muted); font-weight:500; margin-left:auto; }
+    .im-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+    .est { font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+    .est.RUPTURA_IMINENTE { background:rgba(248,113,113,.15); color:#f87171; }
+    .est.SAUDAVEL { background:rgba(63,185,80,.15); color:#3fb950; }
+    .est.EXCESSO { background:rgba(245,158,11,.15); color:#f59e0b; }
+    .est.SEM_VENDA_NO_PERIODO, .est.ZERADO { background:rgba(148,163,184,.15); color:var(--text-muted); }
+    table.im-t { width:100%; border-collapse:collapse; }
+    .im-t th, .im-t td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); font-size:12.5px; }
+    .im-t th { color:var(--text-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
+    .im-t td.num, .im-t th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .im-t tr:hover td { background:var(--bg-card2); }
+    .im-prod { display:flex; align-items:center; gap:9px; max-width:260px; }
+    .im-thumb { width:34px; height:34px; border-radius:6px; object-fit:cover; background:var(--bg-card2); flex:none; }
+    .im-title { font-size:12.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .im-pos { color:#3fb950; font-weight:700; } .im-neg { color:#f87171; font-weight:700; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="bi-sub">Motor determinístico — nenhum número aqui é estimado por IA. Limiares/fórmulas em <code>business-rules.md</code>.</p>
+
+      <div class="im-filters">
+        <select id="imDays">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <select id="imLoja"><option value="">Todas as empresas</option></select>
+        <button class="btn-primary" onclick="carregar()"><i class="fas fa-sync"></i> Atualizar</button>
+        <span class="im-status" id="imStatus"></span>
+      </div>
+
+      <div class="im-tabs" id="imTabs"></div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-warehouse"></i> Estoque cruzado com margem
+          <span class="hint">produto de baixa margem e estoque alto é tratado diferente de alta margem e estoque alto</span>
+        </h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr><th>Anúncio</th><th>Status</th><th class="num">Estoque</th><th class="num">Vendas/dia</th><th class="num">Dias de estoque</th><th>Ruptura estimada</th><th class="num">MC %</th></tr></thead>
+          <tbody id="tblEstoque"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-bi.js"></script>
+<script src="../js/sidebar.js"></script>
+<script src="../js/biMargemTabs.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
+const PCT1 = n => `${(Number(n)||0).toFixed(1)}%`;
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+const EST_LABEL = { RUPTURA_IMINENTE:'Ruptura iminente', SAUDAVEL:'Saudável', EXCESSO:'Excesso', SEM_VENDA_NO_PERIODO:'Sem venda no período', ZERADO:'Zerado' };
+
+let DADOS = null;
+
+async function popularLojas(selecionado){
+  try{ const d=await DB.getLojas(); const sel=document.getElementById('imLoja');
+    (d.stores||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.nickname; sel.appendChild(o); });
+    if (selecionado) sel.value = selecionado;
+  }catch(e){}
+}
+
+function atualizarTabs(){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem-estoque.html'); }
+
+async function carregar(){
+  atualizarTabs();
+  document.getElementById('imStatus').textContent = 'Carregando…';
+  const d = await DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value);
+  if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
+  DADOS = d;
+  document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
+  atualizarTabs();
+  renderEstoque();
+}
+
+function renderEstoque(){
+  // Ordena por dias_estoque asc (quem acaba primeiro no topo); sem dado vai pro fim.
+  const lista = [...DADOS.produtos].sort((a,b) => {
+    if (a.dias_estoque == null) return 1;
+    if (b.dias_estoque == null) return -1;
+    return a.dias_estoque - b.dias_estoque;
+  });
+  const tb = document.getElementById('tblEstoque');
+  if (!lista.length) { tb.innerHTML = '<tr><td colspan="7" class="im-empty">Nenhum anúncio no período.</td></tr>'; return; }
+  tb.innerHTML = lista.map(p => `<tr>
+    <td><div class="im-prod">${p.thumbnail?`<img class="im-thumb" src="${esc(p.thumbnail)}" onerror="this.style.display='none'">`:'<div class="im-thumb"></div>'}<span class="im-title" title="${esc(p.title||'')}">${esc(p.title||p.item_id||'—')}</span></div></td>
+    <td><span class="est ${p.status_estoque}">${EST_LABEL[p.status_estoque]||p.status_estoque}</span></td>
+    <td class="num">${p.estoque_atual!=null?INT(p.estoque_atual):'—'}</td>
+    <td class="num">${p.venda_dia>0?p.venda_dia.toFixed(2):'—'}</td>
+    <td class="num">${p.dias_estoque!=null?INT(p.dias_estoque):'—'}</td>
+    <td>${p.data_ruptura?dataBR(p.data_ruptura):'—'}</td>
+    <td class="num ${p.mc_pct>=0?'im-pos':'im-neg'}">${PCT1(p.mc_pct)}</td>
+  </tr>`).join('');
+}
+
+const qInit = biMargemQueryAtual();
+document.getElementById('imDays').value = qInit.days;
+popularLojas(qInit.store_id).then(carregar);
+atualizarTabs();
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Inteligência de Margem — ML Dashboard</title>
+  <title>Inteligência de Margem — Visão Geral</title>
   <link rel="stylesheet" href="../css/style.css">
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
@@ -14,15 +14,13 @@
     .im-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; }
     .im-status { font-size:12px; color:var(--text-muted); margin-left:auto; }
 
-    /* ── Abas ── */
+    /* ── Abas (agora páginas próprias, ver js/biMargemTabs.js) ── */
     .im-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:5px; }
-    .im-tab { background:transparent; border:0; color:var(--text-muted); padding:9px 16px; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }
+    .im-tab { background:transparent; border:0; color:var(--text-muted); padding:9px 16px; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; text-decoration:none; }
     .im-tab.on { background:#8b5cf6; color:#fff; }
     .im-tab .n { background:rgba(255,255,255,.2); border-radius:999px; padding:0 6px; font-size:10.5px; }
     .im-tab.on .n { background:rgba(255,255,255,.3); }
     .im-tab:not(.on) .n { background:var(--bg-card2); }
-    .im-pane { display:none; }
-    .im-pane.on { display:block; }
 
     /* ── KPIs ── */
     .bi-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:16px; }
@@ -38,41 +36,7 @@
     .im-card .hint { font-size:11.5px; color:var(--text-muted); font-weight:500; margin-left:auto; }
     .im-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
 
-    /* ── Badges de classificação ── */
-    .cls { font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:20px; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; }
-    .cls.ESTRELA { background:rgba(63,185,80,.15); color:#3fb950; }
-    .cls.VOLUME_BAIXA_MARGEM { background:rgba(245,158,11,.15); color:#f59e0b; }
-    .cls.ALTA_MARGEM_BAIXO_VOLUME { background:rgba(96,165,250,.15); color:#60a5fa; }
-    .cls.DESTRUIDOR_MARGEM { background:rgba(248,113,113,.15); color:#f87171; }
-    .cls.PREJUIZO { background:rgba(148,20,20,.25); color:#ff6b6b; }
-    .cls.NEUTRO { background:rgba(148,163,184,.15); color:var(--text-muted); }
-    .est { font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:20px; white-space:nowrap; }
-    .est.RUPTURA_IMINENTE { background:rgba(248,113,113,.15); color:#f87171; }
-    .est.SAUDAVEL { background:rgba(63,185,80,.15); color:#3fb950; }
-    .est.EXCESSO { background:rgba(245,158,11,.15); color:#f59e0b; }
-    .est.SEM_VENDA_NO_PERIODO, .est.ZERADO { background:rgba(148,163,184,.15); color:var(--text-muted); }
-    .prio { font-size:10px; font-weight:800; padding:2px 8px; border-radius:5px; }
-    .prio.ALTA { background:rgba(248,113,113,.18); color:#f87171; }
-    .prio.MEDIA { background:rgba(245,158,11,.18); color:#f59e0b; }
-
-    table.im-t { width:100%; border-collapse:collapse; }
-    .im-t th, .im-t td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); font-size:12.5px; }
-    .im-t th { color:var(--text-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
-    .im-t td.num, .im-t th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-    .im-t tr:hover td { background:var(--bg-card2); }
-    .im-prod { display:flex; align-items:center; gap:9px; max-width:260px; }
-    .im-thumb { width:34px; height:34px; border-radius:6px; object-fit:cover; background:var(--bg-card2); flex:none; }
-    .im-title { font-size:12.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .im-pos { color:#3fb950; font-weight:700; } .im-neg { color:#f87171; font-weight:700; }
-    .im-score { font-weight:800; }
-
-    /* ── Bandas de margem ── */
-    .im-bars { display:flex; flex-direction:column; gap:9px; }
-    .im-bar-row { display:grid; grid-template-columns:90px 1fr 130px; gap:10px; align-items:center; font-size:12.5px; }
-    .im-bar-track { height:16px; border-radius:8px; background:var(--bg-card2); overflow:hidden; }
-    .im-bar-fill { height:100%; border-radius:8px; }
-
-    /* ── Ações ── */
+    /* ── Ações (card "Prioridades do período") ── */
     .acao-card { border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px; background:var(--bg-card2); }
     .acao-hd { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
     .acao-hd .rank { width:22px; height:22px; border-radius:6px; background:#8b5cf6; color:#fff; font-weight:800; font-size:11.5px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
@@ -82,8 +46,33 @@
     .acao-grid b { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.3px; color:var(--text-muted); margin-bottom:1px; }
     .acao-impacto { font-size:16px; font-weight:900; color:#3fb950; }
     .acao-premissa { font-size:11px; color:var(--text-muted); font-style:italic; margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); }
+    .im-cenarios { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+    .im-cenario { font-size:10.5px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:2px 7px; }
+    .im-cenario b { color:#3fb950; }
+    .im-pos { color:#3fb950; font-weight:700; } .im-neg { color:#f87171; font-weight:700; }
+    .prio { font-size:10px; font-weight:800; padding:2px 8px; border-radius:5px; }
+    .prio.ALTA { background:rgba(248,113,113,.18); color:#f87171; }
+    .prio.MEDIA { background:rgba(245,158,11,.18); color:#f59e0b; }
 
-    .im-select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px; }
+    /* ── Por que a margem mudou ── */
+    .causa-list { display:flex; flex-direction:column; gap:7px; }
+    .causa-row { display:grid; grid-template-columns:170px 1fr 100px; gap:10px; align-items:center; font-size:12.5px; }
+    @media(max-width:640px){ .causa-row { grid-template-columns:120px 1fr 90px; font-size:11.5px; } }
+    .causa-track { height:14px; border-radius:7px; background:var(--bg-card2); overflow:hidden; position:relative; }
+    .causa-fill { height:100%; position:absolute; top:0; }
+    .causa-fill.pos { background:#3fb950; left:50%; }
+    .causa-fill.neg { background:#f87171; right:50%; }
+    .causa-mid { position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--border); }
+
+    /* ── Análise da IA ── */
+    .ia-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .ia-btn { background:#8b5cf6; color:#fff; border:0; border-radius:9px; padding:9px 16px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+    .ia-btn:disabled { opacity:.6; cursor:default; }
+    .ia-body h4 { font-size:12px; text-transform:uppercase; letter-spacing:.3px; color:var(--text-muted); margin:14px 0 6px; }
+    .ia-body h4:first-child { margin-top:0; }
+    .ia-body p { font-size:13px; line-height:1.6; margin:0; }
+    .ia-body ul { margin:6px 0 0; padding-left:18px; font-size:13px; line-height:1.7; }
+    .ia-err { color:#f87171; font-size:12.5px; }
   </style>
 </head>
 <body>
@@ -106,93 +95,27 @@
         <span class="im-status" id="imStatus"></span>
       </div>
 
-      <div class="im-tabs" id="imTabs">
-        <button class="im-tab on" onclick="setAba('geral')"><i class="fas fa-gauge-high"></i> Visão Geral</button>
-        <button class="im-tab" onclick="setAba('produtos')"><i class="fas fa-boxes-stacked"></i> Produtos <span class="n" id="nProdutos">0</span></button>
-        <button class="im-tab" onclick="setAba('portfolio')"><i class="fas fa-chart-pie"></i> Portfólio</button>
-        <button class="im-tab" onclick="setAba('frete')"><i class="fas fa-truck-fast"></i> Frete &amp; Tarifa</button>
-        <button class="im-tab" onclick="setAba('estoque')"><i class="fas fa-warehouse"></i> Estoque &amp; Ruptura <span class="n" id="nRuptura">0</span></button>
-        <button class="im-tab" onclick="setAba('acoes')"><i class="fas fa-list-check"></i> Ações Recomendadas <span class="n" id="nAcoes">0</span></button>
+      <div class="im-tabs" id="imTabs"></div>
+
+      <div class="bi-kpis" id="imKpis"></div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-magnifying-glass-chart"></i> Por que a margem mudou <span class="hint">decomposição exata da variação vs. período anterior — não é estimativa</span></h3>
+        <div id="imCausaVariacao"></div>
       </div>
 
-      <!-- ═══ VISÃO GERAL ═══ -->
-      <div class="im-pane on" id="paneGeral">
-        <div class="bi-kpis" id="imKpis"></div>
-        <div class="im-card">
-          <h3><i class="fas fa-triangle-exclamation" style="color:#f87171"></i> Prioridades do período <span class="hint">as 3 ações de maior impacto — aba completa em "Ações Recomendadas"</span></h3>
-          <div id="imTop3"></div>
-        </div>
+      <div class="ia-card" id="iaCard">
+        <h3 style="font-size:14.5px;font-weight:800;margin:0 0 10px;display:flex;align-items:center;gap:8px">
+          <i class="fas fa-robot" style="color:#8b5cf6"></i> Análise da IA
+          <span class="hint" style="margin-left:auto;font-size:11.5px;color:var(--text-muted);font-weight:500">interpreta os números acima em texto — nunca refaz conta</span>
+        </h3>
+        <button class="ia-btn" id="iaBtn" onclick="gerarNarrativaIA()"><i class="fas fa-wand-magic-sparkles"></i> Gerar análise deste período</button>
+        <div class="ia-body" id="iaBody" style="margin-top:12px"></div>
       </div>
 
-      <!-- ═══ PRODUTOS ═══ -->
-      <div class="im-pane" id="paneProdutos">
-        <div class="im-card">
-          <h3><i class="fas fa-boxes-stacked"></i> Por anúncio
-            <select class="im-select" id="fClass" onchange="renderProdutos()" style="margin-left:auto">
-              <option value="">Todas as classificações</option>
-              <option value="ESTRELA">🟢 Estrela</option>
-              <option value="VOLUME_BAIXA_MARGEM">🟡 Volume com baixa margem</option>
-              <option value="ALTA_MARGEM_BAIXO_VOLUME">🔵 Alta margem / baixo volume</option>
-              <option value="DESTRUIDOR_MARGEM">🔴 Destruidor de margem</option>
-              <option value="PREJUIZO">⚫ Prejuízo</option>
-              <option value="NEUTRO">Neutro</option>
-            </select>
-          </h3>
-          <div style="overflow-x:auto"><table class="im-t">
-            <thead><tr><th>Anúncio</th><th>Classificação</th><th class="num">Faturamento</th><th class="num">Qtd</th>
-              <th class="num">MC R$</th><th class="num">MC %</th><th class="num">Frete %</th><th class="num">Tarifa %</th>
-              <th>Estoque</th><th class="num">Score</th></tr></thead>
-            <tbody id="tblProdutos"></tbody>
-          </table></div>
-        </div>
-      </div>
-
-      <!-- ═══ PORTFÓLIO ═══ -->
-      <div class="im-pane" id="panePortfolio">
-        <div class="bi-kpis" id="imConcentracao"></div>
-        <div class="im-card">
-          <h3><i class="fas fa-chart-pie"></i> % do faturamento por faixa de margem <span class="hint">quanto do faturamento vem de produtos com margem perigosa</span></h3>
-          <div class="im-bars" id="imBandas"></div>
-        </div>
-      </div>
-
-      <!-- ═══ FRETE & TARIFA ═══ -->
-      <div class="im-pane" id="paneFrete">
-        <div class="im-card">
-          <h3><i class="fas fa-truck-fast"></i> Por tipo de envio</h3>
-          <div style="overflow-x:auto"><table class="im-t">
-            <thead><tr><th>Logística</th><th class="num">Faturamento</th><th class="num">Frete do vendedor</th><th class="num">Frete % receita</th><th class="num">Tarifa</th><th class="num">Tarifa % receita</th></tr></thead>
-            <tbody id="tblFreteLog"></tbody>
-          </table></div>
-        </div>
-        <div class="im-card">
-          <h3><i class="fas fa-store"></i> Por conta</h3>
-          <div style="overflow-x:auto"><table class="im-t">
-            <thead><tr><th>Conta</th><th class="num">Faturamento</th><th class="num">Frete do vendedor</th><th class="num">Frete % receita</th><th class="num">Tarifa</th><th class="num">Tarifa % receita</th></tr></thead>
-            <tbody id="tblFreteConta"></tbody>
-          </table></div>
-        </div>
-      </div>
-
-      <!-- ═══ ESTOQUE & RUPTURA ═══ -->
-      <div class="im-pane" id="paneEstoque">
-        <div class="im-card">
-          <h3><i class="fas fa-warehouse"></i> Estoque cruzado com margem
-            <span class="hint">produto de baixa margem e estoque alto é tratado diferente de alta margem e estoque alto</span>
-          </h3>
-          <div style="overflow-x:auto"><table class="im-t">
-            <thead><tr><th>Anúncio</th><th>Status</th><th class="num">Estoque</th><th class="num">Vendas/dia</th><th class="num">Dias de estoque</th><th>Ruptura estimada</th><th class="num">MC %</th></tr></thead>
-            <tbody id="tblEstoque"></tbody>
-          </table></div>
-        </div>
-      </div>
-
-      <!-- ═══ AÇÕES RECOMENDADAS ═══ -->
-      <div class="im-pane" id="paneAcoes">
-        <div class="im-card">
-          <h3><i class="fas fa-list-check"></i> Top ações — impacto financeiro estimado <span class="hint">cada uma com a premissa usada; nenhuma é garantia</span></h3>
-          <div id="listaAcoes"></div>
-        </div>
+      <div class="im-card">
+        <h3><i class="fas fa-triangle-exclamation" style="color:#f87171"></i> Prioridades do período <span class="hint">as 3 ações de maior impacto — lista completa em "Ações Recomendadas"</span></h3>
+        <div id="imTop3"></div>
       </div>
     </div>
   </main>
@@ -201,44 +124,35 @@
 <script src="../js/db.js"></script>
 <script src="../js/layout-bi.js"></script>
 <script src="../js/sidebar.js"></script>
+<script src="../js/biMargemTabs.js"></script>
 <script>
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
 const PCT1 = n => `${(Number(n)||0).toFixed(1)}%`;
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
-const CLS_LABEL = { ESTRELA:'🟢 Estrela', VOLUME_BAIXA_MARGEM:'🟡 Volume/baixa margem', ALTA_MARGEM_BAIXO_VOLUME:'🔵 Alta margem/baixo vol.', DESTRUIDOR_MARGEM:'🔴 Destruidor de margem', PREJUIZO:'⚫ Prejuízo', NEUTRO:'Neutro' };
-const EST_LABEL = { RUPTURA_IMINENTE:'Ruptura iminente', SAUDAVEL:'Saudável', EXCESSO:'Excesso', SEM_VENDA_NO_PERIODO:'Sem venda no período', ZERADO:'Zerado' };
 const TIPO_LABEL = { PAUSAR_OU_RENEGOCIAR:'Pausar ou renegociar', REPRECIFICAR:'Reprecificar', AUMENTAR_EXPOSICAO:'Aumentar exposição', REPOR_ESTOQUE:'Repor estoque', REVISAR_FRETE:'Revisar frete' };
 
-let DADOS = null, aba = 'geral';
+let DADOS = null;
 
-async function popularLojas(){
+async function popularLojas(selecionado){
   try{ const d=await DB.getLojas(); const sel=document.getElementById('imLoja');
     (d.stores||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.nickname; sel.appendChild(o); });
+    if (selecionado) sel.value = selecionado;
   }catch(e){}
 }
 
-function setAba(a){
-  aba = a;
-  ['geral','produtos','portfolio','frete','estoque','acoes'].forEach(k => {
-    document.getElementById('pane'+k.charAt(0).toUpperCase()+k.slice(1)).classList.toggle('on', k===a);
-  });
-  document.querySelectorAll('#imTabs .im-tab').forEach((btn,i) => {
-    btn.classList.toggle('on', ['geral','produtos','portfolio','frete','estoque','acoes'][i]===a);
-  });
-}
+function atualizarTabs(){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem.html'); }
 
 async function carregar(){
+  atualizarTabs();
   document.getElementById('imStatus').textContent = 'Carregando…';
   const d = await DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value);
   if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
   DADOS = d;
   document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
-  document.getElementById('nProdutos').textContent = d.produtos.length;
-  document.getElementById('nRuptura').textContent = d.resumo.skus_ruptura_iminente;
-  document.getElementById('nAcoes').textContent = d.acoes.length;
-  renderGeral(); renderProdutos(); renderPortfolio(); renderFrete(); renderEstoque(); renderAcoes();
+  atualizarTabs();
+  renderGeral();
 }
 
 // ── Visão Geral ──────────────────────────────────────────────────────────
@@ -252,87 +166,45 @@ function renderGeral(){
     <div class="bi-kpi ${r.skus_prejuizo>0?'bad':'good'}"><div class="k">Produtos com prejuízo</div><div class="v">${INT(r.skus_prejuizo)}</div></div>
     <div class="bi-kpi ${r.skus_ruptura_iminente>0?'warn':'good'}"><div class="k">Ruptura iminente (≤7d)</div><div class="v">${INT(r.skus_ruptura_iminente)}</div></div>
     <div class="bi-kpi"><div class="k">Pedidos aprovados</div><div class="v">${INT(r.pedidos)}</div></div>`;
+  renderCausaVariacao(r.causa_variacao);
   const top3 = DADOS.acoes.slice(0,3);
   document.getElementById('imTop3').innerHTML = top3.length ? top3.map((a,i) => acaoCardHtml(a,i)).join('')
     : '<div class="im-empty">Nenhuma ação prioritária identificada neste período — dados insuficientes ou portfólio saudável.</div>';
+  // Período mudou → a análise da IA anterior não vale mais pro novo recorte.
+  document.getElementById('iaBody').innerHTML = '';
+  document.getElementById('iaBtn').disabled = false;
 }
 
-// ── Produtos ─────────────────────────────────────────────────────────────
-function renderProdutos(){
-  const filtro = document.getElementById('fClass').value;
-  const lista = DADOS.produtos.filter(p => !filtro || p.classificacao === filtro);
-  const tb = document.getElementById('tblProdutos');
-  if (!lista.length) { tb.innerHTML = '<tr><td colspan="10" class="im-empty">Nenhum anúncio nessa classificação.</td></tr>'; return; }
-  tb.innerHTML = lista.map(p => `<tr>
-    <td><div class="im-prod">${p.thumbnail?`<img class="im-thumb" src="${esc(p.thumbnail)}" onerror="this.style.display='none'">`:'<div class="im-thumb"></div>'}<span class="im-title" title="${esc(p.title||'')}">${esc(p.title||p.item_id||'—')}</span></div></td>
-    <td><span class="cls ${p.classificacao}">${CLS_LABEL[p.classificacao]||p.classificacao}</span></td>
-    <td class="num">${BRL(p.faturamento)}</td>
-    <td class="num">${INT(p.qtd)}</td>
-    <td class="num ${p.margem>=0?'im-pos':'im-neg'}">${BRL(p.margem)}</td>
-    <td class="num ${p.mc_pct>=0?'im-pos':'im-neg'}">${PCT1(p.mc_pct)}</td>
-    <td class="num">${p.faturamento>0?PCT1(p.frete_vendedor/p.faturamento*100):'—'}</td>
-    <td class="num">${p.faturamento>0?PCT1(p.tarifa/p.faturamento*100):'—'}</td>
-    <td><span class="est ${p.status_estoque}" title="${p.dias_estoque!=null?INT(p.dias_estoque)+' dia(s)':''}">${EST_LABEL[p.status_estoque]||p.status_estoque}</span></td>
-    <td class="num im-score" title="Margem ${p.score_detalhe.margem} + Faturamento ${p.score_detalhe.faturamento} + Lucro ${p.score_detalhe.lucro} + Estoque ${p.score_detalhe.estoque}">${p.score}</td>
-  </tr>`).join('');
+// ── Por que a margem mudou (decomposição exata) ────────────────────────
+function renderCausaVariacao(cv){
+  const el = document.getElementById('imCausaVariacao');
+  if (!cv || !cv.componentes){ el.innerHTML = '<div class="im-empty">Sem dado do período anterior pra comparar.</div>'; return; }
+  const maxAbs = Math.max(...cv.componentes.map(c => Math.abs(c.contribuicao)), 1);
+  const linhas = cv.componentes.map(c => {
+    const larguraPct = Math.min(100, Math.abs(c.contribuicao) / maxAbs * 50);
+    const pos = c.contribuicao >= 0;
+    return `<div class="causa-row">
+      <span>${esc(c.label)}</span>
+      <span class="causa-track"><span class="causa-mid"></span><span class="causa-fill ${pos?'pos':'neg'}" style="width:${larguraPct.toFixed(1)}%"></span></span>
+      <span class="num ${pos?'im-pos':'im-neg'}">${pos?'+':''}${BRL(c.contribuicao)}</span>
+    </div>`;
+  }).join('');
+  const mixTxt = cv.mix.delta_pp > 0.5
+    ? `<b class="im-neg">Piorou</b>: ${PCT1(cv.mix.pct_faturamento_baixa_margem_anterior)} → ${PCT1(cv.mix.pct_faturamento_baixa_margem_atual)} do faturamento agora vem de anúncios com MC abaixo de ${cv.mix.limiar_mc_pct}% (${cv.mix.delta_pp>=0?'+':''}${cv.mix.delta_pp.toFixed(1)} p.p.)`
+    : cv.mix.delta_pp < -0.5
+    ? `<b class="im-pos">Melhorou</b>: ${PCT1(cv.mix.pct_faturamento_baixa_margem_anterior)} → ${PCT1(cv.mix.pct_faturamento_baixa_margem_atual)} do faturamento vem de anúncios com MC abaixo de ${cv.mix.limiar_mc_pct}% (${cv.mix.delta_pp.toFixed(1)} p.p.)`
+    : `Estável: ${PCT1(cv.mix.pct_faturamento_baixa_margem_atual)} do faturamento vem de anúncios com MC abaixo de ${cv.mix.limiar_mc_pct}%, sem mudança relevante vs. período anterior.`;
+  el.innerHTML = `
+    <div class="causa-list">${linhas}</div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0"><i class="fas fa-circle-info"></i> Soma exata dos componentes = variação total do lucro (${cv.delta_margem>=0?'+':''}${BRL(cv.delta_margem)}). Verde ajudou o lucro, vermelho atrapalhou.</p>
+    <p style="font-size:12px;margin-top:8px"><b>Mix de portfólio:</b> ${mixTxt}</p>`;
 }
 
-// ── Portfólio ────────────────────────────────────────────────────────────
-function renderPortfolio(){
-  const c = DADOS.concentracao;
-  document.getElementById('imConcentracao').innerHTML = `
-    <div class="bi-kpi"><div class="k">Total de anúncios ativos</div><div class="v">${INT(c.total_skus)}</div></div>
-    <div class="bi-kpi"><div class="k">Top 10 — % do faturamento</div><div class="v">${PCT1(c.top10_pct_faturamento)}</div></div>
-    <div class="bi-kpi"><div class="k">Top 10 — % do lucro</div><div class="v">${PCT1(c.top10_pct_lucro)}</div></div>`;
-  const max = Math.max(...DADOS.bandas_margem.map(b => b.pct_faturamento), 1);
-  const CORES = ['#f87171','#f59e0b','#eab308','#60a5fa','#3fb950','#22c55e'];
-  document.getElementById('imBandas').innerHTML = DADOS.bandas_margem.map((b,i) => `
-    <div class="im-bar-row">
-      <span>${esc(b.faixa)}</span>
-      <span class="im-bar-track"><span class="im-bar-fill" style="width:${(b.pct_faturamento/max*100).toFixed(1)}%;background:${CORES[i]}"></span></span>
-      <span class="num">${BRL(b.faturamento)} · ${PCT1(b.pct_faturamento)} · ${INT(b.qtd_skus)} anúncio(s)</span>
-    </div>`).join('');
+// ── Prioridades (cards de ação, mesmo componente de Ações Recomendadas) ──
+function cenariosHtml(cenarios){
+  if (!cenarios || !cenarios.length) return '';
+  return `<div class="im-cenarios">${cenarios.map(c => `<span class="im-cenario">+${c.aumento_pct}% preço → <b>${BRL(c.impacto_estimado)}</b>/período</span>`).join('')}</div>`;
 }
-
-// ── Frete & Tarifa ───────────────────────────────────────────────────────
-function linhaFreteTarifa(g){
-  return `<tr>
-    <td>${esc(g.chave)}</td>
-    <td class="num">${BRL(g.faturamento)}</td>
-    <td class="num">${BRL(g.frete_vendedor)}</td>
-    <td class="num ${g.frete_pct>15?'im-neg':''}">${PCT1(g.frete_pct)}</td>
-    <td class="num">${BRL(g.tarifa)}</td>
-    <td class="num ${g.tarifa_pct>20?'im-neg':''}">${PCT1(g.tarifa_pct)}</td>
-  </tr>`;
-}
-function renderFrete(){
-  const ft = DADOS.frete_tarifa;
-  document.getElementById('tblFreteLog').innerHTML = ft.por_logistica.length ? ft.por_logistica.map(linhaFreteTarifa).join('') : '<tr><td colspan="6" class="im-empty">Sem dados no período.</td></tr>';
-  document.getElementById('tblFreteConta').innerHTML = ft.por_conta.length ? ft.por_conta.map(linhaFreteTarifa).join('') : '<tr><td colspan="6" class="im-empty">Sem dados no período.</td></tr>';
-}
-
-// ── Estoque & Ruptura ────────────────────────────────────────────────────
-function renderEstoque(){
-  // Ordena por dias_estoque asc (quem acaba primeiro no topo); sem dado vai pro fim.
-  const lista = [...DADOS.produtos].sort((a,b) => {
-    if (a.dias_estoque == null) return 1;
-    if (b.dias_estoque == null) return -1;
-    return a.dias_estoque - b.dias_estoque;
-  });
-  const tb = document.getElementById('tblEstoque');
-  if (!lista.length) { tb.innerHTML = '<tr><td colspan="7" class="im-empty">Nenhum anúncio no período.</td></tr>'; return; }
-  tb.innerHTML = lista.map(p => `<tr>
-    <td><div class="im-prod">${p.thumbnail?`<img class="im-thumb" src="${esc(p.thumbnail)}" onerror="this.style.display='none'">`:'<div class="im-thumb"></div>'}<span class="im-title" title="${esc(p.title||'')}">${esc(p.title||p.item_id||'—')}</span></div></td>
-    <td><span class="est ${p.status_estoque}">${EST_LABEL[p.status_estoque]||p.status_estoque}</span></td>
-    <td class="num">${p.estoque_atual!=null?INT(p.estoque_atual):'—'}</td>
-    <td class="num">${p.venda_dia>0?p.venda_dia.toFixed(2):'—'}</td>
-    <td class="num">${p.dias_estoque!=null?INT(p.dias_estoque):'—'}</td>
-    <td>${p.data_ruptura?dataBR(p.data_ruptura):'—'}</td>
-    <td class="num ${p.mc_pct>=0?'im-pos':'im-neg'}">${PCT1(p.mc_pct)}</td>
-  </tr>`).join('');
-}
-
-// ── Ações Recomendadas ───────────────────────────────────────────────────
 function acaoCardHtml(a, i){
   return `<div class="acao-card">
     <div class="acao-hd">
@@ -344,21 +216,39 @@ function acaoCardHtml(a, i){
       <div><b>Problema</b>${esc(a.problema)}</div>
       <div><b>Evidência</b>${esc(a.evidencia)}</div>
       <div><b>Ação recomendada</b>${esc(a.acao)}</div>
-      <div><b>Impacto estimado</b><span class="acao-impacto">${a.impacto_estimado!=null?BRL(a.impacto_estimado)+'/período':'sem estimativa em R$'}</span></div>
+      <div><b>Impacto estimado</b><span class="acao-impacto">${a.impacto_estimado!=null?BRL(a.impacto_estimado)+'/período':'sem estimativa em R$'}</span>${cenariosHtml(a.cenarios)}</div>
       <div><b>Esforço</b>${esc(a.esforco)}</div>
       <div><b>Confiança</b>${esc(a.confianca)}</div>
     </div>
     <div class="acao-premissa"><i class="fas fa-circle-info"></i> Premissa: ${esc(a.premissa)}</div>
   </div>`;
 }
-function renderAcoes(){
-  const el = document.getElementById('listaAcoes');
-  el.innerHTML = DADOS.acoes.length ? DADOS.acoes.map((a,i) => acaoCardHtml(a,i)).join('')
-    : '<div class="im-empty">Nenhuma ação prioritária identificada neste período.</div>';
+
+// ── Análise da IA (Fase 2) — sob demanda, nunca dispara sozinho ─────────
+async function gerarNarrativaIA(){
+  const btn = document.getElementById('iaBtn'), body = document.getElementById('iaBody');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analisando…';
+  body.innerHTML = '';
+  const days = document.getElementById('imDays').value, loja = document.getElementById('imLoja').value;
+  const r = await DB.getBiMargemNarrativa(days, loja);
+  btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Gerar análise deste período';
+  if (!r || !r.ok) {
+    body.innerHTML = `<p class="ia-err"><i class="fas fa-triangle-exclamation"></i> ${esc((r && r.error) || DB.lastError || 'Falha ao gerar a análise.')}</p>`;
+    return;
+  }
+  const n = r.narrativa || {};
+  const acoesTxt = Array.isArray(n.o_que_eu_faria_agora) ? n.o_que_eu_faria_agora : [];
+  body.innerHTML = `
+    <h4>Resumo executivo</h4><p>${esc(n.resumo_executivo || '—')}</p>
+    <h4>Causa raiz</h4><p>${esc(n.causa_raiz || '—')}</p>
+    <h4>O que eu faria agora</h4>
+    ${acoesTxt.length ? `<ul>${acoesTxt.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>—</p>'}`;
 }
 
-popularLojas();
-carregar();
+const qInit = biMargemQueryAtual();
+document.getElementById('imDays').value = qInit.days;
+popularLojas(qInit.store_id).then(carregar);
+atualizarTabs();
 </script>
 </body>
 </html>

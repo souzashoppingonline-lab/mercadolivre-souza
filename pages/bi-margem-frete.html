@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inteligência de Margem — Frete &amp; Tarifa</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Inteligência de Margem'; window.ACTIVE_NAV='bi-margem.html';</script>
+  <style>
+    .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .im-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .im-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; }
+    .im-status { font-size:12px; color:var(--text-muted); margin-left:auto; }
+    .im-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:5px; }
+    .im-tab { background:transparent; border:0; color:var(--text-muted); padding:9px 16px; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; text-decoration:none; }
+    .im-tab.on { background:#8b5cf6; color:#fff; }
+    .im-tab .n { background:rgba(255,255,255,.2); border-radius:999px; padding:0 6px; font-size:10.5px; }
+    .im-tab.on .n { background:rgba(255,255,255,.3); }
+    .im-tab:not(.on) .n { background:var(--bg-card2); }
+    .im-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .im-card h3 { font-size:14.5px; font-weight:800; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+    .im-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+    table.im-t { width:100%; border-collapse:collapse; }
+    .im-t th, .im-t td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); font-size:12.5px; }
+    .im-t th { color:var(--text-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
+    .im-t td.num, .im-t th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .im-t tr:hover td { background:var(--bg-card2); }
+    .im-neg { color:#f87171; font-weight:700; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="bi-sub">Motor determinístico — nenhum número aqui é estimado por IA. Limiares/fórmulas em <code>business-rules.md</code>.</p>
+
+      <div class="im-filters">
+        <select id="imDays">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <select id="imLoja"><option value="">Todas as empresas</option></select>
+        <button class="btn-primary" onclick="carregar()"><i class="fas fa-sync"></i> Atualizar</button>
+        <span class="im-status" id="imStatus"></span>
+      </div>
+
+      <div class="im-tabs" id="imTabs"></div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-truck-fast"></i> Por tipo de envio</h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr><th>Logística</th><th class="num">Faturamento</th><th class="num">Frete do vendedor</th><th class="num">Frete % receita</th><th class="num">Tarifa</th><th class="num">Tarifa % receita</th></tr></thead>
+          <tbody id="tblFreteLog"></tbody>
+        </table></div>
+      </div>
+      <div class="im-card">
+        <h3><i class="fas fa-store"></i> Por conta</h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr><th>Conta</th><th class="num">Faturamento</th><th class="num">Frete do vendedor</th><th class="num">Frete % receita</th><th class="num">Tarifa</th><th class="num">Tarifa % receita</th></tr></thead>
+          <tbody id="tblFreteConta"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-bi.js"></script>
+<script src="../js/sidebar.js"></script>
+<script src="../js/biMargemTabs.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
+const PCT1 = n => `${(Number(n)||0).toFixed(1)}%`;
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+
+let DADOS = null;
+
+async function popularLojas(selecionado){
+  try{ const d=await DB.getLojas(); const sel=document.getElementById('imLoja');
+    (d.stores||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.nickname; sel.appendChild(o); });
+    if (selecionado) sel.value = selecionado;
+  }catch(e){}
+}
+
+function atualizarTabs(){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem-frete.html'); }
+
+async function carregar(){
+  atualizarTabs();
+  document.getElementById('imStatus').textContent = 'Carregando…';
+  const d = await DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value);
+  if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
+  DADOS = d;
+  document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
+  atualizarTabs();
+  renderFrete();
+}
+
+function linhaFreteTarifa(g){
+  return `<tr>
+    <td>${esc(g.chave)}</td>
+    <td class="num">${BRL(g.faturamento)}</td>
+    <td class="num">${BRL(g.frete_vendedor)}</td>
+    <td class="num ${g.frete_pct>15?'im-neg':''}">${PCT1(g.frete_pct)}</td>
+    <td class="num">${BRL(g.tarifa)}</td>
+    <td class="num ${g.tarifa_pct>20?'im-neg':''}">${PCT1(g.tarifa_pct)}</td>
+  </tr>`;
+}
+function renderFrete(){
+  const ft = DADOS.frete_tarifa;
+  document.getElementById('tblFreteLog').innerHTML = ft.por_logistica.length ? ft.por_logistica.map(linhaFreteTarifa).join('') : '<tr><td colspan="6" class="im-empty">Sem dados no período.</td></tr>';
+  document.getElementById('tblFreteConta').innerHTML = ft.por_conta.length ? ft.por_conta.map(linhaFreteTarifa).join('') : '<tr><td colspan="6" class="im-empty">Sem dados no período.</td></tr>';
+}
+
+const qInit = biMargemQueryAtual();
+document.getElementById('imDays').value = qInit.days;
+popularLojas(qInit.store_id).then(carregar);
+atualizarTabs();
+</script>
+</body>
+</html>

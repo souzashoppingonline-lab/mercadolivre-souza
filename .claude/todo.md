@@ -105,14 +105,24 @@ Fase de expansão da Shopee, totalmente isolada do Mercado Livre (arquivos/rotas
 - [ ] Decidir e documentar em `decisions.md`: remover o tópico WS `kpis_updated` (código morto) ou implementar sua publicação de fato (item 2 de `known-bugs.md`).
 - [ ] Avaliar se `PATCH /api/custos/:sku` deveria exigir/validar que o `sku` informado é de fato um `ml_id` válido, ou desacoplar de vez `sku_costs` de `items.cost` (item 3 de `known-bugs.md`).
 
-## Inteligência de Margem — Fase 2/3 (deliberadamente fora desta tarefa)
+## Inteligência de Margem — Fase 3 (deliberadamente fora desta tarefa)
 
-O usuário pediu um analista financeiro completo (30 seções de especificação: causa raiz textual, resumo executivo, score, simulação de preço multi-cenário, tabela de histórico com feedback loop). Implementada a **Fase 1 — motor determinístico** (`GET /api/bi/margem`, `pages/bi-margem.html`, ver `modules.md`/`business-rules.md`): tudo que dá pra calcular sem IA, com número real e premissa explícita. Fora do escopo desta tarefa, de propósito (ver `decisions.md`):
+Fase 1 (motor determinístico) e Fase 2 (LLM narrativo + melhorias de analista) feitas. Tela dividida em 6 páginas (`bi-margem.html` + `bi-margem-produtos/portfolio/frete/estoque/acoes.html`, ver `modules.md`). Concluído nesta rodada:
 
-- [ ] **Camada de LLM** escrevendo a narrativa em português (causa raiz decomposta — "a margem caiu X p.p., a causa principal foi..."; resumo executivo diário; "o que eu faria agora" em texto corrido) em cima do JSON já calculado pela Fase 1 — nunca deixar o LLM fazer conta financeira, só interpretar o que o backend já calculou (mesma separação backend-determinístico/LLM-narrativo pedida pelo usuário). Reusar `server/src/ai/llm.js` (padrão Haiku barato de `analise-produtos.md`).
-- [ ] **Simulação de preço multi-cenário** (+3%/+5%/+10%, não só +5%) — hoje `bi-margem.html` só simula 1 cenário dentro da ação "Reprecificar".
-- [ ] **Tabela `business_insights`** (histórico de insights com status novo/em_analise/executado/ignorado/resolvido) + feedback loop (impacto estimado vs. realizado) — precisa de UI de acompanhamento, não é só a tela de análise atual.
-- [ ] Decomposição de causa raiz por variação de período (§19 do pedido original: "a margem caiu 3,4 p.p., 62% disso veio do aumento do peso de SKUs com MC<15%") — hoje a Fase 1 mostra o "antes/depois" agregado mas não decompõe QUANTO de cada causa (mix de produto vs. custo vs. frete vs. tarifa) contribuiu pra variação.
+- [x] ~~Camada de LLM escrevendo a narrativa em português~~ — `POST /api/bi/margem/narrativa` (`server/src/ai/margemNarrativa.js`), sob demanda, contexto reduzido, sem tabela de histórico ainda (ver abaixo).
+- [x] ~~Simulação de preço multi-cenário (+3%/+5%/+10%)~~ — `cenarios[]` em cada ação `REPRECIFICAR`.
+- [x] ~~Decomposição de causa raiz por variação de período~~ — implementada como identidade matemática exata (`resumo.causa_variacao`), não como aproximação percentual; indicador de mix separado. Ver `decisions.md`/`business-rules.md` pro porquê da abordagem diferente do pedido original.
+- [x] ~~Tendência por SKU~~ (sugestão minha, aprovada) — sparkline de MC% últimas até 6 semanas, `tendencia_semanal[]`.
+- [x] ~~Export CSV~~ (sugestão minha, aprovada) — tabelas Produtos e Ações, botão CSV.
+- [x] ~~Alerta de baixa amostra~~ (sugestão minha, aprovada) — `amostra_pequena` (< 3 pedidos no período).
+
+Ainda fora do escopo, de propósito:
+
+- [ ] **Tabela `business_insights`** (histórico de insights com status novo/em_analise/executado/ignorado/resolvido) + feedback loop (impacto estimado vs. realizado) — precisa de UI de acompanhamento própria, e só faz sentido depois de calibrar o formato da narrativa da Fase 2 com uso real.
+- [ ] Cache/persistência da narrativa da IA — hoje cada clique em "Gerar análise" chama o LLM de novo, mesmo sem nada ter mudado no período.
+- [ ] Indicador de confiabilidade dos dados (% de vendas do período com frete/tarifa já confirmados pela reconciliação automática — ver `financeReconciliationJob`/`finance_synced` em `workers.md` — vs. % ainda em estimativa via `orders.ml_fee`) — sugerido, não implementado ainda.
+- [ ] Busca por texto + ordenação por coluna na tabela de Produtos (`bi-margem-produtos.html`) — hoje só filtra por classificação; portfólio grande (>50 SKUs) fica difícil de navegar.
+- [ ] Deep link da ação recomendada pro produto (editar custo em `bi-vendas.html`, histórico de vendas do SKU) — hoje mostra o produto mas não linka.
 
 ## Rankeamento — fase Recuperação (v80)
 

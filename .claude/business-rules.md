@@ -320,6 +320,11 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - Se o maior delta de um campo for exatamente 0 (nada mudou), o card mostra "Sem mudança relevante" em vez de destacar um SKU aleatório com delta zero.
 - Frete/tarifa só têm a direção "maior aumento" (pedido explícito do usuário) — o objetivo é alertar sobre alta de custo logístico, não comemorar queda.
 
+## Ranking de impacto de frete/tarifa e anomalias (`bi-margem-frete.html`)
+
+- **Ranking por produto**: 100% client-side sobre `DADOS.produtos` (já vem no payload de `/api/bi/margem`) — sem endpoint novo. `mc_antes` = MC% sem descontar tarifa/frete do vendedor (`(faturamento−custo−imposto)/faturamento`); `impacto_pp` = `mc_antes − mc_pct` (quantos pontos percentuais de margem frete+tarifa comeram, juntos). Ordenado por maior impacto (maior destruição de margem) por padrão, colunas clicáveis pra reordenar (client-side, mesmo padrão de `bi-margem-produtos.html`).
+- **Anomalia de frete/tarifa**: compara o % de cada produto com a média do **próprio grupo** — frete% vs. média do mesmo tipo de logística (Full/Flex/Mercado Envios/Coleta), tarifa% vs. média da mesma conta. Nunca compara com a média GERAL (misturaria Full com Flex, que têm perfis de custo completamente diferentes, e geraria falso positivo). Flag só dispara com os dois critérios juntos: `valor > 1.5× a média do grupo` **e** `diferença > 3 pontos percentuais` — evita marcar como "anomalia" uma diferença de fração de ponto que é ruído, não sinal. Produto com faturamento 0 no período é ignorado do cálculo de médias e nunca recebe flag (divisão por zero).
+
 ## Drill-down de produto (`GET /api/bi/margem/produto/:itemId`, modal em `bi-margem-produtos.html`)
 
 - **Série diária, não semanal** — diferente de `tendencia_semanal` (Visão Geral/tabela, 6 semanas), o modal de detalhe quer granularidade de dia pro gráfico e pra decomposição; janela padrão 60 dias (mínimo 60, mesmo que o filtro de período da tabela esteja em 7/14/30 — o drill-down sempre pede pelo menos 60 dias pra não ficar um gráfico com 2 pontos).

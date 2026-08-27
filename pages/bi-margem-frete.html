@@ -28,6 +28,11 @@
     .im-t td.num, .im-t th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
     .im-t tr:hover td { background:var(--bg-card2); }
     .im-neg { color:#f87171; font-weight:700; }
+    .im-pos { color:#3fb950; font-weight:700; }
+    .im-t th.sortable { cursor:pointer; user-select:none; }
+    .im-t th.sortable i { margin-left:3px; opacity:.5; font-size:9px; }
+    .im-t th.sortable.on i { opacity:1; color:#8b5cf6; }
+    .anomalia-flag { font-size:9.5px; padding:1px 6px; border-radius:4px; margin-left:5px; background:rgba(245,158,11,.15); color:#f59e0b; white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -66,6 +71,22 @@
           <tbody id="tblFreteConta"></tbody>
         </table></div>
       </div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-ranking-star"></i> Ranking por produto — impacto de frete e tarifa <span class="hint">ordenado por maior destruição de margem; ⚠ = frete ou tarifa bem acima da média do próprio grupo (logística/conta)</span></h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr id="theadRanking">
+            <th>Anúncio</th>
+            <th class="num sortable" onclick="ordenarRanking('faturamento')">Faturamento <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarRanking('mc_antes')">MC antes frete/tarifa <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarRanking('tarifa')">Tarifa <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarRanking('frete_vendedor')">Frete <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarRanking('mc_pct')">MC final <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarRanking('impacto_pp')">Impacto (p.p.) <i class="fas fa-sort"></i></th>
+          </tr></thead>
+          <tbody id="tblRankingFrete"></tbody>
+        </table></div>
+      </div>
     </div>
   </main>
 </div>
@@ -80,6 +101,17 @@ const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
 const PCT1 = n => `${(Number(n)||0).toFixed(1)}%`;
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+// Mesmo rótulo de logística usado no resto do projeto (vendas.html/bi-vendas.html)
+// — é texto de agrupamento, não fórmula financeira, então repetir aqui não
+// fere "nunca duas fórmulas de margem" (ver vendaMargem.js).
+function fmtFreteLabel(raw){
+  const l=(raw||'').toLowerCase();
+  if(l.includes('fulfillment')) return 'Full';
+  if(l.includes('self_service')||l.includes('flex')) return 'Flex';
+  if(l.includes('xd_drop_off')||l.includes('me2')||l.includes('me1')||l.includes('cross_docking')) return 'Mercado Envios';
+  if(l.includes('pickup')) return 'Coleta';
+  return raw || 'Desconhecido';
+}
 
 let DADOS = null;
 
@@ -117,6 +149,73 @@ function renderFrete(){
   const ft = DADOS.frete_tarifa;
   document.getElementById('tblFreteLog').innerHTML = ft.por_logistica.length ? ft.por_logistica.map(linhaFreteTarifa).join('') : '<tr><td colspan="6" class="im-empty">Sem dados no período.</td></tr>';
   document.getElementById('tblFreteConta').innerHTML = ft.por_conta.length ? ft.por_conta.map(linhaFreteTarifa).join('') : '<tr><td colspan="6" class="im-empty">Sem dados no período.</td></tr>';
+  renderRanking();
+}
+
+// ── Ranking por produto: impacto de frete/tarifa na margem ──────────────
+// 100% client-side sobre DADOS.produtos (já vem no payload de /api/bi/margem)
+// — nenhuma chamada nova. "MC antes" = margem sem tirar tarifa/frete do
+// vendedor (mesma fórmula, só sem esses 2 termos); "impacto" = MC antes −
+// MC final, em pontos percentuais (quanto frete+tarifa juntos comeram da
+// margem deste anúncio).
+function calcularLinhasRanking(){
+  return DADOS.produtos.map(p => {
+    const margemAntes = p.faturamento - p.custo - p.imposto; // sem tarifa nem frete do vendedor
+    const mcAntes = p.faturamento > 0 ? (margemAntes / p.faturamento) * 100 : 0;
+    return { ...p, mc_antes: mcAntes, impacto_pp: mcAntes - p.mc_pct };
+  });
+}
+// Anomalia: frete% ou tarifa% do produto bem acima da média do PRÓPRIO grupo
+// (mesma logística ou mesma conta) — não da média geral, que mistura Full
+// com Flex e mascararia o que é normal em cada modalidade.
+function calcularAnomalias(linhas){
+  const mediaPorGrupo = (chaveFn, campo) => {
+    const soma = new Map(), qtd = new Map();
+    linhas.forEach(p => { if (p.faturamento <= 0) return; const k = chaveFn(p); const pct = p[campo] / p.faturamento * 100;
+      soma.set(k, (soma.get(k)||0) + pct); qtd.set(k, (qtd.get(k)||0) + 1); });
+    const media = new Map(); for (const [k,s] of soma) media.set(k, s / qtd.get(k));
+    return media;
+  };
+  const mediaFreteLog = mediaPorGrupo(p => fmtFreteLabel(p.frete_tipo), 'frete_vendedor');
+  const mediaTarifaConta = mediaPorGrupo(p => p.conta || '—', 'tarifa');
+  linhas.forEach(p => {
+    if (p.faturamento <= 0) { p.anomalia = null; return; }
+    const fretePct = p.frete_vendedor / p.faturamento * 100, tarifaPct = p.tarifa / p.faturamento * 100;
+    const mediaFrete = mediaFreteLog.get(fmtFreteLabel(p.frete_tipo)) || 0;
+    const mediaTarifa = mediaTarifaConta.get(p.conta || '—') || 0;
+    if (mediaFrete > 0 && fretePct > mediaFrete * 1.5 && fretePct - mediaFrete > 3) p.anomalia = `frete ${fretePct.toFixed(1)}% vs. média ${mediaFrete.toFixed(1)}% de ${esc(fmtFreteLabel(p.frete_tipo))}`;
+    else if (mediaTarifa > 0 && tarifaPct > mediaTarifa * 1.5 && tarifaPct - mediaTarifa > 3) p.anomalia = `tarifa ${tarifaPct.toFixed(1)}% vs. média ${mediaTarifa.toFixed(1)}% da conta`;
+    else p.anomalia = null;
+  });
+  return linhas;
+}
+let SORT_RANK = { campo: 'impacto_pp', dir: 'desc' };
+function ordenarRanking(campo){
+  if (SORT_RANK.campo === campo) SORT_RANK.dir = SORT_RANK.dir === 'desc' ? 'asc' : 'desc';
+  else { SORT_RANK.campo = campo; SORT_RANK.dir = 'desc'; }
+  renderRanking();
+}
+function renderRanking(){
+  let linhas = calcularAnomalias(calcularLinhasRanking());
+  linhas = [...linhas].sort((a,b) => (a[SORT_RANK.campo]??0) - (b[SORT_RANK.campo]??0));
+  if (SORT_RANK.dir === 'desc') linhas.reverse();
+  document.querySelectorAll('#theadRanking th.sortable').forEach(th => {
+    const campo = th.getAttribute('onclick').match(/'([^']+)'/)[1];
+    const icon = th.querySelector('i');
+    th.classList.toggle('on', SORT_RANK.campo === campo);
+    icon.className = SORT_RANK.campo !== campo ? 'fas fa-sort' : SORT_RANK.dir === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up';
+  });
+  const tb = document.getElementById('tblRankingFrete');
+  if (!linhas.length) { tb.innerHTML = '<tr><td colspan="7" class="im-empty">Nenhum anúncio no período.</td></tr>'; return; }
+  tb.innerHTML = linhas.map(p => `<tr>
+    <td>${esc(p.title||p.item_id||'—')}${p.anomalia ? `<span class="anomalia-flag" title="${esc(p.anomalia)}"><i class="fas fa-triangle-exclamation"></i> fora do padrão</span>` : ''}</td>
+    <td class="num">${BRL(p.faturamento)}</td>
+    <td class="num">${PCT1(p.mc_antes)}</td>
+    <td class="num">${BRL(p.tarifa)}</td>
+    <td class="num">${BRL(p.frete_vendedor)}</td>
+    <td class="num ${p.mc_pct>=0?'im-pos':'im-neg'}">${PCT1(p.mc_pct)}</td>
+    <td class="num im-neg">-${p.impacto_pp.toFixed(1)} p.p.</td>
+  </tr>`).join('');
 }
 
 const qInit = biMargemQueryAtual();

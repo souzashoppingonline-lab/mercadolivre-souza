@@ -142,7 +142,7 @@ Fase C concluída nesta rodada:
 - [x] ~~C — Portfólio: matriz scatter, cenário de mix~~ — matriz Chart.js (X=volume, Y=MC%, raio=faturamento) clicável (abre `js/biMargemProdutoModal.js`, extraído da Fase B pra reuso entre Produtos/Portfólio), cenário de mix client-side limitado ao faturamento real de baixa margem. Canibalização automática **decidido não implementar** (ver `decisions.md` — risco de dado inventado).
 
 Pendente (Fases D-F, ver `decisions.md` pro plano completo por fase):
-- [ ] **D — Frete & Tarifa**: ranking "MC antes/depois do frete/tarifa" por produto, detecção de anomalia (desvio da média por grupo).
+- [x] ~~D — Frete & Tarifa: ranking "MC antes/depois do frete/tarifa" por produto, detecção de anomalia~~ — `bi-margem-frete.html`, 100% client-side sobre o payload já carregado (sem endpoint novo). Anomalia compara com a média do PRÓPRIO grupo (logística/conta), não a geral.
 - [ ] **E — Estoque**: capital parado (estoque × custo), valor em risco (venda perdida estimada × MC unitária), priorização ponderada por risco×MC×velocidade.
 - [ ] **F — Ações + histórico**: matriz impacto×esforço visual, regra de exclusividade mútua entre ações (não somar impacto de ações concorrentes pro mesmo produto), tabela `business_insights` com status/histórico/feedback loop (reabre a decisão que tinha sido adiada duas vezes).
 

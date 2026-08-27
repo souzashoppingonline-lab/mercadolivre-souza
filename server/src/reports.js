@@ -2,6 +2,7 @@
 // API HTTP (páginas do dashboard) — única fonte de verdade por cálculo,
 // nunca duplicar a mesma query em mais de um lugar.
 const pool = require('./db/pool');
+const { CONCILIACAO_TARIFA_LATERAL } = require('./vendaMargem');
 
 async function getResumoDiarioData() {
   const { rows: porLoja } = await pool.query(`
@@ -230,12 +231,7 @@ async function getMargemPorLoja({ dateFrom, dateTo, days, considerarFC = false }
       FROM vw_ml_orders o
       JOIN vw_ml_stores s ON s.id=o.store_id
       LEFT JOIN items i ON i.ml_id=o.item_id
-      LEFT JOIN LATERAL (
-        SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
-               ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
-        FROM mp_account_movements m
-        WHERE m.order_id = o.ml_id AND m.description = 'Payment'
-      ) c ON true
+      ${CONCILIACAO_TARIFA_LATERAL}
       LEFT JOIN LATERAL (
         SELECT SUM(p.transaction_amount) - SUM(p.net_received_amount) AS taxa_pgto
         FROM ml_payments p

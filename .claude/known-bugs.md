@@ -152,6 +152,14 @@ Ao criar `pages/bi-vendas.html` nesta tarefa, o caminho foi adicionado corretame
 
 **Correção esperada:** ou trocar `pages: [...]` por um prefixo (`financeiro`/`financeiro-*.html` batendo por `startsWith`), ou completar o array do Financeiro com todas as páginas `financeiro-*.html` existentes hoje. A 1ª opção evita esquecer de novo a cada tela nova.
 
+## Correção de "frete do comprador vazando pra tarifa" não confirmada contra produção
+
+`CONCILIACAO_TARIFA_LATERAL` (`vendaMargem.js`) exclui da tarifa uma linha "Payment" da Conciliação quando ela bate exatamente com `orders.shipping_cost` E há mais de 1 linha pro mesmo pedido — corrige o caso reportado pelo usuário (MLB7037761594, tarifa mostrando R$9,83 em vez de R$4,83 reais, diferença batendo exato com o frete do comprador de R$5,00). A lógica foi validada num Postgres 16 local com dados **sintéticos** reproduzindo o cenário hipotetizado (ver `business-rules.md`), não contra a linha real de `mp_account_movements` do pedido reportado — sem acesso ao Postgres de produção nesta tarefa.
+
+**Se depois de subir a tarifa de algum pedido continuar errada** (a correção não pegou): a causa real pode não ser "2ª linha Payment com o valor do frete em MP_FEE_AMOUNT" — pode ser um formato diferente (ex.: o frete do comprador embutido na MESMA linha que a comissão, sem uma 2ª linha separada; ou uma diferença de sinal/arredondamento que quebra a comparação `ABS(mp_fee_amount) = shipping_cost`). Nesse caso, abrir Conciliação Bancária → Extrato, buscar o `order_id` problemático, e olhar as linhas cruas de `mp_account_movements` (`description='Payment'`) pra ver a forma real — só depois ajustar a heurística.
+
+**Se, ao contrário, alguma comissão real passar a ser zerada por engano** (falso positivo): a proteção só dispara com `COUNT(*) > 1` — investigar se existe algum padrão legítimo de 2+ linhas Payment pro mesmo pedido onde uma bate por coincidência com o `shipping_cost` (ex.: reembolso parcial, ajuste manual) — nesse caso a condição (3) (linha sem `shipping_fee_amount` próprio) pode precisar ficar mais restritiva.
+
 ## Flag "imposto Flex" não cobre TODOS os cálculos de imposto do sistema
 
 A fórmula `imposto = total_amount × stores.imposto_pct/100` está duplicada em vários lugares além de `calcularMargemLinha` (`vendaMargem.js`, único módulo que hoje respeita a flag `imposto_flex_ativo` — ver `business-rules.md`): `GET /api/vendas/hoje`, `GET /api/vendas/hoje-vs-ontem`, `GET /api/pedidos/:id/detalhes`, os relatórios de `server/src/reports.js` (resumo diário/semanal, Telegram) e `GET /api/vendas/margem` (tela "Margem por loja" em `vendas.html`/`lojas.html`) calculam imposto **direto em SQL própria**, sem passar por `vendaMargem.js`.

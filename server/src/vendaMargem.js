@@ -9,6 +9,49 @@
 // em outro lugar — ver finance.md.
 const pool = require('./db/pool');
 
+// Conciliação Bancária (mp_account_movements, description='Payment') — tarifa
+// real e frete do vendedor real por pedido. Precisa que a query externa
+// aliaseie o pedido como `o` (usa `o.ml_id` e `o.shipping_cost`). Extraída
+// pra constante porque a MESMA subquery vivia duplicada em 4 arquivos
+// (aqui, routes/api.js × 2, reports.js) — nunca uma 2ª cópia da fórmula.
+//
+// Proteção contra frete do comprador contado como tarifa (bug real
+// reportado pelo usuário, produto MLB7037761594): quando o pedido tem
+// MAIS DE UMA linha 'Payment' na Conciliação (raro — a maioria tem 1), o
+// relatório de liberação do Mercado Pago às vezes traz uma linha extra
+// pro repasse do frete pago pelo comprador, com o valor inteiro caindo na
+// coluna MP_FEE_AMOUNT (nada em SHIPPING_FEE_AMOUNT) — a tarifa aparecia
+// R$9,83 (comissão real R$4,83 + frete do comprador R$5,00 somados por
+// engano, ao invés dos R$4,83 que o próprio Mercado Livre cobra). Zerada
+// só quando as 3 condições batem: (1) há mais de 1 linha Payment pro
+// pedido, (2) o valor da linha é EXATAMENTE igual ao frete pago pelo
+// comprador (`o.shipping_cost`), e (3) essa linha não tem frete do
+// vendedor próprio — combinação específica o bastante pra não arriscar
+// zerar uma comissão real por coincidência de centavos numa venda de
+// linha única (o caso comum). `mp_fee_amount`/`shipping_fee_amount` vêm
+// negativos do relatório (débito), por isso `ABS()` na comparação com
+// `o.shipping_cost` (sempre positivo). Lógica validada num Postgres local
+// com dados sintéticos reproduzindo o cenário (4 casos: bug real, pedido
+// normal de 1 linha, 2 linhas legítimas sem coincidência, 1 linha única
+// que bate por coincidência — só o 1º caso zera) — não confirmado contra
+// o extrato real de produção (sem acesso ao Postgres de produção nesta
+// tarefa); se a hipótese estiver errada, ver `known-bugs.md`.
+const CONCILIACAO_TARIFA_LATERAL = `
+     LEFT JOIN LATERAL (
+       SELECT ABS(SUM(mm.mp_fee_amount)) AS tarifa_real,
+              ABS(SUM(mm.shipping_fee_amount)) AS frete_vend_real
+       FROM (
+         SELECT
+           CASE WHEN COUNT(*) OVER () > 1
+                     AND ABS(m.mp_fee_amount) = o.shipping_cost
+                     AND COALESCE(m.shipping_fee_amount, 0) = 0
+                THEN 0 ELSE m.mp_fee_amount END AS mp_fee_amount,
+           m.shipping_fee_amount
+         FROM mp_account_movements m
+         WHERE m.order_id = o.ml_id AND m.description = 'Payment'
+       ) mm
+     ) c ON true`;
+
 const VENDA_DETALHE_SELECT = `
      SELECT
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
@@ -45,12 +88,7 @@ const VENDA_DETALHE_SELECT = `
      FROM vw_ml_orders o
      JOIN vw_ml_stores s ON s.id = o.store_id
      LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-     LEFT JOIN LATERAL (
-       SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
-              ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
-       FROM mp_account_movements m
-       WHERE m.order_id = o.ml_id AND m.description = 'Payment'
-     ) c ON true
+     ${CONCILIACAO_TARIFA_LATERAL}
      LEFT JOIN LATERAL (
        SELECT NULLIF(GREATEST(SUM(p.transaction_amount) - SUM(p.net_received_amount), 0), 0) AS taxa_pgto
        FROM ml_payments p
@@ -86,4 +124,4 @@ function calcularMargemLinha(r, impostoFlexAtivo = false) {
   return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
 }
 
-module.exports = { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo };
+module.exports = { VENDA_DETALHE_SELECT, CONCILIACAO_TARIFA_LATERAL, calcularMargemLinha, buscarImpostoFlexAtivo };

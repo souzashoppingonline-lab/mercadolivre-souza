@@ -343,7 +343,7 @@ router.get('/vendas/diarias', async (req, res) => {
 
 // SELECT + fórmula de margem — v82: movidos pra vendaMargem.js (módulo
 // próprio) quando o financeService virou o 4º consumidor. Nunca duplicar.
-const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo } = require('../vendaMargem');
+const { VENDA_DETALHE_SELECT, CONCILIACAO_TARIFA_LATERAL, calcularMargemLinha, buscarImpostoFlexAtivo } = require('../vendaMargem');
 const financeService = require('../financeService');
 
 router.get('/vendas/detalhado', async (req, res) => {
@@ -411,12 +411,7 @@ router.get('/vendas/detalhado', async (req, res) => {
      FROM vw_ml_orders o
      JOIN vw_ml_stores s ON s.id = o.store_id
      LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-     LEFT JOIN LATERAL (
-       SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
-              ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
-       FROM mp_account_movements m
-       WHERE m.order_id = o.ml_id AND m.description = 'Payment'
-     ) c ON true
+     ${CONCILIACAO_TARIFA_LATERAL}
      LEFT JOIN LATERAL (
        SELECT NULLIF(GREATEST(SUM(p.transaction_amount) - SUM(p.net_received_amount), 0), 0) AS taxa_pgto
        FROM ml_payments p
@@ -692,12 +687,7 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
        FROM vw_ml_orders o
        JOIN vw_ml_stores s ON s.id = o.store_id
        LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-       LEFT JOIN LATERAL (
-         SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
-                ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
-         FROM mp_account_movements m
-         WHERE m.order_id = o.ml_id AND m.description = 'Payment'
-       ) c ON true
+       ${CONCILIACAO_TARIFA_LATERAL}
        LEFT JOIN LATERAL (
          SELECT NULLIF(GREATEST(SUM(p.transaction_amount) - SUM(p.net_received_amount), 0), 0) AS taxa_pgto
          FROM ml_payments p

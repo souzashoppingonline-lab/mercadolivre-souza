@@ -311,6 +311,21 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Não confirmado contra o extrato real de produção** — a hipótese (frete do comprador virando uma 2ª linha "Payment" com valor em `MP_FEE_AMOUNT`) é a mais plausível dado o formato dos dados e o valor bater exato, mas não há acesso ao Postgres de produção nesta tarefa pra ver a linha crua do pedido reportado. Se depois de ir ao ar a tarifa de algum pedido continuar errada (ou passar a zerar uma comissão real por coincidência), ver `known-bugs.md`.
 - **Extraída pra `CONCILIACAO_TARIFA_LATERAL`** (constante SQL exportada de `vendaMargem.js`) porque a mesma subquery vivia duplicada em 4 arquivos (`vendaMargem.js`, `routes/api.js` × 2 — `/vendas/detalhado` totais e `/pedidos/:id/detalhes` —, `reports.js` — `getMargemPorLoja`, usada por `/vendas/margem` e o fechamento diário do worker) — corrigir só 1 dos 4 teria deixado os outros 3 com o bug, gerando números diferentes de tarifa pra mesma venda em telas diferentes (mesmo risco já documentado pra `imposto_flex_ativo`, ver seção abaixo).
 
+## Margem — faixas de cor por MC% (`margemTier()`, `bi-vendas.html`)
+
+> Pedido explícito do usuário: o badge "Margem" do card (e o KPI "MARGEM"/"MC %" do topo) deixou de ser um binário verde/vermelho e virou 6 faixas — quanto maior a MC%, mais "quente" o verde; abaixo de 0% fica progressivamente mais vermelho.
+
+| Faixa | Cor |
+|---|---|
+| ≥ 20% | Verde escuro |
+| 15% – 19% | Verde (mesma cor que já existia antes desta mudança, `rgb(63,185,80)`) |
+| 10% – 14% | Amarelo escuro |
+| 5% – 9% | Laranja |
+| 0% – 4% | Vermelho (mesma cor que já existia antes, `rgb(248,113,113)`) |
+| < 0% | Vermelho escuro |
+
+`margemTier(pct)` devolve `{min, rgb}` da 1ª faixa cuja `min` o percentual atinge (lista ordenada da maior pra menor, `Array.find`) — cor aplicada inline (`rgba(...)` pro fundo/borda do badge, `rgb(...)` pro texto), não mais via classe CSS `.neg`. Usado tanto no badge de Margem de cada card quanto nos KPIs agregados "MARGEM"/"MC %" do topo da página (mesma faixa, calculada sobre `SUMMARY.mc_pct`) — critério único em todo `bi-vendas.html`.
+
 ## Tarifa — edição manual por pedido (`orders.tarifa_manual`, v84)
 
 > Pedido explícito do usuário: "se não resolver [a correção automática acima], coloque um botão para editar manualmente a tarifa" — escape hatch pra qualquer divergência que `CONCILIACAO_TARIFA_LATERAL` não cubra (formato de dados diferente do hipotetizado, ajuste manual do Mercado Pago, etc.).

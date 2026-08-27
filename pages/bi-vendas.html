@@ -44,13 +44,10 @@
     .vc-fin div { text-align:center; }
     .vc-fin .l { font-size:9.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.3px; }
     .vc-fin .v { font-size:13px; font-weight:700; margin-top:2px; }
-    .vc-margem { background:rgba(63,185,80,.08); border:1px solid rgba(63,185,80,.25); border-radius:9px; padding:8px 12px; display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:0 0 auto; margin-left:auto; }
-    .vc-margem.neg { background:rgba(248,113,113,.08); border-color:rgba(248,113,113,.25); }
+    .vc-margem { border-radius:9px; padding:8px 12px; display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:0 0 auto; margin-left:auto; border:1px solid transparent; }
     .vc-margem .lbl { font-size:10px; color:var(--text-muted); }
-    .vc-margem .val { font-size:16px; font-weight:800; color:#3fb950; }
-    .vc-margem.neg .val { color:#f87171; }
-    .vc-margem .pct { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; background:rgba(63,185,80,.15); color:#3fb950; }
-    .vc-margem.neg .pct { background:rgba(248,113,113,.15); color:#f87171; }
+    .vc-margem .val { font-size:16px; font-weight:800; }
+    .vc-margem .pct { font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; }
     .vc-editcusto { background:none; border:0; color:var(--text-muted); cursor:pointer; padding:0 0 0 4px; font-size:9px; vertical-align:1px; }
     .vc-refresh { background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:5px; padding:2px 6px; font-size:10px; cursor:pointer; display:inline-flex; align-items:center; }
     .vc-refresh:hover { color:#8b5cf6; border-color:#8b5cf6; }
@@ -380,8 +377,26 @@ function faseTagHtml(itemId){
   return `<span class="vc-badge" style="background:${ui.cor};color:${ui.txt}" title="Estágio atual do anúncio no Rankeamento">${esc(ui.label)}</span>`;
 }
 
+// Faixas de cor da Margem (%) — pedido explícito do usuário: quanto maior
+// a MC%, mais "quente" o verde; abaixo de 0% fica progressivamente mais
+// vermelho, não é só um corte binário positivo/negativo. 15-19% mantém
+// exatamente a cor que já existia antes desta mudança (verde de sempre,
+// #3fb950), o resto foi calibrado ao redor dela.
+const MARGEM_TIERS = [
+  { min: 20,        rgb: '21,128,61'    }, // ≥20%: verde escuro
+  { min: 15,        rgb: '63,185,80'    }, // 15-19%: verde (mesmo de sempre)
+  { min: 10,        rgb: '161,98,7'     }, // 10-14%: amarelo escuro
+  { min: 5,         rgb: '249,115,22'   }, // 5-9%: laranja
+  { min: 0,         rgb: '248,113,113'  }, // 0-4%: vermelho (mesmo de sempre)
+  { min: -Infinity, rgb: '185,28,28'    }, // negativo: vermelho escuro
+];
+function margemTier(pct){
+  const p = Number(pct) || 0;
+  return MARGEM_TIERS.find(t => p >= t.min) || MARGEM_TIERS[MARGEM_TIERS.length - 1];
+}
+
 function cardHtml(r){
-  const neg = Number(r.mc_pct) < 0;
+  const tierMargem = margemTier(r.mc_pct);
   const foto = r.thumbnail
     ? `<img class="vc-thumb" src="${esc(r.thumbnail)}" onerror="this.outerHTML='<div class=&quot;vc-thumb ph&quot;><i class=&quot;fas fa-image&quot;></i></div>'">`
     : `<div class="vc-thumb ph"><i class="fas fa-image"></i></div>`;
@@ -422,10 +437,10 @@ function cardHtml(r){
       <div>${custoCellHtml(r)}</div>
       <div><div class="l">Imposto</div><div class="v" style="color:#f87171">-${BRL(r.imposto)}</div></div>
     </div>
-    <div class="vc-margem ${neg?'neg':''}">
+    <div class="vc-margem" style="background:rgba(${tierMargem.rgb},.08);border-color:rgba(${tierMargem.rgb},.25)">
       <span class="lbl">Margem</span>
-      <span class="val">${BRL(r.margem)}</span>
-      <span class="pct">${Number(r.mc_pct).toFixed(1)}%</span>
+      <span class="val" style="color:rgb(${tierMargem.rgb})">${BRL(r.margem)}</span>
+      <span class="pct" style="background:rgba(${tierMargem.rgb},.15);color:rgb(${tierMargem.rgb})">${Number(r.mc_pct).toFixed(1)}%</span>
     </div>
   </div>`;
 }
@@ -443,12 +458,13 @@ function mostrarMais(){ MOSTRADOS = Math.min(MOSTRADOS + PASSO, ROWS.length); re
 
 function renderKpis(s){
   const el = document.getElementById('biKpis');
+  const tierKpi = margemTier(s.mc_pct);
   el.innerHTML = `
     <div class="bi-kpi"><div class="k">VENDAS APROVADAS</div><div class="v">${BRL(s.vendas_aprovadas)}</div></div>
     <div class="bi-kpi"><div class="k">PEDIDOS</div><div class="v">${INT(s.pedidos_aprovados)}</div></div>
     <div class="bi-kpi"><div class="k">TICKET MÉDIO</div><div class="v">${BRL(s.ticket_medio)}</div></div>
-    <div class="bi-kpi"><div class="k">MARGEM</div><div class="v" style="color:${s.margem_total>=0?'#3fb950':'#f87171'}">${BRL(s.margem_total)}</div></div>
-    <div class="bi-kpi"><div class="k">MC %</div><div class="v" style="color:${s.mc_pct>=0?'#3fb950':'#f87171'}">${Number(s.mc_pct).toFixed(1)}%</div></div>`;
+    <div class="bi-kpi"><div class="k">MARGEM</div><div class="v" style="color:rgb(${tierKpi.rgb})">${BRL(s.margem_total)}</div></div>
+    <div class="bi-kpi"><div class="k">MC %</div><div class="v" style="color:rgb(${tierKpi.rgb})">${Number(s.mc_pct).toFixed(1)}%</div></div>`;
 }
 
 async function carregar(){

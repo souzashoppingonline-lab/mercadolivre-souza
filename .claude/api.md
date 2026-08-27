@@ -74,6 +74,8 @@ Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco 
 | Rota | Descrição |
 |---|---|
 | `GET /api/bi/painel?period&store_id` | Painel Estratégico: `kpis` (receita/pedidos/ticket/unidades + `receita_ant`/`pedidos_ant`/`cresc_receita`/`cresc_pedidos` = crescimento % vs. período anterior de mesma duração), `diaria` (série por dia), `canais` (ML/Shopee), `top` (top 10 produtos por receita), `clientes` (novos vs. recorrentes). `period` em dias (default 30, máx 365); `store_id` opcional. Lê `orders` (não-cancelados, data SP), **exclui Amazon** |
+| `GET /api/bi/margem/acoes-status` | Fase F — devolve todo o conteúdo de `business_insights` (`{status:[{item_id,tipo,status,nota,updated_by,updated_at}]}`). Tabela pequena (1 linha por ação já vista), sem paginação; o cliente casa localmente com `acoes[]` de `/margem` por `(item_id,tipo)` |
+| `PATCH /api/bi/margem/acoes-status` | Upsert do status de UMA ação (`{item_id,tipo,status,nota}` → `status` ∈ `pendente/em_andamento/concluida/descartada`, 400 se fora da lista). `updated_by` vem de `req.staffUser.username` (JWT do login de funcionário). Nunca infere resultado real (feedback loop causal) — ver `decisions.md` |
 
 ## Pedidos / Vendas (webhook-driven — tabela `orders`)
 | Rota | Descrição |

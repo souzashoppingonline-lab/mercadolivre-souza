@@ -716,6 +716,54 @@ router.get('/margem', async (req, res) => {
   }
 });
 
+const STATUS_ACAO_VALIDOS = ['pendente', 'em_andamento', 'concluida', 'descartada'];
+
+// GET /api/bi/margem/acoes-status — Fase F: status manual das Ações
+// Recomendadas (business_insights, migrate-v83.sql). As ações continuam
+// 100% recalculadas a cada request (nunca persistidas); só o status/nota
+// que a analista registrou é persistido, chaveado por (item_id, tipo) —
+// identidade estável entre recálculos de período. Tabela é pequena (1 linha
+// por ação já vista), devolve tudo de uma vez — o cliente casa localmente
+// com `acoes[]` do payload de /margem, sem N chamadas por ação.
+router.get('/margem/acoes-status', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT item_id, tipo, status, nota, updated_by, updated_at FROM business_insights`
+    );
+    res.json({ status: rows });
+  } catch (e) {
+    console.error('[bi] /margem/acoes-status error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/bi/margem/acoes-status — upsert do status de UMA ação.
+// Nunca infere resultado/efeito real (feedback loop causal) — decisão já
+// tomada 2x antes de não implementar isso ainda (ver decisions.md). Só
+// grava o que a pessoa marcou manualmente.
+router.patch('/margem/acoes-status', async (req, res) => {
+  try {
+    const { item_id, tipo, status, nota } = req.body || {};
+    if (!item_id || !tipo) return res.status(400).json({ error: 'item_id e tipo são obrigatórios' });
+    if (!STATUS_ACAO_VALIDOS.includes(status)) {
+      return res.status(400).json({ error: `status inválido — use um de: ${STATUS_ACAO_VALIDOS.join(', ')}` });
+    }
+    const updatedBy = req.staffUser?.username || null;
+    const { rows } = await pool.query(
+      `INSERT INTO business_insights (item_id, tipo, status, nota, updated_by, updated_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (item_id, tipo) DO UPDATE
+         SET status = EXCLUDED.status, nota = EXCLUDED.nota, updated_by = EXCLUDED.updated_by, updated_at = now()
+       RETURNING item_id, tipo, status, nota, updated_by, updated_at`,
+      [String(item_id), String(tipo), status, nota != null ? String(nota).slice(0, 2000) : null, updatedBy]
+    );
+    res.json({ ok: true, status: rows[0] });
+  } catch (e) {
+    console.error('[bi] PATCH /margem/acoes-status error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/bi/margem/narrativa — Fase 2: camada de IA (LLM) que só
 // INTERPRETA em português o JSON já calculado por computarMargem() acima.
 // Síncrona, sob demanda (mesmo padrão de /analise/produtos/:id/analisar) —

@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`, … até `v81` (a lista completa e canônica está em `db/migrate.js` — cada arquivo roda isolado: se um falhar, loga e continua, pra um erro antigo não bloquear as migrations seguintes).
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`, … até `v83` (a lista completa e canônica está em `db/migrate.js` — cada arquivo roda isolado: se um falhar, loga e continua, pra um erro antigo não bloquear as migrations seguintes).
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -666,3 +666,15 @@ created_at, updated_at TIMESTAMPTZ
 -- idx_ranking_alerts_scheduled (scheduled_at, notified_at) WHERE notified_at IS NULL
 ```
 Preenchidas por `server/src/ranking.js` (hooks no `handleOrder`/`handleItem` + job `sync-ranking`). Lidas por `/api/ranking/*`.
+
+### `business_insights` — status das Ações Recomendadas (Inteligência de Margem, v83)
+```
+id SERIAL PK
+item_id TEXT NOT NULL, tipo TEXT NOT NULL             -- mesma dupla de acoes[].item_id/tipo (routes/bi.js) — identidade estável entre recálculos
+status TEXT DEFAULT 'pendente'                        -- pendente | em_andamento | concluida | descartada
+nota TEXT, updated_by TEXT                            -- staff_user_name de quem mudou por último
+created_at, updated_at TIMESTAMPTZ
+-- UQ (item_id, tipo)
+-- idx_business_insights_item (item_id)
+```
+As ações em si (`acoes[]` de `GET /api/bi/margem`) continuam 100% recalculadas a cada request, nunca persistidas — só o status marcado manualmente pela analista é gravado aqui. Sem coluna de histórico de transições nem cálculo de resultado real (feedback loop causal) — decisão deliberada, ver `decisions.md`. Lida/escrita por `GET`/`PATCH /api/bi/margem/acoes-status`.

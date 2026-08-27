@@ -144,7 +144,9 @@ Fase C concluída nesta rodada:
 Pendente (Fases D-F, ver `decisions.md` pro plano completo por fase):
 - [x] ~~D — Frete & Tarifa: ranking "MC antes/depois do frete/tarifa" por produto, detecção de anomalia~~ — `bi-margem-frete.html`, 100% client-side sobre o payload já carregado (sem endpoint novo). Anomalia compara com a média do PRÓPRIO grupo (logística/conta), não a geral.
 - [x] ~~E — Estoque: capital parado (estoque × custo), valor em risco (venda perdida estimada × MC unitária), priorização ponderada por risco×MC×velocidade~~ — `bi-margem-estoque.html`: KPIs (capital parado/ruptura iminente/valor em risco), tabela "Capital parado", coluna/ordenação por Prioridade. `prioridade_score` usa escala ABSOLUTA (não percentil — percentil era rank-sensível demais com poucos SKUs em ruptura, deixava 1 dia de diferença de estoque atropelar 55pp de diferença de margem; pego por teste, corrigido). Ver `business-rules.md`.
-- [ ] **F — Ações + histórico**: matriz impacto×esforço visual, regra de exclusividade mútua entre ações (não somar impacto de ações concorrentes pro mesmo produto), tabela `business_insights` com status/histórico/feedback loop (reabre a decisão que tinha sido adiada duas vezes).
+- [x] ~~F — Ações + histórico: matriz impacto×esforço visual, regra de exclusividade mútua entre ações, tabela business_insights com status/histórico~~ — `bi-margem-acoes.html`: KPIs (impacto total com exclusividade mútua/total de ações/pendentes/concluídas), matriz Chart.js Impacto×Esforço (clique abre modal de produto), status manual por ação (Pendente/Em andamento/Concluída/Descartada + nota) persistido em `business_insights` (`migrate-v83.sql`, `GET`/`PATCH /api/bi/margem/acoes-status`). Feedback loop causal (medir resultado real pós-ação) continua fora de escopo, 3ª vez adiado deliberadamente — ver `decisions.md`.
+
+**FinanceEcom Fase 3 (spec de 12 seções, plano A→F) CONCLUÍDA** — todas as 6 fases entregues.
 
 ## Vendas por Estágio — integração Rankeamento × BI (spec de 29 seções)
 

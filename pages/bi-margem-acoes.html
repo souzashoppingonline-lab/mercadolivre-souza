@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>window.PAGE_TITLE='Inteligência de Margem'; window.ACTIVE_NAV='bi-margem.html';</script>
   <style>
     .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
@@ -40,6 +41,19 @@
     .im-cenarios { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
     .im-cenario { font-size:10.5px; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:2px 7px; }
     .im-cenario b { color:#3fb950; }
+    .bi-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:14px; }
+    .bi-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+    .bi-kpi .k { font-size:11px; color:var(--text-muted); margin-bottom:4px; }
+    .bi-kpi .v { font-size:19px; font-weight:800; }
+    .matriz-wrap { position:relative; height:280px; }
+    .matriz-legenda { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--text-muted); margin-top:8px; }
+    .matriz-legenda span { display:inline-flex; align-items:center; gap:5px; }
+    .matriz-legenda i { width:9px; height:9px; border-radius:50%; display:inline-block; }
+    .acao-status-row { display:flex; align-items:center; gap:8px; margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); flex-wrap:wrap; }
+    .acao-status-row select { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border); border-radius:7px; padding:5px 9px; font-size:11.5px; }
+    .acao-status-row input[type=text] { flex:1; min-width:160px; background:var(--bg-card); color:var(--text-main); border:1px solid var(--border); border-radius:7px; padding:5px 9px; font-size:11.5px; }
+    .acao-status-row .salvo { font-size:10.5px; color:#3fb950; opacity:0; transition:opacity .2s; }
+    .acao-card.status-concluida, .acao-card.status-descartada { opacity:.55; }
   </style>
 </head>
 <body>
@@ -64,8 +78,19 @@
 
       <div class="im-tabs" id="imTabs"></div>
 
+      <div class="bi-kpis" id="acoesKpis"></div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-chart-scatter"></i> Matriz de priorização — Impacto × Esforço <span class="hint">quadrante superior-esquerdo = maior retorno, menor esforço</span></h3>
+        <div class="matriz-wrap"><canvas id="matrizAcoesChart"></canvas></div>
+        <div class="matriz-legenda" id="matrizAcoesLegenda"></div>
+      </div>
+
       <div class="im-card">
         <h3><i class="fas fa-list-check"></i> Top ações — impacto financeiro estimado <span class="hint">cada uma com a premissa usada; nenhuma é garantia</span>
+          <label style="font-size:11.5px;color:var(--text-muted);font-weight:500;display:inline-flex;align-items:center;gap:5px;margin-left:10px">
+            <input type="checkbox" id="ocultarTratadas" onchange="renderAcoes()"> ocultar concluídas/descartadas
+          </label>
           <button class="im-csv" onclick="exportarAcoesCSV()"><i class="fas fa-file-csv"></i> CSV</button>
         </h3>
         <div id="listaAcoes"></div>
@@ -78,6 +103,7 @@
 <script src="../js/layout-bi.js"></script>
 <script src="../js/sidebar.js"></script>
 <script src="../js/biMargemTabs.js"></script>
+<script src="../js/biMargemProdutoModal.js"></script>
 <script src="../js/tableExport.js"></script>
 <script>
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
@@ -85,8 +111,12 @@ const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
 const TIPO_LABEL = { PAUSAR_OU_RENEGOCIAR:'Pausar ou renegociar', REPRECIFICAR:'Reprecificar', AUMENTAR_EXPOSICAO:'Aumentar exposição', REPOR_ESTOQUE:'Repor estoque', REVISAR_FRETE:'Revisar frete' };
+const STATUS_LABEL = { pendente:'Pendente', em_andamento:'Em andamento', concluida:'Concluída', descartada:'Descartada' };
+const ESFORCO_X = { BAIXO:1, MEDIO:2, ALTO:3 };
 
 let DADOS = null;
+let ACOES_STATUS = new Map(); // chave `${item_id}::${tipo}` -> {status,nota,updated_by,updated_at}
+const chaveAcao = a => `${a.item_id}::${a.tipo}`;
 
 async function popularLojas(selecionado){
   try{ const d=await DB.getLojas(); const sel=document.getElementById('imLoja');
@@ -100,12 +130,90 @@ function atualizarTabs(contadores){ document.getElementById('imTabs').innerHTML 
 async function carregar(){
   atualizarTabs();
   document.getElementById('imStatus').textContent = 'Carregando…';
-  const d = await DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value);
+  const [d, statusResp] = await Promise.all([
+    DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value),
+    DB.getBiAcoesStatus().catch(() => null),
+  ]);
   if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
   DADOS = d;
+  ACOES_STATUS = new Map((statusResp && statusResp.status || []).map(s => [`${s.item_id}::${s.tipo}`, s]));
   document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
   atualizarTabs({ 'bi-margem-estoque.html': d.resumo.skus_ruptura_iminente, 'bi-margem-acoes.html': d.acoes.length });
+  renderKpisImpacto();
+  renderMatrizAcoes();
   renderAcoes();
+}
+
+// ── Impacto total, respeitando exclusividade mútua entre ações ──────────
+// Um mesmo produto pode ter mais de uma ação concorrente (ex.: REPRECIFICAR
+// + REPOR_ESTOQUE) — somar o impacto_estimado de todas infla o total (as
+// duas competem pela mesma oportunidade do produto, não se somam de fato).
+// Total = soma do MAIOR impacto_estimado por item_id, não de todas as ações.
+function impactoTotalSemDuplicar(acoes){
+  const porItem = new Map();
+  acoes.forEach(a => {
+    if (a.impacto_estimado == null) return;
+    const atual = porItem.get(a.item_id) || 0;
+    if (a.impacto_estimado > atual) porItem.set(a.item_id, a.impacto_estimado);
+  });
+  let total = 0; porItem.forEach(v => total += v);
+  return total;
+}
+function renderKpisImpacto(){
+  const acoes = DADOS.acoes;
+  const total = impactoTotalSemDuplicar(acoes);
+  const concluidas = acoes.filter(a => (ACOES_STATUS.get(chaveAcao(a))||{}).status === 'concluida').length;
+  const pendentes = acoes.filter(a => { const s=(ACOES_STATUS.get(chaveAcao(a))||{}).status; return !s || s==='pendente' || s==='em_andamento'; }).length;
+  document.getElementById('acoesKpis').innerHTML = `
+    <div class="bi-kpi"><div class="k">Impacto total priorizado <span title="maior ação por produto, não soma de ações concorrentes"><i class="fas fa-circle-info"></i></span></div><div class="v">${BRL(total)}</div></div>
+    <div class="bi-kpi"><div class="k">Ações identificadas</div><div class="v">${INT(acoes.length)}</div></div>
+    <div class="bi-kpi"><div class="k">Pendentes / em andamento</div><div class="v">${INT(pendentes)}</div></div>
+    <div class="bi-kpi"><div class="k">Concluídas</div><div class="v">${INT(concluidas)}</div></div>`;
+}
+
+// ── Matriz Impacto × Esforço (Chart.js scatter) ──────────────────────────
+const PRIO_COR = { ALTA:'#f87171', MEDIA:'#f59e0b' };
+let matrizAcoesChartInstance = null;
+function renderMatrizAcoes(){
+  document.getElementById('matrizAcoesLegenda').innerHTML = Object.entries(PRIO_COR).map(([k,cor]) =>
+    `<span><i style="background:${cor}"></i>Prioridade ${k}</span>`).join('');
+  if (matrizAcoesChartInstance) { matrizAcoesChartInstance.destroy(); matrizAcoesChartInstance = null; }
+  const comImpacto = DADOS.acoes.filter(a => a.impacto_estimado != null && a.esforco);
+  if (typeof Chart === 'undefined' || !comImpacto.length) return;
+  const pontos = comImpacto.map(a => ({ x: ESFORCO_X[a.esforco] || 2, y: a.impacto_estimado, a }));
+  const ctx = document.getElementById('matrizAcoesChart').getContext('2d');
+  matrizAcoesChartInstance = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [{ data: pontos, backgroundColor: pontos.map(p => (PRIO_COR[p.a.prioridade] || '#8b5cf6') + 'cc'), pointRadius: 7, pointHoverRadius: 9 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      onClick: (evt, els) => { if (els.length) abrirDetalheProduto(pontos[els[0].index].a.item_id); },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (c) => { const p = pontos[c.dataIndex].a; return `${TIPO_LABEL[p.tipo]||p.tipo} — ${p.title||p.item_id}: ${BRL(p.impacto_estimado)}, esforço ${p.esforco}`; } } },
+      },
+      scales: {
+        x: { min:0.5, max:3.5, ticks: { color:'#9ca3af', stepSize:1, callback:v=>({1:'Baixo',2:'Médio',3:'Alto'}[v]||'') }, title:{display:true,text:'Esforço',color:'#9ca3af'}, grid:{color:'rgba(255,255,255,.06)'} },
+        y: { ticks: { color:'#9ca3af', callback:v=>BRL(v) }, title:{display:true,text:'Impacto estimado (R$/período)',color:'#9ca3af'}, grid:{color:'rgba(255,255,255,.06)'} },
+      },
+    },
+  });
+}
+
+// ── Persistência de status (business_insights) ───────────────────────────
+async function salvarStatusAcao(itemId, tipo, novoStatus, notaEl){
+  const nota = notaEl ? notaEl.value : null;
+  try {
+    await DB.patchBiAcaoStatus(itemId, tipo, novoStatus, nota);
+    ACOES_STATUS.set(`${itemId}::${tipo}`, { item_id: itemId, tipo, status: novoStatus, nota });
+    const card = document.querySelector(`.acao-card[data-key="${itemId}::${tipo}"]`);
+    if (card) {
+      card.className = `acao-card status-${novoStatus}`;
+      const salvo = card.querySelector('.salvo');
+      if (salvo) { salvo.style.opacity = '1'; setTimeout(() => salvo.style.opacity = '0', 1500); }
+    }
+    renderKpisImpacto();
+  } catch (e) { alert('Não foi possível salvar o status: ' + (e.message || e)); }
 }
 
 function cenariosHtml(cenarios){
@@ -113,7 +221,10 @@ function cenariosHtml(cenarios){
   return `<div class="im-cenarios">${cenarios.map(c => `<span class="im-cenario">+${c.aumento_pct}% preço → <b>${BRL(c.impacto_estimado)}</b>/período</span>`).join('')}</div>`;
 }
 function acaoCardHtml(a, i){
-  return `<div class="acao-card">
+  const key = chaveAcao(a);
+  const registro = ACOES_STATUS.get(key) || {};
+  const status = registro.status || 'pendente';
+  return `<div class="acao-card status-${status}" data-key="${esc(key)}">
     <div class="acao-hd">
       <span class="rank">#${i+1}</span>
       <span class="prio ${a.prioridade}">${a.prioridade}</span>
@@ -128,22 +239,37 @@ function acaoCardHtml(a, i){
       <div><b>Confiança</b>${esc(a.confianca)}</div>
     </div>
     <div class="acao-premissa"><i class="fas fa-circle-info"></i> Premissa: ${esc(a.premissa)}</div>
+    <div class="acao-status-row">
+      <select onchange="salvarStatusAcao('${esc(a.item_id)}','${esc(a.tipo)}',this.value,this.closest('.acao-status-row').querySelector('input'))">
+        ${Object.entries(STATUS_LABEL).map(([v,l]) => `<option value="${v}" ${v===status?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <input type="text" placeholder="nota (opcional)" value="${esc(registro.nota||'')}">
+      <span class="salvo"><i class="fas fa-check"></i> salvo</span>
+    </div>
   </div>`;
 }
 function renderAcoes(){
   const el = document.getElementById('listaAcoes');
-  el.innerHTML = DADOS.acoes.length ? DADOS.acoes.map((a,i) => acaoCardHtml(a,i)).join('')
-    : '<div class="im-empty">Nenhuma ação prioritária identificada neste período.</div>';
+  const ocultar = document.getElementById('ocultarTratadas').checked;
+  const lista = ocultar
+    ? DADOS.acoes.filter(a => { const s=(ACOES_STATUS.get(chaveAcao(a))||{}).status; return s!=='concluida' && s!=='descartada'; })
+    : DADOS.acoes;
+  el.innerHTML = lista.length ? lista.map((a,i) => acaoCardHtml(a,i)).join('')
+    : (DADOS.acoes.length ? '<div class="im-empty">Todas as ações foram concluídas ou descartadas.</div>' : '<div class="im-empty">Nenhuma ação prioritária identificada neste período.</div>');
 }
 // Ações são cards, não uma <table> — exportTableCSV (genérico, lê DOM de
 // tabela) não serve aqui; monta a matriz na mão a partir de DADOS.acoes.
 function exportarAcoesCSV(){
   if (!DADOS || !DADOS.acoes.length) { alert('Sem ações para exportar.'); return; }
-  const header = ['Prioridade','Tipo','Anúncio','Problema','Evidência','Ação','Impacto estimado (R$)','Esforço','Confiança','Premissa'];
-  const rows = DADOS.acoes.map(a => [
-    a.prioridade, TIPO_LABEL[a.tipo]||a.tipo, a.title||a.item_id||'—', a.problema, a.evidencia, a.acao,
-    a.impacto_estimado!=null ? a.impacto_estimado.toFixed(2) : '', a.esforco, a.confianca, a.premissa,
-  ]);
+  const header = ['Prioridade','Tipo','Anúncio','Problema','Evidência','Ação','Impacto estimado (R$)','Esforço','Confiança','Premissa','Status','Nota'];
+  const rows = DADOS.acoes.map(a => {
+    const registro = ACOES_STATUS.get(chaveAcao(a)) || {};
+    return [
+      a.prioridade, TIPO_LABEL[a.tipo]||a.tipo, a.title||a.item_id||'—', a.problema, a.evidencia, a.acao,
+      a.impacto_estimado!=null ? a.impacto_estimado.toFixed(2) : '', a.esforco, a.confianca, a.premissa,
+      STATUS_LABEL[registro.status||'pendente'], registro.nota||'',
+    ];
+  });
   downloadCSVRows([header, ...rows], 'inteligencia-margem-acoes.csv');
 }
 

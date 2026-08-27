@@ -308,6 +308,8 @@ const DB = {
   async getBiMargemProduto(itemId, days = 60, store_id = '') { return this._get(`/bi/margem/produto/${encodeURIComponent(itemId)}`, { days, store_id }); },
   // Vendas por Estágio (integração com o módulo Rankeamento) — ver rankeamento.md/business-rules.md.
   async getBiRankeamento(days = 30, store_id = '') { return this._get('/bi/rankeamento', { days, store_id }); },
+  async getBiAcoesStatus() { return this._get('/bi/margem/acoes-status'); },
+  async patchBiAcaoStatus(item_id, tipo, status, nota) { return this._patch('/bi/margem/acoes-status', { item_id, tipo, status, nota }); },
   // Estágio atual (fase) de um lote de item_id — usado pra "taggear" vendas
   // com o estágio de rankeamento do anúncio. Devolve só quem está rastreado
   // (item_ids sem rankeamento não aparecem no objeto de resposta).

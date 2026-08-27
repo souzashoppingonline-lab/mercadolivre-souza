@@ -99,6 +99,20 @@ shipping_status, shipping_substatus TEXT       -- v33: status cru de /shipments/
                                    -- (mapeamento status→emoji/cor).
 date_ready_to_ship, date_shipped, date_delivered TIMESTAMPTZ  -- v33: de status_history do shipment
 shipping_last_updated TIMESTAMPTZ -- v33: last_updated do shipment
+finance_synced BOOLEAN DEFAULT false     -- v82: marcador da reconciliação automática de
+                                   -- frete/tarifa. `ml_fee`/`shipping_seller_cost` acima
+                                   -- já nascem com DEFAULT 0 (nunca NULL), então não dá
+                                   -- pra usar essas colunas pra saber se um pedido ainda
+                                   -- está pendente — só vira TRUE quando financeService
+                                   -- confirma tarifa E frete do vendedor por uma chamada
+                                   -- real (mesmo que o valor seja 0). Ver workers.md
+                                   -- (financeReconciliationJob) e business-rules.md.
+finance_sync_attempts INT DEFAULT 0      -- v82: reseta a 0 em todo sucesso; incrementa em
+                                   -- toda tentativa que não conseguiu confirmar os dois
+                                   -- lados — alimenta o backoff exponencial do job.
+last_finance_sync_at TIMESTAMPTZ         -- v82: NULL = nunca tentou. Usado no backoff e
+                                   -- no indicador "Última sincronização" da tela.
+last_finance_sync_error TEXT             -- v82: mensagem da última falha (404/429/etc.)
 updated_at TIMESTAMPTZ
 ```
 Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data`, `shopee_order_data`). `orders` só guarda os campos comuns entre marketplaces.

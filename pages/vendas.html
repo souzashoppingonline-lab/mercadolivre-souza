@@ -51,6 +51,7 @@
     .tbl-refresh { background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:5px; padding:1px 5px; font-size:9px; cursor:pointer; margin-left:4px; }
     .tbl-refresh:hover { color:var(--primary); border-color:var(--primary); }
     .tbl-refresh:disabled { opacity:.5; cursor:default; }
+    .tbl-sync-ok { color:var(--green); font-size:10px; margin-left:4px; }
     /* Máscara de dados sensíveis */
     .masked .col-sensivel { filter: blur(6px); user-select: none; pointer-events: none; transition: filter .25s; }
     #maskBtn.active { background: rgba(255,230,0,.12); border-color: var(--primary); color: var(--primary); }
@@ -379,6 +380,7 @@ function rowHtml(r) {
       <td class="${Number(r.frete_comprador)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_comprador)}</td>
       <td class="${Number(r.frete_vendedor)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_vendedor)}
         <button class="tbl-refresh" title="Buscar tarifa/frete do vendedor atualizados no Mercado Livre (venda recente ainda não conciliada)" onclick="atualizarLinha('${r.ml_id}', this)"><i class="fas fa-rotate"></i></button>
+        ${r.finance_synced ? `<i class="fas fa-check tbl-sync-ok" title="Sincronizado automaticamente${r.last_finance_sync_at ? ' — ' + fmtDt(r.last_finance_sync_at) : ''}"></i>` : ''}
       </td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${R(r.margem)}</td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${N(r.mc_pct)}%</td>

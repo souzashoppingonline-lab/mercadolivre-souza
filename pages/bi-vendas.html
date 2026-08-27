@@ -55,6 +55,9 @@
     .vc-refresh { background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:5px; padding:2px 6px; font-size:10px; cursor:pointer; display:inline-flex; align-items:center; }
     .vc-refresh:hover { color:#8b5cf6; border-color:#8b5cf6; }
     .vc-refresh:disabled { opacity:.5; cursor:default; }
+    .vc-sync { font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:5px; display:inline-flex; align-items:center; gap:4px; }
+    .vc-sync.ok { color:#3fb950; background:rgba(63,185,80,.12); }
+    .vc-sync.pend { color:var(--text-muted); background:var(--bg-card2); }
     .vc-editcusto:hover { color:#8b5cf6; }
     .vc-custoinput { width:60px; background:var(--bg-card2); border:1px solid var(--border); border-radius:5px; padding:3px 5px; color:var(--text-main); font-size:11px; text-align:right; }
     .vc-custoinput.err { border-color:#f87171; }
@@ -158,6 +161,15 @@ function copiar(txt, btn){
 }
 // Escapa aspas simples pra ir dentro de onclick='...' com segurança.
 const jsStr = s => String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+// Indicador de reconciliação (financeReconciliationJob roda a cada 10min) —
+// não some o botão manual, só avisa quando a sincronização automática já
+// passou por esse pedido. finance_synced=true = confirmado; senão, se já
+// tentou pelo menos 1x, mostra "última sincronização".
+function syncBadgeHtml(r){
+  if (r.finance_synced) return `<span class="vc-sync ok" title="Tarifa e frete do vendedor confirmados pela API"><i class="fas fa-check"></i> Sincronizado</span>`;
+  if (r.last_finance_sync_at) return `<span class="vc-sync pend" title="Ainda sem confirmação completa de tarifa/frete">Últ. sinc.: ${fmtDt(r.last_finance_sync_at).slice(-5)}</span>`;
+  return '';
+}
 
 // ── Custo do produto (editável no card) ─────────────────────────────────────
 // items.cost é POR ANÚNCIO (ml_id), não por venda — editar aqui muda o custo
@@ -276,6 +288,7 @@ function cardHtml(r){
           ${sku ? copyBtn(sku, 'SKU') : ''}
           ${r.item_id ? copyBtn(r.item_id, 'Anúncio (MLB)') : ''}
           <button class="vc-refresh" title="Buscar tarifa/frete atualizados no Mercado Livre (venda recente ainda não conciliada)" onclick="atualizarVenda('${jsStr(r.ml_id)}', this)"><i class="fas fa-rotate"></i></button>
+          ${syncBadgeHtml(r)}
         </div>
       </div>
     </div>

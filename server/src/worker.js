@@ -11,6 +11,7 @@ const env = require('./config/env');
 const pool = require('./db/pool');
 const redis = require('./db/redis');
 const ml = require('./mlClient');
+const financeService = require('./financeService');
 const { packageDimsFromItem } = require('./mlDims');
 const ranking = require('./ranking');
 const { publish } = require('./ws/hub');
@@ -977,6 +978,20 @@ function scheduleEvery(hours, fn, label) {
   setTimeout(fn, ms);
 }
 
+// Igual a scheduleEvery, mas alinhado por MINUTOS em vez de horas (ex.: a
+// cada 10min → roda em :00/:10/:20/:30/:40/:50, não "10min depois de quando
+// o processo subiu"). Único caso hoje que precisa de granularidade menor
+// que 1h — os demais jobs usam scheduleAt/scheduleEvery.
+function scheduleEveryMinutes(minutes, fn, label) {
+  const now = new Date();
+  let next = new Date(now);
+  next.setHours(0, 0, 0, 0);
+  while (next <= now) next = new Date(next.getTime() + minutes * 60000);
+  const ms = next - now;
+  console.log(`[${label}] próxima execução: ${next.toLocaleString('pt-BR')} (em ${Math.round(ms / 60000)}min)`);
+  setTimeout(fn, ms);
+}
+
 // Igual a scheduleAt, mas para jobs semanais (ex: toda 2ª-feira). dayOfWeek:
 // 0=domingo, 1=segunda, ... 6=sábado (mesma convenção de Date.getDay()).
 function scheduleWeekly(dayOfWeek, hour, minute, fn, label) {
@@ -1601,6 +1616,85 @@ async function syncPaymentReleases() {
   } finally {
     isSyncingPaymentReleases = false;
     scheduleAt(5, 15, syncPaymentReleases, 'sync-payment-releases');
+  }
+}
+
+// ── Reconciliação automática de frete/tarifa — a cada 10 min ───────────────
+// Só pedidos com `finance_synced = false` (nunca "todos" — ver
+// financeService.js/migrate-v82.sql pro porquê `ml_fee`/`shipping_seller_cost`
+// não servem pra saber se um pedido está pendente: nascem com DEFAULT 0,
+// nunca NULL). Usa o MESMO serviço do botão manual "Atualizar"
+// (`POST /vendas/:orderId/atualizar`, routes/api.js) — nunca duas lógicas de
+// reconciliação (pedido explícito do usuário). Backoff exponencial por
+// tentativa (2^tentativas minutos, teto 24h) evita bater sem parar num
+// pedido que nunca vai reconciliar (ex.: pagamento que nunca chegou a ser
+// criado). Prioriza pedidos das últimas 24h, mas também processa backlog
+// antigo — mesma ordem pedida pelo usuário. Circuit breaker por loja, mesmo
+// padrão de `syncShippingStatus`/`syncPaymentReleases` acima.
+let isSyncingFinance = false;
+
+async function financeReconciliationJob() {
+  if (isSyncingFinance) { console.warn('[FINANCE-JOB] já em execução — ignorando'); return; }
+  isSyncingFinance = true;
+  console.log('[FINANCE-JOB] Iniciando reconciliação financeira');
+  try {
+    return await recordSync('finance-reconciliation', '*/10 * * * *', async () => {
+      const { rows: pending } = await pool.query(
+        `SELECT ml_id, store_id, finance_sync_attempts
+         FROM orders
+         WHERE finance_synced = false
+           AND status <> 'cancelled'
+           AND (
+             last_finance_sync_at IS NULL
+             OR last_finance_sync_at < now() - (LEAST(POWER(2, finance_sync_attempts)::int, 1440) || ' minutes')::interval
+           )
+         ORDER BY
+           CASE WHEN date_created >= now() - interval '24 hours' THEN 0 ELSE 1 END,
+           date_created ASC
+         LIMIT 50`
+      );
+      console.log(`[FINANCE-JOB] Vendas pendentes encontradas: ${pending.length}`);
+
+      let atualizadas = 0, semDados = 0, erros = 0;
+      const blockedStores = new Set();
+      const store429 = new Map();
+      for (const o of pending) {
+        if (blockedStores.has(o.store_id)) continue;
+        console.log(`[FINANCE-JOB] Processando order_id: ${o.ml_id}`);
+        let waitMs = 1200;
+        try {
+          const r = await financeService.reconciliarPedido(o.ml_id);
+          if (!r.ok) {
+            erros++;
+            console.warn(`[FINANCE-JOB] erro order_id=${o.ml_id}: ${r.error}`);
+            if (r.error?.includes('429')) {
+              waitMs = 20000;
+              const n = (store429.get(o.store_id) || 0) + 1;
+              store429.set(o.store_id, n);
+              if (n >= 3) { blockedStores.add(o.store_id); console.warn(`[FINANCE-JOB] loja ${o.store_id} pausada nesta execução (3x 429) — demais lojas seguem`); }
+            }
+          } else if (r.finance_synced) {
+            atualizadas++;
+            console.log(`[FINANCE-JOB] Frete vendedor: R$ ${Number(r.row.freteVend).toFixed(2)} · Tarifa: R$ ${Number(r.row.tarifa).toFixed(2)} · Margem recalculada: ${Number(r.row.mc_pct).toFixed(1)}%`);
+            store429.set(o.store_id, 0);
+          } else {
+            // Confirmou parcialmente (ex.: pedido sem pagamento registrado
+            // ainda) — não é erro, fica pendente pra próxima janela.
+            semDados++;
+            store429.set(o.store_id, 0);
+          }
+        } catch (e) {
+          erros++;
+          console.warn(`[FINANCE-JOB] exceção order_id=${o.ml_id}: ${e.message}`);
+        }
+        await new Promise(r2 => setTimeout(r2, waitMs));
+      }
+      console.log(`[FINANCE-JOB] Finalizado\nProcessadas: ${pending.length}\nAtualizadas: ${atualizadas}\nSem dados: ${semDados}\nErros: ${erros}`);
+      return { processadas: pending.length, atualizadas, sem_dados: semDados, erros };
+    });
+  } finally {
+    isSyncingFinance = false;
+    scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
   }
 }
 
@@ -3058,6 +3152,7 @@ scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
 scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
+scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
 scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
 scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
@@ -3186,6 +3281,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'sync-payment-releases' || cmd === 'syncPaymentReleases') {
       console.log('[worker] syncPaymentReleases disparado manualmente');
       syncPaymentReleases().catch(e => console.error('[worker] syncPaymentReleases erro:', e.message));
+    }
+    if (cmd === 'finance-reconciliation' || cmd === 'financeReconciliationJob') {
+      console.log('[worker] financeReconciliationJob disparado manualmente');
+      financeReconciliationJob().catch(e => console.error('[worker] financeReconciliationJob erro:', e.message));
     }
     if (cmd === 'conciliacao-divergencias' || cmd === 'checkConciliacaoDivergencias') {
       console.log('[worker] checkConciliacaoDivergencias disparado manualmente');

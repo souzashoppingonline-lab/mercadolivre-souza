@@ -5,10 +5,10 @@
 // Ver .claude/modules.md.
 const express = require('express');
 const pool = require('../db/pool');
-// SQL + fórmula de margem de /api/vendas/detalhado, reusadas aqui pra não
-// duplicar pela 3ª vez (a 2ª foi /api/vendas/:orderId/atualizar) — ver
-// routes/api.js. Nunca duas fórmulas de margem no projeto.
-const { VENDA_DETALHE_SELECT, calcularMargemLinha } = require('./api');
+// SQL + fórmula de margem, reusadas aqui pra não duplicar (routes/api.js e
+// financeService.js também usam este mesmo módulo). Nunca duas fórmulas de
+// margem no projeto.
+const { VENDA_DETALHE_SELECT, calcularMargemLinha } = require('../vendaMargem');
 
 const router = express.Router();
 

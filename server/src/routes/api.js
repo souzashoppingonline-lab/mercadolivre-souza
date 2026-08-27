@@ -341,76 +341,10 @@ router.get('/vendas/diarias', async (req, res) => {
   res.json({ rows: rows.map(r => ({ ...r, liquido: Number(r.bruto) * 0.88, taxas: Number(r.bruto) * 0.12 })), summary: {} });
 });
 
-// SELECT compartilhado entre a listagem (/vendas/detalhado) e a atualização
-// pontual de 1 pedido (/vendas/:orderId/atualizar) — mesma precedência de
-// taxa (Conciliação → ml_payments → orders), ver finance.md. Só o WHERE muda.
-const VENDA_DETALHE_SELECT = `
-     SELECT
-       o.ml_id, o.store_id, s.nickname as conta, o.item_id,
-       o.title, o.quantity, o.unit_price,
-       o.total_amount as faturamento,
-       o.buyer_nickname,
-       -- Tela "Resumo por venda" (card BI): campos que só existem dentro do
-       -- payload cru do pedido — não valia coluna própria só pra isso.
-       -- Nome real do comprador nem sempre vem preenchido pelo ML.
-       o.raw_data->'buyer'->>'first_name' as buyer_first,
-       o.raw_data->'buyer'->>'last_name' as buyer_last,
-       o.raw_data->>'pack_id' as pack_id,
-       COALESCE(
-         o.raw_data->'order_items'->0->'item'->>'seller_sku',
-         o.raw_data->'order_items'->0->'item'->>'seller_custom_field'
-       ) as sku,
-       i.thumbnail, i.available_quantity as estoque_atual,
-       CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
-            WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
-            ELSE COALESCE(o.ml_fee, 0) END as tarifa,
-       o.shipping_type as frete_tipo,
-       o.shipping_cost as frete_comprador,
-       CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real, 0)
-            WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
-            ELSE COALESCE(o.shipping_seller_cost, 0) END as frete_vendedor,
-       (c.tarifa_real IS NOT NULL) as tem_conciliacao,
-       CASE WHEN c.tarifa_real IS NOT NULL THEN 'conciliacao'
-            WHEN pg.taxa_pgto IS NOT NULL THEN 'pagamento'
-            ELSE 'pedido' END as fonte_taxa,
-       o.status, o.date_created,
-       COALESCE(i.cost, 0) as custo,
-       COALESCE(s.imposto_pct, 0) as imposto_pct
-     FROM vw_ml_orders o
-     JOIN vw_ml_stores s ON s.id = o.store_id
-     LEFT JOIN vw_ml_items i ON i.ml_id = o.item_id
-     LEFT JOIN LATERAL (
-       SELECT ABS(SUM(m.mp_fee_amount)) AS tarifa_real,
-              ABS(SUM(m.shipping_fee_amount)) AS frete_vend_real
-       FROM mp_account_movements m
-       WHERE m.order_id = o.ml_id AND m.description = 'Payment'
-     ) c ON true
-     LEFT JOIN LATERAL (
-       SELECT NULLIF(GREATEST(SUM(p.transaction_amount) - SUM(p.net_received_amount), 0), 0) AS taxa_pgto
-       FROM ml_payments p
-       WHERE p.order_id = o.ml_id AND p.net_received_amount IS NOT NULL
-         AND p.status = 'approved'
-     ) pg ON true`;
-
-// Aplica a fórmula de margem (finance.md) em cima de 1 linha crua da query
-// acima. Extraída pra função porque a listagem e a atualização pontual
-// precisam do MESMO cálculo — nunca duas fórmulas de margem no mesmo arquivo.
-function calcularMargemLinha(r) {
-  const fat = Number(r.faturamento) || 0;
-  const custo = Number(r.custo) * (Number(r.quantity) || 1);
-  const imposto = fat * (Number(r.imposto_pct) / 100);
-  const tarifa = Number(r.tarifa) || 0;
-  const freteVend = Number(r.frete_vendedor) || 0;
-  const freteComp = Number(r.frete_comprador) || 0;
-  const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
-  const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
-  return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
-}
-// Exportadas como propriedades do próprio router (padrão Express: o router é
-// uma função, dá pra pendurar propriedade nele) — reusadas por routes/bi.js
-// (Inteligência de Margem) pra não duplicar SQL/fórmula pela 3ª vez.
-router.VENDA_DETALHE_SELECT = VENDA_DETALHE_SELECT;
-router.calcularMargemLinha = calcularMargemLinha;
+// SELECT + fórmula de margem — v82: movidos pra vendaMargem.js (módulo
+// próprio) quando o financeService virou o 4º consumidor. Nunca duplicar.
+const { VENDA_DETALHE_SELECT, calcularMargemLinha } = require('../vendaMargem');
+const financeService = require('../financeService');
 
 router.get('/vendas/detalhado', async (req, res) => {
   try {
@@ -525,117 +459,17 @@ router.get('/vendas/detalhado', async (req, res) => {
   }
 });
 
-// Atualização PONTUAL de 1 pedido — ação explícita de rota, não leitura de
-// listagem (regra de arquitetura #3 do CLAUDE.md: mlClient.js só aqui ou no
-// worker). Existe porque Tarifa/Frete Vendedor de venda recém-feita ("Hoje")
-// costumam vir zerados: a Conciliação oficial (relatório do Mercado Pago) só
-// fecha no dia seguinte, e o webhook de pagamento/envio pode ainda não ter
-// chegado. Refaz na hora o que os webhooks fariam: /orders/:id (ml_fee,
-// raw_data — também atualiza buyer/pack_id/sku do card), /shipments/:id/costs
-// (frete vendedor) e /collections/:id (tarifa real via ml_payments) — mesma
-// lógica de handleOrder/handleShipment/handlePayment do worker.js, replicada
-// aqui (não importa worker.js: ele inicia filas/crons ao carregar, perigoso
-// requerer do processo HTTP — mesmo motivo do /conciliacao/.../reprocessar).
+// Atualização PONTUAL de 1 pedido (botão "Atualizar" manual) — casca fina em
+// volta de financeService.reconciliarPedido, o MESMO serviço que o job
+// automático (`financeReconciliationJob`, worker.js, a cada 10 min) usa —
+// nunca duas lógicas de reconciliação. Ação explícita de rota, não leitura
+// de listagem (regra de arquitetura #3 do CLAUDE.md: mlClient.js só aqui ou
+// no worker). Ver .claude/decisions.md ("Reconciliação de Frete e Tarifa").
 router.post('/vendas/:orderId/atualizar', async (req, res) => {
   try {
-    const orderId = req.params.orderId;
-    const { rows: ord } = await pool.query(`SELECT store_id, shipping_id FROM orders WHERE ml_id=$1`, [orderId]);
-    if (!ord.length) return res.status(404).json({ error: 'pedido não encontrado' });
-    const storeId = ord[0].store_id;
-    const shippingIdAntigo = ord[0].shipping_id;
-
-    const ml = require('../mlClient');
-
-    // 1) Pedido: ml_fee (item.sale_fee), shipping_cost/type, raw_data inteiro.
-    const order = await ml.getOrder(orderId, storeId);
-    const item0 = order.order_items?.[0] || {};
-    await pool.query(
-      `UPDATE orders SET
-         ml_fee = $2, shipping_cost = $3,
-         shipping_type = COALESCE(NULLIF($4, ''), shipping_type),
-         shipping_id = COALESCE($5, shipping_id),
-         raw_data = $6, updated_at = now()
-       WHERE ml_id = $1`,
-      [
-        orderId, item0.sale_fee || 0, order.shipping?.cost || 0,
-        order.shipping?.logistic_type || '',
-        order.shipping?.id ? String(order.shipping.id) : null,
-        JSON.stringify(order),
-      ]
-    );
-
-    // 2) Frete do vendedor: /shipments/:id/costs → senders_cost. Mesma
-    // extração de handleShipment (worker.js).
-    const shippingId = (order.shipping?.id ? String(order.shipping.id) : null) || shippingIdAntigo;
-    let shippingError = null;
-    if (shippingId) {
-      try {
-        const costs = await ml.getShipmentCosts(shippingId, storeId);
-        const senders = costs?.senders;
-        let sellerCost = null;
-        if (Array.isArray(senders)) sellerCost = senders.reduce((a, s) => a + (Number(s?.cost) || 0), 0);
-        else if (senders && senders.cost != null) sellerCost = Number(senders.cost) || 0;
-        if (sellerCost != null) {
-          await pool.query(`UPDATE orders SET shipping_seller_cost=$2 WHERE ml_id=$1`, [orderId, sellerCost]);
-        }
-      } catch (e) {
-        shippingError = e.message;   // logística sem custo exposto (ex: coleta) — não é erro fatal
-      }
-    }
-
-    // 3) Tarifa real: /collections/:id → ml_payments (upsert, mesmo shape de
-    // handlePayment). Sem payment ainda (pedido novíssimo) → segue sem erro,
-    // a tarifa fica no nível 3 (orders.ml_fee) até o pagamento existir.
-    let paymentError = null;
-    const paymentId = order.payments?.[0]?.id;
-    if (paymentId) {
-      try {
-        const payment = await ml.getPayment(paymentId, storeId);
-        const c = payment?.collection || payment;
-        await pool.query(
-          `INSERT INTO ml_payments (
-             payment_id, order_id, store_id, status, status_detail, transaction_amount,
-             date_created, date_approved, net_received_amount, money_release_date, released,
-             marketplace_fee, mercadopago_fee, discount_fee, coupon_fee, finance_fee,
-             amount_refunded, shipping_cost, payment_method_id, payment_type, installments,
-             raw_data, updated_at
-           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22, now())
-           ON CONFLICT (payment_id) DO UPDATE SET
-             status = EXCLUDED.status, status_detail = EXCLUDED.status_detail,
-             transaction_amount = EXCLUDED.transaction_amount,
-             net_received_amount = EXCLUDED.net_received_amount,
-             money_release_date = EXCLUDED.money_release_date, released = EXCLUDED.released,
-             marketplace_fee = EXCLUDED.marketplace_fee, mercadopago_fee = EXCLUDED.mercadopago_fee,
-             discount_fee = EXCLUDED.discount_fee, coupon_fee = EXCLUDED.coupon_fee,
-             finance_fee = EXCLUDED.finance_fee, amount_refunded = EXCLUDED.amount_refunded,
-             shipping_cost = EXCLUDED.shipping_cost, payment_method_id = EXCLUDED.payment_method_id,
-             payment_type = EXCLUDED.payment_type, installments = EXCLUDED.installments,
-             raw_data = EXCLUDED.raw_data, updated_at = now()`,
-          [
-            paymentId, orderId, storeId, c?.status || null, c?.status_detail || null,
-            c?.transaction_amount || null, c?.date_created || null, c?.date_approved || null,
-            c?.net_received_amount ?? null, c?.money_release_date || null, c?.released ?? null,
-            c?.marketplace_fee ?? null, c?.mercadopago_fee ?? null, c?.discount_fee ?? null,
-            c?.coupon_fee ?? null, c?.finance_fee ?? null, c?.amount_refunded ?? null,
-            c?.shipping_cost ?? null, c?.payment_method_id || null, c?.payment_type || null,
-            c?.installments ?? null, JSON.stringify(payment),
-          ]
-        );
-      } catch (e) {
-        paymentError = e.message;
-      }
-    }
-
-    await redis.del(`kpis:${storeId}`);
-    await redis.del('kpis:summary');
-
-    // Devolve a linha já recalculada (mesma fórmula/SELECT da listagem) —
-    // o card troca só esse pedido no cliente, sem esperar o cache de 60s de
-    // /vendas/detalhado (que continua, de propósito, sem invalidação — ver
-    // comentário ali e decisions.md).
-    const { rows: fresh } = await pool.query(`${VENDA_DETALHE_SELECT} WHERE o.ml_id = $1 LIMIT 1`, [orderId]);
-    if (!fresh.length) return res.status(404).json({ error: 'pedido não encontrado após atualizar' });
-    res.json({ row: calcularMargemLinha(fresh[0]), shipping_error: shippingError, payment_error: paymentError });
+    const r = await financeService.reconciliarPedido(req.params.orderId);
+    if (!r.ok) return res.status(404).json({ error: r.error });
+    res.json(r);
   } catch (e) {
     console.error('[api] /vendas/:orderId/atualizar error:', e.message);
     res.status(500).json({ error: e.message });
@@ -1306,7 +1140,7 @@ router.get('/schedule/jobs', async (req, res) => {
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   const { name } = req.params;
-  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal','checkOutlierEstatistico','checkTaxaDevolucaoAlta','syncShippingStatus','syncClaimsStatus'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
+  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal','checkOutlierEstatistico','checkTaxaDevolucaoAlta','syncShippingStatus','syncClaimsStatus','finance-reconciliation'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
   await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });

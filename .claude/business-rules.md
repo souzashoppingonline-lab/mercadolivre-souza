@@ -293,3 +293,18 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
   - **RUPTURA_IMINENTE com margem positiva** → repor estoque; impacto = `venda/dia × 7 × margem por unidade` — premissa: 7 dias de ruptura na mesma velocidade de venda do período.
   - **Frete do vendedor > 15% do faturamento do anúncio** → revisar frete; sem estimativa em R$ (depende de qual alternativa for escolhida) — mostrado como "sem estimativa em R$", nunca inventado.
   - Ranking final: as 10 de maior `impacto_estimado` (ações sem impacto em R$ ficam no fim, nunca em 1º).
+
+## Reconciliação automática de frete/tarifa (`financeReconciliationJob`, v82)
+
+> Fonte de verdade dos critérios de "pendente" e "confirmado". Código em `server/src/financeService.js` (serviço, compartilhado com o botão manual) e `server/src/worker.js` (job, a cada 10min). Ver `workers.md` pra cadência/circuit-breaker e `api.md` pro endpoint manual.
+
+- **"Pendente" = `orders.finance_synced = false`**, nunca `ml_fee = 0` ou `shipping_seller_cost = 0`. As duas colunas numéricas já nascem com `DEFAULT 0` desde sempre — 0 não distingue "a API confirmou que é zero" de "ninguém perguntou pra API ainda". `finance_synced` é o marcador dedicado (v82), só vira `true` depois de uma chamada real confirmando os dois lados.
+- **"Confirmado" por lado, não em bloco**:
+  - **Frete do vendedor**: confirmado quando `/shipments/:id/costs` responde com sucesso (o valor de `senders[].cost` é salvo, **mesmo que seja 0** — frete grátis de verdade é um resultado válido). Pedido **sem** `shipping.id` nenhum (sem envio associado) conta como frete **não aplicável** — confirmado sem chamar a API, não fica pendente esperando um envio que talvez nunca exista.
+  - **Tarifa**: confirmada quando existe `order.payments[0].id` **e** `/collections/:id` responde com sucesso (upsert em `ml_payments`). Pedido **sem** pagamento registrado ainda no `/orders/:id` fica pendente — não é erro, só significa "o pagamento ainda não chegou", tenta de novo na próxima janela.
+  - `finance_synced = frete confirmado AND tarifa confirmada`. Confirmar só 1 dos 2 não marca como sincronizado.
+- **Nunca usar `gross_amount` nem o custo do `receiver`** de `/shipments/:id/costs` como frete do vendedor — só `senders[].cost` (somado se vier array). `gross_amount` é o frete total da etiqueta; `receiver.cost` é o que o comprador paga.
+- **Idempotência**: toda atualização é `SET valor = <confirmado pela API>`, nunca `valor = valor + <novo>`. Rodar o job (ou o botão) 2× seguidas no mesmo pedido dá o mesmo resultado final — não duplica tarifa nem frete. O upsert de `ml_payments` é `ON CONFLICT (payment_id) DO UPDATE`, mesma garantia.
+- **Backoff exponencial por tentativa**: `finance_sync_attempts` reseta a `0` em todo sucesso (`finance_synced=true`) e incrementa em toda tentativa que não confirmou os dois lados (erro OU confirmação parcial). A query do job só pega pedidos com `last_finance_sync_at IS NULL OR last_finance_sync_at < now() - LEAST(2^tentativas, 1440) minutos` — 1ª tentativa imediata, depois 2min, 4min, 8min... até um teto de 24h. Evita bater sem parar num pedido que genuinamente nunca vai ter tarifa (ex.: pagamento cancelado antes de aprovar).
+- **Prioridade**: pedidos das últimas 24h antes de pedidos mais antigos (mesmo critério dentro de cada grupo: mais antigo primeiro) — o dashboard olha mais pra vendas recentes, mas o backlog antigo também é processado, só depois.
+- **Lote de 50 por execução, a cada 10 min** — 300/hora de teto, suficiente pra não deixar backlog crescer sem virar uma rajada de chamadas à API.

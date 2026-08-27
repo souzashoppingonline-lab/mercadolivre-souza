@@ -123,6 +123,15 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_last_updated TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_orders_shipping_status ON orders(shipping_status);
 CREATE INDEX IF NOT EXISTS idx_orders_shipping_id_status ON orders(shipping_id, shipping_status);
 
+-- Reconciliação automática de frete/tarifa (financeReconciliationJob) — ver migrate-v82.sql
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS finance_synced BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS finance_sync_attempts INT NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS last_finance_sync_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS last_finance_sync_error TEXT;
+CREATE INDEX IF NOT EXISTS idx_orders_finance_pending
+  ON orders (last_finance_sync_at NULLS FIRST, date_created)
+  WHERE finance_synced = false AND status <> 'cancelled';
+
 CREATE TABLE IF NOT EXISTS questions (
   ml_id BIGINT PRIMARY KEY,
   store_id BIGINT REFERENCES stores(id),

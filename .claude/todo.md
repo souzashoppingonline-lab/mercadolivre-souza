@@ -146,6 +146,19 @@ Pendente (Fases D-F, ver `decisions.md` pro plano completo por fase):
 - [ ] **E — Estoque**: capital parado (estoque × custo), valor em risco (venda perdida estimada × MC unitária), priorização ponderada por risco×MC×velocidade.
 - [ ] **F — Ações + histórico**: matriz impacto×esforço visual, regra de exclusividade mútua entre ações (não somar impacto de ações concorrentes pro mesmo produto), tabela `business_insights` com status/histórico/feedback loop (reabre a decisão que tinha sido adiada duas vezes).
 
+## Vendas por Estágio — integração Rankeamento × BI (spec de 29 seções)
+
+Núcleo implementado nesta rodada: tag de estágio em `bi-vendas.html`, página `bi-rankeamento.html` (visão executiva, 4 blocos, tabela de comparação ordenável, evolução temporal, hoje×ontem×média7d, ranking de hoje, vendas de hoje, anúncios por estágio com "fora do padrão", Recuperação antes×depois, score, insights). Ver `modules.md`/`business-rules.md`/`decisions.md`.
+
+Fora do escopo desta rodada, deliberadamente (spec original tinha 29 seções):
+
+- [ ] **§13 conversão avançada** — hoje já calcula conversão básica (pedidos÷visitas via `item_visits`); falta segmentar por tipo de envio/categoria como o pedido original sugeria.
+- [ ] **§17-18 cruzamento avançado** (margem+estoque+frete+tarifa por estágio gerando recomendação diferenciada por combinação) — hoje só tem "fora do padrão" simples (desvio de pedidos vs. média do estágio).
+- [ ] **§21 alertas** (Telegram quando um estágio cai/sobe significativamente, estoque crítico em anúncio de alta performance) — precisa de infra de notificação nova, fora do escopo desta rodada.
+- [ ] **§25 integração com Ações Recomendadas** — os insights de "Vendas por Estágio" e as `acoes[]` de `/api/bi/margem` (Inteligência de Margem) hoje são motores paralelos; unificar (ex.: "anúncio RANQUEADO com estoque baixo → prioridade de reposição") é acoplamento consciente, não uma extensão trivial.
+- [ ] **§23 filtros adicionais** — hoje `GET /api/bi/rankeamento` filtra por `days`/`store_id`; falta produto/SKU/categoria/tipo de envio.
+- [ ] **§14 "inteligência de transição"** (associação entre mudança de estágio e variação de vendas, além do caso específico de Recuperação já implementado) — precisaria do histórico de fase que não existe (ver `decisions.md`), então ficaria limitado ao mesmo "só o carimbo de entrada atual" já usado em Recuperação; avaliar se vale a pena estender esse mesmo padrão pras outras transições.
+
 ## Rankeamento — fase Recuperação (v80)
 
 - [ ] Alerta no Telegram quando uma intervenção fecha a janela de 7 dias **sem efeito** (hoje o veredito `sem_efeito`/`parcial` só aparece no card). Encaixa no snapshot de 6h, com idempotência por `ranking_notes.id` (mesmo padrão do `esfriou`/`sem_resultado`).

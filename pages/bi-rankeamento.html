@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendas por Estágio</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>window.PAGE_TITLE='Vendas por Estágio'; window.ACTIVE_NAV='bi-rankeamento.html';</script>
+  <style>
+    .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .im-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .im-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; }
+    .im-status { font-size:12px; color:var(--text-muted); margin-left:auto; }
+    .im-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .im-card h3 { font-size:14.5px; font-weight:800; margin:0 0 12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .im-card .hint { font-size:11.5px; color:var(--text-muted); font-weight:500; margin-left:auto; }
+    .im-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+    .bi-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:16px; }
+    .bi-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:15px 17px; border-left:4px solid #8b5cf6; }
+    .bi-kpi .k { font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+    .bi-kpi .v { font-size:23px; font-weight:900; margin-top:6px; }
+    .bi-kpi .s { font-size:11.5px; font-weight:700; margin-top:4px; }
+    table.im-t { width:100%; border-collapse:collapse; }
+    .im-t th, .im-t td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); font-size:12.5px; }
+    .im-t th { color:var(--text-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
+    .im-t td.num, .im-t th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .im-t tr:hover td { background:var(--bg-card2); }
+    .im-t th.sortable { cursor:pointer; user-select:none; }
+    .im-t th.sortable i { margin-left:3px; opacity:.5; font-size:9px; }
+    .im-t th.sortable.on i { opacity:1; color:#8b5cf6; }
+    .im-pos { color:#3fb950; font-weight:700; } .im-neg { color:#f87171; font-weight:700; }
+
+    /* ── Blocos por estágio ── */
+    .estagio-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:16px; }
+    .estagio-card { border-radius:14px; padding:16px 18px; border:1px solid var(--border); cursor:pointer; transition:transform .15s; }
+    .estagio-card:hover { transform:translateY(-2px); }
+    .estagio-card.on { box-shadow:0 0 0 2px #8b5cf6; }
+    .estagio-card .tag { font-size:11px; font-weight:800; padding:3px 10px; border-radius:20px; display:inline-block; margin-bottom:10px; }
+    .estagio-card .fat { font-size:20px; font-weight:900; }
+    .estagio-card .linha { display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-muted); margin-top:4px; }
+    .fase-tag { font-size:10.5px; font-weight:800; padding:2px 9px; border-radius:20px; white-space:nowrap; }
+    .fora-padrao { font-size:9.5px; padding:1px 6px; border-radius:4px; margin-left:5px; }
+    .fora-padrao.abaixo { background:rgba(248,113,113,.15); color:#f87171; }
+    .fora-padrao.acima { background:rgba(63,185,80,.15); color:#3fb950; }
+
+    /* ── Ranking hoje ── */
+    .rank-list { display:flex; flex-direction:column; gap:6px; }
+    .rank-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:9px; background:var(--bg-card2); font-size:12.5px; }
+    .rank-row .pos { width:20px; text-align:center; font-weight:800; color:var(--text-muted); }
+    .rank-row .val { margin-left:auto; font-weight:800; }
+
+    .insight-list { display:flex; flex-direction:column; gap:8px; }
+    .insight-item { background:var(--bg-card2); border-left:3px solid #8b5cf6; border-radius:0 8px 8px 0; padding:9px 12px; font-size:12.5px; }
+
+    .venda-hoje-row { display:flex; align-items:center; gap:10px; padding:9px 10px; border-bottom:1px solid var(--border); font-size:12px; flex-wrap:wrap; }
+    .venda-hoje-row .hora { color:var(--text-muted); width:44px; flex:none; }
+    .venda-hoje-row .prod { flex:1; min-width:160px; font-weight:600; }
+    .venda-hoje-row .val { font-weight:800; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="bi-sub">Cruza o estágio atual de cada anúncio (módulo Rankeamento) com as vendas/margem do período. O estágio mostrado é sempre o ATUAL do anúncio — não existe histórico confiável de mudança de estágio (ver <code>business-rules.md</code>), então uma venda de 20 dias atrás aparece com o estágio de HOJE, não o de quando foi vendida.</p>
+
+      <div class="im-filters">
+        <select id="imDays">
+          <option value="7">Últimos 7 dias</option>
+          <option value="14">Últimos 14 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <select id="imLoja"><option value="">Todas as empresas</option></select>
+        <button class="btn-primary" onclick="carregar()"><i class="fas fa-sync"></i> Atualizar</button>
+        <span class="im-status" id="imStatus"></span>
+      </div>
+
+      <!-- ═══ Visão executiva ═══ -->
+      <div class="bi-kpis" id="visaoExecutiva"></div>
+
+      <!-- ═══ 4 blocos por estágio ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-layer-group"></i> Estágios no período <span class="hint">clique num estágio pra ver os anúncios dele</span></h3>
+        <div class="estagio-grid" id="estagioGrid"></div>
+      </div>
+
+      <!-- ═══ Comparação entre estágios ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-table"></i> Comparação entre estágios</h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr id="theadComparacao">
+            <th>Estágio</th>
+            <th class="num sortable" onclick="ordenarComparacao('pedidos')">Pedidos <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarComparacao('qtd')">Unidades <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarComparacao('faturamento')">Faturamento <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarComparacao('ticket')">Ticket <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarComparacao('margem')">MC <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarComparacao('mc_pct')">MC% <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarComparacao('participacao_faturamento_pct')">Participação <i class="fas fa-sort"></i></th>
+            <th class="num sortable" onclick="ordenarComparacao('conversao_pct')">Conversão <i class="fas fa-sort"></i></th>
+          </tr></thead>
+          <tbody id="tblComparacao"></tbody>
+        </table></div>
+      </div>
+
+      <!-- ═══ Evolução temporal ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-chart-line"></i> Evolução por estágio
+          <select class="im-select" id="evolMetrica" onchange="renderEvolucao()" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;margin-left:auto">
+            <option value="pedidos">Pedidos</option>
+            <option value="faturamento">Faturamento</option>
+            <option value="margem">Margem</option>
+            <option value="qtd">Unidades</option>
+          </select>
+        </h3>
+        <canvas id="evolChart" height="90"></canvas>
+      </div>
+
+      <!-- ═══ Comparação hoje × ontem × média 7d ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-calendar-day"></i> Hoje vs. ontem vs. média 7 dias</h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr><th>Estágio</th><th class="num">Hoje</th><th class="num">Ontem</th><th class="num">Var. vs. ontem</th><th class="num">Média 7d</th><th class="num">Var. vs. média</th></tr></thead>
+          <tbody id="tblComparacaoTempo"></tbody>
+        </table></div>
+      </div>
+
+      <!-- ═══ Quem vendeu mais/menos hoje ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-ranking-star"></i> Performance de hoje
+          <select id="rankMetrica" onchange="renderRankingHoje()" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;margin-left:auto">
+            <option value="pedidos">Mais vendas</option>
+            <option value="faturamento">Maior faturamento</option>
+          </select>
+        </h3>
+        <div class="rank-list" id="rankingHoje"></div>
+      </div>
+
+      <!-- ═══ Vendas de hoje ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-clock"></i> Vendas de hoje <span class="hint" id="resumoHojeTxt"></span></h3>
+        <div id="vendasHojeLista"></div>
+      </div>
+
+      <!-- ═══ Anúncios do estágio selecionado ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-boxes-stacked"></i> Anúncios <span id="estagioSelLabel" style="color:#8b5cf6">— selecione um estágio acima</span> <span class="hint">produtos com desempenho fora do padrão do próprio estágio ficam marcados</span></h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr><th>Anúncio</th><th class="num">Pedidos</th><th class="num">Unidades</th><th class="num">Faturamento</th><th class="num">MC</th><th class="num">MC%</th><th class="num">Visitas</th><th>Estoque</th></tr></thead>
+          <tbody id="tblProdutosEstagio"></tbody>
+        </table></div>
+      </div>
+
+      <!-- ═══ Recuperação: antes × depois ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-heart-pulse"></i> Recuperação — antes × depois <span class="hint">efeito OBSERVADO desde que entrou na fase, não é causalidade garantida</span></h3>
+        <div style="overflow-x:auto"><table class="im-t">
+          <thead><tr><th>Anúncio</th><th class="num">Vendas/dia antes (14d)</th><th class="num">Vendas/dia depois</th><th class="num">Variação</th><th class="num">Dias em recuperação</th></tr></thead>
+          <tbody id="tblRecuperacao"></tbody>
+        </table></div>
+      </div>
+
+      <!-- ═══ Insights ═══ -->
+      <div class="im-card">
+        <h3><i class="fas fa-lightbulb"></i> Insights do rankeamento</h3>
+        <div class="insight-list" id="insightsList"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-bi.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const INT = n => new Intl.NumberFormat('pt-BR').format(Number(n)||0);
+const PCT1 = n => n==null ? '—' : `${(Number(n)||0).toFixed(1)}%`;
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dataBR = iso => { if(!iso) return '—'; const [y,m,d]=String(iso).slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+const horaBR = iso => iso ? new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '—';
+
+// Mesma paleta/label de pages/rankeamento.html — fonte de verdade dos
+// estágios, nunca duplicada/reinventada aqui (ver decisions.md).
+const FASE_UI = {
+  rankeando:       { label:'Em rankeamento', cor:'#ffd60a', txt:'#1a1a1a' },
+  ranqueado:       { label:'Ranqueado',      cor:'#2ea043', txt:'#ffffff' },
+  monitoramento:   { label:'Monitoramento',  cor:'#f59e0b', txt:'#1a1a1a' },
+  recuperacao:     { label:'Recuperação',    cor:'#f85149', txt:'#ffffff' },
+  sem_rankeamento: { label:'Sem rankeamento',cor:'#6b7280', txt:'#ffffff' },
+};
+const FASES_ORDEM = ['rankeando','ranqueado','monitoramento','recuperacao'];
+
+let DADOS = null, estagioSelecionado = null;
+
+async function popularLojas(){
+  try{ const d=await DB.getLojas(); const sel=document.getElementById('imLoja');
+    (d.stores||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.nickname; sel.appendChild(o); });
+  }catch(e){}
+}
+
+async function carregar(){
+  document.getElementById('imStatus').textContent = 'Carregando…';
+  const d = await DB.getBiRankeamento(document.getElementById('imDays').value, document.getElementById('imLoja').value);
+  if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
+  DADOS = d;
+  document.getElementById('imStatus').textContent = `Período de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)} (${d.periodo.dias} dia(s)).`;
+  estagioSelecionado = null;
+  renderVisaoExecutiva();
+  renderEstagioGrid();
+  renderComparacao();
+  renderEvolucao();
+  renderComparacaoTempo();
+  renderRankingHoje();
+  renderVendasHoje();
+  renderProdutosEstagio();
+  renderRecuperacao();
+  renderInsights();
+}
+
+// ── Visão executiva ─────────────────────────────────────────────────────
+function renderVisaoExecutiva(){
+  const ve = DADOS.visao_executiva;
+  const lider = ve.estagio_lider_hoje;
+  const el = document.getElementById('visaoExecutiva');
+  const scoreLider = ve.score[0];
+  el.innerHTML = `
+    <div class="bi-kpi good"><div class="k">Estágio líder hoje</div><div class="v">${lider ? esc(FASE_UI[lider.fase].label) : '—'}</div><div class="s">${lider ? INT(lider.pedidos)+' pedido(s) · '+BRL(lider.faturamento) : 'sem vendas hoje'}</div></div>
+    <div class="bi-kpi"><div class="k">Melhor score</div><div class="v">${scoreLider ? esc(FASE_UI[scoreLider.fase].label) : '—'}</div><div class="s">${scoreLider ? scoreLider.score+'/100' : ''}</div></div>
+    <div class="bi-kpi"><div class="k">Pedidos hoje</div><div class="v">${INT(DADOS.resumo_hoje.total_pedidos)}</div></div>
+    <div class="bi-kpi"><div class="k">Faturamento hoje</div><div class="v">${BRL(DADOS.resumo_hoje.total_faturamento)}</div></div>`;
+}
+
+// ── 4 blocos por estágio ─────────────────────────────────────────────────
+function renderEstagioGrid(){
+  const el = document.getElementById('estagioGrid');
+  const reais = DADOS.por_fase_periodo.filter(b => FASES_ORDEM.includes(b.fase));
+  el.innerHTML = reais.map(b => {
+    const ui = FASE_UI[b.fase];
+    return `<div class="estagio-card ${estagioSelecionado===b.fase?'on':''}" onclick="selecionarEstagio('${b.fase}')" style="border-left:4px solid ${ui.cor}">
+      <span class="tag" style="background:${ui.cor};color:${ui.txt}">${esc(ui.label)}</span>
+      <div class="fat">${BRL(b.faturamento)}</div>
+      <div class="linha"><span>Pedidos</span><span>${INT(b.pedidos)}</span></div>
+      <div class="linha"><span>Ticket</span><span>${BRL(b.ticket)}</span></div>
+      <div class="linha"><span>MC</span><span class="${b.margem>=0?'im-pos':'im-neg'}">${BRL(b.margem)} (${PCT1(b.mc_pct)})</span></div>
+      <div class="linha"><span>Participação</span><span>${PCT1(b.participacao_faturamento_pct)}</span></div>
+    </div>`;
+  }).join('');
+}
+function selecionarEstagio(fase){
+  estagioSelecionado = estagioSelecionado === fase ? null : fase;
+  renderEstagioGrid();
+  renderProdutosEstagio();
+}
+
+// ── Comparação entre estágios (tabela ordenável) ────────────────────────
+let SORT_COMP = { campo: null, dir: 'desc' };
+function ordenarComparacao(campo){
+  if (SORT_COMP.campo === campo) SORT_COMP.dir = SORT_COMP.dir === 'desc' ? 'asc' : 'desc';
+  else { SORT_COMP.campo = campo; SORT_COMP.dir = 'desc'; }
+  renderComparacao();
+}
+function renderComparacao(){
+  let lista = [...DADOS.por_fase_periodo];
+  if (SORT_COMP.campo) {
+    lista.sort((a,b) => (a[SORT_COMP.campo]??-Infinity) - (b[SORT_COMP.campo]??-Infinity));
+    if (SORT_COMP.dir === 'desc') lista.reverse();
+  }
+  document.querySelectorAll('#theadComparacao th.sortable').forEach(th => {
+    const campo = th.getAttribute('onclick').match(/'([^']+)'/)[1];
+    const icon = th.querySelector('i');
+    th.classList.toggle('on', SORT_COMP.campo === campo);
+    icon.className = SORT_COMP.campo !== campo ? 'fas fa-sort' : SORT_COMP.dir === 'desc' ? 'fas fa-sort-down' : 'fas fa-sort-up';
+  });
+  document.getElementById('tblComparacao').innerHTML = lista.map(b => { const ui = FASE_UI[b.fase];
+    return `<tr>
+      <td><span class="fase-tag" style="background:${ui.cor};color:${ui.txt}">${esc(ui.label)}</span></td>
+      <td class="num">${INT(b.pedidos)}</td>
+      <td class="num">${INT(b.qtd)}</td>
+      <td class="num">${BRL(b.faturamento)}</td>
+      <td class="num">${BRL(b.ticket)}</td>
+      <td class="num ${b.margem>=0?'im-pos':'im-neg'}">${BRL(b.margem)}</td>
+      <td class="num ${b.mc_pct>=0?'im-pos':'im-neg'}">${PCT1(b.mc_pct)}</td>
+      <td class="num">${PCT1(b.participacao_faturamento_pct)}</td>
+      <td class="num">${b.conversao_pct==null?'Dados insuficientes':PCT1(b.conversao_pct)}</td>
+    </tr>`; }).join('');
+}
+
+// ── Evolução temporal ────────────────────────────────────────────────────
+let evolChartInstance = null;
+function renderEvolucao(){
+  if (evolChartInstance) { evolChartInstance.destroy(); evolChartInstance = null; }
+  if (typeof Chart === 'undefined' || !DADOS.serie_diaria.length) return;
+  const metrica = document.getElementById('evolMetrica').value;
+  const dias = DADOS.serie_diaria.map(d => dataBR(d.dia));
+  const datasets = [...FASES_ORDEM, 'sem_rankeamento'].map(fase => ({
+    label: FASE_UI[fase].label,
+    data: DADOS.serie_diaria.map(d => (d.fases[fase] && d.fases[fase][metrica]) || 0),
+    borderColor: FASE_UI[fase].cor, backgroundColor: 'transparent', tension: .25,
+  }));
+  const ctx = document.getElementById('evolChart').getContext('2d');
+  evolChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels: dias, datasets },
+    options: {
+      responsive: true, interaction: { mode:'index', intersect:false },
+      scales: { y: { ticks:{color:'#9ca3af'}, grid:{color:'rgba(255,255,255,.06)'} }, x: { ticks:{color:'#9ca3af'}, grid:{display:false} } },
+      plugins: { legend: { labels: { color:'#9ca3af' } } },
+    },
+  });
+}
+
+// ── Hoje × ontem × média 7d ───────────────────────────────────────────────
+function linhaVariacao(v){ return `<span class="${v>=0?'im-pos':'im-neg'}">${v>=0?'+':''}${v.toFixed(1)}%</span>`; }
+function renderComparacaoTempo(){
+  const porFaseOntem = new Map(DADOS.comparacao_ontem.map(c => [c.fase, c]));
+  document.getElementById('tblComparacaoTempo').innerHTML = DADOS.comparacao_7d.map(c7 => {
+    const co = porFaseOntem.get(c7.fase);
+    const ui = FASE_UI[c7.fase];
+    return `<tr>
+      <td><span class="fase-tag" style="background:${ui.cor};color:${ui.txt}">${esc(ui.label)}</span></td>
+      <td class="num">${INT(c7.atual.pedidos)} ped. · ${BRL(c7.atual.faturamento)}</td>
+      <td class="num">${co ? INT(co.referencia.pedidos)+' ped. · '+BRL(co.referencia.faturamento) : '—'}</td>
+      <td class="num">${co ? linhaVariacao(co.variacao_faturamento_pct) : '—'}</td>
+      <td class="num">${c7.referencia.pedidos.toFixed(1)} ped./dia · ${BRL(c7.referencia.faturamento)}/dia</td>
+      <td class="num">${linhaVariacao(c7.variacao_faturamento_pct)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Performance de hoje (ranking) ────────────────────────────────────────
+function renderRankingHoje(){
+  const metrica = document.getElementById('rankMetrica').value;
+  const lista = [...DADOS.resumo_hoje.por_fase].filter(b => FASES_ORDEM.includes(b.fase)).sort((a,b) => b[metrica]-a[metrica]);
+  const fmt = metrica === 'faturamento' ? BRL : INT;
+  const el = document.getElementById('rankingHoje');
+  if (!lista.some(l => l.pedidos > 0)) { el.innerHTML = '<div class="im-empty">Nenhuma venda hoje ainda.</div>'; return; }
+  el.innerHTML = lista.map((b,i) => {
+    const ui = FASE_UI[b.fase];
+    let obs = '';
+    if (i === lista.length-1 && lista[0].pedidos > 0 && b.pedidos < lista[0].pedidos) {
+      const diffPct = lista[0].pedidos > 0 ? ((lista[0].pedidos - b.pedidos) / lista[0].pedidos * 100) : 0;
+      obs = ` <span style="color:var(--text-muted);font-size:11px">— ${diffPct.toFixed(0)}% abaixo de ${esc(FASE_UI[lista[0].fase].label)}</span>`;
+    }
+    return `<div class="rank-row"><span class="pos">${i+1}</span><span class="fase-tag" style="background:${ui.cor};color:${ui.txt}">${esc(ui.label)}</span>${obs}<span class="val">${fmt(b[metrica])}</span></div>`;
+  }).join('');
+}
+
+// ── Vendas de hoje ────────────────────────────────────────────────────────
+function renderVendasHoje(){
+  const r = DADOS.resumo_hoje;
+  document.getElementById('resumoHojeTxt').textContent = `${INT(r.total_pedidos)} pedido(s) · ${BRL(r.total_faturamento)}`;
+  const el = document.getElementById('vendasHojeLista');
+  if (!DADOS.vendas_hoje.length) { el.innerHTML = '<div class="im-empty">Nenhuma venda hoje ainda.</div>'; return; }
+  el.innerHTML = DADOS.vendas_hoje.map(v => { const ui = FASE_UI[v.fase] || FASE_UI.sem_rankeamento;
+    return `<div class="venda-hoje-row">
+      <span class="hora">${horaBR(v.hora)}</span>
+      <span class="prod" title="${esc(v.title||'')}">${esc(v.title||v.item_id||'—')}${v.sku?` <span style="color:var(--text-muted);font-weight:400">(${esc(v.sku)})</span>`:''}</span>
+      <span style="color:var(--text-muted)">${esc(v.conta||'')}</span>
+      <span class="fase-tag" style="background:${ui.cor};color:${ui.txt}">${esc(ui.label)}</span>
+      <span class="val">${BRL(v.faturamento)}</span>
+      <span class="${v.mc_pct>=0?'im-pos':'im-neg'}">MC ${PCT1(v.mc_pct)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Anúncios do estágio selecionado ─────────────────────────────────────
+function renderProdutosEstagio(){
+  document.getElementById('estagioSelLabel').textContent = estagioSelecionado ? '— ' + FASE_UI[estagioSelecionado].label : '— selecione um estágio acima';
+  const tb = document.getElementById('tblProdutosEstagio');
+  if (!estagioSelecionado) { tb.innerHTML = '<tr><td colspan="8" class="im-empty">Clique num estágio no bloco acima pra ver os anúncios dele.</td></tr>'; return; }
+  const lista = DADOS.produtos_por_estagio.filter(p => p.fase === estagioSelecionado).sort((a,b) => b.faturamento - a.faturamento);
+  if (!lista.length) { tb.innerHTML = '<tr><td colspan="8" class="im-empty">Nenhum anúncio com venda nesse estágio no período.</td></tr>'; return; }
+  tb.innerHTML = lista.map(p => `<tr>
+    <td>${esc(p.title||p.item_id||'—')}${p.fora_do_padrao ? `<span class="fora-padrao ${p.fora_do_padrao}">${p.fora_do_padrao==='abaixo'?'abaixo da média':'acima da média'}</span>` : ''}</td>
+    <td class="num">${INT(p.pedidos)}</td>
+    <td class="num">${INT(p.qtd)}</td>
+    <td class="num">${BRL(p.faturamento)}</td>
+    <td class="num ${p.margem>=0?'im-pos':'im-neg'}">${BRL(p.margem)}</td>
+    <td class="num ${p.mc_pct>=0?'im-pos':'im-neg'}">${PCT1(p.mc_pct)}</td>
+    <td class="num">${p.visitas>0?INT(p.visitas):'—'}</td>
+    <td>${p.estoque_atual!=null?INT(p.estoque_atual):'—'}</td>
+  </tr>`).join('');
+}
+
+// ── Recuperação antes×depois ─────────────────────────────────────────────
+function renderRecuperacao(){
+  const tb = document.getElementById('tblRecuperacao');
+  if (!DADOS.recuperacao_antes_depois.length) { tb.innerHTML = '<tr><td colspan="5" class="im-empty">Nenhum anúncio em recuperação no momento.</td></tr>'; return; }
+  tb.innerHTML = DADOS.recuperacao_antes_depois.map(r => {
+    const variacao = r.vendas_dia_antes > 0 ? ((r.vendas_dia_depois - r.vendas_dia_antes) / r.vendas_dia_antes) * 100 : (r.vendas_dia_depois > 0 ? 100 : 0);
+    return `<tr>
+      <td>${esc(r.title||r.item_id||'—')}</td>
+      <td class="num">${r.vendas_dia_antes.toFixed(2)}</td>
+      <td class="num">${r.vendas_dia_depois.toFixed(2)}</td>
+      <td class="num">${linhaVariacao(variacao)}</td>
+      <td class="num">${INT(r.dias_em_recuperacao)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Insights ──────────────────────────────────────────────────────────────
+function renderInsights(){
+  const el = document.getElementById('insightsList');
+  el.innerHTML = DADOS.insights.length ? DADOS.insights.map(t => `<div class="insight-item">${esc(t)}</div>`).join('')
+    : '<div class="im-empty">Sem insights relevantes neste período — portfólio de estágios equilibrado.</div>';
+}
+
+popularLojas();
+carregar();
+</script>
+</body>
+</html>

@@ -424,4 +424,27 @@ async function avancarCiclo(adId) {
   } finally { client.release(); }
 }
 
-module.exports = { getTracked, onSale, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf };
+// Estágio atual (fase) de um lote de item_id — usado pela tag de estágio em
+// bi-vendas.html e pelo agregado "Vendas por Estágio" (routes/bi.js). Fonte
+// única do join item_id→fase, nunca duplicada: considera tanto o vínculo
+// direto (ranking_ads.ml_id) quanto o vínculo de catálogo (ranking_ad_links,
+// ver rankeamento.md "Vínculo tradicional ↔ catálogo"). Item sem nenhuma
+// linha em ranking_ads não é "erro" — só não está rastreado pelo módulo
+// (nem toda venda tem um anúncio marcado em rankeamento).
+async function buscarFasePorItemIds(itemIds) {
+  const ids = [...new Set((itemIds || []).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const { rows } = await pool.query(
+    `SELECT x.item_id, COALESCE(ra.fase, ra2.fase) AS fase, COALESCE(ra.id, ra2.id) AS ranking_ad_id
+       FROM unnest($1::text[]) AS x(item_id)
+       LEFT JOIN ranking_ads ra ON ra.ml_id = x.item_id
+       LEFT JOIN ranking_ad_links ral ON ral.ml_id = x.item_id
+       LEFT JOIN ranking_ads ra2 ON ra2.id = ral.ranking_ad_id`,
+    [ids]
+  );
+  const map = new Map();
+  for (const r of rows) if (r.fase) map.set(r.item_id, { fase: r.fase, ranking_ad_id: r.ranking_ad_id });
+  return map;
+}
+
+module.exports = { getTracked, onSale, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds };

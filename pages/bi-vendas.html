@@ -283,6 +283,27 @@ async function atualizarVenda(mlId, btn){
   if (res.payment_error) console.warn('[bi-vendas] tarifa real não veio (pagamento ainda não processado pelo ML):', res.payment_error);
 }
 
+// Tag de estágio de rankeamento (integração com o módulo Rankeamento —
+// FASE_UI é a MESMA paleta/label de pages/rankeamento.html, nunca inventada
+// aqui). O estágio é sempre o ATUAL do anúncio, nunca uma reconstrução
+// histórica — ranking_ads não guarda histórico confiável de fase (ver
+// business-rules.md/decisions.md). FASE_MAP é preenchido depois do
+// DB.getVendasDetalhado, num 2º request em lote (fase-lote) — item sem
+// entrada no mapa não está rastreado no módulo, tag não aparece.
+const FASE_UI = {
+  rankeando:     { label:'Em rankeamento', cor:'#ffd60a', txt:'#1a1a1a' },
+  ranqueado:     { label:'Ranqueado',      cor:'#2ea043', txt:'#ffffff' },
+  monitoramento: { label:'Monitoramento',  cor:'#f59e0b', txt:'#1a1a1a' },
+  recuperacao:   { label:'Recuperação',    cor:'#f85149', txt:'#ffffff' },
+};
+let FASE_MAP = {};
+function faseTagHtml(itemId){
+  const f = FASE_MAP[itemId];
+  if (!f) return '';
+  const ui = FASE_UI[f] || { label: f, cor:'#8b5cf6', txt:'#fff' };
+  return `<span class="vc-badge" style="background:${ui.cor};color:${ui.txt}" title="Estágio atual do anúncio no Rankeamento">${esc(ui.label)}</span>`;
+}
+
 function cardHtml(r){
   const neg = Number(r.mc_pct) < 0;
   const foto = r.thumbnail
@@ -304,6 +325,7 @@ function cardHtml(r){
           ${r.item_id ? copyBtn(r.item_id, 'Anúncio (MLB)') : ''}
           <button class="vc-refresh" title="Buscar tarifa/frete atualizados no Mercado Livre (venda recente ainda não conciliada)" onclick="atualizarVenda('${jsStr(r.ml_id)}', this)"><i class="fas fa-rotate"></i></button>
           ${syncBadgeHtml(r)}
+          ${faseTagHtml(r.item_id)}
         </div>
       </div>
     </div>
@@ -369,6 +391,18 @@ async function carregar(){
   ROWS = d.rows || [];
   MOSTRADOS = Math.min(PASSO, ROWS.length);
   document.getElementById('biStatus').textContent = `${INT(ROWS.length)} venda(s) encontrada(s).`;
+  renderGrid();
+  carregarFases(); // em paralelo — re-renderiza só quando chegar, não atrasa o card
+}
+
+// Tag de estágio: busca em lote (1 request pra tela toda, não 1 por card) e
+// re-renderiza só depois que chega — a lista principal não espera por isso.
+async function carregarFases(){
+  const itemIds = [...new Set(ROWS.map(r => r.item_id).filter(Boolean))];
+  if (!itemIds.length) return;
+  const r = await DB.getRankingFaseLote(itemIds);
+  if (!r || !r.fases) return;
+  FASE_MAP = Object.fromEntries(Object.entries(r.fases).map(([id, v]) => [id, v.fase]));
   renderGrid();
 }
 

@@ -7,6 +7,9 @@ const express = require('express');
 const pool = require('../db/pool');
 const llm = require('../ai/llm');
 const margemNarrativa = require('../ai/margemNarrativa');
+// Fonte de verdade dos estágios de rankeamento (fase de ranking_ads) — nunca
+// um 2º cadastro/lógica de estágio aqui, só leitura (ver rankeamento.md).
+const ranking = require('../ranking');
 // SQL + fórmula de margem, reusadas aqui pra não duplicar (routes/api.js e
 // financeService.js também usam este mesmo módulo). Nunca duas fórmulas de
 // margem no projeto.
@@ -808,6 +811,278 @@ router.get('/margem/produto/:itemId', async (req, res) => {
     res.json({ item_id: itemId, dias, serie, resumo });
   } catch (e) {
     console.error('[bi] /margem/produto/:itemId error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VENDAS POR ESTÁGIO — cruza o estágio de rankeamento (fonte: ranking_ads,
+// nunca duplicado aqui — ver ranking.buscarFasePorItemIds) com as MESMAS
+// vendas/margem de computarMargem() (mesma fórmula, finance.md).
+//
+// Histórico de estágio: `ranking_ads` só guarda o TIMESTAMP de entrada na
+// fase atual (`started_at`/`ranqueado_em`/`monitoramento_started_at`/
+// `recuperacao_started_at`) — voltar pra 'rankeando' LIMPA esses carimbos
+// (rankeamento.md). Não dá pra reconstruir com confiança o estágio de um
+// anúncio que já cicloud mais de uma vez. Por isso: toda venda (de hoje ou
+// de 90 dias atrás) é rotulada com o ESTÁGIO ATUAL do anúncio, nunca uma
+// reconstrução histórica — decisão consciente, ver decisions.md. Anúncio
+// nunca marcado no módulo de Rankeamento cai no bucket `sem_rankeamento`
+// (não é descartado — senão os totais da tela mentiriam).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const FASES_RANKEAMENTO = ['rankeando', 'ranqueado', 'monitoramento', 'recuperacao'];
+
+function novoBucketFase(fase) {
+  return { fase, pedidos: 0, qtd: 0, faturamento: 0, margem: 0, custo: 0, imposto: 0, tarifa: 0, frete_vendedor: 0, frete_comprador: 0, visitas: 0 };
+}
+function agregarPorFase(linhas, visitasPorItem) {
+  const buckets = new Map(FASES_RANKEAMENTO.map(f => [f, novoBucketFase(f)]));
+  buckets.set('sem_rankeamento', novoBucketFase('sem_rankeamento'));
+  const itensPorFase = new Map(); // fase -> Set(item_id), pra somar visitas sem contar 2x
+  for (const r of linhas) {
+    const fase = FASES_RANKEAMENTO.includes(r.fase) ? r.fase : 'sem_rankeamento';
+    const b = buckets.get(fase);
+    b.pedidos += 1; b.qtd += Number(r.quantity) || 0; b.faturamento += Number(r.faturamento) || 0;
+    b.margem += r.margem; b.custo += r.custo; b.imposto += r.imposto; b.tarifa += r.tarifa;
+    b.frete_vendedor += r.freteVend; b.frete_comprador += Number(r.frete_comprador) || 0;
+    if (r.item_id) { let s = itensPorFase.get(fase); if (!s) { s = new Set(); itensPorFase.set(fase, s); } s.add(r.item_id); }
+  }
+  const totalFat = linhas.reduce((s, r) => s + (Number(r.faturamento) || 0), 0);
+  const totalPedidos = linhas.length;
+  if (visitasPorItem) {
+    for (const [fase, itens] of itensPorFase) {
+      const b = buckets.get(fase);
+      for (const item of itens) b.visitas += visitasPorItem.get(item) || 0;
+    }
+  }
+  return [...buckets.values()].map(b => ({
+    ...b,
+    ticket: b.pedidos > 0 ? b.faturamento / b.pedidos : 0,
+    mc_pct: b.faturamento > 0 ? (b.margem / b.faturamento) * 100 : 0,
+    participacao_faturamento_pct: totalFat > 0 ? (b.faturamento / totalFat) * 100 : 0,
+    participacao_pedidos_pct: totalPedidos > 0 ? (b.pedidos / totalPedidos) * 100 : 0,
+    conversao_pct: b.visitas > 0 ? (b.pedidos / b.visitas) * 100 : null, // null = "dados insuficientes", nunca 0 forçado
+  }));
+}
+// Comparação hoje vs. um período de referência (ontem = valor cru; média 7d
+// = soma÷7) — mesmos 4+1 buckets nas duas listas, na mesma ordem.
+function compararFases(atualBuckets, refBuckets, divisorRef) {
+  const porFase = new Map(refBuckets.map(b => [b.fase, b]));
+  return atualBuckets.map(a => {
+    const ref = porFase.get(a.fase) || novoBucketFase(a.fase);
+    const refPedidos = (ref.pedidos || 0) / divisorRef, refFat = (ref.faturamento || 0) / divisorRef, refMargem = (ref.margem || 0) / divisorRef;
+    const variacao = (atual, refv) => refv > 0 ? ((atual - refv) / refv) * 100 : (atual > 0 ? 100 : 0);
+    return {
+      fase: a.fase,
+      atual: { pedidos: a.pedidos, faturamento: a.faturamento, margem: a.margem },
+      referencia: { pedidos: refPedidos, faturamento: refFat, margem: refMargem },
+      variacao_pedidos_pct: variacao(a.pedidos, refPedidos),
+      variacao_faturamento_pct: variacao(a.faturamento, refFat),
+      variacao_margem_pct: variacao(a.margem, refMargem),
+    };
+  });
+}
+
+// Score 0-100 por estágio (só os 4 reais — `sem_rankeamento` não é um
+// estágio de processo, fica de fora do ranking de score). Reusa as MESMAS
+// funções de sub-score da Saúde do Negócio (escalaLinear/scoreRentabilidade/
+// scoreCrescimento/percentil já definidas acima) — nunca uma 2ª fórmula.
+function scoreEstagios(buckets, comparacao7d, diasNoPeriodoSerie) {
+  const reais = buckets.filter(b => FASES_RANKEAMENTO.includes(b.fase));
+  const pedidosLista = reais.map(b => b.pedidos);
+  const compPorFase = new Map(comparacao7d.map(c => [c.fase, c]));
+  return reais.map(b => {
+    const comp = compPorFase.get(b.fase);
+    const diasComVenda = diasNoPeriodoSerie ? (diasNoPeriodoSerie.get(b.fase) || 0) : 0;
+    const totalDias = diasNoPeriodoSerie ? diasNoPeriodoSerie.get('__total_dias__') || 1 : 1;
+    const scoreVolume = percentil(pedidosLista, b.pedidos) * 100;
+    const scoreMc = scoreRentabilidade(b.mc_pct);
+    const scoreCresc = comp ? scoreCrescimento(comp.variacao_faturamento_pct) : 50;
+    const scoreEstab = totalDias > 0 ? Math.min(100, (diasComVenda / totalDias) * 100) : 0;
+    const score = Math.round((scoreVolume + scoreMc + scoreCresc + scoreEstab) / 4);
+    return { fase: b.fase, score, subscores: { volume: Math.round(scoreVolume), rentabilidade: Math.round(scoreMc), crescimento: Math.round(scoreCresc), estabilidade: Math.round(scoreEstab) } };
+  }).sort((a, b) => b.score - a.score);
+}
+
+// Insights automáticos (texto templated determinístico — nunca LLM aqui,
+// mesmo princípio de "não inventar" das ações recomendadas de margem).
+function insightsEstagios(buckets, comparacaoOntem, comparacao7d) {
+  const insights = [];
+  const reais = buckets.filter(b => FASES_RANKEAMENTO.includes(b.fase) && b.pedidos > 0);
+  if (!reais.length) return insights;
+  const totalPedidos = reais.reduce((s, b) => s + b.pedidos, 0);
+  const lider = [...reais].sort((a, b) => b.pedidos - a.pedidos)[0];
+  if (lider && totalPedidos > 0) insights.push(`${FASE_LABEL_PT[lider.fase]} representa ${(lider.pedidos / totalPedidos * 100).toFixed(0)}% dos pedidos do período.`);
+  const porCresc = [...comparacao7d].filter(c => FASES_RANKEAMENTO.includes(c.fase)).sort((a, b) => b.variacao_faturamento_pct - a.variacao_faturamento_pct);
+  if (porCresc.length) {
+    const maiorAlta = porCresc[0], maiorQueda = porCresc[porCresc.length - 1];
+    if (maiorAlta.variacao_faturamento_pct > 10) insights.push(`${FASE_LABEL_PT[maiorAlta.fase]} cresceu ${maiorAlta.variacao_faturamento_pct.toFixed(0)}% em faturamento vs. a média dos últimos 7 dias.`);
+    if (maiorQueda.variacao_faturamento_pct < -10) insights.push(`${FASE_LABEL_PT[maiorQueda.fase]} caiu ${Math.abs(maiorQueda.variacao_faturamento_pct).toFixed(0)}% em faturamento vs. a média dos últimos 7 dias.`);
+  }
+  const mcOrdenado = [...reais].sort((a, b) => b.mc_pct - a.mc_pct);
+  const mcMedia = reais.reduce((s, b) => s + b.mc_pct, 0) / reais.length;
+  if (mcOrdenado.length && mcOrdenado[0].mc_pct > mcMedia + 5) insights.push(`${FASE_LABEL_PT[mcOrdenado[0].fase]} tem MC média de ${mcOrdenado[0].mc_pct.toFixed(1)}%, acima da média geral de ${mcMedia.toFixed(1)}%.`);
+  return insights;
+}
+const FASE_LABEL_PT = { rankeando: 'Em rankeamento', ranqueado: 'Ranqueado', monitoramento: 'Monitoramento', recuperacao: 'Recuperação', sem_rankeamento: 'Sem rankeamento' };
+
+async function computarRankeamento(days, storeId) {
+  const buscarPeriodo = async (dIni, dFim, marcador) => {
+    const p = [dIni, dFim];
+    let filtro = '';
+    if (storeId) { p.push(storeId); filtro = `AND o.store_id = $${p.length}::bigint`; }
+    const { rows } = await pool.query(
+      `-- rankeamento-${marcador}
+       ${VENDA_DETALHE_SELECT}
+       WHERE o.status <> 'cancelled' AND o.date_created >= $1::date AND o.date_created < ($2::date + 1) ${filtro}
+       ORDER BY o.date_created DESC LIMIT 20000`,
+      p
+    );
+    return rows.map(calcularMargemLinha);
+  };
+
+  const hojeISO = addDiasISO(0);
+  const ontemISO = addDiasStr(hojeISO, -1);
+  const periodoIni = addDiasStr(hojeISO, -(days - 1));
+  const sete_dIni = addDiasStr(hojeISO, -7), sete_dFim = ontemISO; // últimos 7 dias FECHADOS (exclui hoje, que é parcial)
+
+  const [linhasPeriodo, linhasHoje, linhasOntem, linhas7d] = await Promise.all([
+    buscarPeriodo(periodoIni, hojeISO, 'periodo'),
+    buscarPeriodo(hojeISO, hojeISO, 'hoje'),
+    buscarPeriodo(ontemISO, ontemISO, 'ontem'),
+    buscarPeriodo(sete_dIni, sete_dFim, '7d'),
+  ]);
+
+  // Estágio atual de cada item_id envolvido (união de todos os conjuntos —
+  // o período principal pode não cobrir a janela de 7 dias se `days` < 7).
+  const todosItemIds = new Set();
+  [linhasPeriodo, linhasHoje, linhasOntem, linhas7d].forEach(ls => ls.forEach(r => { if (r.item_id) todosItemIds.add(r.item_id); }));
+  const faseMap = await ranking.buscarFasePorItemIds([...todosItemIds]);
+  const anotar = (linhas) => linhas.forEach(r => { r.fase = faseMap.get(r.item_id)?.fase || null; });
+  [linhasPeriodo, linhasHoje, linhasOntem, linhas7d].forEach(anotar);
+
+  // Visitas do período (item_visits, dado real — soma bruta, não estimada).
+  const visitasParams = [periodoIni, hojeISO];
+  let visitasFiltro = '';
+  if (storeId) { visitasParams.push(storeId); visitasFiltro = `AND store_id = $${visitasParams.length}::bigint`; }
+  const { rows: visitasRows } = await pool.query(
+    `SELECT item_id, COALESCE(SUM(visits),0)::int AS visitas FROM item_visits WHERE date >= $1::date AND date <= $2::date ${visitasFiltro} GROUP BY item_id`,
+    visitasParams
+  );
+  const visitasPorItem = new Map(visitasRows.map(r => [r.item_id, r.visitas]));
+
+  const porFasePeriodo = agregarPorFase(linhasPeriodo, visitasPorItem);
+  const porFaseHoje = agregarPorFase(linhasHoje, null);
+  const porFaseOntem = agregarPorFase(linhasOntem, null);
+  const porFase7dBruto = agregarPorFase(linhas7d, null);
+  const comparacaoOntem = compararFases(porFaseHoje, porFaseOntem, 1);
+  const comparacao7d = compararFases(porFaseHoje, porFase7dBruto, 7);
+
+  // Série diária por estágio (§12) — reaproveita linhasPeriodo, sem query nova.
+  const porDiaFase = new Map();
+  const diasComVendaPorFase = new Map(); // pra estabilidade do score
+  for (const r of linhasPeriodo) {
+    const dia = String(r.date_created).slice(0, 10);
+    const fase = FASES_RANKEAMENTO.includes(r.fase) ? r.fase : 'sem_rankeamento';
+    let porFase = porDiaFase.get(dia); if (!porFase) { porFase = {}; porDiaFase.set(dia, porFase); }
+    if (!porFase[fase]) porFase[fase] = { pedidos: 0, faturamento: 0, margem: 0, qtd: 0 };
+    porFase[fase].pedidos += 1; porFase[fase].faturamento += Number(r.faturamento) || 0; porFase[fase].margem += r.margem; porFase[fase].qtd += Number(r.quantity) || 0;
+    let diasSet = diasComVendaPorFase.get(fase); if (!diasSet) { diasSet = new Set(); diasComVendaPorFase.set(fase, diasSet); }
+    diasSet.add(dia);
+  }
+  const serieDiaria = [...porDiaFase.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([dia, fases]) => ({ dia, fases }));
+  const diasNoPeriodoMap = new Map([...diasComVendaPorFase.entries()].map(([f, s]) => [f, s.size]));
+  diasNoPeriodoMap.set('__total_dias__', days);
+
+  // Por anúncio dentro do estágio (§16) — agregação por item_id, já com fase.
+  const bySku = new Map();
+  for (const r of linhasPeriodo) {
+    const k = r.item_id || `sem-anuncio-${r.ml_id}`;
+    let s = bySku.get(k);
+    if (!s) { s = { item_id: r.item_id, title: r.title, thumbnail: r.thumbnail, fase: FASES_RANKEAMENTO.includes(r.fase) ? r.fase : 'sem_rankeamento', estoque_atual: r.estoque_atual, faturamento: 0, margem: 0, pedidos: 0, qtd: 0 }; bySku.set(k, s); }
+    s.faturamento += Number(r.faturamento) || 0; s.margem += r.margem; s.pedidos += 1; s.qtd += Number(r.quantity) || 0;
+  }
+  const produtosPorEstagio = [...bySku.values()].map(s => ({ ...s, mc_pct: s.faturamento > 0 ? Number(((s.margem / s.faturamento) * 100).toFixed(2)) : 0, visitas: visitasPorItem.get(s.item_id) || 0 }));
+  // Fora do padrão (§17): pedidos MUITO abaixo/acima da média do próprio estágio.
+  FASES_RANKEAMENTO.forEach(fase => {
+    const doEstagio = produtosPorEstagio.filter(p => p.fase === fase);
+    if (doEstagio.length < 3) return; // amostra pequena demais pra comparar com a média
+    const mediaPedidos = doEstagio.reduce((s, p) => s + p.pedidos, 0) / doEstagio.length;
+    doEstagio.forEach(p => {
+      if (mediaPedidos > 0 && p.pedidos <= mediaPedidos * 0.4) p.fora_do_padrao = 'abaixo';
+      else if (mediaPedidos > 0 && p.pedidos >= mediaPedidos * 2) p.fora_do_padrao = 'acima';
+    });
+  });
+
+  // Recuperação: antes × depois (§15) — só anúncios ATUALMENTE em recuperação,
+  // usando o ÚNICO carimbo confiável (recuperacao_started_at). "Antes" = 14
+  // dias fechados antes de entrar; "depois" = desde que entrou. Efeito
+  // OBSERVADO, nunca causal (linguagem obrigatória — ver business-rules.md).
+  const recParams = storeId ? [storeId] : [];
+  const recFiltro = storeId ? `AND r.store_id = $1::bigint` : '';
+  const { rows: recRows } = await pool.query(
+    `SELECT r.id, r.ml_id, r.title, r.recuperacao_started_at,
+            COUNT(*) FILTER (WHERE e.event_type='venda' AND e.created_at < r.recuperacao_started_at AND e.created_at >= r.recuperacao_started_at - interval '14 days') AS vendas_antes,
+            COUNT(*) FILTER (WHERE e.event_type='venda' AND e.created_at >= r.recuperacao_started_at) AS vendas_depois
+       FROM ranking_ads r
+       LEFT JOIN ranking_events e ON e.ranking_ad_id = r.id
+      WHERE r.fase = 'recuperacao' AND r.active = true AND r.recuperacao_started_at IS NOT NULL ${recFiltro}
+      GROUP BY r.id`,
+    recParams
+  );
+  const agora = Date.now();
+  const recuperacaoAntesDepois = recRows.map(r => {
+    const diasDepois = Math.max(1, (agora - new Date(r.recuperacao_started_at).getTime()) / 86400000);
+    return {
+      item_id: r.ml_id, title: r.title,
+      vendas_dia_antes: Number(r.vendas_antes) / 14,
+      vendas_dia_depois: Number(r.vendas_depois) / diasDepois,
+      dias_em_recuperacao: Math.floor(diasDepois),
+    };
+  });
+
+  const totalPedidosHoje = linhasHoje.length;
+  const resumoHoje = {
+    total_pedidos: totalPedidosHoje,
+    total_faturamento: linhasHoje.reduce((s, r) => s + (Number(r.faturamento) || 0), 0),
+    por_fase: porFaseHoje.map(b => ({ fase: b.fase, pedidos: b.pedidos, faturamento: b.faturamento })),
+  };
+  const vendasHojeLista = [...linhasHoje].sort((a, b) => new Date(b.date_created) - new Date(a.date_created)).slice(0, 200).map(r => ({
+    hora: r.date_created, title: r.title, sku: r.sku, item_id: r.item_id, conta: r.conta,
+    faturamento: Number(r.faturamento) || 0, fase: r.fase || 'sem_rankeamento',
+    frete_vendedor: r.freteVend, tarifa: r.tarifa, custo: r.custo, imposto: r.imposto, margem: r.margem, mc_pct: r.mc_pct,
+  }));
+
+  const score = scoreEstagios(porFasePeriodo, comparacao7d, diasNoPeriodoMap);
+  const insights = insightsEstagios(porFasePeriodo, comparacaoOntem, comparacao7d);
+  const liderHoje = [...porFaseHoje].filter(b => FASES_RANKEAMENTO.includes(b.fase)).sort((a, b) => b.pedidos - a.pedidos)[0] || null;
+
+  return {
+    periodo: { dias: days, de: periodoIni, ate: hojeISO },
+    visao_executiva: {
+      estagio_lider_hoje: liderHoje ? { fase: liderHoje.fase, pedidos: liderHoje.pedidos, faturamento: liderHoje.faturamento, margem: liderHoje.margem } : null,
+      score,
+    },
+    por_fase_periodo: porFasePeriodo,
+    resumo_hoje: resumoHoje,
+    vendas_hoje: vendasHojeLista,
+    comparacao_ontem: comparacaoOntem,
+    comparacao_7d: comparacao7d,
+    serie_diaria: serieDiaria,
+    produtos_por_estagio: produtosPorEstagio,
+    recuperacao_antes_depois: recuperacaoAntesDepois,
+    insights,
+  };
+}
+
+router.get('/rankeamento', async (req, res) => {
+  try {
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+    const storeId = String(req.query.store_id || '').trim();
+    res.json(await computarRankeamento(days, storeId));
+  } catch (e) {
+    console.error('[bi] /rankeamento error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

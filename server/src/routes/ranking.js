@@ -437,4 +437,20 @@ router.get('/ads/:id/alerts', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/ranking/fase-lote { item_ids: [...] } — estágio atual de vários
+// anúncios de uma vez (usado pela tag de estágio em bi-vendas.html e pelo
+// agregado "Vendas por Estágio" da Inteligência de Negócio). POST porque a
+// lista de item_ids pode passar do limite prático de querystring. Reusa
+// ranking.buscarFasePorItemIds — nunca uma 2ª cópia do join.
+router.post('/fase-lote', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.item_ids) ? req.body.item_ids.map(String) : [];
+    const mapa = await ranking.buscarFasePorItemIds(ids);
+    res.json({ fases: Object.fromEntries(mapa) });
+  } catch (e) {
+    console.error('[api/ranking] fase-lote', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

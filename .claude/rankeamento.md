@@ -159,3 +159,7 @@ Um anúncio **em rankeamento** passa por **ciclos** (campanhas/empurrões sucess
 - **Fase ranqueado NÃO tem ciclos:** quando o anúncio vira **ranqueado** (já atingiu o nível), o card **esconde** badge de ciclo, botão Novo ciclo, bloco de ADS/preço e histórico — volta ao modo saúde puro (defender/regressão).
 - **Histórico:** `<details>` "Ciclos anteriores (N)" no rodapé do card (só em rankeando) carrega sob demanda via `GET /api/ranking/ads/:id/ciclos` (`DB.getRankingCiclos`) — campanha/vendas/faturamento/ROAS/orçamento/preço de cada ciclo encerrado. Só aparece se `ciclos_anteriores > 0`.
 - **Modal de histórico de preço:** botão 📈 no card (`abrirPrecoModal`, nas duas fases) abre um modal com **cada mudança de preço e sua data** — vem dos eventos `preco` de `ranking_events` (`{de,para}` + `created_at`, mudanças reais detectadas pelo webhook de item), via `GET /api/ranking/ads/:id/precos` (`DB.getRankingPrecos`). Tabela Data / De / Para / Variação (R$ e %).
+
+## Integração com a Inteligência de Negócio (Vendas por Estágio)
+
+O estágio (`fase`) é consultado, nunca duplicado/editado, pelo módulo BI — tela `bi-rankeamento.html` (Vendas por Estágio) e tag de estágio em `bi-vendas.html`. Fórmulas/limiares dessa integração (por que o estágio mostrado é sempre o ATUAL, nunca reconstruído; antes×depois de Recuperação; score; conversão) ficam em `business-rules.md`, contrato da rota em `api.md` (`GET /api/bi/rankeamento`, `POST /api/ranking/fase-lote`), decisão de design em `decisions.md`.

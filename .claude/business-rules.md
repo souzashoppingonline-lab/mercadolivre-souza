@@ -301,6 +301,23 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Período flexível** (`days` OU `date_from`/`date_to`, `routes/bi.js`): a tela Visão Geral (`bi-margem.html`) resolve os filtros Hoje/Ontem/Mês atual/Mês anterior/personalizado em datas explícitas no CLIENTE (`resolverPeriodo()`) e manda `date_from`/`date_to` ao backend; as outras 5 páginas continuam só com `days` (7/14/30/60/90). Quando `date_from`/`date_to` vêm preenchidos, o backend ignora `days` e calcula a duração real do intervalo — o período ANTERIOR usado em toda comparação (`causa_variacao`, `mudancas`, `cresc_*_pct`) tem sempre essa MESMA duração, imediatamente antes do início do período atual. Só `days`/`store_id` sobrevivem à navegação entre as 6 páginas (contrato de `js/biMargemTabs.js`) — período explícito e categoria são filtros locais da Visão Geral (ver `decisions.md`).
 - **Filtro de categoria** (`category_id`, `items.category_id`): opções do seletor vêm do próprio payload já carregado (`produtos[].category_id`, únicos), mesmo padrão já usado em `qualidade-anuncio.html` — categoria é o ID cru do Mercado Livre (ex. `MLB1234`), sem nome legível (não existe lookup de nome de categoria no projeto).
 
+## Frete Flex — "reembolso" mostrado por ferramenta externa é subsídio ao COMPRADOR, não ao vendedor
+
+> Investigado ao vivo em 2 vendas reais (lojas diferentes — RICOPI e UNIFULL), `GET /shipments/:id/costs`, via `server/test-billing-order.js`. Motivo: o usuário viu, numa ferramenta externa, "Reembolso do Frete: R$10,99" numa venda Flex e suspeitou que fosse dinheiro voltando pro vendedor sem o sistema capturar.
+
+- **O que a API realmente devolve** (mesmo formato nas 2 vendas testadas):
+  ```
+  gross_amount: 10.99                      -- custo bruto do envio
+  receiver: { cost: 0, save: 10.99,
+    discounts: [{ type:"loyal", rate:1, promoted_amount:10.99 }] }   -- desconto de FIDELIDADE do COMPRADOR
+  senders: [{ cost: 0, save: 0, discounts: [], charges: { charge_flex: 0 } }]   -- vendedor nunca foi cobrado, sem desconto envolvido
+  ```
+  `promoted_amount`/`save` estão dentro de `receiver` (comprador) — é o Mercado Livre bancando o frete grátis por fidelidade do COMPRADOR, sem relação nenhuma com o que o vendedor paga. O lado `senders` (vendedor) mostra custo **zero desde o início**, sem nenhum desconto aplicado — não é um valor que "foi cobrado e depois devolvido", nunca chegou a ser cobrado.
+- **Não é reembolso pós-venda** (não é `amount_refunded`/`refunds[]` de `/collections/:id`, que continuam nunca observados preenchidos em nenhuma amostra) — é a composição normal do custo do envio, sempre presente, não um evento avulso.
+- **Conferido contra o que já está salvo**: `orders.shipping_seller_cost` bateu **exato** com `senders[0].cost` da API ao vivo nas 2 vendas (ambos R$0) — o sistema já está correto pra esse cenário, não havia bug de captura.
+- **A API de Billing/Provisões (`GET /billing/integration/group/ML/order/details?order_ids=`) não tem nada de frete** — só devolveu `detail_type:"CHARGE"` de comissão de venda (soma bateu exato com `orders.ml_fee` nas 2 vendas). A informação de frete/desconto só existe em `/shipments/:id/costs`. Ver `conciliacao-bancaria.md` pra detalhe completo da rota de Billing.
+- **Decisão**: não há dado real de "reembolso ao vendedor" pra capturar aqui — o que existe é custo operacional REAL do vendedor que usa entregador próprio (motoboy terceirizado) em paralelo ao Flex do ML, não refletido em nenhum campo da API do ML. Ver seção seguinte.
+
 ## Tarifa — frete do comprador vazando pra dentro da tarifa (`CONCILIACAO_TARIFA_LATERAL`, `vendaMargem.js`)
 
 > Bug real reportado pelo usuário com print da tela nativa do Mercado Livre: um pedido Full (Organizador Porta Talheres, MLB7037761594) mostrava Tarifa = **R$9,83** na "Resumo por Venda", enquanto o próprio Mercado Livre cobrava só **R$4,83** de comissão — a diferença exata (R$5,00) era o Frete do Comprador daquele pedido.

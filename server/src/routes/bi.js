@@ -392,6 +392,14 @@ async function computarMargem({ days, storeId, dateFrom, dateTo, categoryId } = 
       s = {
         item_id: r.item_id, title: r.title, thumbnail: r.thumbnail, conta: r.conta,
         store_id: r.store_id, frete_tipo: r.frete_tipo, estoque_atual: r.estoque_atual, category_id: r.category_id,
+        // Custo UNITÁRIO da venda mais recente (linhasAtual vem ORDER BY
+        // date_created DESC — a 1ª linha vista pra este item_id é a mais
+        // nova). `r.custo` aqui já é o total da linha (unit×qty, aplicado
+        // por calcularMargemLinha) — reverte a multiplicação, não lê
+        // items.cost de novo (evita 2ª fonte do mesmo dado). Usado pra
+        // "capital parado" (Fase E) — só existe se o item vendeu no
+        // período (mesma limitação que estoque_atual/dias_estoque já têm).
+        custo_unitario: Number(r.custo) / (Number(r.quantity) || 1),
         faturamento: 0, qtd: 0, pedidos: 0, custo: 0, imposto: 0, tarifa: 0,
         frete_vendedor: 0, frete_comprador: 0, margem: 0,
       };

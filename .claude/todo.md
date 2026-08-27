@@ -124,6 +124,23 @@ Ainda fora do escopo, de propósito:
 - [ ] Busca por texto + ordenação por coluna na tabela de Produtos (`bi-margem-produtos.html`) — hoje só filtra por classificação; portfólio grande (>50 SKUs) fica difícil de navegar.
 - [ ] Deep link da ação recomendada pro produto (editar custo em `bi-vendas.html`, histórico de vendas do SKU) — hoje mostra o produto mas não linka.
 
+## FinanceEcom — reestruturação em fases A→F (spec de 12 seções, plano em `decisions.md`)
+
+Plano técnico apresentado e aprovado ("todas em sequência A→F"). Fase A concluída nesta rodada:
+
+- [x] ~~Health Score 0-100 (Saúde do Negócio)~~ — `saude` em `GET /api/bi/margem`, 6 sub-scores, card em `bi-margem.html`. Fórmulas em `business-rules.md`.
+- [x] ~~"O que mudou" (8 rankings de maior alta/queda por SKU)~~ — `mudancas`.
+- [x] ~~Filtros expandidos na Visão Geral~~ (Hoje/Ontem/14 dias/Mês atual/Mês anterior/personalizado/categoria) — `resolverPeriodo()`, `date_from`/`date_to` no backend.
+- [x] ~~Badges de contagem no menu~~ (`js/biMargemTabs.js` já suportava `contadores`, só faltava popular) — `skus_ruptura_iminente`/`acoes.length`, em todas as 6 páginas.
+
+Pendente (Fases B-F, ver `decisions.md` pro plano completo por fase):
+
+- [ ] **B — Produtos**: tabela ordenável por coluna, drill-down por produto (modal com série temporal multi-métrica — precisa query nova agregando por dia/semana), decomposição em cascata visual, simulador de preço com % livre (client-side).
+- [ ] **C — Portfólio**: matriz scatter volume×margem (Chart.js), cenário de mix (simulação client-side). Canibalização automática **decidido não implementar** (ver `decisions.md` — risco de dado inventado).
+- [ ] **D — Frete & Tarifa**: ranking "MC antes/depois do frete/tarifa" por produto, detecção de anomalia (desvio da média por grupo).
+- [ ] **E — Estoque**: capital parado (estoque × custo), valor em risco (venda perdida estimada × MC unitária), priorização ponderada por risco×MC×velocidade.
+- [ ] **F — Ações + histórico**: matriz impacto×esforço visual, regra de exclusividade mútua entre ações (não somar impacto de ações concorrentes pro mesmo produto), tabela `business_insights` com status/histórico/feedback loop (reabre a decisão que tinha sido adiada duas vezes).
+
 ## Rankeamento — fase Recuperação (v80)
 
 - [ ] Alerta no Telegram quando uma intervenção fecha a janela de 7 dias **sem efeito** (hoje o veredito `sem_efeito`/`parcial` só aparece no card). Encaixa no snapshot de 6h, com idempotência por `ranking_notes.id` (mesmo padrão do `esfriou`/`sem_resultado`).

@@ -23,7 +23,7 @@ const VENDA_DETALHE_SELECT = `
          o.raw_data->'order_items'->0->'item'->>'seller_sku',
          o.raw_data->'order_items'->0->'item'->>'seller_custom_field'
        ) as sku,
-       i.thumbnail, i.available_quantity as estoque_atual,
+       i.thumbnail, i.available_quantity as estoque_atual, i.category_id,
        CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
             WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
             ELSE COALESCE(o.ml_fee, 0) END as tarifa,

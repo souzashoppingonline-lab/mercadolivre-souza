@@ -131,6 +131,14 @@ const addDiasISO = (dias) => {
   const d = new Date(); d.setDate(d.getDate() + Math.floor(dias));
   return d.toISOString().slice(0, 10);
 };
+// Soma dias a uma data ISO (YYYY-MM-DD) já conhecida — usa UTC de propósito
+// (são datas de calendário, não timestamp; não precisa de fuso) pra derivar
+// o período ANTERIOR a partir de um período explícito (`date_from`/`date_to`).
+const addDiasStr = (iso, dias) => {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + Math.floor(dias));
+  return d.toISOString().slice(0, 10);
+};
 // Mesmo mapeamento visual de fmtFreteLabel (pages/vendas.html/bi-vendas.html)
 // — mantido em sincronia manualmente (é classificação de rótulo, não fórmula
 // financeira, então duplicar aqui não fere a regra "nunca duas fórmulas de
@@ -181,46 +189,146 @@ function faturamentoAbaixoDe(linhas, limiarMcPct) {
   return totalFat > 0 ? (fatAbaixo / totalFat) * 100 : 0;
 }
 
+// "O que mudou" (Visão Geral): maior alta/queda por SKU entre período atual
+// e anterior, pros 5 campos pedidos (faturamento/margem/frete/tarifa/qtd).
+// `atualMap`/`anteriorMap` são os Maps item_id -> {faturamento,margem,
+// frete_vendedor,tarifa,qtd} (bySku/bySkuAnterior). SKU que só existe num
+// dos dois períodos entra com o lado ausente = 0 (ex.: produto novo que
+// começou a vender é, de fato, "maior aumento de faturamento" válido).
+function calcularMudancas(atualMap, anteriorMap) {
+  const chaves = new Set([...atualMap.keys(), ...anteriorMap.keys()]);
+  const linhas = [...chaves].map(k => {
+    const a = atualMap.get(k), b = anteriorMap.get(k);
+    const base = a || b;
+    return {
+      item_id: base.item_id, title: base.title,
+      faturamento_atual: a?.faturamento || 0, faturamento_anterior: b?.faturamento || 0,
+      margem_atual: a?.margem || 0, margem_anterior: b?.margem || 0,
+      frete_vendedor_atual: a?.frete_vendedor || 0, frete_vendedor_anterior: b?.frete_vendedor || 0,
+      tarifa_atual: a?.tarifa || 0, tarifa_anterior: b?.tarifa || 0,
+      qtd_atual: a?.qtd || 0, qtd_anterior: b?.qtd || 0,
+    };
+  });
+  const maior = (campo, direcao) => {
+    let melhor = null, melhorDelta = null;
+    for (const l of linhas) {
+      const delta = l[`${campo}_atual`] - l[`${campo}_anterior`];
+      const bate = direcao === 'alta' ? (melhorDelta === null || delta > melhorDelta) : (melhorDelta === null || delta < melhorDelta);
+      if (bate) { melhorDelta = delta; melhor = l; }
+    }
+    if (!melhor || melhorDelta === 0) return null; // nada mudou de fato — não inventa um "destaque" de delta 0
+    return { item_id: melhor.item_id, title: melhor.title, valor_atual: melhor[`${campo}_atual`], valor_anterior: melhor[`${campo}_anterior`], delta: melhorDelta };
+  };
+  return {
+    maior_aumento_faturamento: maior('faturamento', 'alta'),
+    maior_queda_faturamento: maior('faturamento', 'queda'),
+    maior_aumento_margem: maior('margem', 'alta'),
+    maior_queda_margem: maior('margem', 'queda'),
+    maior_aumento_frete: maior('frete_vendedor', 'alta'),
+    maior_aumento_tarifa: maior('tarifa', 'alta'),
+    maior_aumento_pedidos: maior('qtd', 'alta'),
+    maior_queda_pedidos: maior('qtd', 'queda'),
+  };
+}
+
+// Interpolação linear com clamp — base de todos os sub-scores da Saúde do
+// Negócio abaixo. v fora de [x0,x1] satura em y0/y1 (nunca extrapola).
+function escalaLinear(v, x0, y0, x1, y1) {
+  if (x1 === x0) return y0;
+  const t = Math.min(1, Math.max(0, (v - x0) / (x1 - x0)));
+  return y0 + t * (y1 - y0);
+}
+
 const MC_BAIXA = 15, MC_ALTA = 30;      // pontos percentuais — ver business-rules.md
 const AMOSTRA_MINIMA = 3;               // pedidos — abaixo disso, classificação/score viram "amostra pequena" (business-rules.md)
 const CENARIOS_REPRECIFICACAO = [3, 5, 10]; // % de aumento de preço simulados na ação REPRECIFICAR
 
+// ── Saúde do Negócio (Visão Geral): score 0-100, 6 sub-scores de peso igual
+// (100/6 cada), 100% determinístico — nenhum passa por IA. Fórmulas e
+// limiares documentados em business-rules.md, ajustáveis, não "verdade
+// universal". Ordem de prioridade do próprio usuário (lucro > margem >
+// eficiência > capital > crescimento > faturamento) — por isso rentabilidade
+// usa MC% (não faturamento) e crescimento usa a variação de MARGEM, não de
+// faturamento.
+function scoreRentabilidade(mcPct) {
+  if (mcPct <= 0) return 0;
+  if (mcPct < MC_BAIXA) return escalaLinear(mcPct, 0, 0, MC_BAIXA, 50);
+  if (mcPct < MC_ALTA) return escalaLinear(mcPct, MC_BAIXA, 50, MC_ALTA, 100);
+  return 100;
+}
+function scoreCrescimento(crescMargemPct) {
+  if (crescMargemPct <= -20) return 0;
+  if (crescMargemPct < 0) return escalaLinear(crescMargemPct, -20, 0, 0, 50);
+  if (crescMargemPct < 20) return escalaLinear(crescMargemPct, 0, 50, 20, 100);
+  return 100;
+}
+function scoreLogistica(logisticaPct) {
+  if (logisticaPct <= 10) return 100;
+  if (logisticaPct < 25) return escalaLinear(logisticaPct, 10, 100, 25, 50);
+  if (logisticaPct < 40) return escalaLinear(logisticaPct, 25, 50, 40, 0);
+  return 0;
+}
+function scoreEstoque(produtos) {
+  const aplicaveis = produtos.filter(p => p.dias_estoque != null); // só quem tem venda/dia calculável
+  if (!aplicaveis.length) return 100; // sem dado suficiente → neutro, não penaliza
+  const saudaveis = aplicaveis.filter(p => p.status_estoque === 'SAUDAVEL').length;
+  return (saudaveis / aplicaveis.length) * 100;
+}
+function scoreConcentracao(concentracao) {
+  if (concentracao.total_skus <= 10) return 100; // catálogo pequeno: concentração é matematicamente inevitável, não é risco
+  const p = concentracao.top10_pct_faturamento;
+  if (p <= 50) return 100;
+  if (p < 80) return escalaLinear(p, 50, 100, 80, 40);
+  return escalaLinear(Math.min(p, 100), 80, 40, 100, 0);
+}
+function scoreComercial(produtos, fatAtual) {
+  if (fatAtual <= 0) return 100;
+  const SAUDAVEIS = new Set(['ESTRELA', 'ALTA_MARGEM_BAIXO_VOLUME', 'NEUTRO']);
+  const fatSaudavel = produtos.filter(p => SAUDAVEIS.has(p.classificacao)).reduce((s, p) => s + p.faturamento, 0);
+  return (fatSaudavel / fatAtual) * 100;
+}
+function calcularSaude({ mcPct, crescMargemPct, produtos, fatAtual, linhasAtual, somaCampoFn, concentracao }) {
+  const logisticaPct = fatAtual > 0 ? ((somaCampoFn(linhasAtual, 'freteVend') + somaCampoFn(linhasAtual, 'tarifa')) / fatAtual) * 100 : 0;
+  const subscores = {
+    rentabilidade: Math.round(scoreRentabilidade(mcPct)),
+    crescimento: Math.round(scoreCrescimento(crescMargemPct)),
+    eficiencia_logistica: Math.round(scoreLogistica(logisticaPct)),
+    saude_estoque: Math.round(scoreEstoque(produtos)),
+    concentracao_portfolio: Math.round(scoreConcentracao(concentracao)),
+    eficiencia_comercial: Math.round(scoreComercial(produtos, fatAtual)),
+  };
+  const score = Math.round(Object.values(subscores).reduce((s, v) => s + v, 0) / 6);
+  return { score, subscores };
+}
+
 // Núcleo determinístico de /margem, extraído em função própria pra ser
 // reusado por /margem/narrativa (a IA nunca recalcula nada — ela só recebe
 // este MESMO payload e escreve texto em cima dele).
-async function computarMargem(days, storeId) {
-  const params = [days];
-  let storeFilter = '';
-  if (storeId) { params.push(storeId); storeFilter = `AND o.store_id = $${params.length}::bigint`; }
+//
+// Período: ou `days` (padrão, N dias terminando hoje — comportamento
+// original) ou `dateFrom`/`dateTo` explícitos (Hoje/Ontem/Mês atual/Mês
+// anterior/período personalizado, resolvidos no frontend em datas — ver
+// business-rules.md). De qualquer forma, sempre compara com um período
+// ANTERIOR de duração IGUAL, imediatamente antes do início do atual.
+async function computarMargem({ days, storeId, dateFrom, dateTo, categoryId } = {}) {
+  let curIni, curFim;
+  if (dateFrom && dateTo) { curIni = dateFrom; curFim = dateTo; }
+  else { curFim = addDiasISO(0); curIni = addDiasISO(-(days - 1)); }
+  const duracaoDias = Math.round((new Date(curFim + 'T00:00:00Z') - new Date(curIni + 'T00:00:00Z')) / 86400000) + 1;
+  const prevFim = addDiasStr(curIni, -1);
+  const prevIni = addDiasStr(prevFim, -(duracaoDias - 1));
 
-  // Período atual + período anterior de MESMA duração (comparação justa,
-  // mesmo princípio do Painel Estratégico — ver finance.md/business-rules.md).
-  const buscarPeriodo = async (deslocDias) => {
-    const p = [...params];
-    const offSql = deslocDias ? `- ${deslocDias}` : '';
+  const buscarPeriodo = async (dIni, dFim, marcador) => {
+    const p = [dIni, dFim];
+    let filtro = '';
+    if (storeId) { p.push(storeId); filtro += ` AND o.store_id = $${p.length}::bigint`; }
+    if (categoryId) { p.push(categoryId); filtro += ` AND i.category_id = $${p.length}`; }
     const { rows } = await pool.query(
-      `${VENDA_DETALHE_SELECT}
+      `-- ${marcador}
+       ${VENDA_DETALHE_SELECT}
        WHERE o.status <> 'cancelled'
-         AND o.date_created >= (CURRENT_DATE - $1::int ${offSql})
-         AND o.date_created <  (CURRENT_DATE ${offSql} + 1)
-         ${storeFilter}
-       ORDER BY o.date_created DESC
-       LIMIT 20000`,
-      p
-    );
-    return rows.map(calcularMargemLinha);
-  };
-  // Janela de tendência: SEMPRE os últimos 42 dias (6 semanas), independente
-  // do filtro `days` escolhido — a tendência de um SKU não deve encolher só
-  // porque o analista filtrou "últimos 7 dias" (ver business-rules.md).
-  const buscarTendencia = async () => {
-    const p = storeId ? [storeId] : [];
-    const filtro = storeId ? `AND o.store_id = $1::bigint` : '';
-    const { rows } = await pool.query(
-      `${VENDA_DETALHE_SELECT}
-       WHERE o.status <> 'cancelled'
-         AND o.date_created >= (CURRENT_DATE - 41)
-         AND o.date_created <  (CURRENT_DATE + 1)
+         AND o.date_created >= $1::date
+         AND o.date_created <  ($2::date + 1)
          ${filtro}
        ORDER BY o.date_created DESC
        LIMIT 20000`,
@@ -228,11 +336,22 @@ async function computarMargem(days, storeId) {
     );
     return rows.map(calcularMargemLinha);
   };
+  // Janela de tendência: SEMPRE 42 dias (6 semanas) terminando no FIM do
+  // período selecionado (não necessariamente hoje — analisar "mês anterior"
+  // deve mostrar tendência até o fim daquele mês, não do presente) —
+  // independente da duração do período escolhido (business-rules.md).
+  const buscarTendencia = () => buscarPeriodo(addDiasStr(curFim, -41), curFim, 'tendencia');
+
   const [linhasAtual, linhasAnterior, linhasTend] = await Promise.all([
-    buscarPeriodo(0),
-    buscarPeriodo(days),
+    buscarPeriodo(curIni, curFim, 'periodo-atual'),
+    buscarPeriodo(prevIni, prevFim, 'periodo-anterior'),
     buscarTendencia(),
   ]);
+  // `days` (parâmetro) é reatribuído pra `duracaoDias` real — todo o resto da
+  // função (venda/dia, `periodo.dias` na resposta) já usa a variável `days`,
+  // então isso propaga a duração correta tanto no modo `days=N` quanto no
+  // modo `dateFrom`/`dateTo` sem duplicar a conta em dois lugares.
+  days = duracaoDias;
 
   const somaMargem = (ls) => ls.reduce((s, r) => s + r.margem, 0);
   const somaFat = (ls) => ls.reduce((s, r) => s + Number(r.faturamento || 0), 0);
@@ -269,7 +388,7 @@ async function computarMargem(days, storeId) {
     if (!s) {
       s = {
         item_id: r.item_id, title: r.title, thumbnail: r.thumbnail, conta: r.conta,
-        store_id: r.store_id, frete_tipo: r.frete_tipo, estoque_atual: r.estoque_atual,
+        store_id: r.store_id, frete_tipo: r.frete_tipo, estoque_atual: r.estoque_atual, category_id: r.category_id,
         faturamento: 0, qtd: 0, pedidos: 0, custo: 0, imposto: 0, tarifa: 0,
         frete_vendedor: 0, frete_comprador: 0, margem: 0,
       };
@@ -283,6 +402,20 @@ async function computarMargem(days, storeId) {
     s.margem += r.margem;
   }
   let produtos = [...bySku.values()];
+
+  // Agregação por anúncio do período ANTERIOR (só o essencial — usada por
+  // "O que mudou" abaixo, não vira card próprio de produto).
+  const bySkuAnterior = new Map();
+  for (const r of linhasAnterior) {
+    const k = r.item_id || `sem-anuncio-${r.ml_id}`;
+    let s = bySkuAnterior.get(k);
+    if (!s) { s = { item_id: r.item_id, title: r.title, faturamento: 0, margem: 0, frete_vendedor: 0, tarifa: 0, qtd: 0 }; bySkuAnterior.set(k, s); }
+    s.faturamento += Number(r.faturamento) || 0;
+    s.margem += r.margem;
+    s.frete_vendedor += r.freteVend;
+    s.tarifa += r.tarifa;
+    s.qtd += Number(r.quantity) || 0;
+  }
 
   // Faturamento/MC%/participações — sempre em cima do que já foi somado
   // (nunca recalcula um valor que o banco já deu, só combina).
@@ -518,18 +651,25 @@ async function computarMargem(days, storeId) {
   acoes.sort((a, b) => (b.impacto_estimado || 0) - (a.impacto_estimado || 0));
   const acoesTop = acoes.slice(0, 10);
 
+  const mcPctAtual = fatAtual > 0 ? (margemAtual / fatAtual) * 100 : 0;
+  const crescMargemPct = growth(margemAtual, margemAnterior);
+  const mudancas = calcularMudancas(bySku, bySkuAnterior);
+  const saude = calcularSaude({ mcPct: mcPctAtual, crescMargemPct, produtos, fatAtual, linhasAtual, somaCampoFn: somaCampo, concentracao });
+
   return {
-    periodo: { dias: days, de: addDiasISO(-days + 1), ate: addDiasISO(0) },
+    periodo: { dias: days, de: curIni, ate: curFim },
     resumo: {
       faturamento: fatAtual, margem: margemAtual,
-      mc_pct: fatAtual > 0 ? (margemAtual / fatAtual) * 100 : 0,
+      mc_pct: mcPctAtual,
       pedidos: linhasAtual.length,
       cresc_faturamento_pct: growth(fatAtual, fatAnterior),
-      cresc_margem_pct: growth(margemAtual, margemAnterior),
+      cresc_margem_pct: crescMargemPct,
       skus_prejuizo: produtos.filter(s => s.classificacao === 'PREJUIZO').length,
       skus_ruptura_iminente: produtos.filter(s => s.status_estoque === 'RUPTURA_IMINENTE').length,
       causa_variacao: causaVariacao,
     },
+    saude,
+    mudancas,
     produtos,
     bandas_margem: bandas,
     concentracao,
@@ -538,11 +678,27 @@ async function computarMargem(days, storeId) {
   };
 }
 
+// Lê days/store_id/date_from/date_to/category_id de uma query string, com
+// os mesmos limites/validação nos dois pontos de entrada (GET /margem e
+// POST /margem/narrativa) — nunca duas cópias da validação.
+function parseMargemParams(q) {
+  const storeId = String(q.store_id || '').trim();
+  const categoryId = String(q.category_id || '').trim();
+  const dataValida = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+  const temIntervalo = dataValida(q.date_from) && dataValida(q.date_to);
+  const days = Math.min(Math.max(Number(q.days) || 30, 1), 365);
+  return {
+    days,
+    storeId,
+    categoryId,
+    dateFrom: temIntervalo ? q.date_from : null,
+    dateTo: temIntervalo ? q.date_to : null,
+  };
+}
+
 router.get('/margem', async (req, res) => {
   try {
-    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
-    const storeId = String(req.query.store_id || '').trim();
-    res.json(await computarMargem(days, storeId));
+    res.json(await computarMargem(parseMargemParams(req.query)));
   } catch (e) {
     console.error('[bi] /margem error:', e.message);
     res.status(500).json({ error: e.message });
@@ -560,9 +716,8 @@ router.post('/margem/narrativa', async (req, res) => {
     if (!llm.isConfigured()) {
       return res.status(503).json({ error: 'IA não configurada — cole a chave ANTHROPIC_API_KEY no .env do servidor e reinicie.' });
     }
-    const days = Math.min(Math.max(Number(req.body.days || req.query.days) || 30, 1), 365);
-    const storeId = String(req.body.store_id || req.query.store_id || '').trim();
-    const payload = await computarMargem(days, storeId);
+    const params = parseMargemParams({ ...req.query, ...req.body });
+    const payload = await computarMargem(params);
 
     const resumirProduto = p => ({
       title: p.title, item_id: p.item_id, classificacao: p.classificacao,
@@ -573,6 +728,8 @@ router.post('/margem/narrativa', async (req, res) => {
     const contexto = {
       periodo: payload.periodo,
       resumo: payload.resumo,
+      saude: payload.saude,
+      mudancas: payload.mudancas,
       produtos_criticos: payload.produtos
         .filter(p => ['PREJUIZO', 'DESTRUIDOR_MARGEM', 'VOLUME_BAIXA_MARGEM'].includes(p.classificacao))
         .slice(0, 15).map(resumirProduto),

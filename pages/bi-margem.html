@@ -64,6 +64,25 @@
     .causa-fill.neg { background:#f87171; right:50%; }
     .causa-mid { position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--border); }
 
+    /* ── Saúde do Negócio ── */
+    .saude-top { display:flex; align-items:center; gap:22px; flex-wrap:wrap; margin-bottom:14px; }
+    .saude-score { font-size:42px; font-weight:900; line-height:1; }
+    .saude-score .max { font-size:18px; color:var(--text-muted); font-weight:700; }
+    .saude-label { font-size:12px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+    .saude-subs { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+    .saude-sub { background:var(--bg-card2); border-radius:10px; padding:10px 12px; }
+    .saude-sub .k { font-size:10.5px; color:var(--text-muted); font-weight:700; }
+    .saude-sub .v { font-size:18px; font-weight:800; margin-top:3px; }
+    .saude-bar { height:5px; border-radius:3px; background:var(--border); overflow:hidden; margin-top:6px; }
+    .saude-bar span { display:block; height:100%; border-radius:3px; }
+
+    /* ── O que mudou ── */
+    .mudou-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px; }
+    .mudou-item { background:var(--bg-card2); border-radius:10px; padding:10px 12px; }
+    .mudou-item .k { font-size:10.5px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+    .mudou-item .prod { font-size:12.5px; font-weight:600; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mudou-item .delta { font-size:14px; font-weight:800; margin-top:2px; }
+
     /* ── Análise da IA ── */
     .ia-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
     .ia-btn { background:#8b5cf6; color:#fff; border:0; border-radius:9px; padding:9px 16px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
@@ -84,24 +103,46 @@
       <p class="bi-sub">Motor determinístico sobre os dados reais de venda — nenhum número aqui é estimado por IA; classificações e limiares estão documentados em <code>business-rules.md</code>. Mesma fórmula de margem do resto do dashboard.</p>
 
       <div class="im-filters">
-        <select id="imDays">
+        <select id="imPeriodo" onchange="onPeriodoChange()">
+          <option value="hoje">Hoje</option>
+          <option value="ontem">Ontem</option>
           <option value="7">Últimos 7 dias</option>
+          <option value="14">Últimos 14 dias</option>
           <option value="30" selected>Últimos 30 dias</option>
           <option value="60">Últimos 60 dias</option>
           <option value="90">Últimos 90 dias</option>
+          <option value="mes_atual">Mês atual</option>
+          <option value="mes_anterior">Mês anterior</option>
+          <option value="custom">Período personalizado</option>
         </select>
+        <span id="imCustomDates" style="display:none;gap:6px;align-items:center">
+          <input type="date" id="imDateFrom" style="background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:8px;padding:8px 10px;font-size:12.5px">
+          <span style="color:var(--text-muted);font-size:12px">até</span>
+          <input type="date" id="imDateTo" style="background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:8px;padding:8px 10px;font-size:12.5px">
+        </span>
         <select id="imLoja"><option value="">Todas as empresas</option></select>
+        <select id="imCategoria"><option value="">Todas as categorias</option></select>
         <button class="btn-primary" onclick="carregar()"><i class="fas fa-sync"></i> Atualizar</button>
         <span class="im-status" id="imStatus"></span>
       </div>
 
       <div class="im-tabs" id="imTabs"></div>
 
+      <div class="im-card" id="saudeCard">
+        <h3><i class="fas fa-heart-pulse" style="color:#3fb950"></i> Saúde do Negócio <span class="hint">score determinístico 0-100 — fórmula em business-rules.md</span></h3>
+        <div id="imSaude"></div>
+      </div>
+
       <div class="bi-kpis" id="imKpis"></div>
 
       <div class="im-card">
         <h3><i class="fas fa-magnifying-glass-chart"></i> Por que a margem mudou <span class="hint">decomposição exata da variação vs. período anterior — não é estimativa</span></h3>
         <div id="imCausaVariacao"></div>
+      </div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-arrow-right-arrow-left"></i> O que mudou <span class="hint">maior alta/queda por anúncio, vs. período anterior</span></h3>
+        <div id="imMudou"></div>
       </div>
 
       <div class="ia-card" id="iaCard">
@@ -142,17 +183,100 @@ async function popularLojas(selecionado){
   }catch(e){}
 }
 
-function atualizarTabs(){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem.html'); }
+// ── Resolução de período (Hoje/Ontem/Mês atual/Mês anterior/N dias/
+// personalizado) em { days } OU { date_from, date_to } — o backend usa um ou
+// outro (nunca os dois), ver business-rules.md.
+function onPeriodoChange(){
+  document.getElementById('imCustomDates').style.display = document.getElementById('imPeriodo').value === 'custom' ? 'inline-flex' : 'none';
+}
+function isoLocal(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function resolverPeriodo(){
+  const v = document.getElementById('imPeriodo').value;
+  const hoje = new Date();
+  if (v === 'hoje') { const h = isoLocal(hoje); return { date_from: h, date_to: h }; }
+  if (v === 'ontem') { const o = new Date(hoje); o.setDate(o.getDate()-1); const s = isoLocal(o); return { date_from: s, date_to: s }; }
+  if (v === 'mes_atual') { const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1); return { date_from: isoLocal(ini), date_to: isoLocal(hoje) }; }
+  if (v === 'mes_anterior') { const ini = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1); const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0); return { date_from: isoLocal(ini), date_to: isoLocal(fim) }; }
+  if (v === 'custom') {
+    const de = document.getElementById('imDateFrom').value, ate = document.getElementById('imDateTo').value;
+    if (de && ate) return { date_from: de, date_to: ate };
+    return { days: 30 }; // datas ainda não escolhidas — cai no padrão até o usuário preencher
+  }
+  return { days: Number(v) }; // 7/14/30/60/90
+}
+
+function atualizarTabs(contadores){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem.html', contadores || {}); }
+
+function popularCategorias(){
+  const sel = document.getElementById('imCategoria');
+  const atual = sel.value;
+  const cats = [...new Set((DADOS.produtos||[]).map(p => p.category_id).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Todas as categorias</option>' + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  if (cats.includes(atual)) sel.value = atual;
+}
 
 async function carregar(){
   atualizarTabs();
   document.getElementById('imStatus').textContent = 'Carregando…';
-  const d = await DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value);
+  const periodo = resolverPeriodo();
+  const d = await DB.getBiMargem(periodo.days || 30, document.getElementById('imLoja').value, {
+    date_from: periodo.date_from || null, date_to: periodo.date_to || null,
+    category_id: document.getElementById('imCategoria').value || null,
+  });
   if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
   DADOS = d;
   document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
-  atualizarTabs();
+  popularCategorias();
+  atualizarTabs({ 'bi-margem-estoque.html': d.resumo.skus_ruptura_iminente, 'bi-margem-acoes.html': d.acoes.length });
   renderGeral();
+}
+
+// ── Saúde do Negócio ─────────────────────────────────────────────────────
+const SAUDE_SUB_LABEL = { rentabilidade:'Rentabilidade', crescimento:'Crescimento', eficiencia_logistica:'Eficiência logística', saude_estoque:'Saúde do estoque', concentracao_portfolio:'Concentração de portfólio', eficiencia_comercial:'Eficiência comercial' };
+function corScore(v){ return v>=70?'#3fb950':v>=40?'#f59e0b':'#f87171'; }
+function renderSaude(s){
+  const el = document.getElementById('imSaude');
+  if (!s) { el.innerHTML = '<div class="im-empty">Sem dado suficiente.</div>'; return; }
+  el.innerHTML = `
+    <div class="saude-top">
+      <div><div class="saude-score" style="color:${corScore(s.score)}">${s.score}<span class="max">/100</span></div></div>
+      <div class="saude-subs" style="flex:1">
+        ${Object.entries(s.subscores).map(([k,v]) => `
+          <div class="saude-sub">
+            <div class="k">${SAUDE_SUB_LABEL[k]||k}</div>
+            <div class="v" style="color:${corScore(v)}">${v}</div>
+            <div class="saude-bar"><span style="width:${v}%;background:${corScore(v)}"></span></div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ── O que mudou ──────────────────────────────────────────────────────────
+const MUDOU_DEF = [
+  { k:'maior_aumento_faturamento', label:'Maior aumento de faturamento', fmt:BRL, boa:true },
+  { k:'maior_queda_faturamento', label:'Maior queda de faturamento', fmt:BRL, boa:false },
+  { k:'maior_aumento_margem', label:'Maior aumento de margem', fmt:BRL, boa:true },
+  { k:'maior_queda_margem', label:'Maior queda de margem', fmt:BRL, boa:false },
+  { k:'maior_aumento_frete', label:'Maior aumento de frete', fmt:BRL, boa:false },
+  { k:'maior_aumento_tarifa', label:'Maior aumento de tarifa', fmt:BRL, boa:false },
+  { k:'maior_aumento_pedidos', label:'Maior crescimento de pedidos', fmt:INT, boa:true },
+  { k:'maior_queda_pedidos', label:'Maior queda de pedidos', fmt:INT, boa:false },
+];
+function renderMudou(m){
+  const el = document.getElementById('imMudou');
+  if (!m) { el.innerHTML = '<div class="im-empty">Sem dado do período anterior pra comparar.</div>'; return; }
+  const cards = MUDOU_DEF.map(def => {
+    const item = m[def.k];
+    if (!item) return `<div class="mudou-item"><div class="k">${def.label}</div><div class="prod" style="color:var(--text-muted)">Sem mudança relevante</div></div>`;
+    const pos = item.delta >= 0;
+    const cor = (def.boa === pos) ? '#3fb950' : '#f87171'; // "boa" combinada com o sinal real do delta
+    return `<div class="mudou-item">
+      <div class="k">${def.label}</div>
+      <div class="prod" title="${esc(item.title||item.item_id||'')}">${esc(item.title||item.item_id||'—')}</div>
+      <div class="delta" style="color:${cor}">${pos?'+':''}${def.fmt(item.delta)}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="mudou-grid">${cards}</div>`;
 }
 
 // ── Visão Geral ──────────────────────────────────────────────────────────
@@ -166,7 +290,9 @@ function renderGeral(){
     <div class="bi-kpi ${r.skus_prejuizo>0?'bad':'good'}"><div class="k">Produtos com prejuízo</div><div class="v">${INT(r.skus_prejuizo)}</div></div>
     <div class="bi-kpi ${r.skus_ruptura_iminente>0?'warn':'good'}"><div class="k">Ruptura iminente (≤7d)</div><div class="v">${INT(r.skus_ruptura_iminente)}</div></div>
     <div class="bi-kpi"><div class="k">Pedidos aprovados</div><div class="v">${INT(r.pedidos)}</div></div>`;
+  renderSaude(DADOS.saude);
   renderCausaVariacao(r.causa_variacao);
+  renderMudou(DADOS.mudancas);
   const top3 = DADOS.acoes.slice(0,3);
   document.getElementById('imTop3').innerHTML = top3.length ? top3.map((a,i) => acaoCardHtml(a,i)).join('')
     : '<div class="im-empty">Nenhuma ação prioritária identificada neste período — dados insuficientes ou portfólio saudável.</div>';
@@ -229,8 +355,11 @@ async function gerarNarrativaIA(){
   const btn = document.getElementById('iaBtn'), body = document.getElementById('iaBody');
   btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analisando…';
   body.innerHTML = '';
-  const days = document.getElementById('imDays').value, loja = document.getElementById('imLoja').value;
-  const r = await DB.getBiMargemNarrativa(days, loja);
+  const periodo = resolverPeriodo(), loja = document.getElementById('imLoja').value;
+  const r = await DB.getBiMargemNarrativa(periodo.days || 30, loja, {
+    date_from: periodo.date_from || null, date_to: periodo.date_to || null,
+    category_id: document.getElementById('imCategoria').value || null,
+  });
   btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Gerar análise deste período';
   if (!r || !r.ok) {
     body.innerHTML = `<p class="ia-err"><i class="fas fa-triangle-exclamation"></i> ${esc((r && r.error) || DB.lastError || 'Falha ao gerar a análise.')}</p>`;
@@ -245,8 +374,14 @@ async function gerarNarrativaIA(){
     ${acoesTxt.length ? `<ul>${acoesTxt.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>—</p>'}`;
 }
 
+// Só `days`/`store_id` sobrevivem à navegação entre as 6 páginas (contrato
+// de js/biMargemTabs.js) — período explícito (Hoje/Mês atual/personalizado)
+// e categoria são filtros locais desta página, não propagam pras outras 5
+// (decisions.md). Se o `days` da URL não for uma das opções simples do
+// seletor, cai no padrão de 30 dias.
 const qInit = biMargemQueryAtual();
-document.getElementById('imDays').value = qInit.days;
+const imPeriodoSel = document.getElementById('imPeriodo');
+if ([...imPeriodoSel.options].some(o => o.value === qInit.days)) imPeriodoSel.value = qInit.days;
 popularLojas(qInit.store_id).then(carregar);
 atualizarTabs();
 </script>

@@ -95,7 +95,7 @@ async function popularLojas(selecionado){
   }catch(e){}
 }
 
-function atualizarTabs(){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem-acoes.html'); }
+function atualizarTabs(contadores){ document.getElementById('imTabs').innerHTML = renderBiMargemTabs('bi-margem-acoes.html', contadores || {}); }
 
 async function carregar(){
   atualizarTabs();
@@ -104,7 +104,7 @@ async function carregar(){
   if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
   DADOS = d;
   document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
-  atualizarTabs();
+  atualizarTabs({ 'bi-margem-estoque.html': d.resumo.skus_ruptura_iminente, 'bi-margem-acoes.html': d.acoes.length });
   renderAcoes();
 }
 

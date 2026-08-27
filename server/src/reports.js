@@ -2,7 +2,7 @@
 // API HTTP (páginas do dashboard) — única fonte de verdade por cálculo,
 // nunca duplicar a mesma query em mais de um lugar.
 const pool = require('./db/pool');
-const { CONCILIACAO_TARIFA_LATERAL } = require('./vendaMargem');
+const { CONCILIACAO_TARIFA_LATERAL, buscarFreteMotoboy } = require('./vendaMargem');
 
 async function getResumoDiarioData() {
   const { rows: porLoja } = await pool.query(`
@@ -217,6 +217,14 @@ async function getMargemPorLoja({ dateFrom, dateTo, days, considerarFC = false }
     periodo = `o.date_created >= CURRENT_DATE - ($1::int)`;
     params = [d];
   }
+  const freteMotoboy = await buscarFreteMotoboy();
+  const freteVendCalculado = `CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
+             WHEN pg.taxa_pgto IS NOT NULL THEN 0
+             ELSE COALESCE(o.shipping_seller_cost,0) END`;
+  // Frete motoboy Flex (business-rules.md) — mesma substituição de calcularMargemLinha.
+  const freteVendSql = freteMotoboy.ativo
+    ? `CASE WHEN o.shipping_type = 'self_service' THEN GREATEST(0, ${freteMotoboy.valor} - COALESCE(o.shipping_seller_reembolso,0)) ELSE ${freteVendCalculado} END`
+    : freteVendCalculado;
   const { rows } = await pool.query(`
     WITH per_order AS (
       SELECT o.store_id, s.nickname AS loja, o.status, o.total_amount,
@@ -224,9 +232,7 @@ async function getMargemPorLoja({ dateFrom, dateTo, days, considerarFC = false }
         o.total_amount*COALESCE(s.imposto_pct,0)/100 AS imposto,
         o.shipping_cost AS frete_comprador,
         COALESCE(o.tarifa_manual, c.tarifa_real, pg.taxa_pgto, o.ml_fee, 0) AS tarifa,
-        CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
-             WHEN pg.taxa_pgto IS NOT NULL THEN 0
-             ELSE COALESCE(o.shipping_seller_cost,0) END AS frete_vendedor,
+        ${freteVendSql} AS frete_vendedor,
         (c.tarifa_real IS NOT NULL OR pg.taxa_pgto IS NOT NULL) AS tem_taxa_real
       FROM vw_ml_orders o
       JOIN vw_ml_stores s ON s.id=o.store_id

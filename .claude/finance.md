@@ -40,6 +40,8 @@ Ambas calculam a taxa **por pedido** (`LEFT JOIN LATERAL` por `order_id`, some p
 3. **`orders.ml_fee` / `orders.shipping_seller_cost`** — `ml_fee`=`item.sale_fee` gravado no ato do pedido (pode vir 0 num pedido recém-criado, o ML corrige depois); `shipping_seller_cost` é populado em tempo real pelo `handleShipment` via `/shipments/:id/costs` (`senders_cost`).
 4. Nada → 0.
 
+**Depois** da precedência acima resolver `frete_vendedor`, se a flag geral "custo motoboy Flex" estiver ativa (`frete_motoboy_ativo`, v85) **e** o pedido for Flex (`shipping_type='self_service'`), o `frete_vendedor` é **substituído** (não somado) por `MAX(0, frete_motoboy_valor − orders.shipping_seller_reembolso)` — custo real de entregador terceirizado (RR Express/Pex Entregas), não o que o ML cobra do vendedor. Ver `business-rules.md` pra fórmula completa e `api.md` pro endpoint de configuração.
+
 Cada linha do `/detalhado` traz `fonte_taxa` (`conciliacao`|`pagamento`|`pedido`) e `tem_conciliacao`; os totais/lojas trazem `pedidos_conciliados` (pedidos com taxa real, fonte 1 **ou** 2). Na fonte `pagamento`, a coluna Frete Vendedor mostra o `shipping_seller_cost` (separado da Tarifa via `LEAST`, item 2 acima) e só fica 0 se o frete ainda não foi sincronizado — a Margem bate igual nos dois casos. Ver `conciliacao-bancaria.md`.
 
 **Modal de detalhes (`GET /api/pedidos/:id/detalhes`) usa a MESMA precedência** dos itens 1-3 (mesmas LATERALs de Conciliação/`ml_payments`), então Tarifa/Frete/Margem/MC% do modal batem **1:1** com a linha da tabela. Antes o modal usava só `ml_fee`+`shipping_seller_cost` crus e divergia (ex.: pedido `account_money` com `taxa=0` na tabela vs. `ml_fee` no modal). O input "Frete Vendedor" do modal continua editável e mostra o `shipping_seller_cost` cru (o que é gravado); a linha "Frete Vendedor" do bloco Financeiro mostra o `freteVend` **calculado** pela precedência. As demais rotas de leitura ainda usam só os campos do pedido.
@@ -61,7 +63,7 @@ margem  = aprovadas − custo − imposto − tarifa − frete_vendedor   [− f
 margem_pct = margem / aprovadas × 100
 ```
 
-Diferença-chave para a fórmula de `orders` acima: **tarifa e frete do vendedor NÃO saem do pedido** (o worker nunca populou `shipping_seller_cost` de verdade — sempre 0). Saem da **Conciliação Bancária** (`mp_account_movements`, `description='Payment'`, casado por `order_id`), que é a mesma fonte que o Mercado Turbo usa — o relatório de liberações do Mercado Pago. Sem relatório no período, `tem_conciliacao=false` e a tarifa cai para `orders.ml_fee`.
+Diferença-chave para a fórmula de `orders` acima: **tarifa e frete do vendedor NÃO saem do pedido** (o worker nunca populou `shipping_seller_cost` de verdade — sempre 0). Saem da **Conciliação Bancária** (`mp_account_movements`, `description='Payment'`, casado por `order_id`), que é a mesma fonte que o Mercado Turbo usa — o relatório de liberações do Mercado Pago. Sem relatório no período, `tem_conciliacao=false` e a tarifa cai para `orders.ml_fee`. Também recebe a substituição do custo motoboy Flex (v85, mesma regra acima) quando a flag está ativa.
 
 **Por que a tarifa não é % fixo:** a tarifa do ML = comissão (% por categoria/tipo de anúncio, ~11–19%) **+ custo fixo por unidade** para itens abaixo de um limiar de preço. Por isso não se estima por percentual — usa-se o valor real cobrado (`mp_fee_amount`), que já soma comissão + fixo.
 

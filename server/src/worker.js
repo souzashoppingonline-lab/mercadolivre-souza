@@ -20,6 +20,7 @@ const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, g
 const taskEngine = require('./taskEngine');
 const { computeSeoScore } = require('./seoScore');
 const { syncMpAccountReports, backfillMpReports } = require('./mpReports');
+const { extrairCustosVendedor } = require('./shipmentCosts');
 
 const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 connection.on('error', (err) => console.error('[worker] redis connection error:', err.message));
@@ -78,16 +79,17 @@ async function handleShipment({ resource, storeId }) {
   const ship = await ml.getShipment(shipmentId, storeId);
   const sh = ship?.status_history || {};
 
-  // Frete do vendedor em tempo real: /shipments/:id/costs → senders_cost (o que o
-  // vendedor paga). Grava como fallback em orders.shipping_seller_cost; a Conciliação
-  // MP das 05:40 continua sendo a fonte oficial e sobrepõe na leitura. Alguns tipos de
-  // logística (ex: coleta/flex) podem não expor custos — nesse caso deixa a coluna intacta.
-  let sellerCost = null;
+  // Frete do vendedor em tempo real: /shipments/:id/costs → senders[].cost (o
+  // que o vendedor paga) e senders[].save+compensation (o que o ML devolve/
+  // credita ao vendedor — ver shipmentCosts.js). Grava como fallback em
+  // orders.shipping_seller_cost/shipping_seller_reembolso; a Conciliação MP
+  // das 05:40 continua sendo a fonte oficial pra tarifa e sobrepõe na
+  // leitura. Alguns tipos de logística (ex: coleta/flex) podem não expor
+  // custos — nesse caso deixa as colunas intactas.
+  let sellerCost = null, sellerReembolso = 0;
   try {
     const costs = await ml.getShipmentCosts(shipmentId, storeId);
-    const senders = costs?.senders;
-    if (Array.isArray(senders)) sellerCost = senders.reduce((a, s) => a + (Number(s?.cost) || 0), 0);
-    else if (senders && senders.cost != null) sellerCost = Number(senders.cost) || 0;
+    ({ sellerCost, sellerReembolso } = extrairCustosVendedor(costs));
   } catch (e) {
     // 404/403 em alguns envios — não é erro fatal, só não temos o custo em tempo real
   }
@@ -101,6 +103,7 @@ async function handleShipment({ resource, storeId }) {
        date_delivered = $5,
        shipping_last_updated = $6,
        shipping_seller_cost = COALESCE($9, shipping_seller_cost),
+       shipping_seller_reembolso = COALESCE($10, shipping_seller_reembolso),
        updated_at = now()
      WHERE store_id = $7 AND shipping_id = $8
      RETURNING ml_id`,
@@ -114,6 +117,7 @@ async function handleShipment({ resource, storeId }) {
       storeId,
       String(shipmentId),
       sellerCost,
+      sellerCost != null ? sellerReembolso : null, // só atualiza reembolso junto de um custo confirmado
     ]
   );
   if (!rows.length) return;

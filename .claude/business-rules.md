@@ -318,6 +318,23 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **A API de Billing/Provisões (`GET /billing/integration/group/ML/order/details?order_ids=`) não tem nada de frete** — só devolveu `detail_type:"CHARGE"` de comissão de venda (soma bateu exato com `orders.ml_fee` nas 2 vendas). A informação de frete/desconto só existe em `/shipments/:id/costs`. Ver `conciliacao-bancaria.md` pra detalhe completo da rota de Billing.
 - **Decisão**: não há dado real de "reembolso ao vendedor" pra capturar aqui — o que existe é custo operacional REAL do vendedor que usa entregador próprio (motoboy terceirizado) em paralelo ao Flex do ML, não refletido em nenhum campo da API do ML. Ver seção seguinte.
 
+## Custo real de motoboy terceirizado nas vendas Flex (`orders.shipping_seller_reembolso`, flag `frete_motoboy_ativo`, v85)
+
+> Pedido explícito do usuário, na sequência da investigação acima: "vamos implantar toda venda flex ele busca o valor de reembolso e colocamos o valor de frete que a empresa de motoboy me cobra para realizar a entrega". Duas empresas terceirizadas (RR Express e Pex Entregas) cobram o mesmo valor fixo pela entrega — **não** são rastreadas individualmente por venda (resposta explícita do usuário: "QUERO UM VALOR FIXO MAS QUE EU POSSA ALTERAR EM GERAL").
+
+- **Problema real**: no Flex, o Mercado Livre normalmente cobra `shipping_seller_cost = R$0` do vendedor (confirmado nas 2 vendas reais investigadas acima) — mas o vendedor paga um motoboy terceirizado de verdade pra fazer a entrega. Esse custo operacional real nunca aparecia na margem.
+- **Fórmula, exatamente como o usuário pediu** ("o valor que Mercado Livre me reembolsa MENOS o valor da entrega do motoboy, retira da margem de contribuição" — a ordem no texto é invertida, o cálculo real é `motoboy − reembolso`, sempre não-negativo):
+  ```
+  freteVend = MAX(0, valor_motoboy − shipping_seller_reembolso)
+  ```
+  `shipping_seller_reembolso` é o que a API do ML de fato devolve ao vendedor (`senders[].save + senders[].compensation` de `/shipments/:id/costs` — ver seção anterior; **nunca** o `receiver.save`/`promoted_amount`, que é o subsídio ao comprador). Nos 2 casos reais testados esse valor é 0, mas a extração já suporta o caso não-zero.
+- **Substitui, não soma**: quando a flag está ligada, `freteVend` da venda Flex passa a ser o resultado da fórmula acima — não é somado ao `frete_vendedor` normal (que no Flex já é tipicamente 0). Só afeta pedidos com `shipping_type = 'self_service'` (Flex); Full/Mercado Envios continuam com o cálculo de sempre.
+- **Piso em 0** (`MAX(0, ...)`): se um dia o ML passar a reembolsar mais do que o motoboy cobra, a fórmula nunca produz frete negativo (que inflaria a margem artificialmente).
+- **Configuração global, não por pedido**: `app_config` (`frete_motoboy_ativo` = `'true'`/qualquer outro = desligado, `frete_motoboy_valor` = string numérica, padrão `12.90`) — mesmo padrão de `imposto_flex_ativo`. Editável na tela (`bi-vendas.html`, toggle "custo motoboy Flex" + campo de valor), `GET`/`PATCH /api/config/frete-motoboy` (`api.md`).
+- **`orders.shipping_seller_reembolso`** (nova coluna, v85): capturada junto com `shipping_seller_cost` sempre que `/shipments/:id/costs` é consultado (worker `handleShipment` e `financeService.reconciliarPedido`) — nenhuma chamada de API nova, só uma extração adicional da mesma resposta já buscada. Extração unificada em `shipmentCosts.js` (`extrairCustosVendedor`), usada pelos 2 consumidores (não duplicada).
+- **Mesma disciplina de "1 fórmula, todos os consumidores"** já aplicada a `impostoFlexAtivo`/`tarifa_manual`: `calcularMargemLinha` recebe `freteMotoboy` como 3º parâmetro (junto com `impostoFlexAtivo`), e TODOS os pontos que calculam frete_vendedor agregado em SQL puro (`routes/api.js` `/vendas/detalhado` e `/pedidos/:id/detalhes`, `routes/bi.js` × 3, `reports.js` `getMargemPorLoja`) replicam a mesma expressão `CASE WHEN shipping_type='self_service' THEN GREATEST(0, valor − reembolso) ELSE <cálculo normal> END` — nunca a fórmula em só um lugar.
+- **Indicador visual** (🛵) no card "Resumo por Venda" ao lado do label "Frete vend." quando a substituição foi aplicada naquela venda (`freteMotoboyAplicado`), com tooltip explicando que não é o valor cobrado pelo ML.
+
 ## Tarifa — frete do comprador vazando pra dentro da tarifa (`CONCILIACAO_TARIFA_LATERAL`, `vendaMargem.js`)
 
 > Bug real reportado pelo usuário com print da tela nativa do Mercado Livre: um pedido Full (Organizador Porta Talheres, MLB7037761594) mostrava Tarifa = **R$9,83** na "Resumo por Venda", enquanto o próprio Mercado Livre cobrava só **R$4,83** de comissão — a diferença exata (R$5,00) era o Frete do Comprador daquele pedido.

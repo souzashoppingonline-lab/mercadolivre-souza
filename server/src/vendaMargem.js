@@ -89,6 +89,7 @@ const VENDA_DETALHE_SELECT = `
             ELSE 'pedido' END as fonte_taxa,
        o.status, o.date_created,
        o.finance_synced, o.last_finance_sync_at,
+       COALESCE(o.shipping_seller_reembolso, 0) as frete_vendedor_reembolso,
        COALESCE(i.cost, 0) as custo,
        COALESCE(s.imposto_pct, 0) as imposto_pct
      FROM vw_ml_orders o
@@ -112,22 +113,47 @@ async function buscarImpostoFlexAtivo() {
   return rows[0]?.value === 'true';
 }
 
+// Custo real de entrega via motoboy terceirizado (RR Express/Pex Entregas,
+// ambas cobrando o mesmo valor hoje — pedido explícito do usuário), usado
+// como frete do vendedor nas vendas Flex EM VEZ do que a API do ML mostra
+// (investigado ao vivo: o vendedor normalmente não é cobrado nada pelo ML
+// no Flex — ver business-rules.md "Frete Flex — subsídio ao comprador, não
+// ao vendedor"). Flag GERAL (não por loja/transportadora) + valor editável,
+// mesmo padrão de app_config de imposto_flex_ativo. Desligada por padrão.
+async function buscarFreteMotoboy() {
+  const { rows } = await pool.query(
+    `SELECT key, value FROM app_config WHERE key IN ('frete_motoboy_ativo', 'frete_motoboy_valor')`
+  );
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  return { ativo: map.frete_motoboy_ativo === 'true', valor: Number(map.frete_motoboy_valor) || 12.90 };
+}
+
 // Aplica a fórmula de margem (finance.md) em cima de 1 linha crua da query
 // acima. Nunca duas fórmulas de margem no projeto.
 // `impostoFlexAtivo` (default false = comportamento padrão do sistema):
 // quando false, vendas Flex sempre entram com imposto=0, independente do
 // imposto_pct configurado na loja (ver business-rules.md).
-function calcularMargemLinha(r, impostoFlexAtivo = false) {
+// `freteMotoboy` ({ativo, valor} ou null/undefined = desligado): quando
+// ativo, vendas Flex usam `valor` (fixo, editável) MENOS o que o ML de fato
+// reembolsar ao vendedor (`frete_vendedor_reembolso` — quase sempre 0 em
+// toda amostra real testada, mas a extração já cobre o caso de não ser),
+// no lugar do frete_vendedor que vem da Conciliação/ml_fee/etc — nunca soma
+// aos dois, substitui (custo real de quem entrega de fato a mercadoria).
+// Nunca fica negativo (Math.max(0, ...)).
+function calcularMargemLinha(r, impostoFlexAtivo = false, freteMotoboy = null) {
   const fat = Number(r.faturamento) || 0;
   const custo = Number(r.custo) * (Number(r.quantity) || 1);
   const isFlex = r.frete_tipo === 'self_service';
   const imposto = (isFlex && !impostoFlexAtivo) ? 0 : fat * (Number(r.imposto_pct) / 100);
   const tarifa = Number(r.tarifa) || 0;
-  const freteVend = Number(r.frete_vendedor) || 0;
+  const freteMotoboyAplicado = !!(freteMotoboy?.ativo && isFlex);
+  const freteVend = freteMotoboyAplicado
+    ? Math.max(0, freteMotoboy.valor - (Number(r.frete_vendedor_reembolso) || 0))
+    : Number(r.frete_vendedor) || 0;
   const freteComp = Number(r.frete_comprador) || 0;
   const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
   const mc_pct = fat > 0 ? (margem / fat) * 100 : 0;
-  return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
+  return { ...r, custo, imposto, tarifa, freteVend, freteMotoboyAplicado, margem, mc_pct: Number(mc_pct.toFixed(2)) };
 }
 
-module.exports = { VENDA_DETALHE_SELECT, CONCILIACAO_TARIFA_LATERAL, calcularMargemLinha, buscarImpostoFlexAtivo };
+module.exports = { VENDA_DETALHE_SELECT, CONCILIACAO_TARIFA_LATERAL, calcularMargemLinha, buscarImpostoFlexAtivo, buscarFreteMotoboy };

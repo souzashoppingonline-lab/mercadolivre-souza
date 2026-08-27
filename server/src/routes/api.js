@@ -343,7 +343,7 @@ router.get('/vendas/diarias', async (req, res) => {
 
 // SELECT + fórmula de margem — v82: movidos pra vendaMargem.js (módulo
 // próprio) quando o financeService virou o 4º consumidor. Nunca duplicar.
-const { VENDA_DETALHE_SELECT, CONCILIACAO_TARIFA_LATERAL, calcularMargemLinha, buscarImpostoFlexAtivo } = require('../vendaMargem');
+const { VENDA_DETALHE_SELECT, CONCILIACAO_TARIFA_LATERAL, calcularMargemLinha, buscarImpostoFlexAtivo, buscarFreteMotoboy } = require('../vendaMargem');
 const financeService = require('../financeService');
 
 router.get('/vendas/detalhado', async (req, res) => {
@@ -379,8 +379,8 @@ router.get('/vendas/detalhado', async (req, res) => {
     params
   );
 
-  const impostoFlexAtivo = await buscarImpostoFlexAtivo();
-  const result = rows.map(r => calcularMargemLinha(r, impostoFlexAtivo));
+  const [impostoFlexAtivo, freteMotoboy] = await Promise.all([buscarImpostoFlexAtivo(), buscarFreteMotoboy()]);
+  const result = rows.map(r => calcularMargemLinha(r, impostoFlexAtivo, freteMotoboy));
 
   // Totais — agregados no banco sobre TODO o range filtrado (sem LIMIT), agrupados
   // por status para separar aprovadas/canceladas. Corrige bug: antes os cards de
@@ -392,6 +392,15 @@ router.get('/vendas/detalhado', async (req, res) => {
   const impostoSql = impostoFlexAtivo
     ? `o.total_amount * COALESCE(s.imposto_pct, 0) / 100`
     : `CASE WHEN o.shipping_type = 'self_service' THEN 0 ELSE o.total_amount * COALESCE(s.imposto_pct, 0) / 100 END`;
+  // Frete motoboy Flex (business-rules.md): quando ativo, SUBSTITUI o frete
+  // do vendedor calculado normalmente por um valor fixo (editável) menos o
+  // que o ML de fato reembolsar ao vendedor — só pra vendas Flex.
+  const freteVendCalculado = `CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
+                         WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
+                         ELSE COALESCE(o.shipping_seller_cost,0) END`;
+  const freteVendSql = freteMotoboy.ativo
+    ? `CASE WHEN o.shipping_type = 'self_service' THEN GREATEST(0, ${freteMotoboy.valor} - COALESCE(o.shipping_seller_reembolso,0)) ELSE ${freteVendCalculado} END`
+    : freteVendCalculado;
   const { rows: aggRows } = await pool.query(
     `SELECT
        o.status,
@@ -403,9 +412,7 @@ router.get('/vendas/detalhado', async (req, res) => {
                          WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
                          ELSE COALESCE(o.ml_fee, 0) END), 0) AS tarifa,
        COALESCE(SUM(o.shipping_cost), 0) AS frete_comprador,
-       COALESCE(SUM(CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
-                         WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
-                         ELSE COALESCE(o.shipping_seller_cost,0) END), 0) AS frete_vendedor,
+       COALESCE(SUM(${freteVendSql}), 0) AS frete_vendedor,
        COUNT(*) FILTER (WHERE c.tarifa_real IS NOT NULL OR pg.taxa_pgto IS NOT NULL) AS pedidos_conciliados,
        COALESCE(SUM(o.quantity), 0) AS qtd,
        COUNT(*) AS pedidos
@@ -499,10 +506,10 @@ router.patch('/vendas/:orderId/tarifa', async (req, res) => {
       [req.params.orderId, valor, valor === null ? null : updatedBy]
     );
     if (!rowCount) return res.status(404).json({ error: `Pedido ${req.params.orderId} não encontrado` });
-    const impostoFlexAtivo = await buscarImpostoFlexAtivo();
+    const [impostoFlexAtivo, freteMotoboy] = await Promise.all([buscarImpostoFlexAtivo(), buscarFreteMotoboy()]);
     const { rows } = await pool.query(`${VENDA_DETALHE_SELECT} WHERE o.ml_id = $1 LIMIT 1`, [req.params.orderId]);
     if (!rows.length) return res.status(404).json({ error: `Pedido ${req.params.orderId} não encontrado` });
-    res.json({ ok: true, row: calcularMargemLinha(rows[0], impostoFlexAtivo) });
+    res.json({ ok: true, row: calcularMargemLinha(rows[0], impostoFlexAtivo, freteMotoboy) });
   } catch (e) {
     console.error('[api] PATCH /vendas/:orderId/tarifa error:', e.message);
     res.status(500).json({ error: e.message });
@@ -711,7 +718,7 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
               o.total_amount, o.quantity, o.unit_price, o.ml_fee,
               o.shipping_type, o.shipping_cost, o.shipping_seller_cost,
               o.status, o.date_created, o.date_closed,
-              o.raw_data, o.tarifa_manual,
+              o.raw_data, o.tarifa_manual, COALESCE(o.shipping_seller_reembolso,0) AS shipping_seller_reembolso,
               s.nickname as store_name, s.imposto_pct,
               COALESCE(i.cost, 0) as custo_unitario,
               c.tarifa_real, c.frete_vend_real, pg.taxa_pgto
@@ -754,9 +761,14 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
       freteVend = ssc;
       fonte = 'pedido';
     }
+    // Frete motoboy Flex (business-rules.md) — substitui o freteVend calculado
+    // acima quando ativo, só pra vendas Flex, mesma regra de calcularMargemLinha.
+    const freteMotoboy = await buscarFreteMotoboy();
+    const freteMotoboyAplicado = freteMotoboy.ativo && row.shipping_type === 'self_service';
+    if (freteMotoboyAplicado) freteVend = Math.max(0, freteMotoboy.valor - (Number(row.shipping_seller_reembolso) || 0));
     const freteComp = Number(row.shipping_cost) || 0;
     const margem = fat - custo - imposto - tarifa - freteComp - freteVend;
-    res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, fonte_taxa: fonte, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
+    res.json({ ...row, custo, imposto, tarifa, freteComp, freteVend, freteMotoboyAplicado, fonte_taxa: fonte, margem, mc_pct: fat > 0 ? ((margem/fat)*100).toFixed(2) : 0 });
   } catch(e) {
     console.error('[/pedidos/:id/detalhes]', e.message);
     res.status(500).json({ error: e.message });
@@ -1145,6 +1157,40 @@ router.patch('/config/imposto-flex', async (req, res) => {
     [String(ativo)]
   );
   res.json({ ok: true, imposto_flex_ativo: ativo });
+});
+
+// Custo real de entrega via motoboy terceirizado (RR Express/Pex Entregas)
+// nas vendas Flex — flag GERAL (não por loja/transportadora) + valor
+// editável, mesmo padrão key/value de imposto_flex_ativo. Investigado ao
+// vivo (business-rules.md "Frete Flex — subsídio ao comprador, não ao
+// vendedor"): o Mercado Livre normalmente não cobra nada do vendedor no
+// Flex, mas o vendedor paga um motoboy terceirizado de verdade pra
+// entregar — esse custo real não vem de nenhum campo da API do ML.
+router.get('/config/frete-motoboy', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT key, value FROM app_config WHERE key IN ('frete_motoboy_ativo', 'frete_motoboy_valor')`
+  );
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  res.json({ frete_motoboy_ativo: map.frete_motoboy_ativo === 'true', frete_motoboy_valor: Number(map.frete_motoboy_valor) || 12.90 });
+});
+router.patch('/config/frete-motoboy', async (req, res) => {
+  const ativo = req.body?.frete_motoboy_ativo === true;
+  const valorBody = req.body?.frete_motoboy_valor;
+  if (valorBody != null && (isNaN(Number(valorBody)) || Number(valorBody) < 0)) {
+    return res.status(400).json({ error: 'frete_motoboy_valor deve ser um número >= 0' });
+  }
+  const valor = valorBody != null ? Number(valorBody) : 12.90;
+  await pool.query(
+    `INSERT INTO app_config (key, value, updated_at) VALUES ('frete_motoboy_ativo', $1, now())
+     ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`,
+    [String(ativo)]
+  );
+  await pool.query(
+    `INSERT INTO app_config (key, value, updated_at) VALUES ('frete_motoboy_valor', $1, now())
+     ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`,
+    [String(valor)]
+  );
+  res.json({ ok: true, frete_motoboy_ativo: ativo, frete_motoboy_valor: valor });
 });
 
 // Relatórios por e-mail (Resend) — credencial (API key/from/to) só via

@@ -15,7 +15,8 @@
 const pool = require('./db/pool');
 const redis = require('./db/redis');
 const ml = require('./mlClient');
-const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo } = require('./vendaMargem');
+const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo, buscarFreteMotoboy } = require('./vendaMargem');
+const { extrairCustosVendedor } = require('./shipmentCosts');
 
 // Reconsulta 1 pedido na API do ML e atualiza tudo que dá pra confirmar agora:
 //  1) /orders/:id — ml_fee, shipping_cost/type/id, raw_data inteiro (também
@@ -73,12 +74,9 @@ async function reconciliarPedido(orderId) {
     } else {
       try {
         const costs = await ml.getShipmentCosts(shippingId, storeId);
-        const senders = costs?.senders;
-        let sellerCost = null;
-        if (Array.isArray(senders)) sellerCost = senders.reduce((a, s) => a + (Number(s?.cost) || 0), 0);
-        else if (senders && senders.cost != null) sellerCost = Number(senders.cost) || 0;
+        const { sellerCost, sellerReembolso } = extrairCustosVendedor(costs);
         if (sellerCost != null) {
-          await pool.query(`UPDATE orders SET shipping_seller_cost=$2 WHERE ml_id=$1`, [orderId, sellerCost]);
+          await pool.query(`UPDATE orders SET shipping_seller_cost=$2, shipping_seller_reembolso=$3 WHERE ml_id=$1`, [orderId, sellerCost, sellerReembolso]);
           freteConfirmado = true;   // API confirmou o valor — mesmo que seja 0
         } else {
           shippingError = 'resposta sem senders[].cost';
@@ -161,9 +159,10 @@ async function reconciliarPedido(orderId) {
   // esperar o cache de 60s da listagem.
   const { rows: fresh } = await pool.query(`${VENDA_DETALHE_SELECT} WHERE o.ml_id = $1 LIMIT 1`, [orderId]);
   if (!fresh.length) return { ok: false, error: 'pedido não encontrado após atualizar', finance_synced: financeSynced };
+  const [impostoFlexAtivo, freteMotoboy] = await Promise.all([buscarImpostoFlexAtivo(), buscarFreteMotoboy()]);
   return {
     ok: true,
-    row: calcularMargemLinha(fresh[0], await buscarImpostoFlexAtivo()),
+    row: calcularMargemLinha(fresh[0], impostoFlexAtivo, freteMotoboy),
     shipping_error: shippingError,
     payment_error: paymentError,
     finance_synced: financeSynced,

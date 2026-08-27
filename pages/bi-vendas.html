@@ -105,6 +105,10 @@
         <label title="Vendas Flex não têm nota fiscal emitida — por padrão o imposto não entra na margem delas. Afeta também Inteligência de Margem." style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);border:1px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer">
           <input type="checkbox" id="fImpostoFlex" onchange="salvarImpostoFlex()"> cobrar imposto em vendas Flex
         </label>
+        <label title="O Mercado Livre normalmente não cobra frete do vendedor no Flex — mas o motoboy terceirizado (RR Express/Pex Entregas) cobra de verdade. Quando ligado, esse valor substitui o frete do vendedor nas vendas Flex. Afeta também Inteligência de Margem." style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);border:1px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer">
+          <input type="checkbox" id="fFreteMotoboy" onchange="salvarFreteMotoboy()"> custo motoboy Flex
+          <input type="number" id="fFreteMotoboyValor" min="0" step="0.01" value="12.90" onclick="event.stopPropagation()" onchange="salvarFreteMotoboy()" style="width:64px;background:var(--bg-card2);border:1px solid var(--border);color:var(--text-main);border-radius:6px;padding:3px 6px;font-size:12px;text-align:right">
+        </label>
         <span class="bi-status" id="biStatus"></span>
       </div>
 
@@ -180,6 +184,27 @@ async function carregarImpostoFlex(){
 async function salvarImpostoFlex(){
   const checkbox = document.getElementById('fImpostoFlex');
   await DB.setImpostoFlexConfig(checkbox.checked);
+  carregar();
+}
+
+// Custo real de motoboy terceirizado (RR Express/Pex Entregas) nas vendas
+// Flex — flag GERAL + valor editável (business-rules.md). Substitui o
+// frete do vendedor calculado normalmente (que no Flex normalmente vem
+// R$0 do ML) só pras vendas Flex. Afeta também Inteligência de Margem.
+async function carregarFreteMotoboy(){
+  try{
+    const d = await DB.getFreteMotoboyConfig();
+    document.getElementById('fFreteMotoboy').checked = !!(d && d.frete_motoboy_ativo);
+    document.getElementById('fFreteMotoboyValor').value = (d && d.frete_motoboy_valor != null ? d.frete_motoboy_valor : 12.90).toFixed(2);
+  }catch(e){}
+}
+async function salvarFreteMotoboy(){
+  const checkbox = document.getElementById('fFreteMotoboy');
+  const valorInput = document.getElementById('fFreteMotoboyValor');
+  const valor = parseFloat(String(valorInput.value).replace(',', '.'));
+  if (isNaN(valor) || valor < 0) { valorInput.classList.add('err'); return; }
+  valorInput.classList.remove('err');
+  await DB.setFreteMotoboyConfig(checkbox.checked, valor);
   carregar();
 }
 
@@ -432,7 +457,7 @@ function cardHtml(r){
     </div>
     <div class="vc-fin">
       <div><div class="l">Venda</div><div class="v">${BRL(r.faturamento)}</div></div>
-      <div><div class="l">Frete vend.</div><div class="v" style="color:#f87171">-${BRL(r.freteVend)}</div></div>
+      <div><div class="l">Frete vend.${r.freteMotoboyAplicado?' <span title="Substituído pelo custo real do motoboy terceirizado, não é o que o Mercado Livre cobra do vendedor — ver business-rules.md" style="cursor:help">🛵</span>':''}</div><div class="v" style="color:#f87171">-${BRL(r.freteVend)}</div></div>
       <div>${tarifaCellHtml(r)}</div>
       <div>${custoCellHtml(r)}</div>
       <div><div class="l">Imposto</div><div class="v" style="color:#f87171">-${BRL(r.imposto)}</div></div>
@@ -500,6 +525,7 @@ async function carregarFases(){
 
 popularLojas();
 carregarImpostoFlex();
+carregarFreteMotoboy();
 carregar();
 </script>
 </body>

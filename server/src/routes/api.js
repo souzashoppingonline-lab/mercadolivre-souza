@@ -398,7 +398,8 @@ router.get('/vendas/detalhado', async (req, res) => {
        COALESCE(SUM(o.total_amount), 0) AS faturamento,
        COALESCE(SUM(COALESCE(i.cost, 0) * o.quantity), 0) AS custo,
        COALESCE(SUM(${impostoSql}), 0) AS imposto,
-       COALESCE(SUM(CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
+       COALESCE(SUM(CASE WHEN o.tarifa_manual IS NOT NULL THEN o.tarifa_manual
+                         WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
                          WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
                          ELSE COALESCE(o.ml_fee, 0) END), 0) AS tarifa,
        COALESCE(SUM(o.shipping_cost), 0) AS frete_comprador,
@@ -474,6 +475,36 @@ router.post('/vendas/:orderId/atualizar', async (req, res) => {
     res.json(r);
   } catch (e) {
     console.error('[api] /vendas/:orderId/atualizar error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Edição manual de tarifa — escape hatch pra quando a Conciliação vem
+// errada e CONCILIACAO_TARIFA_LATERAL não pega o caso (pedido explícito do
+// usuário, ver business-rules.md/known-bugs.md). `tarifa=null` remove a
+// edição e volta pro cálculo automático (Conciliação → ml_payments →
+// ml_fee, mesma precedência de sempre). Maior precedência de todas as
+// fontes — `orders.tarifa_manual` (v84).
+router.patch('/vendas/:orderId/tarifa', async (req, res) => {
+  try {
+    const { tarifa } = req.body || {};
+    if (tarifa !== null && (tarifa === undefined || isNaN(Number(tarifa)) || Number(tarifa) < 0)) {
+      return res.status(400).json({ error: 'tarifa deve ser um número >= 0, ou null pra remover a edição manual' });
+    }
+    const valor = tarifa === null ? null : Number(tarifa);
+    const updatedBy = req.staffUser?.username || null;
+    const { rowCount } = await pool.query(
+      `UPDATE orders SET tarifa_manual=$2, tarifa_manual_by=$3, tarifa_manual_at=(CASE WHEN $2::numeric IS NULL THEN NULL ELSE now() END)
+       WHERE ml_id=$1`,
+      [req.params.orderId, valor, valor === null ? null : updatedBy]
+    );
+    if (!rowCount) return res.status(404).json({ error: `Pedido ${req.params.orderId} não encontrado` });
+    const impostoFlexAtivo = await buscarImpostoFlexAtivo();
+    const { rows } = await pool.query(`${VENDA_DETALHE_SELECT} WHERE o.ml_id = $1 LIMIT 1`, [req.params.orderId]);
+    if (!rows.length) return res.status(404).json({ error: `Pedido ${req.params.orderId} não encontrado` });
+    res.json({ ok: true, row: calcularMargemLinha(rows[0], impostoFlexAtivo) });
+  } catch (e) {
+    console.error('[api] PATCH /vendas/:orderId/tarifa error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -680,7 +711,7 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
               o.total_amount, o.quantity, o.unit_price, o.ml_fee,
               o.shipping_type, o.shipping_cost, o.shipping_seller_cost,
               o.status, o.date_created, o.date_closed,
-              o.raw_data,
+              o.raw_data, o.tarifa_manual,
               s.nickname as store_name, s.imposto_pct,
               COALESCE(i.cost, 0) as custo_unitario,
               c.tarifa_real, c.frete_vend_real, pg.taxa_pgto
@@ -704,7 +735,12 @@ router.get('/pedidos/:id/detalhes', async (req, res) => {
     const imposto = fat * (Number(row.imposto_pct) / 100);
     const ssc = Number(row.shipping_seller_cost) || 0;
     let tarifa, freteVend, fonte;
-    if (row.tarifa_real != null) {
+    if (row.tarifa_manual != null) {
+      tarifa = Number(row.tarifa_manual) || 0;
+      freteVend = row.tarifa_real != null ? Number(row.frete_vend_real) || 0
+        : row.taxa_pgto != null ? Math.min(ssc, Number(row.taxa_pgto) || 0) : ssc;
+      fonte = 'manual';
+    } else if (row.tarifa_real != null) {
       tarifa = Number(row.tarifa_real) || 0;
       freteVend = Number(row.frete_vend_real) || 0;
       fonte = 'conciliacao';

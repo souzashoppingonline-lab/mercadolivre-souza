@@ -69,7 +69,12 @@ const VENDA_DETALHE_SELECT = `
          o.raw_data->'order_items'->0->'item'->>'seller_custom_field'
        ) as sku,
        i.thumbnail, i.available_quantity as estoque_atual, i.category_id,
-       CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
+       -- tarifa_manual (v84, botão "editar tarifa" em bi-vendas.html) tem
+       -- precedência sobre TUDO — é o escape hatch pra quando a Conciliação
+       -- vem errada e CONCILIACAO_TARIFA_LATERAL não pega o caso (ver
+       -- business-rules.md/known-bugs.md).
+       CASE WHEN o.tarifa_manual IS NOT NULL THEN o.tarifa_manual
+            WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
             WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
             ELSE COALESCE(o.ml_fee, 0) END as tarifa,
        o.shipping_type as frete_tipo,
@@ -78,7 +83,8 @@ const VENDA_DETALHE_SELECT = `
             WHEN pg.taxa_pgto IS NOT NULL THEN LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
             ELSE COALESCE(o.shipping_seller_cost, 0) END as frete_vendedor,
        (c.tarifa_real IS NOT NULL) as tem_conciliacao,
-       CASE WHEN c.tarifa_real IS NOT NULL THEN 'conciliacao'
+       CASE WHEN o.tarifa_manual IS NOT NULL THEN 'manual'
+            WHEN c.tarifa_real IS NOT NULL THEN 'conciliacao'
             WHEN pg.taxa_pgto IS NOT NULL THEN 'pagamento'
             ELSE 'pedido' END as fonte_taxa,
        o.status, o.date_created,

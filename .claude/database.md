@@ -16,7 +16,7 @@ cd server
 node src/db/migrate.js
 ```
 
-Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`, … até `v83` (a lista completa e canônica está em `db/migrate.js` — cada arquivo roda isolado: se um falhar, loga e continua, pra um erro antigo não bloquear as migrations seguintes).
+Arquivos aplicados, em ordem (lista em `db/migrate.js`): `schema.sql`, `migrate-v2.sql`, `v3`, `v4`, `v8`, `v9`, `v11`, `v12`, `v13`, `v14`, `v15`, `v16`, `v17`, `v18`, `v19`, `v20`, `v21`, `v22`, `v23`, `v24`, `v25`, `v26`, `v27`, `v28`, `v29`, … até `v84` (a lista completa e canônica está em `db/migrate.js` — cada arquivo roda isolado: se um falhar, loga e continua, pra um erro antigo não bloquear as migrations seguintes). **A cadeia inteira (80 arquivos) foi validada de ponta a ponta contra um Postgres 16 real nesta tarefa** (fresh install + re-run idempotente, 0 erros) — ver `known-bugs.md` pro gap de views `SELECT *` descoberto no processo.
 
 > **v5, v6, v7 e v10 não estão na lista de `migrate.js`** — o conteúdo delas (tabela `app_config`, tabela `promotions`, coluna `stores.imposto_pct`, índice único `messages.pack_id`) já foi incorporado em `schema.sql` diretamente. Os arquivos `migrate-v5.sql` a `migrate-v7.sql` e `migrate-v10.sql` continuam no repositório como registro histórico, mas rodar `migrate.js` do zero não depende deles. Ver `known-bugs.md` para o risco disso em bancos legados que nunca rodaram esses arquivos.
 
@@ -113,6 +113,13 @@ finance_sync_attempts INT DEFAULT 0      -- v82: reseta a 0 em todo sucesso; inc
 last_finance_sync_at TIMESTAMPTZ         -- v82: NULL = nunca tentou. Usado no backoff e
                                    -- no indicador "Última sincronização" da tela.
 last_finance_sync_error TEXT             -- v82: mensagem da última falha (404/429/etc.)
+tarifa_manual NUMERIC                    -- v84: edição manual da tarifa (botão ✏️ em
+                                   -- bi-vendas.html) — maior precedência de todas as
+                                   -- fontes em calcularMargemLinha/CASE WHEN (vence
+                                   -- Conciliação/ml_payments/ml_fee). NULL = sem edição,
+                                   -- usa o cálculo automático de sempre. Ver business-rules.md.
+tarifa_manual_by TEXT                    -- v84: staff_user_name de quem editou (NULL ao remover)
+tarifa_manual_at TIMESTAMPTZ             -- v84: quando editou (NULL ao remover)
 updated_at TIMESTAMPTZ
 ```
 Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data`, `shopee_order_data`). `orders` só guarda os campos comuns entre marketplaces.

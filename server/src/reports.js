@@ -223,7 +223,7 @@ async function getMargemPorLoja({ dateFrom, dateTo, days, considerarFC = false }
         COALESCE(i.cost,0)*o.quantity AS custo,
         o.total_amount*COALESCE(s.imposto_pct,0)/100 AS imposto,
         o.shipping_cost AS frete_comprador,
-        COALESCE(c.tarifa_real, pg.taxa_pgto, o.ml_fee, 0) AS tarifa,
+        COALESCE(o.tarifa_manual, c.tarifa_real, pg.taxa_pgto, o.ml_fee, 0) AS tarifa,
         CASE WHEN c.tarifa_real IS NOT NULL THEN COALESCE(c.frete_vend_real,0)
              WHEN pg.taxa_pgto IS NOT NULL THEN 0
              ELSE COALESCE(o.shipping_seller_cost,0) END AS frete_vendedor,

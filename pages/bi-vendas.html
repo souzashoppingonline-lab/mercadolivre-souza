@@ -239,6 +239,73 @@ function recalcMargem(r){
   r.mc_pct = Number(r.faturamento) > 0 ? (r.margem / Number(r.faturamento)) * 100 : 0;
 }
 
+// Substitui a linha pela versão recalculada que o backend devolveu (mesmo
+// SELECT/fórmula de sempre) e ajusta o KPI de margem pelo delta, sem
+// esperar o cache de 60s de /vendas/detalhado — extraído aqui porque o
+// mesmo padrão é usado tanto por "Atualizar" (sync com o ML) quanto pela
+// edição manual de tarifa abaixo.
+function aplicarLinhaAtualizada(mlId, novaLinha){
+  const idx = ROWS.findIndex(r => r.ml_id === mlId);
+  if (idx === -1) return;
+  const margemAntiga = ROWS[idx].status !== 'cancelled' ? Number(ROWS[idx].margem) || 0 : 0;
+  const margemNova = novaLinha.status !== 'cancelled' ? Number(novaLinha.margem) || 0 : 0;
+  ROWS[idx] = novaLinha;
+  if (SUMMARY.margem_total != null) {
+    SUMMARY.margem_total += (margemNova - margemAntiga);
+    SUMMARY.mc_pct = SUMMARY.vendas_aprovadas > 0 ? (SUMMARY.margem_total / SUMMARY.vendas_aprovadas) * 100 : 0;
+    renderKpis(SUMMARY);
+  }
+}
+
+// ── Tarifa (editável no card) ────────────────────────────────────────────
+// Escape hatch pra quando a Conciliação vem errada e a proteção automática
+// (CONCILIACAO_TARIFA_LATERAL, ver business-rules.md) não pega o caso —
+// pedido explícito do usuário. Diferente do custo (por ANÚNCIO), tarifa é
+// por PEDIDO — edita só o card clicado, nunca outros. Salva no backend
+// (fonte de verdade, orders.tarifa_manual) e volta com a linha já
+// recalculada — nunca recalcula margem/tarifa no cliente pra esse caso.
+let editandoTarifa = new Set();   // ml_id dos cards com o campo de tarifa aberto
+
+function tarifaCellHtml(r){
+  if (!editandoTarifa.has(r.ml_id)) {
+    const manual = r.fonte_taxa === 'manual';
+    return `<div class="l">Tarifa
+        <button class="vc-editcusto" title="Editar tarifa manualmente" onclick="abrirEdicaoTarifa('${jsStr(r.ml_id)}')"><i class="fas fa-pen"></i></button>
+        ${manual ? `<button class="vc-editcusto" title="Remover edição manual (voltar ao cálculo automático)" onclick="removerTarifaManual('${jsStr(r.ml_id)}')"><i class="fas fa-rotate-left"></i></button>` : ''}
+      </div>
+      <div class="v" style="color:#f87171">-${BRL(r.tarifa)}</div>
+      ${manual ? `<div style="font-size:9px;color:var(--text-muted);margin-top:1px">editado manualmente</div>` : ''}`;
+  }
+  return `<div class="l">Tarifa</div>
+    <div class="v" style="display:flex;gap:4px;align-items:center;justify-content:center">
+      <input type="number" class="vc-custoinput" id="tarifaInput_${esc(r.ml_id)}" min="0" step="0.01" value="${Number(r.tarifa||0).toFixed(2)}"
+        onkeydown="if(event.key==='Enter')salvarTarifa('${jsStr(r.ml_id)}');if(event.key==='Escape')cancelarEdicaoTarifa('${jsStr(r.ml_id)}')">
+      <button class="vc-custobtn ok" title="Salvar" onclick="salvarTarifa('${jsStr(r.ml_id)}')"><i class="fas fa-check"></i></button>
+      <button class="vc-custobtn cancel" title="Cancelar" onclick="cancelarEdicaoTarifa('${jsStr(r.ml_id)}')"><i class="fas fa-xmark"></i></button>
+    </div>`;
+}
+function abrirEdicaoTarifa(mlId){ editandoTarifa.add(mlId); renderGrid();
+  setTimeout(() => { const el = document.getElementById('tarifaInput_'+mlId); if (el) { el.focus(); el.select(); } }, 0); }
+function cancelarEdicaoTarifa(mlId){ editandoTarifa.delete(mlId); renderGrid(); }
+
+async function salvarTarifa(mlId){
+  const input = document.getElementById('tarifaInput_'+mlId);
+  if (!input) return;
+  const val = parseFloat(String(input.value).replace(',', '.'));
+  if (isNaN(val) || val < 0) { input.classList.add('err'); input.focus(); return; }
+  const res = await DB.setTarifaManual(mlId, val);
+  if (!res || res.error || !res.row) { input.classList.add('err'); return; }
+  aplicarLinhaAtualizada(mlId, res.row);
+  editandoTarifa.delete(mlId);
+  renderGrid();
+}
+async function removerTarifaManual(mlId){
+  const res = await DB.setTarifaManual(mlId, null);
+  if (!res || res.error || !res.row) return;
+  aplicarLinhaAtualizada(mlId, res.row);
+  renderGrid();
+}
+
 async function salvarCusto(mlId, itemId){
   const input = document.getElementById('custoInput_'+mlId);
   if (!input) return;
@@ -286,17 +353,7 @@ async function atualizarVenda(mlId, btn){
     alert('Não consegui atualizar essa venda: ' + (res && res.error || DB.lastError || 'erro desconhecido'));
     return;
   }
-  const idx = ROWS.findIndex(r => r.ml_id === mlId);
-  if (idx >= 0) {
-    const margemAntiga = ROWS[idx].status !== 'cancelled' ? Number(ROWS[idx].margem) || 0 : 0;
-    const margemNova = res.row.status !== 'cancelled' ? Number(res.row.margem) || 0 : 0;
-    ROWS[idx] = res.row;
-    if (SUMMARY.margem_total != null) {
-      SUMMARY.margem_total += (margemNova - margemAntiga);
-      SUMMARY.mc_pct = SUMMARY.vendas_aprovadas > 0 ? (SUMMARY.margem_total / SUMMARY.vendas_aprovadas) * 100 : 0;
-      renderKpis(SUMMARY);
-    }
-  }
+  aplicarLinhaAtualizada(mlId, res.row);
   renderGrid();
   if (res.shipping_error) console.warn('[bi-vendas] frete do vendedor não veio (logística sem custo exposto ou envio ainda não gerado):', res.shipping_error);
   if (res.payment_error) console.warn('[bi-vendas] tarifa real não veio (pagamento ainda não processado pelo ML):', res.payment_error);
@@ -361,7 +418,7 @@ function cardHtml(r){
     <div class="vc-fin">
       <div><div class="l">Venda</div><div class="v">${BRL(r.faturamento)}</div></div>
       <div><div class="l">Frete vend.</div><div class="v" style="color:#f87171">-${BRL(r.freteVend)}</div></div>
-      <div><div class="l">Tarifa</div><div class="v" style="color:#f87171">-${BRL(r.tarifa)}</div></div>
+      <div>${tarifaCellHtml(r)}</div>
       <div>${custoCellHtml(r)}</div>
       <div><div class="l">Imposto</div><div class="v" style="color:#f87171">-${BRL(r.imposto)}</div></div>
     </div>

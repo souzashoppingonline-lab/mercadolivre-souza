@@ -102,7 +102,17 @@
         </select>
         <input type="text" id="fBusca" placeholder="Buscar produto...">
         <button class="btn-primary" onclick="carregar()"><i class="fas fa-search"></i> Buscar</button>
+        <button onclick="toggleSyncInfo()" title="Como funciona a atualização de frete/tarifa" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:9px 12px;border-radius:10px;cursor:pointer;font-size:12.5px;display:inline-flex;align-items:center;gap:6px">
+          <i class="fas fa-circle-info"></i> Como funciona a atualização
+        </button>
         <span class="bi-status" id="biStatus"></span>
+      </div>
+
+      <div id="syncInfoBox" style="display:none;margin:0 0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card2);font-size:12.5px;color:var(--text-muted);line-height:1.6">
+        <b style="color:var(--text-main)">Frete do vendedor e tarifa são atualizados de duas formas:</b><br>
+        <b>Automática:</b> a cada 10 minutos, um job busca na API do Mercado Livre até 50 vendas ainda pendentes (nunca confirmadas), priorizando as das últimas 24h — não é "todas as vendas de 10 em 10 min", só as que faltam.<br>
+        <b>Manual:</b> clique no botão <i class="fas fa-sync-alt"></i> do card pra forçar a atualização na hora.<br>
+        <span class="vc-sync ok" style="vertical-align:middle"><i class="fas fa-check"></i> Sincronizado</span> = frete/tarifa já confirmados pela API. "Últ. sinc." = tentou mas ainda sem confirmação completa.
       </div>
 
       <div class="bi-kpis" id="biKpis"></div>
@@ -143,6 +153,11 @@ function fmtFreteClass(raw){ const l=fmtFreteLabel(raw); return l==='Mercado Env
 
 let ROWS = [], MOSTRADOS = 0;
 const PASSO = 24;
+
+function toggleSyncInfo() {
+  const box = document.getElementById('syncInfoBox');
+  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
 
 async function popularLojas(){
   try{

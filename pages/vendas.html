@@ -210,14 +210,27 @@
         <div class="card-header">
           <h3>Detalhamento por Venda</h3>
           <span id="s-count" style="font-size:12px;color:var(--text-muted)"></span>
-          <button id="maskBtn" onclick="toggleMask()" title="Ocultar/mostrar dados sensíveis" style="
+          <button id="syncInfoBtn" onclick="toggleSyncInfo()" title="Como funciona a atualização de frete/tarifa" style="
             margin-left:auto;background:transparent;border:1px solid var(--border);
+            color:var(--text-muted);padding:5px 12px;border-radius:6px;cursor:pointer;
+            font-size:.78rem;display:flex;align-items:center;gap:6px;transition:all .2s;
+          ">
+            <i class="fas fa-circle-info"></i><span> Como funciona a atualização</span>
+          </button>
+          <button id="maskBtn" onclick="toggleMask()" title="Ocultar/mostrar dados sensíveis" style="
+            background:transparent;border:1px solid var(--border);
             color:var(--text-muted);padding:5px 12px;border-radius:6px;cursor:pointer;
             font-size:.78rem;display:flex;align-items:center;gap:6px;transition:all .2s;
           ">
             <i class="fas fa-eye-slash" id="maskIcon"></i><span id="maskLabel"> Mascarar</span>
           </button>
           <button class="action-btn" onclick="exportTableCSV(document.getElementById('vendasTbody').closest('table'), 'vendas-totais.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div id="syncInfoBox" style="display:none;margin:0 16px 14px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card2);font-size:12.5px;color:var(--text-muted);line-height:1.6">
+          <b style="color:var(--text-primary)">Frete do vendedor e tarifa são atualizados de duas formas:</b><br>
+          <b>Automática:</b> a cada 10 minutos, um job busca na API do Mercado Livre até 50 vendas ainda pendentes (que nunca tiveram frete/tarifa confirmados), priorizando as das últimas 24h. Não é "todas as vendas de 10 em 10 min" — só as que ainda faltam.<br>
+          <b>Manual:</b> clique no botão <i class="fas fa-sync-alt"></i> na linha da venda para forçar a atualização imediatamente, sem esperar o job.<br>
+          <i class="fas fa-check tbl-sync-ok"></i> ao lado do botão = já sincronizado (frete/tarifa confirmados pela API). Sem o ícone = ainda pendente.
         </div>
         <div class="table-responsive">
           <table class="data-table" id="vendasTable" style="font-size:12px">
@@ -255,6 +268,10 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
+function toggleSyncInfo() {
+  const box = document.getElementById('syncInfoBox');
+  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
 let _masked = false;
 function toggleMask() {
   _masked = !_masked;

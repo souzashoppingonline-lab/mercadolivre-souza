@@ -226,6 +226,8 @@ Notificação (tela via WS `ranking_event` + Telegram `tg_rankeamento`) e marco 
 | `GET /api/config/email` | `{ configured, email_resumo, email_topvendas, email_semanal }` — `configured` reflete se `RESEND_API_KEY`+`RESEND_TO_EMAIL` estão no `.env` |
 | `PATCH /api/config/email { email_resumo?, email_topvendas?, email_semanal? }` | grava os toggles em `app_config` |
 | `POST /api/config/email/test` | envia e-mail de teste para `RESEND_TO_EMAIL` |
+| `GET /api/config/imposto-flex` | `{ imposto_flex_ativo }` — flag geral (não por loja), `app_config.key='imposto_flex_ativo'`, padrão `false` (sem registro salvo = não cobra imposto de venda Flex). Controle em `bi-vendas.html` |
+| `PATCH /api/config/imposto-flex { imposto_flex_ativo }` | grava a flag. Lida por `calcularMargemLinha` (`vendaMargem.js`) — afeta `/vendas/detalhado`, `/bi/margem*`, `/vendas/:orderId/atualizar`. Ver `business-rules.md` pro escopo exato (não cobre `/vendas/hoje`/`reports.js`/`/vendas/margem`, ver `known-bugs.md`) |
 
 ## Promoções
 | Rota | Descrição |

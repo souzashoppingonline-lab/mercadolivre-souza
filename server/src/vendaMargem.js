@@ -7,6 +7,8 @@
 // vivia dentro de routes/api.js e era exportado como propriedade do router
 // (funcionava, mas ficava estranho fora de rota). Nunca duplicar esta fórmula
 // em outro lugar — ver finance.md.
+const pool = require('./db/pool');
+
 const VENDA_DETALHE_SELECT = `
      SELECT
        o.ml_id, o.store_id, s.nickname as conta, o.item_id,
@@ -56,12 +58,26 @@ const VENDA_DETALHE_SELECT = `
          AND p.status = 'approved'
      ) pg ON true`;
 
+// Vendas Flex (shipping_type='self_service') não têm nota fiscal emitida
+// (pedido explícito do usuário) — por padrão o imposto não é cobrado nelas.
+// Flag GERAL (não por loja), key/value em app_config (mesmo padrão de
+// tg_*/email_*), lida 1x por request pelo chamador e passada adiante —
+// calcularMargemLinha continua síncrona/pura, sem I/O escondido.
+async function buscarImpostoFlexAtivo() {
+  const { rows } = await pool.query(`SELECT value FROM app_config WHERE key='imposto_flex_ativo'`);
+  return rows[0]?.value === 'true';
+}
+
 // Aplica a fórmula de margem (finance.md) em cima de 1 linha crua da query
 // acima. Nunca duas fórmulas de margem no projeto.
-function calcularMargemLinha(r) {
+// `impostoFlexAtivo` (default false = comportamento padrão do sistema):
+// quando false, vendas Flex sempre entram com imposto=0, independente do
+// imposto_pct configurado na loja (ver business-rules.md).
+function calcularMargemLinha(r, impostoFlexAtivo = false) {
   const fat = Number(r.faturamento) || 0;
   const custo = Number(r.custo) * (Number(r.quantity) || 1);
-  const imposto = fat * (Number(r.imposto_pct) / 100);
+  const isFlex = r.frete_tipo === 'self_service';
+  const imposto = (isFlex && !impostoFlexAtivo) ? 0 : fat * (Number(r.imposto_pct) / 100);
   const tarifa = Number(r.tarifa) || 0;
   const freteVend = Number(r.frete_vendedor) || 0;
   const freteComp = Number(r.frete_comprador) || 0;
@@ -70,4 +86,4 @@ function calcularMargemLinha(r) {
   return { ...r, custo, imposto, tarifa, freteVend, margem, mc_pct: Number(mc_pct.toFixed(2)) };
 }
 
-module.exports = { VENDA_DETALHE_SELECT, calcularMargemLinha };
+module.exports = { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo };

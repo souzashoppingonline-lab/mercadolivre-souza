@@ -15,7 +15,7 @@
 const pool = require('./db/pool');
 const redis = require('./db/redis');
 const ml = require('./mlClient');
-const { VENDA_DETALHE_SELECT, calcularMargemLinha } = require('./vendaMargem');
+const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo } = require('./vendaMargem');
 
 // Reconsulta 1 pedido na API do ML e atualiza tudo que dá pra confirmar agora:
 //  1) /orders/:id — ml_fee, shipping_cost/type/id, raw_data inteiro (também
@@ -163,7 +163,7 @@ async function reconciliarPedido(orderId) {
   if (!fresh.length) return { ok: false, error: 'pedido não encontrado após atualizar', finance_synced: financeSynced };
   return {
     ok: true,
-    row: calcularMargemLinha(fresh[0]),
+    row: calcularMargemLinha(fresh[0], await buscarImpostoFlexAtivo()),
     shipping_error: shippingError,
     payment_error: paymentError,
     finance_synced: financeSynced,

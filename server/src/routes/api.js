@@ -343,7 +343,7 @@ router.get('/vendas/diarias', async (req, res) => {
 
 // SELECT + fórmula de margem — v82: movidos pra vendaMargem.js (módulo
 // próprio) quando o financeService virou o 4º consumidor. Nunca duplicar.
-const { VENDA_DETALHE_SELECT, calcularMargemLinha } = require('../vendaMargem');
+const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo } = require('../vendaMargem');
 const financeService = require('../financeService');
 
 router.get('/vendas/detalhado', async (req, res) => {
@@ -379,18 +379,25 @@ router.get('/vendas/detalhado', async (req, res) => {
     params
   );
 
-  const result = rows.map(calcularMargemLinha);
+  const impostoFlexAtivo = await buscarImpostoFlexAtivo();
+  const result = rows.map(r => calcularMargemLinha(r, impostoFlexAtivo));
 
   // Totais — agregados no banco sobre TODO o range filtrado (sem LIMIT), agrupados
   // por status para separar aprovadas/canceladas. Corrige bug: antes os cards de
   // totais eram somados em cima da mesma lista já cortada em 1000 linhas, então
   // qualquer período/loja com mais de 1000 pedidos mostrava valores incompletos.
+  // Imposto de venda Flex (self_service) segue a mesma flag geral de
+  // calcularMargemLinha (business-rules.md) — impostoFlexAtivo já foi lido
+  // acima (config, não input do usuário), seguro montar a expressão na mão.
+  const impostoSql = impostoFlexAtivo
+    ? `o.total_amount * COALESCE(s.imposto_pct, 0) / 100`
+    : `CASE WHEN o.shipping_type = 'self_service' THEN 0 ELSE o.total_amount * COALESCE(s.imposto_pct, 0) / 100 END`;
   const { rows: aggRows } = await pool.query(
     `SELECT
        o.status,
        COALESCE(SUM(o.total_amount), 0) AS faturamento,
        COALESCE(SUM(COALESCE(i.cost, 0) * o.quantity), 0) AS custo,
-       COALESCE(SUM(o.total_amount * COALESCE(s.imposto_pct, 0) / 100), 0) AS imposto,
+       COALESCE(SUM(${impostoSql}), 0) AS imposto,
        COALESCE(SUM(CASE WHEN c.tarifa_real IS NOT NULL THEN c.tarifa_real
                          WHEN pg.taxa_pgto IS NOT NULL THEN pg.taxa_pgto - LEAST(COALESCE(o.shipping_seller_cost,0), pg.taxa_pgto)
                          ELSE COALESCE(o.ml_fee, 0) END), 0) AS tarifa,
@@ -1092,6 +1099,26 @@ router.post('/config/telegram/test', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Flag GERAL (não por loja): vendas Flex (shipping_type='self_service') não
+// têm nota fiscal emitida — por padrão o imposto não é cobrado nelas em
+// nenhum cálculo de margem (calcularMargemLinha, vendaMargem.js). Chave
+// única em app_config, mesmo padrão key/value de tg_*/email_*. Lida por
+// GET /vendas/detalhado, GET/POST /bi/margem*, POST /vendas/:orderId/atualizar
+// e o job de reconciliação — ver business-rules.md.
+router.get('/config/imposto-flex', async (req, res) => {
+  const { rows } = await pool.query(`SELECT value FROM app_config WHERE key='imposto_flex_ativo'`);
+  res.json({ imposto_flex_ativo: rows[0]?.value === 'true' });
+});
+router.patch('/config/imposto-flex', async (req, res) => {
+  const ativo = req.body?.imposto_flex_ativo === true;
+  await pool.query(
+    `INSERT INTO app_config (key, value, updated_at) VALUES ('imposto_flex_ativo', $1, now())
+     ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`,
+    [String(ativo)]
+  );
+  res.json({ ok: true, imposto_flex_ativo: ativo });
 });
 
 // Relatórios por e-mail (Resend) — credencial (API key/from/to) só via

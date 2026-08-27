@@ -465,7 +465,7 @@ Populada pelo job `syncBillingCharges` (`worker.js`, a cada 30min) via `GET /bil
 ```
 key TEXT PK, value TEXT DEFAULT '', updated_at TIMESTAMPTZ
 ```
-Chaves usadas hoje: `telegram_bot_token`, `telegram_chat_id`, `tg_vendas`, `tg_servicos`, `tg_recursos`, `tg_reposicao`, `tg_perguntas`, `tg_mensagens`, `tg_promocoes`, `tg_devolucoes`, `tg_anuncios`, `tg_tarefas`, `tg_conciliacao`, `tg_token`, `tg_fila`, `tg_429`, `tg_infra`, `tg_resumo`, `tg_outlier`, `tg_topvendas`, `tg_interval`, `silence_start`, `silence_end`.
+Chaves usadas hoje: `telegram_bot_token`, `telegram_chat_id`, `tg_vendas`, `tg_servicos`, `tg_recursos`, `tg_reposicao`, `tg_perguntas`, `tg_mensagens`, `tg_promocoes`, `tg_devolucoes`, `tg_anuncios`, `tg_tarefas`, `tg_conciliacao`, `tg_token`, `tg_fila`, `tg_429`, `tg_infra`, `tg_resumo`, `tg_outlier`, `tg_topvendas`, `tg_interval`, `silence_start`, `silence_end`, `email_resumo`, `email_topvendas`, `email_semanal`, `imposto_flex_ativo` (vendas Flex não cobram imposto por padrão — `false` se ausente, ver `business-rules.md`; não precisou de migration, `app_config` já é key/value livre).
 
 ### `sku_costs` — custo por SKU (compartilhado entre lojas)
 ```

@@ -382,6 +382,8 @@ const DB = {
   async testTelegram(message)         { return this._post('/config/telegram/test', { message }); },
 
   // ── E-mail (Resend) ────────────────────────────────────────
+  async getImpostoFlexConfig()        { return this._get('/config/imposto-flex'); },
+  async setImpostoFlexConfig(ativo)   { return this._patch('/config/imposto-flex', { imposto_flex_ativo: !!ativo }); },
   async getEmailConfig()              { return this._get('/config/email'); },
   async saveEmailConfig(body)         { return this._patch('/config/email', body); },
   async testEmail()                   { return this._post('/config/email/test', {}); },

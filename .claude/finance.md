@@ -28,6 +28,8 @@ margem  = total_amount − custo − imposto − tarifa − frete_comprador − 
 mc_pct  = margem / total_amount × 100
 ```
 
+**Exceção — vendas Flex não pagam imposto por padrão** (`calcularMargemLinha`, `vendaMargem.js`; flag geral `imposto_flex_ativo` em `app_config`, ver `business-rules.md`): quando `shipping_type='self_service'` (Flex) e a flag está desligada (padrão do sistema), `imposto=0` nessa linha, independente do `imposto_pct` da loja — motivo: vendas Flex não têm nota fiscal emitida. **Escopo da flag**: só os consumidores de `calcularMargemLinha` a respeitam — `GET /api/vendas/detalhado` (Resumo por Venda, inclusive o card de totais), `GET /api/bi/margem*` (Inteligência de Margem, Vendas por Estágio) e `POST /api/vendas/:orderId/atualizar`/`financeReconciliationJob`. `GET /api/vendas/hoje`, `/vendas/hoje-vs-ontem`, `/pedidos/:id/detalhes` e os relatórios de `reports.js` calculam imposto **direto em SQL própria**, sem passar por `calcularMargemLinha` — continuam cobrando imposto de Flex sempre, decisão explícita do usuário de não estender a flag pra lá nesta tarefa (ver `known-bugs.md`).
+
 ### Precedência da taxa por pedido (Tarifa + Frete Vendedor) — `/vendas/detalhado` e `/vendas/margem`
 
 Ambas calculam a taxa **por pedido** (`LEFT JOIN LATERAL` por `order_id`, some por loja/status depois) nesta ordem:

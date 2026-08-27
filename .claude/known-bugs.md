@@ -151,3 +151,11 @@ Hoje, cortar o acesso na hora exige trocar `STAFF_JWT_SECRET` no `.env` e reinic
 Ao criar `pages/bi-vendas.html` nesta tarefa, o caminho foi adicionado corretamente em `MODULES.bi.pages` — não repetir o gap do Financeiro em telas novas do BI.
 
 **Correção esperada:** ou trocar `pages: [...]` por um prefixo (`financeiro`/`financeiro-*.html` batendo por `startsWith`), ou completar o array do Financeiro com todas as páginas `financeiro-*.html` existentes hoje. A 1ª opção evita esquecer de novo a cada tela nova.
+
+## Flag "imposto Flex" não cobre TODOS os cálculos de imposto do sistema
+
+A fórmula `imposto = total_amount × stores.imposto_pct/100` está duplicada em vários lugares além de `calcularMargemLinha` (`vendaMargem.js`, único módulo que hoje respeita a flag `imposto_flex_ativo` — ver `business-rules.md`): `GET /api/vendas/hoje`, `GET /api/vendas/hoje-vs-ontem`, `GET /api/pedidos/:id/detalhes`, os relatórios de `server/src/reports.js` (resumo diário/semanal, Telegram) e `GET /api/vendas/margem` (tela "Margem por loja" em `vendas.html`/`lojas.html`) calculam imposto **direto em SQL própria**, sem passar por `vendaMargem.js`.
+
+Consequência: com a flag desligada (padrão), uma venda Flex mostra imposto=R$0 em "Resumo por Venda"/Inteligência de Margem, mas continua mostrando imposto cheio nessas outras telas — dois números de lucro diferentes pra mesma venda, dependendo de qual tela você está olhando. Perguntado explicitamente ao usuário se deveria estender a flag pra lá também; resposta foi **não, só onde foi pedido** — então isso é um gap conhecido e aceito, não um bug esquecido.
+
+**Correção esperada, se/quando o usuário pedir:** os mesmos 2 padrões já resolvidos em `vendaMargem.js`/`routes/api.js` (`GET /vendas/detalhado`) servem de referência — (1) função JS: aceitar `impostoFlexAtivo` e zerar quando `shipping_type==='self_service'`; (2) SQL agregada: trocar `total_amount * imposto_pct/100` por um `CASE WHEN shipping_type='self_service' THEN 0 ELSE ... END` quando a flag estiver desligada. Extrair a expressão SQL pra uma função auxiliar (`imposto_pct` já é column-based, não precisa de mais nada) evitaria repetir esse CASE em cada arquivo.

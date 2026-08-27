@@ -13,7 +13,7 @@ const ranking = require('../ranking');
 // SQL + fórmula de margem, reusadas aqui pra não duplicar (routes/api.js e
 // financeService.js também usam este mesmo módulo). Nunca duas fórmulas de
 // margem no projeto.
-const { VENDA_DETALHE_SELECT, calcularMargemLinha } = require('../vendaMargem');
+const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo } = require('../vendaMargem');
 
 const router = express.Router();
 
@@ -320,6 +320,7 @@ async function computarMargem({ days, storeId, dateFrom, dateTo, categoryId } = 
   const duracaoDias = Math.round((new Date(curFim + 'T00:00:00Z') - new Date(curIni + 'T00:00:00Z')) / 86400000) + 1;
   const prevFim = addDiasStr(curIni, -1);
   const prevIni = addDiasStr(prevFim, -(duracaoDias - 1));
+  const impostoFlexAtivo = await buscarImpostoFlexAtivo();
 
   const buscarPeriodo = async (dIni, dFim, marcador) => {
     const p = [dIni, dFim];
@@ -337,7 +338,7 @@ async function computarMargem({ days, storeId, dateFrom, dateTo, categoryId } = 
        LIMIT 20000`,
       p
     );
-    return rows.map(calcularMargemLinha);
+    return rows.map(r => calcularMargemLinha(r, impostoFlexAtivo));
   };
   // Janela de tendência: SEMPRE 42 dias (6 semanas) terminando no FIM do
   // período selecionado (não necessariamente hoje — analisar "mês anterior"
@@ -832,7 +833,8 @@ router.get('/margem/produto/:itemId', async (req, res) => {
       params
     );
     if (!rows.length) return res.json({ item_id: itemId, dias, serie: [], resumo: null });
-    const linhas = rows.map(calcularMargemLinha);
+    const impostoFlexAtivo = await buscarImpostoFlexAtivo();
+    const linhas = rows.map(r => calcularMargemLinha(r, impostoFlexAtivo));
 
     const porDia = new Map();
     for (const r of linhas) {
@@ -984,6 +986,7 @@ function insightsEstagios(buckets, comparacaoOntem, comparacao7d) {
 const FASE_LABEL_PT = { rankeando: 'Em rankeamento', ranqueado: 'Ranqueado', monitoramento: 'Monitoramento', recuperacao: 'Recuperação', sem_rankeamento: 'Sem rankeamento' };
 
 async function computarRankeamento(days, storeId) {
+  const impostoFlexAtivo = await buscarImpostoFlexAtivo();
   const buscarPeriodo = async (dIni, dFim, marcador) => {
     const p = [dIni, dFim];
     let filtro = '';
@@ -995,7 +998,7 @@ async function computarRankeamento(days, storeId) {
        ORDER BY o.date_created DESC LIMIT 20000`,
       p
     );
-    return rows.map(calcularMargemLinha);
+    return rows.map(r => calcularMargemLinha(r, impostoFlexAtivo));
   };
 
   const hojeISO = addDiasISO(0);

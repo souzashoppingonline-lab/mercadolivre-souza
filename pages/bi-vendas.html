@@ -105,6 +105,9 @@
         <button onclick="toggleSyncInfo()" title="Como funciona a atualização de frete/tarifa" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:9px 12px;border-radius:10px;cursor:pointer;font-size:12.5px;display:inline-flex;align-items:center;gap:6px">
           <i class="fas fa-circle-info"></i> Como funciona a atualização
         </button>
+        <label title="Vendas Flex não têm nota fiscal emitida — por padrão o imposto não entra na margem delas. Afeta também Inteligência de Margem." style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);border:1px solid var(--border);border-radius:10px;padding:8px 12px;cursor:pointer">
+          <input type="checkbox" id="fImpostoFlex" onchange="salvarImpostoFlex()"> cobrar imposto em vendas Flex
+        </label>
         <span class="bi-status" id="biStatus"></span>
       </div>
 
@@ -165,6 +168,22 @@ async function popularLojas(){
     const sel = document.getElementById('fLoja');
     (d.stores||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.nickname; sel.appendChild(o); });
   }catch(e){}
+}
+
+// Flag GERAL (não por loja) — vendas Flex não têm nota fiscal, por padrão
+// não entram com imposto em NENHUM cálculo de margem (Resumo por Venda e
+// Inteligência de Margem, ver business-rules.md). Recarrega a lista ao
+// mudar pra refletir o novo total na hora, sem precisar clicar "Buscar".
+async function carregarImpostoFlex(){
+  try{
+    const d = await DB.getImpostoFlexConfig();
+    document.getElementById('fImpostoFlex').checked = !!(d && d.imposto_flex_ativo);
+  }catch(e){}
+}
+async function salvarImpostoFlex(){
+  const checkbox = document.getElementById('fImpostoFlex');
+  await DB.setImpostoFlexConfig(checkbox.checked);
+  carregar();
 }
 
 function copiar(txt, btn){
@@ -407,6 +426,7 @@ async function carregarFases(){
 }
 
 popularLojas();
+carregarImpostoFlex();
 carregar();
 </script>
 </body>

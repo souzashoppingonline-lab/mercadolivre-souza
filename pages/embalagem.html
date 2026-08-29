@@ -491,7 +491,10 @@ async function loadPrintStations() {
     sel.innerHTML = '<option value="">(automático)</option>' + rows.map(r =>
       `<option value="${r.id}" ${String(r.id) === saved ? 'selected' : ''}>${escapeHtml(r.name)}${r.store_nickname ? (' — ' + escapeHtml(r.store_nickname)) : ''}</option>`
     ).join('');
-    sel.onchange = () => localStorage.setItem('print_station_id', sel.value);
+    // Depois de escolher, devolve o foco pro campo de bipagem (leitor de
+    // código de barras "digita" no que estiver focado) — sem isso o próximo
+    // bipe cairia dentro do <select>, não no scanInput.
+    sel.onchange = () => { localStorage.setItem('print_station_id', sel.value); refocusScan(); };
     row.style.display = 'flex';
   } catch { /* estações são opcionais — silencioso */ }
 }
@@ -963,11 +966,26 @@ scanInput.addEventListener('keydown', (e) => {
   scanInput.value = '';
   if (raw.trim()) handleScan(raw);
 });
+// Mantém o foco sempre no campo de bipagem (o leitor de código de barras USB
+// só "digita" no elemento focado) — MAS sem roubar o foco de volta enquanto o
+// operador está de fato usando outro campo interativo do próprio painel
+// Bipar, como o seletor "Imprimir nesta estação". Sem essa checagem, o
+// <select> nativo abria e fechava na hora do clique, sem deixar escolher a
+// opção (bug real reportado pelo usuário) — o clique disparava este mesmo
+// listener, que devolvia o foco pro scanInput antes do dropdown nativo
+// conseguir ficar aberto.
 function refocusScan() {
-  if (document.getElementById('panelBipar').classList.contains('active')) scanInput.focus();
+  if (!document.getElementById('panelBipar').classList.contains('active')) return;
+  const printRow = document.getElementById('printStationRow');
+  if (printRow && printRow.contains(document.activeElement)) return;
+  scanInput.focus();
 }
 document.addEventListener('click', (e) => {
-  if (!document.getElementById('panelBuscar').contains(e.target) && !document.getElementById('videoModalBackdrop').contains(e.target)) refocusScan();
+  if (document.getElementById('panelBuscar').contains(e.target)) return;
+  if (document.getElementById('videoModalBackdrop').contains(e.target)) return;
+  const printRow = document.getElementById('printStationRow');
+  if (printRow && printRow.contains(e.target)) return;
+  refocusScan();
 });
 scanInput.addEventListener('blur', () => setTimeout(refocusScan, 200));
 
@@ -1822,8 +1840,23 @@ function rdImprimir() {
 }
 
 // ── Init ────────────────────────────────────────────────────
-initCamera();
-refocusScan();
+// Papel 'admin' entra só pra COLETAR DADO (relatórios) — nunca deveria ativar
+// a câmera, pedido explícito do usuário. A aba "Bipar" (a única com câmera de
+// verdade — as outras são todas relatório/histórico, ver embalagem.md) fica
+// escondida pro admin; o papel 'embalagem' (ou sessão sem staffAuth ligado)
+// continua exatamente como sempre foi.
+async function initEmbalagemPorPapel() {
+  const staff = await getCurrentStaffUser();
+  if (staff?.role === 'admin') {
+    const tabBipar = document.getElementById('tabBtnBipar');
+    if (tabBipar) tabBipar.style.display = 'none';
+    switchTab('conferencia'); // relatório de hoje — mesmo destino de quem só quer olhar dado
+  } else {
+    initCamera();
+    refocusScan();
+  }
+}
+initEmbalagemPorPapel();
 </script>
 
 </body>

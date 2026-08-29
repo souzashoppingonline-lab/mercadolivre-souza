@@ -32,6 +32,15 @@ Não existia antes: o `shipping_id` (`order.shipping.id` na resposta `/orders/:i
 
 Abas: **Bipar** (fluxo principal), **Buscar vídeos** (consulta livre), **Conferência do Dia** (consulta sempre travada em "hoje"), **Histórico** (tendência ao longo de semanas/meses), **Relatórios** (produtividade por embalador), **Relatório do Dia** (fechamento em PDF de dia/semana/mês), **Auditoria** (o que falta bipar) e **Erros**.
 
+### Acesso por papel — admin nunca ativa a câmera (`initEmbalagemPorPapel()`)
+
+Pedido explícito do usuário: papel **admin** entra nesta página só pra **coletar dado** (olhar relatórios), nunca pra bipar — a câmera (`getUserMedia`) não deveria nem ser pedida. Papel **embalagem** (o operador de verdade) continua **exatamente como sempre foi**.
+
+- `initEmbalagemPorPapel()` (chamada no lugar do antigo `initCamera()` direto no fim do script) consulta `/auth/staff/me` uma vez ao carregar a página:
+  - **`role === 'admin'`**: esconde a aba **Bipar** (`tabBtnBipar`, `display:none` — é a ÚNICA aba com `getUserMedia`, todas as outras já são relatório/histórico/busca de vídeo gravado) e pousa direto na aba **Conferência do Dia** (já mostra o resumo de hoje, é o destino natural de quem só quer olhar dado). `initCamera()` **nunca** é chamado.
+  - **`role === 'embalagem'` (ou sem staffAuth ligado, `staff === null`)**: comportamento de sempre — `initCamera()` chamado normalmente, aba Bipar visível e ativa por padrão.
+- Reusa `getCurrentStaffUser()` (já existente, antes só usado pra anexar `staff_user_name` no vídeo salvo).
+
 ### Aba Bipar — máquina de estado
 
 `idle → loading → recording → saving → idle` (com uma bifurcação de confirmação).

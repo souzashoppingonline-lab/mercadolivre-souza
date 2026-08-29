@@ -60,6 +60,19 @@ do pedido — mas SEM seleção manual, `last_seen` decide, então uma estação
 recém-cadastrada só vence a automática depois do 1º poll bem-sucedido do agente
 (antes disso, `last_seen IS NULL` fica sempre por último — `NULLS LAST`).
 
+> **Bug real corrigido — o `<select>` de estação abria e fechava sem deixar
+> escolher**: a página mantém o campo de bipagem sempre em foco (o leitor de
+> código de barras USB "digita" no elemento focado) via um listener global de
+> `click` no `document` + um handler de `blur` no `scanInput`, ambos chamando
+> `refocusScan()`. Esses dois mecanismos não sabiam da existência do seletor
+> `#printStationRow` — clicar nele pra abrir o dropdown nativo disparava o
+> listener global, que devolvia o foco pro `scanInput` na hora, fechando o
+> `<select>` antes de dar tempo de escolher uma opção. Corrigido: tanto o
+> listener de clique quanto `refocusScan()` agora ignoram interações dentro de
+> `#printStationRow` (via `Element.contains()`), e `sel.onchange` devolve o
+> foco pro `scanInput` explicitamente **depois** que a escolha é feita — pra
+> não regredir o "sempre focado" que o resto da tela depende.
+
 ## Confiabilidade
 
 - **Claim atômico**: `GET /print-agent/jobs/next` faz `UPDATE ... FOR UPDATE SKIP

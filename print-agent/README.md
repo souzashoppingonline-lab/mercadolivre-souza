@@ -60,6 +60,8 @@ confirme que o **tamanho de papel padrão da impressora** é 10×15 cm.
 ## Solução de problemas
 
 - **Não imprime nada**: confira `printerName` (idêntico ao do Windows) e `sumatraPath`.
+- **`spawn ...SumatraPDF.exe ENOENT`** no terminal do agente: o SumatraPDF não está instalado nesse caminho — instale (instalador padrão "for all users" cai em `C:\Program Files\SumatraPDF\SumatraPDF.exe`, que já bate com `config.example.json`) ou ajuste `sumatraPath` pro caminho real de onde foi instalado.
 - **HTTP 401**: `stationToken` errado.
 - **Imprime encolhido**: tamanho de papel da impressora não é 10×15 / driver ajustando escala.
-- **Nada na fila**: bipe uma etiqueta; veja `GET /api/print/jobs?status=pending` no servidor.
+- **Nada na fila**: bipe uma etiqueta; veja `GET /api/print/jobs?status=pending` no servidor (só admin).
+- **Erro mostrado como "erro de impressão" genérico em `GET /api/print/jobs`, sem detalhe**: **antes da correção**, o agente não mandava a mensagem de erro real pro servidor — só aparecia no terminal do próprio PC (`[print-agent] ✗ job N: <erro real>`). Já corrigido — a partir de agora `GET /api/print/jobs` mostra a mensagem completa (ex.: o `ENOENT` acima), sem precisar estar na frente do PC.

@@ -30,20 +30,23 @@ const POLL_MS = Number(cfg.pollIntervalMs) || 3000;
 const TMP = path.join(os.tmpdir(), 'print-agent');
 fs.mkdirSync(TMP, { recursive: true });
 
-function req(method, urlStr, { headers = {}, asBuffer = false } = {}) {
+function req(method, urlStr, { headers = {}, asBuffer = false, body = null } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
     const lib = u.protocol === 'https:' ? https : http;
-    const r = lib.request(u, { method, headers: { 'x-station-token': TOKEN, ...headers } }, (res) => {
+    const finalHeaders = { 'x-station-token': TOKEN, ...headers };
+    if (body != null) finalHeaders['content-length'] = Buffer.byteLength(body);
+    const r = lib.request(u, { method, headers: finalHeaders }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
-        const body = Buffer.concat(chunks);
-        if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}: ${body.toString().slice(0, 200)}`));
-        resolve(asBuffer ? body : (body.length ? JSON.parse(body.toString()) : {}));
+        const respBody = Buffer.concat(chunks);
+        if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}: ${respBody.toString().slice(0, 200)}`));
+        resolve(asBuffer ? respBody : (respBody.length ? JSON.parse(respBody.toString()) : {}));
       });
     });
     r.on('error', reject);
+    if (body != null) r.write(body);
     r.end();
   });
 }
@@ -69,9 +72,13 @@ async function handleOne() {
     console.log(`[print-agent] ✅ impresso job ${job.id} (${job.shipping_id || ''})`);
   } catch (e) {
     console.error(`[print-agent] ✗ job ${job.id}: ${e.message}`);
+    // Antes não mandava a mensagem real pro servidor (POST sem corpo, sempre
+    // caía no fallback genérico "erro de impressão" — só dava pra diagnosticar
+    // estando na frente deste PC, olhando o terminal). Agora manda o erro de
+    // verdade, visível em GET /api/print/jobs sem precisar de acesso físico.
     try {
       await req('POST', `${BASE}/print-agent/jobs/${job.id}/error`,
-        { headers: { 'content-type': 'application/json' } });
+        { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ error: String(e.message || e).slice(0, 500) }) });
     } catch {}
   } finally {
     fs.rm(file, { force: true }, () => {});

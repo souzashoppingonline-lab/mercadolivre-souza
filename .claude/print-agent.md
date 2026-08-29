@@ -81,6 +81,13 @@ recém-cadastrada só vence a automática depois do 1º poll bem-sucedido do age
 - **Retry**: `POST /print-agent/jobs/:id/error` reagenda (`pending`) até 3
   tentativas; depois marca `error`.
 - **Offline**: VPS/agente fora do ar → jobs ficam `pending` e imprimem ao voltar.
+- **Mensagem de erro real chega no servidor** (`print-agent/agent.js`, `req()` agora
+  aceita/envia `body`): antes o `POST /jobs/:id/error` ia sempre **sem corpo**, então
+  o servidor caía no fallback genérico `'erro de impressão'` (`routes/printAgent.js`,
+  `req.body?.error || 'erro de impressão'`) — só dava pra saber a causa real
+  (ex.: `spawn ...SumatraPDF.exe ENOENT`, caminho errado) estando na frente do PC,
+  lendo o `console.error` do próprio agente. Bug real corrigido — `GET
+  /api/print/jobs` agora mostra a mensagem de verdade, diagnosticável remotamente.
 
 ## Escala da etiqueta
 

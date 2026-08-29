@@ -9,18 +9,27 @@ const wsHub = require('../ws/hub');
 
 const router = express.Router();
 
-// Resolve a estação de um job: usa station_id se veio; senão a 1ª estação da loja.
+// Resolve a estação de um job: usa station_id se veio; senão a estação da
+// loja; senão a estação GLOBAL (store_id NULL). Quando há mais de uma
+// candidata no mesmo nível (ex.: 2 PCs de expedição, ambos globais), escolhe
+// a de `last_seen` mais recente — NUNCA a de menor id "por acaso". Bug real:
+// com 2 estações globais, a de menor id (cadastrada primeiro) sempre vencia
+// mesmo com o agente dela offline há semanas, enquanto a estação de verdade
+// ativa (id maior, agente rodando) nunca recebia job nenhum no automático —
+// só era alcançável selecionando ela manualmente no seletor da tela de
+// Embalagem. `NULLS LAST` pra uma estação recém-cadastrada (nunca fez poll
+// ainda) não furar na frente de uma que já provou estar viva.
 async function resolveStationId({ station_id, store_id }) {
   if (station_id) return Number(station_id);
   if (store_id) {
     const { rows } = await pool.query(
-      `SELECT id FROM print_stations WHERE store_id=$1 ORDER BY id LIMIT 1`, [store_id]
+      `SELECT id FROM print_stations WHERE store_id=$1 ORDER BY last_seen DESC NULLS LAST, id LIMIT 1`, [store_id]
     );
     if (rows[0]) return rows[0].id;
   }
-  // Fallback: estação "global" (store_id NULL) — uma impressora só pra todas as lojas.
+  // Fallback: estação "global" (store_id NULL) — pode haver mais de uma.
   const { rows } = await pool.query(
-    `SELECT id FROM print_stations WHERE store_id IS NULL ORDER BY id LIMIT 1`
+    `SELECT id FROM print_stations WHERE store_id IS NULL ORDER BY last_seen DESC NULLS LAST, id LIMIT 1`
   );
   return rows[0] ? rows[0].id : null;
 }

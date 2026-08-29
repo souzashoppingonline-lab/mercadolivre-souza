@@ -341,7 +341,7 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 Ver `.claude/print-agent.md`. As rotas do agente ficam **antes** do gate de staff (auth por token de estação no header `X-Station-Token`).
 
 **Gestão (staff, `/api/print`):**
-- `POST /api/print/jobs` — enfileira impressão. Body `{shipping_id, station_id?|store_id?, label:{product_name,variation_type,sku,store_name,company_name}}`. Publica WS `print:{station_id}`. 409 se a loja não tem estação.
+- `POST /api/print/jobs` — enfileira impressão. Body `{shipping_id, station_id?|store_id?, label:{product_name,variation_type,sku,store_name,company_name}}`. Publica WS `print:{station_id}`. 409 se a loja não tem estação. Sem `station_id` explícito, resolve pela estação da loja (ou global) com `last_seen` mais recente — nunca a de menor id (bug real corrigido, ver `print-agent.md`).
 - `GET /api/print/jobs?status=&station_id=&limit=` — monitorar a fila.
 - `POST /api/print/stations` — cadastra estação, devolve o `token` (1x). Body `{name, store_id?, printer_name?}`.
 - `GET /api/print/stations` — lista (token mascarado).

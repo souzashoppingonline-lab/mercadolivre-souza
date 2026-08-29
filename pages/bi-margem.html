@@ -92,6 +92,19 @@
     .ia-body p { font-size:13px; line-height:1.6; margin:0; }
     .ia-body ul { margin:6px 0 0; padding-left:18px; font-size:13px; line-height:1.7; }
     .ia-err { color:#f87171; font-size:12.5px; }
+
+    /* ── Como cada score funciona ── */
+    .expl-item { background:var(--bg-card2); border-radius:12px; padding:14px 16px; margin-bottom:10px; border-left:4px solid transparent; }
+    .expl-hd { display:flex; align-items:center; gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+    .expl-hd .nome { font-size:13.5px; font-weight:800; }
+    .expl-hd .valor { font-size:15px; font-weight:900; margin-left:auto; }
+    .expl-bar { height:5px; border-radius:3px; background:var(--border); overflow:hidden; margin-bottom:10px; }
+    .expl-bar span { display:block; height:100%; border-radius:3px; }
+    .expl-item p { font-size:12.5px; line-height:1.6; margin:0 0 6px; color:var(--text-main); }
+    .expl-item p b { color:var(--text-muted); font-weight:700; }
+    .expl-item .dica { font-size:12.5px; line-height:1.6; margin:0; padding:8px 10px; background:var(--bg-card); border-radius:8px; }
+    .expl-item .dica b { color:#3fb950; }
+    .expl-item.ok .dica { display:none; }
   </style>
 </head>
 <body>
@@ -157,6 +170,11 @@
       <div class="im-card">
         <h3><i class="fas fa-triangle-exclamation" style="color:#f87171"></i> Prioridades do período <span class="hint">as 3 ações de maior impacto — lista completa em "Ações Recomendadas"</span></h3>
         <div id="imTop3"></div>
+      </div>
+
+      <div class="im-card">
+        <h3><i class="fas fa-circle-question" style="color:#3fb950"></i> Como cada score funciona <span class="hint">o que cada um mede e o que fazer pra chegar a 100 — ordenado do que mais precisa de atenção</span></h3>
+        <div id="imSaudeExplicacao"></div>
       </div>
     </div>
   </main>
@@ -251,6 +269,70 @@ function renderSaude(s){
     </div>`;
 }
 
+// ── Como cada score funciona (pedido explícito do usuário) ─────────────────
+// Descrições e dicas são SEMPRE genéricas/de playbook — nunca uma causa
+// específica inventada pra este período (ex.: nunca "seu crescimento caiu
+// porque X vendeu menos", só "veja em 'Por que a margem mudou' o que
+// puxou pra baixo") — mesmo princípio de nunca afirmar causa sem evidência
+// já usado em toda a Inteligência de Margem. Fórmulas batem exatamente com
+// calcularSaude() (routes/bi.js) — ver business-rules.md, nunca duplicar
+// a fórmula aqui, só descrever em português o que ela já calcula.
+const SAUDE_SUB_EXPLICACAO = {
+  rentabilidade: {
+    mede: 'Margem de Contribuição (MC%) do período — quanto sobra de cada venda depois de custo, imposto, tarifa e frete.',
+    faixas: '≥30% MC = 100 · 15–30% = 50–100 · 0–15% = 0–50 · MC negativa = 0.',
+    dica: 'Reduza o custo do produto (CMV), reprecifique os itens de MC mais baixa (ver aba Produtos) e revise frete/tarifa dos anúncios mais vendidos.',
+  },
+  crescimento: {
+    mede: 'Variação da MARGEM (lucro em R$, não faturamento) deste período vs. o período anterior de mesma duração.',
+    faixas: '≥+20% = 100 · 0% a +20% = 50–100 · -20% a 0% = 0–50 · ≤-20% = 0.',
+    dica: 'Veja o card "Por que a margem mudou" acima — ele decompõe exatamente o que subiu/caiu (custo, faturamento, frete, tarifa) pra você agir na causa real, não adivinhar.',
+  },
+  eficiencia_logistica: {
+    mede: '(Frete do vendedor + Tarifa) ÷ Faturamento do período — quanto da venda vai embora em custo logístico.',
+    faixas: '≤10% = 100 · 10–25% = 50–100 · 25–40% = 0–50 · ≥40% = 0.',
+    dica: 'Veja a aba "Frete & Tarifa" pra achar os anúncios com frete/tarifa fora do padrão do próprio grupo, e considere Full em vez de Flex nos produtos de ticket baixo (onde o frete pesa mais proporcionalmente).',
+  },
+  saude_estoque: {
+    mede: '% dos anúncios com venda no período que estão com estoque SAUDÁVEL (nem em ruptura, nem parado/excesso).',
+    faixas: '100% dos anúncios saudáveis = 100 · proporcional conforme cai.',
+    dica: 'Veja a aba "Estoque & Ruptura" — repõe primeiro os produtos em ruptura iminente (o card já ordena por prioridade).',
+  },
+  concentracao_portfolio: {
+    mede: 'Quanto do faturamento total vem só dos 10 anúncios mais vendidos (Curva ABC) — catálogo com 10 SKUs ou menos já é 100 sempre, concentração é inevitável nesse caso.',
+    faixas: '≤50% do faturamento nos top 10 = 100 · 50–80% = 40–100 · >80% = 0–40.',
+    dica: 'Diversifique as vendas entre mais anúncios — dar mais exposição/publicidade aos produtos fora do top 10 reduz a dependência de poucos itens.',
+  },
+  eficiencia_comercial: {
+    mede: '% do faturamento vindo de anúncios classificados como saudáveis (Estrela, Alta Margem Baixo Volume ou Neutro) — o resto vem de anúncios problemáticos (Volume com Baixa Margem, Destruidor de Margem ou Prejuízo).',
+    faixas: '100% do faturamento em anúncios saudáveis = 100 · proporcional conforme cai.',
+    dica: 'Veja a aba "Ações Recomendadas" — trate primeiro os anúncios classificados Destruidor de Margem/Prejuízo (reprecificar, renegociar custo ou pausar).',
+  },
+};
+function renderSaudeExplicacao(s){
+  const el = document.getElementById('imSaudeExplicacao');
+  if (!s || !s.subscores) { el.innerHTML = '<div class="im-empty">Sem dado suficiente.</div>'; return; }
+  const ordenado = Object.entries(s.subscores).sort((a,b) => a[1] - b[1]); // pior primeiro — o que mais precisa de atenção
+  el.innerHTML = ordenado.map(([k,v]) => {
+    const ex = SAUDE_SUB_EXPLICACAO[k];
+    if (!ex) return '';
+    const cor = corScore(v);
+    const noMax = v >= 100;
+    return `<div class="expl-item" style="border-left-color:${cor}">
+      <div class="expl-hd">
+        <span class="nome">${esc(SAUDE_SUB_LABEL[k]||k)}</span>
+        <span class="valor" style="color:${cor}">${v}/100</span>
+      </div>
+      <div class="expl-bar"><span style="width:${v}%;background:${cor}"></span></div>
+      <p><b>O que mede:</b> ${esc(ex.mede)}</p>
+      <p><b>Faixas do score:</b> ${esc(ex.faixas)}</p>
+      ${noMax
+        ? `<div class="dica"><b>✅ Já está no máximo</b> — continue assim.</div>`
+        : `<div class="dica"><b>Como melhorar:</b> ${esc(ex.dica)}</div>`}
+    </div>`;
+  }).join('');
+}
+
 // ── O que mudou ──────────────────────────────────────────────────────────
 const MUDOU_DEF = [
   { k:'maior_aumento_faturamento', label:'Maior aumento de faturamento', fmt:BRL, boa:true },
@@ -291,6 +373,7 @@ function renderGeral(){
     <div class="bi-kpi ${r.skus_ruptura_iminente>0?'warn':'good'}"><div class="k">Ruptura iminente (≤7d)</div><div class="v">${INT(r.skus_ruptura_iminente)}</div></div>
     <div class="bi-kpi"><div class="k">Pedidos aprovados</div><div class="v">${INT(r.pedidos)}</div></div>`;
   renderSaude(DADOS.saude);
+  renderSaudeExplicacao(DADOS.saude);
   renderCausaVariacao(r.causa_variacao);
   renderMudou(DADOS.mudancas);
   const top3 = DADOS.acoes.slice(0,3);

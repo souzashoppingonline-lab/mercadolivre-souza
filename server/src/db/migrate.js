@@ -86,6 +86,7 @@ async function migrate() {
     'migrate-v84.sql',
     'migrate-v85.sql',
     'migrate-v86.sql',
+    'migrate-v87.sql',
   ];
   // Cada arquivo roda ISOLADO: se um falhar (ex.: migration antiga não
   // idempotente), loga e CONTINUA — antes um erro abortava tudo (process.exit),

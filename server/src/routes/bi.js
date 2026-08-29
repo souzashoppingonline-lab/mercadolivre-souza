@@ -5,6 +5,7 @@
 // Ver .claude/modules.md.
 const express = require('express');
 const pool = require('../db/pool');
+const { cached } = require('../db/cached');
 const llm = require('../ai/llm');
 const margemNarrativa = require('../ai/margemNarrativa');
 // Fonte de verdade dos estágios de rankeamento (fase de ranking_ads) — nunca
@@ -729,7 +730,7 @@ const STATUS_ACAO_VALIDOS = ['pendente', 'em_andamento', 'concluida', 'descartad
 router.get('/margem/acoes-status', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT item_id, tipo, status, nota, updated_by, updated_at FROM business_insights`
+      `SELECT item_id, tipo, status, nota, updated_by, updated_at, concluida_em FROM business_insights`
     );
     res.json({ status: rows });
   } catch (e) {
@@ -739,9 +740,12 @@ router.get('/margem/acoes-status', async (req, res) => {
 });
 
 // PATCH /api/bi/margem/acoes-status — upsert do status de UMA ação.
-// Nunca infere resultado/efeito real (feedback loop causal) — decisão já
-// tomada 2x antes de não implementar isso ainda (ver decisions.md). Só
-// grava o que a pessoa marcou manualmente.
+// Nunca infere resultado/efeito real — só grava o que a pessoa marcou
+// manualmente. `concluida_em` (v87) é só um CARIMBO de quando entrou em
+// 'concluida' (zerado ao sair de novo) — o efeito antes×depois em si é
+// recalculado a cada request em /margem/acoes-feedback, nunca congelado
+// aqui (mesmo princípio de nunca persistir "verdade" derivável, já usado
+// pras próprias ações).
 router.patch('/margem/acoes-status', async (req, res) => {
   try {
     const { item_id, tipo, status, nota } = req.body || {};
@@ -751,11 +755,16 @@ router.patch('/margem/acoes-status', async (req, res) => {
     }
     const updatedBy = req.staffUser?.username || null;
     const { rows } = await pool.query(
-      `INSERT INTO business_insights (item_id, tipo, status, nota, updated_by, updated_at)
-       VALUES ($1, $2, $3, $4, $5, now())
+      `INSERT INTO business_insights (item_id, tipo, status, nota, updated_by, updated_at, concluida_em)
+       VALUES ($1, $2, $3, $4, $5, now(), CASE WHEN $3 = 'concluida' THEN now() ELSE NULL END)
        ON CONFLICT (item_id, tipo) DO UPDATE
-         SET status = EXCLUDED.status, nota = EXCLUDED.nota, updated_by = EXCLUDED.updated_by, updated_at = now()
-       RETURNING item_id, tipo, status, nota, updated_by, updated_at`,
+         SET status = EXCLUDED.status, nota = EXCLUDED.nota, updated_by = EXCLUDED.updated_by, updated_at = now(),
+             concluida_em = CASE
+               WHEN EXCLUDED.status = 'concluida' AND business_insights.status IS DISTINCT FROM 'concluida' THEN now()
+               WHEN EXCLUDED.status = 'concluida' THEN business_insights.concluida_em
+               ELSE NULL
+             END
+       RETURNING item_id, tipo, status, nota, updated_by, updated_at, concluida_em`,
       [String(item_id), String(tipo), status, nota != null ? String(nota).slice(0, 2000) : null, updatedBy]
     );
     res.json({ ok: true, status: rows[0] });
@@ -765,42 +774,118 @@ router.patch('/margem/acoes-status', async (req, res) => {
   }
 });
 
+// GET /api/bi/margem/acoes-feedback — efeito OBSERVADO (nunca causal) das
+// ações marcadas 'concluida'. Mesmo princípio do antes×depois de Recuperação
+// (rankeamento.md): 14 dias fechados ANTES de concluida_em vs. desde
+// concluida_em até hoje, expressos em taxa/dia (janelas de tamanho
+// diferente, comparar total bruto seria enganoso). Reusa
+// VENDA_DETALHE_SELECT/calcularMargemLinha — nunca uma 2ª fórmula de
+// margem. 1 request em lote pra tela toda (não N por ação).
+router.get('/margem/acoes-feedback', async (req, res) => {
+  try {
+    const { rows: concluidas } = await pool.query(
+      `SELECT item_id, tipo, concluida_em FROM business_insights
+       WHERE status = 'concluida' AND concluida_em IS NOT NULL`
+    );
+    if (!concluidas.length) return res.json({ feedback: [] });
+
+    const itemIds = [...new Set(concluidas.map(c => c.item_id))];
+    const minConcluidaEm = concluidas.reduce((min, c) => (c.concluida_em < min ? c.concluida_em : min), concluidas[0].concluida_em);
+
+    const { rows } = await pool.query(
+      `${VENDA_DETALHE_SELECT}
+       WHERE o.item_id = ANY($1::text[])
+         AND o.status <> 'cancelled'
+         AND o.date_created >= $2::timestamptz - interval '14 days'
+       ORDER BY o.date_created ASC`,
+      [itemIds, minConcluidaEm]
+    );
+    const [impostoFlexAtivo, freteMotoboy] = await Promise.all([buscarImpostoFlexAtivo(), buscarFreteMotoboy()]);
+    const linhas = rows.map(r => calcularMargemLinha(r, impostoFlexAtivo, freteMotoboy));
+
+    const agora = Date.now();
+    const somar = (lista) => {
+      const faturamento = lista.reduce((a, l) => a + (Number(l.faturamento) || 0), 0);
+      const margem = lista.reduce((a, l) => a + (Number(l.margem) || 0), 0);
+      return { pedidos: lista.length, faturamento, margem, mc_pct: faturamento > 0 ? Number(((margem / faturamento) * 100).toFixed(2)) : null };
+    };
+    const feedback = concluidas.map(c => {
+      const concluidaEmMs = new Date(c.concluida_em).getTime();
+      const antesInicioMs = concluidaEmMs - 14 * 86400000;
+      const doItem = linhas.filter(l => l.item_id === c.item_id);
+      const antes = doItem.filter(l => { const t = new Date(l.date_created).getTime(); return t >= antesInicioMs && t < concluidaEmMs; });
+      const depois = doItem.filter(l => new Date(l.date_created).getTime() >= concluidaEmMs);
+      const diasDepois = Math.max(1, (agora - concluidaEmMs) / 86400000);
+      const antesAg = somar(antes), depoisAg = somar(depois);
+      return {
+        item_id: c.item_id, tipo: c.tipo, concluida_em: c.concluida_em,
+        dias_desde_conclusao: Math.floor(diasDepois),
+        antes: { ...antesAg, margem_dia: Number((antesAg.margem / 14).toFixed(2)), faturamento_dia: Number((antesAg.faturamento / 14).toFixed(2)) },
+        depois: { ...depoisAg, margem_dia: Number((depoisAg.margem / diasDepois).toFixed(2)), faturamento_dia: Number((depoisAg.faturamento / diasDepois).toFixed(2)) },
+      };
+    });
+    res.json({ feedback });
+  } catch (e) {
+    console.error('[bi] /margem/acoes-feedback error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// TTL do cache da narrativa (abaixo) — 30min. A narrativa é sobre padrão do
+// PERÍODO (causa raiz, resumo executivo), não sobre o segundo mais recente;
+// 30min evita queimar tokens de novo a cada clique repetido no mesmo filtro,
+// sem ficar tão velha que passe o dia inteiro sem refletir vendas novas.
+// Mesmo padrão de "cache só por TTL, sem invalidação por evento" já usado em
+// /vendas/detalhado e /vendas/margem (ver redis.md/decisions.md) — invalidar
+// por order_updated seria frequente demais pro benefício.
+const NARRATIVA_CACHE_TTL = 1800;
+
 // POST /api/bi/margem/narrativa — Fase 2: camada de IA (LLM) que só
 // INTERPRETA em português o JSON já calculado por computarMargem() acima.
 // Síncrona, sob demanda (mesmo padrão de /analise/produtos/:id/analisar) —
 // nunca roda sozinha, o analista clica um botão porque tem custo de token.
 // A IA nunca recebe o portfólio inteiro (custo/tokens) — só um resumo com o
 // que ela precisa pra escrever causa raiz + "o que eu faria agora".
+// Cacheada por (days, store_id, category_id, date_from, date_to) — clicar de
+// novo no mesmo filtro dentro do TTL devolve a mesma análise sem chamar o
+// LLM de novo (ver NARRATIVA_CACHE_TTL acima).
 router.post('/margem/narrativa', async (req, res) => {
   try {
     if (!llm.isConfigured()) {
       return res.status(503).json({ error: 'IA não configurada — cole a chave ANTHROPIC_API_KEY no .env do servidor e reinicie.' });
     }
     const params = parseMargemParams({ ...req.query, ...req.body });
-    const payload = await computarMargem(params);
+    const cacheKey = `bi:margem:narrativa:${params.days}:${params.storeId}:${params.categoryId}:${params.dateFrom || ''}:${params.dateTo || ''}`;
 
-    const resumirProduto = p => ({
-      title: p.title, item_id: p.item_id, classificacao: p.classificacao,
-      faturamento: Number(p.faturamento.toFixed(2)), margem: Number(p.margem.toFixed(2)),
-      mc_pct: p.mc_pct, pedidos: p.pedidos, amostra_pequena: p.amostra_pequena,
-      status_estoque: p.status_estoque, dias_estoque: p.dias_estoque, data_ruptura: p.data_ruptura,
+    let cacheHit = true; // cached() só chama a função abaixo em caso de MISS
+    const resultado = await cached(cacheKey, NARRATIVA_CACHE_TTL, async () => {
+      cacheHit = false;
+      const payload = await computarMargem(params);
+
+      const resumirProduto = p => ({
+        title: p.title, item_id: p.item_id, classificacao: p.classificacao,
+        faturamento: Number(p.faturamento.toFixed(2)), margem: Number(p.margem.toFixed(2)),
+        mc_pct: p.mc_pct, pedidos: p.pedidos, amostra_pequena: p.amostra_pequena,
+        status_estoque: p.status_estoque, dias_estoque: p.dias_estoque, data_ruptura: p.data_ruptura,
+      });
+      const contexto = {
+        periodo: payload.periodo,
+        resumo: payload.resumo,
+        saude: payload.saude,
+        mudancas: payload.mudancas,
+        produtos_criticos: payload.produtos
+          .filter(p => ['PREJUIZO', 'DESTRUIDOR_MARGEM', 'VOLUME_BAIXA_MARGEM'].includes(p.classificacao))
+          .slice(0, 15).map(resumirProduto),
+        produtos_estrela: payload.produtos.filter(p => p.classificacao === 'ESTRELA').slice(0, 5).map(resumirProduto),
+        ruptura_iminente: payload.produtos.filter(p => p.status_estoque === 'RUPTURA_IMINENTE').slice(0, 10).map(resumirProduto),
+        acoes_prioritarias: payload.acoes.slice(0, 8).map(a => ({
+          tipo: a.tipo, title: a.title, problema: a.problema, impacto_estimado: a.impacto_estimado, prioridade: a.prioridade,
+        })),
+      };
+      const narrativa = await margemNarrativa.gerarNarrativa(contexto);
+      return { narrativa, periodo: payload.periodo, gerado_em: new Date().toISOString() };
     });
-    const contexto = {
-      periodo: payload.periodo,
-      resumo: payload.resumo,
-      saude: payload.saude,
-      mudancas: payload.mudancas,
-      produtos_criticos: payload.produtos
-        .filter(p => ['PREJUIZO', 'DESTRUIDOR_MARGEM', 'VOLUME_BAIXA_MARGEM'].includes(p.classificacao))
-        .slice(0, 15).map(resumirProduto),
-      produtos_estrela: payload.produtos.filter(p => p.classificacao === 'ESTRELA').slice(0, 5).map(resumirProduto),
-      ruptura_iminente: payload.produtos.filter(p => p.status_estoque === 'RUPTURA_IMINENTE').slice(0, 10).map(resumirProduto),
-      acoes_prioritarias: payload.acoes.slice(0, 8).map(a => ({
-        tipo: a.tipo, title: a.title, problema: a.problema, impacto_estimado: a.impacto_estimado, prioridade: a.prioridade,
-      })),
-    };
-    const narrativa = await margemNarrativa.gerarNarrativa(contexto);
-    res.json({ ok: true, narrativa, periodo: payload.periodo });
+    res.json({ ok: true, ...resultado, cache: cacheHit ? 'hit' : 'miss' });
   } catch (e) {
     if (e.code === 'AI_NOT_CONFIGURED') return res.status(503).json({ error: e.message });
     console.error('[bi] /margem/narrativa error:', e.message);

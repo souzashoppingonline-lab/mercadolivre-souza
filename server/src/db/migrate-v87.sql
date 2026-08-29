@@ -1,0 +1,17 @@
+-- v87: feedback loop OBSERVADO (nunca causal) para as Ações Recomendadas.
+--
+-- Guarda só o carimbo de QUANDO uma ação foi marcada 'concluida' — nunca
+-- métricas calculadas (nada de "margem antes"/"margem depois" congelada
+-- aqui). O antes×depois em si continua 100% recalculado a cada request
+-- (GET /api/bi/margem/acoes-feedback, routes/bi.js), a partir de
+-- concluida_em, mesmo princípio de business_insights.status/nota já
+-- documentado em migrate-v83.sql: nunca persistir "verdade" que pode ser
+-- derivada de novo dos dados crus.
+--
+-- Zera (NULL) sempre que o status sai de 'concluida' — reabrir e concluir
+-- de novo depois começa uma janela de medição nova, não reaproveita a
+-- antiga. Mesmo princípio de "efeito observado, nunca causal" já aplicado
+-- ao antes×depois de Recuperação (rankeamento.md/business-rules.md): 14
+-- dias fechados antes do carimbo vs. desde o carimbo até hoje, em taxa/dia
+-- (não total bruto, já que as janelas têm tamanho diferente).
+ALTER TABLE business_insights ADD COLUMN IF NOT EXISTS concluida_em TIMESTAMPTZ;

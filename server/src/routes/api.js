@@ -5,17 +5,10 @@ const express = require('express');
 const { spawn } = require('child_process');
 const pool = require('../db/pool');
 const redis = require('../db/redis');
+const { cached } = require('../db/cached');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getEstoqueCriticoTopVendas, getMargemPorLoja, getRupturaEstoque } = require('../reports');
 
 const router = express.Router();
-
-async function cached(key, ttlSeconds, fn) {
-  const hit = await redis.get(key);
-  if (hit) return JSON.parse(hit);
-  const value = await fn();
-  await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
-  return value;
-}
 
 // ── Dashboard ──────────────────────────────────────────────
 router.get('/dashboard/kpis', async (req, res) => {

@@ -54,6 +54,12 @@
     .acao-status-row input[type=text] { flex:1; min-width:160px; background:var(--bg-card); color:var(--text-main); border:1px solid var(--border); border-radius:7px; padding:5px 9px; font-size:11.5px; }
     .acao-status-row .salvo { font-size:10.5px; color:#3fb950; opacity:0; transition:opacity .2s; }
     .acao-card.status-concluida, .acao-card.status-descartada { opacity:.55; }
+    .acao-feedback { margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); }
+    .acao-feedback-hd { font-size:11px; font-weight:700; color:var(--text-main); display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+    .acao-feedback-hd .hint { font-weight:500; color:var(--text-muted); font-style:italic; }
+    .acao-feedback-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px 14px; font-size:11.5px; }
+    @media(max-width:760px){ .acao-feedback-grid { grid-template-columns:1fr; } }
+    .acao-feedback-grid b { display:block; font-size:9.5px; text-transform:uppercase; letter-spacing:.3px; color:var(--text-muted); margin-bottom:1px; }
   </style>
 </head>
 <body>
@@ -115,7 +121,8 @@ const STATUS_LABEL = { pendente:'Pendente', em_andamento:'Em andamento', conclui
 const ESFORCO_X = { BAIXO:1, MEDIO:2, ALTO:3 };
 
 let DADOS = null;
-let ACOES_STATUS = new Map(); // chave `${item_id}::${tipo}` -> {status,nota,updated_by,updated_at}
+let ACOES_STATUS = new Map();   // chave `${item_id}::${tipo}` -> {status,nota,updated_by,updated_at,concluida_em}
+let ACOES_FEEDBACK = new Map(); // chave `${item_id}::${tipo}` -> {dias_desde_conclusao,antes,depois} — só ações concluídas
 const chaveAcao = a => `${a.item_id}::${a.tipo}`;
 
 async function popularLojas(selecionado){
@@ -130,13 +137,15 @@ function atualizarTabs(contadores){ document.getElementById('imTabs').innerHTML 
 async function carregar(){
   atualizarTabs();
   document.getElementById('imStatus').textContent = 'Carregando…';
-  const [d, statusResp] = await Promise.all([
+  const [d, statusResp, feedbackResp] = await Promise.all([
     DB.getBiMargem(document.getElementById('imDays').value, document.getElementById('imLoja').value),
     DB.getBiAcoesStatus().catch(() => null),
+    DB.getBiAcoesFeedback().catch(() => null),
   ]);
   if(!d || d.error){ document.getElementById('imStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
   DADOS = d;
   ACOES_STATUS = new Map((statusResp && statusResp.status || []).map(s => [`${s.item_id}::${s.tipo}`, s]));
+  ACOES_FEEDBACK = new Map((feedbackResp && feedbackResp.feedback || []).map(f => [`${f.item_id}::${f.tipo}`, f]));
   document.getElementById('imStatus').textContent = `${INT(d.produtos.length)} anúncio(s) no período · ${d.periodo.dias} dia(s), de ${dataBR(d.periodo.de)} a ${dataBR(d.periodo.ate)}.`;
   atualizarTabs({ 'bi-margem-estoque.html': d.resumo.skus_ruptura_iminente, 'bi-margem-acoes.html': d.acoes.length });
   renderKpisImpacto();
@@ -220,6 +229,37 @@ function cenariosHtml(cenarios){
   if (!cenarios || !cenarios.length) return '';
   return `<div class="im-cenarios">${cenarios.map(c => `<span class="im-cenario">+${c.aumento_pct}% preço → <b>${BRL(c.impacto_estimado)}</b>/período</span>`).join('')}</div>`;
 }
+// Efeito OBSERVADO desde que a ação foi marcada concluída — mesmo princípio
+// (nunca afirmar causalidade) do antes×depois de Recuperação em
+// bi-rankeamento.html. Só aparece se houver dado suficiente pra comparar
+// (GET /api/bi/margem/acoes-feedback, 14 dias antes de concluida_em vs.
+// desde então, em taxa/dia).
+const pct = (a, b) => a > 0 ? Number((((b - a) / a) * 100).toFixed(1)) : (b > 0 ? null : 0);
+function feedbackHtml(a){
+  const f = ACOES_FEEDBACK.get(chaveAcao(a));
+  if (!f) return '';
+  const diasTxt = f.dias_desde_conclusao <= 0 ? 'hoje' : `há ${INT(f.dias_desde_conclusao)} dia(s)`;
+  const linha = (label, antesV, depoisV, fmt) => {
+    const variacao = pct(antesV, depoisV);
+    const setaCor = variacao == null ? 'var(--text-muted)' : variacao >= 0 ? '#3fb950' : '#f87171';
+    return `<div><b>${label}</b>${fmt(antesV)} → ${fmt(depoisV)}${variacao != null ? ` <span style="color:${setaCor};font-weight:700">(${variacao>=0?'+':''}${variacao}%)</span>` : ''}</div>`;
+  };
+  // MC% é ponto percentual (pp) de diferença, não variação relativa de uma
+  // % (20%→30% é +10pp, não "+50%" — reusar `pct()` aqui confundiria mais
+  // que ajudaria).
+  const mcAntes = f.antes.mc_pct, mcDepois = f.depois.mc_pct;
+  const mcDeltaPp = (mcAntes != null && mcDepois != null) ? Number((mcDepois - mcAntes).toFixed(1)) : null;
+  const mcCor = mcDeltaPp == null ? 'var(--text-muted)' : mcDeltaPp >= 0 ? '#3fb950' : '#f87171';
+  const mcLinha = `<div><b>MC%</b>${mcAntes!=null?mcAntes.toFixed(1)+'%':'—'} → ${mcDepois!=null?mcDepois.toFixed(1)+'%':'—'}${mcDeltaPp != null ? ` <span style="color:${mcCor};font-weight:700">(${mcDeltaPp>=0?'+':''}${mcDeltaPp}pp)</span>` : ''}</div>`;
+  return `<div class="acao-feedback">
+    <div class="acao-feedback-hd"><i class="fas fa-chart-line"></i> Efeito observado desde a conclusão (${dataBR(f.concluida_em)}, ${diasTxt}) <span class="hint">NÃO é causalidade garantida — outras coisas também mudam nesse intervalo</span></div>
+    <div class="acao-feedback-grid">
+      ${linha('Faturamento/dia', f.antes.faturamento_dia, f.depois.faturamento_dia, BRL)}
+      ${linha('Margem/dia', f.antes.margem_dia, f.depois.margem_dia, BRL)}
+      ${mcLinha}
+    </div>
+  </div>`;
+}
 function acaoCardHtml(a, i){
   const key = chaveAcao(a);
   const registro = ACOES_STATUS.get(key) || {};
@@ -239,6 +279,7 @@ function acaoCardHtml(a, i){
       <div><b>Confiança</b>${esc(a.confianca)}</div>
     </div>
     <div class="acao-premissa"><i class="fas fa-circle-info"></i> Premissa: ${esc(a.premissa)}</div>
+    ${status === 'concluida' ? feedbackHtml(a) : ''}
     <div class="acao-status-row">
       <select onchange="salvarStatusAcao('${esc(a.item_id)}','${esc(a.tipo)}',this.value,this.closest('.acao-status-row').querySelector('input'))">
         ${Object.entries(STATUS_LABEL).map(([v,l]) => `<option value="${v}" ${v===status?'selected':''}>${l}</option>`).join('')}

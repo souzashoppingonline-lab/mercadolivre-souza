@@ -118,8 +118,8 @@ Fase 1 (motor determinístico) e Fase 2 (LLM narrativo + melhorias de analista) 
 
 Ainda fora do escopo, de propósito:
 
-- [ ] **Tabela `business_insights`** (histórico de insights com status novo/em_analise/executado/ignorado/resolvido) + feedback loop (impacto estimado vs. realizado) — precisa de UI de acompanhamento própria, e só faz sentido depois de calibrar o formato da narrativa da Fase 2 com uso real.
-- [ ] Cache/persistência da narrativa da IA — hoje cada clique em "Gerar análise" chama o LLM de novo, mesmo sem nada ter mudado no período.
+- [x] ~~Tabela `business_insights` com status manual (v83) + feedback loop~~ — status/nota manuais feitos na Fase F; feedback loop (v87) implementado como efeito OBSERVADO (nunca causal, mesmo princípio de Recuperação em `rankeamento.md`), não como atribuição de causa — ver `business-rules.md`/`decisions.md`. `GET /api/bi/margem/acoes-feedback`.
+- [x] ~~Cache/persistência da narrativa da IA~~ — cacheada 30min por filtro (v87, `server/src/db/cached.js`), ver `redis.md`.
 - [ ] Indicador de confiabilidade dos dados (% de vendas do período com frete/tarifa já confirmados pela reconciliação automática — ver `financeReconciliationJob`/`finance_synced` em `workers.md` — vs. % ainda em estimativa via `orders.ml_fee`) — sugerido, não implementado ainda.
 - [ ] Busca por texto + ordenação por coluna na tabela de Produtos (`bi-margem-produtos.html`) — hoje só filtra por classificação; portfólio grande (>50 SKUs) fica difícil de navegar.
 - [ ] Deep link da ação recomendada pro produto (editar custo em `bi-vendas.html`, histórico de vendas do SKU) — hoje mostra o produto mas não linka.

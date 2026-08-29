@@ -698,7 +698,14 @@ item_id TEXT NOT NULL, tipo TEXT NOT NULL             -- mesma dupla de acoes[].
 status TEXT DEFAULT 'pendente'                        -- pendente | em_andamento | concluida | descartada
 nota TEXT, updated_by TEXT                            -- staff_user_name de quem mudou por último
 created_at, updated_at TIMESTAMPTZ
+concluida_em TIMESTAMPTZ                              -- v87: CARIMBO de quando entrou em 'concluida' (nunca
+                                                       -- valor calculado). NULL sempre que sai de 'concluida'
+                                                       -- de novo — reentrar depois começa janela nova, não
+                                                       -- reaproveita a antiga. Reenviar status='concluida' com
+                                                       -- o status já concluída (ex.: só editando nota) NÃO
+                                                       -- reseta o carimbo. Alimenta o antes×depois OBSERVADO
+                                                       -- de GET /margem/acoes-feedback. Ver business-rules.md.
 -- UQ (item_id, tipo)
 -- idx_business_insights_item (item_id)
 ```
-As ações em si (`acoes[]` de `GET /api/bi/margem`) continuam 100% recalculadas a cada request, nunca persistidas — só o status marcado manualmente pela analista é gravado aqui. Sem coluna de histórico de transições nem cálculo de resultado real (feedback loop causal) — decisão deliberada, ver `decisions.md`. Lida/escrita por `GET`/`PATCH /api/bi/margem/acoes-status`.
+As ações em si (`acoes[]` de `GET /api/bi/margem`) continuam 100% recalculadas a cada request, nunca persistidas — só o status marcado manualmente pela analista é gravado aqui. Sem coluna de histórico de transições nem valor de resultado real congelado — o efeito antes×depois (v87) é sempre recalculado a partir de `concluida_em` + os pedidos crus, nunca uma "verdade" gravada. Lida/escrita por `GET`/`PATCH /api/bi/margem/acoes-status`, feedback em `GET /api/bi/margem/acoes-feedback`.

@@ -368,10 +368,21 @@ async function gerarNarrativaIA(){
   const n = r.narrativa || {};
   const acoesTxt = Array.isArray(n.o_que_eu_faria_agora) ? n.o_que_eu_faria_agora : [];
   body.innerHTML = `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">${cacheInfoHtml(r)}</div>
     <h4>Resumo executivo</h4><p>${esc(n.resumo_executivo || '—')}</p>
     <h4>Causa raiz</h4><p>${esc(n.causa_raiz || '—')}</p>
     <h4>O que eu faria agora</h4>
     ${acoesTxt.length ? `<ul>${acoesTxt.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>—</p>'}`;
+}
+// Cache de 30min (mesmo filtro) pra não chamar o LLM de novo a cada clique —
+// ver NARRATIVA_CACHE_TTL em routes/bi.js. Só transparência visual, o botão
+// funciona igual dos dois jeitos.
+function cacheInfoHtml(r){
+  const minAtras = r.gerado_em ? Math.max(0, Math.round((Date.now() - new Date(r.gerado_em).getTime()) / 60000)) : null;
+  const quando = minAtras == null ? '' : minAtras < 1 ? 'agora mesmo' : `há ${minAtras} min`;
+  return r.cache === 'hit'
+    ? `<i class="fas fa-clock-rotate-left"></i> Resultado em cache — gerada ${quando} (mesmo filtro; clique de novo em até 30min devolve a mesma análise)`
+    : `<i class="fas fa-sparkles"></i> Análise gerada agora`;
 }
 
 // Só `days`/`store_id` sobrevivem à navegação entre as 6 páginas (contrato

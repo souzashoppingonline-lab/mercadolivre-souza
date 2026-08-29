@@ -312,6 +312,7 @@ const DB = {
   async getBiRankeamento(days = 30, store_id = '', extra = {}) { return this._get('/bi/rankeamento', { days, store_id, ...extra }); },
   async getBiAcoesStatus() { return this._get('/bi/margem/acoes-status'); },
   async patchBiAcaoStatus(item_id, tipo, status, nota) { return this._patch('/bi/margem/acoes-status', { item_id, tipo, status, nota }); },
+  async getBiAcoesFeedback() { return this._get('/bi/margem/acoes-feedback'); },
   // Estágio atual (fase) de um lote de item_id — usado pra "taggear" vendas
   // com o estágio de rankeamento do anúncio. Devolve só quem está rastreado
   // (item_ids sem rankeamento não aparecem no objeto de resposta).

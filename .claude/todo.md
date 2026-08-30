@@ -167,6 +167,12 @@ Fora do escopo desta rodada, deliberadamente (spec original tinha 29 seções):
 - [ ] Calibrar os thresholds do diagnóstico depois de algumas semanas de uso (10 visitas/dia, 1% de conversão — hoje valores fixos em `routes/ranking.js`, documentados em `business-rules.md`). Avaliar torná-los por anúncio/categoria em vez de globais.
 - [x] ~~Corrigir `migrate-v78.sql` (SQL inválido) e `migrate-v77.sql` (não idempotente)~~ — feito na v80; `migrate.js` roda limpo (76 ok, 0 erros) e é idempotente.
 
+## Agente Financeiro
+
+- [ ] `pages/financeiro-despesas.html` (DRE/break-even) e `pages/financeiro-projecao-caixa.html` (fluxo/projeção) ainda calculam tudo no próprio `<script>` — `server/src/financeiroCalc.js` é a mesma fórmula extraída pro backend (consumida hoje só pelo Agente Financeiro), mas as duas páginas não foram refatoradas pra consumi-la (risco de regressão numa tela em produção, fora do escopo da tarefa que criou o módulo — ver `decisions.md`). Quando alguém for mexer numa dessas fórmulas de novo, mudar as DUAS cópias (ou aproveitar pra unificar).
+- [ ] Avaliar se o Agente Financeiro precisa de mais relatórios (a v1 saiu com 4: DRE, Fluxo+Projeção, Contas a Pagar, Cruzamento ML×Financeiro — outros candidatos ficaram de fora por ora: Compras & CMV, Comparativo por Empresa, Break-even isolado).
+- [ ] Confirmar se as tabelas `ml_accounts`/`ml_items`/`ml_orders` dentro do Supabase Financeiro (achado da auditoria) têm dado real de alguma tentativa antiga de integração ML — se sim, decidir se cabe expor no Agente Financeiro; se estiverem vazias/obsoletas, considerar removê-las do schema documentado em `financeiro-supabase-schema.md`.
+
 ## Manutenção da documentação
 
 - [ ] Ao adicionar qualquer rota nova em `routes/*.js`, atualizar `api.md` e o método correspondente em `js/db.js` na mesma tarefa.

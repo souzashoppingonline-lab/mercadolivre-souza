@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agente Financeiro — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Agente Financeiro'; window.ACTIVE_NAV='agente-financeiro.html';</script>
+  <style>
+    .af-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .af-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin-bottom:20px; }
+    .af-btn-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:18px; display:flex; flex-direction:column; gap:10px; }
+    .af-btn-card h3 { font-size:14px; font-weight:800; margin:0; display:flex; align-items:center; gap:8px; }
+    .af-btn-card p { font-size:12px; color:var(--text-muted); margin:0; flex:1; }
+    .af-btn-card .opts { display:flex; gap:8px; flex-wrap:wrap; }
+    .af-btn-card select, .af-btn-card input { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:12px; }
+    .af-run { background:#8b5cf6; color:#fff; border:none; border-radius:9px; padding:9px 14px; font-size:13px; font-weight:700; cursor:pointer; }
+    .af-run:disabled { opacity:.6; cursor:wait; }
+    .af-result { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:20px; display:none; }
+    .af-result.show { display:block; }
+    .af-result h3 { margin:0 0 12px; font-size:15px; font-weight:800; }
+    .af-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:14px; }
+    .af-kpi { background:var(--bg-card2); border-radius:10px; padding:10px 12px; border-left:3px solid #8b5cf6; }
+    .af-kpi .k { font-size:11px; color:var(--text-muted); font-weight:700; }
+    .af-kpi .v { font-size:18px; font-weight:900; margin-top:3px; }
+    .up { color:#3fb950; } .down { color:#f87171; }
+    .af-ia { background:rgba(139,92,246,.08); border:1px solid rgba(139,92,246,.35); border-radius:12px; padding:14px; margin-top:8px; }
+    .af-ia h4 { margin:0 0 8px; font-size:13px; font-weight:800; color:#a78bfa; display:flex; align-items:center; gap:6px; }
+    .af-ia p { font-size:13px; margin:0 0 8px; line-height:1.5; }
+    .af-ia ul { margin:0 0 8px; padding-left:18px; font-size:13px; }
+    .af-ia .rec { font-size:13px; font-weight:700; color:#a78bfa; }
+    .af-err { color:#f87171; font-size:13px; }
+    .af-empty { color:var(--text-muted); font-size:13px; padding:10px 0; }
+    table.af-t { width:100%; border-collapse:collapse; margin-top:10px; }
+    .af-t th, .af-t td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--border); font-size:12px; }
+    .af-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; }
+    .af-t td.num, .af-t th.num { text-align:right; }
+    .af-loading { font-size:13px; color:var(--text-muted); }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="af-sub">Relatórios sob demanda — cada botão busca os números reais (Postgres operacional + Supabase Financeiro) e, opcionalmente, pede a interpretação da IA. Nada é calculado pela IA; ela só lê o que o backend já apurou.</p>
+
+      <div class="af-grid">
+        <div class="af-btn-card">
+          <h3><i class="fas fa-file-invoice-dollar" style="color:#8b5cf6"></i> DRE do mês</h3>
+          <p>Receita, deduções automáticas de venda, despesas cadastradas, lucro líquido e ponto de equilíbrio — comparado ao mês anterior.</p>
+          <button class="af-run" id="btnDre" onclick="rodar('dre')"><i class="fas fa-play"></i> Gerar relatório</button>
+        </div>
+        <div class="af-btn-card">
+          <h3><i class="fas fa-money-bill-trend-up" style="color:#8b5cf6"></i> Fluxo de caixa + projeção</h3>
+          <p>Caixa atual, entradas/saídas previstas e saldo projetado.</p>
+          <div class="opts"><label style="font-size:11px;color:var(--text-muted)">Janela: <select id="fluxoDias"><option value="7">7 dias</option><option value="15">15 dias</option><option value="30" selected>30 dias</option><option value="60">60 dias</option></select></label></div>
+          <button class="af-run" id="btnFluxo" onclick="rodar('fluxo')"><i class="fas fa-play"></i> Gerar relatório</button>
+        </div>
+        <div class="af-btn-card">
+          <h3><i class="fas fa-file-invoice" style="color:#8b5cf6"></i> Contas a pagar</h3>
+          <p>Boletos e faturas de cartão pendentes — vencidos, próximos 7 e 30 dias, por empresa.</p>
+          <button class="af-run" id="btnContas" onclick="rodar('contas_a_pagar')"><i class="fas fa-play"></i> Gerar relatório</button>
+        </div>
+        <div class="af-btn-card">
+          <h3><i class="fas fa-arrows-left-right" style="color:#8b5cf6"></i> Cruzamento ML × Financeiro</h3>
+          <p>Compara a margem real das vendas do Mercado Livre com o que foi lançado em Vendas &amp; Custos no mesmo período.</p>
+          <div class="opts"><label style="font-size:11px;color:var(--text-muted)">Período: <select id="cruzDias"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option></select></label></div>
+          <button class="af-run" id="btnCruz" onclick="rodar('cruzamento_ml')"><i class="fas fa-play"></i> Gerar relatório</button>
+        </div>
+      </div>
+
+      <div class="af-result" id="afResult"></div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-bi.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const PCT = n => `${Number(n)>0?'+':''}${(Number(n)||0).toFixed(1)}%`;
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const TITULOS = { dre:'DRE do mês', fluxo:'Fluxo de caixa + projeção', contas_a_pagar:'Contas a pagar', cruzamento_ml:'Cruzamento ML × Financeiro' };
+const BOTOES = { dre:'btnDre', fluxo:'btnFluxo', contas_a_pagar:'btnContas', cruzamento_ml:'btnCruz' };
+
+function iaHtml(interpretacao, iaErro) {
+  if (iaErro) return `<div class="af-ia"><h4><i class="fas fa-robot"></i> Análise da IA</h4><p class="af-err">A IA não respondeu: ${esc(iaErro)}. Os números acima já são reais, só a interpretação em texto falhou.</p></div>`;
+  if (!interpretacao) return '';
+  const pontos = Array.isArray(interpretacao.pontos_de_atencao) ? interpretacao.pontos_de_atencao : [];
+  return `<div class="af-ia">
+    <h4><i class="fas fa-robot"></i> Análise da IA</h4>
+    <p>${esc(interpretacao.resumo || '')}</p>
+    ${pontos.length ? `<ul>${pontos.map(p=>`<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+    ${interpretacao.recomendacao ? `<div class="rec"><i class="fas fa-lightbulb"></i> ${esc(interpretacao.recomendacao)}</div>` : ''}
+  </div>`;
+}
+
+function kpi(label, valor, cor) {
+  return `<div class="af-kpi"><div class="k">${esc(label)}</div><div class="v" ${cor?`style="color:${cor}"`:''}>${valor}</div></div>`;
+}
+
+function renderDre(d) {
+  const cor = d.lucro_liquido >= 0 ? '#3fb950' : '#f87171';
+  const corAnt = d.comparativo_mes_anterior.lucro_liquido >= 0 ? '#3fb950' : '#f87171';
+  return `<div class="af-kpis">
+    ${kpi('Receita Bruta', BRL(d.receita_bruta))}
+    ${kpi('Margem de Contribuição', BRL(d.margem_contribuicao) + ' · ' + d.margem_contribuicao_pct.toFixed(1) + '%')}
+    ${kpi('Despesas', BRL(d.despesas_total), '#f87171')}
+    ${kpi('Lucro Líquido', BRL(d.lucro_liquido), cor)}
+    ${kpi('Margem Líquida', d.margem_liquida_pct.toFixed(1) + '%', cor)}
+    ${kpi('Ponto de Equilíbrio', d.ponto_equilibrio != null ? BRL(d.ponto_equilibrio) : '—')}
+  </div>
+  <table class="af-t"><thead><tr><th></th><th class="num">${d.mes}/${d.ano}</th><th class="num">${d.comparativo_mes_anterior.mes}/${d.comparativo_mes_anterior.ano}</th></tr></thead>
+  <tbody>
+    <tr><td>Receita Bruta</td><td class="num">${BRL(d.receita_bruta)}</td><td class="num">${BRL(d.comparativo_mes_anterior.receita_bruta)}</td></tr>
+    <tr><td>Lucro Líquido</td><td class="num" style="color:${cor}">${BRL(d.lucro_liquido)}</td><td class="num" style="color:${corAnt}">${BRL(d.comparativo_mes_anterior.lucro_liquido)}</td></tr>
+    <tr><td>Margem Líquida</td><td class="num">${d.margem_liquida_pct.toFixed(1)}%</td><td class="num">${d.comparativo_mes_anterior.margem_liquida_pct.toFixed(1)}%</td></tr>
+  </tbody></table>`;
+}
+
+function renderFluxo(d) {
+  const cor = d.saldo_projetado >= 0 ? '#3fb950' : '#f87171';
+  return `<div class="af-kpis">
+    ${kpi('Caixa Atual', BRL(d.caixa_atual))}
+    ${kpi('Entradas Previstas', BRL(d.entradas_previstas), '#3fb950')}
+    ${kpi('Saídas Previstas', BRL(d.saidas_previstas), '#f87171')}
+    ${kpi('Saldo Projetado (' + d.dias + 'd)', BRL(d.saldo_projetado), cor)}
+    ${kpi('Vence em 7 dias', BRL(d.vencimentos_proximos_7d))}
+    ${d.fica_negativo_em_dias != null ? kpi('Fica negativo em', d.fica_negativo_em_dias + ' dia(s)', '#f87171') : kpi('Risco de caixa negativo', 'Nenhum no período', '#3fb950')}
+  </div>`;
+}
+
+function renderContas(d) {
+  const linhas = [...d.vencidos.itens, ...d.proximos_7d.itens].slice(0, 15);
+  return `<div class="af-kpis">
+    ${kpi('Total Pendente', BRL(d.total_pendente) + ' (' + d.qtd_pendente + ')')}
+    ${kpi('Vencidos', BRL(d.vencidos.total) + ' (' + d.vencidos.qtd + ')', d.vencidos.qtd ? '#f87171' : '#3fb950')}
+    ${kpi('Próximos 7 dias', BRL(d.proximos_7d.total) + ' (' + d.proximos_7d.qtd + ')')}
+    ${kpi('Próximos 30 dias', BRL(d.proximos_30d.total) + ' (' + d.proximos_30d.qtd + ')')}
+  </div>
+  ${d.por_empresa.length ? `<table class="af-t"><thead><tr><th>Empresa</th><th class="num">Total pendente</th></tr></thead>
+    <tbody>${d.por_empresa.map(e=>`<tr><td>${esc(e.empresa)}</td><td class="num">${BRL(e.total)}</td></tr>`).join('')}</tbody></table>` : ''}
+  ${linhas.length ? `<table class="af-t"><thead><tr><th>Vencidos + próx. 7d</th><th>Empresa</th><th class="num">Valor</th><th class="num">Vencimento</th></tr></thead>
+    <tbody>${linhas.map(i=>`<tr><td>${esc(i.nome)}</td><td>${esc(i.empresa||'—')}</td><td class="num">${BRL(i.valor)}</td><td class="num">${esc((i.data||'').split('-').reverse().join('/'))}</td></tr>`).join('')}</tbody></table>` : '<div class="af-empty">Nada vencido ou vencendo nos próximos 7 dias.</div>'}`;
+}
+
+function renderCruzamento(d) {
+  const diverge = Math.abs(d.diferenca_faturamento) > 1 || Math.abs(d.diferenca_margem) > 1;
+  return `<div class="af-kpis">
+    ${kpi('Faturamento ML (real)', BRL(d.mercado_livre.faturamento))}
+    ${kpi('Faturamento lançado (Financeiro)', BRL(d.financeiro_lancado.receita))}
+    ${kpi('Diferença de Faturamento', BRL(d.diferenca_faturamento), diverge?'#f87171':'#3fb950')}
+    ${kpi('Margem ML (real)', BRL(d.mercado_livre.margem))}
+    ${kpi('Margem lançada (Financeiro)', BRL(d.financeiro_lancado.margem))}
+    ${kpi('Diferença de Margem', BRL(d.diferenca_margem), diverge?'#f87171':'#3fb950')}
+  </div>
+  <div class="af-empty">Período: ${esc(d.periodo.de)} a ${esc(d.periodo.ate)} (${d.periodo.dias} dias) · ${d.financeiro_lancado.dias_com_lancamento} dia(s) com lançamento em Vendas &amp; Custos.</div>`;
+}
+
+const RENDER = { dre: renderDre, fluxo: renderFluxo, contas_a_pagar: renderContas, cruzamento_ml: renderCruzamento };
+
+async function rodar(tipo) {
+  const btn = document.getElementById(BOTOES[tipo]);
+  const box = document.getElementById('afResult');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando…';
+  box.className = 'af-result show';
+  box.innerHTML = `<h3>${esc(TITULOS[tipo])}</h3><div class="af-loading">Buscando dados reais e pedindo a análise da IA…</div>`;
+  try {
+    let d;
+    if (tipo === 'dre') d = await DB.getAgenteFinanceiroDre();
+    else if (tipo === 'fluxo') d = await DB.getAgenteFinanceiroFluxo(document.getElementById('fluxoDias').value);
+    else if (tipo === 'contas_a_pagar') d = await DB.getAgenteFinanceiroContasAPagar();
+    else d = await DB.getAgenteFinanceiroCruzamentoMl(document.getElementById('cruzDias').value);
+
+    if (!d || d.error) {
+      box.innerHTML = `<h3>${esc(TITULOS[tipo])}</h3><div class="af-err">Erro: ${esc((d && d.error) || 'sem resposta do servidor')}</div>`;
+    } else {
+      box.innerHTML = `<h3>${esc(TITULOS[tipo])}</h3>${RENDER[tipo](d.dados)}${iaHtml(d.interpretacao, d.ia_erro)}`;
+    }
+  } catch (e) {
+    box.innerHTML = `<h3>${esc(TITULOS[tipo])}</h3><div class="af-err">Erro: ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-play"></i> Gerar relatório';
+  }
+}
+</script>
+</body>
+</html>

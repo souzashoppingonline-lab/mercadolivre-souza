@@ -8,6 +8,7 @@ async function migrate() {
     'migrate-v2.sql',
     'migrate-v3.sql',
     'migrate-v4.sql',
+    'migrate-v5.sql',
     'migrate-v8.sql',
     'migrate-v9.sql',
     'migrate-v11.sql',

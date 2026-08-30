@@ -58,7 +58,7 @@
     .rk-ads label { display: flex; flex-direction: column; gap: 3px; font-size: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; font-weight: 700; }
     .rk-ads input { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); border-radius: 6px; padding: 5px 6px; font-size: 12px; font-weight: 700; width: 100%; }
     .rk-ads input:focus { border-color: #58a6ff; outline: none; }
-    .rk-ads-hint { grid-column: 1/-1; font-size: 9px; color: var(--text-muted); margin-top: -2px; }
+    .rk-ads-hint { grid-column: 1/-1; font-size: 9px; color: var(--text-muted); margin-top: -2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .rk-ciclos { margin-top: 6px; }
     .rk-ciclos summary { cursor: pointer; font-size: 10px; color: var(--text-muted); font-weight: 700; padding: 4px 0; list-style: none; }
     .rk-ciclos summary::-webkit-details-marker { display: none; }
@@ -529,15 +529,18 @@ function cardHtml(a) {
   const evs = (EVENTS[a.id] || []).map(evHtml).join('') || `<div class="rk-empty" style="border:none">${rankeando?'Aguardando a 1ª venda…':'Sem alertas — tudo certo 👍'}</div>`;
 
   // Bloco de campanha de ADS + preços, informados manualmente (por ciclo).
-  const inNum = (campo, val, ph) => `<input type="number" min="0" step="0.01" value="${val==null?'':val}" placeholder="${ph}" onchange="salvarAds(${a.id},'${campo}',this.value)">`;
+  const inNum = (campo, val, ph) => `<input id="rk-${campo}-${a.id}" type="number" min="0" step="0.01" value="${val==null?'':val}" placeholder="${ph}" onchange="salvarAds(${a.id},'${campo}',this.value)">`;
   const inTxt = (campo, val, ph) => `<input type="text" maxlength="200" value="${val==null?'':esc(val)}" placeholder="${ph}" onchange="salvarAds(${a.id},'${campo}',this.value)">`;
   const adsBlock = `<div class="rk-ads">
       <label style="grid-column:1/-1">Nome da campanha ${inTxt('campanha_nome', a.campanha_nome, 'ex.: Talheres — Ciclo 2')}</label>
       <label>ROAS ${inNum('roas', a.roas, '0,0')}</label>
       <label>Orç./dia R$ ${inNum('orcamento_diario', a.orcamento_diario, '0,00')}</label>
-      <label>Preço ant. R$ ${inNum('preco_anterior', a.preco_anterior, '0,00')}</label>
+      <label>Preço em promoção R$ ${inNum('preco_anterior', a.preco_anterior, '0,00')}</label>
       <label>Preço atual R$ ${inNum('preco_atual', a.preco_atual, '0,00')}</label>
-      ${(a.preco_anterior!=null && a.preco_atual!=null) ? `<div class="rk-ads-hint">🏷️ Preço: ${BRL(a.preco_anterior)} → <b>${BRL(a.preco_atual)}</b> ${Number(a.preco_atual)>Number(a.preco_anterior)?'↑':(Number(a.preco_atual)<Number(a.preco_anterior)?'↓':'=')}</div>` : ''}
+      <div class="rk-ads-hint" style="grid-column:1/-1">
+        ${(a.preco_anterior!=null && a.preco_atual!=null) ? `🏷️ Preço: ${BRL(a.preco_anterior)} → <b>${BRL(a.preco_atual)}</b> ${Number(a.preco_atual)>Number(a.preco_anterior)?'↑':(Number(a.preco_atual)<Number(a.preco_anterior)?'↓':'=')}` : ''}
+        <button class="rk-icon-btn" style="margin-left:auto" title="Lança o preço acima e a data de hoje no gráfico de histórico de preço" onclick="lancarPrecoHistorico(${a.id})"><i class="fas fa-chart-line"></i> Lançar no histórico</button>
+      </div>
     </div>`;
   const ciclosBlock = (a.ciclos_anteriores > 0) ? `<details class="rk-ciclos">
       <summary onclick="carregarCiclos(${a.id})">📚 Ciclos anteriores (${a.ciclos_anteriores})</summary>
@@ -683,6 +686,24 @@ function evHtml(e, isNew) {
 async function salvarAds(id, campo, valor) {
   const r = await DB.patchRankingAd(id, { [campo]: valor });
   if (!r) console.warn('[rankeamento] falha ao salvar', campo, '— servidor reiniciado?');
+}
+
+// Lê os campos "Preço em promoção"/"Preço atual" DIRETO do DOM (não de `a.*`,
+// que fica desatualizado até o próximo carregar() — salvarAds só faz PATCH,
+// não re-renderiza o card) e lança essa transição como um evento manual no
+// histórico de preço (mesma tabela que o 📈 já lê — ver abrirPrecoModal).
+async function lancarPrecoHistorico(id) {
+  const deEl = document.getElementById(`rk-preco_anterior-${id}`);
+  const paraEl = document.getElementById(`rk-preco_atual-${id}`);
+  const de = deEl && deEl.value !== '' ? Number(deEl.value) : null;
+  const para = paraEl && paraEl.value !== '' ? Number(paraEl.value) : null;
+  if (para == null) { alert('Preencha ao menos o "Preço atual" antes de lançar no histórico.'); return; }
+  const r = await DB.registrarRankingPreco(id, de, para);
+  if (!r || !r.ok) {
+    alert('Não consegui lançar no histórico.\n\nProvável causa: o servidor não foi reiniciado após o deploy (a rota nova ainda não está no ar).\nRode:  sudo systemctl restart ml-dashboard-novo ml-worker-novo');
+    return;
+  }
+  alert(`Lançado no histórico de preço:\n${de != null ? BRL(de) + ' → ' : ''}${BRL(para)} — hoje.\n\nConfira no botão 📈 "Histórico de preço" do card.`);
 }
 
 // Encerra o ciclo atual e começa o próximo (arquiva os números do ciclo).

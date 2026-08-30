@@ -283,6 +283,11 @@ const DB = {
   async novoCicloRankingAd(id)       { return this._post(`/ranking/ads/${id}/ciclo`, {}); },
   async getRankingCiclos(id)         { return this._get(`/ranking/ads/${id}/ciclos`); },
   async getRankingPrecos(id)         { return this._get(`/ranking/ads/${id}/precos`); },
+  // Lança manualmente uma entrada no histórico de preço (botão "Lançar no
+  // histórico" do bloco de campanha) — mesmo formato dos eventos automáticos
+  // do webhook de item (de→para), sem WS/Telegram (é o usuário documentando o
+  // preço da campanha, não uma mudança real detectada). Ver rankeamento.md.
+  async registrarRankingPreco(id, de, para) { return this._post(`/ranking/ads/${id}/precos`, { de, para }); },
   async vincularRankingAd(id, ml_id, tipo = 'catalogo') { return this._post(`/ranking/ads/${id}/links`, { ml_id, tipo }); },
   async desvincularRankingLink(id, linkId)              { return this._delete(`/ranking/ads/${id}/links/${linkId}`); },
   async getRankingNotas(id)          { return this._get(`/ranking/ads/${id}/notas`); },

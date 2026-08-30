@@ -394,6 +394,29 @@ router.get('/ads/:id/precos', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Lança manualmente uma entrada no histórico de preço — botão "Lançar no
+// histórico" do bloco de campanha (preço em promoção → preço atual,
+// preenchidos à mão). Mesma tabela/formato do evento 'preco' automático
+// (onItemChange, mudança real detectada pelo webhook de item), mas gravado
+// direto (sem `ranking.emit()`): é o usuário documentando o preço da
+// campanha, não um alerta de mudança real — não deve gerar WS/Telegram.
+router.post('/ads/:id/precos', async (req, res) => {
+  try {
+    const { rows: adRows } = await pool.query(`SELECT id, ml_id FROM ranking_ads WHERE id = $1`, [req.params.id]);
+    const ad = adRows[0];
+    if (!ad) return res.status(404).json({ error: 'anúncio não encontrado' });
+    const de = req.body.de != null && req.body.de !== '' ? Number(req.body.de) : null;
+    const para = req.body.para != null && req.body.para !== '' ? Number(req.body.para) : null;
+    if (para == null || Number.isNaN(para)) return res.status(400).json({ error: 'preço (para) é obrigatório' });
+    const { rows } = await pool.query(
+      `INSERT INTO ranking_events (ranking_ad_id, ml_id, event_type, message, detail)
+       VALUES ($1,$2,'preco',$3,$4) RETURNING id, created_at`,
+      [ad.id, ad.ml_id, 'Preço registrado manualmente (campanha)', JSON.stringify({ de, para, manual: true })]
+    );
+    res.json({ ok: true, evento: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Histórico de ciclos encerrados de um anúncio (mais recente primeiro).
 router.get('/ads/:id/ciclos', async (req, res) => {
   try {

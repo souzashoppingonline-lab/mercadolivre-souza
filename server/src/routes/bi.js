@@ -1256,3 +1256,8 @@ router.get('/rankeamento', async (req, res) => {
 });
 
 module.exports = router;
+// computarMargem também é usado fora deste arquivo (Agente Financeiro,
+// routes/agenteFinanceiro.js) pra cruzar a margem real do ML com o Financeiro
+// — nunca uma 2ª fórmula de margem. `router` é uma função (Express Router),
+// então pendurar a propriedade nela não quebra `app.use('/api/bi', require('./routes/bi'))`.
+module.exports.computarMargem = computarMargem;

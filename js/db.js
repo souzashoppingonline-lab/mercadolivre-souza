@@ -313,6 +313,13 @@ const DB = {
   async getBiAcoesStatus() { return this._get('/bi/margem/acoes-status'); },
   async patchBiAcaoStatus(item_id, tipo, status, nota) { return this._patch('/bi/margem/acoes-status', { item_id, tipo, status, nota }); },
   async getBiAcoesFeedback() { return this._get('/bi/margem/acoes-feedback'); },
+  // Agente Financeiro — 4 relatórios sob demanda (botão), cruzando Postgres
+  // operacional + Supabase Financeiro. `ia=false` pula a interpretação da IA
+  // (só os números determinísticos, mais rápido/sem custo). Ver .claude/modules.md.
+  async getAgenteFinanceiroDre(mes, ano, ia = true) { return this._get('/bi/agente-financeiro/dre', { mes, ano, ia: ia ? 1 : 0 }); },
+  async getAgenteFinanceiroFluxo(dias = 30, ia = true) { return this._get('/bi/agente-financeiro/fluxo', { dias, ia: ia ? 1 : 0 }); },
+  async getAgenteFinanceiroContasAPagar(ia = true) { return this._get('/bi/agente-financeiro/contas-a-pagar', { ia: ia ? 1 : 0 }); },
+  async getAgenteFinanceiroCruzamentoMl(days = 30, store_id = '', ia = true) { return this._get('/bi/agente-financeiro/cruzamento-ml', { days, store_id, ia: ia ? 1 : 0 }); },
   // Estágio atual (fase) de um lote de item_id — usado pra "taggear" vendas
   // com o estágio de rankeamento do anúncio. Devolve só quem está rastreado
   // (item_ids sem rankeamento não aparecem no objeto de resposta).

@@ -14,6 +14,7 @@ const BI_NAV_ITEMS = [
     { href: 'inteligencia-negocio.html', icon: 'fa-chart-pie',    label: 'Painel Estratégico' },
     { href: 'bi-vendas.html',            icon: 'fa-id-card',      label: 'Resumo por Venda' },
     { href: 'bi-rankeamento.html',       icon: 'fa-ranking-star', label: 'Vendas por Estágio' },
+    { href: 'agente-financeiro.html',    icon: 'fa-robot',        label: 'Agente Financeiro' },
   ]},
   { section: 'Inteligência de Margem', items: [
     { href: 'bi-margem.html',           icon: 'fa-gauge-high',    label: 'Visão Geral' },

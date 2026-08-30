@@ -16,6 +16,8 @@
     .rk-tab-badge { background: rgba(0,0,0,.15); color: inherit; font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 10px; }
     .rk-tab:not(.active) .rk-tab-badge { background: var(--bg-card2); }
     .rk-panel { display: none; }
+    .rk-sort-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted); }
+    .rk-sort-bar select { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; font-size: 13px; }
     .rk-panel.active { display: block; }
     .rk-chip-sug { display: inline-flex; align-items: center; gap: 4px; background: rgba(46,160,67,.15); color: #2ea043; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px; }
     .rk-section-title { font-size: 15px; font-weight: 800; margin: 24px 0 12px; display: flex; align-items: center; gap: 8px; }
@@ -188,6 +190,14 @@
 
   <!-- Aba: Em rankeamento -->
   <div class="rk-panel active" id="panel-rankeando">
+    <div class="rk-sort-bar">
+      <label for="rkSortRankeando"><i class="fas fa-arrow-down-wide-short"></i> Ordenar por</label>
+      <select id="rkSortRankeando" onchange="onSortRankeandoChange()">
+        <option value="">Padrão</option>
+        <option value="vendas_desc">Mais vendidos</option>
+        <option value="vendas_asc">Menos vendidos</option>
+      </select>
+    </div>
     <div id="rkCards" class="rk-cards"></div>
     <div id="rkCardsEmpty" class="rk-empty" style="display:none">Nenhum anúncio em rankeamento. Vá em "Todos os anúncios" e selecione um para começar a acompanhar.</div>
   </div>
@@ -395,6 +405,19 @@ function onCicloChange() {
   CICLO = document.getElementById('rkCiclo').value;
   loadCards();
 }
+// Ordenação dos cards de "Em rankeamento" por total vendido (sales_count,
+// cumulativo através dos ciclos — mesmo número do contador do card). Client-side
+// (a lista já vem inteira do backend), só essa aba — as outras têm ordem própria.
+let SORT_RANKEANDO = '';
+function onSortRankeandoChange() {
+  SORT_RANKEANDO = document.getElementById('rkSortRankeando').value;
+  loadCards();
+}
+function ordenarPorVendas(ads, modo) {
+  if (modo !== 'vendas_desc' && modo !== 'vendas_asc') return ads;
+  const sinal = modo === 'vendas_desc' ? -1 : 1;
+  return [...ads].sort((a, b) => sinal * ((a.sales_count || 0) - (b.sales_count || 0)));
+}
 const EVENTS = {};   // id do ranking_ad -> array de eventos
 
 function switchTab(t) {
@@ -419,7 +442,7 @@ async function loadCards() {
     DB.getRankingAds(MKT, 'monitoramento', LOJA, CICLO),
     DB.getRankingAds(MKT, 'recuperacao', LOJA, CICLO),
   ]);
-  await renderPanel(d1.ads || [], 'rkCards', 'rkCardsEmpty');
+  await renderPanel(ordenarPorVendas(d1.ads || [], SORT_RANKEANDO), 'rkCards', 'rkCardsEmpty');
   await renderPanel(d2.ads || [], 'rkCardsRanq', 'rkCardsRanqEmpty');
   await renderPanel(d3.ads || [], 'rkCardsMon', 'rkCardsMonEmpty');
   await renderPanel(d4.ads || [], 'rkCardsRec', 'rkCardsRecEmpty');

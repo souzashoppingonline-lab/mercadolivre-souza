@@ -144,6 +144,8 @@ Nota **sem tipo** continua sendo anotação livre (não carimba baseline) — o 
 
 Duas partes: (1) **cards dos anúncios em rankeamento** no topo — badge "Anúncio em rankeamento", contador com barra de progresso 5-em-5, stats (faturamento/visitas/estoque/preço) e **timeline venda-a-venda ao vivo** (WS `ranking_event` insere no topo na hora); botões pausar/remover + **🔔 Aviso ADS** (agendar lembrete). (2) **tabela com todos os anúncios** (busca por título/MLB) com botão "Acompanhar" que promove o anúncio a card. Métodos em `js/db.js`: `getRankingAds`, `buscarRankingItems`, `addRankingAd`, `patchRankingAd`, `removeRankingAd`, `getRankingEventos`, `getRankingAlerts`, `agendarRankingAlert`.
 
+**Ordenação por vendas na aba "Em rankeamento" (v88):** select "Ordenar por" (Padrão/Mais vendidos/Menos vendidos) só nessa aba — client-side, sobre `sales_count` (cumulativo através dos ciclos, mesmo número do contador do card), sem request nova (`ordenarPorVendas()` reordena a lista já carregada antes de `renderPanel`). As outras abas (Ranqueados/Monitoramento/Recuperação/Todos) não têm esse seletor.
+
 **Filtro por empresa/loja (ML):** select global `rkLoja` (topo, ao lado das abas) populado por `GET /api/lojas` (`DB.getLojas`) — filtra os cards (rankeando/ranqueado) **e** a tabela por `store_id`. As rotas `GET /api/ranking/ads?...&store_id` e `GET /api/ranking/buscar?...&store_id` aceitam o filtro (`r.store_id`/`i.store_id`). Cada card já mostra a loja (`store_nickname`).
 
 ## Ciclos de rankeamento + métricas de ADS (v72/v73)

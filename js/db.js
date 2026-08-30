@@ -315,6 +315,9 @@ const DB = {
   async getBiMargemProduto(itemId, days = 60, store_id = '') { return this._get(`/bi/margem/produto/${encodeURIComponent(itemId)}`, { days, store_id }); },
   // Vendas por Estágio (integração com o módulo Rankeamento) — ver rankeamento.md/business-rules.md.
   async getBiRankeamento(days = 30, store_id = '', extra = {}) { return this._get('/bi/rankeamento', { days, store_id, ...extra }); },
+  // Relatório em PDF (botão "Gerar Relatório") — mesmo filtro da tela +
+  // comparativo com o período anterior e a mesma janela do mês passado.
+  async getBiRankeamentoRelatorio(days = 30, store_id = '', extra = {}) { return this._get('/bi/rankeamento/relatorio', { days, store_id, ...extra }); },
   async getBiAcoesStatus() { return this._get('/bi/margem/acoes-status'); },
   async patchBiAcaoStatus(item_id, tipo, status, nota) { return this._patch('/bi/margem/acoes-status', { item_id, tipo, status, nota }); },
   async getBiAcoesFeedback() { return this._get('/bi/margem/acoes-feedback'); },

@@ -86,6 +86,7 @@
         </span>
         <select id="imLoja"><option value="">Todas as empresas</option></select>
         <button class="btn-primary" onclick="carregar()"><i class="fas fa-sync"></i> Atualizar</button>
+        <button class="btn-primary" id="btnRelatorio" onclick="gerarRelatorio()" style="background:#8b5cf6"><i class="fas fa-file-pdf"></i> Gerar Relatório</button>
         <span class="im-status" id="imStatus"></span>
       </div>
 
@@ -440,6 +441,162 @@ function renderInsights(){
   const el = document.getElementById('insightsList');
   el.innerHTML = DADOS.insights.length ? DADOS.insights.map(t => `<div class="insight-item">${esc(t)}</div>`).join('')
     : '<div class="im-empty">Sem insights relevantes neste período — portfólio de estágios equilibrado.</div>';
+}
+
+// ── Relatório em PDF (botão "Gerar Relatório") ──────────────────────────────
+// Mesmo filtro da tela (resolverPeriodo() + loja) — pedido explícito do
+// usuário: relatório do que está sendo visto, não de um período fixo à
+// parte. Compara o período atual com o ANTERIOR imediato (mesma duração) e
+// com a MESMA janela um mês atrás — GET /bi/rankeamento/relatorio já traz os
+// 3 conjuntos prontos (server/src/routes/bi.js, nunca recalculado aqui).
+// Impressão via janela do navegador (window.print()) — mesmo padrão de
+// exportarPdf() em financeiro-dre.html/financeiro-compras.html, sem lib nova.
+const variacaoPct = (atual, ref) => ref > 0 ? ((atual - ref) / ref) * 100 : (atual > 0 ? 100 : 0);
+function deltaHtml(pct) {
+  if (pct == null) return '<span class="rl-mut">—</span>';
+  const cor = pct > 0.5 ? '#0a7d33' : (pct < -0.5 ? '#b91c1c' : '#666');
+  const seta = pct > 0.5 ? '▲' : (pct < -0.5 ? '▼' : '=');
+  return `<span style="color:${cor};font-weight:700">${seta} ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span>`;
+}
+
+function linhaComparativa(faseLabel, a, ant, mp) {
+  const dFat = a.faturamento > 0 || (ant && ant.faturamento > 0) ? variacaoPct(a.faturamento, ant ? ant.faturamento : 0) : null;
+  const dFatMp = a.faturamento > 0 || (mp && mp.faturamento > 0) ? variacaoPct(a.faturamento, mp ? mp.faturamento : 0) : null;
+  return `<tr>
+    <td class="rl-fase">${esc(faseLabel)}</td>
+    <td class="r">${INT(a.pedidos)}</td>
+    <td class="r">${BRL(a.faturamento)}</td>
+    <td class="r">${BRL(a.margem)}</td>
+    <td class="r">${a.faturamento > 0 ? a.mc_pct.toFixed(1) + '%' : '—'}</td>
+    <td class="r">${ant ? BRL(ant.faturamento) : '—'}</td>
+    <td class="r">${deltaHtml(dFat)}</td>
+    <td class="r">${mp ? BRL(mp.faturamento) : '—'}</td>
+    <td class="r">${deltaHtml(dFatMp)}</td>
+  </tr>`;
+}
+
+function linhaProduto(p) {
+  const foraTag = p.fora_do_padrao === 'abaixo' ? '<span class="rl-tag rl-tag-baixo">abaixo da média</span>'
+    : p.fora_do_padrao === 'acima' ? '<span class="rl-tag rl-tag-alto">acima da média</span>' : '';
+  return `<tr>
+    <td>${esc(p.title || p.item_id || '—')}${foraTag}</td>
+    <td class="r">${INT(p.pedidos)}</td>
+    <td class="r">${INT(p.qtd)}</td>
+    <td class="r">${BRL(p.faturamento)}</td>
+    <td class="r">${BRL(p.margem)}</td>
+    <td class="r">${p.faturamento > 0 ? p.mc_pct.toFixed(1) + '%' : '—'}</td>
+  </tr>`;
+}
+
+function montarRelatorioHtml(d, lojaNome) {
+  const porFase = (lista, fase) => lista.find(b => b.fase === fase) || { fase, pedidos: 0, faturamento: 0, margem: 0, mc_pct: 0 };
+  const linhasComp = [...FASES_ORDEM, 'sem_rankeamento'].map(f =>
+    linhaComparativa(FASE_UI[f].label, porFase(d.por_fase.atual, f), porFase(d.por_fase.anterior, f), porFase(d.por_fase.mes_passado, f))
+  ).join('');
+
+  const scoreRows = (d.visao_executiva.score || []).map((s, i) =>
+    `<div class="rl-score-item"><span class="rl-score-pos">${i + 1}º</span><span>${esc(FASE_UI[s.fase].label)}</span><b>${s.score}</b></div>`
+  ).join('') || '<p class="rl-mut">Sem dado suficiente para ranquear os estágios.</p>';
+
+  const produtosPorFase = [...FASES_ORDEM, 'sem_rankeamento'].map(f => {
+    const lista = d.produtos_por_estagio.filter(p => p.fase === f).sort((a, b) => b.faturamento - a.faturamento);
+    if (!lista.length) return '';
+    return `<h3 class="rl-h3" style="border-left:4px solid ${FASE_UI[f].cor}">${esc(FASE_UI[f].label)} <span class="rl-mut">— ${lista.length} anúncio(s)</span></h3>
+      <table class="rl-t"><thead><tr><th>Anúncio</th><th class="r">Pedidos</th><th class="r">Unid.</th><th class="r">Faturamento</th><th class="r">Margem</th><th class="r">MC%</th></tr></thead>
+      <tbody>${lista.map(linhaProduto).join('')}</tbody></table>`;
+  }).join('');
+
+  const insightsHtml = (d.insights || []).length
+    ? `<ul class="rl-insights">${d.insights.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`
+    : '<p class="rl-mut">Sem insights automáticos relevantes neste período.</p>';
+
+  const lider = d.visao_executiva.estagio_lider_hoje;
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Vendas por Estágio — ${dataBR(d.periodo_atual.de)} a ${dataBR(d.periodo_atual.ate)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color: #1a1a2e; padding: 32px 40px; max-width: 980px; margin: 0 auto; }
+    .rl-header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #8b5cf6; padding-bottom: 16px; margin-bottom: 20px; }
+    .rl-header h1 { font-size: 22px; margin: 0; background: linear-gradient(135deg,#8b5cf6,#6d28d9); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .rl-header .sub { font-size: 12px; color: #666; margin-top: 4px; }
+    .rl-header .gerado { font-size: 11px; color: #999; text-align: right; }
+    .rl-mut { color: #888; font-size: 12px; }
+    .rl-h2 { font-size: 15px; margin: 24px 0 10px; color: #4c1d95; }
+    .rl-h3 { font-size: 13px; margin: 18px 0 8px; padding: 4px 0 4px 10px; }
+    table.rl-t, table.rl-comp { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 6px; }
+    table.rl-t th, table.rl-comp th { text-align: left; background: #f4f2fb; color: #4c1d95; padding: 7px 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; }
+    table.rl-t td, table.rl-comp td { padding: 6px 8px; border-bottom: 1px solid #eee; }
+    td.r, th.r { text-align: right; }
+    .rl-fase { font-weight: 700; }
+    .rl-tag { display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; }
+    .rl-tag-baixo { background: #fee2e2; color: #b91c1c; }
+    .rl-tag-alto { background: #dcfce7; color: #0a7d33; }
+    .rl-kpis { display: flex; gap: 14px; margin-bottom: 6px; }
+    .rl-kpi { flex: 1; background: #f9f8fd; border: 1px solid #ece9fa; border-radius: 10px; padding: 12px 14px; }
+    .rl-kpi .k { font-size: 10px; color: #7c3aed; font-weight: 700; text-transform: uppercase; }
+    .rl-kpi .v { font-size: 17px; font-weight: 800; margin-top: 3px; }
+    .rl-score-item { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0; }
+    .rl-score-pos { background: #ece9fa; color: #6d28d9; font-weight: 800; border-radius: 6px; padding: 1px 7px; font-size: 10px; }
+    .rl-score-item b { margin-left: auto; }
+    .rl-insights { font-size: 12px; padding-left: 18px; margin: 0; }
+    .rl-insights li { margin-bottom: 5px; }
+    .rl-foot { margin-top: 28px; font-size: 10px; color: #aaa; border-top: 1px solid #eee; padding-top: 10px; }
+    @media print { body { padding: 12px 18px; } .rl-h3 { break-inside: avoid; } table { break-inside: auto; } tr { break-inside: avoid; } }
+  </style></head>
+  <body>
+    <div class="rl-header">
+      <div><h1>📊 Vendas por Estágio</h1>
+        <div class="sub">${dataBR(d.periodo_atual.de)} a ${dataBR(d.periodo_atual.ate)} (${d.periodo_atual.dias} dia${d.periodo_atual.dias !== 1 ? 's' : ''}) · ${esc(lojaNome)}</div>
+      </div>
+      <div class="gerado">Gerado em ${new Date().toLocaleString('pt-BR')}<br>ML Dashboard Multimarcas — Inteligência de Negócio</div>
+    </div>
+
+    <div class="rl-kpis">
+      <div class="rl-kpi"><div class="k">Estágio líder hoje</div><div class="v">${lider ? esc(FASE_UI[lider.fase].label) : '—'}</div><div class="rl-mut">${lider ? `${INT(lider.pedidos)} pedido(s) hoje · ${BRL(lider.faturamento)}` : 'Sem venda hoje ainda'}</div></div>
+      <div class="rl-kpi" style="flex:1.3"><div class="k">Ranking de score por estágio</div>${scoreRows}</div>
+    </div>
+
+    <h2 class="rl-h2">Comparativo por estágio</h2>
+    <p class="rl-mut">Período atual × período anterior de mesma duração (${dataBR(d.periodo_anterior.de)} a ${dataBR(d.periodo_anterior.ate)}) × mesma janela do mês passado (${dataBR(d.periodo_mes_passado.de)} a ${dataBR(d.periodo_mes_passado.ate)}).</p>
+    <table class="rl-comp"><thead><tr>
+      <th>Estágio</th><th class="r">Pedidos</th><th class="r">Faturamento</th><th class="r">Margem</th><th class="r">MC%</th>
+      <th class="r">Fat. período ant.</th><th class="r">Var.</th><th class="r">Fat. mês passado</th><th class="r">Var.</th>
+    </tr></thead><tbody>${linhasComp}</tbody></table>
+
+    <h2 class="rl-h2">Insights automáticos</h2>
+    ${insightsHtml}
+
+    <h2 class="rl-h2">Vendas por anúncio, dentro de cada estágio</h2>
+    <p class="rl-mut">Anúncios do período selecionado, agrupados pelo estágio ATUAL (não o de quando venderam — ver <code>business-rules.md</code>). Ordenados por faturamento.</p>
+    ${produtosPorFase || '<p class="rl-mut">Nenhuma venda de anúncio rastreado no período.</p>'}
+
+    <div class="rl-foot">Dados 100% reais, extraídos do banco no momento da geração — sem estimativa. Estágio sempre o ATUAL do anúncio (ranking_ads), nunca reconstruído historicamente.</div>
+    <script>window.onload=function(){window.print();}<\/script>
+  </body></html>`;
+}
+
+async function gerarRelatorio() {
+  const btn = document.getElementById('btnRelatorio');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando…';
+  try {
+    const periodo = resolverPeriodo();
+    const lojaSel = document.getElementById('imLoja');
+    const lojaId = lojaSel.value;
+    const lojaNome = lojaId ? (lojaSel.options[lojaSel.selectedIndex].textContent || 'Loja selecionada') : 'Todas as empresas';
+    const d = await DB.getBiRankeamentoRelatorio(periodo.days || 30, lojaId, {
+      date_from: periodo.date_from || null, date_to: periodo.date_to || null,
+    });
+    if (!d || d.error) { alert('Erro ao gerar relatório: ' + (d && d.error || 'sem resposta do servidor')); return; }
+    const html = montarRelatorioHtml(d, lojaNome);
+    const w = window.open('', '_blank');
+    if (!w) { alert('Permita pop-ups para gerar o relatório.'); return; }
+    w.document.write(html);
+    w.document.close();
+  } catch (e) {
+    alert('Erro ao gerar relatório: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-pdf"></i> Gerar Relatório';
+  }
 }
 
 popularLojas();

@@ -143,6 +143,14 @@ const addDiasStr = (iso, dias) => {
   d.setUTCDate(d.getUTCDate() + Math.floor(dias));
   return d.toISOString().slice(0, 10);
 };
+// Soma meses a uma data ISO — usado só pelo relatório de Vendas por Estágio
+// (comparação "mesma janela do mês passado"). Dia normalizado pelo próprio
+// Date (ex.: 31/mar − 1 mês vira 3/mar, JS não gera data inválida).
+const addMesesStr = (iso, meses) => {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCMonth(d.getUTCMonth() + Math.floor(meses));
+  return d.toISOString().slice(0, 10);
+};
 // Mesmo mapeamento visual de fmtFreteLabel (pages/vendas.html/bi-vendas.html)
 // — mantido em sincronia manualmente (é classificação de rótulo, não fórmula
 // financeira, então duplicar aqui não fere a regra "nunca duas fórmulas de
@@ -1008,6 +1016,30 @@ function agregarPorFase(linhas, visitasPorItem) {
     conversao_pct: b.visitas > 0 ? (b.pedidos / b.visitas) * 100 : null, // null = "dados insuficientes", nunca 0 forçado
   }));
 }
+// Agrega vendas por estágio numa janela ISOLADA — só o pedaço de
+// computarRankeamento necessário pras janelas COMPARATIVAS do relatório em
+// PDF (§ abaixo). Reusa a MESMA busca/fórmula (VENDA_DETALHE_SELECT,
+// calcularMargemLinha, agregarPorFase, ranking.buscarFasePorItemIds) — nunca
+// uma 2ª agregação por fase. Não calcula hoje/ontem/7d/produtos/recuperação/
+// score (o relatório só precisa dos totais por fase de cada janela).
+async function porFaseNoPeriodo({ dateFrom, dateTo, storeId, impostoFlexAtivo, freteMotoboy }) {
+  const p = [dateFrom, dateTo];
+  let filtro = '';
+  if (storeId) { p.push(storeId); filtro = `AND o.store_id = $${p.length}::bigint`; }
+  const { rows } = await pool.query(
+    `-- rankeamento-relatorio-janela
+     ${VENDA_DETALHE_SELECT}
+     WHERE o.status <> 'cancelled' AND o.date_created >= $1::date AND o.date_created < ($2::date + 1) ${filtro}
+     ORDER BY o.date_created DESC LIMIT 20000`,
+    p
+  );
+  const linhas = rows.map(r => calcularMargemLinha(r, impostoFlexAtivo, freteMotoboy));
+  const itemIds = [...new Set(linhas.map(r => r.item_id).filter(Boolean))];
+  const faseMap = await ranking.buscarFasePorItemIds(itemIds);
+  linhas.forEach(r => { r.fase = faseMap.get(r.item_id)?.fase || null; });
+  return agregarPorFase(linhas, null); // sem visitas — comparação é só pedidos/faturamento/margem
+}
+
 // Comparação hoje vs. um período de referência (ontem = valor cru; média 7d
 // = soma÷7) — mesmos 4+1 buckets nas duas listas, na mesma ordem.
 function compararFases(atualBuckets, refBuckets, divisorRef) {
@@ -1251,6 +1283,52 @@ router.get('/rankeamento', async (req, res) => {
     }));
   } catch (e) {
     console.error('[bi] /rankeamento error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Relatório em PDF de Vendas por Estágio (botão "Gerar Relatório",
+// bi-rankeamento.html) — mesmo filtro da tela (days OU date_from/date_to +
+// store_id), reusa computarRankeamento() por inteiro pro período ATUAL
+// (por_fase_periodo/produtos_por_estagio/visao_executiva/insights, sem
+// recalcular nada) e soma DUAS janelas comparativas com porFaseNoPeriodo():
+// o período ANTERIOR imediato (mesma duração, termina 1 dia antes do atual)
+// e a MESMA janela um mês atrás (mesmo dia inicial/final, −1 mês). Pedido
+// explícito do usuário — ver business-rules.md.
+router.get('/rankeamento/relatorio', async (req, res) => {
+  try {
+    const q = req.query;
+    const temIntervalo = q.date_from && q.date_to;
+    const days = Math.min(Math.max(Number(q.days) || 30, 1), 365);
+    const storeId = String(q.store_id || '').trim();
+    const atual = await computarRankeamento({
+      days, storeId,
+      dateFrom: temIntervalo ? q.date_from : null,
+      dateTo: temIntervalo ? q.date_to : null,
+    });
+    const { de, ate, dias } = atual.periodo;
+    const anteriorFim = addDiasStr(de, -1);
+    const anteriorIni = addDiasStr(anteriorFim, -(dias - 1));
+    const mesPassadoIni = addMesesStr(de, -1);
+    const mesPassadoFim = addMesesStr(ate, -1);
+
+    const [impostoFlexAtivo, freteMotoboy] = await Promise.all([buscarImpostoFlexAtivo(), buscarFreteMotoboy()]);
+    const [porFaseAnterior, porFaseMesPassado] = await Promise.all([
+      porFaseNoPeriodo({ dateFrom: anteriorIni, dateTo: anteriorFim, storeId, impostoFlexAtivo, freteMotoboy }),
+      porFaseNoPeriodo({ dateFrom: mesPassadoIni, dateTo: mesPassadoFim, storeId, impostoFlexAtivo, freteMotoboy }),
+    ]);
+
+    res.json({
+      periodo_atual: atual.periodo,
+      periodo_anterior: { de: anteriorIni, ate: anteriorFim },
+      periodo_mes_passado: { de: mesPassadoIni, ate: mesPassadoFim },
+      visao_executiva: atual.visao_executiva,
+      por_fase: { atual: atual.por_fase_periodo, anterior: porFaseAnterior, mes_passado: porFaseMesPassado },
+      produtos_por_estagio: atual.produtos_por_estagio,
+      insights: atual.insights,
+    });
+  } catch (e) {
+    console.error('[bi] /rankeamento/relatorio error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

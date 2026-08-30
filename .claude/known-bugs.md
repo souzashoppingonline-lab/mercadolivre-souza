@@ -2,6 +2,16 @@
 
 > Escopo: defeitos e inconsistências reais identificados no código atual — não é uma lista de features faltando (isso é `roadmap.md`/`todo.md`) nem de decisões deliberadas documentadas (isso é `decisions.md`). Cada item aqui deve apontar arquivo/linha e o sintoma esperado. **Ao corrigir um item, mova-o para `decisions.md` (se a correção envolveu uma escolha de design) e remova daqui.**
 
+## `server/src/db/migrate.js` — `migrate-v5.sql` e `migrate-v6.sql` faltam na lista de arquivos aplicados
+
+Achado ao validar a rota de relatório de Vendas por Estágio contra um Postgres real do zero (`npm run migrate` numa base vazia): o array de `migrate.js` pula direto de `migrate-v4.sql` pra `migrate-v8.sql` — **`migrate-v5.sql` (cria `app_config`) e `migrate-v6.sql` (cria `promotions`) nunca são aplicadas**. Numa base já em produção (migrada sequencialmente desde sempre) isso não aparece, mas um deploy do zero (novo ambiente, disaster recovery) ficaria **sem a tabela `app_config`** — quebra `imposto_flex_ativo`, `frete_motoboy_ativo/valor`, os silêncios do Telegram (`tg_*`) e qualquer outra flag chave/valor do sistema, todas lidas de lá — e sem a tabela `promotions`.
+
+`migrate-v7.sql` (coluna `stores.imposto_pct`) e `migrate-v10.sql` (índice único `messages.pack_id`) também estão fora da lista, mas são **inofensivos** — a coluna/índice já são criados por outra migration mais nova (confirmado ao aplicar os 2 manualmente numa base já migrada: `NOTICE: já existe, skipping`).
+
+**Bug adicional dentro de `migrate-v6.sql`**: mesmo se fosse adicionada à lista, a migration tem SQL inválido — `CREATE INDEX ... ON promotions(store_id, changed_at::date)` não compila (Postgres exige a expressão com cast entre parênteses extras pra índice de expressão: `((changed_at::date))`). Mesma classe de bug já registrada e corrigida uma vez em `migrate-v78.sql` (ver "RESOLVIDO (v80)" abaixo) — aconteceu de novo em outro arquivo.
+
+**Correção esperada**: adicionar `'migrate-v5.sql'` e `'migrate-v6.sql'` (com o `::date` corrigido) na lista de `migrate.js`, na posição correta (entre v4 e v8). Não fiz a correção nesta tarefa (fora do escopo do que estava sendo pedido) — task sugerida separadamente.
+
 ## 2. Tópico WebSocket `kpis_updated` documentado mas nunca publicado
 
 `js/websocket.js` e o `CLAUDE.md` original citam `kpis_updated` como tópico emitido pelo backend, e `dashboard.js` está inscrito nele. Nenhum handler em `worker.js` publica esse tópico hoje — o dashboard na prática se atualiza via `order_updated`/`stock_alert` e um polling de 60s (`setInterval` em `dashboard.js`). Não é um bug funcional grave (o polling cobre a lacuna), mas é documentação/código morto — ver `websocket.md`.

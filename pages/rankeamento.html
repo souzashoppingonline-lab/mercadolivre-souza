@@ -116,7 +116,7 @@
     .rk-btn-stop:hover { color: #fff; background: var(--red); border-color: var(--red); }
     .rk-bb-status { text-align: center; font-weight: 900; font-size: 13px; padding: 8px; border-radius: 8px; margin-bottom: 8px; letter-spacing: .3px; }
     .rk-bb-boosts { font-size: 11px; color: var(--text-muted); margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .rk-chip-boost { background: rgba(248,81,73,.15); color: #f85149; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+    .rk-chip-boost { background: rgba(248,81,73,.15); color: #f85149; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; cursor: help; }
     .rk-bb-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; }
     .rk-tipo-sel { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
     .rk-tipo-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(88,166,255,.12); color: #58a6ff; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
@@ -646,7 +646,21 @@ function cardHtml(a) {
   // 'sharing_first_place' é a única outra string tratada com confiança porque
   // veio documentada explicitamente pelo usuário nesta tarefa.
   const catalogo = fase === 'catalogo';
-  const BOOST_LABEL = { fulfillment: 'Full', free_shipping: 'Frete grátis', same_day_shipping: 'Entrega no mesmo dia', official_store: 'Loja oficial', discount: 'Desconto ativo', loyalty_discount: 'Desconto por fidelidade' };
+  // Explicação de cada boost no hover do chip — só pros ids que o Mercado
+  // Livre documenta publicamente como fator de disputa do catálogo (preço,
+  // Full, frete grátis, entrega no mesmo dia, loja oficial, desconto,
+  // parcelamento sem juros). Id desconhecido continua caindo no texto cru,
+  // com um aviso honesto no lugar de explicação inventada — nunca chuta o
+  // significado de um boost que a API não documentou (ver business-rules.md).
+  const BOOST_INFO = {
+    fulfillment:        { label: 'Full',                    tip: 'O vencedor anuncia com Mercado Envios Full (entrega mais rápida) e o seu anúncio não — o ML prioriza Full na disputa do catálogo.' },
+    free_shipping:       { label: 'Frete grátis',            tip: 'O vencedor oferece frete grátis nesse anúncio e o seu não.' },
+    same_day_shipping:    { label: 'Entrega no mesmo dia',    tip: 'O vencedor entrega no mesmo dia (região elegível) e o seu anúncio não oferece essa opção.' },
+    official_store:      { label: 'Loja oficial',            tip: 'O vencedor vende como Loja Oficial, o que o ML favorece na disputa do catálogo.' },
+    discount:            { label: 'Desconto ativo',          tip: 'O vencedor está com desconto/promoção ativa no preço — isso pesa a favor dele.' },
+    loyalty_discount:     { label: 'Desconto por fidelidade',  tip: 'O vencedor oferece desconto pra clientes do programa de fidelidade (Mercado Pontos) e o seu anúncio não.' },
+    free_installments:    { label: 'Parcelamento sem juros',   tip: 'O vencedor oferece parcelamento sem juros e o seu anúncio não.' },
+  };
   function statusBuyBox(a) {
     if (!a.buybox_calculated_at) return { label: 'Aguardando 1ª sincronização', cor: '#8b949e', ico: '⏳' };
     if (a.winner_item_id === a.ml_id) return { label: 'GANHANDO', cor: '#3fb950', ico: '🏆' };
@@ -667,7 +681,11 @@ function cardHtml(a) {
       <div class="rk-stat"><div class="v" style="font-size:11px;word-break:break-all">${a.winner_item_id?esc(a.winner_item_id):'—'}</div><div class="k">Anúncio vencedor</div></div>
       <div class="rk-stat"><div class="v">${a.estoque_atual != null ? a.estoque_atual : '—'}</div><div class="k">📦 Estoque</div></div>
     </div>
-    ${(a.buybox_boosts_missing && a.buybox_boosts_missing.length) ? `<div class="rk-bb-boosts"><b>Por que pode estar perdendo:</b> ${a.buybox_boosts_missing.map(b=>`<span class="rk-chip-boost">${esc(BOOST_LABEL[b]||b)}</span>`).join('')}</div>` : ''}
+    ${(a.buybox_boosts_missing && a.buybox_boosts_missing.length) ? `<div class="rk-bb-boosts"><b>Por que pode estar perdendo:</b> ${a.buybox_boosts_missing.map(b=>{
+        const info = BOOST_INFO[b];
+        const tip = info ? info.tip : 'Motivo retornado pelo Mercado Livre, mas esse id específico ainda não tem explicação confirmada aqui.';
+        return `<span class="rk-chip-boost" title="${esc(tip)}">${esc(info ? info.label : b)}</span>`;
+      }).join('')}</div>` : ''}
     <div class="rk-bb-foot">
       <span class="rk-days" style="background:transparent;border:none;padding:0;color:var(--text-muted);font-weight:400">${a.buybox_calculated_at ? `Sincronizado em ${fmtDT(a.buybox_calculated_at)}` : 'Ainda não sincronizado — busca automática já disparada, aguarde.'}</span>
       <button class="rk-icon-btn" style="margin-left:auto" title="Ver todos os vendedores concorrendo neste catálogo" onclick="abrirConcorrentesModal('${esc(a.ml_id)}', '${esc(a.title || a.ml_id)}')"><i class="fas fa-users"></i> Ver concorrentes</button>

@@ -76,7 +76,7 @@ Cada anúncio tem `ranking_ads.fase`:
 
 **Níveis de progressão (v78):** anúncio em **RANQUEADO** exibe seu **Nível** (1 + floor(sales_count / 10)) — a cada 10 vendas acumuladas, sobe de nível (Nível 1, Nível 2, Nível 3…). Também mostra **Devoluções** — só visível em RANQUEADO, colorida em verde (nenhuma) ou vermelho. ⚠️ **Hoje é sempre 0**: a query original lia `returns.item_id`, coluna que não existe (quebrava a rota inteira com 500), então o campo ficou fixo em `0 AS devolucoes_count` até existir uma forma real de casar devolução ↔ anúncio. Ver `known-bugs.md`.
 
-A página tem 5 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento**, **Recuperação** (v80, ver abaixo) e **Todos os anúncios** (tabela de seleção).
+A página tem 6 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento**, **Recuperação** (v80, ver abaixo), **Catálogo (Buy Box)** (v88, ver abaixo — arquitetura diferente das outras 4: sem `MAX_ADS`, sem venda-a-venda, só status de concorrência) e **Todos os anúncios** (tabela de seleção).
 
 ## Três estágios + mudança manual (v76) — quatro a partir da v80
 
@@ -140,9 +140,37 @@ Nota **sem tipo** continua sendo anotação livre (não carimba baseline) — o 
 
 > Ainda **não** implementado: alerta no Telegram quando uma intervenção fecha a janela de 7 dias sem efeito (hoje isso só aparece no card). Ver `todo.md`.
 
+## 5º estágio: Catálogo / Buy Box (v88) — anúncio de catálogo, sem limite de 30
+
+`fase = 'catalogo'` (badge roxo `#a855f7`, ícone 🏆, aba própria). Diferente dos outros 4 (que empurram/defendem/monitoram/recuperam UM anúncio de cada vez), este é um estágio de **alocação em massa**: o usuário aloca **todos os anúncios de catálogo** que quiser acompanhar — o card mostra só o status de concorrência (ganhando/perdendo/compartilhando o 1º lugar), não venda-a-venda. Reusa 100% a infraestrutura de Buy-Box que já existia (`catalog_competition`/`catalog_competition_history`, v26, ver `business-rules.md` "Monitor de Buy-Box") — não duplica schema nem fórmula, só passa a EXPOR isso como um estágio do Rankeamento (antes só aparecia dentro do módulo Qualidade de Anúncio e como 2 campos no card de Recuperação).
+
+**Sem o teto de `MAX_ADS=30`:** essa trava existe porque o snapshot de rankeando/ranqueado/monitoramento/recuperação (`sync-ranking`, 6/6h) chama a API por anúncio ativo — 'catalogo' **não** entra nesse snapshot (usa o job `sync-catalog-competition` dedicado, com throttling próprio, ver abaixo), então o motivo original da trava não se aplica. `POST /api/ranking/ads` conta só `WHERE active=true AND fase != 'catalogo'` pro teto — dá pra alocar quantos anúncios de catálogo quiser sem esbarrar no limite pensado pro punhado sendo empurrado manualmente.
+
+**Alocação:** dois caminhos, os dois carimbam `catalogo_started_at` e disparam uma busca `price_to_win` **na hora** (sob demanda, best-effort — nunca derruba a resposta se falhar):
+1. Direto — na aba "Todos os anúncios", seletor **"Adicionar em:"** (default "Em rankeamento") trocado pra "Catálogo (Buy Box)" antes de clicar "Acompanhar". Fica na mesma aba depois de adicionar (não troca de painel) — é o que permite alocar VÁRIOS anúncios seguidos, um clique de cada vez, sem perder a busca. `POST /ads {ml_id, fase:'catalogo'}`.
+2. De qualquer outro estágio — seletor de estágio no card, escolhendo "Catálogo (Buy Box)". `PATCH /ads/:id {fase:'catalogo'}`.
+
+**Sincronização "aos poucos", sem rate limit (pedido explícito do usuário):** o job diário `sync-catalog-competition` (04:50, `worker.js`) — que já tinha throttling pesado (10s entre itens, pausa de 30s a cada 10, 60s+circuit-breaker em 429; nada mudou aí) — teve sua **seleção de itens estendida**: além de `item_seo_score.catalog_listing=true` (como já era), agora também cobre `ranking_ads` com `fase='catalogo' AND active=true` (UNION deduplicado por item_id). **Itens NUNCA sincronizados vêm primeiro na fila** (`ORDER BY calculated_at ASC NULLS FIRST`) — quem acabou de ser alocado é priorizado sobre quem já tem dado, mesmo que o catálogo inteiro não caiba numa execução só. A busca sob demanda do momento da alocação (acima) cobre a urgência de "ver algo agora"; o job cobre o resto gradualmente, dia a dia, sem gastar rate limit numa rajada.
+
+**O que o card mostra** (tudo já vem no payload de `GET /ads`, via o `LEFT JOIN catalog_competition` que já existia pra Recuperação — só mais colunas expostas, nenhum JOIN novo):
+
+| Bloco | Fonte |
+|---|---|
+| Status: 🏆 GANHANDO / 📉 PERDENDO / 🤝 COMPARTILHANDO O 1º LUGAR / ⏳ Aguardando 1ª sincronização | `winner_item_id === ml_id` → ganhando (nunca a string crua de status — só `'competing'` foi confirmado ao vivo, ver `business-rules.md`); `buybox_status === 'sharing_first_place'` é a ÚNICA outra string tratada com confiança, porque veio documentada explicitamente pelo usuário nesta tarefa (as 4 strings oficiais: `winning`/`competing`/`sharing_first_place`/`listed`) |
+| Seu preço / Preço pra vencer / Diferença | `preco_atual` (de `items`) × `price_to_win` |
+| Vencedor ("Você" ou o `ml_id` do concorrente) / Preço do vencedor | `winner_item_id` / `winner_price` |
+| "Por que pode estar perdendo" (chips) | `boosts_missing[]` traduzido (`fulfillment`→Full, `free_shipping`→Frete grátis, etc. — id desconhecido cai no texto cru, nunca inventa tradução) |
+| Estoque | `available_quantity` (já vinha) |
+| "Sincronizado em…" | `catalog_competition.calculated_at` |
+| Botão **"Ver concorrentes"** | Reusa 100% a rota já existente `GET /api/qualidade-anuncio/:itemId/concorrentes` (`ml.getCatalogCompetitors`, sob demanda) — mesmo componente do módulo Qualidade de Anúncio, nenhuma rota nova. Modal lista cada vendedor (preço/Full/frete grátis/quem é o vencedor), marca "(você)" na sua linha. |
+
+**Histórico em tempo real (v88) — webhook `catalog_item_competition_status`:** além do job diário e da busca sob demanda na alocação, `worker.js` agora tem um handler pra esse tópico (`ranking.onCatalogCompetitionUpdate`) que atualiza `catalog_competition`/`catalog_competition_history` **na hora** que o Mercado Livre avisa uma mudança de status, e — se o item estiver tracked em QUALQUER estágio do Rankeamento — emite o mesmo evento `buybox` (🥇 ganhou / ⚠️ perdeu) que o snapshot periódico já emitia pras outras fases, com a MESMA mensagem/formato (`ranking.emit()`, nunca uma 2ª fórmula), evitando duplicar notificação via `ranking_ads.last_buybox`.
+
+> ⚠️ **Depende de configuração fora deste código**: o tópico `catalog_item_competition_status` precisa estar **habilitado no painel de desenvolvedor do Mercado Livre** pra este app. Se não estiver, o ML nunca manda o webhook e o handler nunca roda — **sem qualquer regressão**: o job diário `sync-catalog-competition` continua sendo a fonte normal, exatamente como já era antes desta tarefa. O formato exato do `resource` desse tópico também não foi confirmado ao vivo (a extração do `item_id` tenta achar um `MLB\d+` em qualquer posição do path, com fallback pro último segmento — mesma defesa já usada em `handleOffer`). Ver `mercadolivre.md`/`decisions.md`.
+
 ## Página `pages/rankeamento.html`
 
-Duas partes: (1) **cards dos anúncios em rankeamento** no topo — badge "Anúncio em rankeamento", contador com barra de progresso 5-em-5, stats (faturamento/visitas/estoque/preço) e **timeline venda-a-venda ao vivo** (WS `ranking_event` insere no topo na hora); botões pausar/remover + **🔔 Aviso ADS** (agendar lembrete). (2) **tabela com todos os anúncios** (busca por título/MLB) com botão "Acompanhar" que promove o anúncio a card. Métodos em `js/db.js`: `getRankingAds`, `buscarRankingItems`, `addRankingAd`, `patchRankingAd`, `removeRankingAd`, `getRankingEventos`, `getRankingAlerts`, `agendarRankingAlert`.
+Duas partes: (1) **cards dos anúncios em rankeamento** no topo — badge "Anúncio em rankeamento", contador com barra de progresso 5-em-5, stats (faturamento/visitas/estoque/preço) e **timeline venda-a-venda ao vivo** (WS `ranking_event` insere no topo na hora); botões pausar/remover + **🔔 Aviso ADS** (agendar lembrete). (2) **tabela com todos os anúncios** (busca por título/MLB) com botão "Acompanhar" que promove o anúncio a card + seletor **"Adicionar em:"** (v88, default "Em rankeamento") pra escolher direto o estágio de destino — inclusive Catálogo (Buy Box), sem passar por 'rankeando' primeiro. Métodos em `js/db.js`: `getRankingAds`, `buscarRankingItems`, `addRankingAd` (aceita `fase` opcional, v88), `patchRankingAd`, `removeRankingAd`, `getRankingEventos`, `getRankingAlerts`, `agendarRankingAlert`, `getQualidadeAnuncioConcorrentes` (reusado no modal "Ver concorrentes" do estágio Catálogo).
 
 **Ordenação por vendas na aba "Em rankeamento" (v88):** select "Ordenar por" (Padrão/Mais vendidos/Menos vendidos) só nessa aba — client-side, sobre `sales_count` (cumulativo através dos ciclos, mesmo número do contador do card), sem request nova (`ordenarPorVendas()` reordena a lista já carregada antes de `renderPanel`). As outras abas (Ranqueados/Monitoramento/Recuperação/Todos) não têm esse seletor.
 
@@ -166,3 +194,5 @@ Um anúncio **em rankeamento** passa por **ciclos** (campanhas/empurrões sucess
 ## Integração com a Inteligência de Negócio (Vendas por Estágio)
 
 O estágio (`fase`) é consultado, nunca duplicado/editado, pelo módulo BI — tela `bi-rankeamento.html` (Vendas por Estágio) e tag de estágio em `bi-vendas.html`. Fórmulas/limiares dessa integração (por que o estágio mostrado é sempre o ATUAL, nunca reconstruído; antes×depois de Recuperação; score; conversão) ficam em `business-rules.md`, contrato da rota em `api.md` (`GET /api/bi/rankeamento`, `POST /api/ranking/fase-lote`), decisão de design em `decisions.md`.
+
+**Estágio Catálogo entra na mesma análise (v88, pedido explícito do usuário):** `FASES_RANKEAMENTO` (`routes/bi.js`) inclui `'catalogo'` — automaticamente aparece em TODO lugar que já analisa estágio: os 5 blocos de `bi-rankeamento.html` (antes 4), a tabela de comparação, o ranking de score, `produtos_por_estagio`, e o relatório em PDF (`GET /api/bi/rankeamento/relatorio`, ver abaixo). Uma venda de um anúncio alocado em Catálogo passa a bucketizar em `'catalogo'`, não mais em `'sem_rankeamento'`.

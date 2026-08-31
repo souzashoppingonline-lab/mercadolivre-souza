@@ -114,6 +114,10 @@
     .rk-btn-ok   { background: #2ea043; color: #fff; border: none; border-radius: 7px; padding: 6px 10px; font-size: 11px; font-weight: 800; cursor: pointer; }
     .rk-btn-stop { background: var(--bg-card2); color: var(--text-muted); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-size: 11px; font-weight: 800; cursor: pointer; }
     .rk-btn-stop:hover { color: #fff; background: var(--red); border-color: var(--red); }
+    .rk-bb-status { text-align: center; font-weight: 900; font-size: 13px; padding: 8px; border-radius: 8px; margin-bottom: 8px; letter-spacing: .3px; }
+    .rk-bb-boosts { font-size: 11px; color: var(--text-muted); margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .rk-chip-boost { background: rgba(248,81,73,.15); color: #f85149; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+    .rk-bb-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; }
     .rk-tipo-sel { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
     .rk-tipo-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(88,166,255,.12); color: #58a6ff; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
 
@@ -179,6 +183,7 @@
     <button class="rk-tab" id="tab-ranqueado" onclick="switchTab('ranqueado')"><i class="fas fa-shield-halved"></i> Ranqueados <span class="rk-tab-badge" id="cnt-ranqueado">0</span></button>
     <button class="rk-tab" id="tab-monitoramento" onclick="switchTab('monitoramento')"><i class="fas fa-eye"></i> Monitoramento <span class="rk-tab-badge" id="cnt-monitoramento">0</span></button>
     <button class="rk-tab" id="tab-recuperacao" onclick="switchTab('recuperacao')"><i class="fas fa-heart-pulse"></i> Recuperação <span class="rk-tab-badge" id="cnt-recuperacao">0</span></button>
+    <button class="rk-tab" id="tab-catalogo" onclick="switchTab('catalogo')"><i class="fas fa-trophy"></i> Catálogo (Buy Box) <span class="rk-tab-badge" id="cnt-catalogo">0</span></button>
     <button class="rk-tab" id="tab-todos" onclick="switchTab('todos')"><i class="fas fa-list"></i> Todos os anúncios</button>
     <select id="rkCiclo" onchange="onCicloChange()" title="Filtrar por ciclo de rankeamento" style="margin-left:auto;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px">
       <option value="">Todos os ciclos</option>
@@ -223,6 +228,13 @@
     <div id="rkCardsRecEmpty" class="rk-empty" style="display:none">Nenhum anúncio em recuperação. Em qualquer card, mude o estágio para <b>Recuperação</b> quando o anúncio parar de vender (ou nunca tiver vendido).</div>
   </div>
 
+  <!-- Aba: Catálogo (Buy Box) — v88 -->
+  <div class="rk-panel" id="panel-catalogo">
+    <p class="rk-sub" style="margin-top:0">Anúncios de <b>catálogo</b> — o foco aqui é o <b>Buy Box</b>: ganhando, perdendo ou compartilhando o 1º lugar. Alocado sem limite de 30 (essa trava é só pro punhado sendo empurrado manualmente nos outros estágios). Ao alocar, busca a info na hora; os demais itens são cobertos aos poucos pelo job diário (04:50), sem estourar rate limit.</p>
+    <div id="rkCardsCat" class="rk-cards"></div>
+    <div id="rkCardsCatEmpty" class="rk-empty" style="display:none">Nenhum anúncio no estágio Catálogo. Em "Todos os anúncios", escolha "Adicionar em: Catálogo (Buy Box)" antes de clicar em Acompanhar — ou mude o estágio de um card já existente pelo seletor.</div>
+  </div>
+
   <!-- Aba: Todos os anúncios -->
   <div class="rk-panel" id="panel-todos">
     <div class="rk-search">
@@ -232,6 +244,13 @@
         <option value="SHOPEE">Shopee</option>
       </select>
       <input id="rkSearch" placeholder="Buscar por título ou ID..." autocomplete="off">
+      <select id="rkAddFase" title="Estágio em que 'Acompanhar' vai adicionar o anúncio" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px">
+        <option value="rankeando">Adicionar em: Em rankeamento</option>
+        <option value="ranqueado">Adicionar em: Ranqueado</option>
+        <option value="monitoramento">Adicionar em: Monitoramento</option>
+        <option value="recuperacao">Adicionar em: Recuperação</option>
+        <option value="catalogo">Adicionar em: Catálogo (Buy Box)</option>
+      </select>
     </div>
     <div style="overflow-x:auto">
       <table class="rk-table">
@@ -256,6 +275,21 @@
       <button class="rk-modal-close" onclick="fecharPrecoModal()"><i class="fas fa-times"></i></button>
     </div>
     <div class="rk-modal-body" id="precoModalBody"></div>
+  </div>
+</div>
+
+<!-- Modal: concorrentes do catálogo (Buy Box, v88) -->
+<div class="rk-modal-ov" id="concorrentesModal" onclick="if(event.target===this)fecharConcorrentesModal()">
+  <div class="rk-modal">
+    <div class="rk-modal-head">
+      <i class="fas fa-users" style="color:#a855f7"></i>
+      <div style="flex:1;min-width:0">
+        <h3>Concorrentes do catálogo</h3>
+        <div class="sub" id="concorrentesModalSub"></div>
+      </div>
+      <button class="rk-modal-close" onclick="fecharConcorrentesModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="rk-modal-body" id="concorrentesModalBody"></div>
   </div>
 </div>
 
@@ -355,8 +389,8 @@ const TIPOS_INTERV = {
 // não do started_at original: quem já ranqueou quer saber "há quantos dias está
 // ranqueado", não há quantos dias entrou em rankeamento.
 function diasRank(a, fase) {
-  const MARCO = { ranqueado: a.ranqueado_em, monitoramento: a.monitoramento_started_at, recuperacao: a.recuperacao_started_at };
-  const LABEL = { ranqueado: 'ranqueado', monitoramento: 'em monitoramento', recuperacao: 'em recuperação' };
+  const MARCO = { ranqueado: a.ranqueado_em, monitoramento: a.monitoramento_started_at, recuperacao: a.recuperacao_started_at, catalogo: a.catalogo_started_at };
+  const LABEL = { ranqueado: 'ranqueado', monitoramento: 'em monitoramento', recuperacao: 'em recuperação', catalogo: 'em catálogo' };
   const label = LABEL[fase] || 'em rankeamento';
   // Fase com marco próprio conta a partir DELE. Sem o carimbo (card antigo,
   // movido antes da migration que criou a coluna) mostramos só o rótulo — dizer
@@ -422,7 +456,7 @@ const EVENTS = {};   // id do ranking_ad -> array de eventos
 
 function switchTab(t) {
   TAB = t;
-  ['rankeando','ranqueado','monitoramento','recuperacao','todos'].forEach(x => {
+  ['rankeando','ranqueado','monitoramento','recuperacao','catalogo','todos'].forEach(x => {
     document.getElementById('tab-'+x).classList.toggle('active', x === t);
     document.getElementById('panel-'+x).classList.toggle('active', x === t);
   });
@@ -436,16 +470,19 @@ function onMktChange() {
 
 // Carrega os 4 estágios (rankeando / ranqueado / monitoramento / recuperação) e os contadores.
 async function loadCards() {
-  const [d1, d2, d3, d4] = await Promise.all([
+  const [d1, d2, d3, d4, d5] = await Promise.all([
     DB.getRankingAds(MKT, 'rankeando', LOJA, CICLO),
     DB.getRankingAds(MKT, 'ranqueado', LOJA, CICLO),
     DB.getRankingAds(MKT, 'monitoramento', LOJA, CICLO),
     DB.getRankingAds(MKT, 'recuperacao', LOJA, CICLO),
+    DB.getRankingAds(MKT, 'catalogo', LOJA, CICLO),
   ]);
   await renderPanel(ordenarPorVendas(d1.ads || [], SORT_RANKEANDO), 'rkCards', 'rkCardsEmpty');
   await renderPanel(d2.ads || [], 'rkCardsRanq', 'rkCardsRanqEmpty');
   await renderPanel(d3.ads || [], 'rkCardsMon', 'rkCardsMonEmpty');
   await renderPanel(d4.ads || [], 'rkCardsRec', 'rkCardsRecEmpty');
+  await renderPanel(d5.ads || [], 'rkCardsCat', 'rkCardsCatEmpty');
+  document.getElementById('cnt-catalogo').textContent = (d5.ads || []).length;
   document.getElementById('cnt-rankeando').textContent = (d1.ads || []).length;
   document.getElementById('cnt-ranqueado').textContent = (d2.ads || []).length;
   document.getElementById('cnt-monitoramento').textContent = (d3.ads || []).length;
@@ -463,6 +500,7 @@ const FASES = {
   ranqueado:     { label:'Ranqueado',      cor:'#2ea043', txt:'#ffffff', icon:'fa-shield-halved', glow:'rgba(46,160,67,.15)' },
   monitoramento: { label:'Monitoramento',  cor:'#f59e0b', txt:'#1a1a1a', icon:'fa-eye',           glow:'rgba(245,158,11,.18)' },
   recuperacao:   { label:'Recuperação',    cor:'#f85149', txt:'#ffffff', icon:'fa-heart-pulse',   glow:'rgba(248,81,73,.18)' },
+  catalogo:      { label:'Catálogo (Buy Box)', cor:'#a855f7', txt:'#ffffff', icon:'fa-trophy',    glow:'rgba(168,85,247,.18)' },
 };
 function faseSelect(a, fase) {
   return `<select class="rk-fase-sel" title="Mudar estágio" onchange="mudarFase(${a.id}, this.value)">`
@@ -600,9 +638,44 @@ function cardHtml(a) {
       <button class="rk-icon-btn" style="margin-left:auto" title="Agendar reavaliação no Telegram" onclick="abrirAvisoAdsModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-bell"></i> Reavaliar em…</button>
     </div>` : '';
 
+  // Fase CATÁLOGO / Buy Box (v88): status ganhando/perdendo/compartilhando,
+  // preço pra vencer, vencedor, boosts faltando — tudo já vem no payload de
+  // /ads (catalog_competition, LEFT JOIN — ver routes/ranking.js). Ganhando é
+  // decidido por winner_item_id === próprio ml_id (nunca pela string de
+  // status crua — só 'competing' foi confirmado ao vivo, ver business-rules.md);
+  // 'sharing_first_place' é a única outra string tratada com confiança porque
+  // veio documentada explicitamente pelo usuário nesta tarefa.
+  const catalogo = fase === 'catalogo';
+  const BOOST_LABEL = { fulfillment: 'Full', free_shipping: 'Frete grátis', same_day_shipping: 'Entrega no mesmo dia', official_store: 'Loja oficial', discount: 'Desconto ativo', loyalty_discount: 'Desconto por fidelidade' };
+  function statusBuyBox(a) {
+    if (!a.buybox_calculated_at) return { label: 'Aguardando 1ª sincronização', cor: '#8b949e', ico: '⏳' };
+    if (a.winner_item_id === a.ml_id) return { label: 'GANHANDO', cor: '#3fb950', ico: '🏆' };
+    if (a.buybox_status === 'sharing_first_place') return { label: 'COMPARTILHANDO O 1º LUGAR', cor: '#f0883e', ico: '🤝' };
+    if (a.winner_item_id) return { label: 'PERDENDO', cor: '#f85149', ico: '📉' };
+    return { label: 'Sem concorrência detectada', cor: '#8b949e', ico: '—' };
+  }
+  const sbb = statusBuyBox(a);
+  const diffPreco = (a.preco_atual != null && a.price_to_win != null) ? Number(a.preco_atual) - Number(a.price_to_win) : null;
+  const souVencedor = a.winner_item_id && a.winner_item_id === a.ml_id;
+  const meioCat = `
+    <div class="rk-bb-status" style="background:${sbb.cor}22;border:1px solid ${sbb.cor}55;color:${sbb.cor}">${sbb.ico} ${sbb.label}</div>
+    <div class="rk-stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="rk-stat"><div class="v">${a.preco_atual!=null?BRL(a.preco_atual):'—'}</div><div class="k">💲 Seu preço</div></div>
+      <div class="rk-stat"><div class="v">${a.price_to_win!=null?BRL(a.price_to_win):'—'}</div><div class="k">🎯 Preço pra vencer</div></div>
+      <div class="rk-stat"><div class="v" style="color:${diffPreco==null?'inherit':(diffPreco>0?'#f85149':(diffPreco<0?'#3fb950':'inherit'))}">${diffPreco!=null?(diffPreco>0?'+':'')+BRL(diffPreco):'—'}</div><div class="k">Diferença</div></div>
+      <div class="rk-stat"><div class="v">${souVencedor?'Você':(a.buybox_winner_price!=null?BRL(a.buybox_winner_price):'—')}</div><div class="k">🥇 ${souVencedor?'Vencedor':'Preço do vencedor'}</div></div>
+      <div class="rk-stat"><div class="v" style="font-size:11px;word-break:break-all">${a.winner_item_id?esc(a.winner_item_id):'—'}</div><div class="k">Anúncio vencedor</div></div>
+      <div class="rk-stat"><div class="v">${a.estoque_atual != null ? a.estoque_atual : '—'}</div><div class="k">📦 Estoque</div></div>
+    </div>
+    ${(a.buybox_boosts_missing && a.buybox_boosts_missing.length) ? `<div class="rk-bb-boosts"><b>Por que pode estar perdendo:</b> ${a.buybox_boosts_missing.map(b=>`<span class="rk-chip-boost">${esc(BOOST_LABEL[b]||b)}</span>`).join('')}</div>` : ''}
+    <div class="rk-bb-foot">
+      <span class="rk-days" style="background:transparent;border:none;padding:0;color:var(--text-muted);font-weight:400">${a.buybox_calculated_at ? `Sincronizado em ${fmtDT(a.buybox_calculated_at)}` : 'Ainda não sincronizado — busca automática já disparada, aguarde.'}</span>
+      <button class="rk-icon-btn" style="margin-left:auto" title="Ver todos os vendedores concorrendo neste catálogo" onclick="abrirConcorrentesModal('${esc(a.ml_id)}', '${esc(a.title || a.ml_id)}')"><i class="fas fa-users"></i> Ver concorrentes</button>
+    </div>`;
+
   // Saúde (ranqueado/monitoramento) ou contador 5-em-5 (rankeando).
   const isRanqueado = fase === 'ranqueado';
-  const meio = recup ? meioRec : !rankeando ? `
+  const meio = recup ? meioRec : catalogo ? meioCat : !rankeando ? `
     <div class="rk-stats">
       <div class="rk-stat"><div class="v">${a.last_highlight_pos!=null?'#'+a.last_highlight_pos:'—'}</div><div class="k">Mais Vendidos</div></div>
       <div class="rk-stat"><div class="v">${a.buybox===true?'🥇 Sim':(a.buybox===false?'Não':'—')}</div><div class="k">Buy-box</div></div>
@@ -672,6 +745,7 @@ async function mudarFase(id, fase) {
     monitoramento: 'Mudar para MONITORAMENTO? Use quando o produto já ranqueou, as vendas caíram e você fez alterações para observar o efeito. Registre o que mudou em "Alterações".',
     rankeando: 'Mudar para EM RANKEAMENTO? Volta a acompanhar venda-a-venda com alerta forçado no Telegram.',
     recuperacao: 'Mudar para RECUPERAÇÃO? Use quando o anúncio NÃO vende. O card passa a mostrar o diagnóstico (exposição × conversão), o que dá pra melhorar e a medição de cada alteração que você registrar.',
+    catalogo: 'Mudar para CATÁLOGO (BUY BOX)? O card passa a mostrar status de concorrência (ganhando/perdendo/compartilhando 1º lugar), preço pra vencer e o vencedor — a info é buscada agora mesmo, e atualizada pelo job diário depois.',
   }[fase];
   if (msg && !confirm(msg)) { loadCards(); return; } // reload reseta o select se cancelar
   const r = await DB.patchRankingAd(id, { fase });
@@ -796,6 +870,35 @@ async function abrirPrecoModal(id, titulo) {
   } catch (e) { body.innerHTML = `<div class="rk-empty">Erro: ${esc(e.message || '')}</div>`; }
 }
 function fecharPrecoModal() { document.getElementById('precoModal').classList.remove('open'); }
+
+// Modal de concorrentes do catálogo (v88) — reusa a rota já existente de
+// Qualidade de Anúncio (GET /api/qualidade-anuncio/:itemId/concorrentes,
+// ml.getCatalogCompetitors), sob demanda — nunca uma 2ª chamada dessa API
+// no job diário (mesmo racional já documentado lá: custaria 1 chamada extra
+// por item por dia à toa).
+async function abrirConcorrentesModal(itemId, titulo) {
+  const ov = document.getElementById('concorrentesModal');
+  document.getElementById('concorrentesModalSub').textContent = titulo || '';
+  const body = document.getElementById('concorrentesModalBody');
+  body.innerHTML = '<div class="rk-empty" style="border:none">Carregando…</div>';
+  ov.classList.add('open');
+  try {
+    const d = await DB.getQualidadeAnuncioConcorrentes(itemId);
+    const cs = (d && d.competitors) || [];
+    if (!cs.length) { body.innerHTML = `<div class="rk-empty">${esc((d && d.message) || 'Sem concorrentes encontrados.')}</div>`; return; }
+    body.innerHTML = `<table class="rk-preco">
+      <thead><tr><th>#</th><th>Anúncio</th><th>Preço</th><th>Full</th><th>Frete grátis</th><th>Status</th></tr></thead>
+      <tbody>${cs.map((c, i) => `<tr style="${c.is_you ? 'background:rgba(168,85,247,.1)' : ''}">
+        <td>${i + 1}</td>
+        <td>${esc(c.item_id)}${c.is_you ? ' <b>(você)</b>' : ''}</td>
+        <td>${c.price != null ? BRL(c.price) : '—'}</td>
+        <td>${c.logistic_type === 'fulfillment' ? '✅' : '—'}</td>
+        <td>${c.free_shipping ? '✅' : '—'}</td>
+        <td>${c.is_winner ? '<b style="color:#3fb950">🏆 Vencedor</b>' : (c.is_you ? '<span style="color:#f85149">Perdendo</span>' : '—')}</td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch (e) { body.innerHTML = `<div class="rk-empty">Erro: ${esc(e.message || '')}</div>`; }
+}
+function fecharConcorrentesModal() { document.getElementById('concorrentesModal').classList.remove('open'); }
 
 // ── Vincular anúncio (catálogo/tradicional) ao card ─────────────────────────
 let VINC_AD = null, vincTimer;
@@ -933,7 +1036,7 @@ async function salvarAvisoAds() {
   document.getElementById('avisoAdsMensagem').value = '';
   carregarAvisos();
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); fecharNotasModal(); fecharAvisoAdsModal(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); fecharNotasModal(); fecharAvisoAdsModal(); fecharConcorrentesModal(); } });
 
 async function togglePause(id, activate) { await DB.patchRankingAd(id, { active: activate }); loadCards(); }
 async function removeAd(id) {
@@ -968,10 +1071,15 @@ async function loadTable(q = '') {
 async function addAd(mlId, btn) {
   if (btn) { btn.disabled = true; btn.textContent = '...'; }
   try {
-    await DB.addRankingAd(mlId);
+    // Estágio escolhido no seletor "Adicionar em:" (v88) — default 'rankeando',
+    // comportamento de sempre. Ficar na aba "Todos os anúncios" depois de
+    // adicionar (sem trocar de aba) é o que permite alocar VÁRIOS anúncios de
+    // catálogo seguidos, um clique de cada vez, sem perder a busca.
+    const fase = document.getElementById('rkAddFase').value || 'rankeando';
+    await DB.addRankingAd(mlId, undefined, fase);
     await loadCards();
     await loadTable(document.getElementById('rkSearch').value);
-    document.getElementById('rkCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (fase === 'rankeando') document.getElementById('rkCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     alert(e.message || 'Erro ao adicionar');
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ranking-star"></i> Acompanhar'; }

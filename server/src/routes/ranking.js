@@ -8,9 +8,9 @@ const ranking = require('../ranking');
 const redis = require('../db/redis');
 
 const router = express.Router();
-const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo
-// Estágios válidos (v80 acrescentou 'recuperacao'). Ver .claude/rankeamento.md.
-const FASES = ['rankeando', 'ranqueado', 'monitoramento', 'recuperacao'];
+const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo — NÃO conta 'catalogo' (v88, ver abaixo)
+// Estágios válidos (v80 acrescentou 'recuperacao'; v88 acrescentou 'catalogo'). Ver .claude/rankeamento.md.
+const FASES = ['rankeando', 'ranqueado', 'monitoramento', 'recuperacao', 'catalogo'];
 
 // Diagnóstico da fase RECUPERAÇÃO: cruza tráfego × conversão pra dizer O QUE
 // mexer, em vez de deixar o usuário adivinhar. Thresholds em .claude/business-rules.md.
@@ -88,6 +88,14 @@ router.get('/ads', async (req, res) => {
               sq.pictures_count, sq.has_video, sq.title_length, sq.description_word_count,
               sq.required_attrs_missing, sq.missing_required_attrs, sq.is_full,
               cc.price_to_win, cc.status AS buybox_status, cc.winner_item_id,
+              -- Estágio Catálogo (Buy Box, v88): mesma catalog_competition já
+              -- lida acima pra Recuperação, só com mais colunas expostas
+              -- (current_price/winner_price/boosts_missing/calculated_at/
+              -- catalog_product_id) — nenhum JOIN novo, catalog_competition
+              -- já está na query desde a fase Recuperação (v80).
+              cc.current_price AS buybox_current_price, cc.winner_price AS buybox_winner_price,
+              cc.boosts_missing AS buybox_boosts_missing, cc.calculated_at AS buybox_calculated_at,
+              cc.catalog_product_id AS buybox_catalog_product_id, cc.visit_share AS buybox_visit_share,
               (SELECT ROUND(AVG(v.visits)) FROM item_visits v
                  WHERE v.item_id = r.ml_id AND v.date >= CURRENT_DATE - 7) AS visitas_media_7d,
               -- vendas DESDE que entrou em recuperação (≠ sales_count cumulativo)
@@ -197,24 +205,51 @@ router.post('/ads', async (req, res) => {
     const mlId = String(req.body.ml_id || '').trim();
     if (!mlId) return res.status(400).json({ error: 'ml_id obrigatório' });
     const every = Number(req.body.milestone_every) > 0 ? Number(req.body.milestone_every) : 5;
+    // Estágio inicial opcional (default 'rankeando', comportamento de sempre).
+    // 'catalogo' permite alocar direto no estágio Buy-Box — pedido explícito
+    // do usuário: "vou alocar todo os anúncio de catálogo" — sem passar pelo
+    // fluxo de 'rankeando' primeiro.
+    const faseInicial = FASES.includes(String(req.body.fase || '').trim().toLowerCase())
+      ? String(req.body.fase).trim().toLowerCase() : 'rankeando';
 
-    const cnt = await pool.query(`SELECT COUNT(*)::int AS n FROM ranking_ads WHERE active = true`);
-    if (cnt.rows[0].n >= MAX_ADS) {
-      return res.status(400).json({ error: `Limite de ${MAX_ADS} anúncios em rankeamento atingido. Desative algum antes de adicionar outro.` });
+    // MAX_ADS não conta 'catalogo' (v88): a trava existe porque o snapshot de
+    // rankeando/ranqueado/monitoramento/recuperacao (sync-ranking, 6/6h) chama
+    // a API por anúncio ativo — 'catalogo' NÃO entra nesse snapshot (usa
+    // sync-catalog-competition, próprio job com throttling dedicado), então
+    // o motivo original da trava não se aplica. Sem essa exceção, alocar
+    // "todos os anúncios de catálogo" (potencialmente dezenas) esbarraria no
+    // teto pensado pro punhado de anúncios sendo empurrados manualmente.
+    if (faseInicial !== 'catalogo') {
+      const cnt = await pool.query(`SELECT COUNT(*)::int AS n FROM ranking_ads WHERE active = true AND fase != 'catalogo'`);
+      if (cnt.rows[0].n >= MAX_ADS) {
+        return res.status(400).json({ error: `Limite de ${MAX_ADS} anúncios em rankeamento atingido. Desative algum antes de adicionar outro.` });
+      }
     }
     const { rows: it } = await pool.query(
       `SELECT ml_id, store_id, title, price, available_quantity, status FROM items WHERE ml_id = $1`, [mlId]
     );
     if (!it.length) return res.status(404).json({ error: 'Anúncio não encontrado no banco (ainda não sincronizado).' });
     const i = it[0];
+    const catalogoTs = faseInicial === 'catalogo' ? ', catalogo_started_at' : '';
+    const catalogoVal = faseInicial === 'catalogo' ? ', now()' : '';
     const { rows } = await pool.query(
-      `INSERT INTO ranking_ads (ml_id, store_id, title, base_price, last_price, last_available_quantity, last_status, milestone_every, active, started_at)
-       VALUES ($1,$2,$3,$4,$4,$5,$6,$7,true, now())
+      `INSERT INTO ranking_ads (ml_id, store_id, title, base_price, last_price, last_available_quantity, last_status, milestone_every, active, started_at, fase${catalogoTs})
+       VALUES ($1,$2,$3,$4,$4,$5,$6,$7,true, now(), $8${catalogoVal})
        ON CONFLICT (ml_id) DO UPDATE SET active = true, milestone_every = EXCLUDED.milestone_every, updated_at = now()
        RETURNING *`,
-      [i.ml_id, i.store_id, i.title, i.price, i.available_quantity, i.status, every]
+      [i.ml_id, i.store_id, i.title, i.price, i.available_quantity, i.status, every, faseInicial]
     );
-    res.json({ ad: rows[0] });
+    const ad = rows[0];
+    // Busca pontual, sob demanda, só pra este item — não espera a próxima
+    // rodada do job diário pra mostrar algo no card assim que aloca. Nunca
+    // derruba a resposta (best-effort — o job diário cobre o resto/os erros).
+    if (faseInicial === 'catalogo') {
+      const ml = require('../mlClient');
+      const { fetchAndSaveCatalogCompetition } = require('../catalogCompetition');
+      fetchAndSaveCatalogCompetition(ml, i.ml_id, i.store_id).catch(e =>
+        console.warn(`[ranking] busca inicial de Buy-Box falhou pra ${i.ml_id}:`, e.message));
+    }
+    res.json({ ad });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -249,11 +284,21 @@ router.patch('/ads/:id', async (req, res) => {
       else if (fase === 'rankeando') sets.push(`ranqueado_em = NULL`);
       else if (fase === 'monitoramento') sets.push(`monitoramento_started_at = now()`);
       else if (fase === 'recuperacao') sets.push(`recuperacao_started_at = now()`); // v80
+      else if (fase === 'catalogo') sets.push(`catalogo_started_at = now()`); // v88
     }
     if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
     sets.push('updated_at = now()');
     const { rows } = await pool.query(`UPDATE ranking_ads SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, vals);
-    res.json({ ad: rows[0] });
+    const ad = rows[0];
+    // Mesma busca pontual sob demanda de POST /ads — pra quem já estava
+    // rankeando/ranqueado/etc. e migrou pro estágio Catálogo pelo seletor.
+    if (fase === 'catalogo' && ad) {
+      const ml = require('../mlClient');
+      const { fetchAndSaveCatalogCompetition } = require('../catalogCompetition');
+      fetchAndSaveCatalogCompetition(ml, ad.ml_id, ad.store_id).catch(e =>
+        console.warn(`[ranking] busca inicial de Buy-Box falhou pra ${ad.ml_id}:`, e.message));
+    }
+    res.json({ ad });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

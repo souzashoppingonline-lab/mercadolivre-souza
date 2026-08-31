@@ -231,6 +231,40 @@ async function onItemChange({ mlId, price, availableQuantity, status, title }) {
   return updated;
 }
 
+// Webhook catalog_item_competition_status (v88) — atualização de Buy-Box em
+// TEMPO REAL, complementar ao job diário sync-catalog-competition (que cobre
+// "aos poucos" o catálogo inteiro) e ao snapshot periódico (que só roda pras
+// fases rankeando/ranqueado/monitoramento/recuperacao, nunca 'catalogo').
+// ⚠️ Tópico `catalog_item_competition_status` PRECISA estar habilitado no
+// painel de desenvolvedor do Mercado Livre pra este app — se não estiver, o
+// ML nunca envia o webhook e esta função nunca é chamada; o job diário
+// continua sendo a única fonte, sem qualquer regressão. Formato exato do
+// `resource` não confirmado ao vivo (mesma ressalva já registrada pra outras
+// integrações não testadas em produção — ver known-bugs.md/decisions.md).
+async function onCatalogCompetitionUpdate(itemId, storeId) {
+  const ml = require('./mlClient'); // require tardio, mesmo motivo do snapshot()
+  const { fetchAndSaveCatalogCompetition } = require('./catalogCompetition');
+  const ptw = await fetchAndSaveCatalogCompetition(ml, itemId, storeId);
+
+  // Notifica só se o item estiver tracked em QUALQUER fase (não só 'catalogo'
+  // — um item em recuperação também mostra buy-box no card, mesma regra do
+  // snapshot()). Mesma mensagem/formato do evento 'buybox' já emitido em
+  // snapshot() — não é uma 2ª fórmula, é o mesmo emit() com o mesmo texto,
+  // só disparado por um gatilho diferente (webhook em vez de polling 6h/1x-dia).
+  const ad = await getTracked(itemId);
+  if (!ad) return ptw;
+  const ganhando = ptw.winner?.item_id != null ? String(ptw.winner.item_id) === String(itemId) : null;
+  if (ganhando != null && ad.last_buybox != null && ganhando !== ad.last_buybox) {
+    await emit(ad, 'buybox', ganhando
+      ? `🥇 <b>GANHOU o buy-box!</b>\n📦 ${ad.title || ad.ml_id}`
+      : `⚠️ <b>PERDEU o buy-box</b>\n📦 ${ad.title || ad.ml_id}`, { ganhando });
+  }
+  if (ganhando != null) {
+    await pool.query(`UPDATE ranking_ads SET last_buybox = $2, updated_at = now() WHERE id = $1`, [ad.id, ganhando]);
+  }
+  return ptw;
+}
+
 // Snapshot periódico (job): pra cada anúncio ativo, coleta visitas (API) e lê
 // qualidade (item_seo_score) e buy-box (catalog_competition) do banco, e notifica
 // quando muda. `faseAlvo` limita quais anúncios processar:
@@ -447,4 +481,4 @@ async function buscarFasePorItemIds(itemIds) {
   return map;
 }
 
-module.exports = { getTracked, onSale, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds };
+module.exports = { getTracked, onSale, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds, onCatalogCompetitionUpdate };

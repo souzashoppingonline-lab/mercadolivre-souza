@@ -149,6 +149,8 @@
     .rk-table img { width: 34px; height: 34px; border-radius: 6px; object-fit: cover; vertical-align: middle; margin-right: 8px; }
     .rk-add-btn { background: #ffd60a; color: #1a1a1a; border: none; border-radius: 8px; padding: 7px 12px; font-weight: 800; font-size: 12px; cursor: pointer; }
     .rk-add-btn:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
+    .rk-add-sel { background: #ffd60a; color: #1a1a1a; border: none; border-radius: 8px; padding: 7px 8px; font-weight: 800; font-size: 12px; cursor: pointer; max-width: 160px; }
+    .rk-add-sel:disabled { background: var(--border); color: var(--text-muted); cursor: default; }
     .rk-tag-on { color: #ffd60a; font-weight: 800; font-size: 12px; }
     .rk-mlid { font-family: monospace; font-size: 11px; color: var(--text-muted); }
 
@@ -232,7 +234,7 @@
   <div class="rk-panel" id="panel-catalogo">
     <p class="rk-sub" style="margin-top:0">Anúncios de <b>catálogo</b> — o foco aqui é o <b>Buy Box</b>: ganhando, perdendo ou compartilhando o 1º lugar. Alocado sem limite de 30 (essa trava é só pro punhado sendo empurrado manualmente nos outros estágios). Ao alocar, busca a info na hora; os demais itens são cobertos aos poucos pelo job diário (04:50), sem estourar rate limit.</p>
     <div id="rkCardsCat" class="rk-cards"></div>
-    <div id="rkCardsCatEmpty" class="rk-empty" style="display:none">Nenhum anúncio no estágio Catálogo. Em "Todos os anúncios", escolha "Adicionar em: Catálogo (Buy Box)" antes de clicar em Acompanhar — ou mude o estágio de um card já existente pelo seletor.</div>
+    <div id="rkCardsCatEmpty" class="rk-empty" style="display:none">Nenhum anúncio no estágio Catálogo. Em "Todos os anúncios", clique no botão amarelo do anúncio e escolha "Catálogo (Buy Box)" — ou mude o estágio de um card já existente pelo seletor.</div>
   </div>
 
   <!-- Aba: Todos os anúncios -->
@@ -244,13 +246,6 @@
         <option value="SHOPEE">Shopee</option>
       </select>
       <input id="rkSearch" placeholder="Buscar por título ou ID..." autocomplete="off">
-      <select id="rkAddFase" title="Estágio em que 'Acompanhar' vai adicionar o anúncio" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px">
-        <option value="rankeando">Adicionar em: Em rankeamento</option>
-        <option value="ranqueado">Adicionar em: Ranqueado</option>
-        <option value="monitoramento">Adicionar em: Monitoramento</option>
-        <option value="recuperacao">Adicionar em: Recuperação</option>
-        <option value="catalogo">Adicionar em: Catálogo (Buy Box)</option>
-      </select>
     </div>
     <div style="overflow-x:auto">
       <table class="rk-table">
@@ -1082,25 +1077,27 @@ async function loadTable(q = '') {
     <td>${i.sold_quantity!=null?i.sold_quantity:'—'}</td>
     <td>${i.em_rankeamento
       ? '<span class="rk-tag-on"><i class="fas fa-check"></i> Em rankeamento</span>'
-      : `<button class="rk-add-btn" onclick="addAd('${esc(i.ml_id)}', this)"><i class="fas fa-ranking-star"></i> Acompanhar</button>`}</td>
+      : `<select class="rk-add-sel" title="Escolher o estágio e acompanhar" onchange="addAd('${esc(i.ml_id)}', this.value, this)">
+           <option value="" selected disabled>Acompanhar em...</option>
+           ${Object.entries(FASES).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('')}
+         </select>`}</td>
   </tr>`).join('');
 }
 
-async function addAd(mlId, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+// Escolha do estágio é por linha (v88.1) — cada anúncio pode ir pra um ciclo
+// diferente na mesma busca, sem precisar de um seletor global compartilhado
+// (o global anterior confundia: mudava o destino de TODOS os cliques
+// seguintes, e era fácil esquecer de trocar de volta pra 'rankeando').
+async function addAd(mlId, fase, sel) {
+  if (sel) sel.disabled = true;
   try {
-    // Estágio escolhido no seletor "Adicionar em:" (v88) — default 'rankeando',
-    // comportamento de sempre. Ficar na aba "Todos os anúncios" depois de
-    // adicionar (sem trocar de aba) é o que permite alocar VÁRIOS anúncios de
-    // catálogo seguidos, um clique de cada vez, sem perder a busca.
-    const fase = document.getElementById('rkAddFase').value || 'rankeando';
     await DB.addRankingAd(mlId, undefined, fase);
     await loadCards();
     await loadTable(document.getElementById('rkSearch').value);
     if (fase === 'rankeando') document.getElementById('rkCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     alert(e.message || 'Erro ao adicionar');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ranking-star"></i> Acompanhar'; }
+    if (sel) { sel.disabled = false; sel.value = ''; }
   }
 }
 

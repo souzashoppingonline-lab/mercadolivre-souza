@@ -637,10 +637,11 @@ base_price NUMERIC                                 -- preço ao entrar em rankea
 last_price, last_available_quantity, last_status   -- últimos valores (detecção de mudança)
 last_visits INT, last_seo_score NUMERIC, last_buybox BOOLEAN  -- semeados pelo snapshot
 last_highlight_pos INT                             -- v70: posição nos Mais Vendidos da categoria (NULL=fora)
-fase TEXT DEFAULT 'rankeando'                       -- v71/v76/v80: 'rankeando' | 'ranqueado' | 'monitoramento' | 'recuperacao' (idx_ranking_ads_fase)
+fase TEXT DEFAULT 'rankeando'                       -- v71/v76/v80/v88: 'rankeando' | 'ranqueado' | 'monitoramento' | 'recuperacao' | 'catalogo' (idx_ranking_ads_fase)
 ranqueado_em TIMESTAMPTZ                            -- v71: quando passou pra fase 2
 monitoramento_started_at TIMESTAMPTZ                -- v77: quando entrou em fase 'monitoramento' (nil se nunca entrou); rastreia dias em monitoramento no card
 recuperacao_started_at TIMESTAMPTZ                  -- v80: quando entrou em fase 'recuperacao'; separa as vendas "depois da intervenção" (vendas_na_fase) e ancora a idempotência do alerta sem_resultado
+catalogo_started_at TIMESTAMPTZ                     -- v88: quando entrou em fase 'catalogo' (Buy Box); mesmo padrão de monitoramento_started_at/recuperacao_started_at, nunca limpo ao sair
 nivel INT DEFAULT 1                                 -- v78: nível de progressão (1 + sales_count / 10), mostrado em RANQUEADO
 ciclo INT DEFAULT 1                                -- v72: ciclo atual de rankeamento (1,2,3…); só em fase 'rankeando'
 campanha_nome TEXT                                 -- v74: nome da campanha de ADS do ciclo (MANUAL; substituiu o campo ADS R$)

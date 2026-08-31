@@ -14,6 +14,7 @@ const ml = require('./mlClient');
 const financeService = require('./financeService');
 const { packageDimsFromItem } = require('./mlDims');
 const ranking = require('./ranking');
+const { fetchAndSaveCatalogCompetition } = require('./catalogCompetition');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getMargemPorLoja, getRupturaEstoque } = require('./reports');
@@ -137,6 +138,12 @@ const handlers = {
   invoices:          noop,
   public_candidates: noop,
   'stock-locations': noop,
+  // v88 — Buy-Box em tempo real (ver .claude/rankeamento.md e mercadolivre.md).
+  // Só dispara de verdade se o tópico estiver habilitado no painel de
+  // desenvolvedor do ML pra este app; sem isso o ML nunca manda o webhook e
+  // este handler nunca roda — o job diário sync-catalog-competition continua
+  // cobrindo tudo normalmente, sem regressão.
+  catalog_item_competition_status: handleCatalogCompetitionStatus,
 };
 
 // payments webhook: /collections/{paymentId} → busca order_id e reprocessa o pedido
@@ -614,6 +621,18 @@ async function handleItemPrice({ resource, storeId }) {
      VALUES ($1,$2,$3,$3,now())`,
     [storeId, itemId, oldPrice]
   );
+}
+
+// v88 — Buy-Box em tempo real. Delega pra ranking.onCatalogCompetitionUpdate
+// (mesma fetchAndSaveCatalogCompetition do job diário + notificação buybox
+// se o item estiver tracked — nunca uma 2ª fórmula). Formato do `resource`
+// não confirmado ao vivo (tópico ainda não habilitado no painel do ML pra
+// este app) — tenta achar um MLB... em qualquer segmento do path, com
+// fallback pro último segmento (mesmo padrão defensivo de handleOffer).
+async function handleCatalogCompetitionStatus({ resource, storeId }) {
+  const itemId = resource.split('/').find(seg => /^MLB\d+$/i.test(seg)) || resource.split('/').pop();
+  if (!itemId) return;
+  await ranking.onCatalogCompetitionUpdate(itemId, storeId);
 }
 
 async function handleOffer({ resource, storeId }) {
@@ -1400,10 +1419,17 @@ async function syncSeoScore() {
 
 // ── Sync Monitor de Buy-Box (catálogo) — 04:50 diário ─────────────────────────
 // 1 chamada por item catalog_listing=true (já conhecido via item_seo_score, v25)
-// — price_to_win traz tudo num payload só (preço, vencedor, boosts faltando,
-// catalog_product_id), sem precisar de getItem extra. Lista de concorrentes
-// (products/:id/items) NÃO é buscada aqui — é sob demanda (rota da API,
-// ver .claude/decisions.md), pra não gastar 2 chamadas/item/dia à toa.
+// **OU** alocado no estágio "Catálogo (Buy Box)" do Rankeamento (v88,
+// ranking_ads.fase='catalogo' — pedido explícito do usuário: aloca TODOS os
+// anúncios de catálogo lá, e o job cobre "aos poucos" nas próximas execuções,
+// sem precisar chamar a API na hora de todos de uma vez) — union deduplicado
+// por item_id. price_to_win traz tudo num payload só (preço, vencedor, boosts
+// faltando, catalog_product_id), sem precisar de getItem extra. Lista de
+// concorrentes (products/:id/items) NÃO é buscada aqui — é sob demanda (rota
+// da API, ver .claude/decisions.md), pra não gastar 2 chamadas/item/dia à
+// toa. Itens NUNCA sincronizados (calculated_at NULL) entram primeiro —
+// prioriza quem acabou de ser alocado sobre quem já tem dado, mesmo que o
+// catálogo inteiro não caiba numa execução só.
 let isSyncingCatalogCompetition = false;
 
 async function syncCatalogCompetition() {
@@ -1420,7 +1446,16 @@ async function syncCatalogCompetition() {
         try {
           await ensureTokenFresh(store);
           const { rows: items } = await pool.query(
-            `SELECT item_id FROM item_seo_score WHERE store_id=$1 AND catalog_listing=true ORDER BY item_id`,
+            `SELECT item_id, MIN(calculated_at) AS calculated_at FROM (
+               SELECT sq.item_id, cc.calculated_at FROM item_seo_score sq
+                 LEFT JOIN catalog_competition cc ON cc.item_id = sq.item_id
+                WHERE sq.store_id=$1 AND sq.catalog_listing=true
+               UNION
+               SELECT r.ml_id AS item_id, cc.calculated_at FROM ranking_ads r
+                 LEFT JOIN catalog_competition cc ON cc.item_id = r.ml_id
+                WHERE r.store_id=$1 AND r.fase='catalogo' AND r.active=true
+             ) x GROUP BY item_id
+             ORDER BY calculated_at ASC NULLS FIRST, item_id`,
             [store.id]
           );
           console.log(`[sync-catalog-competition] ${store.nickname}: ${items.length} itens de catálogo`);
@@ -1431,33 +1466,8 @@ async function syncCatalogCompetition() {
           for (let i = 0; i < items.length; i++) {
             const itemId = items[i].item_id;
             try {
-              const ptw = await ml.getPriceToWin(itemId, store.id);
+              await fetchAndSaveCatalogCompetition(ml, itemId, store.id);
               consecutiveRateLimit = 0;
-
-              const boostsMissing = (ptw.boosts || []).filter(b => b.status === 'opportunity').map(b => b.id);
-
-              await pool.query(
-                `INSERT INTO catalog_competition (
-                   store_id, item_id, catalog_product_id, status, current_price, price_to_win,
-                   winner_item_id, winner_price, boosts_missing, consistent, visit_share, calculated_at
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
-                 ON CONFLICT (item_id) DO UPDATE SET
-                   store_id=EXCLUDED.store_id, catalog_product_id=EXCLUDED.catalog_product_id,
-                   status=EXCLUDED.status, current_price=EXCLUDED.current_price, price_to_win=EXCLUDED.price_to_win,
-                   winner_item_id=EXCLUDED.winner_item_id, winner_price=EXCLUDED.winner_price,
-                   boosts_missing=EXCLUDED.boosts_missing, consistent=EXCLUDED.consistent,
-                   visit_share=EXCLUDED.visit_share, calculated_at=now()`,
-                [
-                  store.id, itemId, ptw.catalog_product_id || null, ptw.status || null,
-                  ptw.current_price ?? null, ptw.price_to_win ?? null,
-                  ptw.winner?.item_id || null, ptw.winner?.price ?? null,
-                  boostsMissing, ptw.consistent ?? null, ptw.visit_share || null,
-                ]
-              );
-              await pool.query(
-                `INSERT INTO catalog_competition_history (item_id, store_id, status, current_price, price_to_win) VALUES ($1,$2,$3,$4,$5)`,
-                [itemId, store.id, ptw.status || null, ptw.current_price ?? null, ptw.price_to_win ?? null]
-              );
               synced++;
             } catch (e) {
               if (e.message?.includes('429') || e.message?.includes('rate limit')) {

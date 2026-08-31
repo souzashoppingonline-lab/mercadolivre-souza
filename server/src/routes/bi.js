@@ -982,7 +982,7 @@ router.get('/margem/produto/:itemId', async (req, res) => {
 // (não é descartado — senão os totais da tela mentiriam).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const FASES_RANKEAMENTO = ['rankeando', 'ranqueado', 'monitoramento', 'recuperacao'];
+const FASES_RANKEAMENTO = ['rankeando', 'ranqueado', 'monitoramento', 'recuperacao', 'catalogo']; // v88
 
 function novoBucketFase(fase) {
   return { fase, pedidos: 0, qtd: 0, faturamento: 0, margem: 0, custo: 0, imposto: 0, tarifa: 0, frete_vendedor: 0, frete_comprador: 0, visitas: 0 };

@@ -38,6 +38,8 @@ Payload esperado do ML: `{ topic, resource, user_id, application_id }`. `user_id
 
 Tópicos que o ML pode enviar e que o sistema trata (mapeamento completo de handlers em `workers.md`): `orders_v2`, `payments`, `questions`, `messages`, `items`, `public_offers`, `post_purchase`, `items_prices`, `shipments`. Recebidos mas ignorados: `invoices`, `public_candidates`, `stock-locations`.
 
+**`catalog_item_competition_status` (v88, ver `rankeamento.md` "Histórico em tempo real"):** handler registrado (`handleCatalogCompetitionStatus` → `ranking.onCatalogCompetitionUpdate`), mas **precisa ser habilitado no painel de desenvolvedor do Mercado Livre pra este app** — não confirmado se já está. Se não estiver habilitado, o ML nunca envia esse tópico e o handler nunca é chamado (sem qualquer impacto no resto do sistema — o job diário `sync-catalog-competition` continua sendo a fonte normal). Formato exato do `resource` também não confirmado ao vivo; a extração do `item_id` procura um `MLB\d+` em qualquer segmento do path, com fallback pro último segmento.
+
 Tópicos recomendados a configurar no painel do app ML (de `server/README.md`): `orders_v2`, `questions`, `messages`, `items`, `payments`.
 
 ## Rate limiting da API do ML — como o sistema se protege

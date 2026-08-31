@@ -276,7 +276,9 @@ const DB = {
   // ── Rankeamento de anúncios ──────────────────────────────────
   async getRankingAds(marketplace = '', fase = '', store_id = '', ciclo = '') { return this._get('/ranking/ads', { marketplace, fase, store_id, ciclo }); },
   async buscarRankingItems(q = '', marketplace = '', store_id = '') { return this._get('/ranking/buscar', { q, marketplace, store_id }); },
-  async addRankingAd(ml_id, milestone_every) { return this._post('/ranking/ads', { ml_id, milestone_every }); },
+  // `fase` opcional (v88) — permite adicionar direto no estágio Catálogo
+  // (Buy Box), sem passar por 'rankeando' primeiro. Omitido = 'rankeando'.
+  async addRankingAd(ml_id, milestone_every, fase) { return this._post('/ranking/ads', { ml_id, milestone_every, fase }); },
   async patchRankingAd(id, body)     { return this._patch(`/ranking/ads/${id}`, body); },
   async removeRankingAd(id)          { return this._delete(`/ranking/ads/${id}`); },
   async getRankingEventos(id, limit = 100) { return this._get(`/ranking/ads/${id}/eventos`, { limit }); },

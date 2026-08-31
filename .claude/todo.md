@@ -173,6 +173,12 @@ Fora do escopo desta rodada, deliberadamente (spec original tinha 29 seções):
 - [ ] Avaliar se o Agente Financeiro precisa de mais relatórios (a v1 saiu com 4: DRE, Fluxo+Projeção, Contas a Pagar, Cruzamento ML×Financeiro — outros candidatos ficaram de fora por ora: Compras & CMV, Comparativo por Empresa, Break-even isolado).
 - [ ] Confirmar se as tabelas `ml_accounts`/`ml_items`/`ml_orders` dentro do Supabase Financeiro (achado da auditoria) têm dado real de alguma tentativa antiga de integração ML — se sim, decidir se cabe expor no Agente Financeiro; se estiverem vazias/obsoletas, considerar removê-las do schema documentado em `financeiro-supabase-schema.md`.
 
+## Estágio Catálogo / Buy Box (Rankeamento)
+
+- [ ] Cruzamento financeiro ("estratégia") no card do estágio Catálogo — cruzar `price_to_win` com CMV/tarifa/imposto/frete real do produto (`vendaMargem.js`) pra recomendar (ou não recomendar) reduzir o preço pra vencer, conforme a margem que sobraria. Pedido pelo usuário, mas não selecionado nesta rodada — ver `decisions.md`.
+- [ ] Confirmar se o tópico de webhook `catalog_item_competition_status` está habilitado no painel de desenvolvedor do Mercado Livre pra este app — sem isso, `handleCatalogCompetitionStatus`/`ranking.onCatalogCompetitionUpdate` nunca rodam (o job diário `sync-catalog-competition` continua cobrindo tudo, só sem tempo real). Quando confirmar que o webhook chega, validar o formato real do `resource` (a extração hoje é defensiva, não testada ao vivo).
+- [ ] Depois de rodar em produção por um tempo, avaliar se `MAX_ADS=30` (que já não conta `fase='catalogo'`) precisa de um teto PRÓPRIO pra catálogo — hoje é ilimitado.
+
 ## Manutenção da documentação
 
 - [ ] Ao adicionar qualquer rota nova em `routes/*.js`, atualizar `api.md` e o método correspondente em `js/db.js` na mesma tarefa.

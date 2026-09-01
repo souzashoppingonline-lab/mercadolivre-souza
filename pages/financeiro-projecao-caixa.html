@@ -117,7 +117,7 @@
       <div class="pj-card">
         <div class="pj-card-h"><h3>🗓️ Fluxo de Caixa Anual (manual) <span id="pjAnoLbl" class="desc"></span></h3></div>
         <div style="overflow:auto"><table class="pj-t">
-          <thead><tr><th>Mês</th><th>Caixa Dia 1</th><th>Entrada Banco</th><th>Saída Banco</th><th>Saldo Banco</th><th>Faturamento</th><th>Cresc. %</th><th>Lucro Líq. %</th><th>Status</th></tr></thead>
+          <thead><tr><th>Mês</th><th>Caixa Dia 1</th><th>Entrada Banco</th><th>Saída Banco</th><th>Saldo Banco</th><th>Faturamento</th><th>Cresc. %</th><th>Lucro Mensal</th><th>Lucro Líq. %</th><th>Status</th></tr></thead>
           <tbody id="pjAnual"></tbody>
         </table></div>
         <canvas id="pjChartAno" height="90" style="margin-top:16px"></canvas>
@@ -363,7 +363,23 @@ function renderAnual(){
     const man=manualDe(m,y)||{}, cl=closingDe(m,y)||{};
     const dia1=+man.value||0, bin=+man.bank_in||0, bout=+man.bank_out||0, saldoB=bin-bout;
     const fat=+cl.revenue_gross||+cl.revenue_total||0;
-    const lucroPct = fat ? ((+cl.contribution_margin_pct)|| (cl.dre_data&&+cl.dre_data.net_pct) || 0) : 0;
+    // Lucro Líq. % — precisa ser o LÍQUIDO de verdade (depois de custo fixo,
+    // não só a margem de contribuição). dre_data.net_pct é o campo que o
+    // fechamento mensal grava com esse cálculo já pronto; contribution_margin_pct
+    // é a margem ANTES do custo fixo, sempre maior — usar como fallback só
+    // quando o fechamento não trouxe a DRE, nunca como 1ª opção (era o bug:
+    // a ordem antiga priorizava MC%, então mostrava um número maior que o
+    // lucro líquido real sempre que os dois campos vinham preenchidos).
+    // `!= null` em vez de `||` — 0% de lucro líquido é um valor real (mês no
+    // zero a zero), não "campo vazio", e não pode cair no fallback errado.
+    const netPct = (cl.dre_data && cl.dre_data.net_pct != null) ? +cl.dre_data.net_pct : null;
+    const mcPct = cl.contribution_margin_pct != null ? +cl.contribution_margin_pct : null;
+    const lucroPct = fat ? (netPct != null ? netPct : (mcPct != null ? mcPct : 0)) : 0;
+    const usouMC = !!(fat && netPct == null && mcPct != null); // aproximado (sem DRE do fechamento)
+    // Lucro Mensal em R$ — não existia nenhuma coluna em reais antes, só a
+    // porcentagem. Derivado da MESMA % corrigida acima (nunca uma 2ª fórmula
+    // buscando outro campo não confirmado em dre_data).
+    const lucroReais = fat ? fat * lucroPct / 100 : 0;
     const cresc = prevFat? (fat-prevFat)/prevFat*100 : null; prevFat=fat||prevFat;
     const futuro=(y===now.getFullYear()&&m>curM);
     const st= cl.status==='closed'?['Fechado','#3fb950']:(m===curM?['Em andamento','#f59e0b']:['Aberto','#94a3b8']);
@@ -376,7 +392,8 @@ function renderAnual(){
       <td style="color:${saldoB>=0?'#3fb950':'#f87171'}">${BRL(saldoB)}</td>
       <td>${fat?BRL(fat):'—'}</td>
       <td style="color:${cresc==null?'var(--text-muted)':(cresc>=0?'#3fb950':'#f87171')}">${cresc==null?'—':PCT(cresc)}</td>
-      <td>${lucroPct?PCT(lucroPct):'—'}</td>
+      <td style="color:${!fat?'var(--text-muted)':(lucroReais>=0?'#3fb950':'#f87171')}">${fat?BRL(lucroReais):'—'}</td>
+      <td title="${usouMC?'Sem DRE no fechamento — mostrando Margem de Contribuição (antes do custo fixo), não o lucro líquido real':''}">${(fat||lucroPct)?PCT(lucroPct):'—'}${usouMC?' <span style="color:#f59e0b" title="Aproximado: Margem de Contribuição, sem DRE do fechamento">≈</span>':''}</td>
       <td><span style="color:${st[1]};font-weight:700;font-size:11px">${st[0]}</span></td></tr>`;
   }
   document.getElementById('pjAnual').innerHTML=html;

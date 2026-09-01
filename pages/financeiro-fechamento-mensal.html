@@ -257,11 +257,18 @@ function renderModalBody(d) {
     <div class="fm-card"><div class="k">Receita Bruta</div><div class="v">${BRL(r.revenue_gross)}</div>${cresc!=null?`<div class="d" style="color:${cresc>=0?'#3fb950':'#f87171'}">${cresc>=0?'▲':'▼'} ${PCT(Math.abs(cresc))} vs. mês anterior</div>`:''}</div>
     <div class="fm-card"><div class="k">Margem Contrib.</div><div class="v">${PCT(r.contribution_margin_pct)}</div><div class="d">${BRL(r.contribution_margin)}</div></div>
     <div class="fm-card"><div class="k">Fluxo de Caixa</div><div class="v" style="color:${r.cash_flow_balance>=0?'#3fb950':'#f87171'}">${BRL(r.cash_flow_balance)}</div><div class="d">${BRL(r.cash_flow_in)} entrada · ${BRL(r.cash_flow_out)} saída</div></div>
-    <div class="fm-card"><div class="k">Boletos Pendentes</div><div class="v">${d.report.boletos_pending_count}</div><div class="d">${BRL(d.report.boletos_pending_total)}</div></div>
+    <div class="fm-card"><div class="k">Boletos Pendentes</div><div class="v">${r.boletos_pending_count!=null?r.boletos_pending_count:'—'}</div><div class="d">${BRL(r.boletos_pending_total)}</div></div>
   </div>`;
 
   const editavel = d.status !== 'closed';
-  const checklistHtml = `<div class="fm-checklist">${(d.checklist_itens||[]).map(i => `
+  // Fechamento que não veio desta página (mês já fechado por outro caminho
+  // antes dela existir) não tem checklist gravado — mostrar tudo desmarcado
+  // sem avisar passaria a falsa impressão de "nada foi conferido"; com o
+  // aviso fica claro que é ausência de registro, não reprovação.
+  const semHistoricoChecklist = d.status === 'closed' && r.historico_sem_checklist;
+  const checklistHtml = (semHistoricoChecklist
+    ? `<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Este mês foi fechado antes desta página existir — não há checklist registrado (só os totais do fechamento, nas abas abaixo).</p>`
+    : '') + `<div class="fm-checklist">${(d.checklist_itens||[]).map(i => `
     <label class="fm-check-item">
       <input type="checkbox" ${d.checklist[i.key]?'checked':''} ${editavel && d.status==='in_progress' ? '' : 'disabled'} onchange="toggleChecklist('${i.key}', this.checked)">
       ${esc(i.label)}${!i.obrigatorio?'<span class="opt">opcional</span>':''}

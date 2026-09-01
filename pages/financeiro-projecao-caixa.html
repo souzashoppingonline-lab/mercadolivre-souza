@@ -117,7 +117,7 @@
       <div class="pj-card">
         <div class="pj-card-h"><h3>🗓️ Fluxo de Caixa Anual (manual) <span id="pjAnoLbl" class="desc"></span></h3></div>
         <div style="overflow:auto"><table class="pj-t">
-          <thead><tr><th>Mês</th><th>Caixa Dia 1</th><th>Entrada Banco</th><th>Saída Banco</th><th>Saldo Banco</th><th>Faturamento</th><th>Cresc. %</th><th>Lucro Mensal</th><th>Lucro Líq. %</th><th>Status</th></tr></thead>
+          <thead><tr><th>Mês</th><th>Caixa Dia 1</th><th>Entrada Banco</th><th>Saída Banco</th><th>Saldo Banco</th><th>Faturamento</th><th>Cresc. %</th><th>Margem de Contribuição R$</th><th>Margem %</th><th>Lucro Líquido (LL)</th><th>Status</th></tr></thead>
           <tbody id="pjAnual"></tbody>
         </table></div>
         <canvas id="pjChartAno" height="90" style="margin-top:16px"></canvas>
@@ -358,32 +358,36 @@ function renderAnual(){
   const now=new Date(), y=now.getFullYear(), curM=now.getMonth()+1;
   document.getElementById('pjAnoLbl').textContent=`— ${y}`;
   let prevFat=0, html='';
-  const fatArr=[], fluxArr=[], lucroArr=[];
+  const fatArr=[], fluxArr=[], mcArr=[];
   for(let m=1;m<=12;m++){
     const man=manualDe(m,y)||{}, cl=closingDe(m,y)||{};
     const dia1=+man.value||0, bin=+man.bank_in||0, bout=+man.bank_out||0, saldoB=bin-bout;
     const fat=+cl.revenue_gross||+cl.revenue_total||0;
-    // Lucro Líq. % — precisa ser o LÍQUIDO de verdade (depois de custo fixo,
-    // não só a margem de contribuição). dre_data.net_pct é o campo que o
-    // fechamento mensal grava com esse cálculo já pronto; contribution_margin_pct
-    // é a margem ANTES do custo fixo, sempre maior — usar como fallback só
-    // quando o fechamento não trouxe a DRE, nunca como 1ª opção (era o bug:
-    // a ordem antiga priorizava MC%, então mostrava um número maior que o
-    // lucro líquido real sempre que os dois campos vinham preenchidos).
-    // `!= null` em vez de `||` — 0% de lucro líquido é um valor real (mês no
-    // zero a zero), não "campo vazio", e não pode cair no fallback errado.
-    const netPct = (cl.dre_data && cl.dre_data.net_pct != null) ? +cl.dre_data.net_pct : null;
-    const mcPct = cl.contribution_margin_pct != null ? +cl.contribution_margin_pct : null;
-    const lucroPct = fat ? (netPct != null ? netPct : (mcPct != null ? mcPct : 0)) : 0;
-    const usouMC = !!(fat && netPct == null && mcPct != null); // aproximado (sem DRE do fechamento)
-    // Lucro Mensal em R$ — não existia nenhuma coluna em reais antes, só a
-    // porcentagem. Derivado da MESMA % corrigida acima (nunca uma 2ª fórmula
-    // buscando outro campo não confirmado em dre_data).
-    const lucroReais = fat ? fat * lucroPct / 100 : 0;
+    // Margem de Contribuição (R$/%) — direto das colunas próprias de
+    // monthly_closing, sem disfarçar de "lucro líquido" (era o bug corrigido
+    // antes nesta mesma tarefa: usar contribution_margin_pct como se fosse
+    // líquido). Agora a coluna se chama pelo nome certo, então é só o campo.
+    const mcPct = cl.contribution_margin_pct != null ? +cl.contribution_margin_pct : (fat ? 0 : null);
+    const mcReais = cl.contribution_margin != null ? +cl.contribution_margin : (fat ? fat * mcPct / 100 : null);
+    // Lucro Líquido (LL) — pedido do usuário nesta tarefa: o dado "de
+    // verdade" (depois de custo fixo/operacional) é o mesmo da página DRE —
+    // Resultado (financeiro-dre.html, monthMetrics()) e do Fechamento Mensal
+    // (financeiroCalc.getFechamentoMensal) — MESMA fórmula, MC − custo fixo
+    // − custo operacional, nunca recalculada aqui. Preferência: colunas cruas
+    // de monthly_closing (mais precisas); se um fechamento antigo não trouxe
+    // essas colunas mas trouxe dre_data.net_pct, cai nesse fallback, marcado.
+    const temCustos = cl.fixed_costs_total != null || cl.variable_costs_total != null;
+    const netPctFallback = (cl.dre_data && cl.dre_data.net_pct != null) ? +cl.dre_data.net_pct : null;
+    let llReais = null, llAproximado = false;
+    if (fat && temCustos) {
+      llReais = (cl.contribution_margin != null ? +cl.contribution_margin : 0) - (+cl.fixed_costs_total||0) - (+cl.variable_costs_total||0);
+    } else if (fat && netPctFallback != null) {
+      llReais = fat * netPctFallback / 100; llAproximado = true;
+    }
     const cresc = prevFat? (fat-prevFat)/prevFat*100 : null; prevFat=fat||prevFat;
     const futuro=(y===now.getFullYear()&&m>curM);
     const st= cl.status==='closed'?['Fechado','#3fb950']:(m===curM?['Em andamento','#f59e0b']:['Aberto','#94a3b8']);
-    fatArr.push(fat); fluxArr.push(dia1); lucroArr.push(+lucroPct);
+    fatArr.push(fat); fluxArr.push(dia1); mcArr.push(mcPct||0);
     html+=`<tr class="${m===curM?'hoje':''}" style="${futuro?'opacity:.5':''}">
       <td>${MESHORT[m-1]}</td>
       <td><input class="pj-in" type="number" step="0.01" value="${dia1||''}" ${futuro?'disabled':''} onchange="salvarManual(${m},${y},'value',this.value)"></td>
@@ -392,8 +396,9 @@ function renderAnual(){
       <td style="color:${saldoB>=0?'#3fb950':'#f87171'}">${BRL(saldoB)}</td>
       <td>${fat?BRL(fat):'—'}</td>
       <td style="color:${cresc==null?'var(--text-muted)':(cresc>=0?'#3fb950':'#f87171')}">${cresc==null?'—':PCT(cresc)}</td>
-      <td style="color:${!fat?'var(--text-muted)':(lucroReais>=0?'#3fb950':'#f87171')}">${fat?BRL(lucroReais):'—'}</td>
-      <td title="${usouMC?'Sem DRE no fechamento — mostrando Margem de Contribuição (antes do custo fixo), não o lucro líquido real':''}">${(fat||lucroPct)?PCT(lucroPct):'—'}${usouMC?' <span style="color:#f59e0b" title="Aproximado: Margem de Contribuição, sem DRE do fechamento">≈</span>':''}</td>
+      <td style="color:${mcReais==null?'var(--text-muted)':(mcReais>=0?'#3fb950':'#f87171')}">${mcReais!=null?BRL(mcReais):'—'}</td>
+      <td>${mcPct!=null&&fat?PCT(mcPct):'—'}</td>
+      <td style="color:${llReais==null?'var(--text-muted)':(llReais>=0?'#3fb950':'#f87171')}" title="${llAproximado?'Aproximado: fechamento antigo sem custo fixo/operacional detalhado, derivado de dre_data.net_pct':''}">${llReais!=null?BRL(llReais):'—'}${llAproximado?' <span style="color:#f59e0b">≈</span>':''}</td>
       <td><span style="color:${st[1]};font-weight:700;font-size:11px">${st[0]}</span></td></tr>`;
   }
   document.getElementById('pjAnual').innerHTML=html;
@@ -401,7 +406,7 @@ function renderAnual(){
   chartAno=new Chart(document.getElementById('pjChartAno'),{data:{labels:MESHORT,datasets:[
     {type:'bar',label:'Caixa Dia 1',data:fluxArr,backgroundColor:'#3fb950',yAxisID:'y'},
     {type:'line',label:'Faturamento',data:fatArr,borderColor:'#60a5fa',tension:.3,pointRadius:2,yAxisID:'y',fill:false},
-    {type:'line',label:'Lucro Líq. %',data:lucroArr,borderColor:'#f59e0b',borderDash:[5,4],tension:.3,pointRadius:2,yAxisID:'y1',fill:false},
+    {type:'line',label:'Margem %',data:mcArr,borderColor:'#f59e0b',borderDash:[5,4],tension:.3,pointRadius:2,yAxisID:'y1',fill:false},
   ]},options:{plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}},tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?` ${c.dataset.label}: ${PCT(c.raw)}`:` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b'}},y:{position:'left',ticks:{color:'#64748b',callback:v=>BRLk(v)},grid:{color:'rgba(148,163,184,.1)'}},y1:{position:'right',ticks:{color:'#f59e0b',callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
 }
 async function salvarManual(m,y,campo,valor){

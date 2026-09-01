@@ -236,7 +236,7 @@ function renderHist(meses) {
   box.innerHTML = rows.map(m => `
     <div class="fm-hist-row">
       <span class="mm">${MESES_LONGO[m.mes-1]}</span>
-      <span class="rec">${m.revenue_gross!=null?`${BRL(m.revenue_gross)}${badgeVar(m.var_faturamento_pct, v=>PCT(v))} · Lucro ${BRL(m.lucro_liquido)}${badgeVar(m.var_ll_reais, v=>BRL(v))}`:'sem lançamento ainda'}</span>
+      <span class="rec">${m.revenue_gross!=null?`${BRL(m.revenue_gross)}${badgeVar(m.var_faturamento_pct, v=>PCT(v))} · Lucro ${BRL(m.lucro_liquido)} (${m.lucro_liquido_pct!=null?PCT(m.lucro_liquido_pct):'—'})${badgeVar(m.var_ll_reais, v=>BRL(v))}`:'sem lançamento ainda'}</span>
       <span class="fm-badge ${m.status}">${STATUS_LABEL[m.status]}</span>
       <button class="fm-btn" style="padding:5px 10px" onclick="abrirModal(${ANO},${m.mes})"><i class="fas fa-eye"></i></button>
     </div>`).join('');

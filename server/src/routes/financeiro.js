@@ -145,10 +145,27 @@ function podeFinalizar(mes, ano) {
   return hoje >= limite;
 }
 function findClosing(rows, mes, ano) { return rows.find((c) => Number(c.month) === mes && Number(c.year) === ano) || null; }
-function lucroLiquidoDoFechamento(c) {
-  return round2((+c.contribution_margin || 0) - (+c.fixed_costs_total || 0) - (+c.variable_costs_total || 0));
-}
 const numOrNull = (v) => (v == null ? null : Number(v));
+
+// Lucro Líquido (R$ e %) de um fechamento — MESMO cálculo em todo lugar que
+// precisa dele nesta rota (grade/histórico/summary do resumo, detalhe do
+// mês, e a Projeção de Caixa lê o R$ gravado por aqui): direto das colunas
+// (`contribution_margin − fixed_costs_total − variable_costs_total`) quando
+// o fechamento trouxe custo fixo/operacional detalhado; senão cai no
+// fallback `dre_data.net_pct × faturamento` (fechamento antigo sem essas
+// colunas) — mesmo padrão já documentado em decisions.md pro LL da Projeção
+// de Caixa, nunca duas fórmulas divergentes pro mesmo número.
+function llDoFechamento(c) {
+  const revenue = c.revenue_gross != null ? +c.revenue_gross : null;
+  const temCustos = c.fixed_costs_total != null || c.variable_costs_total != null;
+  const netPctCol = (c.dre_data && c.dre_data.net_pct != null) ? +c.dre_data.net_pct : null;
+  if (temCustos) {
+    const reais = round2((+c.contribution_margin || 0) - (+c.fixed_costs_total || 0) - (+c.variable_costs_total || 0));
+    return { reais, pct: revenue ? round2((reais / revenue) * 100) : null };
+  }
+  if (revenue && netPctCol != null) return { reais: round2(revenue * netPctCol / 100), pct: netPctCol };
+  return { reais: null, pct: null };
+}
 
 // Reconstrói o "report" de exibição a partir das COLUNAS PRÓPRIAS de
 // monthly_closing (nunca de report_data) — são a fonte confiável mesmo pra
@@ -161,12 +178,10 @@ const numOrNull = (v) => (v == null ? null : Number(v));
 // diferente (ver decisions.md).
 async function buildReportFromClosing(c) {
   const rd = (c.report_data && c.report_data.revenue_gross != null) ? c.report_data : {};
-  const temCustos = c.fixed_costs_total != null || c.variable_costs_total != null;
-  const netPctCol = (c.dre_data && c.dre_data.net_pct != null) ? +c.dre_data.net_pct : null;
   const revenue = numOrNull(c.revenue_gross);
-  const llReais = rd.lucro_liquido != null ? rd.lucro_liquido
-    : (temCustos ? lucroLiquidoDoFechamento(c) : (revenue && netPctCol != null ? round2(revenue * netPctCol / 100) : null));
-  const llPct = rd.net_pct != null ? rd.net_pct : (netPctCol != null ? netPctCol : (revenue ? round2((llReais / revenue) * 100) : null));
+  const ll = llDoFechamento(c);
+  const llReais = rd.lucro_liquido != null ? rd.lucro_liquido : ll.reais;
+  const llPct = rd.net_pct != null ? rd.net_pct : ll.pct;
 
   // Impostos/Taxas Marketplace/Frete Subsidiado: monthly_closing NÃO tem
   // coluna própria pra esses 3 itens (só agregados: cogs_total/ads_*) — só
@@ -220,18 +235,20 @@ router.get('/fechamento/resumo', async (req, res) => {
       const c = findClosing(closings, m, ano);
       const futuro = ano === hoje.getFullYear() && m > hoje.getMonth() + 1;
       const atual = ano === hoje.getFullYear() && m === hoje.getMonth() + 1;
+      const ll = c ? llDoFechamento(c) : { reais: null, pct: null };
       meses.push({
         mes: m, atual,
         status: c ? c.status : (futuro ? 'futuro' : 'open'),
         revenue_gross: c ? round2(c.revenue_gross) : null,
-        lucro_liquido: c ? lucroLiquidoDoFechamento(c) : null,
+        lucro_liquido: ll.reais,
+        lucro_liquido_pct: ll.pct,
       });
     }
     const fechados = closings.filter((c) => Number(c.year) === ano && c.status === 'closed');
     const soma = (f) => fechados.reduce((s, c) => s + (f(c) || 0), 0);
     const receitaFechada = soma((c) => +c.revenue_gross || 0);
     const mcFechada = soma((c) => +c.contribution_margin || 0);
-    const llFechado = soma(lucroLiquidoDoFechamento);
+    const llFechado = soma((c) => llDoFechamento(c).reais);
     res.json({
       ano, meses,
       summary: {

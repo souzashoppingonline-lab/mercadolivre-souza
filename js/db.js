@@ -350,6 +350,13 @@ const DB = {
   async addFinanceiroRow(nome, obj)        { return this._post(`/financeiro/dados/${encodeURIComponent(nome)}`, obj); },
   async updateFinanceiroRow(nome, id, obj) { return this._patch(`/financeiro/dados/${encodeURIComponent(nome)}/${encodeURIComponent(id)}`, obj); },
   async deleteFinanceiroRow(nome, id)      { return this._delete(`/financeiro/dados/${encodeURIComponent(nome)}/${encodeURIComponent(id)}`); },
+  // Fechamento Mensal — checklist, status (open/in_progress/closed), e-mail.
+  async getFechamentoResumo(ano)                { return this._get('/financeiro/fechamento/resumo', { ano }); },
+  async getFechamentoMes(ano, mes)              { return this._get(`/financeiro/fechamento/${ano}/${mes}`); },
+  async iniciarFechamento(ano, mes)             { return this._post(`/financeiro/fechamento/${ano}/${mes}/iniciar`, {}); },
+  async patchFechamentoChecklist(ano, mes, body){ return this._patch(`/financeiro/fechamento/${ano}/${mes}/checklist`, body); },
+  async finalizarFechamento(ano, mes)           { return this._post(`/financeiro/fechamento/${ano}/${mes}/finalizar`, {}); },
+  async reabrirFechamento(ano, mes)             { return this._post(`/financeiro/fechamento/${ano}/${mes}/reabrir`, {}); },
 
   // ── Top Vendas Online (dashboard matinal) ────────────────────
   async getResumoOntem()       { return this._get('/dashboard/resumo-ontem'); },

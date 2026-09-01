@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fechamento Mensal</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Fechamento Mensal'; window.ACTIVE_NAV='financeiro-fechamento-mensal.html';</script>
+  <style>
+    .fm-top { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .fm-top select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
+    .fm-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+    .fm-btn:hover { border-color:#3fb950; }
+    .fm-btn:disabled { opacity:.5; cursor:default; }
+    .fm-btn.primary { background:#3fb950; color:#06210d; border-color:#3fb950; }
+    .fm-btn.danger { background:transparent; color:#f87171; border-color:#f8717155; }
+
+    .fm-cards5 { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:18px; }
+    @media(max-width:1100px){ .fm-cards5 { grid-template-columns:repeat(3,1fr); } }
+    @media(max-width:640px){ .fm-cards5 { grid-template-columns:repeat(2,1fr); } }
+    .fm-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:14px 16px; }
+    .fm-card .k { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .fm-card .v { font-size:19px; font-weight:800; margin-top:5px; }
+    .fm-card .d { font-size:11px; color:var(--text-muted); margin-top:3px; }
+
+    .fm-panel { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .fm-panel-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .fm-panel-h h3 { font-size:15px; font-weight:800; margin:0; }
+    .fm-panel-h .desc { font-size:12px; color:var(--text-muted); font-weight:500; }
+
+    .fm-grid { display:grid; grid-template-columns:repeat(12,1fr); gap:8px; }
+    @media(max-width:900px){ .fm-grid { grid-template-columns:repeat(6,1fr); } }
+    @media(max-width:520px){ .fm-grid { grid-template-columns:repeat(3,1fr); } }
+    .fm-mo { border:1px solid var(--border); border-radius:10px; padding:10px 8px; text-align:center; cursor:pointer; background:var(--bg-card2); }
+    .fm-mo:hover { border-color:#3fb950; }
+    .fm-mo.atual { border-color:#3b82f6; box-shadow:0 0 0 1px #3b82f655; }
+    .fm-mo .nm { font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase; }
+    .fm-mo .ico { font-size:16px; margin-top:6px; }
+    .fm-mo .rc { font-size:10.5px; margin-top:4px; color:var(--text-muted); }
+
+    .fm-cols { display:grid; grid-template-columns:2fr 1fr; gap:16px; align-items:start; }
+    @media(max-width:980px){ .fm-cols { grid-template-columns:1fr; } }
+    .fm-hist { display:flex; flex-direction:column; gap:8px; }
+    .fm-hist-row { display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:var(--bg-card2); }
+    .fm-hist-row .mm { font-weight:800; min-width:90px; }
+    .fm-hist-row .rec { flex:1; font-size:12.5px; color:var(--text-muted); }
+    .fm-badge { border-radius:999px; padding:2px 9px; font-size:10px; font-weight:800; white-space:nowrap; }
+    .fm-badge.closed { background:rgba(46,160,67,.15); color:#3fb950; }
+    .fm-badge.in_progress { background:rgba(245,158,11,.15); color:#f59e0b; }
+    .fm-badge.open { background:rgba(148,163,184,.15); color:#94a3b8; }
+    .fm-badge.futuro { background:rgba(148,163,184,.08); color:#64748b; }
+
+    .fm-legend { font-size:12.5px; color:var(--text-muted); line-height:1.7; }
+    .fm-legend b { color:var(--text-main); }
+    .fm-legend .li { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+
+    .fm-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+
+    /* Modal */
+    .fm-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1000; align-items:flex-start; justify-content:center; padding:30px 16px; overflow:auto; }
+    .fm-ov.open { display:flex; }
+    .fm-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; width:100%; max-width:900px; padding:0; }
+    .fm-modal-head { display:flex; align-items:center; gap:10px; padding:18px 22px; border-bottom:1px solid var(--border); }
+    .fm-modal-head h3 { margin:0; font-size:17px; }
+    .fm-modal-head .sub { font-size:12px; color:var(--text-muted); }
+    .fm-modal-close { margin-left:auto; background:transparent; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; }
+    .fm-modal-body { padding:20px 22px; }
+
+    .fm-kpis4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }
+    @media(max-width:700px){ .fm-kpis4 { grid-template-columns:repeat(2,1fr); } }
+
+    .fm-checklist { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+    .fm-check-item { display:flex; align-items:center; gap:9px; font-size:13px; padding:7px 10px; border-radius:8px; background:var(--bg-card2); }
+    .fm-check-item input { width:16px; height:16px; }
+    .fm-check-item .opt { margin-left:auto; font-size:10px; color:var(--text-muted); }
+    .fm-notes { width:100%; min-height:70px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:10px; font-size:13px; font-family:inherit; resize:vertical; }
+    .fm-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+
+    .fm-tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin:20px 0 14px; flex-wrap:wrap; }
+    .fm-tab { background:transparent; border:none; color:var(--text-muted); padding:8px 12px; font-size:12.5px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; }
+    .fm-tab.on { color:var(--text-main); border-color:#3fb950; }
+    .fm-tabpanel { display:none; }
+    .fm-tabpanel.on { display:block; }
+
+    table.fm-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .fm-t th, .fm-t td { padding:8px 9px; border-bottom:1px solid var(--border); text-align:right; }
+    .fm-t th:first-child, .fm-t td:first-child { text-align:left; }
+    .fm-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; }
+    .fm-t tr.tot td { font-weight:800; border-top:1px solid var(--border); background:rgba(46,160,67,.05); }
+    .fm-bar { height:6px; background:var(--bg-card2); border-radius:4px; overflow:hidden; margin-top:4px; }
+    .fm-bar > span { display:block; height:100%; background:#60a5fa; }
+    .up{ color:#3fb950;} .down{ color:#f87171;}
+
+    .fm-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="app-sidebar"></div>
+    <main class="main-content">
+      <div id="app-topbar"></div>
+      <div class="content">
+        <p class="fm-sub" style="font-size:13px;color:var(--text-muted);margin:-6px 0 16px">Consolida e trava o resultado financeiro de cada mês — fonte oficial do DRE anual e dos comparativos.</p>
+        <div id="fmStatus" class="fm-status"></div>
+
+        <div class="fm-top">
+          <select id="fmAno"></select>
+          <button class="fm-btn" onclick="carregar()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+
+        <div class="fm-cards5" id="fmCards"></div>
+
+        <div class="fm-panel">
+          <div class="fm-panel-h"><h3>🗓️ Meses de <span id="fmAnoLbl"></span></h3></div>
+          <div class="fm-grid" id="fmGrid"></div>
+        </div>
+
+        <div class="fm-cols">
+          <div class="fm-panel">
+            <div class="fm-panel-h"><h3>📜 Histórico</h3><span class="desc">mais recente primeiro</span></div>
+            <div class="fm-hist" id="fmHist"></div>
+          </div>
+          <div class="fm-panel">
+            <div class="fm-panel-h"><h3>ℹ️ Como funciona</h3></div>
+            <div class="fm-legend">
+              <div class="li"><span class="fm-badge closed">Fechado</span> travado — fonte oficial do DRE anual</div>
+              <div class="li"><span class="fm-badge in_progress">Em fechamento</span> checklist em andamento</div>
+              <div class="li"><span class="fm-badge open">Aberto</span> ainda não iniciado</div>
+              <b>Regras</b><br>
+              Só é possível <b>finalizar</b> a partir do último dia útil do mês (evita fechar com dado ainda incompleto). O checklist tem 7 itens obrigatórios + 1 opcional (Estoque/CMV) — todos os obrigatórios precisam estar marcados. Ao finalizar, os números são travados e um e-mail com o relatório é enviado automaticamente. <b>Reabrir</b> destrava o mês (ação restrita a admin, como todo o módulo Financeiro).
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal de fechamento -->
+  <div class="fm-ov" id="fmModal" onclick="if(event.target===this)fecharModal()">
+    <div class="fm-modal">
+      <div class="fm-modal-head">
+        <i class="fas fa-calendar-check" style="color:#3fb950;font-size:18px"></i>
+        <div>
+          <h3 id="fmModalTitle">—</h3>
+          <div class="sub" id="fmModalSub"></div>
+        </div>
+        <button class="fm-modal-close" onclick="fecharModal()"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="fm-modal-body" id="fmModalBody">Carregando…</div>
+    </div>
+  </div>
+
+  <script src="../js/db.js"></script>
+  <script src="../js/layout-financeiro.js"></script>
+  <script>
+const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MESES_LONGO = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const BRL = n => (n==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0));
+const PCT = n => (n==null?'—':`${Number(n).toFixed(1).replace('.',',')}%`);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const STATUS_LABEL = { closed:'Fechado', in_progress:'Em andamento', open:'Aberto', futuro:'Futuro' };
+const STATUS_ICO = { closed:'✅', in_progress:'⏳', open:'○', futuro:'—' };
+
+let ANO = new Date().getFullYear();
+let RESUMO = null;
+let MODAL = { ano:null, mes:null, aba:'resumo' };
+
+function popularAnos() {
+  const sel = document.getElementById('fmAno');
+  const atual = new Date().getFullYear();
+  sel.innerHTML = [atual+1, atual, atual-1, atual-2].map(a => `<option value="${a}"${a===ANO?' selected':''}>${a}</option>`).join('');
+  sel.onchange = () => { ANO = Number(sel.value); carregar(); };
+}
+
+function showStatus(msg, erro) {
+  const el = document.getElementById('fmStatus');
+  el.textContent = msg; el.style.display='block';
+  el.style.borderColor = erro ? '#f8717155' : 'var(--border)';
+  el.style.color = erro ? '#f87171' : 'var(--text-main)';
+  setTimeout(() => { el.style.display='none'; }, 4000);
+}
+
+async function carregar() {
+  document.getElementById('fmAnoLbl').textContent = ANO;
+  const d = await DB.getFechamentoResumo(ANO);
+  if (!d || d.error) { showStatus('⚠️ '+(d&&d.error||'Erro ao carregar'), true); return; }
+  RESUMO = d;
+  renderCards(d.summary);
+  renderGrid(d.meses);
+  renderHist(d.meses);
+}
+
+function renderCards(s) {
+  document.getElementById('fmCards').innerHTML = `
+    <div class="fm-card"><div class="k">Ano Fiscal</div><div class="v">${s.ano_fiscal}</div><div class="d">${s.meses_fechados}/12 mês(es) fechado(s)</div></div>
+    <div class="fm-card"><div class="k">Receita Fechada</div><div class="v">${BRL(s.receita_fechada)}</div></div>
+    <div class="fm-card"><div class="k">Margem Contrib.</div><div class="v">${BRL(s.margem_contribuicao)}</div><div class="d">${PCT(s.margem_contribuicao_pct)}</div></div>
+    <div class="fm-card"><div class="k">Lucro Líquido</div><div class="v" style="color:${s.lucro_liquido>=0?'#3fb950':'#f87171'}">${BRL(s.lucro_liquido)}</div><div class="d">${PCT(s.lucro_liquido_pct)}</div></div>
+    <div class="fm-card"><div class="k">Vendas</div><div class="v">${s.vendas}</div><div class="d">unidades (meses fechados)</div></div>`;
+}
+
+function renderGrid(meses) {
+  document.getElementById('fmGrid').innerHTML = meses.map(m => `
+    <div class="fm-mo ${m.atual?'atual':''}" onclick="abrirModal(${ANO},${m.mes})">
+      <div class="nm">${MESES[m.mes-1]}</div>
+      <div class="ico">${STATUS_ICO[m.status]}</div>
+      <div class="rc">${m.revenue_gross!=null?BRL(m.revenue_gross):'—'}</div>
+    </div>`).join('');
+}
+
+function renderHist(meses) {
+  const rows = meses.filter(m => m.status !== 'futuro').slice().reverse();
+  const box = document.getElementById('fmHist');
+  if (!rows.length) { box.innerHTML = '<div class="fm-empty">Nenhum mês neste ano ainda.</div>'; return; }
+  box.innerHTML = rows.map(m => `
+    <div class="fm-hist-row">
+      <span class="mm">${MESES_LONGO[m.mes-1]}</span>
+      <span class="rec">${m.revenue_gross!=null?`${BRL(m.revenue_gross)} · Lucro ${BRL(m.lucro_liquido)}`:'sem lançamento ainda'}</span>
+      <span class="fm-badge ${m.status}">${STATUS_LABEL[m.status]}</span>
+      <button class="fm-btn" style="padding:5px 10px" onclick="abrirModal(${ANO},${m.mes})"><i class="fas fa-eye"></i></button>
+    </div>`).join('');
+}
+
+// ── Modal de fechamento ──────────────────────────────────────────────────
+async function abrirModal(ano, mes) {
+  MODAL = { ano, mes, aba:'resumo' };
+  document.getElementById('fmModalTitle').textContent = `${MESES_LONGO[mes-1]}/${ano}`;
+  document.getElementById('fmModalSub').textContent = '';
+  document.getElementById('fmModalBody').innerHTML = '<div class="fm-empty">Carregando…</div>';
+  document.getElementById('fmModal').classList.add('open');
+  await recarregarModal();
+}
+function fecharModal() { document.getElementById('fmModal').classList.remove('open'); }
+
+async function recarregarModal() {
+  const { ano, mes } = MODAL;
+  const d = await DB.getFechamentoMes(ano, mes);
+  if (!d || d.error) { document.getElementById('fmModalBody').innerHTML = `<div class="fm-empty">Erro: ${esc(d&&d.error||'')}</div>`; return; }
+  MODAL.data = d;
+  document.getElementById('fmModalSub').textContent = `${STATUS_LABEL[d.status]||d.status}${d.closed_at?' · fechado em '+new Date(d.closed_at).toLocaleString('pt-BR'):''}`;
+  renderModalBody(d);
+}
+
+function checklistCompletoObrigatorios(d) {
+  return (d.checklist_itens||[]).filter(i=>i.obrigatorio).every(i => !!(d.checklist||{})[i.key]);
+}
+
+function renderModalBody(d) {
+  const r = d.report;
+  const cresc = d.report.comparativo_mes_anterior && d.report.comparativo_mes_anterior.revenue_gross
+    ? ((r.revenue_gross - d.report.comparativo_mes_anterior.revenue_gross) / d.report.comparativo_mes_anterior.revenue_gross) * 100 : null;
+
+  const kpis = `<div class="fm-kpis4">
+    <div class="fm-card"><div class="k">Receita Bruta</div><div class="v">${BRL(r.revenue_gross)}</div>${cresc!=null?`<div class="d" style="color:${cresc>=0?'#3fb950':'#f87171'}">${cresc>=0?'▲':'▼'} ${PCT(Math.abs(cresc))} vs. mês anterior</div>`:''}</div>
+    <div class="fm-card"><div class="k">Margem Contrib.</div><div class="v">${PCT(r.contribution_margin_pct)}</div><div class="d">${BRL(r.contribution_margin)}</div></div>
+    <div class="fm-card"><div class="k">Fluxo de Caixa</div><div class="v" style="color:${r.cash_flow_balance>=0?'#3fb950':'#f87171'}">${BRL(r.cash_flow_balance)}</div><div class="d">${BRL(r.cash_flow_in)} entrada · ${BRL(r.cash_flow_out)} saída</div></div>
+    <div class="fm-card"><div class="k">Boletos Pendentes</div><div class="v">${d.report.boletos_pending_count}</div><div class="d">${BRL(d.report.boletos_pending_total)}</div></div>
+  </div>`;
+
+  const editavel = d.status !== 'closed';
+  const checklistHtml = `<div class="fm-checklist">${(d.checklist_itens||[]).map(i => `
+    <label class="fm-check-item">
+      <input type="checkbox" ${d.checklist[i.key]?'checked':''} ${editavel && d.status==='in_progress' ? '' : 'disabled'} onchange="toggleChecklist('${i.key}', this.checked)">
+      ${esc(i.label)}${!i.obrigatorio?'<span class="opt">opcional</span>':''}
+    </label>`).join('')}</div>`;
+
+  const notesHtml = `<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px">Observações</label>
+    <textarea class="fm-notes" id="fmNotes" maxlength="500" ${d.status==='closed'?'disabled':''} onchange="salvarNotes(this.value)">${esc(d.notes||'')}</textarea>`;
+
+  let acoes = '';
+  if (d.status === 'open') {
+    acoes = `<button class="fm-btn primary" onclick="acaoIniciar()"><i class="fas fa-play"></i> Iniciar Fechamento</button>`;
+  } else if (d.status === 'in_progress') {
+    const completo = checklistCompletoObrigatorios(d);
+    acoes = `<button class="fm-btn primary" ${(completo && d.pode_finalizar)?'':'disabled'} title="${!completo?'Marque todos os itens obrigatórios do checklist':(!d.pode_finalizar?'Só é possível finalizar a partir do último dia útil do mês':'')}" onclick="acaoFinalizar()"><i class="fas fa-check-double"></i> Finalizar Fechamento</button>`;
+    if (!d.pode_finalizar) acoes += `<span style="font-size:12px;color:var(--text-muted);align-self:center">⏳ Disponível a partir do último dia útil do mês</span>`;
+  } else if (d.status === 'closed') {
+    acoes = `<button class="fm-btn danger" onclick="acaoReabrir()"><i class="fas fa-lock-open"></i> Reabrir Mês</button>
+      <button class="fm-btn" onclick="exportarCsv()"><i class="fas fa-file-csv"></i> CSV</button>
+      <button class="fm-btn" onclick="exportarPdf()"><i class="fas fa-file-pdf"></i> PDF</button>`;
+  }
+
+  const abas = [
+    ['resumo','Resumo'], ['dre','DRE'], ['custos','Custos'], ['boletos','Boletos'], ['categorias','Categorias'], ['obs','Observações'],
+  ];
+  const tabsHtml = `<div class="fm-tabs">${abas.map(([k,l]) => `<button class="fm-tab ${MODAL.aba===k?'on':''}" onclick="mudarAba('${k}')">${l}</button>`).join('')}</div>`;
+
+  document.getElementById('fmModalBody').innerHTML = `
+    ${kpis}
+    <h4 style="font-size:13px;margin:0 0 8px">✅ Checklist de fechamento</h4>
+    ${checklistHtml}
+    ${notesHtml}
+    <div class="fm-actions">${acoes}</div>
+    ${tabsHtml}
+    <div id="fmTabBody"></div>`;
+  renderAba(d);
+}
+
+function mudarAba(k) { MODAL.aba = k; renderAba(MODAL.data); document.querySelectorAll('.fm-tab').forEach(b=>b.classList.toggle('on', b.textContent===({resumo:'Resumo',dre:'DRE',custos:'Custos',boletos:'Boletos',categorias:'Categorias',obs:'Observações'}[k]))); }
+
+function renderAba(d) {
+  const r = d.report;
+  let html = '';
+  if (MODAL.aba === 'resumo') {
+    html = `<table class="fm-t">
+      <tr><td>Receita Bruta</td><td>${BRL(r.revenue_gross)}</td></tr>
+      <tr><td>Vendas (unidades)</td><td>${r.total_sales}</td></tr>
+      <tr><td>Ticket Médio</td><td>${BRL(r.avg_ticket)}</td></tr>
+      ${r.meta ? `<tr><td>Meta do mês</td><td>${BRL(r.meta.valor)}</td></tr><tr><td>Meta atingida</td><td>${PCT(r.meta.atingido_pct)}</td></tr>` : '<tr><td colspan="2" style="text-align:left;color:var(--text-muted)">Sem meta cadastrada pra este mês</td></tr>'}
+      <tr class="tot"><td>Lucro Líquido</td><td style="color:${r.lucro_liquido>=0?'#3fb950':'#f87171'}">${BRL(r.lucro_liquido)} (${PCT(r.net_pct)})</td></tr>
+    </table>
+    ${r.comparativo_mes_anterior ? `<p style="font-size:12px;color:var(--text-muted);margin-top:12px">Mês anterior (${MESES[r.comparativo_mes_anterior.mes-1]}/${r.comparativo_mes_anterior.ano}): receita ${BRL(r.comparativo_mes_anterior.revenue_gross)}${r.comparativo_mes_anterior.net_pct!=null?`, lucro líq. ${PCT(r.comparativo_mes_anterior.net_pct)}`:''}</p>` : ''}`;
+  } else if (MODAL.aba === 'dre') {
+    html = `<table class="fm-t">
+      <tr><td>Receita Bruta</td><td>${BRL(r.revenue_gross)}</td></tr>
+      <tr><td>(−) Impostos</td><td>${BRL(r.tax)}</td></tr>
+      <tr><td>(−) Taxas Marketplace</td><td>${BRL(r.marketplace_fees)}</td></tr>
+      <tr><td>(−) Frete Subsidiado</td><td>${BRL(r.subsidized_shipping)}</td></tr>
+      <tr><td>(−) CMV</td><td>${BRL(r.cogs_total)}</td></tr>
+      <tr><td>(−) Ads (ML + Externos)</td><td>${BRL(r.ads_cost_total)}</td></tr>
+      <tr class="tot"><td>= Margem de Contribuição</td><td>${BRL(r.contribution_margin)} (${PCT(r.contribution_margin_pct)})</td></tr>
+      <tr><td>(−) Custos Fixos</td><td>${BRL(r.fixed_costs_total)}</td></tr>
+      <tr><td>(−) Custos Operacionais</td><td>${BRL(r.variable_costs_total)}</td></tr>
+      <tr class="tot"><td>= Lucro Líquido</td><td style="color:${r.lucro_liquido>=0?'#3fb950':'#f87171'}">${BRL(r.lucro_liquido)} (${PCT(r.net_pct)})</td></tr>
+    </table>`;
+  } else if (MODAL.aba === 'custos') {
+    html = `<table class="fm-t">
+      <tr><td>Custos Fixos</td><td>${BRL(r.fixed_costs_total)}</td></tr>
+      <tr><td>Custos Operacionais</td><td>${BRL(r.variable_costs_total)}</td></tr>
+      <tr><td>Ads Mercado Livre</td><td>${BRL(r.ads_ml)}</td></tr>
+      <tr><td>Ads Externos</td><td>${BRL(r.ads_external)}</td></tr>
+      <tr class="tot"><td>CMV</td><td>${BRL(r.cogs_total)}</td></tr>
+    </table>`;
+  } else if (MODAL.aba === 'boletos') {
+    const itens = r.boletos_itens || [];
+    html = `<table class="fm-t" style="margin-bottom:14px">
+      <tr><td>Pagos</td><td style="color:#3fb950">${r.boletos_paid_count} · ${BRL(r.boletos_paid_total)}</td></tr>
+      <tr><td>Pendentes</td><td style="color:#f59e0b">${r.boletos_pending_count} · ${BRL(r.boletos_pending_total)}</td></tr>
+    </table>
+    ${itens.length ? `<table class="fm-t"><thead><tr><th>Nome</th><th>Empresa</th><th>Data</th><th>Status</th><th>Valor</th></tr></thead>
+    <tbody>${itens.map(b=>`<tr><td style="text-align:left">${esc(b.nome)}</td><td style="text-align:left">${esc(b.empresa||'—')}</td><td style="text-align:left">${b.data?new Date(b.data+'T00:00:00').toLocaleDateString('pt-BR'):'—'}</td><td style="text-align:left">${b.status==='pago'?'✅ Pago':'⏳ Pendente'}</td><td>${BRL(b.valor)}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="fm-empty">Nenhum boleto neste mês.</div>'}`;
+  } else if (MODAL.aba === 'categorias') {
+    const cats = r.expense_categories_top || [];
+    html = cats.length ? cats.map(c => `<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span>${esc(c.categoria)}</span><b>${BRL(c.valor)} (${PCT(c.pct)})</b></div>
+      <div class="fm-bar"><span style="width:${c.pct}%"></span></div>
+    </div>`).join('') : '<div class="fm-empty">Sem despesas categorizadas neste mês.</div>';
+  } else if (MODAL.aba === 'obs') {
+    html = `<p style="font-size:13px;white-space:pre-wrap">${esc(d.notes || 'Nenhuma observação registrada.')}</p>`;
+  }
+  document.getElementById('fmTabBody').innerHTML = html;
+}
+
+// ── Ações ────────────────────────────────────────────────────────────────
+async function toggleChecklist(item, checked) {
+  const { ano, mes } = MODAL;
+  const r = await DB.patchFechamentoChecklist(ano, mes, { item, checked });
+  if (!r || r.error) { showStatus('⚠️ '+(r&&r.error||'Erro ao salvar checklist'), true); await recarregarModal(); return; }
+  MODAL.data.checklist = r.checklist;
+  renderModalBody(MODAL.data);
+}
+let notesTimer;
+function salvarNotes(valor) {
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(async () => {
+    const { ano, mes } = MODAL;
+    await DB.patchFechamentoChecklist(ano, mes, { notes: valor });
+  }, 400);
+}
+async function acaoIniciar() {
+  const { ano, mes } = MODAL;
+  const r = await DB.iniciarFechamento(ano, mes);
+  if (!r || r.error) { showStatus('⚠️ '+(r&&r.error||'Erro ao iniciar'), true); return; }
+  await recarregarModal(); await carregar();
+}
+async function acaoFinalizar() {
+  if (!confirm('Finalizar este mês?\n\nOs números serão travados como fonte oficial e um e-mail com o relatório será enviado automaticamente. Só é possível reabrir depois (admin).')) return;
+  const { ano, mes } = MODAL;
+  const r = await DB.finalizarFechamento(ano, mes);
+  if (!r || r.error) { showStatus('⚠️ '+(r&&r.error||'Erro ao finalizar'), true); return; }
+  showStatus(r.email && r.email.sent ? '✅ Mês finalizado — relatório enviado por e-mail.' : '✅ Mês finalizado (e-mail não enviado: '+((r.email&&r.email.reason)||'verifique a configuração do Resend')+').');
+  await recarregarModal(); await carregar();
+}
+async function acaoReabrir() {
+  if (!confirm('Reabrir este mês?\n\nOs números voltam a ficar editáveis (recalculados ao vivo) até finalizar de novo.')) return;
+  const { ano, mes } = MODAL;
+  const r = await DB.reabrirFechamento(ano, mes);
+  if (!r || r.error) { showStatus('⚠️ '+(r&&r.error||'Erro ao reabrir'), true); return; }
+  await recarregarModal(); await carregar();
+}
+
+// ── Exportação (mesmo padrão de financeiro-dre.html/bi-rankeamento.html —
+// CSV via Blob, PDF via window.open + window.print(), sem lib nova) ────────
+function exportarCsv() {
+  const r = MODAL.data.report;
+  const linhas = [
+    ['Fechamento Mensal', `${MESES_LONGO[r.mes-1]}/${r.ano}`],
+    [],
+    ['Receita Bruta', r.revenue_gross],
+    ['Impostos', r.tax],
+    ['Taxas Marketplace', r.marketplace_fees],
+    ['Frete Subsidiado', r.subsidized_shipping],
+    ['CMV', r.cogs_total],
+    ['Ads ML', r.ads_ml],
+    ['Ads Externos', r.ads_external],
+    ['Margem de Contribuição', r.contribution_margin],
+    ['Margem de Contribuição %', r.contribution_margin_pct],
+    ['Custos Fixos', r.fixed_costs_total],
+    ['Custos Operacionais', r.variable_costs_total],
+    ['Lucro Líquido', r.lucro_liquido],
+    ['Lucro Líquido %', r.net_pct],
+    ['Fluxo de Caixa — Entradas', r.cash_flow_in],
+    ['Fluxo de Caixa — Saídas', r.cash_flow_out],
+    ['Fluxo de Caixa — Saldo', r.cash_flow_balance],
+    ['Boletos Pagos', r.boletos_paid_count, r.boletos_paid_total],
+    ['Boletos Pendentes', r.boletos_pending_count, r.boletos_pending_total],
+    ['Vendas (unidades)', r.total_sales],
+    ['Ticket Médio', r.avg_ticket],
+  ];
+  const csv = linhas.map(l => l.map(v => `"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob = new Blob(['﻿'+csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `fechamento-${r.ano}-${String(r.mes).padStart(2,'0')}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportarPdf() {
+  const r = MODAL.data.report;
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Fechamento — ${MESES_LONGO[r.mes-1]}/${r.ano}</title>
+  <style>
+    * { box-sizing:border-box; } body { font-family:-apple-system,'Segoe UI',Arial,sans-serif; color:#1a1a2e; padding:32px 40px; max-width:820px; margin:0 auto; }
+    h1 { font-size:22px; margin:0 0 4px; } .sub { font-size:12px; color:#666; margin-bottom:20px; }
+    h2 { font-size:14px; margin:22px 0 8px; color:#111; }
+    table { width:100%; border-collapse:collapse; font-size:12.5px; } td { padding:7px 8px; border-bottom:1px solid #eee; } td:last-child{ text-align:right; }
+    tr.tot td { font-weight:800; background:#f4faf5; }
+  </style></head><body>
+    <h1>📊 Fechamento Mensal — ${MESES_LONGO[r.mes-1]}/${r.ano}</h1>
+    <div class="sub">Gerado em ${new Date().toLocaleString('pt-BR')} — ML Dashboard Multimarcas</div>
+    <h2>DRE</h2>
+    <table>
+      <tr><td>Receita Bruta</td><td>${BRL(r.revenue_gross)}</td></tr>
+      <tr><td>(−) Impostos</td><td>${BRL(r.tax)}</td></tr>
+      <tr><td>(−) Taxas Marketplace</td><td>${BRL(r.marketplace_fees)}</td></tr>
+      <tr><td>(−) Frete Subsidiado</td><td>${BRL(r.subsidized_shipping)}</td></tr>
+      <tr><td>(−) CMV</td><td>${BRL(r.cogs_total)}</td></tr>
+      <tr><td>(−) Ads</td><td>${BRL(r.ads_cost_total)}</td></tr>
+      <tr class="tot"><td>= Margem de Contribuição</td><td>${BRL(r.contribution_margin)} (${PCT(r.contribution_margin_pct)})</td></tr>
+      <tr><td>(−) Custos Fixos</td><td>${BRL(r.fixed_costs_total)}</td></tr>
+      <tr><td>(−) Custos Operacionais</td><td>${BRL(r.variable_costs_total)}</td></tr>
+      <tr class="tot"><td>= Lucro Líquido</td><td>${BRL(r.lucro_liquido)} (${PCT(r.net_pct)})</td></tr>
+    </table>
+    <h2>Fluxo de Caixa</h2>
+    <table><tr><td>Entradas</td><td>${BRL(r.cash_flow_in)}</td></tr><tr><td>Saídas</td><td>${BRL(r.cash_flow_out)}</td></tr><tr class="tot"><td>Saldo</td><td>${BRL(r.cash_flow_balance)}</td></tr></table>
+    <h2>Boletos</h2>
+    <table><tr><td>Pagos</td><td>${r.boletos_paid_count} · ${BRL(r.boletos_paid_total)}</td></tr><tr><td>Pendentes</td><td>${r.boletos_pending_count} · ${BRL(r.boletos_pending_total)}</td></tr></table>
+    ${MODAL.data.notes ? `<h2>Observações</h2><p style="font-size:12.5px;white-space:pre-wrap">${esc(MODAL.data.notes)}</p>` : ''}
+    <script>window.onload=function(){window.print();}<\/script>
+  </body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('Permita pop-ups para gerar o PDF.'); return; }
+  w.document.write(html); w.document.close();
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharModal(); });
+
+popularAnos();
+carregar();
+  </script>
+</body>
+</html>

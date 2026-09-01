@@ -186,6 +186,12 @@ Fora do escopo desta rodada, deliberadamente (spec original tinha 29 seções):
 - [ ] Ao adicionar um handler de tópico webhook ou um sync agendado novo, atualizar `workers.md`.
 - [ ] Ao publicar um tópico WebSocket novo (ou mudar o payload de um existente), atualizar `websocket.md`.
 
+## Fechamento Mensal (`pages/financeiro-fechamento-mensal.html`)
+
+- [ ] `monthly_closing.closed_by` fica sempre `NULL` — este projeto não tem uuid de ator logado compatível com essa FK (`users` do Supabase Auth original). Se algum dia houver essa identidade disponível (ex. staff_users ganhar um uuid espelhado), preencher de verdade.
+- [ ] Regra "último dia útil" não considera feriados brasileiros (só pula sáb/dom) — sem biblioteca de calendário no projeto. Se virar problema real (alguém tentando finalizar num feriado achando que é dia útil), avaliar adicionar uma lib de feriados.
+- [ ] `financeiro-despesas.html`/`financeiro-projecao-caixa.html`/`financeiro-dre.html` ainda têm cada uma sua própria cópia da fórmula de DRE no `<script>` (3 cópias, ver `decisions.md`) — a página de Fechamento Mensal é a primeira a ler de `financeiroCalc.js` pelo backend. Quando alguém for mexer numa fórmula de DRE de novo, considerar migrar as 3 pra consumir o módulo em vez de adicionar uma 4ª/5ª cópia.
+
 ## Este arquivo é o ponto de entrada para retomar trabalho
 
 Ao iniciar uma sessão nova, além de ler toda a pasta `.claude` (regra em `CLAUDE.md`), verificar se há itens `[ ]` aqui antes de assumir que não há trabalho pendente conhecido.

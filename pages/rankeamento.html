@@ -118,6 +118,8 @@
     .rk-bb-boosts { font-size: 11px; color: var(--text-muted); margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .rk-chip-boost { background: rgba(248,81,73,.15); color: #f85149; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; cursor: help; }
     .rk-bb-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+    .rk-bar-track { background: var(--bg-card2); border-radius: 4px; height: 8px; overflow: hidden; }
+    .rk-bar-fill { background: #a855f7; height: 100%; border-radius: 4px; min-width: 2px; }
     .rk-tipo-sel { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 700; }
     .rk-tipo-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(88,166,255,.12); color: #58a6ff; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 5px; }
 
@@ -285,6 +287,21 @@
       <button class="rk-modal-close" onclick="fecharConcorrentesModal()"><i class="fas fa-times"></i></button>
     </div>
     <div class="rk-modal-body" id="concorrentesModalBody"></div>
+  </div>
+</div>
+
+<!-- Modal: vendas por período do anúncio (v88.2, botão "Ver vendas" do Catálogo) -->
+<div class="rk-modal-ov" id="vendasModal" onclick="if(event.target===this)fecharVendasModal()">
+  <div class="rk-modal">
+    <div class="rk-modal-head">
+      <i class="fas fa-chart-column" style="color:#a855f7"></i>
+      <div style="flex:1;min-width:0">
+        <h3>Vendas do anúncio</h3>
+        <div class="sub" id="vendasModalSub"></div>
+      </div>
+      <button class="rk-modal-close" onclick="fecharVendasModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="rk-modal-body" id="vendasModalBody"></div>
   </div>
 </div>
 
@@ -683,7 +700,8 @@ function cardHtml(a) {
       }).join('')}</div>` : ''}
     <div class="rk-bb-foot">
       <span class="rk-days" style="background:transparent;border:none;padding:0;color:var(--text-muted);font-weight:400">${a.buybox_calculated_at ? `Sincronizado em ${fmtDT(a.buybox_calculated_at)}` : 'Ainda não sincronizado — busca automática já disparada, aguarde.'}</span>
-      <button class="rk-icon-btn" style="margin-left:auto" title="Ver todos os vendedores concorrendo neste catálogo" onclick="abrirConcorrentesModal('${esc(a.ml_id)}', '${esc(a.title || a.ml_id)}')"><i class="fas fa-users"></i> Ver concorrentes</button>
+      <button class="rk-icon-btn" style="margin-left:auto" title="Vendas dos últimos 15/30 dias, dia a dia" onclick="abrirVendasModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-chart-column"></i> Ver vendas</button>
+      <button class="rk-icon-btn" title="Ver todos os vendedores concorrendo neste catálogo" onclick="abrirConcorrentesModal('${esc(a.ml_id)}', '${esc(a.title || a.ml_id)}')"><i class="fas fa-users"></i> Ver concorrentes</button>
     </div>`;
 
   // Saúde (ranqueado/monitoramento) ou contador 5-em-5 (rankeando).
@@ -718,7 +736,7 @@ function cardHtml(a) {
     <div class="rk-card-head">
       ${a.thumbnail ? `<img src="${esc(a.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div style="min-width:0">
-        ${rankeando ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days"${isRanqueado ? ' style="background:#2ea043;color:#fff;border-color:#2ea043"' : ''}>${isRanqueado ? '✅' : '🗓️'} ${diasRank(a, fase)}</span>${recup ? badgeSemVenda(a) : ''}${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
+        ${(rankeando || catalogo) ? `<span class="rk-cyc">🔄 Ciclo ${a.ciclo || 1}</span> ` : ''}${mktTag(a.marketplace)} <span class="rk-days"${isRanqueado ? ' style="background:#2ea043;color:#fff;border-color:#2ea043"' : ''}>${isRanqueado ? '✅' : '🗓️'} ${diasRank(a, fase)}</span>${recup ? badgeSemVenda(a) : ''}${(!a.active) ? ' <span class="rk-days" style="background:var(--red);color:#fff;border-color:var(--red)">⏸ Pausado</span>' : ''}${sug}
         <div class="rk-card-title">${esc(a.title || a.ml_id)}</div>
         <div class="rk-card-store"><span class="rk-mlid">${esc(a.ml_id)}</span> · ${esc(a.store_nickname || '')}${a.last_highlight_pos!=null?` · <span style="color:#ffd60a;font-weight:800">🚀 #${a.last_highlight_pos} Mais Vendidos</span>`:''}</div>
         ${(a.links && a.links.length) ? `<div class="rk-links">${a.links.map(l=>`<span class="rk-link-chip" title="${esc(l.title||'')}">🔗 ${esc(l.tipo||'catálogo')}: ${esc(l.ml_id)} <i class="fas fa-times" title="Desvincular" onclick="desvincular(${a.id},${l.id})"></i></span>`).join('')}</div>` : ''}
@@ -738,16 +756,16 @@ function cardHtml(a) {
     </div>
     <div class="rk-card-footer-actions">
       <button class="rk-icon-btn" title="Vincular anúncio de catálogo/tradicional (soma as vendas neste card)" onclick="abrirVincularModal(${a.id}, '${esc(a.title || a.ml_id)}')"><i class="fas fa-link"></i> Vincular</button>
-      ${rankeando ? `<button class="rk-icon-btn" title="Virar agora para o ciclo ${(a.ciclo||1)+1} — sem esperar as ${every} vendas" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i> Novo ciclo</button>` : ''}
+      ${(rankeando || catalogo) ? `<button class="rk-icon-btn" title="Virar agora para o ciclo ${(a.ciclo||1)+1} — sem esperar as ${every} vendas" onclick="novoCiclo(${a.id}, ${a.ciclo||1})"><i class="fas fa-arrow-rotate-right"></i> Novo ciclo</button>` : ''}
       <div style="flex:1"></div>
       <button class="rk-icon-btn danger" title="Remover do rankeamento" onclick="removeAd(${a.id})"><i class="fas fa-trash"></i> Remover</button>
     </div>
     <div class="rk-fase-row"><i class="fas ${F.icon}" style="color:${F.cor}"></i> Estágio: ${faseSelect(a, fase)}</div>
     ${monBanner}
     ${meio}
-    ${(rankeando || recup) ? adsBlock : ''}
+    ${(rankeando || recup || catalogo) ? adsBlock : ''}
     <div class="rk-timeline" id="rktl-${a.id}">${evs}</div>
-    ${rankeando ? ciclosBlock : ''}
+    ${(rankeando || catalogo) ? ciclosBlock : ''}
     ${vereditoBlock}
   </div>`;
 }
@@ -913,6 +931,39 @@ async function abrirConcorrentesModal(itemId, titulo) {
 }
 function fecharConcorrentesModal() { document.getElementById('concorrentesModal').classList.remove('open'); }
 
+// Vendas por período (v88.2, GET /ads/:id/vendas-periodo) — total 15d/30d +
+// dia a dia dos últimos 30 dias. Backend já devolve a série zero-preenchida
+// (nenhum "dia faltando" pra reconstruir aqui).
+async function abrirVendasModal(id, titulo) {
+  const ov = document.getElementById('vendasModal');
+  document.getElementById('vendasModalSub').textContent = titulo || '';
+  const body = document.getElementById('vendasModalBody');
+  body.innerHTML = '<div class="rk-empty" style="border:none">Carregando…</div>';
+  ov.classList.add('open');
+  try {
+    const d = await DB.getRankingVendasPeriodo(id);
+    if (!d || d.error) { body.innerHTML = `<div class="rk-empty">Erro: ${esc((d && d.error) || '')}</div>`; return; }
+    const dias = d.dias || [];
+    const maxQtd = Math.max(1, ...dias.map(x => x.vendas));
+    body.innerHTML = `
+      <div class="rk-stats" style="grid-template-columns:repeat(2,1fr);margin-bottom:12px">
+        <div class="rk-stat"><div class="v">${d.total_15d}</div><div class="k">🗓️ Vendas — últimos 15 dias</div></div>
+        <div class="rk-stat"><div class="v">${d.total_30d}</div><div class="k">🗓️ Vendas — últimos 30 dias</div></div>
+      </div>
+      <table class="rk-preco">
+        <thead><tr><th>Dia</th><th></th><th>Vendas</th><th>Faturamento</th></tr></thead>
+        <tbody>${dias.slice().reverse().map(x => `<tr>
+          <td>${fmtDia(x.data)}</td>
+          <td style="width:40%"><div class="rk-bar-track"><div class="rk-bar-fill" style="width:${(x.vendas / maxQtd * 100).toFixed(0)}%"></div></div></td>
+          <td>${x.vendas}</td>
+          <td>${x.valor > 0 ? BRL(x.valor) : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  } catch (e) { body.innerHTML = `<div class="rk-empty">Erro: ${esc(e.message || '')}</div>`; }
+}
+function fecharVendasModal() { document.getElementById('vendasModal').classList.remove('open'); }
+function fmtDia(iso) { const [y,m,d] = iso.split('-'); return `${d}/${m}`; }
+
 // ── Vincular anúncio (catálogo/tradicional) ao card ─────────────────────────
 let VINC_AD = null, vincTimer;
 function abrirVincularModal(id, titulo) {
@@ -1049,7 +1100,7 @@ async function salvarAvisoAds() {
   document.getElementById('avisoAdsMensagem').value = '';
   carregarAvisos();
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); fecharNotasModal(); fecharAvisoAdsModal(); fecharConcorrentesModal(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharPrecoModal(); fecharVincModal(); fecharNotasModal(); fecharAvisoAdsModal(); fecharConcorrentesModal(); fecharVendasModal(); } });
 
 async function togglePause(id, activate) { await DB.patchRankingAd(id, { active: activate }); loadCards(); }
 async function removeAd(id) {

@@ -474,6 +474,45 @@ router.get('/ads/:id/ciclos', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Vendas por dia dos últimos 30 dias (v88.2, pedido do estágio Catálogo, mas
+// funciona pra qualquer anúncio rankeado). Série vem do PRÓPRIO Postgres já
+// zero-preenchida (generate_series + LEFT JOIN) — dia sem venda aparece com
+// 0, nunca falta no array, então o frontend não precisa reconstruir buracos.
+// Mesma fonte que o card usa pro contador de vendas (ranking_events,
+// event_type='venda'), mesmo padrão de bucket por dia em fuso de SP já usado
+// em bi.js (AT TIME ZONE 'America/Sao_Paulo'). total_15d/total_30d são a
+// soma dos últimos 15/30 dias dessa mesma série — sem 2ª query.
+router.get('/ads/:id/vendas-periodo', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `WITH dias AS (
+         SELECT generate_series(
+           (now() AT TIME ZONE 'America/Sao_Paulo')::date - INTERVAL '29 days',
+           (now() AT TIME ZONE 'America/Sao_Paulo')::date,
+           INTERVAL '1 day'
+         )::date AS dia
+       ),
+       vendas AS (
+         SELECT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS dia,
+                COUNT(*)::int AS qtd,
+                COALESCE(SUM((detail->>'valor')::numeric), 0) AS valor
+           FROM ranking_events
+          WHERE ranking_ad_id = $1 AND event_type = 'venda'
+            AND created_at >= now() - INTERVAL '30 days'
+          GROUP BY 1
+       )
+       SELECT d.dia, COALESCE(v.qtd, 0)::int AS qtd, COALESCE(v.valor, 0) AS valor
+         FROM dias d LEFT JOIN vendas v ON v.dia = d.dia
+        ORDER BY d.dia ASC`,
+      [req.params.id]
+    );
+    const dias = rows.map(r => ({ data: r.dia.toISOString().slice(0, 10), vendas: r.qtd, valor: Number(r.valor) }));
+    const total_30d = dias.reduce((s, d) => s + d.vendas, 0);
+    const total_15d = dias.slice(-15).reduce((s, d) => s + d.vendas, 0);
+    res.json({ dias, total_15d, total_30d });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Agendar um aviso de revisão de ADS para o anúncio.
 router.post('/ads/:id/alerts', async (req, res) => {
   try {

@@ -156,14 +156,16 @@ async function milestone(ad, realtime = true) {
   const fat = rows[0].fat;
 
   // TROCA AUTOMÁTICA DE CICLO: a cada múltiplo de N vendas o ciclo avança
-  // sozinho (5 vendas → ciclo 2, 10 → ciclo 3, e assim por diante). Só na fase
-  // `rankeando` — ranqueado/monitoramento/recuperação não trabalham por ciclo
-  // de campanha. O botão "Novo ciclo" do card continua existindo pra forçar a
-  // virada antes do marco; como aqui é `ciclo + 1` (e não `sales/N + 1`), os
-  // dois caminhos convivem sem brigar pelo número.
+  // sozinho (5 vendas → ciclo 2, 10 → ciclo 3, e assim por diante). Nas fases
+  // `rankeando` e `catalogo` (v88.2 — pedido do usuário: acompanhar campanha
+  // de ADS por ciclo também no estágio de Buy Box) — ranqueado/monitoramento/
+  // recuperação não trabalham por ciclo de campanha. O botão "Novo ciclo" do
+  // card continua existindo pra forçar a virada antes do marco; como aqui é
+  // `ciclo + 1` (e não `sales/N + 1`), os dois caminhos convivem sem brigar
+  // pelo número.
   const de = ad.ciclo || 1;
   let para = de;
-  if (ad.fase === 'rankeando') {
+  if (ad.fase === 'rankeando' || ad.fase === 'catalogo') {
     try {
       const novo = await avancarCiclo(ad.id);
       if (novo) {

@@ -148,6 +148,49 @@ function findClosing(rows, mes, ano) { return rows.find((c) => Number(c.month) =
 function lucroLiquidoDoFechamento(c) {
   return round2((+c.contribution_margin || 0) - (+c.fixed_costs_total || 0) - (+c.variable_costs_total || 0));
 }
+const numOrNull = (v) => (v == null ? null : Number(v));
+
+// Reconstrói o "report" de exibição a partir das COLUNAS PRÓPRIAS de
+// monthly_closing (nunca de report_data) — são a fonte confiável mesmo pra
+// fechamentos que existiam ANTES desta página (o sistema/wizard externo já
+// fechava mês e gravava essas colunas; é o que financeiro-projecao-caixa.html
+// já lia). `report_data` (se veio no formato desta página — tem
+// `revenue_gross` dentro) só é usado como fonte MELHOR quando disponível,
+// nunca a única fonte — evitar o bug de mostrar tudo "—"/"undefined" quando
+// um mês foi fechado por outro caminho e report_data ficou vazio/formato
+// diferente (ver decisions.md).
+function buildReportFromClosing(c) {
+  const rd = (c.report_data && c.report_data.revenue_gross != null) ? c.report_data : {};
+  const temCustos = c.fixed_costs_total != null || c.variable_costs_total != null;
+  const netPctCol = (c.dre_data && c.dre_data.net_pct != null) ? +c.dre_data.net_pct : null;
+  const revenue = numOrNull(c.revenue_gross);
+  const llReais = rd.lucro_liquido != null ? rd.lucro_liquido
+    : (temCustos ? lucroLiquidoDoFechamento(c) : (revenue && netPctCol != null ? round2(revenue * netPctCol / 100) : null));
+  const llPct = rd.net_pct != null ? rd.net_pct : (netPctCol != null ? netPctCol : (revenue ? round2((llReais / revenue) * 100) : null));
+  return {
+    mes: Number(c.month), ano: Number(c.year),
+    revenue_gross: revenue, revenue_total: numOrNull(c.revenue_total) ?? revenue,
+    marketplace_fees: rd.marketplace_fees ?? null, subsidized_shipping: rd.subsidized_shipping ?? null,
+    cogs_total: numOrNull(c.cogs_total), ads_ml: numOrNull(c.ads_ml), ads_external: numOrNull(c.ads_external),
+    ads_cost_total: numOrNull(c.ads_cost_total), tax: rd.tax ?? null,
+    contribution_margin: numOrNull(c.contribution_margin), contribution_margin_pct: numOrNull(c.contribution_margin_pct),
+    fixed_costs_total: numOrNull(c.fixed_costs_total), variable_costs_total: numOrNull(c.variable_costs_total),
+    lucro_liquido: llReais, net_pct: llPct,
+    total_sales: c.total_sales ?? null, avg_ticket: numOrNull(c.avg_ticket),
+    cash_flow_in: numOrNull(c.cash_flow_in), cash_flow_out: numOrNull(c.cash_flow_out), cash_flow_balance: numOrNull(c.cash_flow_balance),
+    boletos_paid_count: c.boletos_paid_count ?? 0, boletos_paid_total: numOrNull(c.boletos_paid_total) ?? 0,
+    boletos_pending_count: c.boletos_pending_count ?? 0, boletos_pending_total: numOrNull(c.boletos_pending_total) ?? 0,
+    boletos_itens: rd.boletos_itens || [],
+    expense_categories_top: rd.expense_categories_top || (Array.isArray(c.expense_categories) ? c.expense_categories : []),
+    meta: rd.meta || null,
+    comparativo_mes_anterior: rd.comparativo_mes_anterior || null,
+    // Fechamento que não veio desta página (sem report_data no nosso
+    // formato) — checklist/boletos_itens/categorias/meta detalhados não
+    // existem pra ele, só os totais das colunas. Frontend usa isso pra
+    // avisar em vez de fingir "nenhum item marcado".
+    historico_sem_checklist: !(c.report_data && c.report_data.checklist),
+  };
+}
 
 // Grade de 12 meses (status) + 5 summary cards (só meses fechados do ano).
 router.get('/fechamento/resumo', async (req, res) => {
@@ -198,8 +241,8 @@ router.get('/fechamento/:ano/:mes', async (req, res) => {
     if (!ano || !mes || mes < 1 || mes > 12) return res.status(400).json({ error: 'ano/mês inválidos' });
     const closings = await supa.selectRows('monthly_closing', 500);
     const existente = findClosing(closings, mes, ano);
-    const report = (existente && existente.status === 'closed' && existente.report_data)
-      ? existente.report_data
+    const report = (existente && existente.status === 'closed')
+      ? buildReportFromClosing(existente)
       : await calc.getFechamentoMensal({ mes, ano });
     res.json({
       report,

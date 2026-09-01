@@ -211,14 +211,32 @@ function renderGrid(meses) {
     </div>`).join('');
 }
 
+// Variação vs. o mês ANTERIOR na ordem cronológica (mês-1, não a linha de
+// cima na lista — que aparece invertida, mais recente primeiro). Faturamento
+// em %, Lucro Líquido em R$ (mesma unidade das outras colunas de LL da
+// Projeção de Caixa — nunca inventa um % de LL aqui sem o dado do mês
+// anterior também vir preenchido).
+function comVariacao(meses) {
+  return meses.map((m, i) => {
+    const ant = i > 0 ? meses[i-1] : null;
+    const varFatPct = (ant && ant.revenue_gross) ? ((m.revenue_gross - ant.revenue_gross) / ant.revenue_gross) * 100 : null;
+    const varLLReais = (ant && ant.lucro_liquido != null && m.lucro_liquido != null) ? (m.lucro_liquido - ant.lucro_liquido) : null;
+    return { ...m, var_faturamento_pct: varFatPct, var_ll_reais: varLLReais };
+  });
+}
+function badgeVar(valor, formatar) {
+  if (valor == null) return '';
+  const cor = valor >= 0 ? '#3fb950' : '#f87171', seta = valor >= 0 ? '▲' : '▼';
+  return ` <span style="color:${cor};font-weight:700">${seta} ${formatar(Math.abs(valor))}</span>`;
+}
 function renderHist(meses) {
-  const rows = meses.filter(m => m.status !== 'futuro').slice().reverse();
+  const rows = comVariacao(meses).filter(m => m.status !== 'futuro').slice().reverse();
   const box = document.getElementById('fmHist');
   if (!rows.length) { box.innerHTML = '<div class="fm-empty">Nenhum mês neste ano ainda.</div>'; return; }
   box.innerHTML = rows.map(m => `
     <div class="fm-hist-row">
       <span class="mm">${MESES_LONGO[m.mes-1]}</span>
-      <span class="rec">${m.revenue_gross!=null?`${BRL(m.revenue_gross)} · Lucro ${BRL(m.lucro_liquido)}`:'sem lançamento ainda'}</span>
+      <span class="rec">${m.revenue_gross!=null?`${BRL(m.revenue_gross)}${badgeVar(m.var_faturamento_pct, v=>PCT(v))} · Lucro ${BRL(m.lucro_liquido)}${badgeVar(m.var_ll_reais, v=>BRL(v))}`:'sem lançamento ainda'}</span>
       <span class="fm-badge ${m.status}">${STATUS_LABEL[m.status]}</span>
       <button class="fm-btn" style="padding:5px 10px" onclick="abrirModal(${ANO},${m.mes})"><i class="fas fa-eye"></i></button>
     </div>`).join('');

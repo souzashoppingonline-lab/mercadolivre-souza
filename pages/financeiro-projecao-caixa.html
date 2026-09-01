@@ -15,6 +15,7 @@
     .pj-pill { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:999px; padding:7px 15px; font-size:13px; font-weight:700; cursor:pointer; }
     .pj-pill.on { background:#1f2937; color:#fff; border-color:#374151; }
     .pj-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; gap:7px; align-items:center; }
+    .pj-btn:disabled { opacity:.45; cursor:default; }
     .pj-btn:hover { border-color:#3fb950; }
     .pj-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
     .pj-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
@@ -115,7 +116,11 @@
       <div class="pj-card"><div class="pj-card-h"><h3>💡 Análise de Custos & Margem <span id="pjCostLbl" class="desc"></span></h3></div><div class="pj-costcards" id="pjCost"></div></div>
 
       <div class="pj-card">
-        <div class="pj-card-h"><h3>🗓️ Fluxo de Caixa Anual (manual) <span id="pjAnoLbl" class="desc"></span></h3></div>
+        <div class="pj-card-h">
+          <h3>🗓️ Fluxo de Caixa Anual (manual) <span id="pjAnoLbl" class="desc"></span></h3>
+          <span id="pjAnualPend" style="display:none;font-size:11px;color:#f59e0b;font-weight:700;margin-left:8px">● alterações não salvas</span>
+          <button class="pj-btn" id="pjAnualSalvarBtn" style="margin-left:auto" onclick="salvarTabelaAnual()" disabled><i class="fas fa-floppy-disk"></i> Salvar</button>
+        </div>
         <div style="overflow:auto"><table class="pj-t">
           <thead><tr><th>Mês</th><th>Caixa Dia 1</th><th>Entrada Banco</th><th>Saída Banco</th><th>Saldo Banco</th><th>Faturamento</th><th>Cresc. %</th><th>Margem de Contribuição R$</th><th>Margem %</th><th>Lucro Líquido (LL)</th><th>LL %</th><th>Status</th></tr></thead>
           <tbody id="pjAnual"></tbody>
@@ -394,9 +399,9 @@ function renderAnual(){
     fatArr.push(fat); fluxArr.push(dia1); mcArr.push(mcPct||0);
     html+=`<tr class="${m===curM?'hoje':''}" style="${futuro?'opacity:.5':''}">
       <td>${MESHORT[m-1]}</td>
-      <td><input class="pj-in" type="number" step="0.01" value="${dia1||''}" ${futuro?'disabled':''} onchange="salvarManual(${m},${y},'value',this.value)"></td>
-      <td><input class="pj-in" type="number" step="0.01" value="${bin||''}" ${futuro?'disabled':''} onchange="salvarManual(${m},${y},'bank_in',this.value)"></td>
-      <td><input class="pj-in" type="number" step="0.01" value="${bout||''}" ${futuro?'disabled':''} onchange="salvarManual(${m},${y},'bank_out',this.value)"></td>
+      <td><input class="pj-in" type="number" step="0.01" value="${dia1||''}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'value',this.value)"></td>
+      <td><input class="pj-in" type="number" step="0.01" value="${bin||''}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'bank_in',this.value)"></td>
+      <td><input class="pj-in" type="number" step="0.01" value="${bout||''}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'bank_out',this.value)"></td>
       <td style="color:${saldoB>=0?'#3fb950':'#f87171'}">${BRL(saldoB)}</td>
       <td>${fat?BRL(fat):'—'}</td>
       <td style="color:${cresc==null?'var(--text-muted)':(cresc>=0?'#3fb950':'#f87171')}">${cresc==null?'—':PCT(cresc)}</td>
@@ -416,10 +421,49 @@ function renderAnual(){
 }
 async function salvarManual(m,y,campo,valor){
   const v=pNum(valor); let man=manualDe(m,y);
-  if(man){ const r=await DB.updateFinanceiroRow('manual_cash_flow_values',man.id,{[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } man[campo]=v; }
-  else { const r=await DB.addFinanceiroRow('manual_cash_flow_values',{month:m,year:y,[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return; } const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) MANUAL.push(saved); }
-  renderAnual();
+  if(man){ const r=await DB.updateFinanceiroRow('manual_cash_flow_values',man.id,{[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return false; } man[campo]=v; return true; }
+  const r=await DB.addFinanceiroRow('manual_cash_flow_values',{month:m,year:y,[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return false; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) MANUAL.push(saved);
+  return true;
 }
+
+// ── Salvar em lote (pedido do usuário): digitar Caixa Dia 1/Entrada/Saída
+// dos 12 meses e só gravar no banco ao clicar "Salvar", em vez de 1 request
+// por campo perdido de foco (onchange). PENDENTE_ANUAL acumula só o que foi
+// editado desde o último save (chave "mês-ano-campo" → valor); o botão manda
+// tudo de uma vez, reusando salvarManual (mesma fórmula de upsert, nunca uma
+// 2ª cópia) e só re-renderiza a tabela no final do lote, não a cada campo.
+let PENDENTE_ANUAL = {};
+function marcarPendenteAnual(m,y,campo,valor){
+  PENDENTE_ANUAL[`${m}-${y}-${campo}`] = { m, y, campo, valor };
+  atualizarBotaoAnual();
+}
+function atualizarBotaoAnual(){
+  const n = Object.keys(PENDENTE_ANUAL).length;
+  const btn = document.getElementById('pjAnualSalvarBtn'), tag = document.getElementById('pjAnualPend');
+  if (!btn) return;
+  btn.disabled = n === 0;
+  tag.style.display = n ? 'inline' : 'none';
+  tag.textContent = `● ${n} alteraç${n===1?'ão':'ões'} não salva${n===1?'':'s'}`;
+}
+async function salvarTabelaAnual(){
+  const itens = Object.entries(PENDENTE_ANUAL);
+  if (!itens.length) return;
+  const btn = document.getElementById('pjAnualSalvarBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando…';
+  let falhas = 0;
+  for (const [chave, { m, y, campo, valor }] of itens) {
+    const ok = await salvarManual(m, y, campo, valor);
+    if (ok) delete PENDENTE_ANUAL[chave]; else falhas++;
+  }
+  btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Salvar';
+  atualizarBotaoAnual();
+  renderAnual();
+  showStatus(falhas ? `⚠️ ${falhas} campo(s) não salvo(s) — tente de novo` : '✅ Fluxo de caixa anual salvo.', !!falhas);
+}
+// Evita perder dado digitado e não salvo se a página for fechada/recarregada
+// sem clicar em "Salvar".
+window.addEventListener('beforeunload', e => { if (Object.keys(PENDENTE_ANUAL).length) { e.preventDefault(); e.returnValue = ''; } });
 
 // ── Eventos / projeção / período ────────────────────────────────────────────
 function verEventos(k,tipo){

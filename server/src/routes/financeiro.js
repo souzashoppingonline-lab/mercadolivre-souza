@@ -159,7 +159,7 @@ const numOrNull = (v) => (v == null ? null : Number(v));
 // nunca a única fonte — evitar o bug de mostrar tudo "—"/"undefined" quando
 // um mês foi fechado por outro caminho e report_data ficou vazio/formato
 // diferente (ver decisions.md).
-function buildReportFromClosing(c) {
+async function buildReportFromClosing(c) {
   const rd = (c.report_data && c.report_data.revenue_gross != null) ? c.report_data : {};
   const temCustos = c.fixed_costs_total != null || c.variable_costs_total != null;
   const netPctCol = (c.dre_data && c.dre_data.net_pct != null) ? +c.dre_data.net_pct : null;
@@ -167,12 +167,29 @@ function buildReportFromClosing(c) {
   const llReais = rd.lucro_liquido != null ? rd.lucro_liquido
     : (temCustos ? lucroLiquidoDoFechamento(c) : (revenue && netPctCol != null ? round2(revenue * netPctCol / 100) : null));
   const llPct = rd.net_pct != null ? rd.net_pct : (netPctCol != null ? netPctCol : (revenue ? round2((llReais / revenue) * 100) : null));
+
+  // Impostos/Taxas Marketplace/Frete Subsidiado: monthly_closing NÃO tem
+  // coluna própria pra esses 3 itens (só agregados: cogs_total/ads_*) — só
+  // existem se report_data (no formato desta página) os guardou. Fechamento
+  // sem esse detalhe (feito fora desta página) tinha esses 3 campos sempre
+  // "—", mesmo com CMV/Ads/Margem corretos — buscados ao vivo em
+  // sales_entries só pra esse detalhe (getSalesBreakdown), sem tocar nos
+  // totais já travados (revenue_gross/contribution_margin/lucro seguem das
+  // colunas). Ver decisions.md.
+  let marketplace_fees = rd.marketplace_fees ?? null, subsidized_shipping = rd.subsidized_shipping ?? null, tax = rd.tax ?? null;
+  if (marketplace_fees == null && subsidized_shipping == null && tax == null && revenue) {
+    try {
+      const det = await calc.getSalesBreakdown({ mes: c.month, ano: c.year });
+      marketplace_fees = det.marketplace_fees; subsidized_shipping = det.subsidized_shipping; tax = det.tax;
+    } catch (e) { console.warn(`[fechamento-mensal] getSalesBreakdown falhou pra ${c.month}/${c.year}:`, e.message); }
+  }
+
   return {
     mes: Number(c.month), ano: Number(c.year),
     revenue_gross: revenue, revenue_total: numOrNull(c.revenue_total) ?? revenue,
-    marketplace_fees: rd.marketplace_fees ?? null, subsidized_shipping: rd.subsidized_shipping ?? null,
+    marketplace_fees, subsidized_shipping, tax,
     cogs_total: numOrNull(c.cogs_total), ads_ml: numOrNull(c.ads_ml), ads_external: numOrNull(c.ads_external),
-    ads_cost_total: numOrNull(c.ads_cost_total), tax: rd.tax ?? null,
+    ads_cost_total: numOrNull(c.ads_cost_total),
     contribution_margin: numOrNull(c.contribution_margin), contribution_margin_pct: numOrNull(c.contribution_margin_pct),
     fixed_costs_total: numOrNull(c.fixed_costs_total), variable_costs_total: numOrNull(c.variable_costs_total),
     lucro_liquido: llReais, net_pct: llPct,
@@ -242,7 +259,7 @@ router.get('/fechamento/:ano/:mes', async (req, res) => {
     const closings = await supa.selectRows('monthly_closing', 500);
     const existente = findClosing(closings, mes, ano);
     const report = (existente && existente.status === 'closed')
-      ? buildReportFromClosing(existente)
+      ? await buildReportFromClosing(existente)
       : await calc.getFechamentoMensal({ mes, ano });
     res.json({
       report,

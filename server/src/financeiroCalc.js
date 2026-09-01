@@ -246,6 +246,20 @@ async function getContasAPagar() {
   };
 }
 
+// Detalhamento de sales_entries de um mês (impostos/taxas marketplace/frete
+// subsidiado) — usado só quando um mês FECHADO não tem esse detalhe salvo
+// (fechamento feito fora desta página, monthly_closing não tem colunas
+// próprias pra esses 3 itens, só os agregados). sales_entries é histórico —
+// uma venda de um mês fechado não muda depois —, então ler ao vivo aqui não
+// contradiz "mês fechado é travado": só preenche o detalhe que nunca foi
+// persistido como coluna, sem tocar nos totais já gravados (receita, MC,
+// lucro). MESMA `salesAgg`, nunca uma 2ª fórmula.
+async function getSalesBreakdown({ mes, ano } = {}) {
+  const sales = await supa.selectRows('sales_entries', 5000, 'date.desc');
+  const a = salesAgg(sales, Number(mes), Number(ano));
+  return { marketplace_fees: round2(a.fees), subsidized_shipping: round2(a.frete), tax: round2(a.tax) };
+}
+
 // ── Fechamento Mensal (monthly_closing) ─────────────────────────────────────
 // Reusa salesAgg/expTotals — MESMA fórmula de getDRE() acima, nunca uma 3ª
 // cópia (a página financeiro-dre.html já tem sua própria cópia no frontend,
@@ -357,4 +371,4 @@ async function getSalesEntriesPeriodo({ dateFrom, dateTo }) {
   };
 }
 
-module.exports = { getDRE, getFluxoProjecao, getContasAPagar, getSalesEntriesPeriodo, getFechamentoMensal };
+module.exports = { getDRE, getFluxoProjecao, getContasAPagar, getSalesEntriesPeriodo, getFechamentoMensal, getSalesBreakdown };

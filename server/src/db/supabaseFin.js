@@ -1,8 +1,13 @@
 // Cliente REST do Supabase do módulo FINANCEIRO — banco SEPARADO do Postgres
-// principal (dados reais de outra ferramenta; nada pode ser perdido). Isolado e
-// READ-ONLY por design: só faz GET no PostgREST (/rest/v1). Nunca escreve, nunca
-// migra. Credenciais vêm do .env (env.financeiro), nunca do frontend.
-// Ver .claude/modules.md.
+// principal (dados reais de outra ferramenta; nada pode ser perdido). Fala só
+// com o PostgREST (/rest/v1) e a Storage API dele. NUNCA migra (schema é
+// gerenciado fora deste repositório, pelo app original — "Readdy" nos
+// comentários deste arquivo). Escrita É permitida, mas só nas tabelas da
+// allowlist `WRITE_ALLOW` abaixo (cresce conforme as telas ficam prontas) —
+// esse comentário já foi "read-only por design" antes da 1ª tela migrar pra
+// gravar aqui; deixado desatualizado teria induzido a próxima tarefa a achar
+// que escrita não existe. Credenciais vêm do .env (env.financeiro), nunca do
+// frontend. Ver .claude/modules.md.
 const env = require('../config/env');
 
 const BASE = () => (env.financeiro.supabaseUrl || '').replace(/\/+$/, '');
@@ -107,17 +112,17 @@ async function selectRows(nome, limit = 1000, order = '', filtro = '') {
 // Allowlist de tabelas que a UI pode gravar — cresce conforme as telas ficam
 // prontas. Nunca gravar em tabela fora desta lista. Escrita exige chave
 // service_role (sb_secret); com a publishable o Supabase costuma recusar (RLS).
-const WRITE_ALLOW = new Set(['sales_entries', 'expenses', 'expense_categories', 'boletos_mensais', 'receivables', 'boleto_categories', 'cartoes', 'parcelas_cartao', 'parcela_tags', 'fatura_pagamentos', 'boletos_recorrentes', 'cash_flow_entries', 'cash_flow_categories', 'cash_flow_recurring', 'contas_bancarias', 'conta_empresas', 'manual_cash_flow_values', 'forecast_starting_balance', 'pedido_empresas', 'pedidos', 'pedido_fornecedores', 'pedido_contatos', 'compras_cmv', 'compras_xml', 'auditoria_xml_importacao']);
+const WRITE_ALLOW = new Set(['sales_entries', 'expenses', 'expense_categories', 'boletos_mensais', 'receivables', 'boleto_categories', 'cartoes', 'parcelas_cartao', 'parcela_tags', 'fatura_pagamentos', 'boletos_recorrentes', 'cash_flow_entries', 'cash_flow_categories', 'cash_flow_recurring', 'contas_bancarias', 'conta_empresas', 'manual_cash_flow_values', 'forecast_starting_balance', 'pedido_empresas', 'pedidos', 'pedido_fornecedores', 'pedido_contatos', 'compras_cmv', 'compras_xml', 'auditoria_xml_importacao', 'monthly_closing']);
 function assertWritable(nome) {
   if (!/^[a-zA-Z0-9_]+$/.test(String(nome || '')) || !WRITE_ALLOW.has(nome)) {
     const e = new Error(`Escrita não permitida na tabela "${nome}".`); e.status = 403; throw e;
   }
 }
-async function writeReq(method, path, body) {
+async function writeReq(method, path, body, extraHeaders) {
   if (!isConfigured()) { const e = new Error('Módulo Financeiro não configurado.'); e.code = 'NOT_CONFIGURED'; throw e; }
   const r = await fetch(`${BASE()}/rest/v1${path}`, {
     method,
-    headers: { ...headers(), 'Content-Type': 'application/json', Prefer: 'return=representation' },
+    headers: { ...headers(), 'Content-Type': 'application/json', Prefer: 'return=representation', ...extraHeaders },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await r.text(); let b; try { b = text ? JSON.parse(text) : null; } catch (_) { b = text; }
@@ -130,6 +135,16 @@ async function writeReq(method, path, body) {
 async function insertRow(nome, obj) { assertWritable(nome); return writeReq('POST', `/${nome}`, obj); }
 async function updateRow(nome, id, obj) { assertWritable(nome); return writeReq('PATCH', `/${nome}?id=eq.${encodeURIComponent(id)}`, obj); }
 async function deleteRow(nome, id) { assertWritable(nome); return writeReq('DELETE', `/${nome}?id=eq.${encodeURIComponent(id)}`); }
+// Upsert por coluna(s) alternativa(s) à PK (ex. month,year em monthly_closing,
+// que não tem UNIQUE por id) — usa o `Prefer: resolution=merge-duplicates` do
+// PostgREST + `?on_conflict=`. Exige que o Supabase tenha uma constraint
+// UNIQUE nessas colunas (senão o Postgres rejeita o on_conflict, erro
+// propagado igual a qualquer outra falha de escrita, nunca mascarado).
+async function upsertRow(nome, obj, onConflict) {
+  assertWritable(nome);
+  if (!/^[a-zA-Z0-9_,]+$/.test(String(onConflict || ''))) { const e = new Error('onConflict inválido'); e.status = 400; throw e; }
+  return writeReq('POST', `/${nome}?on_conflict=${onConflict}`, obj, { Prefer: 'resolution=merge-duplicates,return=representation' });
+}
 
 // ── STORAGE (comprovantes fiscais) ──────────────────────────────────────────
 // Documento de aluguel/água/luz/serviço/frete nem sempre é XML — pode ser PDF
@@ -191,4 +206,4 @@ async function ping() {
   }
 }
 
-module.exports = { isConfigured, get, listTables, previewTable, selectRows, insertRow, updateRow, deleteRow, ping, keyHint, uploadObject, downloadObject, BUCKET };
+module.exports = { isConfigured, get, listTables, previewTable, selectRows, insertRow, updateRow, deleteRow, upsertRow, ping, keyHint, uploadObject, downloadObject, BUCKET };

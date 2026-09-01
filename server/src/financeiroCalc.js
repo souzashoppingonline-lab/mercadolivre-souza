@@ -246,6 +246,103 @@ async function getContasAPagar() {
   };
 }
 
+// ── Fechamento Mensal (monthly_closing) ─────────────────────────────────────
+// Reusa salesAgg/expTotals — MESMA fórmula de getDRE() acima, nunca uma 3ª
+// cópia (a página financeiro-dre.html já tem sua própria cópia no frontend,
+// como financeiro-despesas.html/financeiro-projecao-caixa.html — ver
+// decisions.md; a página nova de Fechamento Mensal é a primeira a ler daqui
+// em vez de recalcular no <script>, de propósito). Serve tanto a PRÉVIA ao
+// vivo (mês ainda open/in_progress — números mudam se alguém lançar uma
+// venda/despesa depois) quanto os números gravados no snapshot de
+// monthly_closing ao finalizar (mesma função, chamada de novo na hora de
+// fechar — nunca duas fórmulas).
+function cashFlowMes(entries, m, y) {
+  const rows = entries.filter((e) => {
+    const d = (e.date || '').slice(0, 10); if (!d) return false;
+    const dt = new Date(d + 'T00:00:00'); return dt.getMonth() + 1 === m && dt.getFullYear() === y;
+  });
+  let inSum = 0, outSum = 0;
+  rows.forEach((e) => { const v = +e.value || 0; if (e.type === 'income') inSum += v; else outSum += v; });
+  return { in: inSum, out: outSum, saldo: inSum - outSum };
+}
+function boletosMes(boletos, m, y) {
+  const ref = `${y}-${String(m).padStart(2, '0')}`;
+  const rows = boletos.filter((b) => b.mes_referencia === ref && b.tipo !== 'cartao');
+  const pagos = rows.filter((b) => b.status === 'pago');
+  const pend = rows.filter((b) => b.status !== 'pago');
+  return {
+    pagos_count: pagos.length, pagos_total: round2(pagos.reduce((s, b) => s + (+b.value || 0), 0)),
+    pendentes_count: pend.length, pendentes_total: round2(pend.reduce((s, b) => s + (+b.value || 0), 0)),
+    itens: rows.map((b) => ({
+      nome: b.name || b.category || 'Sem nome', categoria: b.category || null, empresa: b.empresa || null,
+      valor: round2(+b.value || 0), status: b.status, data: (b.date || '').slice(0, 10),
+    })).sort((x, y2) => (x.data < y2.data ? 1 : -1)),
+  };
+}
+function categoriasMes(expenses, cats, m, y) {
+  const list = expenses.filter((e) => Number(e.month) === m && Number(e.year) === y);
+  const nomeById = Object.fromEntries(cats.map((c) => [c.id, c.name]));
+  const by = {};
+  list.forEach((e) => { const nome = nomeById[e.category_id] || 'Sem categoria'; by[nome] = (by[nome] || 0) + (+e.value || 0); });
+  const total = list.reduce((s, e) => s + (+e.value || 0), 0);
+  return Object.entries(by).map(([categoria, valor]) => ({ categoria, valor: round2(valor), pct: total ? round2((valor / total) * 100) : 0 }))
+    .sort((x, y2) => y2.valor - x.valor).slice(0, 10);
+}
+
+async function getFechamentoMensal({ mes, ano } = {}) {
+  const hoje = new Date();
+  const m = Number(mes) || hoje.getMonth() + 1, y = Number(ano) || hoje.getFullYear();
+  let mAnt = m - 1, yAnt = y; if (mAnt < 1) { mAnt = 12; yAnt = y - 1; }
+
+  const [sales, expenses, cats, cfEntries, boletos, goals, closings] = await Promise.all([
+    supa.selectRows('sales_entries', 5000, 'date.desc'),
+    supa.selectRows('expenses', 5000),
+    supa.selectRows('expense_categories', 500),
+    supa.selectRows('cash_flow_entries', 20000, 'date.desc'),
+    supa.selectRows('boletos_mensais', 10000),
+    supa.selectRows('monthly_goals', 500),
+    supa.selectRows('monthly_closing', 500),
+  ]);
+
+  const a = salesAgg(sales, m, y), aAnt = salesAgg(sales, mAnt, yAnt);
+  const et = expTotals(expenses, m, y);
+  const lucroLiq = a.mc - et.total, netPct = a.rec ? (lucroLiq / a.rec) * 100 : 0;
+
+  const cf = cashFlowMes(cfEntries, m, y);
+  const bol = boletosMes(boletos, m, y);
+  const cat = categoriasMes(expenses, cats, m, y);
+  const meta = goals.find((g) => Number(g.month) === m && Number(g.year) === y);
+  const closingAnt = closings.find((c) => Number(c.month) === mAnt && Number(c.year) === yAnt);
+  const qtd = sales.filter((e) => {
+    if (!e.date) return false; const d = new Date(e.date + 'T00:00:00'); return d.getMonth() + 1 === m && d.getFullYear() === y;
+  }).reduce((s, e) => s + (+e.quantity_sales || 0), 0);
+
+  return {
+    mes: m, ano: y,
+    revenue_gross: round2(a.rec), revenue_total: round2(a.rec),
+    marketplace_fees: round2(a.fees), subsidized_shipping: round2(a.frete), cogs_total: round2(a.cmv),
+    ads_ml: round2(a.adsMl), ads_external: round2(a.adsEx), ads_cost_total: round2(a.adsMl + a.adsEx),
+    tax: round2(a.tax),
+    contribution_margin: round2(a.mc), contribution_margin_pct: round2(a.mcPct * 100),
+    fixed_costs_total: round2(et.fixed), variable_costs_total: round2(et.oper),
+    lucro_liquido: round2(lucroLiq), net_pct: round2(netPct),
+    total_sales: qtd, avg_ticket: qtd ? round2(a.rec / qtd) : 0,
+    cash_flow_in: round2(cf.in), cash_flow_out: round2(cf.out), cash_flow_balance: round2(cf.saldo),
+    boletos_paid_count: bol.pagos_count, boletos_paid_total: bol.pagos_total,
+    boletos_pending_count: bol.pendentes_count, boletos_pending_total: bol.pendentes_total,
+    boletos_itens: bol.itens,
+    expense_categories_top: cat,
+    meta: meta ? { valor: round2(+meta.goal_value || 0), atingido_pct: (+meta.goal_value) ? round2((a.rec / (+meta.goal_value)) * 100) : null } : null,
+    comparativo_mes_anterior: {
+      mes: mAnt, ano: yAnt,
+      revenue_gross: round2(aAnt.rec),
+      status: closingAnt ? closingAnt.status : null,
+      lucro_liquido: closingAnt ? round2(+closingAnt.contribution_margin - (+closingAnt.fixed_costs_total || 0) - (+closingAnt.variable_costs_total || 0)) : null,
+      net_pct: closingAnt ? ((closingAnt.dre_data && closingAnt.dre_data.net_pct != null) ? +closingAnt.dre_data.net_pct : null) : null,
+    },
+  };
+}
+
 // ── Vendas & Custos por período (pra cruzar com a margem real do ML) ───────
 async function getSalesEntriesPeriodo({ dateFrom, dateTo }) {
   const sales = await supa.selectRows('sales_entries', 5000, 'date.desc');
@@ -260,4 +357,4 @@ async function getSalesEntriesPeriodo({ dateFrom, dateTo }) {
   };
 }
 
-module.exports = { getDRE, getFluxoProjecao, getContasAPagar, getSalesEntriesPeriodo };
+module.exports = { getDRE, getFluxoProjecao, getContasAPagar, getSalesEntriesPeriodo, getFechamentoMensal };

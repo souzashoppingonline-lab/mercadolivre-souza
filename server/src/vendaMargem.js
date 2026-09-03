@@ -100,6 +100,14 @@ const VENDA_DETALHE_SELECT = `
        o.finance_synced, o.last_finance_sync_at,
        COALESCE(o.shipping_seller_reembolso, 0) as frete_vendedor_reembolso,
        COALESCE(i.cost, 0) as custo,
+       -- Distingue "custo não cadastrado" de "custo é R$0,00 mesmo" — o
+       -- COALESCE acima já achata os dois em 0 pro cálculo de margem (não dá
+       -- pra mudar isso sem afetar margem/mc_pct de todo mundo que já
+       -- consome essa query), então o front usa ESTA flag separada só pra
+       -- decidir se avisa visualmente. 'i.cost IS NULL' cobre os dois casos
+       -- reais: item sem custo preenchido, e item ainda nem sincronizado
+       -- (LEFT JOIN sem match, item inteiro NULL).
+       (i.cost IS NULL) as custo_ausente,
        COALESCE(s.imposto_pct, 0) as imposto_pct
      FROM vw_ml_orders o
      JOIN vw_ml_stores s ON s.id = o.store_id

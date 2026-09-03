@@ -61,6 +61,11 @@
     .vc-custobtn { border:0; border-radius:5px; cursor:pointer; padding:3px 6px; font-size:10px; display:inline-flex; }
     .vc-custobtn.ok { background:#8b5cf6; color:#fff; }
     .vc-custobtn.cancel { background:transparent; color:var(--text-muted); }
+    /* Custo não cadastrado (pedido do usuário) — tarja amarela pra destacar
+       que a margem daquela venda está sendo calculada com custo R$0,00 por
+       falta de cadastro, não porque o produto custa zero de verdade. */
+    .vc-custo-alerta { background:rgba(245,158,11,.16); border:1px solid rgba(245,158,11,.5); border-radius:8px; padding:3px 2px; }
+    .vc-custo-alerta .l, .vc-custo-alerta .v { color:#f59e0b !important; }
     @media (max-width:980px) {
       .vc-card { flex-direction:column; align-items:stretch; }
       .vc-meta, .vc-fin { border-left:0; padding-left:0; border-top:1px solid var(--border); padding-top:10px; }
@@ -237,7 +242,8 @@ let SUMMARY = {};                 // último summary do servidor, ajustado local
 
 function custoCellHtml(r){
   if (!editandoCusto.has(r.ml_id)) {
-    return `<div class="l">Custo <button class="vc-editcusto" title="Definir custo do produto" onclick="abrirEdicaoCusto('${jsStr(r.ml_id)}')"><i class="fas fa-pen"></i></button></div>
+    const semCusto = !!r.custo_ausente;
+    return `<div class="l">${semCusto ? '<i class="fas fa-triangle-exclamation" title="Custo não cadastrado para este anúncio — margem calculada com R$0,00 de custo"></i> ' : ''}Custo <button class="vc-editcusto" title="Definir custo do produto" onclick="abrirEdicaoCusto('${jsStr(r.ml_id)}')"><i class="fas fa-pen"></i></button></div>
       <div class="v" style="color:#f87171">-${BRL(r.custo)}</div>`;
   }
   const unit = (Number(r.custo)||0) / (Number(r.quantity)||1);
@@ -394,6 +400,7 @@ async function salvarCusto(mlId, itemId){
     const custoNovo = unit * (Number(r.quantity) || 1);
     const diff = custoNovo - custoAntigo;
     r.custo = custoNovo;
+    r.custo_ausente = false; // acabou de cadastrar — some a tarja amarela na hora, sem esperar reload
     recalcMargem(r);
     deltaCusto += diff;
     if (r.status !== 'cancelled') deltaMargemAprovadas -= diff;   // só pedidos aprovados entram no resumo
@@ -506,7 +513,7 @@ function cardHtml(r){
       <div><div class="l">Venda</div><div class="v">${BRL(r.faturamento)}</div></div>
       <div>${freteCellHtml(r)}</div>
       <div>${tarifaCellHtml(r)}</div>
-      <div>${custoCellHtml(r)}</div>
+      <div class="${r.custo_ausente && !editandoCusto.has(r.ml_id) ? 'vc-custo-alerta' : ''}">${custoCellHtml(r)}</div>
       <div><div class="l">Imposto</div><div class="v" style="color:#f87171">-${BRL(r.imposto)}</div></div>
     </div>
     <div class="vc-margem" style="background:rgba(${tierMargem.rgb},.08);border-color:rgba(${tierMargem.rgb},.25)">

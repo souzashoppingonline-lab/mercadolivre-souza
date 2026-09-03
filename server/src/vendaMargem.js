@@ -104,10 +104,14 @@ const VENDA_DETALHE_SELECT = `
        -- COALESCE acima já achata os dois em 0 pro cálculo de margem (não dá
        -- pra mudar isso sem afetar margem/mc_pct de todo mundo que já
        -- consome essa query), então o front usa ESTA flag separada só pra
-       -- decidir se avisa visualmente. 'i.cost IS NULL' cobre os dois casos
-       -- reais: item sem custo preenchido, e item ainda nem sincronizado
-       -- (LEFT JOIN sem match, item inteiro NULL).
-       (i.cost IS NULL) as custo_ausente,
+       -- decidir se avisa visualmente. NÃO usa 'i.cost IS NULL' (v89: quase
+       -- nunca é verdadeiro — items.cost tem DEFAULT 0 no schema, então todo
+       -- item recém-sincronizado já nasce com cost=0, nunca NULL). Usa
+       -- 'cost_updated_at IS NULL' — só é gravado pelas rotas que um HUMANO
+       -- usa pra definir custo (PATCH /items/:id/custo, /custos/:sku), nunca
+       -- pelo sync do worker — cobre tanto "nunca confirmado" quanto "item
+       -- nem sincronizado ainda" (LEFT JOIN sem match, tudo NULL).
+       (i.cost_updated_at IS NULL) as custo_ausente,
        COALESCE(s.imposto_pct, 0) as imposto_pct
      FROM vw_ml_orders o
      JOIN vw_ml_stores s ON s.id = o.store_id

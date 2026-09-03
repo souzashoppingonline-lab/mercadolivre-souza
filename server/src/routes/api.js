@@ -705,7 +705,10 @@ router.patch('/lojas/:id/credentials', async (req, res) => {
 router.patch('/items/:id/custo', async (req, res) => {
   const { cost } = req.body;
   if (cost == null) return res.status(400).json({ error: 'cost required' });
-  await pool.query(`UPDATE items SET cost=$2 WHERE ml_id=$1`, [req.params.id, Number(cost)]);
+  // cost_updated_at (v89) marca que um HUMANO confirmou este custo — distingue
+  // de items.cost=0 só porque é o DEFAULT da coluna num item recém-sincronizado
+  // (ver vendaMargem.js custo_ausente / decisions.md).
+  await pool.query(`UPDATE items SET cost=$2, cost_updated_at=now() WHERE ml_id=$1`, [req.params.id, Number(cost)]);
   res.json({ ok: true });
 });
 
@@ -730,8 +733,8 @@ router.patch('/custos/:sku', async (req, res) => {
      ON CONFLICT (sku) DO UPDATE SET cost=$2, updated_at=now()`,
     [req.params.sku, Number(cost)]
   );
-  // also update items table for existing listings
-  await pool.query(`UPDATE items SET cost=$2 WHERE ml_id=$1`, [req.params.sku, Number(cost)]);
+  // also update items table for existing listings — cost_updated_at (v89) ver /items/:id/custo acima.
+  await pool.query(`UPDATE items SET cost=$2, cost_updated_at=now() WHERE ml_id=$1`, [req.params.sku, Number(cost)]);
   res.json({ ok: true });
 });
 

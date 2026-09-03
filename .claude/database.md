@@ -60,6 +60,11 @@ store_id BIGINT FK stores
 title, price, available_quantity, sold_quantity, status, category_id
 thumbnail, permalink TEXT
 cost NUMERIC DEFAULT 0            -- custo unitário (editável manualmente)
+cost_updated_at TIMESTAMPTZ       -- v89: só gravado quando um HUMANO define o custo (PATCH /items/:id/custo
+                                   -- ou /custos/:sku) — NUNCA pelo sync do worker. NULL = ninguém confirmou
+                                   -- ainda, mesmo que `cost` já esteja em 0 (DEFAULT da coluna). É o sinal
+                                   -- usado pela tarja "custo não cadastrado" em bi-vendas.html — `cost IS NULL`
+                                   -- não servia, porque item recém-sincronizado já nasce com cost=0, não NULL.
 original_price NUMERIC DEFAULT 0  -- v13: preço "de" quando em promoção
 parent_item_id TEXT               -- item pai (variações) — preenchido por syncParentItems
 marketplace_id INT FK marketplaces -- v15

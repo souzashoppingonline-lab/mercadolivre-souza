@@ -1139,17 +1139,28 @@ async function loadTable(q = '') {
 // diferente na mesma busca, sem precisar de um seletor global compartilhado
 // (o global anterior confundia: mudava o destino de TODOS os cliques
 // seguintes, e era fácil esquecer de trocar de volta pra 'rankeando').
+//
+// BUG corrigido: DB._post (js/db.js) NUNCA lança exceção — em qualquer
+// falha (limite de MAX_ADS atingido, anúncio não sincronizado, erro do
+// servidor) ela devolve `null` e guarda o motivo em DB.lastError (mesmo
+// contrato usado em TODA a página — mudarFase()/togglePause() etc. checam
+// `if (!r)`). Este `try/catch` estava esperando uma exceção que nunca
+// vinha, então uma falha real (ex.: "Limite de 30 anúncios atingido")
+// passava direto pro loadTable(), que recarregava o item ainda SEM estar
+// em rankeamento — reaparecia como o próprio `<select>` de novo, sem
+// NENHUM aviso na tela (exatamente o "troco o estágio e ele volta pro
+// select" reportado).
 async function addAd(mlId, fase, sel) {
   if (sel) sel.disabled = true;
-  try {
-    await DB.addRankingAd(mlId, undefined, fase);
-    await loadCards();
-    await loadTable(document.getElementById('rkSearch').value);
-    if (fase === 'rankeando') document.getElementById('rkCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (e) {
-    alert(e.message || 'Erro ao adicionar');
+  const r = await DB.addRankingAd(mlId, undefined, fase);
+  if (!r) {
+    alert(DB.lastError || 'Erro ao adicionar');
     if (sel) { sel.disabled = false; sel.value = ''; }
+    return;
   }
+  await loadCards();
+  await loadTable(document.getElementById('rkSearch').value);
+  if (fase === 'rankeando') document.getElementById('rkCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Tempo real: cada venda/alteração/marco chega por WS e entra no card na hora.

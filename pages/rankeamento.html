@@ -1127,7 +1127,7 @@ async function loadTable(q = '') {
     <td>${i.available_quantity!=null?i.available_quantity:'—'}</td>
     <td>${i.sold_quantity!=null?i.sold_quantity:'—'}</td>
     <td>${i.em_rankeamento
-      ? '<span class="rk-tag-on"><i class="fas fa-check"></i> Em rankeamento</span>'
+      ? `<span class="rk-tag-on"><i class="fas fa-check"></i> ${esc((FASES[i.fase_atual] || FASES.rankeando).label)}</span>`
       : `<select class="rk-add-sel" title="Escolher o estágio e acompanhar" onchange="addAd('${esc(i.ml_id)}', this.value, this)">
            <option value="" selected disabled>Acompanhar em...</option>
            ${Object.entries(FASES).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('')}

@@ -264,6 +264,11 @@ module.exports = {
   // limit reprocessando o mesmo código toda vez.
   getClaimReason:      (reasonId, storeId) => get(`/marketplace/v2/claims/reasons/${reasonId}`, storeId),
   getOffer:            (offerId, storeId) => get(`/seller-promotions/offers/${offerId}?app_version=v2`, storeId),
+  // Todas as promoções (de qualquer tipo) aplicadas a UM item, direto da API
+  // oficial — endpoint público do Mercado Livre, sem depender de já saber um
+  // offer_id (diferente de getOffer acima, usado pelo webhook public_offers).
+  // Usado pelo script de verificação server/scripts/verificarPromocaoItem.js.
+  getItemPromotions:   (itemId, storeId) => get(`/seller-promotions/items/${itemId}?app_version=v2`, storeId),
   searchOrders:        (storeId, dateFrom, offset=0) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50&offset=${offset}`, storeId),
   getItemVisits:       (id, dateFrom, storeId) => get(`/items/${id}/visits/time_window?last=1&unit=day&ending=${encodeURIComponent(dateFrom)}`, storeId),
   // Mais Vendidos (highlights/trends) de uma categoria — usado pelo Rankeamento

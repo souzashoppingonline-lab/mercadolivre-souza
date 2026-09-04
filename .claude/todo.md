@@ -198,7 +198,7 @@ Fora do escopo desta rodada, deliberadamente (spec original tinha 29 seções):
 - [x] ~~Frete hoje é 1 valor fixo pra todo anúncio~~ — feito na v93: `items.frete` por anúncio (override), cai no padrão global (`app_config.frete_padrao`) quando não cadastrado. Ver `decisions.md`.
 - [ ] **Equivalente do Analista Ecom pra Shopee** — v92 excluiu explicitamente lojas Shopee da listagem (`vw_ml_items`/`vw_ml_stores`), porque a estrutura de tarifa/frete da Shopee é diferente do Mercado Livre (ver `shopee.md`). Pedido do usuário: construir uma versão própria, NA PÁGINA da Shopee, com fórmula adaptada à tarifa/frete real de lá — não reaproveitar `analistaEcom.js` sem antes confirmar que a fórmula/config fazem sentido pro marketplace.
 - [ ] Sem tela de auditoria/histórico de quem mudou tarifa de categoria, override por anúncio (margem alvo/frete) ou config global — nenhuma dessas tabelas guarda quem alterou, só `updated_at`. Se virar necessidade real, seguir o padrão de `updated_by` já usado em `business_insights`.
-- [ ] Sem filtro "frete configurado/não configurado" (diferente de custo/tarifa, que têm) — frete sempre tem algum valor (override do item ou o padrão global), não existe um "ausente" real pra filtrar por enquanto; hoje só o aviso de "frete padrão global em R$0" cobre esse caso. Ver `decisions.md`.
+- [ ] Sem filtro "frete configurado/não configurado" (diferente de custo/tarifa, que têm) — frete sempre tem algum valor (override do item ou o padrão global), não existe um "ausente" real pra filtrar por enquanto. Ver `decisions.md`.
 
 ## Este arquivo é o ponto de entrada para retomar trabalho
 

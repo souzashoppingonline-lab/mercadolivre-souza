@@ -456,7 +456,7 @@ function cardHtml(r){
       <div class="row"><span class="k">Tarifa</span><span class="v">${r.tarifa_ausente ? '⚠️ não configurada' : PCT(r.tarifa_pct)}<button class="ae-editbtn" onclick="editarTarifaItem('${jsStr(r.category_id)}', '${jsStr(r.category_name || r.category_id)}', ${r.tarifa_ausente ? 'null' : r.tarifa_pct})" title="Cadastrar/editar tarifa da categoria ${esc(r.category_name || r.category_id || '')}"><i class="fas fa-pen"></i></button></span></div>
       <div class="row"><span class="k">Frete</span><span class="v">${BRL(r.frete)}<button class="ae-editbtn" onclick="editarFreteGlobal(${r.frete})" title="Editar frete padrão (vale para todos os anúncios, ainda não há frete por anúncio)"><i class="fas fa-pen"></i></button></span></div>
       <div class="row"><span class="k">Imposto</span><span class="v">${PCT(r.imposto_pct)}</span></div>
-      <div class="row"><span class="k">Margem alvo</span><span class="v">${PCT(r.margem_alvo_pct)}</span></div>
+      <div class="row"><span class="k">Margem alvo</span><span class="v">${PCT(r.margem_alvo_pct)}<button class="ae-editbtn" onclick="editarMargemAlvoGlobal(${r.margem_alvo_pct})" title="Editar margem alvo (vale para todos os anúncios)"><i class="fas fa-pen"></i></button></span></div>
     </div>
     <div class="ae-right">
       <div class="ae-margem-box" style="background:rgba(${tierM?tierM.rgb:'148,163,184'},.12);border:1px solid rgba(${tierM?tierM.rgb:'148,163,184'},.35)">
@@ -536,6 +536,17 @@ async function editarFreteGlobal(atual){
   if (isNaN(n) || n < 0) { alert('Valor inválido.'); return; }
   const r = await DB.patchAnalistaEcomConfig({ frete_padrao: n });
   if (!r || r.error) { alert(r&&r.error||'Erro ao salvar frete'); return; }
+  await carregarConfig(); await carregar();
+}
+// Margem alvo também é 1 valor global (usada no cálculo do "preço
+// recomendado" de todo anúncio) — mesmo escalar do painel do topo.
+async function editarMargemAlvoGlobal(atual){
+  const v = prompt('Margem de contribuição alvo (%) — vale para TODOS os anúncios (é a meta usada no preço recomendado):', atual != null ? atual : '');
+  if (v == null) return;
+  const n = parseFloat(String(v).replace(',', '.'));
+  if (isNaN(n) || n < 0 || n >= 100) { alert('Valor inválido — informe um percentual entre 0 e 99.'); return; }
+  const r = await DB.patchAnalistaEcomConfig({ margem_alvo_pct: n });
+  if (!r || r.error) { alert(r&&r.error||'Erro ao salvar margem alvo'); return; }
   await carregarConfig(); await carregar();
 }
 

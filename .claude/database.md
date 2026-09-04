@@ -71,6 +71,16 @@ marketplace_id INT FK marketplaces -- v15
 package_dims JSONB                 -- v68: medidas da caixa cacheadas ({comprimento,largura,altura,peso,texto}),
                                    -- preenchidas pelo worker no handleItem a partir dos atributos PACKAGE_* do ML.
                                    -- Lidas pela página Embalagem sem GET ao ML (evita rate limit na bipagem).
+margem_alvo_pct NUMERIC            -- v91: meta de margem de contribuição SÓ deste anúncio (Analista Ecom,
+                                   -- ver modules.md). NULL = sem override, usa a margem alvo GLOBAL
+                                   -- (app_config) — nunca copiada silenciosamente pro item. Editável em
+                                   -- PATCH /api/bi/analista-ecom/item/:mlId/margem-alvo (valor null limpa
+                                   -- o override).
+frete NUMERIC                      -- v93: frete SÓ deste anúncio (Analista Ecom), mesmo padrão de
+                                   -- margem_alvo_pct acima. NULL = sem override, usa o frete padrão
+                                   -- GLOBAL (app_config). Editável em
+                                   -- PATCH /api/bi/analista-ecom/item/:mlId/frete (valor null limpa
+                                   -- o override).
 updated_at TIMESTAMPTZ
 ```
 
@@ -723,4 +733,12 @@ category_name TEXT                                    -- cacheado no momento do 
 fee_percentage NUMERIC NOT NULL
 created_at, updated_at TIMESTAMPTZ DEFAULT now()
 ```
-Tarifa é política do próprio Mercado Livre POR CATEGORIA — vale pra qualquer loja que liste ali, por isso não é por `store_id`. Categoria sem linha aqui = `tarifa_ausente=true` em `analistaEcom.js` (nunca assume uma % default). Único componente do preço-alvo (`P=(C+F)/(1-T-I-M)`) que virou tabela nova — custo reusa `items.cost`/`cost_updated_at`, imposto reusa `stores.imposto_pct`, e frete padrão/margem alvo/margem mínima são 3 escalares em `app_config` (sem migration). CRUD via `POST`/`DELETE /api/bi/analista-ecom/tarifas-categoria*`.
+Tarifa é política do próprio Mercado Livre POR CATEGORIA — vale pra qualquer loja que liste ali, por isso não é por `store_id`. Categoria sem linha aqui = `tarifa_ausente=true` em `analistaEcom.js` (nunca assume uma % default). Custo/frete/margem alvo viraram override POR ANÚNCIO em `items` (v91/v93, ver acima) quando cadastrados, senão caem nos 3 escalares globais em `app_config` (sem migration pra eles). CRUD da tarifa via `POST`/`DELETE /api/bi/analista-ecom/tarifas-categoria*`.
+
+### `category_names_cache` — v92: nome REAL da categoria do Mercado Livre (Analista Ecom, ver `modules.md`/`workers.md`)
+```
+category_id TEXT PK
+name        TEXT NOT NULL
+updated_at  TIMESTAMPTZ DEFAULT now()
+```
+Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas SEM expiração — nome de categoria do ML praticamente não muda, então só busca de novo se ainda não tem linha (nunca rechama a API só pra confirmar o mesmo valor). Populado por `getCategoryName()` dentro do job `sync-seo-score` (`worker.js`), que já itera categoria por item todo dia — nunca por uma rota HTTP de leitura (regra de arquitetura: `mlClient.js` só é chamado do worker ou de ações pontuais, nunca de leitura de listagem). `GET /api/bi/analista-ecom` faz `COALESCE(cnc.name, pcf.category_name)` — o nome real do ML tem prioridade sobre o texto livre digitado ao cadastrar uma tarifa; sem nenhum dos dois cacheados ainda, o filtro cai no `category_id` numérico cru.

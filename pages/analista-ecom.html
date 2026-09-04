@@ -128,6 +128,10 @@
       <div id="app-topbar"></div>
       <div class="content">
         <p class="ae-sub">Por quanto vender cada anúncio pra bater a margem desejada — <b>análise e recomendação</b>, não altera preço no Mercado Livre.</p>
+        <div id="aeFreteAviso" hidden style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#f59e0b;border-radius:10px;padding:9px 14px;font-size:12.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+          <i class="fas fa-triangle-exclamation"></i>
+          <span>Frete padrão ainda não foi configurado (R$ 0,00) — anúncios sem frete próprio (✏️ no card) calculam sem frete. <a href="#" onclick="document.getElementById('aeCfgPanel').classList.add('open'); document.getElementById('cfgFrete').focus(); return false" style="color:#f59e0b;text-decoration:underline">Configurar o padrão agora</a></span>
+        </div>
 
         <div class="ae-kpis" id="aeKpis"></div>
 
@@ -173,6 +177,16 @@
             <option value="CUSTO_NAO_CADASTRADO">Custo não cadastrado</option>
             <option value="TARIFA_NAO_CONFIGURADA">Tarifa não configurada</option>
           </select>
+          <select id="fCusto" onchange="aplicarFiltros()">
+            <option value="">Custo: todos</option>
+            <option value="nao">Não cadastrado</option>
+            <option value="sim">Cadastrado</option>
+          </select>
+          <select id="fTarifa" onchange="aplicarFiltros()">
+            <option value="">Tarifa: todas</option>
+            <option value="nao">Não configurada</option>
+            <option value="sim">Configurada</option>
+          </select>
           <select id="fLoja" onchange="aplicarFiltros()"><option value="">Todas as lojas</option></select>
           <select id="fCategoria" onchange="aplicarFiltros()"><option value="">Todas as categorias</option></select>
           <select id="fOrdenar" onchange="aplicarFiltros()">
@@ -196,7 +210,7 @@
         <div id="aeGrid" class="ae-grid"></div>
         <div id="aeTableWrap" style="display:none;overflow-x:auto">
           <table class="ae-t">
-            <thead><tr><th>Anúncio</th><th>Estágio</th><th>Preço</th><th>Custo</th><th>Tarifa</th><th>Frete</th><th>Imposto</th><th>Margem</th><th>Meta</th><th>Preço recomendado</th><th>Ação</th></tr></thead>
+            <thead><tr><th>Anúncio</th><th>Estágio</th><th>Preço</th><th>Custo (R$)</th><th>Tarifa (%)</th><th>Frete (R$)</th><th>Imposto (%)</th><th>Margem (%)</th><th>Meta (%)</th><th>Preço recomendado</th><th>Ação</th></tr></thead>
             <tbody id="aeTableBody"></tbody>
           </table>
         </div>
@@ -282,6 +296,7 @@ async function carregarConfig(){
   document.getElementById('cfgFrete').value = CONFIG.frete_padrao;
   document.getElementById('cfgMargemMin').value = CONFIG.margem_minima_pct;
   document.getElementById('cfgMargemAlvo').value = CONFIG.margem_alvo_pct;
+  document.getElementById('aeFreteAviso').hidden = Number(CONFIG.frete_padrao) > 0;
   renderTarifasCategoria();
 }
 function renderTarifasCategoria(){
@@ -358,11 +373,13 @@ function popularFiltrosDerivados(){
 function mudarFaseTab(f){ faseAtiva = f; popularFiltrosDerivados(); aplicarFiltros(); }
 
 function renderKpis(){
-  const alvo = CONFIG.margem_alvo_pct;
+  // Margem alvo agora é POR ANÚNCIO (item.margem_alvo_pct já vem calculada
+  // do backend — override do item ou, na falta dele, a meta global; nunca
+  // um único "alvo" fixo pra todo o portfólio).
   const analisados = ITENS.length;
-  const abaixo = ITENS.filter(i => i.margem_atual_pct != null && i.margem_atual_pct < alvo - 2).length;
-  const naMeta = ITENS.filter(i => i.margem_atual_pct != null && Math.abs(i.margem_atual_pct - alvo) <= 2).length;
-  const acima = ITENS.filter(i => i.margem_atual_pct != null && i.margem_atual_pct > alvo + 2).length;
+  const abaixo = ITENS.filter(i => i.margem_atual_pct != null && i.margem_atual_pct < i.margem_alvo_pct - 2).length;
+  const naMeta = ITENS.filter(i => i.margem_atual_pct != null && Math.abs(i.margem_atual_pct - i.margem_alvo_pct) <= 2).length;
+  const acima = ITENS.filter(i => i.margem_atual_pct != null && i.margem_atual_pct > i.margem_alvo_pct + 2).length;
   const revisar = ITENS.filter(i => ['REVISAR_ANUNCIO','AUMENTAR_PRECO','REDUZIR_PRECO','CUSTO_NAO_CADASTRADO','TARIFA_NAO_CONFIGURADA'].includes(i.diagnostico?.tipo)).length;
   const potencial = ITENS.reduce((s,i) => s + (i.oportunidade_reais||0), 0);
   document.getElementById('aeKpis').innerHTML = `
@@ -380,19 +397,32 @@ function aplicarFiltrosDebounce(){ clearTimeout(buscaTimer); buscaTimer = setTim
 function aplicarFiltros(){
   const fMargem = document.getElementById('fMargem').value;
   const fAcao = document.getElementById('fAcao').value;
+  const fCusto = document.getElementById('fCusto').value;
+  const fTarifa = document.getElementById('fTarifa').value;
   const fLoja = document.getElementById('fLoja').value;
   const fCategoria = document.getElementById('fCategoria').value;
   const fBusca = document.getElementById('fBusca').value.trim().toLowerCase();
-  const alvo = CONFIG.margem_alvo_pct;
 
+  // Cada item já traz sua própria meta efetiva em margem_alvo_pct (override
+  // do anúncio ou, na falta, a meta global) — filtro compara contra a meta
+  // DAQUELE item, nunca um "alvo" único pro portfólio inteiro.
   FILTRADOS = ITENS.filter(i => {
     if (faseAtiva !== 'todos' && (i.fase || 'sem') !== faseAtiva) return false;
     if (fMargem && i.margem_atual_pct != null) {
-      if (fMargem === 'abaixo' && !(i.margem_atual_pct < alvo - 2)) return false;
-      if (fMargem === 'dentro' && !(Math.abs(i.margem_atual_pct - alvo) <= 2)) return false;
-      if (fMargem === 'acima' && !(i.margem_atual_pct > alvo + 2)) return false;
+      if (fMargem === 'abaixo' && !(i.margem_atual_pct < i.margem_alvo_pct - 2)) return false;
+      if (fMargem === 'dentro' && !(Math.abs(i.margem_atual_pct - i.margem_alvo_pct) <= 2)) return false;
+      if (fMargem === 'acima' && !(i.margem_atual_pct > i.margem_alvo_pct + 2)) return false;
     } else if (fMargem) return false;
     if (fAcao && i.diagnostico?.tipo !== fAcao) return false;
+    // Filtros independentes de custo/tarifa (flags reais do item, não o
+    // diagnóstico) — o diagnóstico só mostra UM problema de cada vez
+    // (custo ausente sempre vence tarifa ausente na prioridade), então sem
+    // isto não dava pra achar "tarifa ausente" num item que também já tem
+    // custo cadastrado (o diagnóstico dele seria só CUSTO_NAO_CADASTRADO).
+    if (fCusto === 'nao' && !i.custo_ausente) return false;
+    if (fCusto === 'sim' && i.custo_ausente) return false;
+    if (fTarifa === 'nao' && !i.tarifa_ausente) return false;
+    if (fTarifa === 'sim' && i.tarifa_ausente) return false;
     if (fLoja && i.loja !== fLoja) return false;
     if (fCategoria && i.category_id !== fCategoria) return false;
     if (fBusca && !(String(i.title||'').toLowerCase().includes(fBusca) || String(i.ml_id||'').toLowerCase().includes(fBusca) || String(i.sku||'').toLowerCase().includes(fBusca))) return false;
@@ -401,7 +431,7 @@ function aplicarFiltros(){
 
   const ord = document.getElementById('fOrdenar').value;
   const cmp = {
-    diferenca: (a,b) => (a.margem_atual_pct==null?999:Math.abs((a.margem_atual_pct??0)-alvo)) < (b.margem_atual_pct==null?999:Math.abs((b.margem_atual_pct??0)-alvo)) ? 1 : -1,
+    diferenca: (a,b) => (a.margem_atual_pct==null?999:Math.abs((a.margem_atual_pct??0)-(a.margem_alvo_pct??0))) < (b.margem_atual_pct==null?999:Math.abs((b.margem_atual_pct??0)-(b.margem_alvo_pct??0))) ? 1 : -1,
     menor_margem: (a,b) => (a.margem_atual_pct??999) - (b.margem_atual_pct??999),
     maior_margem: (a,b) => (b.margem_atual_pct??-999) - (a.margem_atual_pct??-999),
     oportunidade: (a,b) => (b.oportunidade_reais||0) - (a.oportunidade_reais||0),
@@ -452,11 +482,11 @@ function cardHtml(r){
     </div>
     <div class="ae-fin">
       <div class="row"><span class="k">Preço atual</span><span class="v">${BRL(r.price)}</span></div>
-      <div class="row"><span class="k">Custo</span><span class="v">${r.custo_ausente ? '⚠️ não cadastrado' : BRL(r.custo)}<button class="ae-editbtn" onclick="editarCusto('${jsStr(r.ml_id)}', ${r.custo})" title="Cadastrar/editar custo deste anúncio"><i class="fas fa-pen"></i></button></span></div>
-      <div class="row"><span class="k">Tarifa</span><span class="v">${r.tarifa_ausente ? '⚠️ não configurada' : PCT(r.tarifa_pct)}<button class="ae-editbtn" onclick="editarTarifaItem('${jsStr(r.category_id)}', '${jsStr(r.category_name || r.category_id)}', ${r.tarifa_ausente ? 'null' : r.tarifa_pct})" title="Cadastrar/editar tarifa da categoria ${esc(r.category_name || r.category_id || '')}"><i class="fas fa-pen"></i></button></span></div>
-      <div class="row"><span class="k">Frete</span><span class="v">${BRL(r.frete)}<button class="ae-editbtn" onclick="editarFreteGlobal(${r.frete})" title="Editar frete padrão (vale para todos os anúncios, ainda não há frete por anúncio)"><i class="fas fa-pen"></i></button></span></div>
-      <div class="row"><span class="k">Imposto</span><span class="v">${PCT(r.imposto_pct)}</span></div>
-      <div class="row"><span class="k">Margem alvo</span><span class="v">${PCT(r.margem_alvo_pct)}<button class="ae-editbtn" onclick="editarMargemAlvoGlobal(${r.margem_alvo_pct})" title="Editar margem alvo (vale para todos os anúncios)"><i class="fas fa-pen"></i></button></span></div>
+      <div class="row"><span class="k">Custo (R$)</span><span class="v">${r.custo_ausente ? '⚠️ não cadastrado' : BRL(r.custo)}<button class="ae-editbtn" onclick="editarCusto('${jsStr(r.ml_id)}', ${r.custo})" title="Cadastrar/editar custo deste anúncio, em reais (R$)"><i class="fas fa-pen"></i></button></span></div>
+      <div class="row"><span class="k">Tarifa (%)</span><span class="v">${r.tarifa_ausente ? '⚠️ não configurada' : PCT(r.tarifa_pct)}<button class="ae-editbtn" onclick="editarTarifaItem('${jsStr(r.category_id)}', '${jsStr(r.category_name || r.category_id)}', ${r.tarifa_ausente ? 'null' : r.tarifa_pct})" title="Cadastrar/editar tarifa da categoria ${esc(r.category_name || r.category_id || '')}, em PORCENTAGEM (%), não reais"><i class="fas fa-pen"></i></button></span></div>
+      <div class="row"><span class="k">Frete (R$)${r.frete_personalizado ? ' <span title="Frete personalizado deste anúncio" style="color:#a78bfa">●</span>' : ''}</span><span class="v">${BRL(r.frete)}<button class="ae-editbtn" onclick="editarFreteItem('${jsStr(r.ml_id)}', ${r.frete}, ${!!r.frete_personalizado})" title="${r.frete_personalizado ? 'Frete personalizado deste anúncio, em reais (R$) — clique para editar ou limpar' : 'Definir um frete em reais (R$) só para este anúncio (hoje usa o padrão global)'}"><i class="fas fa-pen"></i></button></span></div>
+      <div class="row"><span class="k">Imposto (%)</span><span class="v">${PCT(r.imposto_pct)}</span></div>
+      <div class="row"><span class="k">Margem alvo (%)${r.margem_alvo_personalizada ? ' <span title="Meta personalizada deste anúncio" style="color:#a78bfa">●</span>' : ''}</span><span class="v">${PCT(r.margem_alvo_pct)}<button class="ae-editbtn" onclick="editarMargemAlvoItem('${jsStr(r.ml_id)}', ${r.margem_alvo_pct}, ${!!r.margem_alvo_personalizada})" title="${r.margem_alvo_personalizada ? 'Meta personalizada deste anúncio, em porcentagem (%) — clique para editar ou limpar' : 'Definir uma meta em porcentagem (%) só para este anúncio (hoje usa a meta global)'}"><i class="fas fa-pen"></i></button></span></div>
     </div>
     <div class="ae-right">
       <div class="ae-margem-box" style="background:rgba(${tierM?tierM.rgb:'148,163,184'},.12);border:1px solid rgba(${tierM?tierM.rgb:'148,163,184'},.35)">
@@ -504,6 +534,27 @@ function renderTabela(){
   }).join('');
 }
 
+// Recarrega os dados após uma edição rápida SEM fazer o card "sumir" —
+// carregar() sozinho reordena a lista pelo critério de ordenação ativo
+// (ex.: "maior diferença p/ margem alvo") e, assim que o dado é corrigido, o
+// card muda de posição — em listas longas isso parece um sumiço. Preserva a
+// ordem em tela e a posição de rolagem, então dá pra continuar preenchendo
+// os próximos cards sem perder o lugar. Itens que saem do filtro ativo
+// (ex.: filtro "Custo: não cadastrado" depois de cadastrar) ainda somem —
+// isso é o comportamento certo de uma fila de trabalho, não um bug.
+async function atualizarAposEdicao(){
+  const ordemAnterior = FILTRADOS.map(i => i.ml_id);
+  const scrollY = window.scrollY;
+  await carregar();
+  const porId = new Map(FILTRADOS.map(i => [i.ml_id, i]));
+  const reordenado = [];
+  for (const id of ordemAnterior) { const it = porId.get(id); if (it) { reordenado.push(it); porId.delete(id); } }
+  reordenado.push(...porId.values()); // itens que passaram a entrar no filtro agora vão pro fim
+  FILTRADOS = reordenado;
+  if (VISAO === 'cards') renderCards(); else renderTabela();
+  window.scrollTo(0, scrollY);
+}
+
 // ── Edição rápida de custo / tarifa / frete direto do card ────────────────
 async function editarCusto(mlId, atual){
   const v = prompt('Custo do produto (R$):', atual || '');
@@ -512,7 +563,7 @@ async function editarCusto(mlId, atual){
   if (isNaN(n) || n < 0) { alert('Valor inválido.'); return; }
   const r = await DB.updateItemCusto(mlId, n);
   if (!r || r.error) { alert(r&&r.error||'Erro ao salvar custo'); return; }
-  await carregar();
+  await atualizarAposEdicao();
 }
 // Tarifa é por CATEGORIA (política do próprio Mercado Livre, não do anúncio
 // isolado — ver decisions.md) — editar aqui atualiza pricing_category_fees
@@ -525,29 +576,49 @@ async function editarTarifaItem(categoryId, categoryName, atual){
   if (isNaN(n) || n < 0 || n > 100) { alert('Valor inválido — informe um percentual entre 0 e 100.'); return; }
   const r = await DB.setAnalistaEcomTarifaCategoria({ category_id: categoryId, category_name: categoryName, fee_percentage: n });
   if (!r || r.error) { alert(r&&r.error||'Erro ao salvar tarifa'); return; }
-  await carregarConfig(); await carregar();
+  await carregarConfig(); await atualizarAposEdicao();
 }
-// Frete ainda é 1 valor padrão global (app_config), não por anúncio — editar
-// aqui muda o frete de TODOS os anúncios, mesma config do painel do topo.
-async function editarFreteGlobal(atual){
-  const v = prompt('Frete padrão (R$) — vale para TODOS os anúncios (ainda não há frete configurável por anúncio):', atual != null ? atual : '');
+// Frete é POR ANÚNCIO (items.frete, v93) — deixar em branco limpa o
+// override e o anúncio volta a usar o frete padrão global (painel do topo).
+async function editarFreteItem(mlId, atual, personalizado){
+  const msg = personalizado
+    ? 'Frete (R$) deste anúncio — deixe em branco para voltar a usar o frete padrão global:'
+    : 'Frete (R$) só deste anúncio (hoje ele usa o frete padrão global) — deixe em branco para cancelar:';
+  const v = prompt(msg, atual != null ? atual : '');
   if (v == null) return;
+  if (v.trim() === '') {
+    if (!personalizado) return; // nada pra limpar
+    const r = await DB.setAnalistaEcomFreteItem(mlId, null);
+    if (!r || r.error) { alert(r&&r.error||'Erro ao limpar frete'); return; }
+    await atualizarAposEdicao();
+    return;
+  }
   const n = parseFloat(String(v).replace(',', '.'));
   if (isNaN(n) || n < 0) { alert('Valor inválido.'); return; }
-  const r = await DB.patchAnalistaEcomConfig({ frete_padrao: n });
+  const r = await DB.setAnalistaEcomFreteItem(mlId, n);
   if (!r || r.error) { alert(r&&r.error||'Erro ao salvar frete'); return; }
-  await carregarConfig(); await carregar();
+  await atualizarAposEdicao();
 }
-// Margem alvo também é 1 valor global (usada no cálculo do "preço
-// recomendado" de todo anúncio) — mesmo escalar do painel do topo.
-async function editarMargemAlvoGlobal(atual){
-  const v = prompt('Margem de contribuição alvo (%) — vale para TODOS os anúncios (é a meta usada no preço recomendado):', atual != null ? atual : '');
+// Margem alvo é POR ANÚNCIO (items.margem_alvo_pct, v91) — deixar em branco
+// limpa o override e o anúncio volta a usar a meta global (painel do topo).
+async function editarMargemAlvoItem(mlId, atual, personalizada){
+  const msg = personalizada
+    ? 'Margem de contribuição alvo (%) deste anúncio — deixe em branco para voltar a usar a meta global:'
+    : 'Margem de contribuição alvo (%) só deste anúncio (hoje ele usa a meta global) — deixe em branco para cancelar:';
+  const v = prompt(msg, atual != null ? atual : '');
   if (v == null) return;
+  if (v.trim() === '') {
+    if (!personalizada) return; // nada pra limpar
+    const r = await DB.setAnalistaEcomMargemAlvoItem(mlId, null);
+    if (!r || r.error) { alert(r&&r.error||'Erro ao limpar margem alvo'); return; }
+    await atualizarAposEdicao();
+    return;
+  }
   const n = parseFloat(String(v).replace(',', '.'));
   if (isNaN(n) || n < 0 || n >= 100) { alert('Valor inválido — informe um percentual entre 0 e 99.'); return; }
-  const r = await DB.patchAnalistaEcomConfig({ margem_alvo_pct: n });
+  const r = await DB.setAnalistaEcomMargemAlvoItem(mlId, n);
   if (!r || r.error) { alert(r&&r.error||'Erro ao salvar margem alvo'); return; }
-  await carregarConfig(); await carregar();
+  await atualizarAposEdicao();
 }
 
 // ── Simulador de preço ───────────────────────────────────────────────────

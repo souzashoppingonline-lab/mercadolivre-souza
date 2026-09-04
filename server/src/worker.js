@@ -1249,6 +1249,37 @@ async function getRequiredAttrsForCategory(categoryId, storeId, localCache) {
   }
 }
 
+// Nome REAL da categoria (Analista Ecom, v92) — mesmo padrão de cache acima
+// (category_attributes_cache), mas SEM expiração: nome de categoria do ML
+// não muda na prática, então só busca de novo se ainda não tiver linha
+// cacheada (nunca refaz a chamada só pra confirmar o mesmo valor). Nunca
+// chamada de rota HTTP de leitura — só daqui (worker), ver decisions.md.
+async function getCategoryName(categoryId, storeId, localCache) {
+  if (!categoryId) return null;
+  if (localCache.has(categoryId)) return localCache.get(categoryId);
+
+  const { rows } = await pool.query(`SELECT name FROM category_names_cache WHERE category_id=$1`, [categoryId]);
+  if (rows[0]) { localCache.set(categoryId, rows[0].name); return rows[0].name; }
+
+  try {
+    const cat = await ml.getCategory(categoryId, storeId);
+    const name = cat?.name || null;
+    if (name) {
+      await pool.query(
+        `INSERT INTO category_names_cache (category_id, name, updated_at) VALUES ($1,$2,now())
+         ON CONFLICT (category_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()`,
+        [categoryId, name]
+      );
+    }
+    localCache.set(categoryId, name);
+    return name;
+  } catch (e) {
+    console.warn(`[sync-seo-score] nome categoria ${categoryId}: ${e.message}`);
+    localCache.set(categoryId, null);
+    return null;
+  }
+}
+
 async function syncSeoScore() {
   if (isSyncingSeoScore) { console.warn('[sync-seo-score] já em execução — ignorando'); return; }
   isSyncingSeoScore = true;
@@ -1259,6 +1290,7 @@ async function syncSeoScore() {
       let totalSynced = 0, totalErrors = 0;
       const lojaReport = [];
       const categoryAttrsCache = new Map();
+      const categoryNamesCache = new Map();
 
       for (const store of stores) {
         try {
@@ -1302,6 +1334,7 @@ async function syncSeoScore() {
 
               const categoryId = full.category_id || item.category_id;
               const requiredIds = await getRequiredAttrsForCategory(categoryId, store.id, categoryAttrsCache);
+              await getCategoryName(categoryId, store.id, categoryNamesCache); // só cacheia (Analista Ecom) — sem TTL, pula se já tem linha
               const presentIds = new Set((full.attributes || []).filter(a => a.value_name != null && a.value_name !== '').map(a => a.id));
               const missingRequired = requiredIds.filter(id => !presentIds.has(id));
 

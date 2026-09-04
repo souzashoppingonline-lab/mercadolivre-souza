@@ -273,6 +273,9 @@ module.exports = {
   // Qualidade de Anúncio (SEO Score) — ver seoScore.js e .claude/decisions.md.
   getItemDescription:  (id, storeId) => get(`/items/${id}/description`, storeId),
   getCategoryAttributes: (categoryId, storeId) => get(`/categories/${categoryId}/attributes`, storeId),
+  // Nome da categoria (Analista Ecom, v92) — { id, name, ... }. Endpoint
+  // público do ML, mas usa o mesmo helper autenticado por simplicidade.
+  getCategory: (categoryId, storeId) => get(`/categories/${categoryId}`, storeId),
   // Monitor de Buy-Box (catálogo) — ver .claude/decisions.md. GET /sites/MLB/search
   // (busca livre) devolve 403 "forbidden" pra este app (confirmado ao vivo, não é rate
   // limit); estes dois endpoints são diferentes (dado do próprio vendedor participando

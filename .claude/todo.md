@@ -192,11 +192,13 @@ Fora do escopo desta rodada, deliberadamente (spec original tinha 29 seções):
 - [ ] Regra "último dia útil" não considera feriados brasileiros (só pula sáb/dom) — sem biblioteca de calendário no projeto. Se virar problema real (alguém tentando finalizar num feriado achando que é dia útil), avaliar adicionar uma lib de feriados.
 - [ ] `financeiro-despesas.html`/`financeiro-projecao-caixa.html`/`financeiro-dre.html` ainda têm cada uma sua própria cópia da fórmula de DRE no `<script>` (3 cópias, ver `decisions.md`) — a página de Fechamento Mensal é a primeira a ler de `financeiroCalc.js` pelo backend. Quando alguém for mexer numa fórmula de DRE de novo, considerar migrar as 3 pra consumir o módulo em vez de adicionar uma 4ª/5ª cópia.
 
-## Analista Ecom (v90, `pages/analista-ecom.html`)
+## Analista Ecom (v90-v93, `pages/analista-ecom.html`)
 
 - [ ] **"Aplicar preço recomendado" (escrita no Mercado Livre)** — a página hoje é só análise/recomendação, nenhuma rota chama `mlClient.js`. Decisão explícita do pedido original: implementar a ação de escrita fica pra uma tarefa futura, com todo o cuidado de segurança/confirmação que uma mudança de preço real exige (rate limit do ML, confirmação explícita do usuário por anúncio, log de auditoria de quem aplicou).
-- [ ] Frete hoje é 1 valor fixo (`app_config.frete_padrao`) pra todo anúncio — `calcularLinha()` já recebe o frete resolvido como parâmetro, então dá pra evoluir pra regra por faixa de peso/preço ou por anúncio sem mudar a fórmula. Ver `decisions.md`.
-- [ ] Sem tela de auditoria/histórico de quem mudou tarifa de categoria ou config global — `pricing_category_fees`/`app_config` não guardam quem alterou, só `updated_at`. Se virar necessidade real, seguir o padrão de `updated_by` já usado em `business_insights`.
+- [x] ~~Frete hoje é 1 valor fixo pra todo anúncio~~ — feito na v93: `items.frete` por anúncio (override), cai no padrão global (`app_config.frete_padrao`) quando não cadastrado. Ver `decisions.md`.
+- [ ] **Equivalente do Analista Ecom pra Shopee** — v92 excluiu explicitamente lojas Shopee da listagem (`vw_ml_items`/`vw_ml_stores`), porque a estrutura de tarifa/frete da Shopee é diferente do Mercado Livre (ver `shopee.md`). Pedido do usuário: construir uma versão própria, NA PÁGINA da Shopee, com fórmula adaptada à tarifa/frete real de lá — não reaproveitar `analistaEcom.js` sem antes confirmar que a fórmula/config fazem sentido pro marketplace.
+- [ ] Sem tela de auditoria/histórico de quem mudou tarifa de categoria, override por anúncio (margem alvo/frete) ou config global — nenhuma dessas tabelas guarda quem alterou, só `updated_at`. Se virar necessidade real, seguir o padrão de `updated_by` já usado em `business_insights`.
+- [ ] Sem filtro "frete configurado/não configurado" (diferente de custo/tarifa, que têm) — frete sempre tem algum valor (override do item ou o padrão global), não existe um "ausente" real pra filtrar por enquanto; hoje só o aviso de "frete padrão global em R$0" cobre esse caso. Ver `decisions.md`.
 
 ## Este arquivo é o ponto de entrada para retomar trabalho
 

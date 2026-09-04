@@ -1376,6 +1376,22 @@ router.delete('/analista-ecom/tarifas-categoria/:categoryId', async (req, res) =
   try { await analistaEcom.deleteTarifaCategoria(req.params.categoryId); res.json({ ok: true }); }
   catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
+// Margem alvo POR ANÚNCIO (v91) — margem_alvo_pct null/vazio remove o
+// override e o anúncio volta a usar a margem alvo global.
+router.patch('/analista-ecom/item/:mlId/margem-alvo', async (req, res) => {
+  try {
+    const valor = await analistaEcom.setMargemAlvoItem(req.params.mlId, req.body.margem_alvo_pct);
+    res.json({ ok: true, margem_alvo_pct: valor });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+// Frete POR ANÚNCIO (v93) — frete null/vazio remove o override e o anúncio
+// volta a usar o frete padrão global.
+router.patch('/analista-ecom/item/:mlId/frete', async (req, res) => {
+  try {
+    const valor = await analistaEcom.setFreteItem(req.params.mlId, req.body.frete);
+    res.json({ ok: true, frete: valor });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
 
 module.exports = router;
 // computarMargem também é usado fora deste arquivo (Agente Financeiro,

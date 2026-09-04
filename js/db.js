@@ -323,6 +323,8 @@ const DB = {
   async setAnalistaEcomTarifaCategoria(body)        { return this._post('/bi/analista-ecom/tarifas-categoria', body); },
   async delAnalistaEcomTarifaCategoria(categoryId)  { return this._delete(`/bi/analista-ecom/tarifas-categoria/${encodeURIComponent(categoryId)}`); },
   async getAnalistaEcomHistorico(mlId)              { return this._get(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/historico`); },
+  async setAnalistaEcomMargemAlvoItem(mlId, margem_alvo_pct) { return this._patch(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/margem-alvo`, { margem_alvo_pct }); },
+  async setAnalistaEcomFreteItem(mlId, frete) { return this._patch(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/frete`, { frete }); },
   async getBiMargemNarrativa(days = 30, store_id = '', extra = {}) { return this._post('/bi/margem/narrativa', { days, store_id, ...extra }); },
   async getBiMargemProduto(itemId, days = 60, store_id = '') { return this._get(`/bi/margem/produto/${encodeURIComponent(itemId)}`, { days, store_id }); },
   // Vendas por Estágio (integração com o módulo Rankeamento) — ver rankeamento.md/business-rules.md.

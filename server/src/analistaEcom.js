@@ -78,6 +78,38 @@ async function deleteTarifaCategoria(category_id) {
   await pool.query(`DELETE FROM pricing_category_fees WHERE category_id=$1`, [category_id]);
 }
 
+// ── Margem alvo POR ANÚNCIO (v91) — items.margem_alvo_pct, NULL = usa a
+// margem alvo global (CONFIG_DEFAULTS.margem_alvo_pct/app_config acima).
+// Pedido do usuário: cada anúncio pode ter sua própria meta, sem precisar
+// mudar a config global (que afetaria todo o portfólio de uma vez). ──────
+async function setMargemAlvoItem(mlId, valor) {
+  if (!mlId) { const e = new Error('mlId obrigatório'); e.status = 400; throw e; }
+  if (valor === null || valor === '') {
+    await pool.query(`UPDATE items SET margem_alvo_pct = NULL WHERE ml_id = $1`, [mlId]);
+    return null;
+  }
+  const n = Number(valor);
+  if (!isFinite(n) || n < 0 || n >= 100) { const e = new Error('margem alvo deve ser um número entre 0 e 99'); e.status = 400; throw e; }
+  await pool.query(`UPDATE items SET margem_alvo_pct = $2 WHERE ml_id = $1`, [mlId, n]);
+  return n;
+}
+
+// ── Frete POR ANÚNCIO (v93) — items.frete, NULL = usa o frete padrão
+// global (CONFIG_DEFAULTS.frete_padrao/app_config). Pedido do usuário:
+// definir o frete de um anúncio deve mudar SÓ aquele anúncio, não o padrão
+// de todos — mesmo padrão de margem_alvo_pct acima (v91). ─────────────────
+async function setFreteItem(mlId, valor) {
+  if (!mlId) { const e = new Error('mlId obrigatório'); e.status = 400; throw e; }
+  if (valor === null || valor === '') {
+    await pool.query(`UPDATE items SET frete = NULL WHERE ml_id = $1`, [mlId]);
+    return null;
+  }
+  const n = Number(valor);
+  if (!isFinite(n) || n < 0) { const e = new Error('frete deve ser um número >= 0'); e.status = 400; throw e; }
+  await pool.query(`UPDATE items SET frete = $2 WHERE ml_id = $1`, [mlId, n]);
+  return n;
+}
+
 // ── Fórmula de precificação (P = (C+F) / (1-T-I-M)) ─────────────────────
 // Divisor <= 0 significa que NENHUM preço finito atinge essa margem com
 // essas taxas (ex.: tarifa+imposto+margem somam >= 100%) — retorna null,
@@ -143,20 +175,27 @@ function calcularLinha(row, cfg, fase) {
   const custo = Number(row.cost) || 0;
   const tarifaPct = row.tarifa_pct != null ? Number(row.tarifa_pct) : null;
   const tarifaAusente = tarifaPct == null;
-  const frete = cfg.frete_padrao;
+  // Frete — override por ANÚNCIO (items.frete, v93) quando cadastrado,
+  // senão cai no frete padrão global (mesmo comportamento de antes).
+  const fretePersonalizado = row.frete_override != null;
+  const frete = fretePersonalizado ? Number(row.frete_override) : cfg.frete_padrao;
   const impostoPct = Number(row.imposto_pct) || 0; // stores.imposto_pct — por loja, nunca configurado aqui
   const precoAtual = Number(row.price) || 0;
+  // Margem alvo — override por ANÚNCIO (items.margem_alvo_pct, v91) quando
+  // cadastrado, senão cai na meta global (mesmo comportamento de antes).
+  const margemAlvoPersonalizada = row.margem_alvo_pct_override != null;
+  const margemAlvoPct = margemAlvoPersonalizada ? Number(row.margem_alvo_pct_override) : cfg.margem_alvo_pct;
 
   const podecalcular = !custoAusente && !tarifaAusente;
   const margemAtual = podecalcular ? margemNoPreco({ preco: precoAtual, custo, frete, tarifaPct, impostoPct }) : { reais: null, pct: null };
   const precoEquilibrio = podecalcular ? precoParaMargem({ custo, frete, tarifaPct, impostoPct, margemPct: 0 }) : null;
   const precoMinimo = podecalcular ? precoParaMargem({ custo, frete, tarifaPct, impostoPct, margemPct: cfg.margem_minima_pct }) : null;
-  const precoRecomendado = podecalcular ? precoParaMargem({ custo, frete, tarifaPct, impostoPct, margemPct: cfg.margem_alvo_pct }) : null;
+  const precoRecomendado = podecalcular ? precoParaMargem({ custo, frete, tarifaPct, impostoPct, margemPct: margemAlvoPct }) : null;
   const diferencaRecomendadoPct = (precoRecomendado != null && precoAtual > 0) ? round2(((precoRecomendado - precoAtual) / precoAtual) * 100) : null;
 
   const diag = diagnosticar({
     fase, custoAusente, tarifaAusente,
-    margemAtualPct: margemAtual.pct, margemAlvoPct: cfg.margem_alvo_pct,
+    margemAtualPct: margemAtual.pct, margemAlvoPct,
     conversionRate: row.conversion_rate != null ? Number(row.conversion_rate) : null,
     visits30d: row.visits_30d != null ? Number(row.visits_30d) : null,
     sales30d: row.sales_30d != null ? Number(row.sales_30d) : null,
@@ -188,14 +227,14 @@ function calcularLinha(row, cfg, fase) {
     promo_discount_pct: row.promo_discount_pct != null ? Number(row.promo_discount_pct) : null,
     price: precoAtual, custo, custo_ausente: custoAusente,
     tarifa_pct: tarifaPct, tarifa_ausente: tarifaAusente,
-    frete, imposto_pct: impostoPct,
+    frete, frete_personalizado: fretePersonalizado, imposto_pct: impostoPct,
     visits_30d: row.visits_30d != null ? Number(row.visits_30d) : null,
     sales_30d: row.sales_30d != null ? Number(row.sales_30d) : null,
     conversion_rate: row.conversion_rate != null ? Number(row.conversion_rate) : null,
     qualidade: row.qualidade != null ? Number(row.qualidade) : null,
     fase: fase || null,
     margem_atual_reais: margemAtual.reais, margem_atual_pct: margemAtual.pct,
-    margem_alvo_pct: cfg.margem_alvo_pct, margem_minima_pct: cfg.margem_minima_pct,
+    margem_alvo_pct: margemAlvoPct, margem_alvo_personalizada: margemAlvoPersonalizada, margem_minima_pct: cfg.margem_minima_pct,
     preco_equilibrio: precoEquilibrio, preco_minimo: precoMinimo, preco_recomendado: precoRecomendado,
     diferenca_recomendado_pct: diferencaRecomendadoPct,
     diagnostico: diag,
@@ -204,22 +243,31 @@ function calcularLinha(row, cfg, fase) {
 }
 
 // ── Listagem completa ────────────────────────────────────────────────────
-// 1 query com todos os JOINs (item_seo_score/pricing_category_fees/SKU do
-// último pedido) + 1 batch pra fase (ranking.buscarFasePorItemIds) — nunca
-// 1 chamada por card. Filtro/ordenação/paginação em JS (depois de calcular
-// os campos derivados, que não existem como coluna) — catálogo de umas
-// poucas lojas cabe tranquilo em memória numa única resposta.
+// 1 query com todos os JOINs (item_seo_score/pricing_category_fees/nome real
+// da categoria/SKU do último pedido) + 1 batch pra fase
+// (ranking.buscarFasePorItemIds) — nunca 1 chamada por card. Filtro/
+// ordenação/paginação em JS (depois de calcular os campos derivados, que
+// não existem como coluna) — catálogo de umas poucas lojas cabe tranquilo em
+// memória numa única resposta.
+//
+// SÓ Mercado Livre — lê de vw_ml_items/vw_ml_stores (mesmas views de v17
+// usadas em routes/api.js pra não contaminar KPIs com outro marketplace, ver
+// decisions.md), nunca `items`/`stores` cru. Pedido explícito do usuário:
+// Shopee tem estrutura de tarifa/frete própria e MUITO diferente (ver
+// shopee.md) — um "Analista Ecom" equivalente pra Shopee é tarefa futura,
+// na página da Shopee, com sua própria fórmula (ver todo.md).
 async function listarAnalistaEcom({ store_id = '' } = {}) {
   const { rows } = await pool.query(
     `SELECT i.ml_id, i.store_id, s.nickname AS loja, COALESCE(s.imposto_pct,0) AS imposto_pct, i.title, i.thumbnail, i.price, i.status,
-            i.available_quantity, i.cost, i.cost_updated_at, i.category_id,
+            i.available_quantity, i.cost, i.cost_updated_at, i.category_id, i.margem_alvo_pct AS margem_alvo_pct_override, i.frete AS frete_override,
             ss.visits_30d, ss.sales_30d, ss.conversion_rate, ss.score AS qualidade,
-            pcf.fee_percentage AS tarifa_pct, pcf.category_name,
+            pcf.fee_percentage AS tarifa_pct, COALESCE(cnc.name, pcf.category_name) AS category_name,
             po.status AS promo_status, po.promo_price, po.discount_pct AS promo_discount_pct
-       FROM items i
-       JOIN stores s ON s.id = i.store_id
+       FROM vw_ml_items i
+       JOIN vw_ml_stores s ON s.id = i.store_id
        LEFT JOIN item_seo_score ss ON ss.item_id = i.ml_id
        LEFT JOIN pricing_category_fees pcf ON pcf.category_id = i.category_id
+       LEFT JOIN category_names_cache cnc ON cnc.category_id = i.category_id
        LEFT JOIN LATERAL (
          SELECT status, promo_price, discount_pct FROM promotions
           WHERE item_id = i.ml_id ORDER BY changed_at DESC LIMIT 1
@@ -277,7 +325,7 @@ async function getHistoricoItem(mlId) {
 
 module.exports = {
   getConfigGlobal, setConfigGlobal,
-  getTarifasCategorias, setTarifaCategoria, deleteTarifaCategoria,
+  getTarifasCategorias, setTarifaCategoria, deleteTarifaCategoria, setMargemAlvoItem, setFreteItem,
   precoParaMargem, margemNoPreco, diagnosticar, calcularLinha, listarAnalistaEcom, getHistoricoItem,
   CONVERSAO_BOA, CONVERSAO_RUIM, VISITAS_30D_RELEVANTES, TOLERANCIA_MARGEM_PP, JANELAS_HISTORICO,
 };

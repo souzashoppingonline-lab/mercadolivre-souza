@@ -184,7 +184,8 @@ router.get('/buscar', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT i.ml_id, i.title, i.price, i.available_quantity, i.status, i.thumbnail, i.sold_quantity,
               s.nickname AS store_nickname, COALESCE(m.code, 'ML') AS marketplace,
-              (r.id IS NOT NULL AND r.active) AS em_rankeamento
+              (r.id IS NOT NULL AND r.active) AS em_rankeamento,
+              CASE WHEN r.id IS NOT NULL AND r.active THEN r.fase END AS fase_atual
          FROM items i
          LEFT JOIN stores s ON s.id = i.store_id
          LEFT JOIN marketplaces m ON m.id = i.marketplace_id
@@ -232,10 +233,27 @@ router.post('/ads', async (req, res) => {
     const i = it[0];
     const catalogoTs = faseInicial === 'catalogo' ? ', catalogo_started_at' : '';
     const catalogoVal = faseInicial === 'catalogo' ? ', now()' : '';
+    // BUG corrigido: o UPSERT reativava (active=true) um ranking_ads já
+    // existente (ex.: pausado/removido da fase Recuperação sem deletar a
+    // linha) mas nunca tocava em `fase` — reescolher um estágio diferente
+    // no seletor "Acompanhar em..." reativava o anúncio SEMPRE no estágio
+    // antigo, ignorando silenciosamente o que o usuário tinha acabado de
+    // escolher (via card ~2s depois do reload, sem nenhum erro). Corrigido
+    // atualizando `fase` + os MESMOS carimbos de transição já usados em
+    // PATCH /ads/:id (linhas acima) — reentrar numa fase reinicia a
+    // contagem de dias dela, mesmo padrão de sempre.
     const { rows } = await pool.query(
       `INSERT INTO ranking_ads (ml_id, store_id, title, base_price, last_price, last_available_quantity, last_status, milestone_every, active, started_at, fase${catalogoTs})
        VALUES ($1,$2,$3,$4,$4,$5,$6,$7,true, now(), $8${catalogoVal})
-       ON CONFLICT (ml_id) DO UPDATE SET active = true, milestone_every = EXCLUDED.milestone_every, updated_at = now()
+       ON CONFLICT (ml_id) DO UPDATE SET
+         active = true,
+         milestone_every = EXCLUDED.milestone_every,
+         fase = EXCLUDED.fase,
+         ranqueado_em = CASE WHEN EXCLUDED.fase = 'ranqueado' THEN now() WHEN EXCLUDED.fase = 'rankeando' THEN NULL ELSE ranking_ads.ranqueado_em END,
+         monitoramento_started_at = CASE WHEN EXCLUDED.fase = 'monitoramento' THEN now() ELSE ranking_ads.monitoramento_started_at END,
+         recuperacao_started_at = CASE WHEN EXCLUDED.fase = 'recuperacao' THEN now() ELSE ranking_ads.recuperacao_started_at END,
+         catalogo_started_at = CASE WHEN EXCLUDED.fase = 'catalogo' THEN now() ELSE ranking_ads.catalogo_started_at END,
+         updated_at = now()
        RETURNING *`,
       [i.ml_id, i.store_id, i.title, i.price, i.available_quantity, i.status, every, faseInicial]
     );

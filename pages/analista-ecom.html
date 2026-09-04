@@ -44,9 +44,13 @@
 
     .ae-count { font-size:12px; color:var(--text-muted); margin-bottom:10px; }
 
-    .ae-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
-    .ae-card { background:var(--bg-card); border:2px solid var(--border); border-radius:14px; padding:12px 14px; }
-    .ae-card-head { display:flex; gap:10px; }
+    /* Lista vertical de cards horizontais — mesmo padrão visual de
+       bi-vendas.html (.vc-grid/.vc-card): 1 card por linha, largura cheia,
+       seções lado a lado separadas por divisor, em vez de grid de cards
+       estreitos lado a lado. Pedido explícito do usuário — visual melhor. */
+    .ae-grid { display:flex; flex-direction:column; gap:10px; }
+    .ae-card { background:var(--bg-card); border:2px solid var(--border); border-radius:14px; padding:12px 18px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+    .ae-card-head { display:flex; gap:10px; flex:1 1 260px; min-width:230px; }
     .ae-thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:var(--bg-card2); flex:none; border:1px solid var(--border); }
     .ae-thumb.ph { display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
     .ae-title { font-size:12px; font-weight:700; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
@@ -58,23 +62,28 @@
     .ae-status-badge.active { background:rgba(63,185,80,.15); color:#3fb950; }
     .ae-status-badge.paused { background:rgba(245,158,11,.15); color:#f59e0b; }
     .ae-status-badge.other { background:rgba(148,163,184,.15); color:#94a3b8; }
-    .ae-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:10px 0; text-align:center; }
+    .ae-stats { display:grid; grid-template-columns:repeat(4,minmax(56px,1fr)); gap:6px; flex:0 0 240px; text-align:center; border-left:1px solid var(--border); padding-left:16px; }
     .ae-stats div .l { font-size:9px; color:var(--text-muted); text-transform:uppercase; }
     .ae-stats div .v { font-size:12.5px; font-weight:800; margin-top:2px; }
-    .ae-fin { display:grid; grid-template-columns:repeat(2,1fr); gap:6px 10px; font-size:11.5px; border-top:1px solid var(--border); padding-top:8px; margin-top:2px; }
-    .ae-fin .row { display:flex; justify-content:space-between; align-items:center; }
+    .ae-fin { display:grid; grid-template-columns:repeat(2,minmax(110px,1fr)); gap:5px 14px; font-size:11.5px; flex:1 1 260px; min-width:240px; border-left:1px solid var(--border); padding-left:16px; }
+    .ae-fin .row { display:flex; justify-content:space-between; align-items:center; gap:6px; }
     .ae-fin .k { color:var(--text-muted); }
     .ae-fin .v { font-weight:700; }
     .ae-fin .v.ed { text-decoration:underline dotted; cursor:pointer; }
-    .ae-margem-box { margin:10px 0; padding:9px 10px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; }
+    .ae-right { display:flex; flex-direction:column; gap:6px; flex:0 0 200px; margin-left:auto; border-left:1px solid var(--border); padding-left:16px; }
+    .ae-margem-box { padding:8px 10px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
     .ae-margem-box .a { font-size:10px; text-transform:uppercase; }
-    .ae-margem-box .b { font-size:16px; font-weight:900; }
-    .ae-preco-rec { display:flex; justify-content:space-between; align-items:center; background:var(--bg-card2); border-radius:10px; padding:9px 10px; margin-bottom:8px; }
+    .ae-margem-box .b { font-size:15px; font-weight:900; }
+    .ae-preco-rec { display:flex; justify-content:space-between; align-items:center; gap:8px; background:var(--bg-card2); border-radius:10px; padding:8px 10px; }
     .ae-preco-rec .k { font-size:10px; color:var(--text-muted); text-transform:uppercase; }
-    .ae-preco-rec .v { font-size:16px; font-weight:900; }
+    .ae-preco-rec .v { font-size:15px; font-weight:900; }
     .ae-preco-rec .diff { font-size:11px; font-weight:800; }
-    .ae-diag { border-radius:9px; padding:7px 9px; font-size:11px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .ae-diag { border-radius:9px; padding:6px 9px; font-size:10.5px; font-weight:700; display:flex; align-items:center; gap:6px; }
     .ae-card-actions { display:flex; gap:6px; }
+    @media (max-width:1100px) {
+      .ae-card { align-items:stretch; }
+      .ae-stats, .ae-fin, .ae-right { border-left:0; padding-left:0; border-top:1px solid var(--border); padding-top:10px; margin-left:0; }
+    }
 
     .ae-alerta { background:rgba(245,158,11,.15); color:#f59e0b; border:1px solid rgba(245,158,11,.4); }
     .ae-verde { background:rgba(63,185,80,.15); color:#3fb950; border:1px solid rgba(63,185,80,.4); }
@@ -408,7 +417,7 @@ function mudarVisao(v){
   VISAO = v;
   document.getElementById('btnViewCards').classList.toggle('on', v==='cards');
   document.getElementById('btnViewTable').classList.toggle('on', v==='table');
-  document.getElementById('aeGrid').style.display = v==='cards' ? 'grid' : 'none';
+  document.getElementById('aeGrid').style.display = v==='cards' ? 'flex' : 'none';
   document.getElementById('aeTableWrap').style.display = v==='table' ? 'block' : 'none';
   if (v==='cards') renderCards(); else renderTabela();
 }
@@ -447,20 +456,22 @@ function cardHtml(r){
       <div class="row"><span class="k">Imposto</span><span class="v">${PCT(r.imposto_pct)}</span></div>
       <div class="row"><span class="k">Margem alvo</span><span class="v">${PCT(r.margem_alvo_pct)}</span></div>
     </div>
-    <div class="ae-margem-box" style="background:rgba(${tierM?tierM.rgb:'148,163,184'},.12);border:1px solid rgba(${tierM?tierM.rgb:'148,163,184'},.35)">
-      <span class="a" style="color:rgb(${tierM?tierM.rgb:'148,163,184'})">Margem atual</span>
-      <span class="b" style="color:rgb(${tierM?tierM.rgb:'148,163,184'})">${r.margem_atual_pct!=null?PCT(r.margem_atual_pct):'—'} ${r.margem_atual_reais!=null?'('+BRL(r.margem_atual_reais)+')':''}</span>
-    </div>
-    ${r.preco_recomendado!=null ? `<div class="ae-preco-rec">
-      <div><div class="k">Preço recomendado</div><div class="v">${BRL(r.preco_recomendado)}</div></div>
-      ${diff!=null ? `<span class="diff" style="color:${diff>=0?'#3fb950':'#f87171'}">${diff>=0?'+':''}${diff.toFixed(1)}%</span>` : ''}
-    </div>` : ''}
-    ${r.em_promocao ? `<div class="ae-diag ae-roxo" title="${r.promo_discount_pct!=null?`${r.promo_discount_pct}% de desconto`:''}">🏷️ Em promoção${r.promo_price!=null?` — preço promo ${BRL(r.promo_price)}`:''}</div>` : ''}
-    <div class="ae-diag ${du.classe}">${du.ico} ${esc(diag.label||'')}</div>
-    <div class="ae-card-actions">
-      <button class="ae-btn sm" style="flex:1" onclick="abrirSimulador('${jsStr(r.ml_id)}')"><i class="fas fa-sliders"></i> Simular</button>
-      <button class="ae-btn sm" style="flex:1" onclick="abrirHistorico('${jsStr(r.ml_id)}', '${jsStr(r.title||r.ml_id)}')"><i class="fas fa-chart-column"></i> Histórico</button>
-      ${r.fase ? `<a class="ae-btn sm" href="rankeamento.html" title="Ver no Rankeamento"><i class="fas fa-ranking-star"></i></a>` : ''}
+    <div class="ae-right">
+      <div class="ae-margem-box" style="background:rgba(${tierM?tierM.rgb:'148,163,184'},.12);border:1px solid rgba(${tierM?tierM.rgb:'148,163,184'},.35)">
+        <span class="a" style="color:rgb(${tierM?tierM.rgb:'148,163,184'})">Margem atual</span>
+        <span class="b" style="color:rgb(${tierM?tierM.rgb:'148,163,184'})">${r.margem_atual_pct!=null?PCT(r.margem_atual_pct):'—'} ${r.margem_atual_reais!=null?'('+BRL(r.margem_atual_reais)+')':''}</span>
+      </div>
+      ${r.preco_recomendado!=null ? `<div class="ae-preco-rec">
+        <div><div class="k">Preço recomendado</div><div class="v">${BRL(r.preco_recomendado)}</div></div>
+        ${diff!=null ? `<span class="diff" style="color:${diff>=0?'#3fb950':'#f87171'}">${diff>=0?'+':''}${diff.toFixed(1)}%</span>` : ''}
+      </div>` : ''}
+      ${r.em_promocao ? `<div class="ae-diag ae-roxo" title="${r.promo_discount_pct!=null?`${r.promo_discount_pct}% de desconto`:''}">🏷️ Em promoção${r.promo_price!=null?` — preço promo ${BRL(r.promo_price)}`:''}</div>` : ''}
+      <div class="ae-diag ${du.classe}">${du.ico} ${esc(diag.label||'')}</div>
+      <div class="ae-card-actions">
+        <button class="ae-btn sm" style="flex:1" onclick="abrirSimulador('${jsStr(r.ml_id)}')"><i class="fas fa-sliders"></i> Simular</button>
+        <button class="ae-btn sm" style="flex:1" onclick="abrirHistorico('${jsStr(r.ml_id)}', '${jsStr(r.title||r.ml_id)}')"><i class="fas fa-chart-column"></i> Histórico</button>
+        ${r.fase ? `<a class="ae-btn sm" href="rankeamento.html" title="Ver no Rankeamento"><i class="fas fa-ranking-star"></i></a>` : ''}
+      </div>
     </div>
   </div>`;
 }

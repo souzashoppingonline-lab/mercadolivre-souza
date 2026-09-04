@@ -183,6 +183,11 @@
             <option value="nao">Não configurada</option>
             <option value="sim">Configurada</option>
           </select>
+          <select id="fConfig" onchange="aplicarFiltros()">
+            <option value="">Configuração: todas</option>
+            <option value="completo">Completo (custo + tarifa ok)</option>
+            <option value="incompleto">Incompleto (falta custo ou tarifa)</option>
+          </select>
           <select id="fLoja" onchange="aplicarFiltros()"><option value="">Todas as lojas</option></select>
           <select id="fCategoria" onchange="aplicarFiltros()"><option value="">Todas as categorias</option></select>
           <select id="fOrdenar" onchange="aplicarFiltros()">
@@ -394,6 +399,7 @@ function aplicarFiltros(){
   const fAcao = document.getElementById('fAcao').value;
   const fCusto = document.getElementById('fCusto').value;
   const fTarifa = document.getElementById('fTarifa').value;
+  const fConfig = document.getElementById('fConfig').value;
   const fLoja = document.getElementById('fLoja').value;
   const fCategoria = document.getElementById('fCategoria').value;
   const fBusca = document.getElementById('fBusca').value.trim().toLowerCase();
@@ -418,6 +424,12 @@ function aplicarFiltros(){
     if (fCusto === 'sim' && i.custo_ausente) return false;
     if (fTarifa === 'nao' && !i.tarifa_ausente) return false;
     if (fTarifa === 'sim' && i.tarifa_ausente) return false;
+    // "Configuração" combinada — completo = custo E tarifa cadastrados (os
+    // 2 pré-requisitos pra calcular preço, ver precoParaMargem/podecalcular
+    // em analistaEcom.js); incompleto = falta pelo menos 1 dos dois.
+    const configCompleta = !i.custo_ausente && !i.tarifa_ausente;
+    if (fConfig === 'completo' && !configCompleta) return false;
+    if (fConfig === 'incompleto' && configCompleta) return false;
     if (fLoja && i.loja !== fLoja) return false;
     if (fCategoria && i.category_id !== fCategoria) return false;
     if (fBusca && !(String(i.title||'').toLowerCase().includes(fBusca) || String(i.ml_id||'').toLowerCase().includes(fBusca) || String(i.sku||'').toLowerCase().includes(fBusca))) return false;

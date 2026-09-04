@@ -15,6 +15,7 @@ const ranking = require('../ranking');
 // financeService.js também usam este mesmo módulo). Nunca duas fórmulas de
 // margem no projeto.
 const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo, buscarFreteMotoboy } = require('../vendaMargem');
+const analistaEcom = require('../analistaEcom');
 
 const router = express.Router();
 
@@ -1331,6 +1332,49 @@ router.get('/rankeamento/relatorio', async (req, res) => {
     console.error('[bi] /rankeamento/relatorio error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Analista Ecom (Inteligência de Negócio) — Central de Precificação ─────
+// Ver server/src/analistaEcom.js pro cálculo/reuso. Payload único (sem
+// endpoint por card), mesmo padrão de GET /bi/margem — filtro/ordenação
+// ficam no cliente sobre a lista já calculada.
+router.get('/analista-ecom', async (req, res) => {
+  try {
+    res.json({ items: await analistaEcom.listarAnalistaEcom({ store_id: req.query.store_id || '' }) });
+  } catch (e) {
+    console.error('[bi] /analista-ecom error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/analista-ecom/item/:mlId/historico', async (req, res) => {
+  try { res.json(await analistaEcom.getHistoricoItem(req.params.mlId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/analista-ecom/config', async (req, res) => {
+  try {
+    const [config, tarifas] = await Promise.all([analistaEcom.getConfigGlobal(), analistaEcom.getTarifasCategorias()]);
+    res.json({ config, tarifas_categoria: tarifas });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+router.patch('/analista-ecom/config', async (req, res) => {
+  try {
+    const permitido = ['frete_padrao', 'margem_alvo_pct', 'margem_minima_pct']; // imposto é por loja (stores.imposto_pct), não configurável aqui
+    const out = {};
+    for (const campo of permitido) if (req.body[campo] !== undefined) out[campo] = await analistaEcom.setConfigGlobal(campo, req.body[campo]);
+    res.json({ ok: true, ...out });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+router.post('/analista-ecom/tarifas-categoria', async (req, res) => {
+  try {
+    await analistaEcom.setTarifaCategoria(req.body.category_id, req.body.category_name, req.body.fee_percentage);
+    res.json({ ok: true });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+});
+router.delete('/analista-ecom/tarifas-categoria/:categoryId', async (req, res) => {
+  try { await analistaEcom.deleteTarifaCategoria(req.params.categoryId); res.json({ ok: true }); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 module.exports = router;

@@ -54,7 +54,9 @@
     .ae-thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:var(--bg-card2); flex:none; border:1px solid var(--border); }
     .ae-thumb.ph { display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
     .ae-title { font-size:12px; font-weight:700; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-    .ae-sku { font-size:10.5px; color:var(--text-muted); margin-top:3px; font-family:ui-monospace,monospace; }
+    .ae-sku { font-size:10.5px; color:var(--text-muted); margin-top:3px; font-family:ui-monospace,monospace; display:flex; align-items:center; gap:5px; }
+    .ae-copy-btn { background:transparent; border:0; color:var(--text-muted); cursor:pointer; padding:0; font-size:10px; display:inline-flex; }
+    .ae-copy-btn:hover { color:#8b5cf6; }
     .ae-fase { display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:800; border-radius:6px; padding:2px 7px; margin-top:5px; text-transform:uppercase; }
     .ae-meta { display:flex; flex-wrap:wrap; gap:5px 10px; font-size:10.5px; color:var(--text-muted); margin-top:5px; }
     .ae-meta b { color:var(--text-main); font-weight:600; }
@@ -309,6 +311,15 @@ function renderTarifasCategoria(){
   </div>`).join('');
 }
 function jsStr(s){ return String(s==null?'':s).replace(/'/g, "\\'"); }
+// Copiar o MLB do anúncio (mesmo padrão de bi-vendas.html: troca o ícone
+// pra um check por 1.2s como feedback, sem alert/toast novo).
+function copiarMlb(mlb, btn){
+  navigator.clipboard.writeText(String(mlb)).then(() => {
+    const ico = btn.querySelector('i'); const orig = ico.className;
+    ico.className = 'fas fa-check';
+    setTimeout(() => { ico.className = orig; }, 1200);
+  }).catch(() => {});
+}
 async function salvarConfigGlobal(){
   const body = {
     frete_padrao: document.getElementById('cfgFrete').value,
@@ -472,7 +483,7 @@ function cardHtml(r){
       ${r.thumbnail ? `<img class="ae-thumb" src="${esc(r.thumbnail)}" onerror="this.outerHTML='<div class=&quot;ae-thumb ph&quot;><i class=&quot;fas fa-image&quot;></i></div>'">` : '<div class="ae-thumb ph"><i class="fas fa-image"></i></div>'}
       <div style="min-width:0;flex:1">
         <div class="ae-title" title="${esc(r.title)}">${esc(r.title||r.ml_id)}</div>
-        <div class="ae-sku">SKU/ID: ${esc(r.sku)}</div>
+        <div class="ae-sku">SKU/ID: ${esc(r.sku)}<button class="ae-copy-btn" onclick="copiarMlb('${jsStr(r.sku)}', this)" title="Copiar MLB"><i class="fas fa-copy"></i></button></div>
         <div class="ae-meta">
           <span><b>${esc(r.loja||'—')}</b></span>
           <span>${esc(r.category_name || r.category_id || 'Sem categoria')}</span>
@@ -526,7 +537,7 @@ function renderTabela(){
     const fu = FASE_UI[r.fase] || FASE_UI[null];
     const du = DIAG_UI[r.diagnostico?.tipo] || DIAG_UI.SEM_DADOS;
     return `<tr>
-      <td>${r.thumbnail?`<img src="${esc(r.thumbnail)}" onerror="this.style.display='none'">`:''}${esc(r.title||r.ml_id)}</td>
+      <td>${r.thumbnail?`<img src="${esc(r.thumbnail)}" onerror="this.style.display='none'">`:''}${esc(r.title||r.ml_id)} <span style="color:var(--text-muted);font-family:ui-monospace,monospace;font-size:10.5px">${esc(r.sku)}<button class="ae-copy-btn" onclick="copiarMlb('${jsStr(r.sku)}', this)" title="Copiar MLB"><i class="fas fa-copy"></i></button></span></td>
       <td><span class="ae-fase" style="background:${fu.cor}22;color:${fu.cor};border:1px solid ${fu.cor}55">${esc(fu.label)}</span></td>
       <td>${BRL(r.price)}</td>
       <td>${r.custo_ausente?'⚠️':BRL(r.custo)}</td>

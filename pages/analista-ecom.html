@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analista Ecom — Inteligência de Negócio</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Analista Ecom'; window.ACTIVE_NAV='analista-ecom.html';</script>
+  <style>
+    .ae-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .ae-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px; }
+    .ae-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:12px 14px; border-left:4px solid #8b5cf6; }
+    .ae-kpi .k { font-size:10.5px; color:var(--text-muted); font-weight:700; text-transform:uppercase; }
+    .ae-kpi .v { font-size:20px; font-weight:900; margin-top:4px; }
+    .ae-kpi .d { font-size:10.5px; color:var(--text-muted); margin-top:2px; }
+    .ae-kpi.pot { border-left-color:#f59e0b; }
+
+    .ae-panel { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:14px; }
+    .ae-panel-h { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+    .ae-panel-h h3 { font-size:14px; margin:0; }
+    .ae-panel-h i.chev { margin-left:auto; transition:transform .15s; color:var(--text-muted); }
+    .ae-panel.open .ae-panel-h i.chev { transform:rotate(180deg); }
+    .ae-panel-body { display:none; margin-top:14px; }
+    .ae-panel.open .ae-panel-body { display:block; }
+    .ae-cfg-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:12px; }
+    .ae-cfg-grid label { font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px; }
+    .ae-cfg-grid input { width:100%; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; }
+    .ae-cat-row { display:flex; gap:8px; align-items:center; margin-bottom:6px; font-size:12.5px; }
+    .ae-cat-row .nm { flex:1; }
+    .ae-cat-row input { width:70px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:6px; padding:5px 7px; font-size:12px; text-align:right; }
+    .ae-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+    .ae-btn:hover { border-color:#8b5cf6; }
+    .ae-btn.primary { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+    .ae-btn.sm { padding:4px 9px; font-size:11px; }
+
+    .ae-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .ae-filters select, .ae-filters input[type=text] { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 11px; font-size:12.5px; }
+    .ae-filters input[type=text] { min-width:180px; }
+    .ae-tabs { display:flex; gap:6px; flex-wrap:wrap; }
+    .ae-tab { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:6px 11px; font-size:11.5px; font-weight:700; cursor:pointer; }
+    .ae-tab.on { background:#8b5cf622; border-color:#8b5cf6; color:#a78bfa; }
+
+    .ae-count { font-size:12px; color:var(--text-muted); margin-bottom:10px; }
+
+    .ae-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+    .ae-card { background:var(--bg-card); border:2px solid var(--border); border-radius:14px; padding:12px 14px; }
+    .ae-card-head { display:flex; gap:10px; }
+    .ae-thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:var(--bg-card2); flex:none; border:1px solid var(--border); }
+    .ae-thumb.ph { display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
+    .ae-title { font-size:12px; font-weight:700; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .ae-sku { font-size:10.5px; color:var(--text-muted); margin-top:3px; font-family:ui-monospace,monospace; }
+    .ae-fase { display:inline-flex; align-items:center; gap:4px; font-size:9.5px; font-weight:800; border-radius:6px; padding:2px 7px; margin-top:5px; text-transform:uppercase; }
+    .ae-meta { display:flex; flex-wrap:wrap; gap:5px 10px; font-size:10.5px; color:var(--text-muted); margin-top:5px; }
+    .ae-meta b { color:var(--text-main); font-weight:600; }
+    .ae-status-badge { font-size:9px; font-weight:800; border-radius:5px; padding:1px 6px; text-transform:uppercase; }
+    .ae-status-badge.active { background:rgba(63,185,80,.15); color:#3fb950; }
+    .ae-status-badge.paused { background:rgba(245,158,11,.15); color:#f59e0b; }
+    .ae-status-badge.other { background:rgba(148,163,184,.15); color:#94a3b8; }
+    .ae-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:10px 0; text-align:center; }
+    .ae-stats div .l { font-size:9px; color:var(--text-muted); text-transform:uppercase; }
+    .ae-stats div .v { font-size:12.5px; font-weight:800; margin-top:2px; }
+    .ae-fin { display:grid; grid-template-columns:repeat(2,1fr); gap:6px 10px; font-size:11.5px; border-top:1px solid var(--border); padding-top:8px; margin-top:2px; }
+    .ae-fin .row { display:flex; justify-content:space-between; align-items:center; }
+    .ae-fin .k { color:var(--text-muted); }
+    .ae-fin .v { font-weight:700; }
+    .ae-fin .v.ed { text-decoration:underline dotted; cursor:pointer; }
+    .ae-margem-box { margin:10px 0; padding:9px 10px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; }
+    .ae-margem-box .a { font-size:10px; text-transform:uppercase; }
+    .ae-margem-box .b { font-size:16px; font-weight:900; }
+    .ae-preco-rec { display:flex; justify-content:space-between; align-items:center; background:var(--bg-card2); border-radius:10px; padding:9px 10px; margin-bottom:8px; }
+    .ae-preco-rec .k { font-size:10px; color:var(--text-muted); text-transform:uppercase; }
+    .ae-preco-rec .v { font-size:16px; font-weight:900; }
+    .ae-preco-rec .diff { font-size:11px; font-weight:800; }
+    .ae-diag { border-radius:9px; padding:7px 9px; font-size:11px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .ae-card-actions { display:flex; gap:6px; }
+
+    .ae-alerta { background:rgba(245,158,11,.15); color:#f59e0b; border:1px solid rgba(245,158,11,.4); }
+    .ae-verde { background:rgba(63,185,80,.15); color:#3fb950; border:1px solid rgba(63,185,80,.4); }
+    .ae-vermelho { background:rgba(248,113,113,.15); color:#f87171; border:1px solid rgba(248,113,113,.4); }
+    .ae-azul { background:rgba(88,166,255,.15); color:#58a6ff; border:1px solid rgba(88,166,255,.4); }
+    .ae-cinza { background:rgba(148,163,184,.15); color:#94a3b8; border:1px solid rgba(148,163,184,.4); }
+    .ae-roxo { background:rgba(168,85,247,.15); color:#a855f7; border:1px solid rgba(168,85,247,.4); }
+
+    table.ae-t { width:100%; border-collapse:collapse; font-size:12px; }
+    .ae-t th, .ae-t td { padding:8px 9px; border-bottom:1px solid var(--border); text-align:right; }
+    .ae-t th:first-child, .ae-t td:first-child { text-align:left; }
+    .ae-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; }
+    .ae-t img { width:32px; height:32px; border-radius:6px; object-fit:cover; vertical-align:middle; margin-right:8px; }
+
+    .ae-empty { color:var(--text-muted); font-size:13px; padding:30px; text-align:center; }
+    .ae-view-toggle { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .ae-view-toggle button { background:var(--bg-card2); color:var(--text-muted); border:none; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; }
+    .ae-view-toggle button.on { background:#1f2937; color:#fff; }
+
+    /* Simulador */
+    .ae-sim-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1000; align-items:center; justify-content:center; padding:20px; }
+    .ae-sim-ov.open { display:flex; }
+    .ae-sim-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; width:100%; max-width:480px; padding:20px 22px; }
+    .ae-sim-modal h3 { margin:0 0 4px; font-size:16px; }
+    .ae-sim-modal .sub { font-size:12px; color:var(--text-muted); margin-bottom:14px; }
+    .ae-sim-input { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+    .ae-sim-input input[type=range] { flex:1; }
+    .ae-sim-input input[type=number] { width:90px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font-size:14px; text-align:right; }
+    table.ae-sim-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .ae-sim-t th, .ae-sim-t td { padding:6px 8px; text-align:right; border-bottom:1px solid var(--border); }
+    .ae-sim-t th:first-child, .ae-sim-t td:first-child { text-align:left; }
+    .ae-sim-t tr.atual td { font-weight:800; background:rgba(139,92,246,.08); }
+    .ae-sim-close { margin-left:auto; background:transparent; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="app-sidebar"></div>
+    <main class="main-content">
+      <div id="app-topbar"></div>
+      <div class="content">
+        <p class="ae-sub">Por quanto vender cada anúncio pra bater a margem desejada — <b>análise e recomendação</b>, não altera preço no Mercado Livre.</p>
+
+        <div class="ae-kpis" id="aeKpis"></div>
+
+        <div class="ae-panel" id="aeCfgPanel">
+          <div class="ae-panel-h" onclick="document.getElementById('aeCfgPanel').classList.toggle('open')">
+            <i class="fas fa-sliders"></i><h3>Configuração</h3><i class="fas fa-chevron-down chev"></i>
+          </div>
+          <div class="ae-panel-body">
+            <div class="ae-cfg-grid">
+              <div><label>Frete padrão (R$)</label><input type="number" step="0.01" min="0" id="cfgFrete"></div>
+              <div><label>Margem mínima (%)</label><input type="number" step="0.01" min="0" id="cfgMargemMin"></div>
+              <div><label>Margem alvo (%)</label><input type="number" step="0.01" min="0" id="cfgMargemAlvo"></div>
+            </div>
+            <p style="font-size:11.5px;color:var(--text-muted);margin:0 0 12px">Imposto não entra aqui — é por loja (<a href="lojas.html" style="color:#8b5cf6">editável em Lojas</a>) e é aplicado automaticamente por conta na hora do cálculo.</p>
+            <button class="ae-btn primary" onclick="salvarConfigGlobal()"><i class="fas fa-check"></i> Salvar configurações</button>
+            <span id="cfgStatus" style="font-size:12px;color:var(--text-muted);margin-left:10px"></span>
+
+            <h4 style="font-size:12.5px;margin:16px 0 8px;color:var(--text-muted);text-transform:uppercase">Tarifa por categoria</h4>
+            <div id="aeCatList"></div>
+            <div class="ae-cat-row" style="margin-top:8px">
+              <input type="text" id="catIdNovo" placeholder="ID da categoria (ex.: MLB1276)" style="flex:1.3;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:6px;padding:6px 9px">
+              <input type="text" id="catNomeNovo" placeholder="Nome (opcional)" class="nm" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:6px;padding:6px 9px">
+              <input type="number" id="catFeeNovo" placeholder="%" step="0.01" min="0" max="100">
+              <button class="ae-btn sm primary" onclick="adicionarTarifaCategoria()"><i class="fas fa-plus"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ae-filters">
+          <div class="ae-tabs" id="aeTabsFase"></div>
+          <select id="fMargem" onchange="aplicarFiltros()">
+            <option value="">Margem: todas</option>
+            <option value="abaixo">Abaixo da meta</option>
+            <option value="dentro">Dentro da meta</option>
+            <option value="acima">Acima da meta</option>
+          </select>
+          <select id="fAcao" onchange="aplicarFiltros()">
+            <option value="">Ação: todas</option>
+            <option value="AUMENTAR_PRECO">Aumentar preço</option>
+            <option value="REDUZIR_PRECO">Reduzir preço</option>
+            <option value="MANTER_PRECO">Manter</option>
+            <option value="REVISAR_ANUNCIO">Revisar anúncio</option>
+            <option value="CUSTO_NAO_CADASTRADO">Custo não cadastrado</option>
+            <option value="TARIFA_NAO_CONFIGURADA">Tarifa não configurada</option>
+          </select>
+          <select id="fLoja" onchange="aplicarFiltros()"><option value="">Todas as lojas</option></select>
+          <select id="fCategoria" onchange="aplicarFiltros()"><option value="">Todas as categorias</option></select>
+          <select id="fOrdenar" onchange="aplicarFiltros()">
+            <option value="diferenca">Maior diferença p/ margem alvo</option>
+            <option value="menor_margem">Menor margem</option>
+            <option value="maior_margem">Maior margem</option>
+            <option value="oportunidade">Maior oportunidade de margem</option>
+            <option value="vendas">Maior nº de vendas (30d)</option>
+            <option value="conversao">Maior conversão</option>
+            <option value="diferenca_preco">Maior diferença preço atual × recomendado</option>
+          </select>
+          <input type="text" id="fBusca" placeholder="Buscar por título ou ID..." oninput="aplicarFiltrosDebounce()">
+          <div class="ae-view-toggle">
+            <button id="btnViewCards" class="on" onclick="mudarVisao('cards')"><i class="fas fa-grip"></i> Cards</button>
+            <button id="btnViewTable" onclick="mudarVisao('table')"><i class="fas fa-table"></i> Tabela</button>
+          </div>
+          <button class="ae-btn sm" onclick="exportarCsv()"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+
+        <div class="ae-count" id="aeCount"></div>
+        <div id="aeGrid" class="ae-grid"></div>
+        <div id="aeTableWrap" style="display:none;overflow-x:auto">
+          <table class="ae-t">
+            <thead><tr><th>Anúncio</th><th>Estágio</th><th>Preço</th><th>Custo</th><th>Tarifa</th><th>Frete</th><th>Imposto</th><th>Margem</th><th>Meta</th><th>Preço recomendado</th><th>Ação</th></tr></thead>
+            <tbody id="aeTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Simulador de preço -->
+  <div class="ae-sim-ov" id="aeSimOv" onclick="if(event.target===this)fecharSimulador()">
+    <div class="ae-sim-modal">
+      <button class="ae-sim-close" onclick="fecharSimulador()" style="float:right"><i class="fas fa-times"></i></button>
+      <h3 id="aeSimTitulo">Simular preço</h3>
+      <div class="sub" id="aeSimSub"></div>
+      <div class="ae-sim-input">
+        <input type="range" id="aeSimRange" min="0" max="0" step="0.5" oninput="atualizarSimulador(this.value)">
+        <input type="number" id="aeSimValor" step="0.01" min="0" onchange="atualizarSimulador(this.value)">
+      </div>
+      <table class="ae-sim-t">
+        <thead><tr><th>Preço</th><th>Margem %</th><th>Margem R$</th></tr></thead>
+        <tbody id="aeSimTbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Histórico de vendas + visitas (3/7/10/15/21/30 dias) -->
+  <div class="ae-sim-ov" id="aeHistOv" onclick="if(event.target===this)fecharHistorico()">
+    <div class="ae-sim-modal" style="max-width:560px">
+      <button class="ae-sim-close" onclick="fecharHistorico()" style="float:right"><i class="fas fa-times"></i></button>
+      <h3 id="aeHistTitulo">Histórico</h3>
+      <div class="sub">Vendas e visitas dos últimos 30 dias — os totais de 3/7/10/15/21/30 dias são a soma da mesma série.</div>
+      <div id="aeHistTotais" style="margin:12px 0"></div>
+      <div style="max-height:280px;overflow:auto">
+        <table class="ae-sim-t">
+          <thead><tr><th>Dia</th><th>Pedidos</th><th>Unidades</th><th>Visitas</th></tr></thead>
+          <tbody id="aeHistTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/db.js"></script>
+  <script src="../js/layout-bi.js"></script>
+  <script>
+const BRL = n => (n==null?'—':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0));
+const PCT = n => (n==null?'—':`${Number(n).toFixed(1).replace('.',',')}%`);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Mesma paleta do módulo Rankeamento (rankeamento.md) — nunca cor nova pro
+// mesmo conceito de estágio.
+const FASE_UI = {
+  rankeando:     { label: 'Em rankeamento', cor: '#ffd60a', txt: '#1a1a1a' },
+  ranqueado:     { label: 'Ranqueado',      cor: '#2ea043', txt: '#ffffff' },
+  monitoramento: { label: 'Monitoramento',  cor: '#f59e0b', txt: '#1a1a1a' },
+  recuperacao:   { label: 'Recuperação',    cor: '#f85149', txt: '#ffffff' },
+  catalogo:      { label: 'Catálogo/Buy Box', cor: '#a855f7', txt: '#ffffff' },
+  null:          { label: 'Sem rankeamento', cor: '#8b949e', txt: '#ffffff' },
+};
+const DIAG_UI = {
+  AUMENTAR_PRECO:        { classe: 'ae-verde',    ico: '📈' },
+  REDUZIR_PRECO:         { classe: 'ae-vermelho', ico: '📉' },
+  MANTER_PRECO:          { classe: 'ae-azul',     ico: '✅' },
+  REVISAR_ANUNCIO:       { classe: 'ae-roxo',     ico: '🔍' },
+  CUSTO_NAO_CADASTRADO:  { classe: 'ae-alerta',   ico: '⚠️' },
+  TARIFA_NAO_CONFIGURADA:{ classe: 'ae-alerta',   ico: '⚠️' },
+  NAO_ALTERAR_CATALOGO:  { classe: 'ae-cinza',    ico: '🏆' },
+  SEM_DADOS:             { classe: 'ae-cinza',    ico: '—' },
+};
+const MARGEM_TIERS = [ // mesma faixa de bi-vendas.html / business-rules.md
+  { min: 20, rgb: '22,163,74'   }, { min: 15, rgb: '63,185,80'   },
+  { min: 10, rgb: '161,98,7'    }, { min: 5,  rgb: '234,88,12'   },
+  { min: 0,  rgb: '248,113,113' }, { min: -Infinity, rgb: '185,28,28' },
+];
+function margemTier(pct){ const p = Number(pct)||0; return MARGEM_TIERS.find(t => p >= t.min) || MARGEM_TIERS[MARGEM_TIERS.length-1]; }
+
+let ITENS = [], FILTRADOS = [], CONFIG = {}, TARIFAS = [], VISAO = 'cards';
+const FASES_TAB = ['todos','rankeando','ranqueado','monitoramento','recuperacao','catalogo'];
+let faseAtiva = 'todos';
+
+async function carregarConfig(){
+  const d = await DB.getAnalistaEcomConfig();
+  if (!d || d.error) return;
+  CONFIG = d.config; TARIFAS = d.tarifas_categoria || [];
+  document.getElementById('cfgFrete').value = CONFIG.frete_padrao;
+  document.getElementById('cfgMargemMin').value = CONFIG.margem_minima_pct;
+  document.getElementById('cfgMargemAlvo').value = CONFIG.margem_alvo_pct;
+  renderTarifasCategoria();
+}
+function renderTarifasCategoria(){
+  const box = document.getElementById('aeCatList');
+  if (!TARIFAS.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Nenhuma categoria configurada ainda.</div>'; return; }
+  box.innerHTML = TARIFAS.map(t => `<div class="ae-cat-row">
+    <span class="nm">${esc(t.category_name || t.category_id)} <span style="color:var(--text-muted);font-size:10px">${esc(t.category_id)}</span></span>
+    <input type="number" step="0.01" min="0" max="100" value="${t.fee_percentage}" onchange="editarTarifaCategoria('${jsStr(t.category_id)}', this.value)">
+    <button class="ae-btn sm" onclick="removerTarifaCategoria('${jsStr(t.category_id)}')"><i class="fas fa-trash"></i></button>
+  </div>`).join('');
+}
+function jsStr(s){ return String(s==null?'':s).replace(/'/g, "\\'"); }
+async function salvarConfigGlobal(){
+  const body = {
+    frete_padrao: document.getElementById('cfgFrete').value,
+    margem_minima_pct: document.getElementById('cfgMargemMin').value,
+    margem_alvo_pct: document.getElementById('cfgMargemAlvo').value,
+  };
+  const r = await DB.patchAnalistaEcomConfig(body);
+  const st = document.getElementById('cfgStatus');
+  if (!r || r.error) { st.textContent = '⚠️ ' + (r&&r.error||'erro ao salvar'); st.style.color = '#f87171'; return; }
+  st.textContent = '✅ Salvo'; st.style.color = '#3fb950';
+  setTimeout(() => st.textContent = '', 3000);
+  await carregar();
+}
+async function adicionarTarifaCategoria(){
+  const category_id = document.getElementById('catIdNovo').value.trim();
+  const category_name = document.getElementById('catNomeNovo').value.trim();
+  const fee_percentage = document.getElementById('catFeeNovo').value;
+  if (!category_id || fee_percentage === '') { alert('Preencha ID da categoria e a tarifa.'); return; }
+  const r = await DB.setAnalistaEcomTarifaCategoria({ category_id, category_name, fee_percentage });
+  if (!r || r.error) { alert(r&&r.error || 'Erro ao salvar tarifa'); return; }
+  document.getElementById('catIdNovo').value = ''; document.getElementById('catNomeNovo').value = ''; document.getElementById('catFeeNovo').value = '';
+  await carregarConfig(); await carregar();
+}
+async function editarTarifaCategoria(categoryId, valor){
+  const t = TARIFAS.find(x => x.category_id === categoryId);
+  const r = await DB.setAnalistaEcomTarifaCategoria({ category_id: categoryId, category_name: t?.category_name, fee_percentage: valor });
+  if (!r || r.error) { alert(r&&r.error||'Erro ao salvar'); return; }
+  await carregarConfig(); await carregar();
+}
+async function removerTarifaCategoria(categoryId){
+  if (!confirm('Remover a tarifa desta categoria? Anúncios dela voltam a mostrar "Tarifa não configurada".')) return;
+  await DB.delAnalistaEcomTarifaCategoria(categoryId);
+  await carregarConfig(); await carregar();
+}
+
+async function carregar(){
+  const d = await DB.getAnalistaEcom();
+  if (!d || d.error) { document.getElementById('aeGrid').innerHTML = `<div class="ae-empty">Erro: ${esc(d&&d.error||'')}</div>`; return; }
+  ITENS = d.items || [];
+  popularFiltrosDerivados();
+  renderKpis();
+  aplicarFiltros();
+}
+
+function popularFiltrosDerivados(){
+  const lojas = [...new Set(ITENS.map(i => i.loja).filter(Boolean))].sort();
+  const cats = [...new Map(ITENS.filter(i=>i.category_id).map(i => [i.category_id, i.category_name || i.category_id])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  const selLoja = document.getElementById('fLoja'), selCat = document.getElementById('fCategoria');
+  const lojaAtual = selLoja.value, catAtual = selCat.value;
+  selLoja.innerHTML = '<option value="">Todas as lojas</option>' + lojas.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+  selCat.innerHTML = '<option value="">Todas as categorias</option>' + cats.map(([id,nm]) => `<option value="${esc(id)}">${esc(nm)}</option>`).join('');
+  selLoja.value = lojaAtual; selCat.value = catAtual;
+
+  const contagemFase = {};
+  ITENS.forEach(i => { const f = i.fase || 'sem'; contagemFase[f] = (contagemFase[f]||0)+1; });
+  document.getElementById('aeTabsFase').innerHTML = FASES_TAB.map(f => {
+    const label = f === 'todos' ? 'Todos' : FASE_UI[f].label;
+    const n = f === 'todos' ? ITENS.length : (contagemFase[f]||0);
+    return `<button class="ae-tab ${faseAtiva===f?'on':''}" onclick="mudarFaseTab('${f}')">${label} <span style="opacity:.7">(${n})</span></button>`;
+  }).join('');
+}
+function mudarFaseTab(f){ faseAtiva = f; popularFiltrosDerivados(); aplicarFiltros(); }
+
+function renderKpis(){
+  const alvo = CONFIG.margem_alvo_pct;
+  const analisados = ITENS.length;
+  const abaixo = ITENS.filter(i => i.margem_atual_pct != null && i.margem_atual_pct < alvo - 2).length;
+  const naMeta = ITENS.filter(i => i.margem_atual_pct != null && Math.abs(i.margem_atual_pct - alvo) <= 2).length;
+  const acima = ITENS.filter(i => i.margem_atual_pct != null && i.margem_atual_pct > alvo + 2).length;
+  const revisar = ITENS.filter(i => ['REVISAR_ANUNCIO','AUMENTAR_PRECO','REDUZIR_PRECO','CUSTO_NAO_CADASTRADO','TARIFA_NAO_CONFIGURADA'].includes(i.diagnostico?.tipo)).length;
+  const potencial = ITENS.reduce((s,i) => s + (i.oportunidade_reais||0), 0);
+  document.getElementById('aeKpis').innerHTML = `
+    <div class="ae-kpi"><div class="k">Anúncios analisados</div><div class="v">${analisados}</div></div>
+    <div class="ae-kpi"><div class="k">Abaixo da margem</div><div class="v" style="color:#f87171">${abaixo}</div></div>
+    <div class="ae-kpi"><div class="k">Dentro da meta</div><div class="v" style="color:#3fb950">${naMeta}</div></div>
+    <div class="ae-kpi"><div class="k">Acima da meta</div><div class="v" style="color:#58a6ff">${acima}</div></div>
+    <div class="ae-kpi"><div class="k">Para revisão</div><div class="v" style="color:#f59e0b">${revisar}</div></div>
+    <div class="ae-kpi pot"><div class="k">Oportunidade de margem</div><div class="v">${BRL(potencial)}</div><div class="d">Potencial estimado — mudar preço pode afetar conversão/volume</div></div>`;
+}
+
+let buscaTimer;
+function aplicarFiltrosDebounce(){ clearTimeout(buscaTimer); buscaTimer = setTimeout(aplicarFiltros, 300); }
+
+function aplicarFiltros(){
+  const fMargem = document.getElementById('fMargem').value;
+  const fAcao = document.getElementById('fAcao').value;
+  const fLoja = document.getElementById('fLoja').value;
+  const fCategoria = document.getElementById('fCategoria').value;
+  const fBusca = document.getElementById('fBusca').value.trim().toLowerCase();
+  const alvo = CONFIG.margem_alvo_pct;
+
+  FILTRADOS = ITENS.filter(i => {
+    if (faseAtiva !== 'todos' && (i.fase || 'sem') !== faseAtiva) return false;
+    if (fMargem && i.margem_atual_pct != null) {
+      if (fMargem === 'abaixo' && !(i.margem_atual_pct < alvo - 2)) return false;
+      if (fMargem === 'dentro' && !(Math.abs(i.margem_atual_pct - alvo) <= 2)) return false;
+      if (fMargem === 'acima' && !(i.margem_atual_pct > alvo + 2)) return false;
+    } else if (fMargem) return false;
+    if (fAcao && i.diagnostico?.tipo !== fAcao) return false;
+    if (fLoja && i.loja !== fLoja) return false;
+    if (fCategoria && i.category_id !== fCategoria) return false;
+    if (fBusca && !(String(i.title||'').toLowerCase().includes(fBusca) || String(i.ml_id||'').toLowerCase().includes(fBusca) || String(i.sku||'').toLowerCase().includes(fBusca))) return false;
+    return true;
+  });
+
+  const ord = document.getElementById('fOrdenar').value;
+  const cmp = {
+    diferenca: (a,b) => (a.margem_atual_pct==null?999:Math.abs((a.margem_atual_pct??0)-alvo)) < (b.margem_atual_pct==null?999:Math.abs((b.margem_atual_pct??0)-alvo)) ? 1 : -1,
+    menor_margem: (a,b) => (a.margem_atual_pct??999) - (b.margem_atual_pct??999),
+    maior_margem: (a,b) => (b.margem_atual_pct??-999) - (a.margem_atual_pct??-999),
+    oportunidade: (a,b) => (b.oportunidade_reais||0) - (a.oportunidade_reais||0),
+    vendas: (a,b) => (b.sales_30d||0) - (a.sales_30d||0),
+    conversao: (a,b) => (b.conversion_rate||0) - (a.conversion_rate||0),
+    diferenca_preco: (a,b) => Math.abs(b.diferenca_recomendado_pct||0) - Math.abs(a.diferenca_recomendado_pct||0),
+  }[ord] || ((a,b)=>0);
+  FILTRADOS.sort(cmp);
+
+  document.getElementById('aeCount').textContent = `${FILTRADOS.length} anúncio(s)`;
+  if (VISAO === 'cards') renderCards(); else renderTabela();
+}
+
+function mudarVisao(v){
+  VISAO = v;
+  document.getElementById('btnViewCards').classList.toggle('on', v==='cards');
+  document.getElementById('btnViewTable').classList.toggle('on', v==='table');
+  document.getElementById('aeGrid').style.display = v==='cards' ? 'grid' : 'none';
+  document.getElementById('aeTableWrap').style.display = v==='table' ? 'block' : 'none';
+  if (v==='cards') renderCards(); else renderTabela();
+}
+
+function cardHtml(r){
+  const fu = FASE_UI[r.fase] || FASE_UI[null];
+  const diag = r.diagnostico || {};
+  const du = DIAG_UI[diag.tipo] || DIAG_UI.SEM_DADOS;
+  const tierM = r.margem_atual_pct != null ? margemTier(r.margem_atual_pct) : null;
+  const diff = r.diferenca_recomendado_pct;
+  return `<div class="ae-card" style="border-color:${fu.cor}">
+    <div class="ae-card-head">
+      ${r.thumbnail ? `<img class="ae-thumb" src="${esc(r.thumbnail)}" onerror="this.outerHTML='<div class=&quot;ae-thumb ph&quot;><i class=&quot;fas fa-image&quot;></i></div>'">` : '<div class="ae-thumb ph"><i class="fas fa-image"></i></div>'}
+      <div style="min-width:0;flex:1">
+        <div class="ae-title" title="${esc(r.title)}">${esc(r.title||r.ml_id)}</div>
+        <div class="ae-sku">SKU/ID: ${esc(r.sku)}</div>
+        <div class="ae-meta">
+          <span><b>${esc(r.loja||'—')}</b></span>
+          <span>${esc(r.category_name || r.category_id || 'Sem categoria')}</span>
+          <span class="ae-status-badge ${r.status==='active'?'active':(r.status==='paused'?'paused':'other')}">${esc(r.status||'—')}</span>
+        </div>
+        <span class="ae-fase" style="background:${fu.cor}22;color:${fu.cor};border:1px solid ${fu.cor}55">${esc(fu.label)}</span>
+      </div>
+    </div>
+    <div class="ae-stats">
+      <div><div class="l">Estoque</div><div class="v">${r.available_quantity!=null?r.available_quantity:'—'}</div></div>
+      <div><div class="l">Visitas 30d</div><div class="v">${r.visits_30d!=null?r.visits_30d:'—'}</div></div>
+      <div><div class="l">Vendas 30d</div><div class="v">${r.sales_30d!=null?r.sales_30d:'—'}</div></div>
+      <div><div class="l">Conversão</div><div class="v">${r.conversion_rate!=null?PCT(r.conversion_rate*100):'—'}</div></div>
+    </div>
+    <div class="ae-fin">
+      <div class="row"><span class="k">Preço atual</span><span class="v">${BRL(r.price)}</span></div>
+      <div class="row"><span class="k">Custo</span><span class="v ed" onclick="editarCusto('${jsStr(r.ml_id)}', ${r.custo})" title="Clique para editar">${r.custo_ausente ? '⚠️ não cadastrado' : BRL(r.custo)}</span></div>
+      <div class="row"><span class="k">Tarifa</span><span class="v">${r.tarifa_ausente ? '⚠️ não configurada' : PCT(r.tarifa_pct)}</span></div>
+      <div class="row"><span class="k">Frete</span><span class="v">${BRL(r.frete)}</span></div>
+      <div class="row"><span class="k">Imposto</span><span class="v">${PCT(r.imposto_pct)}</span></div>
+      <div class="row"><span class="k">Margem alvo</span><span class="v">${PCT(r.margem_alvo_pct)}</span></div>
+    </div>
+    <div class="ae-margem-box" style="background:rgba(${tierM?tierM.rgb:'148,163,184'},.12);border:1px solid rgba(${tierM?tierM.rgb:'148,163,184'},.35)">
+      <span class="a" style="color:rgb(${tierM?tierM.rgb:'148,163,184'})">Margem atual</span>
+      <span class="b" style="color:rgb(${tierM?tierM.rgb:'148,163,184'})">${r.margem_atual_pct!=null?PCT(r.margem_atual_pct):'—'} ${r.margem_atual_reais!=null?'('+BRL(r.margem_atual_reais)+')':''}</span>
+    </div>
+    ${r.preco_recomendado!=null ? `<div class="ae-preco-rec">
+      <div><div class="k">Preço recomendado</div><div class="v">${BRL(r.preco_recomendado)}</div></div>
+      ${diff!=null ? `<span class="diff" style="color:${diff>=0?'#3fb950':'#f87171'}">${diff>=0?'+':''}${diff.toFixed(1)}%</span>` : ''}
+    </div>` : ''}
+    ${r.em_promocao ? `<div class="ae-diag ae-roxo" title="${r.promo_discount_pct!=null?`${r.promo_discount_pct}% de desconto`:''}">🏷️ Em promoção${r.promo_price!=null?` — preço promo ${BRL(r.promo_price)}`:''}</div>` : ''}
+    <div class="ae-diag ${du.classe}">${du.ico} ${esc(diag.label||'')}</div>
+    <div class="ae-card-actions">
+      <button class="ae-btn sm" style="flex:1" onclick="abrirSimulador('${jsStr(r.ml_id)}')"><i class="fas fa-sliders"></i> Simular</button>
+      <button class="ae-btn sm" style="flex:1" onclick="abrirHistorico('${jsStr(r.ml_id)}', '${jsStr(r.title||r.ml_id)}')"><i class="fas fa-chart-column"></i> Histórico</button>
+      ${r.fase ? `<a class="ae-btn sm" href="rankeamento.html" title="Ver no Rankeamento"><i class="fas fa-ranking-star"></i></a>` : ''}
+    </div>
+  </div>`;
+}
+function renderCards(){
+  const box = document.getElementById('aeGrid');
+  if (!FILTRADOS.length) { box.innerHTML = '<div class="ae-empty">Nenhum anúncio encontrado com esses filtros.</div>'; return; }
+  box.innerHTML = FILTRADOS.map(cardHtml).join('');
+}
+function renderTabela(){
+  const body = document.getElementById('aeTableBody');
+  if (!FILTRADOS.length) { body.innerHTML = '<tr><td colspan="11" class="ae-empty">Nenhum anúncio encontrado com esses filtros.</td></tr>'; return; }
+  body.innerHTML = FILTRADOS.map(r => {
+    const fu = FASE_UI[r.fase] || FASE_UI[null];
+    const du = DIAG_UI[r.diagnostico?.tipo] || DIAG_UI.SEM_DADOS;
+    return `<tr>
+      <td>${r.thumbnail?`<img src="${esc(r.thumbnail)}" onerror="this.style.display='none'">`:''}${esc(r.title||r.ml_id)}</td>
+      <td><span class="ae-fase" style="background:${fu.cor}22;color:${fu.cor};border:1px solid ${fu.cor}55">${esc(fu.label)}</span></td>
+      <td>${BRL(r.price)}</td>
+      <td>${r.custo_ausente?'⚠️':BRL(r.custo)}</td>
+      <td>${r.tarifa_ausente?'⚠️':PCT(r.tarifa_pct)}</td>
+      <td>${BRL(r.frete)}</td>
+      <td>${PCT(r.imposto_pct)}</td>
+      <td>${r.margem_atual_pct!=null?PCT(r.margem_atual_pct):'—'}</td>
+      <td>${PCT(r.margem_alvo_pct)}</td>
+      <td>${BRL(r.preco_recomendado)}</td>
+      <td><span class="ae-diag ${du.classe}" style="display:inline-flex">${du.ico} ${esc(r.diagnostico?.label||'')}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Edição rápida de custo ───────────────────────────────────────────────
+async function editarCusto(mlId, atual){
+  const v = prompt('Custo do produto (R$):', atual || '');
+  if (v == null) return;
+  const n = parseFloat(String(v).replace(',', '.'));
+  if (isNaN(n) || n < 0) { alert('Valor inválido.'); return; }
+  const r = await DB.updateItemCusto(mlId, n);
+  if (!r || r.error) { alert(r&&r.error||'Erro ao salvar custo'); return; }
+  await carregar();
+}
+
+// ── Simulador de preço ───────────────────────────────────────────────────
+let SIM_ITEM = null;
+function abrirSimulador(mlId){
+  SIM_ITEM = ITENS.find(i => i.ml_id === mlId);
+  if (!SIM_ITEM) return;
+  document.getElementById('aeSimTitulo').textContent = SIM_ITEM.title || mlId;
+  document.getElementById('aeSimSub').textContent = `Custo ${BRL(SIM_ITEM.custo)} · Frete ${BRL(SIM_ITEM.frete)} · Tarifa ${PCT(SIM_ITEM.tarifa_pct)} · Imposto ${PCT(SIM_ITEM.imposto_pct)}`;
+  const base = SIM_ITEM.price || 0;
+  const range = document.getElementById('aeSimRange');
+  range.min = Math.max(0, base * 0.5).toFixed(2); range.max = (base * 1.5 || 100).toFixed(2);
+  range.value = base; document.getElementById('aeSimValor').value = base.toFixed(2);
+  document.getElementById('aeSimOv').classList.add('open');
+  atualizarSimulador(base);
+}
+function fecharSimulador(){ document.getElementById('aeSimOv').classList.remove('open'); SIM_ITEM = null; }
+function margemNoPrecoClient(preco, item){
+  const p = Number(preco);
+  if (!(p > 0) || item.custo_ausente || item.tarifa_ausente) return { reais: null, pct: null };
+  const reais = Math.round((p * (1 - item.tarifa_pct/100 - item.imposto_pct/100) - item.frete - item.custo) * 100) / 100;
+  return { reais, pct: Math.round((reais / p) * 10000) / 100 };
+}
+function atualizarSimulador(valor){
+  const p = parseFloat(valor);
+  document.getElementById('aeSimRange').value = p;
+  document.getElementById('aeSimValor').value = isNaN(p) ? '' : p.toFixed(2);
+  if (!SIM_ITEM || isNaN(p)) return;
+  const base = SIM_ITEM.price || 0;
+  const pontos = [base*0.9, base*0.95, base, p, base*1.05, base*1.1]
+    .map(v => Math.round(v*100)/100)
+    .filter((v,i,arr) => arr.indexOf(v)===i)
+    .sort((a,b)=>a-b);
+  document.getElementById('aeSimTbody').innerHTML = pontos.map(v => {
+    const m = margemNoPrecoClient(v, SIM_ITEM);
+    const ehAtual = Math.abs(v - p) < 0.005;
+    return `<tr class="${ehAtual?'atual':''}"><td>${BRL(v)}</td><td>${m.pct!=null?PCT(m.pct):'—'}</td><td>${m.reais!=null?BRL(m.reais):'—'}</td></tr>`;
+  }).join('');
+}
+// ── Histórico de vendas/visitas (modal do card) ─────────────────────────
+const JANELAS_HIST = [3, 7, 10, 15, 21, 30];
+async function abrirHistorico(mlId, titulo){
+  document.getElementById('aeHistTitulo').textContent = titulo;
+  document.getElementById('aeHistTotais').innerHTML = '<div class="ae-empty" style="padding:10px">Carregando…</div>';
+  document.getElementById('aeHistTbody').innerHTML = '';
+  document.getElementById('aeHistOv').classList.add('open');
+  const d = await DB.getAnalistaEcomHistorico(mlId);
+  if (!d || d.error) { document.getElementById('aeHistTotais').innerHTML = `<div class="ae-empty">Erro: ${esc(d&&d.error||'')}</div>`; return; }
+  document.getElementById('aeHistTotais').innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${JANELAS_HIST.map(j => {
+    const t = d.totais[j] || { pedidos:0, unidades:0, visitas:0 };
+    return `<div style="background:var(--bg-card2);border-radius:8px;padding:8px 10px;text-align:center">
+      <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase">${j}d</div>
+      <div style="font-size:14px;font-weight:800">${t.pedidos} venda(s)</div>
+      <div style="font-size:10.5px;color:var(--text-muted)">${t.unidades} un. · ${t.visitas} visita(s)</div>
+    </div>`;
+  }).join('')}</div>`;
+  document.getElementById('aeHistTbody').innerHTML = (d.dias||[]).slice().reverse().map(x => `<tr>
+    <td>${x.data.split('-').reverse().join('/')}</td><td>${x.pedidos}</td><td>${x.unidades}</td><td>${x.visitas}</td>
+  </tr>`).join('');
+}
+function fecharHistorico(){ document.getElementById('aeHistOv').classList.remove('open'); }
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { fecharSimulador(); fecharHistorico(); } });
+
+// ── CSV ──────────────────────────────────────────────────────────────────
+function exportarCsv(){
+  const linhas = [['Anúncio','SKU/ID','Loja','Categoria','Status','Estágio','Estoque','Visitas 30d','Vendas 30d','Conversão','Preço','Custo','Tarifa %','Frete','Imposto %','Margem %','Margem R$','Meta %','Preço equilíbrio','Preço mínimo','Preço recomendado','Ação']];
+  FILTRADOS.forEach(r => linhas.push([
+    r.title, r.sku, r.loja, r.category_name||r.category_id||'', r.status, (FASE_UI[r.fase]||FASE_UI[null]).label,
+    r.available_quantity, r.visits_30d, r.sales_30d, r.conversion_rate!=null?(r.conversion_rate*100).toFixed(2)+'%':'',
+    r.price, r.custo_ausente?'NÃO CADASTRADO':r.custo, r.tarifa_ausente?'NÃO CONFIGURADA':r.tarifa_pct, r.frete, r.imposto_pct,
+    r.margem_atual_pct, r.margem_atual_reais, r.margem_alvo_pct,
+    r.preco_equilibrio, r.preco_minimo, r.preco_recomendado, r.diagnostico?.label||'',
+  ]));
+  const csv = linhas.map(l => l.map(v => `"${String(v==null?'':v).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob = new Blob(['﻿'+csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'analista-ecom.csv';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+(async () => { await carregarConfig(); await carregar(); })();
+  </script>
+</body>
+</html>

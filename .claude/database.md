@@ -715,3 +715,12 @@ concluida_em TIMESTAMPTZ                              -- v87: CARIMBO de quando 
 -- idx_business_insights_item (item_id)
 ```
 As ações em si (`acoes[]` de `GET /api/bi/margem`) continuam 100% recalculadas a cada request, nunca persistidas — só o status marcado manualmente pela analista é gravado aqui. Sem coluna de histórico de transições nem valor de resultado real congelado — o efeito antes×depois (v87) é sempre recalculado a partir de `concluida_em` + os pedidos crus, nunca uma "verdade" gravada. Lida/escrita por `GET`/`PATCH /api/bi/margem/acoes-status`, feedback em `GET /api/bi/margem/acoes-feedback`.
+
+### `pricing_category_fees` — v90: tarifa % do Mercado Livre por categoria (Analista Ecom, ver `modules.md`)
+```
+category_id TEXT PK                                   -- ex. 'MLB1276', mesmo id de items.category_id
+category_name TEXT                                    -- cacheado no momento do cadastro (evita lookup toda leitura)
+fee_percentage NUMERIC NOT NULL
+created_at, updated_at TIMESTAMPTZ DEFAULT now()
+```
+Tarifa é política do próprio Mercado Livre POR CATEGORIA — vale pra qualquer loja que liste ali, por isso não é por `store_id`. Categoria sem linha aqui = `tarifa_ausente=true` em `analistaEcom.js` (nunca assume uma % default). Único componente do preço-alvo (`P=(C+F)/(1-T-I-M)`) que virou tabela nova — custo reusa `items.cost`/`cost_updated_at`, imposto reusa `stores.imposto_pct`, e frete padrão/margem alvo/margem mínima são 3 escalares em `app_config` (sem migration). CRUD via `POST`/`DELETE /api/bi/analista-ecom/tarifas-categoria*`.

@@ -316,6 +316,13 @@ const DB = {
   // usados hoje só em bi-margem.html (Visão Geral). Quando presentes, o
   // backend ignora `days` e usa o intervalo explícito — ver business-rules.md.
   async getBiMargem(days = 30, store_id = '', extra = {}) { return this._get('/bi/margem', { days, store_id, ...extra }); },
+  // Analista Ecom — Central de Precificação.
+  async getAnalistaEcom(store_id = '')             { return this._get('/bi/analista-ecom', { store_id }); },
+  async getAnalistaEcomConfig()                    { return this._get('/bi/analista-ecom/config'); },
+  async patchAnalistaEcomConfig(body)              { return this._patch('/bi/analista-ecom/config', body); },
+  async setAnalistaEcomTarifaCategoria(body)        { return this._post('/bi/analista-ecom/tarifas-categoria', body); },
+  async delAnalistaEcomTarifaCategoria(categoryId)  { return this._delete(`/bi/analista-ecom/tarifas-categoria/${encodeURIComponent(categoryId)}`); },
+  async getAnalistaEcomHistorico(mlId)              { return this._get(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/historico`); },
   async getBiMargemNarrativa(days = 30, store_id = '', extra = {}) { return this._post('/bi/margem/narrativa', { days, store_id, ...extra }); },
   async getBiMargemProduto(itemId, days = 60, store_id = '') { return this._get(`/bi/margem/produto/${encodeURIComponent(itemId)}`, { days, store_id }); },
   // Vendas por Estágio (integração com o módulo Rankeamento) — ver rankeamento.md/business-rules.md.

@@ -1141,8 +1141,8 @@ async function loadTable(q = '') {
 // seguintes, e era fácil esquecer de trocar de volta pra 'rankeando').
 //
 // BUG corrigido: DB._post (js/db.js) NUNCA lança exceção — em qualquer
-// falha (limite de MAX_ADS atingido, anúncio não sincronizado, erro do
-// servidor) ela devolve `null` e guarda o motivo em DB.lastError (mesmo
+// falha (ex.: anúncio não sincronizado, erro do servidor) ela devolve
+// `null` e guarda o motivo em DB.lastError (mesmo
 // contrato usado em TODA a página — mudarFase()/togglePause() etc. checam
 // `if (!r)`). Este `try/catch` estava esperando uma exceção que nunca
 // vinha, então uma falha real (ex.: "Limite de 30 anúncios atingido")

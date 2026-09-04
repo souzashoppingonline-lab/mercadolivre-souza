@@ -128,10 +128,6 @@
       <div id="app-topbar"></div>
       <div class="content">
         <p class="ae-sub">Por quanto vender cada anúncio pra bater a margem desejada — <b>análise e recomendação</b>, não altera preço no Mercado Livre.</p>
-        <div id="aeFreteAviso" hidden style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:#f59e0b;border-radius:10px;padding:9px 14px;font-size:12.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px">
-          <i class="fas fa-triangle-exclamation"></i>
-          <span>Frete padrão ainda não foi configurado (R$ 0,00) — anúncios sem frete próprio (✏️ no card) calculam sem frete. <a href="#" onclick="document.getElementById('aeCfgPanel').classList.add('open'); document.getElementById('cfgFrete').focus(); return false" style="color:#f59e0b;text-decoration:underline">Configurar o padrão agora</a></span>
-        </div>
 
         <div class="ae-kpis" id="aeKpis"></div>
 
@@ -296,7 +292,6 @@ async function carregarConfig(){
   document.getElementById('cfgFrete').value = CONFIG.frete_padrao;
   document.getElementById('cfgMargemMin').value = CONFIG.margem_minima_pct;
   document.getElementById('cfgMargemAlvo').value = CONFIG.margem_alvo_pct;
-  document.getElementById('aeFreteAviso').hidden = Number(CONFIG.frete_padrao) > 0;
   renderTarifasCategoria();
 }
 function renderTarifasCategoria(){

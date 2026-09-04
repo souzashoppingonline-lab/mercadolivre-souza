@@ -31,7 +31,7 @@ Núcleo em **`server/src/ranking.js`** (reaproveita `notify.js`/`ws/hub.js` — 
 | `esfriou` | `snapshot` fase 2 (v71) | sem vender há 3 dias (só ranqueado) |
 | `destaque` | `snapshot` (v70) | entrou/saiu/mudou de posição nos **Mais Vendidos** da categoria (`mlClient.getCategoryHighlights` → `/highlights/MLB/category/:cat`); casa por item id (`type ITEM`) ou `catalog_product_id` (`type PRODUCT`); posição em `ranking_ads.last_highlight_pos` |
 
-Preço/estoque/status vêm **de graça** do webhook de item (sem GET extra). Visitas/qualidade/buy-box não têm webhook → job periódico só dos anúncios ativos (poucos, limite `MAX_ADS=30`), sem varrer o catálogo, então não pesa no rate limit do ML.
+Preço/estoque/status vêm **de graça** do webhook de item (sem GET extra). Visitas/qualidade/buy-box não têm webhook → job periódico só dos anúncios ativos (opt-in, sem teto de quantidade — ver `decisions.md`), sem varrer o catálogo, então não pesa no rate limit do ML pelo volume de itens do sistema como um todo.
 
 ## Anti-perda de venda (idempotência)
 
@@ -59,7 +59,7 @@ Ao marcar um anúncio (`POST /ads`), os `last_price`/`last_available_quantity`/`
 
 - **Marco a cada N vendas**: `milestone_every` por anúncio (default 5, editável no `POST`/`PATCH`).
 - **Duração**: fica ativo até o usuário **remover** (DELETE, apaga histórico via CASCADE) ou **pausar** (`active=false`, mantém histórico, para de notificar). Não auto-desliga.
-- **Limite**: `MAX_ADS=30` anúncios ativos (o snapshot roda por anúncio ativo — trava de proteção).
+- **Sem limite de anúncios ativos** — havia um teto `MAX_ADS=30` (o snapshot roda por anúncio ativo), removido a pedido explícito do usuário; trade-off assumido (mais anúncios = mais chamadas do snapshot por rodada, ver `decisions.md`).
 - **Silêncio/throttle do Telegram**: eventos `venda` e `marco` usam `tgNotifyForce` (ignoram silêncio/throttle) — a mensagem "Venda de produto em rankeamento" **sempre** sai logo depois do alerta de venda normal (`tg_vendas`). Os demais eventos (`preco`/`estoque`/`status`/`visitas`/`qualidade`/`buybox`/`destaque`) usam `tgNotify` (respeitam silêncio/intervalo). Ativar/desativar o tópico: chave `tg_rankeamento` em `app_config` — só afeta os eventos não-forçados (venda/marco ignoram, por serem o núcleo da feature).
 
 ## Duas fases (v71): rankeando → ranqueado
@@ -76,7 +76,7 @@ Cada anúncio tem `ranking_ads.fase`:
 
 **Níveis de progressão (v78):** anúncio em **RANQUEADO** exibe seu **Nível** (1 + floor(sales_count / 10)) — a cada 10 vendas acumuladas, sobe de nível (Nível 1, Nível 2, Nível 3…). Também mostra **Devoluções** — só visível em RANQUEADO, colorida em verde (nenhuma) ou vermelho. ⚠️ **Hoje é sempre 0**: a query original lia `returns.item_id`, coluna que não existe (quebrava a rota inteira com 500), então o campo ficou fixo em `0 AS devolucoes_count` até existir uma forma real de casar devolução ↔ anúncio. Ver `known-bugs.md`.
 
-A página tem 6 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento**, **Recuperação** (v80, ver abaixo), **Catálogo (Buy Box)** (v88, ver abaixo — arquitetura diferente das outras 4: sem `MAX_ADS`, sem venda-a-venda, só status de concorrência) e **Todos os anúncios** (tabela de seleção).
+A página tem 6 abas: **Em rankeamento**, **Ranqueados**, **Monitoramento**, **Recuperação** (v80, ver abaixo), **Catálogo (Buy Box)** (v88, ver abaixo — arquitetura diferente das outras 4: sem venda-a-venda, só status de concorrência) e **Todos os anúncios** (tabela de seleção).
 
 ## Três estágios + mudança manual (v76) — quatro a partir da v80
 
@@ -136,15 +136,15 @@ Nota **sem tipo** continua sendo anotação livre (não carimba baseline) — o 
 
 **Telegram nesta fase:** a **1ª venda depois de entrar** sai com mensagem própria ("🎉 DESTRAVOU!", com quantos dias ficou parado e sugestão de voltar pra rankeando — evento `venda` com `detail.recuperou`); ao bater **15 dias parado** sai 1 alerta `sem_resultado` 🔴 ("Hora de decidir", com a contagem de intervenções), idempotente por entrada na fase (mesmo padrão do `esfriou`). Visitas/qualidade/preço seguem a regra da fase 1 (qualquer mudança).
 
-**Snapshot:** roda junto com `sync-ranking` (6/6h, mesma rajada de chamadas ao ML) — quem está em intervenção precisa de visitas frescas pra medir efeito. Conta no mesmo teto `MAX_ADS=30`.
+**Snapshot:** roda junto com `sync-ranking` (6/6h, mesma rajada de chamadas ao ML) — quem está em intervenção precisa de visitas frescas pra medir efeito.
 
 > Ainda **não** implementado: alerta no Telegram quando uma intervenção fecha a janela de 7 dias sem efeito (hoje isso só aparece no card). Ver `todo.md`.
 
-## 5º estágio: Catálogo / Buy Box (v88) — anúncio de catálogo, sem limite de 30
+## 5º estágio: Catálogo / Buy Box (v88) — anúncio de catálogo
 
 `fase = 'catalogo'` (badge roxo `#a855f7`, ícone 🏆, aba própria). Diferente dos outros 4 (que empurram/defendem/monitoram/recuperam UM anúncio de cada vez), este é um estágio de **alocação em massa**: o usuário aloca **todos os anúncios de catálogo** que quiser acompanhar — o card mostra só o status de concorrência (ganhando/perdendo/compartilhando o 1º lugar), não venda-a-venda. Reusa 100% a infraestrutura de Buy-Box que já existia (`catalog_competition`/`catalog_competition_history`, v26, ver `business-rules.md` "Monitor de Buy-Box") — não duplica schema nem fórmula, só passa a EXPOR isso como um estágio do Rankeamento (antes só aparecia dentro do módulo Qualidade de Anúncio e como 2 campos no card de Recuperação).
 
-**Sem o teto de `MAX_ADS=30`:** essa trava existe porque o snapshot de rankeando/ranqueado/monitoramento/recuperação (`sync-ranking`, 6/6h) chama a API por anúncio ativo — 'catalogo' **não** entra nesse snapshot (usa o job `sync-catalog-competition` dedicado, com throttling próprio, ver abaixo), então o motivo original da trava não se aplica. `POST /api/ranking/ads` conta só `WHERE active=true AND fase != 'catalogo'` pro teto — dá pra alocar quantos anúncios de catálogo quiser sem esbarrar no limite pensado pro punhado sendo empurrado manualmente.
+**Nunca entrou no snapshot de 6h:** `sync-ranking` (rankeando/ranqueado/monitoramento/recuperação) chama a API por anúncio ativo a cada 6h — `'catalogo'` usa o job `sync-catalog-competition` dedicado, com seu próprio throttling (ver abaixo), então nunca competiu pelo mesmo orçamento de chamadas dos outros 4 estágios. Nenhum dos 5 estágios tem teto de quantidade hoje (`MAX_ADS` foi removido por completo — ver `decisions.md`), mas essa separação de jobs continua valendo.
 
 **Alocação:** dois caminhos, os dois carimbam `catalogo_started_at` e disparam uma busca `price_to_win` **na hora** (sob demanda, best-effort — nunca derruba a resposta se falhar):
 1. Direto — na aba "Todos os anúncios", o botão "Acompanhar" da linha virou um `<select class="rk-add-sel">` ("Acompanhar em..." + os 5 estágios); escolher uma opção já dispara o `addAd(mlId, fase, this)` com aquele estágio (v88.1 — substituiu o seletor global "Adicionar em:" que ficava no topo da busca, porque ele valia pra todos os cliques seguintes e era fácil esquecer trocado; agora a escolha é por linha, sem estado compartilhado). Fica na mesma aba depois de adicionar (não troca de painel) — é o que permite alocar VÁRIOS anúncios seguidos, cada um pro estágio que quiser, sem perder a busca. `POST /ads {ml_id, fase:'catalogo'}`.

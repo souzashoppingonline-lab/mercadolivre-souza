@@ -8,7 +8,8 @@ const ranking = require('../ranking');
 const redis = require('../db/redis');
 
 const router = express.Router();
-const MAX_ADS = 30; // trava de segurança: snapshot roda por anúncio ativo — NÃO conta 'catalogo' (v88, ver abaixo)
+// Sem teto de quantidade de anúncios rastreados (removido a pedido do
+// usuário — era MAX_ADS=30 — ver decisions.md em POST /ads abaixo).
 // Estágios válidos (v80 acrescentou 'recuperacao'; v88 acrescentou 'catalogo'). Ver .claude/rankeamento.md.
 const FASES = ['rankeando', 'ranqueado', 'monitoramento', 'recuperacao', 'catalogo'];
 
@@ -213,19 +214,18 @@ router.post('/ads', async (req, res) => {
     const faseInicial = FASES.includes(String(req.body.fase || '').trim().toLowerCase())
       ? String(req.body.fase).trim().toLowerCase() : 'rankeando';
 
-    // MAX_ADS não conta 'catalogo' (v88): a trava existe porque o snapshot de
-    // rankeando/ranqueado/monitoramento/recuperacao (sync-ranking, 6/6h) chama
-    // a API por anúncio ativo — 'catalogo' NÃO entra nesse snapshot (usa
-    // sync-catalog-competition, próprio job com throttling dedicado), então
-    // o motivo original da trava não se aplica. Sem essa exceção, alocar
-    // "todos os anúncios de catálogo" (potencialmente dezenas) esbarraria no
-    // teto pensado pro punhado de anúncios sendo empurrados manualmente.
-    if (faseInicial !== 'catalogo') {
-      const cnt = await pool.query(`SELECT COUNT(*)::int AS n FROM ranking_ads WHERE active = true AND fase != 'catalogo'`);
-      if (cnt.rows[0].n >= MAX_ADS) {
-        return res.status(400).json({ error: `Limite de ${MAX_ADS} anúncios em rankeamento atingido. Desative algum antes de adicionar outro.` });
-      }
-    }
+    // Sem teto de quantidade de anúncios em nenhum estágio — pedido explícito
+    // do usuário ("não quero limites em nenhum estágio"), depois de esbarrar
+    // no MAX_ADS=30 de propósito ao tentar rastrear o portfólio dele inteiro.
+    // Trade-off consciente: o snapshot de rankeando/ranqueado/monitoramento/
+    // recuperacao (sync-ranking, 6/6h) chama a API do ML uma vez por anúncio
+    // ativo — quanto mais anúncios rastreados, mais chamadas por rodada. O
+    // job já tem throttling/circuit-breaker próprio (mesmo padrão usado em
+    // sync-seo-score/sync-catalog-competition), então um portfólio grande
+    // demora mais pra varrer, mas não devia estourar rate limit sozinho. Ver
+    // decisions.md — se isso virar um problema real de rate limit em
+    // produção, a solução é ajustar o throttling do job, não trazer o teto
+    // de volta.
     const { rows: it } = await pool.query(
       `SELECT ml_id, store_id, title, price, available_quantity, status FROM items WHERE ml_id = $1`, [mlId]
     );

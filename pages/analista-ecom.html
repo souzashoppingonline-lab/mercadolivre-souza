@@ -70,6 +70,8 @@
     .ae-fin .k { color:var(--text-muted); }
     .ae-fin .v { font-weight:700; }
     .ae-fin .v.ed { text-decoration:underline dotted; cursor:pointer; }
+    .ae-editbtn { background:none; border:0; color:var(--text-muted); cursor:pointer; padding:0 0 0 5px; font-size:10px; vertical-align:1px; }
+    .ae-editbtn:hover { color:#8b5cf6; }
     .ae-right { display:flex; flex-direction:column; gap:6px; flex:0 0 200px; margin-left:auto; border-left:1px solid var(--border); padding-left:16px; }
     .ae-margem-box { padding:8px 10px; border-radius:10px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
     .ae-margem-box .a { font-size:10px; text-transform:uppercase; }
@@ -450,9 +452,9 @@ function cardHtml(r){
     </div>
     <div class="ae-fin">
       <div class="row"><span class="k">Preço atual</span><span class="v">${BRL(r.price)}</span></div>
-      <div class="row"><span class="k">Custo</span><span class="v ed" onclick="editarCusto('${jsStr(r.ml_id)}', ${r.custo})" title="Clique para editar">${r.custo_ausente ? '⚠️ não cadastrado' : BRL(r.custo)}</span></div>
-      <div class="row"><span class="k">Tarifa</span><span class="v">${r.tarifa_ausente ? '⚠️ não configurada' : PCT(r.tarifa_pct)}</span></div>
-      <div class="row"><span class="k">Frete</span><span class="v">${BRL(r.frete)}</span></div>
+      <div class="row"><span class="k">Custo</span><span class="v">${r.custo_ausente ? '⚠️ não cadastrado' : BRL(r.custo)}<button class="ae-editbtn" onclick="editarCusto('${jsStr(r.ml_id)}', ${r.custo})" title="Cadastrar/editar custo deste anúncio"><i class="fas fa-pen"></i></button></span></div>
+      <div class="row"><span class="k">Tarifa</span><span class="v">${r.tarifa_ausente ? '⚠️ não configurada' : PCT(r.tarifa_pct)}<button class="ae-editbtn" onclick="editarTarifaItem('${jsStr(r.category_id)}', '${jsStr(r.category_name || r.category_id)}', ${r.tarifa_ausente ? 'null' : r.tarifa_pct})" title="Cadastrar/editar tarifa da categoria ${esc(r.category_name || r.category_id || '')}"><i class="fas fa-pen"></i></button></span></div>
+      <div class="row"><span class="k">Frete</span><span class="v">${BRL(r.frete)}<button class="ae-editbtn" onclick="editarFreteGlobal(${r.frete})" title="Editar frete padrão (vale para todos os anúncios, ainda não há frete por anúncio)"><i class="fas fa-pen"></i></button></span></div>
       <div class="row"><span class="k">Imposto</span><span class="v">${PCT(r.imposto_pct)}</span></div>
       <div class="row"><span class="k">Margem alvo</span><span class="v">${PCT(r.margem_alvo_pct)}</span></div>
     </div>
@@ -502,7 +504,7 @@ function renderTabela(){
   }).join('');
 }
 
-// ── Edição rápida de custo ───────────────────────────────────────────────
+// ── Edição rápida de custo / tarifa / frete direto do card ────────────────
 async function editarCusto(mlId, atual){
   const v = prompt('Custo do produto (R$):', atual || '');
   if (v == null) return;
@@ -511,6 +513,30 @@ async function editarCusto(mlId, atual){
   const r = await DB.updateItemCusto(mlId, n);
   if (!r || r.error) { alert(r&&r.error||'Erro ao salvar custo'); return; }
   await carregar();
+}
+// Tarifa é por CATEGORIA (política do próprio Mercado Livre, não do anúncio
+// isolado — ver decisions.md) — editar aqui atualiza pricing_category_fees
+// e afeta todo anúncio dessa categoria, não só o card clicado.
+async function editarTarifaItem(categoryId, categoryName, atual){
+  if (!categoryId) { alert('Este anúncio não tem categoria definida — não é possível configurar tarifa por aqui.'); return; }
+  const v = prompt(`Tarifa do Mercado Livre para a categoria "${categoryName}" (%) — vale para todo anúncio dessa categoria:`, atual != null ? atual : '');
+  if (v == null) return;
+  const n = parseFloat(String(v).replace(',', '.'));
+  if (isNaN(n) || n < 0 || n > 100) { alert('Valor inválido — informe um percentual entre 0 e 100.'); return; }
+  const r = await DB.setAnalistaEcomTarifaCategoria({ category_id: categoryId, category_name: categoryName, fee_percentage: n });
+  if (!r || r.error) { alert(r&&r.error||'Erro ao salvar tarifa'); return; }
+  await carregarConfig(); await carregar();
+}
+// Frete ainda é 1 valor padrão global (app_config), não por anúncio — editar
+// aqui muda o frete de TODOS os anúncios, mesma config do painel do topo.
+async function editarFreteGlobal(atual){
+  const v = prompt('Frete padrão (R$) — vale para TODOS os anúncios (ainda não há frete configurável por anúncio):', atual != null ? atual : '');
+  if (v == null) return;
+  const n = parseFloat(String(v).replace(',', '.'));
+  if (isNaN(n) || n < 0) { alert('Valor inválido.'); return; }
+  const r = await DB.patchAnalistaEcomConfig({ frete_padrao: n });
+  if (!r || r.error) { alert(r&&r.error||'Erro ao salvar frete'); return; }
+  await carregarConfig(); await carregar();
 }
 
 // ── Simulador de preço ───────────────────────────────────────────────────

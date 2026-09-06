@@ -62,6 +62,8 @@ Receptor **isolado** de tudo o mais: `server/src/routes/tiktokWebhook.js`, monta
 
 KPIs (vendas/pedidos hoje e total), tabela de últimos 200 pedidos, card de status (última sincronização, contas conectadas). Sem produtos/catálogo — Fase 1 é só vendas. Ver `frontend.md` pro contrato geral de página nova.
 
+**Estado atual da página: "em construção"** (classe `.em-construcao` de `css/style.css`, mesmo padrão já usado nos módulos ainda não implementados). Enquanto não existe conta TikTok Shop autorizada (sem app no Partner Center, ver "Bloqueio de cadastro"), mostrar KPIs zerados seria enganoso — a página avisa que a integração está pronta no backend mas falta autorizar a conta. Todo o HTML/JS de KPIs/tabela/status (o dashboard real) continua no arquivo, **comentado** (bloco HTML dentro de `<!-- -->` + os `<script>` de `db.js`/`tableExport.js`/`websocket.js` e a lógica de `loadKpis`/`loadPedidos`/`loadStatus`) — descomentar os dois blocos juntos assim que `/auth/tiktok/login` autorizar a 1ª conta real.
+
 ## O que NÃO foi feito nesta fase (por decisão explícita do usuário — "saber as vendas")
 
 Ao contrário da Shopee (que cresceu de "só pedidos" até chat/catálogo/promoções/financeiro/score/precificador ao longo de várias fases), o TikTok Shop **fica só em vendas** por enquanto:

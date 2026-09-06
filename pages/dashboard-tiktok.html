@@ -35,7 +35,22 @@
     <div id="app-topbar"></div>
     <div class="content-area">
 
-      <div class="ttk-kpis">
+      <!-- Fase 1 (só vendas, ver .claude/tiktok.md) construída, mas ainda sem
+           app no Partner Center — cadastro "Seller Developer" bloqueado por
+           exigir Account Manager. Sem app não há credenciais reais, então em
+           vez de mostrar KPIs zerados/fake, a página avisa que está em
+           construção. Trocar de volta pro dashboard normal (código abaixo,
+           comentado) assim que a conta estiver autorizada via /auth/tiktok/login. -->
+      <div class="em-construcao">
+        <div class="ec-ico"><i class="fab fa-tiktok"></i></div>
+        <h1>TikTok Shop — em construção</h1>
+        <p>A integração já está pronta no backend (pedidos, dashboard, notificação no Telegram), mas falta autorizar a conta real no TikTok Shop Partner Center. Assim que o app for aprovado e a loja for conectada em <code>/auth/tiktok/login</code>, esta página passa a mostrar vendas de verdade.</p>
+        <span class="ec-tag">Fase 1 — só vendas</span>
+      </div>
+
+    </div>
+    <!--
+    <div class="ttk-kpis">
         <div class="ttk-kpi">
           <div class="lbl"><i class="fas fa-dollar-sign"></i> Vendas Hoje</div>
           <div class="val" id="ttkVendasHoje"><div class="skeleton"></div></div>
@@ -99,15 +114,20 @@
           </div>
         </div>
       </div>
-
-    </div>
+    -->
   </main>
 </div>
+<script src="../js/layout-tiktok.js"></script>
+<script src="../js/sidebar.js"></script>
+<!-- Enquanto a página estiver "em construção" (sem conta TikTok Shop
+     autorizada, ver aviso acima), não há dado real pra buscar — os scripts
+     db.js/tableExport.js/websocket.js e toda a lógica de KPIs/pedidos/status
+     abaixo ficam comentados pra não gerar erro batendo em elementos que não
+     existem mais na página. Descomentar os dois junto com o bloco HTML
+     acima assim que /auth/tiktok/login autorizar a 1ª conta.
 <script src="../js/db.js"></script>
 <script src="../js/tableExport.js"></script>
 <script src="../js/websocket.js"></script>
-<script src="../js/layout-tiktok.js"></script>
-<script src="../js/sidebar.js"></script>
 <script>
 const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
 const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
@@ -173,5 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAll();
 });
 </script>
+-->
+
 </body>
 </html>

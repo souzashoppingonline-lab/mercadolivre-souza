@@ -16,10 +16,12 @@ const ranking = require('./ranking');
 const { Scheduler } = require('./marketplaces/Scheduler');
 const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
 const { ShopeePollingEventSource } = require('./marketplaces/shopee/ShopeePollingEventSource');
+const { TiktokPollingEventSource } = require('./marketplaces/tiktok/TiktokPollingEventSource');
 const { MockClient, MockEventSource } = require('./marketplaces/mock/mockProvider');
 
 const AMAZON_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — ajustável sem tocar no restante do pipeline
 const SHOPEE_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — mesmo intervalo da Amazon na fase 1 (polling)
+const TIKTOK_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — mesmo padrão de Amazon/Shopee; webhook (tempo real) já cobre o essencial
 const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar feedback visível em dev
 const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens não lidas do chat Shopee
 const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS || 30 * 60 * 1000); // 30min — sync do catálogo (Product API)
@@ -45,6 +47,9 @@ const clients = new Map();
 
 // Mesma ideia, mapa separado para contas Shopee (marketplace_id=SHOPEE).
 const shopeeClients = new Map();
+
+// Mesma ideia, mapa separado para contas TikTok Shop (marketplace_id=TIKTOK).
+const tiktokClients = new Map();
 
 // Vocabulário compartilhado de `orders.status` — ajuste fino de quais status
 // da Amazon contam como "pago" fica para quando pedidos reais de sandbox/
@@ -268,6 +273,95 @@ async function handleShopeeOrderEvent(evt) {
   }
 }
 
+// Vocabulário compartilhado de `orders.status` pra pedidos TikTok Shop.
+// ⚠️ Valores de order_status a confirmar contra uma resposta real (ver
+// .claude/tiktok.md) — os usados aqui seguem o vocabulário documentado
+// publicamente (AWAITING_SHIPMENT/IN_TRANSIT/DELIVERED/COMPLETED/CANCELLED).
+function mapTiktokStatus(orderStatus) {
+  switch (orderStatus) {
+    case 'AWAITING_SHIPMENT':
+    case 'AWAITING_COLLECTION':
+    case 'IN_TRANSIT':
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return 'paid'; // TikTok Shop só libera o pedido pro seller depois do pagamento confirmado
+    case 'CANCELLED':
+      return 'cancelled';
+    case 'UNPAID':
+      return 'pending';
+    default:
+      return (orderStatus || '').toLowerCase();
+  }
+}
+
+// Fase 1 (pedido explícito do usuário: "saber as vendas") — só grava o
+// pedido em orders/tiktok_order_data e notifica no Telegram, sem replicar
+// ainda o financeiro/catálogo/chat que a Shopee acumulou depois de meses
+// (ver .claude/tiktok.md e .claude/todo.md pro que fica pra depois).
+async function handleTiktokOrderEvent(evt) {
+  const client = tiktokClients.get(evt.storeId);
+  if (!client) { console.warn(`[marketplace-worker] sem client TikTok para storeId=${evt.storeId}`); return; }
+
+  const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = $1`, [evt.marketplace]);
+  const marketplaceId = mp[0]?.id;
+  if (!marketplaceId) { console.warn(`[marketplace-worker] marketplace ${evt.marketplace} não cadastrado`); return; }
+
+  const o = await client.getOrder(evt.resourceId);
+  // ⚠️ nomes de campo a confirmar contra uma resposta real (ver tiktokClient.js)
+  const orderId = o?.id || o?.order_id;
+  if (!orderId) { console.warn(`[marketplace-worker] resposta sem id de pedido para ${evt.resourceId}`); return; }
+
+  const orderStatus = o.status || o.order_status;
+  const status = mapTiktokStatus(orderStatus);
+  const totalAmount = Number(o.payment?.total_amount ?? o.total_amount ?? 0);
+  const createdAt = o.create_time ? new Date(Number(o.create_time) * 1000) : null;
+
+  const { rows: prevRows } = await pool.query(`SELECT status FROM orders WHERE ml_id = $1`, [orderId]);
+  const previousStatus = prevRows[0]?.status || null;
+
+  await pool.query(
+    `INSERT INTO orders (ml_id, marketplace_id, store_id, total_amount, status, date_created, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6, now())
+     ON CONFLICT (ml_id) DO UPDATE SET
+       marketplace_id = EXCLUDED.marketplace_id,
+       total_amount = EXCLUDED.total_amount,
+       status = EXCLUDED.status,
+       updated_at = now()`,
+    [orderId, marketplaceId, evt.storeId, totalAmount, status, createdAt]
+  );
+
+  await pool.query(
+    `INSERT INTO tiktok_order_data (order_id, shop_id, order_status, raw_data, updated_at)
+     VALUES ($1,$2,$3,$4, now())
+     ON CONFLICT (order_id) DO UPDATE SET
+       shop_id = EXCLUDED.shop_id,
+       order_status = EXCLUDED.order_status,
+       raw_data = EXCLUDED.raw_data,
+       updated_at = now()`,
+    [orderId, client.cfg?.shopId || null, orderStatus || null, JSON.stringify(o)]
+  );
+
+  await redis.del('kpis:summary');
+  await publish('order_updated', { id: orderId, status, marketplace: 'TIKTOK', storeId: evt.storeId });
+
+  if (status === 'paid' && previousStatus !== 'paid') {
+    console.log(`[marketplace-worker] ✅ nova venda TikTok Shop (store_id=${evt.storeId}): ${orderId} | R$ ${totalAmount}`);
+    // Guard anti-pedido-antigo (mesmo padrão do ML/Shopee) — só notifica no
+    // Telegram se a venda tem < 24h, pra não spammar num polling que descobre
+    // pedido antigo na 1ª execução.
+    const isRecentEnough = createdAt && (Date.now() - createdAt.getTime() < 24 * 60 * 60 * 1000);
+    if (!isRecentEnough) return;
+    try {
+      const { rows: sn } = await pool.query(`SELECT nickname FROM stores WHERE id = $1`, [evt.storeId]);
+      const loja = sn[0]?.nickname || `loja ${evt.storeId}`;
+      const val = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAmount);
+      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🎵 <b>TikTok Shop</b>\n🏪 ${loja}\n💰 ${val}\n🔖 Pedido: ${orderId}`);
+    } catch (e) {
+      console.error('[marketplace-worker] tgNotify TikTok Shop erro:', e.message);
+    }
+  }
+}
+
 async function startMarketplaceEventWorkers() {
   const connection = new IORedis(env.redisUrl, { maxRetriesPerRequest: null, keepAlive: 10000, enableOfflineQueue: false });
 
@@ -286,6 +380,14 @@ async function startMarketplaceEventWorkers() {
   wShopee.on('failed', (job, err) => console.error('[marketplace-worker] failed', job?.id, err.message));
   wShopee.on('error', (err) => console.error('[marketplace-worker] error:', err.message));
   console.log('[marketplace-worker] started queue marketplace-events-shopee');
+
+  const wTiktok = new Worker('marketplace-events-tiktok', (job) => handleTiktokOrderEvent(job.data), {
+    connection,
+    concurrency: 2,
+  });
+  wTiktok.on('failed', (job, err) => console.error('[marketplace-worker] failed', job?.id, err.message));
+  wTiktok.on('error', (err) => console.error('[marketplace-worker] error:', err.message));
+  console.log('[marketplace-worker] started queue marketplace-events-tiktok');
 
   const scheduler = new Scheduler();
 
@@ -329,6 +431,23 @@ async function startMarketplaceEventWorkers() {
     shopeeClients.set(store.id, source.client);
     scheduler.register(source, { intervalMs: SHOPEE_POLL_INTERVAL_MS });
     console.log(`[marketplace-worker] conta Shopee registrada: ${store.nickname} (store_id=${store.id})`);
+  }
+
+  // Mesma ideia para contas TikTok Shop (marketplace_id=TIKTOK) — Fase 1,
+  // polling + webhook (TiktokPollingEventSource), mesmo padrão da Shopee.
+  // Ver .claude/tiktok.md.
+  const { rows: tiktokStores } = await pool.query(
+    `SELECT id, nickname, tiktok_shop_id, tiktok_shop_cipher, access_token, refresh_token, token_expires_at
+     FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'TIKTOK')`
+  );
+  if (!tiktokStores.length) {
+    console.warn('[marketplace-worker] nenhuma conta TikTok Shop cadastrada em `stores` — nada para sincronizar (autorize uma loja em /auth/tiktok/login)');
+  }
+  for (const store of tiktokStores) {
+    const source = new TiktokPollingEventSource(store);
+    tiktokClients.set(store.id, source.client);
+    scheduler.register(source, { intervalMs: TIKTOK_POLL_INTERVAL_MS });
+    console.log(`[marketplace-worker] conta TikTok Shop registrada: ${store.nickname} (store_id=${store.id})`);
   }
 
   scheduler.startAll().catch((err) => console.error('[marketplace-worker] scheduler startAll falhou:', err.message));

@@ -38,6 +38,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `auth-staff.md` | Login de acesso restrito para funcionários (papéis admin/embalagem), JWT em cookie, kill switch, mudança de infraestrutura no nginx |
 | `shopee.md` | Status (não implementado) e como uma integração Shopee deveria se encaixar na arquitetura |
 | `amazon.md` | Status (não implementado) e como uma integração Amazon (SP-API) deveria se encaixar na arquitetura |
+| `tiktok.md` | Integração TikTok Shop (Fase 1 — só vendas): OAuth, `tiktokClient.js`, webhook, o que falta confirmar contra a API real, bloqueio de cadastro (AM) |
 | `business-rules.md` | Regras de domínio não óbvias: thresholds de estoque, quando notificar, curva ABC, clientes novos/recorrentes, silêncio do Telegram |
 | `finance.md` | Fórmulas de margem/ROI, `orders` vs. `ml_turbo_sales`, mapeamento de colunas da planilha Turbo |
 | `deployment.md` | Produção: servidor, systemd, Postgres, nginx WS, lojas conectadas, comandos de diagnóstico |

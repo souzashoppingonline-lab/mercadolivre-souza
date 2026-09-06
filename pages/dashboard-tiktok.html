@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard TikTok Shop — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Independente do ML: usa js/layout-tiktok.js (sidebar/topbar próprios
+       do TikTok Shop), nunca js/layout.js (sidebar ML) — ver .claude/frontend.md.
+       Fase 1 (só vendas, ver .claude/tiktok.md) — por isso não tem tabela de
+       produtos/catálogo aqui, diferente do dashboard-shopee.html. -->
+  <script>window.PAGE_TITLE='Dashboard'; window.ACTIVE_NAV='dashboard-tiktok.html';</script>
+  <style>
+    .ttk-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .ttk-kpi { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid #ff0050; border-radius: 12px; padding: 18px 20px; }
+    .ttk-kpi .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .ttk-kpi .val { font-size: 28px; font-weight: 800; line-height: 1.1; }
+    .ttk-kpi .sub { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+    .skeleton { background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.08) 50%, rgba(255,255,255,.04) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 4px; height: 26px; width: 70%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+    .status-item .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .status-item .value { font-size: 15px; font-weight: 700; }
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+    .status-badge.ok  { background: rgba(39,174,96,.15); color: var(--green); }
+    .status-badge.bad { background: rgba(231,76,60,.15); color: var(--red); }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="ttk-kpis">
+        <div class="ttk-kpi">
+          <div class="lbl"><i class="fas fa-dollar-sign"></i> Vendas Hoje</div>
+          <div class="val" id="ttkVendasHoje"><div class="skeleton"></div></div>
+          <div class="sub">líquido de cancelados</div>
+        </div>
+        <div class="ttk-kpi">
+          <div class="lbl"><i class="fas fa-box"></i> Pedidos Hoje</div>
+          <div class="val" id="ttkPedidosHoje"><div class="skeleton"></div></div>
+          <div class="sub">&nbsp;</div>
+        </div>
+        <div class="ttk-kpi">
+          <div class="lbl"><i class="fas fa-sack-dollar"></i> Vendas Totais</div>
+          <div class="val" id="ttkVendasTotal"><div class="skeleton"></div></div>
+          <div class="sub">desde a conexão da conta</div>
+        </div>
+        <div class="ttk-kpi">
+          <div class="lbl"><i class="fas fa-boxes-stacked"></i> Pedidos Totais</div>
+          <div class="val" id="ttkPedidosTotal"><div class="skeleton"></div></div>
+          <div class="sub">&nbsp;</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Últimos pedidos TikTok Shop</h3>
+          <span id="ttkPedidosCount" style="font-size:12px;color:var(--text-muted);margin-left:auto"></span>
+          <button class="action-btn" onclick="exportTableCSV(document.getElementById('ttkPedidosTbody').closest('table'), 'tiktok-pedidos.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Conta</th>
+                <th class="tbl-num">Valor</th>
+                <th>Status</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="ttkPedidosTbody">
+              <tr><td colspan="5" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Status da Integração</h3></div>
+        <div class="status-grid">
+          <div class="status-item">
+            <div class="label">Última sincronização</div>
+            <div class="value" id="ttkUltimaSync">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Último erro</div>
+            <div class="value" id="ttkUltimoErro">—</div>
+          </div>
+          <div class="status-item">
+            <div class="label">Contas</div>
+            <div class="value" id="ttkToken">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout-tiktok.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+const STATUS_LABEL = { paid:'Pago', pending:'Pendente', cancelled:'Cancelado', shipped:'Enviado' };
+
+async function loadKpis() {
+  const d = await DB.getTiktokKpis();
+  if (!d || d.error) { set('ttkVendasHoje','—'); set('ttkPedidosHoje','—'); set('ttkVendasTotal','—'); set('ttkPedidosTotal','—'); return; }
+  set('ttkVendasHoje', R(d.vendas_hoje));
+  set('ttkPedidosHoje', d.pedidos_hoje ?? 0);
+  set('ttkVendasTotal', R(d.vendas_total));
+  set('ttkPedidosTotal', d.pedidos_total ?? 0);
+}
+
+async function loadPedidos() {
+  const tbody = document.getElementById('ttkPedidosTbody');
+  const d = await DB.getTiktokPedidos();
+  if (!d || d.error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="color:var(--red)">Erro ao carregar pedidos${d?.error ? ': '+d.error : ''}</td></tr>`;
+    return;
+  }
+  const rows = d.rows || [];
+  set('ttkPedidosCount', `${rows.length} pedido(s)`);
+  tbody.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${r.id || '—'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${r.conta || '—'}</td>
+      <td class="tbl-num">${R(r.valor)}</td>
+      <td>${STATUS_LABEL[r.status] || r.status || '—'}</td>
+      <td style="white-space:nowrap;font-size:12px">${fmtDt(r.data)}</td>
+    </tr>`).join('') : '<tr><td colspan="5" class="empty-state">Nenhum pedido TikTok Shop ainda</td></tr>';
+}
+
+async function loadStatus() {
+  const d = await DB.getTiktokStatus();
+  if (!d || d.error) return;
+  const syncLabel = d.ultima_sincronizacao ? fmtDt(d.ultima_sincronizacao) : 'Nunca';
+  set('ttkUltimaSync', syncLabel);
+  set('ttkUltimoErro', d.ultimo_erro || 'Nenhum');
+
+  const tokenEl = document.getElementById('ttkToken');
+  const conectadas = d.contas_conectadas ?? 0;
+  const total = d.contas_total ?? 0;
+  if (conectadas > 0) {
+    tokenEl.innerHTML = `<span class="status-badge ok"><i class="fas fa-check-circle"></i> Conectado</span> <span style="color:var(--text-muted);font-size:12px;margin-left:6px">${conectadas}/${total} conta(s)</span>`;
+  } else {
+    tokenEl.innerHTML = `<span class="status-badge bad"><i class="fas fa-times-circle"></i> Desconectado</span>`;
+  }
+}
+
+function loadAll() { loadKpis(); loadPedidos(); loadStatus(); }
+
+WS.on('order_updated', payload => { if (payload?.marketplace === 'TIKTOK') loadAll(); });
+WS.on('_connected', loadAll);
+setInterval(loadAll, 60000);
+
+// Espera o layout-tiktok.js montar #app-sidebar/#app-topbar (DOMContentLoaded
+// registrado antes deste script) antes de tocar em elementos que ele cria.
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btnRefresh')?.addEventListener('click', loadAll);
+  loadAll();
+});
+</script>
+</body>
+</html>

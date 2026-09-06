@@ -2,9 +2,9 @@
 
 > Escopo: direção futura do produto/arquitetura — o que está planejado, não o que está quebrado agora (`known-bugs.md`) nem uma lista de tarefas granulares acionáveis (`todo.md`). **Ao concluir um item aqui, mova o resultado para `decisions.md` (se envolveu escolha de design) e remova daqui.**
 
-## Multi-marketplace: Shopee e Amazon
+## Multi-marketplace: Shopee, Amazon e TikTok Shop
 
-Amazon **ligada ao banco/worker desde v15** (tabela `marketplaces` + `marketplace_id` discriminador, `AmazonPollingEventSource` → `marketplaceEventWorker.js`, rodando em sandbox). Status por marketplace: `mercadolivre.md` (único em produção real), `amazon.md` (conectada, sandbox), `shopee.md` (bloqueada — app em aprovação, só stub).
+Amazon **ligada ao banco/worker desde v15** (tabela `marketplaces` + `marketplace_id` discriminador, `AmazonPollingEventSource` → `marketplaceEventWorker.js`, rodando em sandbox). Status por marketplace: `mercadolivre.md` (único em produção real), `amazon.md` (conectada, sandbox), `shopee.md` (**app aprovado ao vivo em produção** — não é mais stub, ver o arquivo), `tiktok.md` (Fase 1 — só vendas — código pronto desde v94, mas ainda sem app no Partner Center: cadastro como "Seller Developer" bloqueado por exigir Account Manager atribuído, ver o arquivo).
 
 ### Fase 2 — normalização completa via Strangler Pattern (não iniciada)
 

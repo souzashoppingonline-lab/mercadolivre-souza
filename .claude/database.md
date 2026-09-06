@@ -34,15 +34,18 @@ Referenciada por `marketplace_id` em `stores`/`orders`/`items`/`messages` (colun
 ### `stores` — lojas/contas autorizadas por marketplace (suporta múltiplas contas por marketplace — v16)
 ```
 id BIGINT PK              -- user_id do Mercado Livre; para Amazon, id sintético 9000000001+;
-                           -- para Shopee, id sintético 9100000001+ (faixa própria, nunca colide com a da Amazon)
+                           -- para Shopee, id sintético 9100000001+; para TikTok Shop, 9200000001+
+                           -- (faixas próprias, nunca colidem entre si)
 nickname TEXT
 level_id TEXT
-access_token, refresh_token TEXT  -- reaproveitado por Amazon (refresh_token fixo) e Shopee (ambos rotacionam via OAuth)
+access_token, refresh_token TEXT  -- reaproveitado por Amazon (refresh_token fixo), Shopee e TikTok Shop (ambos rotacionam via OAuth)
 amazon_marketplace_id TEXT  -- v16: override por conta (país/marketplace Amazon); NULL usa AMAZON_MARKETPLACE_ID global
 amazon_region TEXT          -- v16: override por conta (na|eu|fe); NULL usa AMAZON_REGION global
 shopee_shop_id BIGINT       -- v18: shop_id real da Shopee (numérico, único) — índice único parcial (WHERE NOT NULL)
 shopee_partner_id TEXT      -- v46: partner_id específico da Shopee por loja (multi-partner support); NULL usa global SHOPEE_PARTNER_ID
 shopee_partner_key TEXT     -- v46: partner_key específico por loja (não implementado ainda; futuro v47+)
+tiktok_shop_id TEXT         -- v94: shop_id real do TikTok Shop — índice único parcial (WHERE NOT NULL)
+tiktok_shop_cipher TEXT     -- v94: shop_cipher exigido pela maioria dos endpoints da Shop API (ver tiktok.md)
 token_expires_at TIMESTAMPTZ  -- Shopee: access_token expira em ~4h; refresh_token em ~30 dias (rotaciona a cada renovação)
 active_listings INT, monthly_revenue NUMERIC   -- não populados automaticamente hoje
 imposto_pct NUMERIC DEFAULT 0                  -- % de imposto usada no cálculo de margem

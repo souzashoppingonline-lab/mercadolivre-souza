@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Política de Segurança da Informação — Multimix Vendas</title>
+<!-- Mesma disciplina de politica-de-privacidade.html: página pública,
+     autocontida, com rota dedicada em server.js (fora do SPA fallback) e
+     whitelisted em staffAuth.js PUBLIC_PREFIXES. Escrita pra responder o
+     "Questionário sobre segurança e privacidade de dados" do TikTok Shop
+     Partner Center — só com práticas REAIS já implementadas neste projeto
+     (nunca afirmar controle que não existe, mesma disciplina de nunca
+     inventar campo/endpoint — ver .claude/tiktok.md "O que NÃO fazer").
+     Ver .claude/backend.md. -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #14161b; color: #e6e6e6; font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .updated { color: #9aa0a8; font-size: 13px; margin-bottom: 36px; }
+  h2 { font-size: 18px; margin: 36px 0 10px; color: #ff0050; }
+  p, li { color: #cfd3d8; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  .box { background: #1c1f26; border: 1px solid #2a2d35; border-radius: 10px; padding: 16px 20px; margin: 8px 0 20px; }
+  .fill { color: #ff9800; font-weight: 600; }
+  a { color: #ff0050; }
+  code { background: #1c1f26; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #2a2d35; font-size: 13px; color: #8a8f97; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Política de Segurança da Informação</h1>
+  <p class="updated">Última atualização: 06/09/2026</p>
+
+  <p>Esta política descreve os controles de segurança adotados pelo <strong>Multimix Vendas</strong> (o "Sistema"), painel operacional interno usado para gerenciar vendas das contas de marketplace conectadas (Mercado Livre, Amazon, Shopee, TikTok Shop).</p>
+
+  <div class="box">
+    <strong>Responsável pela segurança da informação</strong><br>
+    <span class="fill">[PREENCHER: razão social / CNPJ do responsável legal]</span><br>
+    Contato: <span class="fill">[PREENCHER: e-mail de contato para questões de segurança]</span>
+  </div>
+
+  <h2>1. Transporte e criptografia</h2>
+  <p>Todo o acesso ao Sistema é feito exclusivamente via HTTPS (<code>https://multimixvendas.duckdns.org</code>). Não há endpoint público servido sem TLS.</p>
+
+  <h2>2. Controle de acesso</h2>
+  <ul>
+    <li>Acesso ao painel exige login de funcionário autorizado (usuário/senha).</li>
+    <li>Senhas são armazenadas com hash <strong>bcrypt</strong> (custo 10) — nunca em texto puro.</li>
+    <li>Sessão de login usa cookie <strong>httpOnly, secure e SameSite=Lax</strong>, assinado com uma chave secreta própria do servidor (JWT) — o token de sessão nunca fica acessível a JavaScript no navegador.</li>
+    <li>Permissões são segregadas por papel (função): cada funcionário só enxerga as telas e dados do seu papel (ex.: expedição/embalagem não vê financeiro, financeiro não vê vídeos de conferência de embalagem).</li>
+  </ul>
+
+  <h2>3. Credenciais de marketplace (tokens OAuth)</h2>
+  <ul>
+    <li>Os tokens de acesso/atualização (access_token/refresh_token) emitidos por cada marketplace ficam armazenados <strong>somente no banco de dados do servidor</strong> — nunca são enviados ao navegador do usuário nem expostos em nenhuma resposta de API voltada ao frontend.</li>
+    <li>Toda chamada às APIs de marketplace é feita por um processo de backend dedicado, isolado das rotas que o frontend consome.</li>
+    <li>A renovação de token usa <em>compare-and-swap</em> (atualiza só se o valor antigo ainda bater), evitando que dois processos concorrentes invalidem um ao outro o token da mesma conta.</li>
+  </ul>
+
+  <h2>4. Autenticidade de mensagens (webhooks)</h2>
+  <p>Toda notificação recebida dos marketplaces (webhooks) é validada por assinatura criptográfica (HMAC) antes de ser processada — mensagens sem assinatura válida são descartadas e registradas em log, nunca processadas como se fossem legítimas.</p>
+
+  <h2>5. Segregação de dados</h2>
+  <p>Os dados de cada marketplace/conta ficam isolados por identificador de loja e de marketplace no banco de dados — uma conta nunca enxerga, mistura ou recebe dados de outra conta ou de outro vendedor.</p>
+
+  <h2>6. Retenção e eliminação</h2>
+  <p>Dados são mantidos enquanto a conta permanecer conectada e pelo prazo exigido por obrigações fiscais/contábeis. O vendedor pode solicitar a desconexão de uma conta e a eliminação dos dados associados a qualquer momento (ver <a href="/politica-de-privacidade">Política de Privacidade</a>).</p>
+
+  <h2>7. Infraestrutura de rede e monitoramento</h2>
+  <p><span class="fill">[PREENCHER pelo responsável técnico: descrever aqui os controles de infraestrutura realmente em uso — ex.: firewall/regras de porta do servidor, monitoramento de disponibilidade, backups do banco de dados — só o que estiver de fato implementado, pra não declarar um controle inexistente neste questionário.]</span></p>
+
+  <h2>8. Resposta a incidentes</h2>
+  <p>Qualquer suspeita de incidente de segurança (acesso indevido, vazamento de dados) deve ser reportada imediatamente ao contato informado acima para investigação e, se confirmado, comunicação aos titulares/lojas afetadas conforme exigido pela LGPD.</p>
+
+  <h2>9. Alterações desta política</h2>
+  <p>Esta política pode ser atualizada para refletir mudanças nos controles de segurança do Sistema. A data no topo desta página indica a última revisão.</p>
+
+  <footer>Multimix Vendas — painel operacional interno multimarcas (Mercado Livre, Amazon, Shopee, TikTok Shop). Ver também a <a href="/politica-de-privacidade">Política de Privacidade</a>.</footer>
+</div>
+</body>
+</html>

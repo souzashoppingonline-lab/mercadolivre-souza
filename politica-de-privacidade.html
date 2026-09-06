@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Política de Privacidade — Multimix Vendas</title>
+<!-- Página pública, autocontida (sem depender de css/js do sistema) —
+     precisa abrir sem login mesmo com STAFF_AUTH_ENABLED=true (whitelisted
+     em server/src/routes/staffAuth.js PUBLIC_PREFIXES) e sem passar pelo
+     SPA fallback do index.html (rota dedicada em server.js). Exigida pelo
+     cadastro de app no TikTok Shop Partner Center / Shopee Open Platform /
+     Mercado Livre — revisor externo precisa conseguir ler isso direto.
+     Ver .claude/backend.md e .claude/tiktok.md. -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #14161b; color: #e6e6e6; font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .updated { color: #9aa0a8; font-size: 13px; margin-bottom: 36px; }
+  h2 { font-size: 18px; margin: 36px 0 10px; color: #ff0050; }
+  p, li { color: #cfd3d8; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  .box { background: #1c1f26; border: 1px solid #2a2d35; border-radius: 10px; padding: 16px 20px; margin: 8px 0 20px; }
+  .fill { color: #ff9800; font-weight: 600; }
+  a { color: #ff0050; }
+  code { background: #1c1f26; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #2a2d35; font-size: 13px; color: #8a8f97; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Política de Privacidade</h1>
+  <p class="updated">Última atualização: 06/09/2026</p>
+
+  <p>Esta política descreve como o <strong>Multimix Vendas</strong> (o "Sistema") trata dados ao integrar as contas de marketplace do vendedor (Mercado Livre, Amazon, Shopee e TikTok Shop) para exibir vendas, pedidos e indicadores num painel de uso interno.</p>
+
+  <div class="box">
+    <strong>Responsável pelo tratamento de dados</strong><br>
+    <span class="fill">[PREENCHER: razão social / CNPJ do responsável legal]</span><br>
+    Contato: <span class="fill">[PREENCHER: e-mail de contato para questões de privacidade]</span>
+  </div>
+
+  <h2>1. O que é este Sistema</h2>
+  <p>O Multimix Vendas é um painel operacional interno, usado pela própria empresa vendedora para acompanhar as vendas das suas contas nos marketplaces conectados. Não é um serviço vendido a terceiros nem acessado pelo público em geral — só por funcionários autorizados da empresa.</p>
+
+  <h2>2. Quais dados são coletados</h2>
+  <p>O Sistema só acessa dados que o próprio vendedor autoriza explicitamente ao conectar sua conta de marketplace via OAuth (Mercado Livre, Amazon, Shopee, TikTok Shop). Isso inclui:</p>
+  <ul>
+    <li><strong>Dados de pedidos e vendas</strong>: identificador do pedido, valor, status, itens, data, tipo/custo de envio.</li>
+    <li><strong>Dados do comprador quando fornecidos pelo marketplace</strong>: apelido/nome do comprador — usado só para exibir no pedido, nunca repassado a terceiros.</li>
+    <li><strong>Dados do catálogo</strong>: título, preço, estoque e imagem dos anúncios da própria loja.</li>
+    <li><strong>Tokens de acesso (access/refresh token)</strong> emitidos pelo marketplace para o Sistema poder consultar os dados acima em nome do vendedor — armazenados apenas no servidor, nunca expostos ao navegador.</li>
+  </ul>
+  <p>O Sistema <strong>não coleta dados de quem não seja usuário autorizado</strong> desta página e não usa cookies de rastreamento de terceiros nem pixels de publicidade.</p>
+
+  <h2>3. Como os dados são usados</h2>
+  <ul>
+    <li>Exibir vendas, pedidos e indicadores nos dashboards internos.</li>
+    <li>Enviar notificações operacionais (ex.: aviso de nova venda) por Telegram para a própria equipe.</li>
+    <li>Gerar relatórios financeiros e de desempenho para a própria empresa vendedora.</li>
+  </ul>
+  <p>Os dados nunca são usados para publicidade, revenda a terceiros ou qualquer finalidade fora da operação da própria loja.</p>
+
+  <h2>4. Compartilhamento de dados</h2>
+  <p>O Sistema <strong>não vende, aluga nem compartilha</strong> dados de pedidos, clientes ou lojas com terceiros. Os dados trafegam apenas entre o marketplace (Mercado Livre/Amazon/Shopee/TikTok Shop) e o servidor do próprio Sistema, hospedado em infraestrutura controlada pelo responsável acima.</p>
+
+  <h2>5. Armazenamento e segurança</h2>
+  <ul>
+    <li>Dados ficam em banco de dados próprio (PostgreSQL), com acesso restrito à equipe técnica.</li>
+    <li>Toda comunicação com o Sistema é feita via HTTPS.</li>
+    <li>O acesso ao painel é restrito por login de funcionário (usuário/senha), com papéis de permissão por função.</li>
+    <li>Tokens de acesso dos marketplaces nunca são enviados ao navegador — ficam só no servidor.</li>
+  </ul>
+
+  <h2>6. Retenção dos dados</h2>
+  <p>Os dados são mantidos enquanto a conta do marketplace estiver conectada ao Sistema e pelo prazo necessário para fins fiscais/contábeis exigidos por lei. O vendedor pode solicitar a desconexão da conta e a exclusão dos dados associados a qualquer momento, pelo contato informado acima.</p>
+
+  <h2>7. Direitos do titular (LGPD)</h2>
+  <p>Nos termos da Lei Geral de Proteção de Dados (Lei 13.709/2018), qualquer titular de dados tratados pelo Sistema pode solicitar, pelo contato acima: confirmação de tratamento, acesso, correção, anonimização, portabilidade ou eliminação dos seus dados, dentro dos limites legais.</p>
+
+  <h2>8. Cookies</h2>
+  <p>O Sistema usa apenas um cookie de sessão (httpOnly) para manter o login de funcionários autenticados, e armazenamento local do navegador (localStorage) para preferências de interface (ex.: aba selecionada). Nenhum dos dois é usado para rastreamento entre sites.</p>
+
+  <h2>9. Alterações desta política</h2>
+  <p>Esta política pode ser atualizada para refletir mudanças no Sistema ou na legislação aplicável. A data no topo desta página indica a última revisão.</p>
+
+  <h2>10. Contato</h2>
+  <p>Dúvidas sobre esta política ou sobre o tratamento dos seus dados: <span class="fill">[PREENCHER: e-mail de contato]</span>.</p>
+
+  <footer>Multimix Vendas — painel operacional interno multimarcas (Mercado Livre, Amazon, Shopee, TikTok Shop).</footer>
+</div>
+</body>
+</html>

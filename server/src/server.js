@@ -94,13 +94,23 @@ app.use('/ml', authRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+const staticRoot = path.join(__dirname, '..', '..');
+
+// Páginas públicas exigidas por cadastro de app de marketplace (TikTok Shop
+// Partner Center, Shopee Open Platform...) — precisam abrir SEM login mesmo
+// com STAFF_AUTH_ENABLED=true (whitelisted em staffAuth.js PUBLIC_PREFIXES)
+// e sem cair no SPA fallback (que serviria index.html em vez da página).
+// Rota explícita (não fica em /pages/, viram URL "limpa" sem .html — é o que
+// os formulários de cadastro pedem). Ver .claude/backend.md.
+app.get('/politica-de-privacidade', (req, res) => res.sendFile(path.join(staticRoot, 'politica-de-privacidade.html')));
+app.get('/politica-seguranca', (req, res) => res.sendFile(path.join(staticRoot, 'politica-seguranca.html')));
+
 // Estático (index.html, css/, js/, pages/, assets/) — antes servido direto
 // pelo nginx (bypassando este processo); passou a ser servido pelo Express
 // pra que requireStaffAuth (montado acima) consiga proteger o CARREGAMENTO
 // das páginas, não só as chamadas /api. O nginx precisa trocar seu
 // `location /` de "root ..." para "proxy_pass http://127.0.0.1:PORT;" — ver
 // .claude/auth-staff.md e .claude/deployment.md.
-const staticRoot = path.join(__dirname, '..', '..');
 app.use(express.static(staticRoot));
 // SPA fallback (equivalente ao try_files $uri $uri/ /index.html; do nginx),
 // mas só pra navegação de página (não pra /api, /webhooks, /auth, /ml, /ws

@@ -133,11 +133,13 @@
 
           <div id="boCartBlock" style="display:none;background:rgba(236,72,153,.06);border:1px solid rgba(236,72,153,.28);border-radius:10px;padding:12px;margin-top:12px">
             <div style="font-size:11px;color:#ec4899;font-weight:800;text-transform:uppercase;margin-bottom:6px">Compra no cartão</div>
-            <label class="bo-lbl" style="margin-top:0">Cartão *<select id="fCartao" class="bo-in"></select></label>
+            <label class="bo-lbl" style="margin-top:0">Cartão *<select id="fCartao" class="bo-in" onchange="atualizarInfoCartao()"></select></label>
+            <div id="fCartaoInfo" style="font-size:11px;color:var(--text-muted);margin:-4px 0 8px"></div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <label class="bo-lbl">Data da compra<input type="date" id="fDataCompra" class="bo-in" onchange="calcParcInfo()"></label>
               <label class="bo-lbl">Nº de parcelas<input type="number" min="1" max="24" value="1" id="fNParc" class="bo-in" oninput="calcParcInfo()"></label>
-              <label class="bo-lbl">Valor total<input type="number" step="0.01" id="fValTotal" class="bo-in" placeholder="0,00" oninput="calcParcInfo()"></label>
             </div>
+            <label class="bo-lbl">Valor total<input type="number" step="0.01" id="fValTotal" class="bo-in" placeholder="0,00" oninput="calcParcInfo()"></label>
             <div id="fParcInfo" style="font-size:14px;font-weight:800;color:#ec4899;margin-top:8px"></div>
           </div>
 
@@ -245,7 +247,8 @@ async function load(){
   if(errs.length) showStatus(`⚠️ <b>Falha ao ler o banco.</b> ${esc(errs.join(' · '))}.`,true);
   else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.`,false);
   popularCatSelect(); popularFornSelect();
-  document.getElementById('fCartao').innerHTML=CARTOES.length?CARTOES.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||'—')}${c.limite?` · limite ${BRL(c.limite)}`:''}</option>`).join(''):'<option value="">— cadastre um cartão —</option>';
+  document.getElementById('fCartao').innerHTML=CARTOES.length?CARTOES.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||'—')} · fecha ${c.dia_fechamento||'—'} / vence ${c.dia_vencimento||'—'}${c.limite?` · limite ${BRL(c.limite)}`:''}</option>`).join(''):'<option value="">— cadastre um cartão —</option>';
+  atualizarInfoCartao();
   popularFiltroSelects();
   renderFormControls();
   render();
@@ -512,10 +515,23 @@ function setFormTipo(t){ formTipo=t; const cart=t==='cartao';
   document.getElementById('lblVenc').style.display=cart?'none':'block';
   document.getElementById('lblVal').style.display=cart?'none':'block';
   document.getElementById('fBtn').textContent=cart?'Gerar parcelas no cartão':'+ Cadastrar dívida';
+  if(cart){ const fdc=document.getElementById('fDataCompra'); if(!fdc.value) fdc.value=hojeISO(); atualizarInfoCartao(); }
   renderFormControls(); if(cart) calcParcInfo();
 }
 function setFormStatus(s){ formStatus=s; renderFormControls(); }
-function calcParcInfo(){ const n=Math.max(1,Math.round(pNum(document.getElementById('fNParc').value)||1)), v=pNum(document.getElementById('fValTotal').value); document.getElementById('fParcInfo').textContent = v>0?`${n}x de ${BRL(v/n)}`:''; }
+function atualizarInfoCartao(){
+  const card=CARTOES.find(c=>String(c.id)===String(document.getElementById('fCartao').value));
+  document.getElementById('fCartaoInfo').textContent = card?`Fecha dia ${card.dia_fechamento||'—'} · Vence dia ${card.dia_vencimento||'—'}`:'';
+  calcParcInfo();
+}
+function calcParcInfo(){
+  const n=Math.max(1,Math.round(pNum(document.getElementById('fNParc').value)||1)), v=pNum(document.getElementById('fValTotal').value);
+  const card=CARTOES.find(c=>String(c.id)===String(document.getElementById('fCartao').value));
+  const dataCompra=document.getElementById('fDataCompra').value;
+  let extra='';
+  if(card && dataCompra && v>0){ const venc=calcVencimentos(card,dataCompra,n); extra=` · 1ª parcela ${fmtDate(venc[0].data_vencimento)}`; }
+  document.getElementById('fParcInfo').textContent = v>0?`${n}x de ${BRL(v/n)}${extra}`:'';
+}
 
 // Regra de cartão de crédito: se a compra foi até o dia de fechamento, a 1ª
 // parcela cai na fatura do mês da compra e vence no mês seguinte; se foi depois
@@ -565,7 +581,7 @@ async function doInsertSimples(d){
 function cadastrarCartao(base){
   const cid=document.getElementById('fCartao').value, card=CARTOES.find(c=>String(c.id)===String(cid));
   const n=Math.max(1,Math.round(pNum(document.getElementById('fNParc').value)||1)), total=pNum(document.getElementById('fValTotal').value);
-  const dataCompra=document.getElementById('fDate').value||hojeISO();
+  const dataCompra=document.getElementById('fDataCompra').value||hojeISO();
   if(!card){ fMsg('Selecione um cartão (cadastre em "Cartões").',true); return; }
   if(total<=0){ fMsg('Informe o valor total.',true); return; }
   const venc=calcVencimentos(card,dataCompra,n), parcVal=+(total/n).toFixed(2);
@@ -600,7 +616,7 @@ async function doInsertCartao(base,card,n,total,dataCompra,venc,parcVal){
   }
   fecharModal(); limparForm(); render(); fMsg('✅ Compra parcelada no cartão gerada.',false);
 }
-function limparForm(){ ['fName','fVal','fSup','fNf','fValTotal'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); const np=document.getElementById('fNParc'); if(np) np.value='1'; const pi=document.getElementById('fParcInfo'); if(pi) pi.textContent=''; }
+function limparForm(){ ['fName','fVal','fSup','fNf','fValTotal'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; }); const np=document.getElementById('fNParc'); if(np) np.value='1'; const pi=document.getElementById('fParcInfo'); if(pi) pi.textContent=''; const dc=document.getElementById('fDataCompra'); if(dc) dc.value=hojeISO(); }
 
 function togglePago(id){
   const b=BOLETOS.find(x=>String(x.id)===String(id)); if(!b) return;

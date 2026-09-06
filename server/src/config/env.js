@@ -51,6 +51,18 @@ module.exports = {
     // Sem ela, a validação da assinatura do webhook falha (verified=false).
     pushPartnerKey: process.env.SHOPEE_PUSH_PARTNER_KEY,
   },
+  // TikTok Shop Partner API — usado por server/src/marketplaces/tiktok/tiktokClient.js,
+  // consumido pelo TiktokPollingEventSource (ver .claude/tiktok.md). appKey/appSecret
+  // identificam o app (não a loja) — o mesmo par vale para todas as contas TikTok.
+  tiktok: {
+    appKey: process.env.TIKTOK_APP_KEY,
+    appSecret: process.env.TIKTOK_APP_SECRET,
+    redirectUri: process.env.TIKTOK_REDIRECT_URI,
+    // Chave de assinatura do webhook — TikTok usa a MESMA app_secret (verificar
+    // se muda quando o app estiver criado; Shopee usa uma chave separada, ver
+    // .claude/tiktok.md "O que falta confirmar").
+    webhookVerify: process.env.TIKTOK_WEBHOOK_VERIFY !== 'false',
+  },
   // Módulo Financeiro — banco Supabase SEPARADO (não o Postgres principal).
   // Read-only via REST (PostgREST). Isolado: nunca migra/escreve por padrão.
   // Ver .claude/modules.md. Sem URL+KEY, o módulo fica "não configurado".

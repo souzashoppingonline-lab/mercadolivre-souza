@@ -47,6 +47,7 @@ function buildAmazonTopbar(title) {
           <a href="../index.html"><i class="fas fa-shopping-bag"></i> Mercado Livre</a>
           <a href="dashboard-amazon.html" class="active"><i class="fab fa-amazon"></i> Amazon</a>
           <a href="dashboard-shopee.html"><i class="fas fa-store"></i> Shopee</a>
+          <a href="dashboard-tiktok.html"><i class="fab fa-tiktok"></i> TikTok Shop</a>
         </nav>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
       </div>

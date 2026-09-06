@@ -202,6 +202,15 @@ Página só **analisa/recomenda** — nenhuma destas rotas altera preço no Merc
 | `GET /api/shopee/chat/:conversationId/mensagens` | histórico de uma conversa, buscado ao vivo na Shopee (`get_message_list`) — `{buyer_name, rows:[{message_id, de:'comprador'\|'loja', tipo, texto, ts_ms}]}` (ordem cronológica). Resolve a loja dona da conversa e renova token com CAS (`getShopeeClientForStore`) |
 | `POST /api/shopee/chat/responder` `{conversation_id,text}` | responde o cliente **dentro da plataforma** (`send_message`) usando o `to_id` guardado em `shopee_chat` (v38); zera `unread_count` local. Pode exigir "Acesso a dados sensíveis" aprovado — erro de negócio da Shopee é repassado no `error` |
 | `GET /api/shopee/financeiro?store_id&dias` | financeiro/repasse (escrow) Shopee — **isolado da Conciliação Bancária do ML**. Por pedido: `buyer_total` (bruto), `commission_fee` (taxa Shopee), `escrow_amount` (**líquido**), `buyer_payment_method`, `logistics_status` (entrega), `tracking_number`. `{rows:[...500], resumo:{bruto,comissao,liquido,com_escrow,dias}}`. Lê `shopee_order_data` (preenchido pelo worker via `get_escrow_detail`/`get_tracking_info`; backfill: `server/backfill-shopee-financeiro.js`) |
+
+## Dashboard TikTok Shop (`routes/tiktok.js`, montado em `/api/tiktok`)
+> 100% isolado do pipeline ML/Shopee/Amazon: filtra `marketplace_id = (SELECT id FROM marketplaces WHERE code='TIKTOK')` direto em `orders`/`stores`. Consumido só por `pages/dashboard-tiktok.html`. **Fase 1 — só vendas** (pedido do usuário: "saber as vendas"): sem rota de produtos/catálogo, chat, promoções ou financeiro nesta fase, ver `tiktok.md`.
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/tiktok/kpis` | `vendas_hoje`/`pedidos_hoje` (hoje, fuso SP) e `vendas_total`/`pedidos_total` (todo o histórico) — `vendas_*` exclui `status='cancelled'`, `pedidos_*` conta todos (mesmo padrão do Amazon/Shopee) |
+| `GET /api/tiktok/pedidos` | até 200 pedidos TikTok Shop mais recentes (`id`, `conta`, `valor`, `status`, `data`) |
+| `GET /api/tiktok/status` | `ultima_sincronizacao` (`MAX(last_synced_at)` de `marketplace_sync_state`), `contas_conectadas`/`contas_total` (`stores` com `refresh_token`), `ultimo_erro` (sempre `null` hoje — sem tracking estruturado de erro de polling ainda, mesmo gap do Amazon) |
 | `GET /api/shopee/anuncios?store_id&status` | catálogo Shopee (`items` + LEFT JOIN `shopee_item_data`, `marketplace_id=SHOPEE`) com filtro por loja/status — `{rows:[{item_id,sku,title,estoque,vendidos,price,status,thumbnail,category_id,conta,has_model,variation_count,price_min,price_max}], resumo:{total,ativos,pausados,estoque_total}, note}`. Preenchido pelo job `syncShopeeCatalog` (v39); `note` só aparece se ainda não sincronizou |
 
 ## Alertas
@@ -295,6 +304,7 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 |---|---|
 | `POST /webhooks/ml` | entrada de webhooks do Mercado Livre — responde 200 imediato, enfileira no BullMQ |
 | `POST /webhooks/shopee` | webhook Shopee ("Mecanismo de Empurra") — **isolado do gateway ML** (`routes/shopeeWebhook.js`, montado antes do `express.json()` pra ter o corpo cru). Valida assinatura HMAC (`push_url\|body`, header Authorization), responde 200 e enfileira o mesmo evento do polling (`marketplace-events-shopee`) → tempo real. `SHOPEE_WEBHOOK_VERIFY=false` desliga a validação pro 1º teste. `GET /webhooks/shopee` responde 200 (teste de conectividade do console) |
+| `POST /webhooks/tiktok` | webhook TikTok Shop (evento `ORDER_STATUS_CHANGE`) — **isolado do gateway ML e do webhook Shopee** (`routes/tiktokWebhook.js`, montado antes do `express.json()` pra ter o corpo cru). Valida assinatura HMAC (`HMAC-SHA256(app_secret, app_key+body)`, header Authorization SEM prefixo Bearer — sem timestamp, sem proteção a replay), responde 200 e enfileira o mesmo evento do polling (`marketplace-events-tiktok`, jobId compartilhado dedupe) → tempo real. `TIKTOK_WEBHOOK_VERIFY=false` desliga a validação pro 1º teste. `GET /webhooks/tiktok` responde 200 (teste de conectividade do Partner Center) |
 | `POST /webhooks/telegram` | recebe replies do bot Telegram para responder perguntas ML diretamente do chat |
 
 ## `/auth/*` e `/ml/*` — ver `mercadolivre.md`
@@ -361,6 +371,14 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /auth/shopee/config` | diagnóstico — mostra `partner_id`/`redirect_uri`/ambiente configurados (`partner_key` só indica se está setada, nunca expõe o valor) |
 | `GET /auth/shopee/login` | monta a URL de autorização assinada (`shop/auth_partner`) e redireciona o seller para lá |
 | `GET /auth/shopee/callback` | recebe `?code&shop_id`, troca por `access_token`/`refresh_token` (`auth/token/get`) e cria/atualiza a linha em `stores` (`marketplace_id=SHOPEE`, id sintético `9100000001`+). Resposta avisa que o worker precisa ser reiniciado pra sincronizar a conta nova (mesma limitação hoje da Amazon) |
+
+## `/auth/tiktok/*` — ver `tiktok.md`
+
+| Rota | Descrição |
+|---|---|
+| `GET /auth/tiktok/config` | diagnóstico — mostra `app_key`/`redirect_uri` configurados (`app_secret` só indica se está setada, nunca expõe o valor) |
+| `GET /auth/tiktok/login` | monta a URL de autorização do app Custom (`getAuthorizationUrl`) e redireciona o seller para lá — **URL/params exatos ainda não confirmados contra o Partner Center real**, ver "O que falta confirmar" em `tiktok.md` |
+| `GET /auth/tiktok/callback` | recebe `?code&shop_id` (ou equivalente), troca por `access_token`/`refresh_token` (`grant_type=authorized_code`, `GET auth/v2/token/get`) e cria/atualiza a linha em `stores` (`marketplace_id=TIKTOK`, id sintético `9200000001`+, grava `tiktok_shop_id`/`tiktok_shop_cipher`). Resposta avisa que o worker precisa ser reiniciado pra sincronizar a conta nova (mesma limitação hoje da Amazon/Shopee) |
 
 ## Print Agent (`/api/print/*` staff, `/print-agent/*` agente)
 

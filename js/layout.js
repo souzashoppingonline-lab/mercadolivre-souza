@@ -147,6 +147,7 @@ function buildMarketplaceSwitcher() {
     { href: '../index.html', icon: 'fa-shopping-bag', label: 'Mercado Livre', active: true },
     { href: 'dashboard-amazon.html', icon: 'fab fa-amazon', label: 'Amazon' },
     { href: 'dashboard-shopee.html', icon: 'fa-store', label: 'Shopee' },
+    { href: 'dashboard-tiktok.html', icon: 'fab fa-tiktok', label: 'TikTok Shop' },
   ];
   return `<nav class="mkt-switcher-compact">${items.map(i => `
     <a href="${i.href}" class="${i.active ? 'active' : ''}"><i class="${i.icon.startsWith('fab') ? i.icon : 'fas ' + i.icon}"></i> ${i.label}</a>

@@ -14,6 +14,8 @@ const embalagemRoutes = require('./routes/embalagem');
 const webhookGateway = require('./routes/webhookGateway');
 const authRoutes = require('./routes/auth');
 const shopeeAuthRoutes = require('./routes/shopeeAuth');
+const tiktokAuthRoutes = require('./routes/tiktokAuth');
+const tiktokRoutes = require('./routes/tiktok');
 const { router: staffAuthRoutes, requireStaffAuth } = require('./routes/staffAuth');
 const wsHub = require('./ws/hub');
 
@@ -24,6 +26,9 @@ app.use(cors());
 // express.raw()). Isolado do gateway ML; público (não passa pelo gate de auth,
 // que só é registrado abaixo). Ver routes/shopeeWebhook.js e .claude/shopee.md.
 app.use('/webhooks/shopee', require('./routes/shopeeWebhook'));
+// Webhook TikTok Shop — mesma disciplina (corpo cru, montado antes do
+// express.json() global). Ver routes/tiktokWebhook.js e .claude/tiktok.md.
+app.use('/webhooks/tiktok', require('./routes/tiktokWebhook'));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
@@ -50,6 +55,8 @@ app.use('/api/turbo', turboRoutes);
 app.use('/api/amazon', amazonRoutes);
 // Dashboard Shopee — mesmo padrão isolado da Amazon (ver routes/shopee.js).
 app.use('/api/shopee', shopeeRoutes);
+// Dashboard TikTok Shop — mesmo padrão isolado da Amazon/Shopee (ver routes/tiktok.js).
+app.use('/api/tiktok', tiktokRoutes);
 // Agenda Trello — quadro Kanban independente (ver .claude/task-engine.md).
 app.use('/api/tasks', tasksRoutes);
 // Embalagem — bipagem de etiqueta + vídeo de conferência (ver .claude/embalagem.md).
@@ -77,6 +84,9 @@ app.use('/webhooks', webhookGateway);
 // .claude/shopee.md). Montada antes de '/auth' para não competir com as
 // rotas do ML nesse mesmo prefixo.
 app.use('/auth/shopee', shopeeAuthRoutes);
+// TikTok Shop OAuth — mesmo padrão do ML/Shopee, fluxo grant_type=authorized_code
+// próprio do TikTok Shop (ver .claude/tiktok.md).
+app.use('/auth/tiktok', tiktokAuthRoutes);
 // OAuth flow — store owners visit /auth/login once to authorize.
 app.use('/auth', authRoutes);
 // ML app has /ml/callback configured as redirect_uri

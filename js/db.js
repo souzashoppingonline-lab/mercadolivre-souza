@@ -227,6 +227,11 @@ const DB = {
   async getShopeeChatMensagens(conversationId) { return this._get(`/shopee/chat/${encodeURIComponent(conversationId)}/mensagens`); },
   async responderShopeeChat(conversation_id, text) { return this._post('/shopee/chat/responder', { conversation_id, text }); },
 
+  // ── Dashboard TikTok Shop (isolado — Fase 1: só vendas, ver .claude/tiktok.md) ──
+  async getTiktokKpis()    { return this._get('/tiktok/kpis'); },
+  async getTiktokPedidos() { return this._get('/tiktok/pedidos'); },
+  async getTiktokStatus()  { return this._get('/tiktok/status'); },
+
   // ── Análise de Produtos (Fase 1 — ver .claude/analise-produtos.md) ──
   async getProdutosAnalise() { return this._get('/analise/produtos'); },
   async getProdutoAnalise(id) { return this._get(`/analise/produtos/${id}`); },

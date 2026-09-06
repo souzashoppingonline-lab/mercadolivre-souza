@@ -99,7 +99,11 @@ function restrictedModuleForPath(p) {
 // callbacks de OAuth do ML/Shopee, o próprio login) e o WebSocket (eventos
 // de notificação leves, não dados completos — ver known-bugs.md/decisions.md
 // se isso precisar mudar no futuro).
-const PUBLIC_PREFIXES = ['/webhooks', '/auth', '/ml', '/health', '/ws', '/pages/login.html', '/favicon.ico', '/api/embalagem/debug'];
+// /politica-de-privacidade e /politica-seguranca: páginas públicas exigidas
+// pelo cadastro de apps de marketplace (TikTok Shop Partner Center, Shopee
+// Open Platform...) — um revisor externo precisa abrir sem login, mesmo com
+// o gate ligado.
+const PUBLIC_PREFIXES = ['/webhooks', '/auth', '/ml', '/health', '/ws', '/pages/login.html', '/favicon.ico', '/api/embalagem/debug', '/politica-de-privacidade', '/politica-seguranca'];
 // Além de /api/embalagem/*, o papel 'embalagem' também precisa disso:
 const EMBALAGEM_EXTRA_API = ['/api/lojas']; // dropdown de loja na aba Conferência do Dia
 const EMBALAGEM_EXTRA_PAGES = ['/pages/embalagem.html'];

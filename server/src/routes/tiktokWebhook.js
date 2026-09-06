@@ -6,12 +6,18 @@
 // publica, então handleTiktokOrderEvent (marketplaceEventWorker.js)
 // processa igual — só que em tempo real.
 //
-// Assinatura CONFIRMADA (documentação pública — diferente da assinatura de
-// request de negócio em tiktokClient.js): HMAC-SHA256(app_secret,
-// app_key + raw_body), hex minúsculo, no header Authorization (SEM prefixo
-// "Bearer"). Sem timestamp na assinatura — não há proteção contra replay;
-// a idempotência vem do `tts_notification_id` (dedupe por jobId no BullMQ,
-// mesmo padrão da Shopee). Ver .claude/tiktok.md.
+// Assinatura CONFIRMADA (documentação pública + código-fonte do SDK
+// `ecomphp/tiktokshop-php`, ver tiktokClient.js — diferente da assinatura de
+// request de negócio): HMAC-SHA256(app_secret, app_key + raw_body), hex
+// minúsculo, no header Authorization (SEM prefixo "Bearer"). Sem timestamp
+// na assinatura — não há proteção contra replay; a idempotência vem do
+// `tts_notification_id` (dedupe por jobId no BullMQ, mesmo padrão da
+// Shopee). `type` CONFIRMADO no mesmo SDK: é um CÓDIGO NUMÉRICO, não string
+// — 1=ORDER_STATUS_UPDATE (o único tratado nesta fase), 2=REVERSE_ORDER_
+// STATUS_UPDATE, 3=RECIPIENT_ADDRESS_UPDATE, 4=PACKAGE_UPDATE, 5=PRODUCT_
+// STATUS_UPDATE, 6=SELLER_DEAUTHORIZATION, 7=UPCOMING_AUTHORIZATION_
+// EXPIRATION, 12=RETURN_STATUS_UPDATE. Ver .claude/tiktok.md.
+const TIKTOK_WEBHOOK_TYPE_ORDER_STATUS_UPDATE = 1;
 const express = require('express');
 const crypto = require('crypto');
 const pool = require('../db/pool');
@@ -49,7 +55,9 @@ router.post('/', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) =>
     if (env.tiktok.webhookVerify && appSecret && !verified) return;
 
     // Só nos interessam eventos de mudança de status de pedido nesta fase
-    // (ver .claude/tiktok.md — Fase 1 é só vendas). Outros tipos são ignorados.
+    // (ver .claude/tiktok.md — Fase 1 é só vendas). Outros tipos (produto,
+    // endereço, devolução, desautorização...) são ignorados explicitamente.
+    if (Number(payload.type) !== TIKTOK_WEBHOOK_TYPE_ORDER_STATUS_UPDATE) return;
     const data = payload.data || {};
     const orderId = data.order_id;
     const shopId = payload.shop_id;

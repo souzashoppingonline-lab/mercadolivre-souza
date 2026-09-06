@@ -277,10 +277,15 @@ async function handleShopeeOrderEvent(evt) {
 // ⚠️ Valores de order_status a confirmar contra uma resposta real (ver
 // .claude/tiktok.md) — os usados aqui seguem o vocabulário documentado
 // publicamente (AWAITING_SHIPMENT/IN_TRANSIT/DELIVERED/COMPLETED/CANCELLED).
+// Enum de order_status CONFIRMADO contra o código-fonte do SDK de
+// referência `ecomphp/tiktokshop-php` (Resources\Order — UNPAID/
+// AWAITING_SHIPMENT/AWAITING_COLLECTION/PARTIALLY_SHIPPING/IN_TRANSIT/
+// DELIVERED/COMPLETED/CANCELLED) — bate exatamente com o mapeamento abaixo.
 function mapTiktokStatus(orderStatus) {
   switch (orderStatus) {
     case 'AWAITING_SHIPMENT':
     case 'AWAITING_COLLECTION':
+    case 'PARTIALLY_SHIPPING':
     case 'IN_TRANSIT':
     case 'DELIVERED':
     case 'COMPLETED':

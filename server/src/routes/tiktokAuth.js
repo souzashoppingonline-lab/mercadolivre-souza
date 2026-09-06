@@ -6,7 +6,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const env = require('../config/env');
-const { getAuthorizationUrl, exchangeCodeForToken } = require('../marketplaces/tiktok/tiktokClient');
+const { getAuthorizationUrl, exchangeCodeForToken, TiktokClient } = require('../marketplaces/tiktok/tiktokClient');
 
 const router = express.Router();
 
@@ -29,8 +29,7 @@ router.get('/config', (req, res) => {
       <tr><td>app_secret</td><td>${env.tiktok.appSecret ? '<span class="ok">✓ configurado (oculto)</span>' : '<span class="err">❌ NÃO CONFIGURADO (TIKTOK_APP_SECRET)</span>'}</td></tr>
       <tr><td>redirect_uri</td><td>${redirectUri ? `<code>${redirectUri}</code>` : '<span class="err">❌ NÃO CONFIGURADO (TIKTOK_REDIRECT_URI)</span>'}</td></tr>
     </table>
-    <p><strong>O redirect_uri acima deve estar cadastrado EXATAMENTE</strong> no app do Partner Center.</p>
-    <p>⚠️ Pra um Custom App, o Partner Center costuma mostrar um <strong>link de autorização pronto</strong> na própria tela do app — comparar com o link que <code>/login</code> gera abaixo antes de confiar nele em produção (ver .claude/tiktok.md).</p>
+    <p><strong>O redirect_uri acima deve estar cadastrado EXATAMENTE</strong> no app do Partner Center — é lá que ele é configurado; a URL de autorização abaixo NÃO leva <code>redirect_uri</code> como parâmetro (confirmado contra o SDK de referência, ver .claude/tiktok.md), o TikTok Shop sempre volta pra URL fixa cadastrada no app.</p>
     <p><a href="/auth/tiktok/login">→ Tentar autorizar uma loja</a></p>
     </body></html>`);
 });
@@ -41,7 +40,7 @@ router.get('/login', (req, res) => {
   if (!appKey || !redirectUri) {
     return res.status(500).send('TikTok Shop não configurado — faltam TIKTOK_APP_KEY/TIKTOK_REDIRECT_URI no .env. Ver /auth/tiktok/config.');
   }
-  const url = getAuthorizationUrl({ appKey, redirectUri });
+  const url = getAuthorizationUrl({ appKey });
   res.redirect(url);
 });
 
@@ -62,11 +61,21 @@ router.get('/callback', async (req, res) => {
   try {
     const tokens = await exchangeCodeForToken({ appKey, appSecret, code });
     const expiresAt = new Date(Date.now() + Number(tokens.access_token_expire_in || 7 * 24 * 3600) * 1000);
-    // ⚠️ shop_id/shop_cipher — nome exato do campo na resposta do token/get a
-    // confirmar (ver .claude/tiktok.md "O que falta confirmar"); tentativa
-    // com os nomes mais prováveis documentados.
-    const shopId = tokens.shop_id || tokens.seller_id || null;
-    const shopCipher = tokens.shop_cipher || tokens.open_id || null;
+
+    // CONFIRMADO no SDK de referência: token/get NÃO devolve shop_id/
+    // shop_cipher — é preciso chamar GET authorization/{version}/shops com o
+    // access_token recém-emitido pra descobrir a(s) loja(s) autorizada(s).
+    const authClient = new TiktokClient({ appKey, appSecret, accessToken: tokens.access_token });
+    const shops = await authClient.getAuthorizedShops().catch((e) => {
+      console.error('[tiktok-auth] getAuthorizedShops falhou:', e.message);
+      return [];
+    });
+    // ⚠️ Nome exato dos campos dentro de cada item de `shops` (shop_id vs id,
+    // shop_cipher vs cipher) não confirmado — o SDK só expõe a chamada, não
+    // o shape da resposta. Tenta as variantes mais prováveis.
+    const shop = shops[0] || {};
+    const shopId = shop.shop_id || shop.id || null;
+    const shopCipher = shop.shop_cipher || shop.cipher || null;
 
     const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = 'TIKTOK'`);
     const marketplaceId = mp[0]?.id;
@@ -96,7 +105,8 @@ router.get('/callback', async (req, res) => {
 
     res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>TikTok Shop autorizado</title>
       <style>${DIAG_STYLE}</style></head><body>
-      <h2>✅ Loja TikTok Shop autorizada</h2>
+      <h2>${shopId ? '✅' : '⚠️'} Loja TikTok Shop autorizada</h2>
+      ${!shopId ? '<p class="warn">Token emitido, mas getAuthorizedShops() não retornou nenhuma loja — conferir os logs (`console.error`) e o nome real do campo na resposta antes de confiar no sync (ver .claude/tiktok.md).</p>' : ''}
       <p>shop_id <code>${shopId || '—'}</code> conectado (store interno <code>${storeId}</code>).</p>
       <p>Reinicie o worker (<code>ml-worker-novo</code>) para essa conta começar a sincronizar — ainda sem hot-reload (mesma limitação da Amazon/Shopee, ver .claude/todo.md).</p>
       </body></html>`);

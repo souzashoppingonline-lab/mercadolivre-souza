@@ -104,6 +104,7 @@ const staticRoot = path.join(__dirname, '..', '..');
 // os formulários de cadastro pedem). Ver .claude/backend.md.
 app.get('/politica-de-privacidade', (req, res) => res.sendFile(path.join(staticRoot, 'politica-de-privacidade.html')));
 app.get('/politica-seguranca', (req, res) => res.sendFile(path.join(staticRoot, 'politica-seguranca.html')));
+app.get('/protecao_dados_pessoais', (req, res) => res.sendFile(path.join(staticRoot, 'protecao_dados_pessoais.html')));
 
 // Estático (index.html, css/, js/, pages/, assets/) — antes servido direto
 // pelo nginx (bypassando este processo); passou a ser servido pelo Express

@@ -136,7 +136,9 @@ Estado atual: **"em construção"** (classe `.em-construcao`). Todo o HTML/JS re
 
 ## Páginas públicas de política
 
-`politica-de-privacidade.html`/`politica-seguranca.html` (rotas dedicadas em `server.js`, whitelisted em `staffAuth.js`) — exigidas pelo questionário de segurança/privacidade do Partner Center (link + evidência por pergunta; evidência de infraestrutura real só o usuário pode capturar). Campos `[PREENCHER: ...]` (razão social/CNPJ, e-mail, infraestrutura de rede) ainda pendentes de preenchimento pelo usuário.
+`politica-de-privacidade.html`/`politica-seguranca.html`/`protecao_dados_pessoais.html` (rotas dedicadas em `server.js`, whitelisted em `staffAuth.js`) — exigidas pelo questionário de segurança/privacidade do Partner Center (link + evidência por pergunta; evidência de infraestrutura real só o usuário pode capturar). Campos `[PREENCHER: ...]` (razão social/CNPJ, e-mail, infraestrutura de rede) ainda pendentes de preenchimento nas 2 primeiras.
+
+`protecao_dados_pessoais.html` (`/protecao_dados_pessoais`) responde à pergunta "sua organização tem uma política interna [de proteção de dados pessoais]?" — é a **versão web em português, traduzida fielmente**, do PDF que o usuário já submeteu ao TikTok (`Personal Information Protection Standard — FinanceEcom`, v1.0, emitido 07/09/2026: 14 seções + tabela de controle de documento). Usa o nome **"FinanceEcom"** (nome do sistema/projeto no PDF já enviado), não "Multimix Vendas" — mantém consistência com o que já foi submetido ao TikTok. Sem campos `[PREENCHER: ...]` — o PDF original já usa "FinanceEcom Management" como responsável, sem CNPJ, então a tradução seguiu o mesmo nível de detalhe do documento oficial já entregue.
 
 ## O que NÃO foi feito nesta fase
 

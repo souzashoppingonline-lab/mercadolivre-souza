@@ -22,8 +22,23 @@ const { MarketplaceClient } = require('../interfaces/MarketplaceClient');
 const { MarketplaceRateLimitError, MarketplaceTokenInvalidError, MarketplaceTransientError } = require('../base/errors');
 
 const API_BASE = 'https://open-api.tiktokglobalshop.com';
-const AUTH_BASE = 'https://auth.tiktok-shops.com'; // também serve a página de autorização (/oauth/authorize), confirmado no SDK
-const API_VERSION = '202309'; // API versionada por data no path — mínimo exigido pelo SDK de referência
+const AUTH_BASE = 'https://auth.tiktok-shops.com'; // troca de código/refresh de token — CONFIRMADO na doc oficial (Webhooks Overview + Download SDK)
+// URL de AUTORIZAÇÃO de SELLER (dono da loja) — DOCUMENTADO PELA TIKTOK ("TTS
+// API Overview" oficial, tabela "Authorization and token navigation"):
+// ROW (resto do mundo, inclui Brasil) = services.tiktokshop.com/open/authorize;
+// US = services.us.tiktokshop.com/open/authorize. Existem OUTRAS 2 entradas de
+// autorização pra donos de dado diferentes — nunca usar por engano: creator
+// (shop.tiktok.com/alliance) e PARTNER (partner.tiktokshop.com/open/authorize,
+// US partner.us.tiktokshop.com/open/authorize) — partner é pra apps tipo
+// "Partner/Developer" que autorizam MÚLTIPLOS sellers, diferente do nosso
+// caso (Custom App de vendedor único). Se o app do usuário acabar sendo
+// registrado como Partner (ver "Bloqueio de cadastro" em .claude/tiktok.md),
+// confirmar se a entrada certa muda pra essa.
+// CORREÇÃO: uma versão anterior deste arquivo usava auth.tiktok-shops.com/
+// oauth/authorize (inferido do SDK de terceiro ecomphp/tiktokshop-php) — a
+// doc oficial não confirma esse host pra autorização de seller; revertido.
+const SELLER_AUTHORIZE_URL = 'https://services.tiktokshop.com/open/authorize'; // ROW — trocar por services.us.tiktokshop.com se a loja for autorizada nos EUA
+const API_VERSION = '202309'; // API versionada por data no path — mínimo exigido pelo SDK de referência; doc oficial recomenda sempre a versão mais nova disponível por endpoint (ver "TTS API versioning")
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000);
@@ -46,14 +61,16 @@ function sign({ appSecret, path, query = {}, body }) {
 }
 
 // Monta a URL pra onde o vendedor deve ser redirecionado pra autorizar o app.
-// CONFIRMADO contra o SDK de referência: é `app_key` + `state` (aleatório,
-// devolvido no callback pra validar CSRF), SEM `redirect_uri` — o retorno
-// vai pra "Redirect callback URL" cadastrada no próprio app do Partner
-// Center, nunca passada em runtime. `redirectUri` no `.env` continua servindo
-// só de conferência manual (comparar com o cadastrado no app).
+// Host CONFIRMADO na doc oficial (ver SELLER_AUTHORIZE_URL acima). Params
+// (`app_key`+`state`, sem `redirect_uri`) seguem como INFERÊNCIA TÉCNICA —
+// vistos no SDK de terceiro pro host antigo, ainda não confirmados
+// especificamente pra este host oficial (a página "Authorization overview"
+// document detalharia os params exatos — ver .claude/tiktok.md "O que falta
+// confirmar"). `redirectUri` no `.env` serve de conferência manual (comparar
+// com o cadastrado no app).
 function getAuthorizationUrl({ appKey, state }) {
   const qs = new URLSearchParams({ app_key: appKey, state: state || String(Math.floor(Math.random() * 90000) + 10000) });
-  return `${AUTH_BASE}/oauth/authorize?${qs}`;
+  return `${SELLER_AUTHORIZE_URL}?${qs}`;
 }
 
 // Troca o `code` (recebido no redirect_uri após o vendedor aprovar) por

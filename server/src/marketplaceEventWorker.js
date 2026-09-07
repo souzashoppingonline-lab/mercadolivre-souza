@@ -277,12 +277,35 @@ async function handleShopeeOrderEvent(evt) {
 // ⚠️ Valores de order_status a confirmar contra uma resposta real (ver
 // .claude/tiktok.md) — os usados aqui seguem o vocabulário documentado
 // publicamente (AWAITING_SHIPMENT/IN_TRANSIT/DELIVERED/COMPLETED/CANCELLED).
-// Enum de order_status CONFIRMADO contra o código-fonte do SDK de
-// referência `ecomphp/tiktokshop-php` (Resources\Order — UNPAID/
-// AWAITING_SHIPMENT/AWAITING_COLLECTION/PARTIALLY_SHIPPING/IN_TRANSIT/
-// DELIVERED/COMPLETED/CANCELLED) — bate exatamente com o mapeamento abaixo.
+// Enum de order_status DOCUMENTADO PELA TIKTOK (Order API overview, doc
+// oficial) — 9 valores, com definição e máquina de estados completa:
+// UNPAID → ON_HOLD → AWAITING_SHIPMENT → [PARTIALLY_SHIPPING] →
+// AWAITING_COLLECTION → IN_TRANSIT → DELIVERED → COMPLETED, com CANCELLED
+// alcançável de vários pontos (AWAITING_COLLECTION→CANCELLED só no mercado
+// americano — não assumir que vale pro Brasil). O SDK de terceiro usado
+// antes (ecomphp/tiktokshop-php) tinha só 8 desses 9 valores — faltava
+// ON_HOLD, que é um estado real e comum (toda venda paga passa por ele
+// durante 1h de período de arrependimento do comprador, antes de
+// AWAITING_SHIPMENT). Sem esse case, ON_HOLD caía no `default` (vira uma
+// string solta em vez de um status normalizado).
+//
+// ⚠️ Nuance NÃO totalmente resolvida: COMPLETED pode significar "entregue
+// e finalizado" OU "reembolsado integralmente" — a doc mostra as duas
+// transições (DELIVERED→COMPLETED normal, e AWAITING_COLLECTION/IN_TRANSIT
+// →COMPLETED quando o pedido é 100% reembolsado antes de chegar). Mapear
+// todo COMPLETED como 'paid' pode inflar levemente a receita nesse 2º
+// caso — não corrigido agora porque exigiria consultar o valor reembolsado
+// (Order Price Detail/Return API), fora do escopo da Fase 1. Registrado em
+// .claude/known-bugs.md.
 function mapTiktokStatus(orderStatus) {
   switch (orderStatus) {
+    case 'ON_HOLD':
+      // Pagamento capturado, mas o comprador ainda pode cancelar sem custo
+      // (janela de arrependimento de 1h) — RECOMENDAÇÃO: tratar como
+      // 'pending' em vez de 'paid' até passar dessa janela, mesmo padrão
+      // cauteloso já usado pra UNPAID (evita contar venda que pode ser
+      // desfeita de graça pelo comprador).
+      return 'pending';
     case 'AWAITING_SHIPMENT':
     case 'AWAITING_COLLECTION':
     case 'PARTIALLY_SHIPPING':

@@ -43,10 +43,11 @@ Montado globalmente em `server.js`, **antes** de todas as outras rotas (inclusiv
 - **Papel `embalagem`**: só passa se o caminho for `/api/embalagem/*`, `/api/lojas` (dropdown de loja na aba Conferência do Dia), `/pages/embalagem.html`, um asset estático (`/css/`, `/js/`, `/favicon`), ou — **v80** — as duas chamadas da **impressão automática** que a própria tela faz: `POST /api/print/jobs` (enfileirar a etiqueta) e `GET /api/print/stations` (escolher a impressora do PC). A checagem é por caminho **e método**: cadastrar estação (`POST /stations`) e ver a fila (`GET /jobs`) continuam sendo de admin. Qualquer outro caminho: `403` em API, redirect para `/pages/embalagem.html` em página.
   > Antes da v80 essas duas ficavam de fora e o efeito era silencioso: o seletor de estação **não aparecia** para o funcionário (`loadPrintStations` faz `if (!res.ok) return`) e o enfileiramento tomava 403, que a tela trata como "sem estação" e cai no **PDF no navegador** — ou seja, com o gate ligado a impressão automática nunca funcionava justamente para quem embala.
 - **Papel `shopee-demo`**: só passa se o caminho for `/api/shopee/*`, `/pages/dashboard-shopee.html`, `/pages/shopee-vendas.html`, `/pages/shopee-anuncios.html`, ou um asset estático. Qualquer outro caminho: `403` em API, redirect para `/pages/dashboard-shopee.html` em página. Criado especificamente pra dar acesso a um revisor externo (ex. processo de aprovação de produção da Shopee Open Platform, que pede uma URL ativa do produto + credencial de teste) sem expor nenhum dado do Mercado Livre/financeiro/embalagem — ver `shopee.md`.
+- **Papel `tiktok-demo`**: mesmo padrão exato do `shopee-demo`, só que pro TikTok Shop — passa se o caminho for `/api/tiktok/*`, `/pages/dashboard-tiktok.html`, `/pages/tiktok-vendas.html`, `/pages/tiktok-anuncios.html`, ou um asset estático. Qualquer outro caminho: `403`/redirect pra `/pages/dashboard-tiktok.html`. Criado pra dar acesso ao revisor de aplicativo do TikTok Shop Partner Center ("Avaliação de aplicativo" — testam a funcionalidade real) sem expor o resto do sistema — ver `tiktok.md`.
 
 ## Frontend
 
-- **`pages/login.html`** — autocontido (CSS inline, sem dependência de `css/style.css` nem CDN), pra funcionar mesmo se o resto do estático não estiver acessível. Formulário simples (usuário/senha) → `POST /auth/staff/login` → redireciona por papel (`embalagem` → `embalagem.html`, `shopee-demo` → `dashboard-shopee.html`, senão → `../index.html`) — evita um duplo-redirect (login.html manda pra `index.html`, que o `requireStaffAuth` rejeitaria e mandaria de novo pra `dashboard-shopee.html`). Se `GET /auth/staff/me` já resolver ao carregar, redireciona sem mostrar o formulário.
+- **`pages/login.html`** — autocontido (CSS inline, sem dependência de `css/style.css` nem CDN), pra funcionar mesmo se o resto do estático não estiver acessível. Formulário simples (usuário/senha) → `POST /auth/staff/login` → redireciona por papel (`embalagem` → `embalagem.html`, `shopee-demo` → `dashboard-shopee.html`, `tiktok-demo` → `dashboard-tiktok.html`, senão → `../index.html`) — evita um duplo-redirect (login.html manda pra `index.html`, que o `requireStaffAuth` rejeitaria e mandaria de novo pro dashboard certo). Se `GET /auth/staff/me` já resolver ao carregar, redireciona sem mostrar o formulário.
 - **`js/layout.js`** — no `DOMContentLoaded`, busca `GET /auth/staff/me` (falha silenciosamente pra `null` se não houver sessão ou o gate estiver desligado — **nunca força redirect no cliente**, a proteção real é 100% server-side em `requireStaffAuth`). Se `role === 'embalagem'`: `navItemsForRole()` reduz a sidebar a só o item Embalagem, e o switcher de marketplace (Amazon/Shopee) some do topbar. Se houver sessão (qualquer papel), mostra usuário + botão "Sair" no topbar (`POST /auth/staff/logout` → redireciona pro login).
 
 ## Tela de gestão de usuários (v80) — `pages/usuarios.html`
@@ -57,7 +58,7 @@ Menu **Sistema → Usuários**, **só admin**. Substitui o script no dia a dia (
 - **Por que sob `/api` e não `/auth/staff`**: `/auth/*` está em `PUBLIC_PREFIXES` — é acessível **sem sessão**. Gestão de credenciais ali seria um buraco aberto. Sob `/api` passa pelo gate, e a rota ainda checa `role === 'admin'` (segunda tranca).
 - **Gate**: `ADMIN_ONLY = ['/pages/usuarios.html', '/api/usuarios']` em `requireStaffAuth` — qualquer papel que não seja admin leva 403 (API) ou volta pra `/` (página). O item some da sidebar via `adminOnly` em `NAV_ITEMS`/`navItemsForRole` (isso é só cosmético; a proteção real é o gate).
 - **Travas contra perder o acesso** (no servidor, não só na tela): não dá pra rebaixar nem excluir **o próprio usuário**, nem tirar o papel/excluir o **último admin**. A tela desabilita esses botões e explica o motivo no `title`.
-- **Validações**: usuário `^[a-z0-9._-]{3,32}$` normalizado pra minúsculo, senha ≥ 6, papel dentro de `admin|embalagem|shopee-demo`, nome único. `password_hash` **nunca** sai na resposta.
+- **Validações**: usuário `^[a-z0-9._-]{3,32}$` normalizado pra minúsculo, senha ≥ 6, papel dentro de `admin|embalagem|shopee-demo|tiktok-demo`, nome único. `password_hash` **nunca** sai na resposta.
 - **Kill switch**: com `STAFF_AUTH_ENABLED=false` a rota não exige admin (não haveria sessão pra checar, e sem isso seria impossível cadastrar pela tela) — e a página mostra um **aviso vermelho** de que o login está desligado e os papéis não valem.
 
 ⚠️ **Excluir ou trocar a senha NÃO derruba a sessão aberta** — o JWT é stateless e vale 180 dias. Ver `known-bugs.md`.
@@ -66,7 +67,7 @@ Menu **Sistema → Usuários**, **só admin**. Substitui o script no dia a dia (
 
 ```bash
 cd server
-node scripts/createStaffUser.js <username> <senha> [admin|embalagem]
+node scripts/createStaffUser.js <username> <senha> [admin|embalagem|shopee-demo|tiktok-demo]
 ```
 
 `role` default `admin`. Rodar de novo com o mesmo `username` atualiza senha (e papel, se informado) — não cria duplicata (`ON CONFLICT (username) DO UPDATE`).

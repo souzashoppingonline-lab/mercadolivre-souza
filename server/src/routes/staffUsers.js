@@ -12,7 +12,7 @@ const env = require('../config/env');
 const pool = require('../db/pool');
 
 const router = express.Router();
-const PAPEIS = ['admin', 'embalagem', 'shopee-demo'];
+const PAPEIS = ['admin', 'embalagem', 'shopee-demo', 'tiktok-demo'];
 const USER_RE = /^[a-z0-9._-]{3,32}$/;
 const SENHA_MIN = 6;
 

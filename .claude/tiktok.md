@@ -8,15 +8,18 @@ A TikTok Shop define 3 tipos de desenvolvedor ("Get started overview"): **eComme
 
 O token de acesso traz um campo `user_type`: `0`=Seller, `1`=Creator, `3`=Partner. Como somos "seller developer", sempre esperamos `user_type=0` — `tiktokAuth.js` já loga um warning se vier outro valor (sinal de app configurado errado no Partner Center).
 
-## Bloqueio de cadastro (06/09/2026 — status pode já ter mudado, ver nota)
+## Bloqueio de cadastro — SUPERADO (confirmado 07/09/2026)
 
-Ao tentar o cadastro de "Seller Developer" (autoatendimento), o TikTok recusou: "só vendedores com Account Manager (AM) atribuído podem se registrar". Dois caminhos discutidos: (1) registrar como **Partner/Developer** em vez de Seller Developer, (2) conseguir um AM (o usuário já vende de verdade no Brasil, pode qualificar por volume).
+Ao tentar o cadastro de "Seller Developer" (autoatendimento), o TikTok recusou inicialmente: "só vendedores com Account Manager (AM) atribuído podem se registrar" (06/09). **Confirmado em 07/09, via captura de tela da checklist de lançamento do Partner Center**: a etapa **"Avaliação de registro de parceiro"** já aparece com ✓ verde (concluída) — o bloqueio foi superado (não ficou registrado exatamente qual caminho, se foi via AM ou registro como Partner). Status atual das etapas restantes:
 
-**Pista nova**: o usuário chegou a mostrar o "Questionário sobre segurança e privacidade de dados" do Partner Center (07/09) — essa etapa só existe depois que um app já foi criado ("App launch overview" confirma que é a etapa de **revisão de compliance/legal**, posterior à criação do app). Ou seja, é provável que o bloqueio de AM já tenha sido superado de alguma forma (não confirmado qual caminho) — **perguntar ao usuário antes de assumir** que ainda está bloqueado.
+| Etapa | Status |
+|---|---|
+| Avaliação de registro de parceiro | ✅ Concluída |
+| Avaliação de segurança e privacidade de dados | 🕐 Em análise (questionário respondido, ver "Páginas públicas de política") |
+| Avaliação de anúncios (listagem do app no App & Service Store) | ⚪ Não iniciada |
+| Avaliação de aplicativo (TikTok testa a funcionalidade real) | ⚪ Não iniciada — motivo das páginas `tiktok-vendas.html`/`tiktok-anuncios.html` e do papel `tiktok-demo` (ver seções abaixo) |
 
-Também confirmado ("Product API overview" FAQ): sellers novos entram em **período de probation** (limite de 100-200 pedidos/dia conforme pessoa física/jurídica, 100 uploads de produto/dia) até "graduar" — e é o **Account Manager** quem libera isso. Pode ser o mesmo AM do bloqueio de cadastro, ou um conceito relacionado mas distinto (não confirmado se é a mesma pessoa/processo).
-
-Nenhum dos caminhos muda o código já construído — todos terminam em App Key/App Secret + OAuth, mesmo contrato que `tiktokClient.js` já implementa.
+Também confirmado ("Product API overview" FAQ): sellers novos entram em **período de probation** (limite de 100-200 pedidos/dia conforme pessoa física/jurídica, 100 uploads de produto/dia) até "graduar" — e é o **Account Manager** quem libera isso. Pode ser o mesmo AM do bloqueio de cadastro inicial, ou um conceito relacionado mas distinto (não confirmado se é a mesma pessoa/processo).
 
 ## O que já existe
 
@@ -24,12 +27,15 @@ Nenhum dos caminhos muda o código já construído — todos terminam em App Key
 - **`server/src/marketplaces/tiktok/TiktokPollingEventSource.js`** — polling a cada 15 min (`TIKTOK_POLL_INTERVAL_MS`), cursor em `marketplace_sync_state`, renovação proativa de token com CAS.
 - **`server/src/routes/tiktokAuth.js`** (montada em `/auth/tiktok`) — fluxo OAuth: `GET /config`, `GET /login`, `GET /callback` (troca code→token, chama `getAuthorizedShops()`, valida `user_type`, cria/atualiza a linha em `stores`). Ver `api.md`.
 - **`server/src/routes/tiktokWebhook.js`** (montada em `/webhooks/tiktok`) — receptor de push. Ver seção própria abaixo.
-- **`server/src/routes/tiktok.js`** (montada em `/api/tiktok`) — dashboard mínimo: `GET /kpis`, `GET /pedidos`, `GET /status`. Deliberadamente **sem** `/produtos`, `/lojas`, `/chat`, `/financeiro`.
+- **`server/src/routes/tiktok.js`** (montada em `/api/tiktok`) — `GET /kpis`, `/pedidos`, `/status`, `/vendas` (resumo+série diária+por status, mesmo padrão de `GET /api/shopee/vendas`, sem seletor de loja), `/produtos` (mesmo padrão de `GET /api/amazon/produtos` — vem vazio com nota, catálogo TikTok Shop não sincronizado ainda). Deliberadamente **sem** `/lojas`, `/chat`, `/financeiro`. Todas as 5 rotas testadas contra Postgres real com dado sintético.
 - **`server/src/marketplaceEventWorker.js`** — fila `marketplace-events-tiktok` + handler `handleTiktokOrderEvent`; `mapTiktokStatus()` cobre os 9 status reais (ver enum abaixo). Ver `workers.md`.
 - **Migration v94** — habilita `marketplaces.TIKTOK`, `stores.tiktok_shop_id`/`tiktok_shop_cipher`, tabela `tiktok_order_data`. **Testada contra Postgres real**. Ver `database.md`.
 - `env.tiktok` em `config/env.js` (`appKey`, `appSecret`, `redirectUri`, `webhookVerify`).
 - **`pages/dashboard-tiktok.html`** + **`js/layout-tiktok.js`** — dashboard "em construção" (ver seção própria).
-- **`politica-de-privacidade.html`** + **`politica-seguranca.html`** — páginas públicas exigidas pelo questionário de compliance do Partner Center. Ver `.claude/backend.md`.
+- **`pages/tiktok-vendas.html`** — Vendas Totais: KPIs (vendas/pedidos no período + hoje, ticket médio, cancelados), gráfico de vendas por dia, gráfico por status, tabela de últimos pedidos. Dados 100% reais via `GET /api/tiktok/vendas` — vem vazio até haver pedido sincronizado, nunca número inventado (pedido explícito do usuário). Sem seletor de loja (ver nota no schema abaixo).
+- **`pages/tiktok-anuncios.html`** — Anúncios: tabela de itens ativos via `GET /api/tiktok/produtos`; vem vazia com nota (catálogo não sincronizado, Fase 1 é só pedidos), mesmo padrão exato de `amazon-anuncios.html`.
+- **Papel `tiktok-demo`** (`staffAuth.js`, `staffUsers.js`, `createStaffUser.js`, `pages/usuarios.html`) — login de acesso restrito só às 3 páginas do TikTok Shop + `/api/tiktok/*`, mesmo padrão do `shopee-demo`. Criado especificamente pra dar acesso ao revisor de "Avaliação de aplicativo" do Partner Center (ver checklist acima) sem expor o resto do sistema. Ver `auth-staff.md`.
+- **`politica-de-privacidade.html`** + **`politica-seguranca.html`** + **`protecao_dados_pessoais.html`** — páginas públicas exigidas pelo questionário de compliance do Partner Center. Ver `.claude/backend.md`.
 - Links cruzados no `mkt-switcher-compact` nos 4 layouts (`js/layout.js`, `layout-amazon.js`, `layout-shopee.js`, `layout-tiktok.js`).
 
 ## Terminologia e endpoints — confirmados por doc oficial (07/09/2026)

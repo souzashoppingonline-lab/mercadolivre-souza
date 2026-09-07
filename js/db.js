@@ -231,6 +231,8 @@ const DB = {
   async getTiktokKpis()    { return this._get('/tiktok/kpis'); },
   async getTiktokPedidos() { return this._get('/tiktok/pedidos'); },
   async getTiktokStatus()  { return this._get('/tiktok/status'); },
+  async getTiktokVendas(params = {})   { return this._get('/tiktok/vendas', params); },
+  async getTiktokProdutos(params = {}) { return this._get('/tiktok/produtos', params); },
 
   // ── Análise de Produtos (Fase 1 — ver .claude/analise-produtos.md) ──
   async getProdutosAnalise() { return this._get('/analise/produtos'); },

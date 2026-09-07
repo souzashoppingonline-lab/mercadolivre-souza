@@ -1,12 +1,16 @@
-// Sidebar + topbar exclusivos das páginas TikTok Shop — hoje só
-// pages/dashboard-tiktok.html (Fase 1: só vendas, ver .claude/tiktok.md).
-// Nunca incluído por páginas ML — cada marketplace tem seu próprio menu
-// lateral, independente (ver .claude/frontend.md). Reaproveita as classes
+// Sidebar + topbar exclusivos das páginas TikTok Shop: dashboard-tiktok.html
+// (Fase 1: só vendas, ver .claude/tiktok.md), tiktok-vendas.html (Vendas
+// Totais, dados reais via /api/tiktok/vendas) e tiktok-anuncios.html
+// (Anúncios — catálogo ainda não sincronizado, vem vazio com nota). Nunca
+// incluído por páginas ML — cada marketplace tem seu próprio menu lateral,
+// independente (ver .claude/frontend.md). Reaproveita as classes
 // .sidebar/.nav-item/.topbar já definidas em css/sidebar.css e css/style.css
 // (só troca a lista de itens), mesmo molde de js/layout-shopee.js.
 
 const TIKTOK_NAV_ITEMS = [
   { href: 'dashboard-tiktok.html', icon: 'fa-home', label: 'Dashboard' },
+  { href: 'tiktok-vendas.html', icon: 'fa-dollar-sign', label: 'Vendas Totais' },
+  { href: 'tiktok-anuncios.html', icon: 'fa-tags', label: 'Anúncios' },
 ];
 
 function buildTiktokSidebar(activeHref) {

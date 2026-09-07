@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Padrão de Proteção de Dados Pessoais — FinanceEcom</title>
+<!-- Versão web, em português, do PDF já submetido ao questionário de
+     segurança/privacidade do TikTok Shop Partner Center ("Personal
+     Information Protection Standard — FinanceEcom", v1.0, emitido em
+     07/09/2026). Conteúdo é a tradução fiel desse documento (14 seções +
+     tabela de controle de documento) — mesma substância, mesmo nome de
+     sistema (FinanceEcom, o nome do projeto no PDF já enviado). Mesma
+     disciplina de página pública das outras duas (politica-de-privacidade.
+     html/politica-seguranca.html): autocontida, rota dedicada em server.js
+     (fora do SPA fallback), whitelisted em staffAuth.js PUBLIC_PREFIXES —
+     abre sem login. Ver .claude/tiktok.md e .claude/backend.md. -->
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #14161b; color: #e6e6e6; font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .subtitle { color: #9aa0a8; font-size: 14px; margin-bottom: 36px; }
+  h2 { font-size: 17px; margin: 32px 0 8px; color: #ff0050; }
+  p, li { color: #cfd3d8; }
+  ul, ol { padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 20px; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #2a2d35; vertical-align: top; }
+  th { color: #9aa0a8; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px; }
+  .doc-control td:first-child { color: #9aa0a8; width: 180px; }
+  a { color: #ff0050; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #2a2d35; font-size: 13px; color: #8a8f97; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Padrão de Proteção de Dados Pessoais</h1>
+  <p class="subtitle">FinanceEcom — Padrão Interno de Segurança e Proteção de Dados</p>
+
+  <h2>1. Objetivo</h2>
+  <p>Este documento estabelece os princípios e práticas internas adotados pelo FinanceEcom para proteger dados pessoais e outras informações sensíveis processadas por seus sistemas, serviços, integrações e operações de negócio.</p>
+
+  <h2>2. Abrangência</h2>
+  <p>Este padrão se aplica a dados pessoais processados pelo FinanceEcom e aos sistemas, aplicações, bancos de dados, APIs, integrações, infraestrutura, funcionários, prestadores e usuários autorizados envolvidos nesse processamento.</p>
+
+  <h2>3. Princípios de Proteção de Informação</h2>
+  <table>
+    <tr><th>Princípio</th><th>Prática interna</th></tr>
+    <tr><td>Minimização de dados</td><td>Só é coletada e processada a informação necessária para finalidades legítimas de negócio e de serviço.</td></tr>
+    <tr><td>Confidencialidade</td><td>Dados pessoais e informação sensível não podem ser divulgados ou disponibilizados a partes não autorizadas.</td></tr>
+    <tr><td>Controle de acesso</td><td>Acesso a sistemas, bancos de dados, credenciais, tokens de API e dados pessoais é restrito a pessoal autorizado.</td></tr>
+    <tr><td>Segurança</td><td>Medidas técnicas e administrativas são usadas para reduzir o risco de acesso não autorizado, divulgação ou perda.</td></tr>
+    <tr><td>Responsabilização (accountability)</td><td>Atividades relacionadas a segurança e ações administrativas relevantes devem ser documentadas quando aplicável.</td></tr>
+    <tr><td>Retenção</td><td>A informação deve ser retida só pelo tempo razoavelmente necessário para fins operacionais, contratuais ou legais.</td></tr>
+  </table>
+
+  <h2>4. Gestão de Acesso</h2>
+  <p>O FinanceEcom restringe o acesso a sistemas e informação de acordo com a necessidade de negócio. Onde tecnicamente possível, credenciais individuais são usadas para identificar usuários autorizados. Permissões de acesso devem ser revisadas e ajustadas quando responsabilidades mudam.</p>
+
+  <h2>5. Credenciais, Tokens de API e Segredos</h2>
+  <p>Senhas, tokens de API, access tokens, refresh tokens, chaves de API e outros segredos de autenticação são tratados como informação confidencial. Devem ser armazenados com segurança e nunca expostos em interfaces públicas, repositórios de código-fonte ou logs de aplicação.</p>
+
+  <h2>6. Integrações de API e Marketplace</h2>
+  <p>O FinanceEcom usa integrações de API autorizadas para se conectar com plataformas e serviços de terceiros. Só deve ser acessada a informação e a permissão necessárias para a funcionalidade autorizada. Credenciais de autenticação e tokens devem ser protegidos contra divulgação não autorizada.</p>
+
+  <h2>7. Armazenamento e Transmissão de Dados</h2>
+  <p>Quando aplicável, dados pessoais e informação sensível devem ser protegidos durante a transmissão por meio de mecanismos de comunicação seguros. Informação armazenada deve ser protegida por controles de acesso apropriados e medidas de segurança de infraestrutura.</p>
+
+  <h2>8. Segurança de Aplicação e Infraestrutura</h2>
+  <p>Considerações de segurança são incorporadas ao desenvolvimento, manutenção e operação dos sistemas do FinanceEcom. Isso inclui atenção a autenticação, autorização, acesso a banco de dados, segurança de API, dependências, configuração de servidor e proteção de informação de configuração sensível.</p>
+
+  <h2>9. Acesso de Terceiros</h2>
+  <p>O acesso de terceiros à informação deve se limitar ao necessário para serviços autorizados, integrações, operações técnicas ou outras finalidades legítimas de negócio. O acesso deve ser controlado de acordo com as permissões aplicáveis.</p>
+
+  <h2>10. Gestão de Incidentes de Segurança</h2>
+  <p>Potenciais incidentes de segurança envolvendo dados pessoais ou informação sensível devem ser identificados, registrados e avaliados. Ações apropriadas de contenção, correção e prevenção devem ser tomadas quando necessário.</p>
+
+  <h2>11. Responsabilidades de Funcionários e Usuários</h2>
+  <p>Usuários autorizados são responsáveis por proteger suas credenciais, seguir os procedimentos de segurança aplicáveis, usar a informação só para finalidades legítimas de negócio, e reportar suspeitas de incidente de segurança ou acesso não autorizado.</p>
+
+  <h2>12. Revisão Periódica</h2>
+  <p>Este padrão deve ser revisado periodicamente e atualizado quando ocorrerem mudanças significativas em sistemas, integrações, processos de negócio, práticas de segurança ou requisitos aplicáveis.</p>
+
+  <h2>13. Declaração de Compromisso</h2>
+  <p>O FinanceEcom está comprometido em proteger dados pessoais e manter salvaguardas técnicas e organizacionais razoáveis, desenhadas para preservar a confidencialidade, integridade e segurança da informação processada por seus serviços e integrações.</p>
+
+  <h2>14. Status do Documento</h2>
+  <p>Este documento descreve o padrão interno de proteção de informação do FinanceEcom. É um documento de segurança interno e não constitui, por si só, uma certificação independente, auditoria externa ou certificação legal de conformidade.</p>
+
+  <h2>Controle do Documento</h2>
+  <table class="doc-control">
+    <tr><td>Documento</td><td>Padrão de Proteção de Dados Pessoais</td></tr>
+    <tr><td>Sistema / Projeto</td><td>FinanceEcom</td></tr>
+    <tr><td>Versão</td><td>1.0</td></tr>
+    <tr><td>Data de emissão</td><td>7 de setembro de 2026</td></tr>
+    <tr><td>Classificação</td><td>Documento Interno</td></tr>
+    <tr><td>Responsável pelo documento</td><td>Gestão do FinanceEcom</td></tr>
+  </table>
+
+  <footer>FinanceEcom — painel operacional interno multimarcas (Mercado Livre, Amazon, Shopee, TikTok Shop). Ver também a <a href="/politica-de-privacidade">Política de Privacidade</a> e a <a href="/politica-seguranca">Política de Segurança da Informação</a>.</footer>
+</div>
+</body>
+</html>

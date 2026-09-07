@@ -1,4 +1,12 @@
-require('dotenv').config();
+// Caminho ANCORADO no arquivo (__dirname), não em process.cwd() — sem isso,
+// dotenv.config() só acha o .env quando o comando é rodado de dentro de
+// server/ (fluxo normal do systemd/npm start). Qualquer script standalone
+// (server/scripts/*.js) rodado da raiz do repo — ou de qualquer outro lugar —
+// via `node server/scripts/x.js` tinha env.* silenciosamente undefined,
+// porque o cwd não é server/. Descoberto ao rodar verificarDespesa.js da
+// raiz do repo (ver .claude/deployment.md: .env fica em server/.env, NUNCA
+// na raiz). Ver .claude/known-bugs.md.
+require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env') });
 
 module.exports = {
   port: process.env.PORT || 3000,

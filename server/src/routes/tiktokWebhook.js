@@ -6,18 +6,23 @@
 // publica, então handleTiktokOrderEvent (marketplaceEventWorker.js)
 // processa igual — só que em tempo real.
 //
-// Assinatura CONFIRMADA (documentação pública + código-fonte do SDK
-// `ecomphp/tiktokshop-php`, ver tiktokClient.js — diferente da assinatura de
-// request de negócio): HMAC-SHA256(app_secret, app_key + raw_body), hex
-// minúsculo, no header Authorization (SEM prefixo "Bearer"). Sem timestamp
-// na assinatura — não há proteção contra replay; a idempotência vem do
-// `tts_notification_id` (dedupe por jobId no BullMQ, mesmo padrão da
-// Shopee). `type` CONFIRMADO no mesmo SDK: é um CÓDIGO NUMÉRICO, não string
-// — 1=ORDER_STATUS_UPDATE (o único tratado nesta fase), 2=REVERSE_ORDER_
-// STATUS_UPDATE, 3=RECIPIENT_ADDRESS_UPDATE, 4=PACKAGE_UPDATE, 5=PRODUCT_
-// STATUS_UPDATE, 6=SELLER_DEAUTHORIZATION, 7=UPCOMING_AUTHORIZATION_
-// EXPIRATION, 12=RETURN_STATUS_UPDATE. Ver .claude/tiktok.md.
-const TIKTOK_WEBHOOK_TYPE_ORDER_STATUS_UPDATE = 1;
+// Assinatura DOCUMENTADA PELA TIKTOK ("Webhooks Overview" — testada
+// byte-a-byte contra o vetor de exemplo oficial, bate 100%): HMAC-SHA256
+// (app_secret, app_key + raw_body), hex minúsculo, no header Authorization
+// (SEM prefixo "Bearer"). Sem timestamp na assinatura — não há proteção
+// contra replay. `tts_notification_id` CONFIRMADO no payload (usado abaixo
+// só pra log; o dedupe de verdade usa `storeId+orderId` como jobId no
+// BullMQ, que é suficiente e não depende desse campo existir sempre).
+//
+// Esta rota só é cadastrada pra UM tópico (`event_type: "ORDER_STATUS_
+// CHANGE"`, string — não confundir com o `type` numérico do payload, que a
+// doc oficial explicitamente avisa pra NÃO usar como filtro: "Do not branch
+// only on the numeric type; use the subscribed event_type context and the
+// topic-specific payload schema". Por isso NÃO filtramos por `payload.type`
+// aqui — o filtro real é a presença de `data.order_id` (todo evento de
+// ORDER_STATUS_CHANGE tem isso; qualquer outra coisa que chegasse nesta URL
+// dedicada seria um erro de configuração no Partner Center, não um tópico
+// esperado). Ver .claude/tiktok.md.
 const express = require('express');
 const crypto = require('crypto');
 const pool = require('../db/pool');
@@ -48,16 +53,15 @@ router.post('/', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) =>
       if (!verified) console.warn(`[tiktok-webhook] assinatura não confere — recebida=${authHeader.slice(0, 20)}… esperada=${expected.slice(0, 20)}…`);
     }
 
-    console.log(`[tiktok-webhook] type=${payload.type} shop=${payload.shop_id} verified=${verified} body=${rawBody.slice(0, 300)}`);
+    console.log(`[tiktok-webhook] type=${payload.type} notification_id=${payload.tts_notification_id} shop=${payload.shop_id} verified=${verified} body=${rawBody.slice(0, 300)}`);
 
     // Segurança: sem assinatura válida, não processa (a não ser que desligado
     // via TIKTOK_WEBHOOK_VERIFY=false — escape hatch pro 1º teste).
     if (env.tiktok.webhookVerify && appSecret && !verified) return;
 
-    // Só nos interessam eventos de mudança de status de pedido nesta fase
-    // (ver .claude/tiktok.md — Fase 1 é só vendas). Outros tipos (produto,
-    // endereço, devolução, desautorização...) são ignorados explicitamente.
-    if (Number(payload.type) !== TIKTOK_WEBHOOK_TYPE_ORDER_STATUS_UPDATE) return;
+    // Esta URL só é cadastrada pro tópico ORDER_STATUS_CHANGE (ver aviso no
+    // topo do arquivo) — o filtro real é `data.order_id` estar presente,
+    // não o `type` numérico (a doc oficial desaconselha isso explicitamente).
     const data = payload.data || {};
     const orderId = data.order_id;
     const shopId = payload.shop_id;

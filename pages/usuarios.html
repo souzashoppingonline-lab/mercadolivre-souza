@@ -36,6 +36,7 @@
     .us-papel.admin { color:#f0883e; border-color:rgba(240,136,62,.5); background:rgba(240,136,62,.10); }
     .us-papel.embalagem { color:#3fb950; border-color:rgba(63,185,80,.5); background:rgba(63,185,80,.10); }
     .us-papel\.shopee-demo, .us-papel.shopee { color:#ee4d2d; border-color:rgba(238,77,45,.5); background:rgba(238,77,45,.10); }
+    .us-papel\.tiktok-demo, .us-papel.tiktok { color:#ff0050; border-color:rgba(255,0,80,.5); background:rgba(255,0,80,.10); }
     .us-sel { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:12px; }
     .us-acts { display:flex; gap:5px; }
     .us-ico { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:6px 9px; font-size:12px; cursor:pointer; }
@@ -85,6 +86,7 @@
               <li><b>Admin</b> — tudo, inclusive esta tela, o Financeiro e a Inteligência de Negócio.</li>
               <li><b>Embalagem</b> — só a tela de Embalagem (bipagem + vídeo). O menu dele mostra só esse item.</li>
               <li><b>Shopee (demo)</b> — só as telas da Shopee. Criado para revisor externo; não vê nada do Mercado Livre nem do financeiro.</li>
+              <li><b>TikTok Shop (demo)</b> — só as telas do TikTok Shop. Criado para revisor externo (Partner Center); não vê nada do resto do sistema.</li>
             </ul>
           </div>
         </div>
@@ -100,13 +102,14 @@
 <script src="../js/sidebar.js"></script>
 <script>
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const PAPEL_LABEL = { admin:'Admin', embalagem:'Embalagem', 'shopee-demo':'Shopee (demo)' };
+const PAPEL_LABEL = { admin:'Admin', embalagem:'Embalagem', 'shopee-demo':'Shopee (demo)', 'tiktok-demo':'TikTok Shop (demo)' };
 const PAPEL_ACESSO = {
   admin: 'Acesso total ao sistema, inclusive a esta tela.',
   embalagem: 'Abre só a tela de Embalagem — qualquer outra URL volta pra lá.',
   'shopee-demo': 'Abre só as telas da Shopee. Não vê Mercado Livre nem financeiro.',
+  'tiktok-demo': 'Abre só as telas do TikTok Shop. Não vê o resto do sistema.',
 };
-let USUARIOS = [], ATUAL = null, GATE = true, PAPEIS = ['admin','embalagem','shopee-demo'], senhaAberta = null;
+let USUARIOS = [], ATUAL = null, GATE = true, PAPEIS = ['admin','embalagem','shopee-demo','tiktok-demo'], senhaAberta = null;
 
 const fmtData = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
 

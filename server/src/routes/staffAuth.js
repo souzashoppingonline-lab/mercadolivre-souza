@@ -115,6 +115,13 @@ const EMBALAGEM_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 const SHOPEE_DEMO_PAGES = ['/pages/dashboard-shopee.html', '/pages/shopee-vendas.html', '/pages/shopee-anuncios.html', '/pages/shopee-financeiro.html', '/pages/shopee-chat.html', '/pages/shopee-lojas.html', '/pages/shopee-precos-estoque.html', '/pages/shopee-precificador.html', '/pages/shopee-promocoes.html', '/pages/shopee-problemas.html', '/pages/shopee-performance.html', '/pages/shopee-ia-socio.html', '/pages/shopee-score.html', '/pages/shopee-devolucoes.html'];
 const SHOPEE_DEMO_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 
+// Papel 'tiktok-demo' — mesmo padrão do 'shopee-demo': só as páginas/API do
+// TikTok Shop, pra dar acesso a um revisor externo (TikTok Shop Partner
+// Center, "eles não precisarem testar o aplicativo inteiro" — pedido
+// explícito do usuário) sem expor nenhum outro dado do sistema.
+const TIKTOK_DEMO_PAGES = ['/pages/dashboard-tiktok.html', '/pages/tiktok-vendas.html', '/pages/tiktok-anuncios.html'];
+const TIKTOK_DEMO_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
+
 // Caminhos que exigem papel 'admin' e não pertencem a um módulo (MODULES é
 // para os 3 módulos do sistema; isto aqui é gestão de acesso). A tela de
 // usuários cria/remove credenciais — nenhum papel além de admin pode nem
@@ -149,6 +156,13 @@ function isShopeeDemoAllowed(p) {
   return false;
 }
 
+function isTiktokDemoAllowed(p) {
+  if (p.startsWith('/api/tiktok')) return true;
+  if (TIKTOK_DEMO_PAGES.includes(p)) return true;
+  if (TIKTOK_DEMO_ASSET_PREFIXES.some(prefix => p.startsWith(prefix))) return true;
+  return false;
+}
+
 function requireStaffAuth(req, res, next) {
   if (!env.staffAuth.enabled) return next(); // botão de emergência — gate desligado
   if (isPublicPath(req.path)) return next();
@@ -173,6 +187,11 @@ function requireStaffAuth(req, res, next) {
   if (payload.role === 'shopee-demo' && !isShopeeDemoAllowed(req.path)) {
     if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — esse usuário só tem permissão pro dashboard Shopee' });
     return res.redirect('/pages/dashboard-shopee.html');
+  }
+
+  if (payload.role === 'tiktok-demo' && !isTiktokDemoAllowed(req.path)) {
+    if (isApiOrWebhook) return res.status(403).json({ error: 'acesso restrito — esse usuário só tem permissão pro dashboard TikTok Shop' });
+    return res.redirect('/pages/dashboard-tiktok.html');
   }
 
   // Gestão de usuários: só admin, qualquer que seja o papel do resto.

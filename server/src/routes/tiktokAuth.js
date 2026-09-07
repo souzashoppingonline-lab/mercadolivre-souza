@@ -62,6 +62,15 @@ router.get('/callback', async (req, res) => {
     const tokens = await exchangeCodeForToken({ appKey, appSecret, code });
     const expiresAt = new Date(Date.now() + Number(tokens.access_token_expire_in || 7 * 24 * 3600) * 1000);
 
+    // DOCUMENTADO PELA TIKTOK ("Get started overview"): a resposta do token
+    // traz `user_type` — 0=Seller, 1=Creator, 3=Partner. Nosso app é do tipo
+    // "seller developer" (Custom App, só a própria loja) — sempre esperamos
+    // user_type=0. Um valor diferente é sinal de app configurado errado no
+    // Partner Center (ex.: virou um app tipo Partner sem querer).
+    if (tokens.user_type !== undefined && tokens.user_type !== 0) {
+      console.warn(`[tiktok-auth] user_type inesperado no token: ${tokens.user_type} (esperado 0=Seller) — conferir o tipo do app no Partner Center`);
+    }
+
     // CONFIRMADO no SDK de referência: token/get NÃO devolve shop_id/
     // shop_cipher — é preciso chamar GET authorization/{version}/shops com o
     // access_token recém-emitido pra descobrir a(s) loja(s) autorizada(s).

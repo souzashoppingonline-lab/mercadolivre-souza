@@ -32,7 +32,7 @@ async function main() {
   // 2. Match "parecido" (case/espaço/prefixo) — descarta erro de digitação/scanner.
   const parecido = await pool.query(
     `SELECT sod.order_sn, sod.tracking_number, o.date_created
-       FROM shopee_order_data sod
+       FROM shopee_order_data sod JOIN orders o ON o.ml_id = sod.order_sn
       WHERE sod.tracking_number IS NOT NULL
         AND (UPPER(TRIM(sod.tracking_number)) = UPPER($1) OR sod.tracking_number ILIKE $2)
       LIMIT 10`,

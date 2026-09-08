@@ -4,15 +4,21 @@
 // etapa, pra achar a causa real em vez de chutar. Ver .claude/embalagem.md.
 //
 // Uso (rodar NO SERVIDOR, onde os tokens Shopee reais estão salvos):
-//   node server/scripts/verificarEtiquetaShopee.js <codigo bipado, ex. BR264185314030M>
+//   node server/scripts/verificarEtiquetaShopee.js <codigo bipado, ex. BR264185314030M> [order_sn, ex. 260908F3RFQEFD]
+//
+// order_sn é opcional — vem impresso na própria etiqueta em "Pedido:". Quando
+// informado, o script busca esse pedido DIRETO (passo 7), sem depender do
+// tracking_number — confirma se o pedido já existe no banco (sincronizado)
+// mesmo que o tracking ainda não tenha chegado.
 const pool = require('../src/db/pool');
 const env = require('../src/config/env');
 const { getShopeeClientForStore } = require('../src/marketplaces/shopee/shopeeClient');
 
 async function main() {
   const codigo = String(process.argv[2] || '').trim();
+  const orderSn = String(process.argv[3] || '').trim();
   if (!codigo) {
-    console.error('Uso: node server/scripts/verificarEtiquetaShopee.js <codigo bipado>');
+    console.error('Uso: node server/scripts/verificarEtiquetaShopee.js <codigo bipado> [order_sn]');
     process.exit(1);
   }
 
@@ -111,6 +117,25 @@ async function main() {
   );
   console.log(`\n6. Os ${maisAntigos.rows.length} pedidos sem tracking mais antigos no banco:`);
   maisAntigos.rows.forEach(r => console.log(`   order_sn=${r.order_sn} loja=${r.nickname} status=${r.status} data=${r.date_created ? r.date_created.toISOString().slice(0,10) : '?'}`));
+
+  // 7. Busca direta pelo order_sn impresso na etiqueta (campo "Pedido:") — não
+  // depende do tracking_number estar preenchido. Se não achar nada aqui, o
+  // pedido ainda nem chegou no banco (worker/webhook não sincronizou ainda).
+  if (orderSn) {
+    const direto = await pool.query(
+      `SELECT sod.order_sn, sod.tracking_number, o.store_id, o.status, o.date_created, s.nickname
+         FROM shopee_order_data sod JOIN orders o ON o.ml_id = sod.order_sn
+         LEFT JOIN stores s ON s.id = o.store_id
+        WHERE sod.order_sn = $1`,
+      [orderSn]
+    );
+    console.log(`\n7. Busca direta por order_sn="${orderSn}" (sem depender do tracking): ${direto.rows.length} resultado(s)`);
+    if (direto.rows.length) {
+      direto.rows.forEach(r => console.log(`   loja=${r.nickname} status=${r.status} data=${r.date_created ? r.date_created.toISOString().slice(0,10) : '?'} tracking="${r.tracking_number || '(vazio)'}"`));
+    } else {
+      console.log('   ❌ Pedido não existe no banco ainda — worker/webhook não sincronizou esse pedido. Causa (d) confirmada.');
+    }
+  }
 
   await pool.end();
 }

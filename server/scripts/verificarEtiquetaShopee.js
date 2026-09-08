@@ -57,7 +57,7 @@ async function main() {
   // buscar o tracking dele AO VIVO na API oficial da Shopee (mesmo client que
   // a rota usa) — reproduz exatamente o passo que falhou na hora do bipe.
   const candidatos = await pool.query(
-    `SELECT sod.order_sn, o.store_id, o.date_created, s.nickname
+    `SELECT sod.order_sn, o.store_id, o.date_created, o.status, s.nickname
        FROM shopee_order_data sod JOIN orders o ON o.ml_id = sod.order_sn
        LEFT JOIN stores s ON s.id = o.store_id
       WHERE sod.tracking_number IS NULL AND o.date_created > now() - interval '20 days'
@@ -77,10 +77,10 @@ async function main() {
       const tn = await client.getTrackingNumber(r.order_sn);
       const bate = tn === codigo;
       if (bate) achou = true;
-      console.log(`   order_sn=${r.order_sn} loja=${r.nickname} → tracking ao vivo: "${tn || '(vazio)'}"${bate ? '  ✅ BATE COM O BIPADO' : ''}`);
+      console.log(`   order_sn=${r.order_sn} loja=${r.nickname} status=${r.status} data=${r.date_created ? r.date_created.toISOString().slice(0,10) : '?'} → tracking ao vivo: "${tn || '(vazio)'}"${bate ? '  ✅ BATE COM O BIPADO' : ''}`);
       if (bate) break;
     } catch (e) {
-      console.log(`   order_sn=${r.order_sn} loja=${r.nickname} → erro na API: ${e.message}`);
+      console.log(`   order_sn=${r.order_sn} loja=${r.nickname} status=${r.status} → erro na API: ${e.message}`);
     }
   }
   console.log(`\nResultado: ${achou ? '✅ achado ao vivo — provavelmente um problema de timing (worker ainda não tinha sincronizado no momento do bipe, mas agora resolveria).' : '❌ não achado nos 40 candidatos recentes.'}`);
@@ -91,6 +91,26 @@ async function main() {
     console.log('  c) O código bipado tem erro de leitura do scanner (comparar com o item 2 acima).');
     console.log('  d) O pedido nem existe ainda em orders/shopee_order_data — sincronização atrasada ou pedido de loja não cadastrada.');
   }
+
+  // 5. Total real de pedidos Shopee sem tracking, SEM corte de data — mostra se
+  // existe volume relevante fora da janela de 20 dias usada nos passos 3/4.
+  const semTrackingTotal = await pool.query(
+    `SELECT COUNT(*) AS n FROM shopee_order_data sod JOIN orders o ON o.ml_id = sod.order_sn
+      WHERE sod.tracking_number IS NULL`
+  );
+  console.log(`\n5. Total de pedidos Shopee sem tracking_number no banco (sem corte de data): ${semTrackingTotal.rows[0].n}`);
+
+  // 6. Os 10 pedidos sem tracking mais ANTIGOS — se o pedido da etiqueta bipada
+  // estiver aqui (ou for mais antigo ainda), confirma a causa (a): fora da janela.
+  const maisAntigos = await pool.query(
+    `SELECT sod.order_sn, o.status, o.date_created, s.nickname
+       FROM shopee_order_data sod JOIN orders o ON o.ml_id = sod.order_sn
+       LEFT JOIN stores s ON s.id = o.store_id
+      WHERE sod.tracking_number IS NULL
+      ORDER BY o.date_created ASC LIMIT 10`
+  );
+  console.log(`\n6. Os ${maisAntigos.rows.length} pedidos sem tracking mais antigos no banco:`);
+  maisAntigos.rows.forEach(r => console.log(`   order_sn=${r.order_sn} loja=${r.nickname} status=${r.status} data=${r.date_created ? r.date_created.toISOString().slice(0,10) : '?'}`));
 
   await pool.end();
 }

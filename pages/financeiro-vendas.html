@@ -152,7 +152,9 @@
 
       <!-- Meta de Faturamento -->
       <div class="vc-card" id="vcMetaCard">
-        <div class="vc-card-h"><h3>🎯 Meta de Faturamento</h3><span id="vcMetaBadge"></span><span style="margin-left:auto;font-size:12px;color:var(--text-muted)" id="vcMetaSub"></span></div>
+        <div class="vc-card-h"><h3>🎯 Meta de Faturamento</h3><span id="vcMetaBadge"></span>
+          <button class="action-btn" style="margin-left:auto" onclick="abrirLancarMetaGeral()"><i class="fas fa-bullseye"></i> Lançar meta</button>
+          <span style="font-size:12px;color:var(--text-muted)" id="vcMetaSub"></span></div>
         <div class="vc-mg" id="vcMetaGrid"></div>
         <div class="vc-prog"><span id="vcMetaBar" style="width:0%"></span></div>
         <div id="vcMetaLine" style="font-size:12px;color:var(--text-muted)"></div>
@@ -160,7 +162,9 @@
 
       <!-- Metas por Empresa -->
       <div class="vc-card">
-        <div class="vc-card-h"><h3>🏢 Metas por Empresa</h3></div>
+        <div class="vc-card-h"><h3>🏢 Metas por Empresa</h3>
+          <button class="action-btn" style="margin-left:auto" onclick="abrirLancarMetaEmpresa()"><i class="fas fa-bullseye"></i> Lançar meta por empresa</button>
+        </div>
         <div class="vc-stores" id="vcStoreGoals"></div>
       </div>
 
@@ -515,6 +519,71 @@ function goalsByStore(m,y){ const map={}; GOALS_ALL.filter(g=>+g.month===m&&+g.y
 function globalGoal(m,y){ const r=GOALS_ALL.find(g=>+g.month===m&&+g.year===y&&!g.store_id); if(r) return Number(r.goal_value)||0;
   // fallback: se não houver linha geral, soma as por-loja
   return Object.values(goalsByStore(m,y)).reduce((s,v)=>s+v,0); }
+
+// ── Lançar meta (individual/geral e por empresa) ────────────────────────────
+// monthly_goals é upsert manual (não por on_conflict do Supabase — a tabela
+// não documenta constraint única em month/year/store_id): acha a linha já
+// carregada em GOALS_ALL pro mesmo mês/ano/loja e faz PATCH; sem achar, POST.
+// Meta geral = store_id NULL; meta por empresa = store_id preenchido — mesma
+// distinção que globalGoal()/goalsByStore() já leem.
+function findGoalRow(m,y,storeId){ return GOALS_ALL.find(g=>+g.month===m&&+g.year===y&&(storeId?String(g.store_id)===String(storeId):!g.store_id)); }
+
+function abrirLancarMetaGeral(){
+  const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value;
+  const atual=findGoalRow(m,y,null);
+  const body=`<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:10px">Mês/Ano<div style="font-weight:700;margin-top:4px;color:var(--text-main)">${MESES[m-1]}/${y}</div></label>
+    <label style="font-size:12px;color:var(--text-muted);display:block">Valor da meta (R$)<input type="number" step="0.01" id="mgValor" class="vc-in" style="width:100%" value="${atual?Number(atual.goal_value):''}" placeholder="0,00" autofocus></label>
+    <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">${atual?'Já existe meta geral cadastrada pra este mês — salvar substitui o valor.':'Meta geral aplicada quando nenhuma loja está selecionada no filtro.'}</div>`;
+  abrirModal('🎯 Lançar meta geral', body, 'Salvar', ()=>doSalvarMeta(m,y,null,atual&&atual.id), false);
+}
+
+function abrirLancarMetaEmpresa(){
+  const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value;
+  const opts=Object.entries(STORES).map(([id,n])=>`<option value="${esc(id)}">${esc(n)}</option>`).join('');
+  const body=`<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:10px">Mês/Ano<div style="font-weight:700;margin-top:4px;color:var(--text-main)">${MESES[m-1]}/${y}</div></label>
+    <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:10px">Empresa<select id="mgLoja" class="vc-in" style="width:100%" onchange="pintaMetaAtual(${m},${y})">${opts}</select></label>
+    <label style="font-size:12px;color:var(--text-muted);display:block">Valor da meta (R$)<input type="number" step="0.01" id="mgValor" class="vc-in" style="width:100%" placeholder="0,00"></label>
+    <div id="mgAtualMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)"></div>
+    <div id="eMsg" style="font-size:12px;margin-top:4px;color:var(--text-muted)"></div>`;
+  // onOk lê a loja/existingId SÓ na hora de confirmar (não fecha sobre o
+  // valor inicial) — o usuário pode trocar de empresa dentro do modal antes
+  // de salvar (pintaMetaAtual troca o valor prefillado a cada troca).
+  abrirModal('🏢 Lançar meta por empresa', body, 'Salvar', ()=>{
+    const storeId=document.getElementById('mgLoja').value;
+    const atual=findGoalRow(m,y,storeId);
+    return doSalvarMeta(m,y,storeId,atual&&atual.id);
+  }, false);
+  pintaMetaAtual(m,y);
+}
+// Preenche o valor já cadastrado (se houver) ao trocar de empresa no modal.
+function pintaMetaAtual(m,y){
+  const sel=document.getElementById('mgLoja'); if(!sel) return;
+  const atual=findGoalRow(m,y,sel.value);
+  document.getElementById('mgValor').value = atual ? Number(atual.goal_value) : '';
+  const msg=document.getElementById('mgAtualMsg');
+  if(msg) msg.textContent = atual ? 'Já existe meta cadastrada pra essa empresa neste mês — salvar substitui o valor.' : '';
+}
+
+// Função async direta (mesmo padrão de doInsert acima) — abrirModal recebe
+// `()=>doSalvarMeta(...)`, cujo retorno (a Promise) é o que `await
+// modalAction()` de fato espera; NUNCA `()=>doSalvarMeta(...)()` nem
+// `return doSalvarMeta(...)()` — só chamar direto e deixar o arrow function
+// devolver a Promise.
+async function doSalvarMeta(m,y,storeId,existingId){
+  const valor=pNum(document.getElementById('mgValor').value);
+  if(valor<=0){ eMsgErr('Informe um valor maior que zero.'); return; }
+  modalBusy(true,'Salvando…');
+  const row={ month:m, year:y, goal_value:valor, store_id:storeId||null };
+  const r = existingId
+    ? await DB.updateFinanceiroRow('monthly_goals',existingId,{goal_value:valor})
+    : await DB.addFinanceiroRow('monthly_goals',row);
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:(existingId?{...row,id:existingId}:row);
+  const i=GOALS_ALL.findIndex(g=>g.id===existingId);
+  if(i>=0) GOALS_ALL[i]=saved; else GOALS_ALL.push(saved);
+  fecharModal();
+  render();
+}
 function monthRows(m,y,loja){ return ALL.filter(e=>{ if(!e.date) return false; const d=new Date(e.date+'T00:00:00'); if(d.getMonth()+1!==m||d.getFullYear()!==y) return false; if(loja&&String(e.store_id)!==loja) return false; return true; }); }
 function totais(rows){ const t={rec:0,custo:0,mc:0,vendas:0}; rows.forEach(r=>{t.rec+=rev(r);t.custo+=custoDe(r);t.mc+=mcDe(r);t.vendas+=+r.quantity_sales||0;}); t.mcPct=t.rec?t.mc/t.rec*100:0; t.ticket=t.vendas?t.rec/t.vendas:0; return t; }
 

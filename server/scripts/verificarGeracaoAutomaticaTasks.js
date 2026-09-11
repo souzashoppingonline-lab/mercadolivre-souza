@@ -29,13 +29,16 @@ async function main() {
   atual.rows.forEach(r => console.log(`   regra=${r.regra} coluna=${r.board_column}: ${r.n}`));
 
   // 1. Quando rodou a última vez o job diário que dispara checkQuality.
+  // Nome gravado em schedule_jobs é o kebab-case interno ('sync-scores'),
+  // não o nome da função JS (syncScores) — worker.js chama
+  // recordSync('sync-scores', ...) de dentro de syncScores().
   const job = await pool.query(
-    `SELECT name, last_run, status FROM schedule_jobs WHERE name = 'syncScores'`
+    `SELECT name, last_run, status FROM schedule_jobs WHERE name = 'sync-scores'`
   );
   if (job.rows.length) {
-    console.log(`\n1. Último job syncScores (dispara checkQuality, 1x/dia às 01:00): last_run=${job.rows[0].last_run} status=${job.rows[0].status}`);
+    console.log(`\n1. Último job sync-scores (dispara checkQuality, 1x/dia às 01:00): last_run=${job.rows[0].last_run} status=${job.rows[0].status}`);
   } else {
-    console.log(`\n1. Nenhum registro de job "syncScores" em schedule_jobs ainda.`);
+    console.log(`\n1. Nenhum registro de job "sync-scores" em schedule_jobs ainda.`);
   }
 
   // 2. Itens com estoque crítico (mesma condição de checkStock) SEM card aberto.

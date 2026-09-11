@@ -187,7 +187,7 @@ async function criar(){
   const btn = document.getElementById('nvBtn'); btn.disabled = true; msg('Criando…');
   const r = await DB.addUsuario(username, password, role);
   btn.disabled = false;
-  if (!r || r.error) { msg('Erro: ' + esc((r&&r.error)||'falha ao criar'), true); return; }
+  if (!r || r.error) { msg('Erro: ' + esc((r&&r.error)||DB.lastError||'falha ao criar'), true); return; }
   document.getElementById('nvUser').value = ''; document.getElementById('nvSenha').value = '';
   msg(`✅ Usuário <b>${esc(username)}</b> criado. Passe o login e a senha para a pessoa.`);
   await load();
@@ -196,7 +196,7 @@ async function criar(){
 async function mudarPapel(id, role, username){
   if (!confirm(`Mudar o papel de "${username}" para ${PAPEL_LABEL[role]||role}?\n\n${PAPEL_ACESSO[role]||''}`)) { render(); return; }
   const r = await DB.updateUsuario(id, { role });
-  if (!r || r.error) { alert('Não consegui mudar: ' + ((r&&r.error) || 'erro desconhecido')); render(); return; }
+  if (!r || r.error) { alert('Não consegui mudar: ' + ((r&&r.error) || DB.lastError || 'erro desconhecido')); render(); return; }
   await load();
 }
 
@@ -205,7 +205,7 @@ async function salvarSenha(id, username){
   const password = el ? el.value : '';
   if (!password || password.length < 6) { alert('A senha precisa ter no mínimo 6 caracteres.'); return; }
   const r = await DB.updateUsuario(id, { password });
-  if (!r || r.error) { alert('Não consegui salvar: ' + ((r&&r.error) || 'erro desconhecido')); return; }
+  if (!r || r.error) { alert('Não consegui salvar: ' + ((r&&r.error) || DB.lastError || 'erro desconhecido')); return; }
   senhaAberta = null;
   await load();
   msg(`🔑 Senha de <b>${esc(username)}</b> atualizada.`);
@@ -214,7 +214,7 @@ async function salvarSenha(id, username){
 async function excluir(id, username){
   if (!confirm(`Excluir o usuário "${username}"?\n\nEle deixa de conseguir entrar com uma senha nova. ATENÇÃO: se ele estiver com o sistema aberto, a sessão dele continua valendo até expirar — para cortar na hora é preciso trocar o STAFF_JWT_SECRET e reiniciar o servidor (isso desloga todo mundo).`)) return;
   const r = await DB.removeUsuario(id);
-  if (!r || r.error) { alert('Não consegui excluir: ' + ((r&&r.error) || 'erro desconhecido')); return; }
+  if (!r || r.error) { alert('Não consegui excluir: ' + ((r&&r.error) || DB.lastError || 'erro desconhecido')); return; }
   await load();
 }
 

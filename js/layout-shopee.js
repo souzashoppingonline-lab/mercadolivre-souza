@@ -45,7 +45,29 @@ function buildShopeeSidebar(activeHref) {
     </aside>`;
 }
 
-function buildShopeeTopbar(title) {
+// Sessão de staff (login de acesso restrito) — mesmo contrato de js/layout.js
+// (/auth/staff/me). Sem sessão (gate desligado, ou staffAuth não usado) fica
+// null e o botão de sair simplesmente não aparece. Ver .claude/auth-staff.md.
+async function fetchShopeeStaffUser() {
+  try {
+    const res = await fetch('/auth/staff/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function buildShopeeLogoutButton(staffUser) {
+  if (!staffUser) return '';
+  return `
+    <span style="font-size:12px;color:var(--text-muted)" title="Logado como ${staffUser.username}">
+      <i class="fas fa-user-circle"></i> ${staffUser.username}
+    </span>
+    <button class="btn-refresh" id="btnStaffLogout" title="Sair"><i class="fas fa-sign-out-alt"></i></button>`;
+}
+
+function buildShopeeTopbar(title, staffUser) {
   return `
     <header class="topbar">
       <div class="topbar-left">
@@ -60,13 +82,23 @@ function buildShopeeTopbar(title) {
           <a href="dashboard-tiktok.html"><i class="fab fa-tiktok"></i> TikTok Shop</a>
         </nav>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
+        ${buildShopeeLogoutButton(staffUser)}
       </div>
     </header>`;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initShopeeLogout() {
+  document.getElementById('btnStaffLogout')?.addEventListener('click', async () => {
+    try { await fetch('/auth/staff/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+    window.location.href = '/pages/login.html';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
   const sidebarEl = document.getElementById('app-sidebar');
   const topbarEl  = document.getElementById('app-topbar');
+  const staffUser = await fetchShopeeStaffUser();
   if (sidebarEl) sidebarEl.outerHTML = buildShopeeSidebar(window.ACTIVE_NAV || '');
-  if (topbarEl)  topbarEl.outerHTML  = buildShopeeTopbar(window.PAGE_TITLE || 'Shopee');
+  if (topbarEl)  topbarEl.outerHTML  = buildShopeeTopbar(window.PAGE_TITLE || 'Shopee', staffUser);
+  initShopeeLogout();
 });

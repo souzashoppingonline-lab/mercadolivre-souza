@@ -4,7 +4,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
 const {
-  SHOPEE_PRICING_TIERS, getTierForPrice, calculateShopeePricing, findIdealPrice, applyStackedDiscounts,
+  SHOPEE_PRICING_TIERS, getTierForPrice, calculateShopeePricing, findIdealPrice, priceForTier, applyStackedDiscounts,
 } = require('../src/marketplaces/shopee/pricingEngine');
 
 describe('getTierForPrice — faixas e transições críticas (seção 31 da spec)', () => {
@@ -87,10 +87,12 @@ describe('calculateShopeePricing — casos sem custo/faixa (seções 28/29 da sp
     // mostrar "quanto a Shopee cobra" mesmo sem custo ainda
     assert.strictEqual(r.commissionRate, 14);
   });
-  test('preço atual inválido (0/negativo): nada calculável', () => {
+  test('preço atual inválido (0/negativo): margem/lucro do preço atual ficam null, mas o preço IDEAL continua calculável (depende só do custo)', () => {
     const r = calculateShopeePricing({ cost: 42, currentPrice: 0, targetMargin: 30 });
     assert.strictEqual(r.pricingTier, null);
-    assert.strictEqual(r.idealPrice, null);
+    assert.strictEqual(r.margin, null);
+    assert.strictEqual(r.profit, null);
+    assert.ok(r.idealPrice > 0, 'idealPrice não devia depender de já existir um preço atual válido — bug real encontrado em produção');
   });
 });
 
@@ -158,6 +160,54 @@ describe('findIdealPrice — menor preço que atinge a margem, por faixa (seçõ
     // deveria bastar — não precisa pular pra uma faixa de comissão igual mas
     // taxa fixa maior.
     assert.ok(ideal.price <= 79.99, `preço ideal ${ideal.price} devia caber na 1ª faixa`);
+  });
+});
+
+describe('Bug real de produção: produto sem preço atual sincronizado', () => {
+  test('cost=10,37, sem current_price nenhum (null) — preço ideal precisa aparecer mesmo assim', () => {
+    const r = calculateShopeePricing({ cost: 10.37, currentPrice: null, targetMargin: 30, taxRate: 0 });
+    assert.ok(r.idealPrice > 10.37, 'preço ideal tem que existir e cobrir pelo menos o custo');
+    assert.strictEqual(r.margin, null); // margem do preço ATUAL não existe (não há preço atual)
+  });
+});
+
+describe('priceForTier — faixa escolhida manualmente na tela (clique na tabela oficial)', () => {
+  test('faixa "até R$79,99" com custo baixo: preço cabe na própria faixa', () => {
+    const tier = SHOPEE_PRICING_TIERS[0];
+    const r = priceForTier(tier, { cost: 10, targetMargin: 20, taxRate: 0 });
+    assert.ok(r);
+    assert.strictEqual(r.withinTier, true);
+    assert.ok(r.price <= 79.99);
+  });
+  test('faixa "até R$79,99" com custo alto: preço calculado NÃO cabe na faixa (withinTier=false) — avisa em vez de mentir', () => {
+    const tier = SHOPEE_PRICING_TIERS[0];
+    const r = priceForTier(tier, { cost: 300, targetMargin: 30, taxRate: 0 });
+    assert.ok(r);
+    assert.strictEqual(r.withinTier, false);
+  });
+  test('faixa null (nenhuma selecionada) devolve null', () => {
+    assert.strictEqual(priceForTier(null, { cost: 10, targetMargin: 20 }), null);
+  });
+
+  test('bug real: preço forçado usa a comissão da FAIXA ESCOLHIDA, não da faixa que o preço cairia naturalmente', () => {
+    // custo 42/margem 30% "pertence" naturalmente à faixa de R$100-199,99
+    // (ver findIdealPrice). Forçando a faixa "até R$79,99" (20%+R$4), o preço
+    // tem que ser calculado com ESSA comissão, mesmo que o resultado (R$92)
+    // não caiba de fato na própria faixa — antes desse fix, o ajuste fino de
+    // centavo (dentro de solveTierPrice) recalculava a faixa pelo preço a
+    // cada tentativa, então "vazava" pra faixa real e devolvia o mesmo valor
+    // do automático (110,72) em vez de usar 20%+R$4 de verdade.
+    const tier0 = SHOPEE_PRICING_TIERS[0];
+    const forcado = priceForTier(tier0, { cost: 42, targetMargin: 30, taxRate: 0 });
+    assert.ok(forcado);
+    assert.strictEqual(forcado.pricingTier.commissionRate, 20);
+    assert.notStrictEqual(forcado.price, findIdealPrice({ cost: 42, targetMargin: 30, taxRate: 0 }).price);
+    assert.strictEqual(forcado.withinTier, false); // R$92 não cabe em "até R$79,99" — tem que avisar, não mentir
+    // Confirma que o preço devolvido realmente bate 30% de margem USANDO a
+    // comissão de 20%+R$4 (não a de outra faixa por engano).
+    const netRevenue = forcado.price * (1 - 0.20) - 4;
+    const margemReal = (netRevenue - 42) / forcado.price * 100;
+    assert.ok(Math.abs(margemReal - 30) < 0.1, `margem real ${margemReal}% deveria bater ~30% usando 20%+R$4`);
   });
 });
 

@@ -196,6 +196,17 @@
     .emb-modal h3 { font-size: 14px; font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
     .emb-modal h3 .close { cursor: pointer; color: var(--text-muted); }
     .emb-modal video { width: 100%; border-radius: 10px; background: #000; max-height: 70vh; }
+    /* Aviso "já foi bipado" — modal compacto e chamativo, substitui o
+       confirm() nativo. Amarelo (cor de alerta do sistema), não vermelho —
+       não é erro, é só aviso; a ação segue liberada depois de confirmar. */
+    .emb-aviso-modal { max-width: 420px; text-align: center; border-color: var(--primary); padding: 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .emb-aviso-icon { font-size: 40px; color: var(--primary); margin-bottom: 6px; }
+    .emb-aviso-titulo { font-size: 20px; font-weight: 800; }
+    .emb-aviso-quando { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
+    .emb-aviso-acoes { display: flex; gap: 10px; width: 100%; }
+    .emb-aviso-acoes .emb-btn { flex: 1; justify-content: center; padding: 12px; font-size: 13px; font-weight: 700; }
+    .emb-btn-secundario { background: transparent; }
+    .emb-btn-aviso { background: var(--primary); color: #000; border-color: var(--primary); }
 
     /* ── Aba Relatório do Dia / Semana / Mês ── */
     .rd-controles { justify-content: flex-start; align-items: center; }
@@ -469,6 +480,22 @@
   <div class="emb-modal">
     <h3><span id="drillModalTitle">Pedidos</span> <span class="close" onclick="closeDrillModal()"><i class="fas fa-times"></i></span></h3>
     <div class="emb-video-list" id="drillModalList" style="max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- Aviso "já foi bipado" — pedido do usuário pra substituir o confirm() nativo
+     do navegador (fácil de ignorar, fora do visual da tela) por um alerta
+     visualmente forte, no mesmo estilo do resto da Embalagem. É só um AVISO,
+     não trava nada: o embalador confirma e a bipagem segue normal. -->
+<div class="emb-modal-backdrop" id="jaBipadoBackdrop">
+  <div class="emb-modal emb-aviso-modal">
+    <div class="emb-aviso-icon"><i class="fas fa-triangle-exclamation"></i></div>
+    <div class="emb-aviso-titulo">Esse pedido já foi embalado</div>
+    <div class="emb-aviso-quando" id="jaBipadoQuando"></div>
+    <div class="emb-aviso-acoes">
+      <button class="emb-btn emb-btn-secundario" id="jaBipadoCancelar">Cancelar</button>
+      <button class="emb-btn emb-btn-aviso" id="jaBipadoConfirmar">Bipar de novo mesmo assim</button>
+    </div>
   </div>
 </div>
 
@@ -804,7 +831,7 @@ async function startNew(shippingId) {
   }
   if (data.already_packed) {
     const quando = new Date(data.already_packed.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-    const ok = confirm(`⚠️ Esse pedido já foi embalado em ${quando}.\n\nDeseja gravar de novo mesmo assim?`);
+    const ok = await confirmarJaBipado(quando);
     if (!ok) {
       setScanState('idle');
       showScanMsg('Bipagem cancelada — esse pedido já tinha sido embalado.', 'warn');
@@ -1375,6 +1402,29 @@ function openConfDrill(kind, lojaNome) {
 }
 function closeDrillModal() {
   document.getElementById('drillModalBackdrop').classList.remove('open');
+}
+
+// Substitui o confirm() nativo pro aviso "já foi bipado" — mesmo contrato
+// (Promise<boolean>: true = confirmou bipar de novo, false = cancelou), só
+// que com o visual da própria tela em vez do popup feio do navegador.
+function confirmarJaBipado(quandoTexto) {
+  return new Promise((resolve) => {
+    document.getElementById('jaBipadoQuando').textContent = `Embalado em ${quandoTexto}`;
+    const backdrop = document.getElementById('jaBipadoBackdrop');
+    const btnOk = document.getElementById('jaBipadoConfirmar');
+    const btnCancelar = document.getElementById('jaBipadoCancelar');
+    const fechar = (resultado) => {
+      backdrop.classList.remove('open');
+      btnOk.removeEventListener('click', onOk);
+      btnCancelar.removeEventListener('click', onCancelar);
+      resolve(resultado);
+    };
+    const onOk = () => fechar(true);
+    const onCancelar = () => fechar(false);
+    btnOk.addEventListener('click', onOk);
+    btnCancelar.addEventListener('click', onCancelar);
+    backdrop.classList.add('open');
+  });
 }
 
 // ── Aba: Histórico — tendência de produtividade (semanas/meses, não só

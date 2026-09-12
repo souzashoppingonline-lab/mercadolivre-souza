@@ -7,7 +7,7 @@ const pool = require('../db/pool');
 const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
 const { scoreItem } = require('../marketplaces/shopee/shopeeScore');
-const { SHOPEE_PRICING_TIERS, calculateShopeePricing } = require('../marketplaces/shopee/pricingEngine');
+const { SHOPEE_PRICING_TIERS, calculateShopeePricing, priceForTier } = require('../marketplaces/shopee/pricingEngine');
 
 const router = express.Router();
 
@@ -674,6 +674,23 @@ router.get('/precificador', async (req, res) => {
     const q = (req.query.q || '').trim();
     const margem = Number(req.query.margem) || 0;   // % desejada sobre o preço anunciado
     const impostoPct = Number(req.query.imposto) || 0; // % de imposto sobre o preço após descontos
+    // Desconto padrão assumido pro "preço ideal" (pedido do usuário): vender
+    // na Shopee na prática sempre envolve cupom/oferta relâmpago — o preço
+    // IDEAL/ANUNCIADO precisa já embutir esse desconto planejado, senão o
+    // vendedor calcula a margem sem cupom e perde margem de verdade quando
+    // aplica o cupom depois. Ex.: se o vendedor sempre dá ~10% em cupom, o
+    // preço anunciado tem que já estar 10% "inflado" pra sobrar margem
+    // depois do desconto. Afeta o preço ideal da LISTA inteira; o modal deixa
+    // ajustar por anúncio específico (pré-preenchido com esses valores).
+    const promoPct = Number(req.query.promo) || 0;
+    const cupomLojaPct = Number(req.query.cupom_loja) || 0;
+    const cupomProdutoPct = Number(req.query.cupom_produto) || 0;
+    // Faixa escolhida manualmente na tela (clique na tabela oficial de
+    // comissão — "em qual faixa eu quero vender"). Índice em
+    // SHOPEE_PRICING_TIERS; ausente/inválido = automático (findIdealPrice
+    // escolhe a melhor faixa sozinho, comportamento de sempre).
+    const faixaIdx = req.query.faixa !== undefined && req.query.faixa !== '' ? Number(req.query.faixa) : null;
+    const faixaEscolhida = (faixaIdx != null && SHOPEE_PRICING_TIERS[faixaIdx]) ? SHOPEE_PRICING_TIERS[faixaIdx] : null;
 
     const params = [mpId, storeId];
     let qFilter = '';
@@ -706,18 +723,29 @@ router.get('/precificador', async (req, res) => {
         item_sku: it.item_sku, has_model: it.has_model, variation_count: it.variation_count,
         variacoes: models.map((m) => {
           const cost = costMap.has(`${it.item_id}::${Number(m.model_id || 0)}`) ? costMap.get(`${it.item_id}::${Number(m.model_id || 0)}`) : null;
-          const calc = calculateShopeePricing({ cost, currentPrice: m.current_price, targetMargin: margem, taxRate: impostoPct });
+          const descontos = { flashSaleDiscount: promoPct, storeCouponDiscount: cupomLojaPct, productCouponDiscount: cupomProdutoPct };
+          const calc = calculateShopeePricing({ cost, currentPrice: m.current_price, targetMargin: margem, taxRate: impostoPct, ...descontos });
+          // Faixa forçada manualmente (spec do usuário: "clico numa faixa da
+          // tabela e quero saber o preço pra vender nela") substitui o preço
+          // ideal automático só nesse caso — withinTier=false avisa quando o
+          // custo/margem não cabem de fato na faixa escolhida.
+          const forcado = faixaEscolhida ? priceForTier(faixaEscolhida, { cost, targetMargin: margem, taxRate: impostoPct, ...descontos }) : null;
           return {
             model_id: m.model_id || 0, model_name: m.model_name, model_sku: m.model_sku,
             cost, current_price: m.current_price ?? null,
-            suggested_price: calc.idealPrice,
+            suggested_price: forcado ? forcado.price : calc.idealPrice,
+            suggested_price_within_tier: forcado ? forcado.withinTier : true,
             current_margin: calc.margin,
-            commission_rate: calc.commissionRate, fixed_fee: calc.fixedFee,
+            commission_rate: forcado ? forcado.pricingTier.commissionRate : calc.commissionRate,
+            fixed_fee: forcado ? forcado.pricingTier.fixedFee : calc.fixedFee,
           };
         }),
       };
     });
-    res.json({ rows: out, tiers: SHOPEE_PRICING_TIERS, margem, imposto: impostoPct });
+    res.json({
+      rows: out, tiers: SHOPEE_PRICING_TIERS, margem, imposto: impostoPct, faixa_idx: faixaIdx, faixa: faixaEscolhida,
+      promo: promoPct, cupom_loja: cupomLojaPct, cupom_produto: cupomProdutoPct,
+    });
   } catch (e) {
     console.error('[api/shopee] /precificador', e.message);
     res.status(500).json({ error: e.message, rows: [] });

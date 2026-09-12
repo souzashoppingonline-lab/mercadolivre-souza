@@ -65,9 +65,19 @@ function calculateShopeePricing({
   const priceCents = toCents(currentPrice);
   const pricingTier = getTierForPrice(toReais(priceCents));
 
+  // idealPrice só depende do CUSTO + margem desejada — nunca do preço atual.
+  // Calcula sempre que houver custo, mesmo sem preço atual válido (produto
+  // ainda sem preço sincronizado, ou preço zerado) — bug real encontrado em
+  // produção: antes retornava idealPrice=null junto com o resto quando não
+  // havia preço atual, mas "quanto eu deveria cobrar" é uma pergunta válida
+  // independente de já existir (ou não) um preço vigente.
+  const idealPrice = costCents != null
+    ? findIdealPrice({ cost: toReais(costCents), targetMargin, taxRate, flashSaleDiscount, storeCouponDiscount, productCouponDiscount })
+    : null;
+
   if (!pricingTier || priceCents <= 0) {
     return {
-      currentPrice: toReais(priceCents), idealPrice: null, commissionRate: null, fixedFee: null,
+      currentPrice: toReais(priceCents), idealPrice: idealPrice?.price ?? null, commissionRate: null, fixedFee: null,
       pixSubsidy: null, netRevenue: null, profit: null, margin: null, pricingTier: null,
     };
   }
@@ -93,10 +103,6 @@ function calculateShopeePricing({
   const profitCents = costCents != null ? netRevenueCents - costCents : null;
   const margin = profitCents != null && priceCents > 0 ? (profitCents / priceCents) * 100 : null;
 
-  const idealPrice = costCents != null
-    ? findIdealPrice({ cost: toReais(costCents), targetMargin, taxRate, flashSaleDiscount, storeCouponDiscount, productCouponDiscount })
-    : null;
-
   return {
     currentPrice: toReais(priceCents),
     idealPrice: idealPrice?.price ?? null,
@@ -111,12 +117,18 @@ function calculateShopeePricing({
 }
 
 // Lucro líquido (em centavos) pra um preço anunciado (antes de descontos) e
-// um custo dados — reaproveitado por findIdealPrice e pelos testes.
-function netProfitCentsForPrice(priceCents, costCents, { taxRate = 0, flashSaleDiscount = 0, storeCouponDiscount = 0, productCouponDiscount = 0 } = {}) {
-  const tier = getTierForPrice(toReais(priceCents));
+// um custo dados — reaproveitado por findIdealPrice/solveTierPrice.
+// `forceTier`: quando informado, usa a comissão/taxa fixa DESSA faixa em vez
+// de redescobrir pelo preço — essencial pra priceForTier (faixa escolhida
+// manualmente): sem isso, ao subir o preço centavo a centavo (ajuste de
+// arredondamento), o preço podia escapar pra outra faixa real e o cálculo
+// passava a usar a comissão ERRADA (bug encontrado testando a seleção manual
+// de faixa em produção — o preço "forçado" saía igual ao automático).
+function netProfitCentsForPrice(priceCents, costCents, { taxRate = 0, flashSaleDiscount = 0, storeCouponDiscount = 0, productCouponDiscount = 0, forceTier = null } = {}) {
+  const tier = forceTier || getTierForPrice(toReais(priceCents));
   if (!tier) return null;
   const afterDiscountsCents = applyStackedDiscounts(priceCents, [flashSaleDiscount, storeCouponDiscount, productCouponDiscount]);
-  const afterTier = getTierForPrice(toReais(afterDiscountsCents)) || tier;
+  const afterTier = forceTier || getTierForPrice(toReais(afterDiscountsCents)) || tier;
   const commissionCents = Math.round(afterDiscountsCents * (afterTier.commissionRate / 100));
   const fixedFeeCents = toCents(afterTier.fixedFee);
   const taxCents = Math.round(afterDiscountsCents * (Number(taxRate) || 0) / 100);
@@ -124,13 +136,16 @@ function netProfitCentsForPrice(priceCents, costCents, { taxRate = 0, flashSaleD
   return afterDiscountsCents - commissionCents - fixedFeeCents - taxCents - costCents;
 }
 
-// Menor preço que atinge a margem desejada (spec seções 13/17): pra CADA
-// faixa, resolve algebricamente o preço mínimo dentro dela (fórmula fechada,
-// não busca por tentativa) e verifica se esse preço cai de fato dentro da
-// faixa usada pro cálculo — senão descarta (não pertence). No fim compara
-// todas as soluções válidas e devolve a de menor preço. Não assume que uma
-// fórmula única serve pra todas as faixas (comissão/taxa fixa mudam).
-function findIdealPrice({ cost, targetMargin = 0, taxRate = 0, flashSaleDiscount = 0, storeCouponDiscount = 0, productCouponDiscount = 0 }) {
+// Resolve o preço mínimo que atinge a margem desejada DENTRO de uma faixa
+// específica (fórmula fechada + ajuste fino de 1 centavo — ver nota abaixo).
+// Reaproveitada por findIdealPrice (testa as 5 faixas e pega a melhor) e por
+// priceForTier (usuário escolhe a faixa manualmente, ver seleção da tabela
+// oficial na tela — "em qual faixa eu quero vender"). Devolve `withinTier:
+// false` quando o preço calculado não fica de fato dentro da faixa pedida
+// (ex.: custo alto demais pra caber na faixa "até R$79,99") — nesse caso o
+// preço ainda é devolvido (pra mostrar "não dá pra vender nessa faixa com
+// esse custo/margem"), mas o chamador decide se aceita ou não.
+function solveTierPrice(tier, { cost, targetMargin = 0, taxRate = 0, flashSaleDiscount = 0, storeCouponDiscount = 0, productCouponDiscount = 0 }) {
   const costCents = toCents(cost);
   if (costCents <= 0) return null;
   const margem = Math.max(0, Math.min(99.999, Number(targetMargin) || 0));
@@ -141,56 +156,69 @@ function findIdealPrice({ cost, targetMargin = 0, taxRate = 0, flashSaleDiscount
     * (1 - Math.max(0, Math.min(100, productCouponDiscount)) / 100);
   const fatorPosDesconto = 1 - descontoTotalFrac; // preço anunciado × isso = preço após descontos
 
-  const candidatos = [];
-  for (const tier of SHOPEE_PRICING_TIERS) {
-    // netRevenue = afterDiscount*(1 - comissão% - imposto%) - taxaFixa (SEM
-    // subsídio Pix — pedido explícito do usuário, nunca dá pra garantir que o
-    // comprador vai pagar via Pix).
-    // profit = netRevenue - cost; margin = profit / preçoAnunciado (não sobre o
-    // preço após desconto — margem é "lucro sobre o preço de venda anunciado",
-    // conforme o texto auxiliar do card 1 da spec).
-    // profit = preçoAnunciado*fatorPosDesconto*(1 - com% - imp%) - taxaFixa - cost
-    // margin*preçoAnunciado = profit
-    // preçoAnunciado*(fatorPosDesconto*(1-com%-imp%) - margem%) = taxaFixa + cost
-    const fatorLiquido = fatorPosDesconto * (1 - tier.commissionRate / 100 - imposto / 100);
-    const denom = fatorLiquido - margem / 100;
-    if (denom <= 0) continue; // margem desejada inatingível nessa faixa (comissão alta demais)
-    const precoCents = Math.ceil((tier.fixedFee * 100 + costCents) / denom);
-    const precoReais = toReais(precoCents);
-    // Preço candidato precisa pertencer à MESMA faixa usada no cálculo do
-    // preço anunciado (não confundir com a faixa pós-desconto, que pode ser
-    // outra — o preço afixado no anúncio é o que baliza a faixa de comissão
-    // real, ver nota em calculateShopeePricing; aqui testamos a faixa do
-    // preço após desconto, que é onde tier.commissionRate realmente se aplica).
-    const precoAposDesconto = precoReais * fatorPosDesconto;
-    if (precoAposDesconto < tier.minPrice || precoAposDesconto > tier.maxPrice) continue;
+  // netRevenue = afterDiscount*(1 - comissão% - imposto%) - taxaFixa (SEM
+  // subsídio Pix — pedido explícito do usuário, nunca dá pra garantir que o
+  // comprador vai pagar via Pix).
+  // profit = netRevenue - cost; margin = profit / preçoAnunciado (não sobre o
+  // preço após desconto — margem é "lucro sobre o preço de venda anunciado",
+  // conforme o texto auxiliar do card 1 da spec).
+  // preçoAnunciado*(fatorPosDesconto*(1-com%-imp%) - margem%) = taxaFixa + cost
+  const fatorLiquido = fatorPosDesconto * (1 - tier.commissionRate / 100 - imposto / 100);
+  const denom = fatorLiquido - margem / 100;
+  if (denom <= 0) return null; // margem desejada inatingível nessa faixa (comissão alta demais)
+  const precoCents = Math.ceil((tier.fixedFee * 100 + costCents) / denom);
 
-    // A fórmula fechada usa Math.ceil pra garantir preço suficiente, mas o
-    // arredondamento de comissão/imposto a centavo inteiro (dentro de
-    // netProfitCentsForPrice) pode raspar uma fração de ponto percentual da
-    // margem real — visto na prática (ex.: alvo 30%, resultado 29,999...%).
-    // Em vez de confiar numa tolerância arbitrária (frágil — falha ou aceita
-    // demais dependendo do caso), sobe 1 centavo por vez até bater de verdade,
-    // com um teto de segurança (nunca deveria precisar de mais que poucos
-    // centavos pra esse ajuste).
-    let candCents = precoCents;
-    let profitCents = null, marginReal = null;
-    for (let tentativas = 0; tentativas < 50; tentativas++) {
-      const candAposDesconto = toReais(candCents) * fatorPosDesconto;
-      if (candAposDesconto > tier.maxPrice) { candCents = null; break; } // saiu da faixa subindo — não tem solução aqui
-      profitCents = netProfitCentsForPrice(candCents, costCents, { taxRate, flashSaleDiscount, storeCouponDiscount, productCouponDiscount });
-      if (profitCents == null) { candCents = null; break; }
-      marginReal = (profitCents / candCents) * 100;
-      if (marginReal >= margem) break;
-      candCents += 1;
-    }
-    if (candCents == null || marginReal < margem) continue;
-    candidatos.push({ price: toReais(candCents), margin: round2(marginReal), pricingTier: tier });
+  // A fórmula fechada usa Math.ceil pra garantir preço suficiente, mas o
+  // arredondamento de comissão/imposto a centavo inteiro (dentro de
+  // netProfitCentsForPrice) pode raspar uma fração de ponto percentual da
+  // margem real — visto na prática (ex.: alvo 30%, resultado 29,999...%).
+  // Em vez de confiar numa tolerância arbitrária (frágil — falha ou aceita
+  // demais dependendo do caso), sobe 1 centavo por vez até bater de verdade,
+  // com um teto de segurança (nunca deveria precisar de mais que poucos
+  // centavos pra esse ajuste).
+  let candCents = precoCents;
+  let profitCents = null, marginReal = null;
+  for (let tentativas = 0; tentativas < 50; tentativas++) {
+    // forceTier: sempre a faixa sendo testada aqui (`tier`), nunca a que o
+    // preço "cairia naturalmente" — é assim que dá pra saber se o preço
+    // pertence de fato à faixa pedida (withinTier abaixo) em vez de misturar
+    // a comissão de uma faixa com o preço de outra.
+    profitCents = netProfitCentsForPrice(candCents, costCents, { taxRate, flashSaleDiscount, storeCouponDiscount, productCouponDiscount, forceTier: tier });
+    if (profitCents == null) return null;
+    marginReal = (profitCents / candCents) * 100;
+    if (marginReal >= margem) break;
+    candCents += 1;
   }
+  if (marginReal < margem) return null;
 
+  const precoReais = toReais(candCents);
+  const precoAposDesconto = precoReais * fatorPosDesconto;
+  const withinTier = precoAposDesconto >= tier.minPrice && precoAposDesconto <= tier.maxPrice;
+  return { price: precoReais, margin: round2(marginReal), pricingTier: tier, withinTier };
+}
+
+// Menor preço que atinge a margem desejada (spec seções 13/17): testa as 5
+// faixas com solveTierPrice, descarta as que não pertencem de fato à faixa
+// calculada, e devolve a de menor preço entre as válidas. Não assume que uma
+// fórmula única serve pra todas as faixas (comissão/taxa fixa mudam).
+function findIdealPrice(params) {
+  const candidatos = SHOPEE_PRICING_TIERS
+    .map((tier) => solveTierPrice(tier, params))
+    .filter((c) => c && c.withinTier);
   if (!candidatos.length) return null;
   candidatos.sort((a, b) => a.price - b.price || a.margin - b.margin);
   return candidatos[0];
 }
 
-module.exports = { SHOPEE_PRICING_TIERS, getTierForPrice, calculateShopeePricing, findIdealPrice, applyStackedDiscounts };
+// Preço pra vender DENTRO de uma faixa escolhida pelo usuário (clique na
+// tabela oficial de comissão na tela) — "eu quero vender nessa faixa,
+// quanto eu cobro pra bater a margem?". Diferente de findIdealPrice (que
+// escolhe a MELHOR faixa sozinho), aqui a faixa já vem definida; devolve o
+// preço mesmo que ele escape da faixa (`withinTier: false`), pro frontend
+// avisar "com esse custo/margem não dá pra vender nessa faixa".
+function priceForTier(tier, params) {
+  if (!tier) return null;
+  return solveTierPrice(tier, params);
+}
+
+module.exports = { SHOPEE_PRICING_TIERS, getTierForPrice, calculateShopeePricing, findIdealPrice, priceForTier, applyStackedDiscounts };

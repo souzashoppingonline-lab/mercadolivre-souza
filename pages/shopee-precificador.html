@@ -49,6 +49,10 @@
     .comissao-table th { text-align:left; padding:8px 10px; background:var(--shopee); color:#fff; font-size:11px; text-transform:uppercase; }
     .comissao-table td { padding:8px 10px; border-bottom:1px solid var(--border); }
     .comissao-table tr:nth-child(even) td { background:var(--surface); }
+    .comissao-table tr.faixa-row { cursor:pointer; }
+    .comissao-table tr.faixa-row:hover td { background:rgba(238,77,45,.12); }
+    .comissao-table tr.faixa-row.selected td { background:rgba(238,77,45,.22); border-top:1px solid var(--shopee); border-bottom:1px solid var(--shopee); }
+    .comissao-table tr.faixa-row.selected td:first-child { border-left:3px solid var(--shopee); }
 
     /* Modal "Precificação do Anúncio" (spec seção 8) — visual próprio, mesmo
        padrão de cards/cores da página (não existe componente de modal
@@ -99,9 +103,22 @@
 
       <div class="params">
         <div class="param"><label>Margem desejada (%)</label><input type="number" id="pMargem" value="30" step="0.5" min="0" max="90" oninput="recarregar()"><div class="hint">Lucro sobre o preço de venda</div></div>
-        <div class="param"><label>Taxa Shopee (%)</label><div class="display-value" id="pTaxaShow">—</div><div class="hint">Calculada conforme a faixa de preço — abra um anúncio pra ver</div></div>
-        <div class="param"><label>Taxa fixa (R$)</label><div class="display-value" id="pFixaShow">—</div><div class="hint">Calculada automaticamente</div></div>
+        <div class="param"><label>Taxa Shopee (%)</label><div class="display-value" id="pTaxaShow">—</div><div class="hint" id="pTaxaHint">Clique numa faixa da tabela abaixo, ou abra um anúncio</div></div>
+        <div class="param"><label>Taxa fixa (R$)</label><div class="display-value" id="pFixaShow">—</div><div class="hint" id="pFixaHint">Calculada automaticamente</div></div>
         <div class="param"><label>Imposto (%)</label><input type="number" id="pImposto" value="0" step="0.5" min="0" max="90" oninput="recarregar()"><div class="hint">Sobre o preço de venda</div></div>
+      </div>
+
+      <!-- Desconto padrão do preço ideal — pedido explícito do usuário: pra
+           vender na Shopee sempre precisa de cupom/oferta, então o PREÇO
+           IDEAL (o preço que vai ser anunciado de fato) já precisa vir
+           "inflado" pra sobrar margem depois desses descontos serem
+           aplicados na venda real. Afeta a coluna "Preço ideal" da lista
+           inteira; o modal abre pré-preenchido com esses valores, editável
+           por anúncio específico. -->
+      <div class="params">
+        <div class="param"><label>Promoção relâmpago (%)</label><input type="number" id="pPromo" value="0" step="1" min="0" max="100" oninput="recarregar()"><div class="hint">Embutida no preço ideal (preço anunciado)</div></div>
+        <div class="param"><label>Cupom da loja (%)</label><input type="number" id="pCupomLoja" value="0" step="1" min="0" max="100" oninput="recarregar()"><div class="hint">Embutida no preço ideal (preço anunciado)</div></div>
+        <div class="param"><label>Cupom do produto (%)</label><input type="number" id="pCupomProduto" value="0" step="1" min="0" max="100" oninput="recarregar()"><div class="hint">Embutida no preço ideal (preço anunciado)</div></div>
       </div>
 
       <div class="comissao-box">
@@ -193,8 +210,7 @@
     </div>
 
     <div class="prm-acoes">
-      <button class="prm-btn-fechar" onclick="fecharModal()">Fechar</button>
-      <button class="prm-btn-aplicar" id="prmBtnAplicar" onclick="aplicarPrecoIdealModal()" disabled>Aplicar preço ideal</button>
+      <button class="prm-btn-fechar" onclick="fecharModal()" style="flex:none;min-width:140px;margin:0 auto">Fechar</button>
     </div>
   </div>
 </div>
@@ -220,16 +236,33 @@ function params() {
     q: document.getElementById('pBusca').value.trim(),
     margem: document.getElementById('pMargem').value,
     imposto: document.getElementById('pImposto').value,
+    promo: document.getElementById('pPromo').value || 0,
+    cupom_loja: document.getElementById('pCupomLoja').value || 0,
+    cupom_produto: document.getElementById('pCupomProduto').value || 0,
+    faixa: faixaSelecionadaIdx ?? '',
   };
+}
+
+// Faixa escolhida manualmente (clique na tabela oficial) — pedido do
+// usuário: "tenho que clicar na linha pra selecionar em qual faixa eu quero
+// vender". null = automático (o motor escolhe a melhor faixa sozinho, como
+// já fazia). Afeta a coluna "Preço ideal" da lista inteira.
+let faixaSelecionadaIdx = null;
+
+function selecionarFaixa(idx) {
+  faixaSelecionadaIdx = (faixaSelecionadaIdx === idx) ? null : idx; // clicar de novo desmarca (volta ao automático)
+  document.querySelectorAll('#comissaoTable tr.faixa-row').forEach((tr, i) => tr.classList.toggle('selected', i === faixaSelecionadaIdx));
+  recarregar();
 }
 
 function renderTiers(tiers) {
   const body = document.querySelector('#comissaoTable tbody');
-  body.innerHTML = tiers.map(t => {
+  body.innerHTML = tiers.map((t, i) => {
     const faixa = t.maxPrice == null
       ? `Acima de ${R(t.minPrice)}`
       : (t.minPrice === 0 ? `Até ${R(t.maxPrice)}` : `Acima de ${R(t.minPrice)} até ${R(t.maxPrice)}`);
-    return `<tr><td>${faixa}</td><td>${t.commissionRate}% + ${R(t.fixedFee)}</td><td>${t.pixSubsidy ? t.pixSubsidy+'%' : '—'}</td></tr>`;
+    const sel = i === faixaSelecionadaIdx ? 'selected' : '';
+    return `<tr class="faixa-row ${sel}" onclick="selecionarFaixa(${i})"><td>${faixa}</td><td>${t.commissionRate}% + ${R(t.fixedFee)}</td><td>${t.pixSubsidy ? t.pixSubsidy+'%' : '—'}</td></tr>`;
   }).join('');
 }
 
@@ -241,6 +274,12 @@ async function load() {
   const d = await DB.getShopeePrecificador(params());
   if (!d || d.error) { body.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
   if (d.tiers) renderTiers(d.tiers);
+  if (d.faixa) {
+    document.getElementById('pTaxaShow').textContent = d.faixa.commissionRate + '%';
+    document.getElementById('pFixaShow').textContent = R(d.faixa.fixedFee);
+    document.getElementById('pTaxaHint').textContent = 'Faixa selecionada manualmente';
+    document.getElementById('pFixaHint').textContent = 'Faixa selecionada manualmente';
+  }
 
   const rows = d.rows || [];
   body.innerHTML = rows.length ? rows.map(it => `
@@ -255,13 +294,19 @@ function rowVar(it, v) {
   const mgClass = v.current_margin == null ? '' : (v.current_margin < 0 ? 'mg-neg' : 'mg-pos');
   const mg = v.current_margin == null ? '—' : v.current_margin.toFixed(1)+'%';
   const canApply = v.suggested_price != null;
+  // withinTier=false: a faixa escolhida manualmente não comporta esse custo/
+  // margem — mostra o preço mesmo assim, mas avisa que não é o valor real
+  // (o produto sairia de outra faixa depois do desconto), em vez de deixar
+  // o vendedor aplicar um preço que na prática não bate a margem esperada.
+  const avisoFaixa = v.suggested_price_within_tier === false
+    ? `<i class="fas fa-triangle-exclamation" style="color:var(--red)" title="Esse custo/margem não cabe na faixa selecionada — o preço mostrado não é confiável"></i> ` : '';
   return `<tr class="var-row" data-item="${esc(it.item_id)}" data-model="${v.model_id}" onclick="abrirModalLinha(event,'${esc(it.item_id)}',${v.model_id})">
     <td style="padding-left:34px" class="var-name">${esc(v.model_name||'—')}<div style="font-size:10px;color:var(--text-muted)">${esc(v.model_sku||it.item_sku||'')}</div></td>
     <td class="num" onclick="event.stopPropagation()"><input class="cost-input" type="number" step="0.01" min="0" value="${v.cost ?? ''}" placeholder="—"
         onchange="salvarCusto('${esc(it.item_id)}', ${v.model_id}, this.value)"></td>
     <td class="num">${R(v.current_price)}</td>
     <td class="num ${mgClass}">${mg}</td>
-    <td class="num sug">${R(v.suggested_price)}</td>
+    <td class="num sug">${avisoFaixa}${R(v.suggested_price)}</td>
     <td class="num" onclick="event.stopPropagation()"><button class="btn-aplicar-1" ${canApply?'':'disabled'}
         onclick="aplicarUm('${esc(it.item_id)}', ${v.model_id}, ${v.suggested_price})">aplicar</button></td>
   </tr>`;
@@ -310,9 +355,12 @@ let _simTimer;
 function abrirModalLinha(ev, itemId, modelId) {
   if (ev) ev.stopPropagation();
   modalCtx = { itemId, modelId };
-  document.getElementById('prmPromo').value = 0;
-  document.getElementById('prmCupomLoja').value = 0;
-  document.getElementById('prmCupomProduto').value = 0;
+  // Pré-preenche com o desconto padrão configurado no topo da página (o
+  // mesmo usado pra calcular o preço ideal da lista) — editável aqui só
+  // pra este anúncio, sem afetar a configuração global.
+  document.getElementById('prmPromo').value = document.getElementById('pPromo').value || 0;
+  document.getElementById('prmCupomLoja').value = document.getElementById('pCupomLoja').value || 0;
+  document.getElementById('prmCupomProduto').value = document.getElementById('pCupomProduto').value || 0;
   document.getElementById('prmBackdrop').classList.add('open');
   simular();
 }
@@ -388,24 +436,17 @@ function renderModal(d) {
   document.getElementById('prmMargemIdeal').textContent = PCT(d.margin_no_ideal);
   setMargemBadge('prmMargemIdealBadge', d.margin_no_ideal, margemDesejada);
 
-  document.getElementById('prmBtnAplicar').disabled = d.idealPrice == null;
-  document.getElementById('prmBtnAplicar').dataset.price = d.idealPrice ?? '';
 }
 
+// Modal é só CALCULADORA (pedido explícito do usuário): mostra a margem
+// resultante depois de promoção/cupom, sem precisar aplicar nada ali — quem
+// aplica o preço é o botão "aplicar" da lista (fora do modal), reaproveitando
+// o fluxo que já existia.
 function setMargemBadge(elId, margin, alvo) {
   const el = document.getElementById(elId);
   if (margin == null) { el.textContent = ''; return; }
   if (margin >= alvo) { el.textContent = 'MARGEM DENTRO DA META'; el.className = 'prm-margem-badge ok'; }
   else { el.textContent = 'MARGEM ABAIXO DA META'; el.className = 'prm-margem-badge abaixo'; }
-}
-
-async function aplicarPrecoIdealModal() {
-  const price = document.getElementById('prmBtnAplicar').dataset.price;
-  if (!price || !modalCtx) return;
-  if (!confirm(`Aplicar o preço ideal (${R(price)}) na Shopee agora?`)) return;
-  const res = await DB.aplicarShopeeEstoquePreco([{ item_id: modalCtx.itemId, model_id: modalCtx.modelId, price: Number(price).toFixed(2) }]);
-  if (res?.ok) { fecharModal(); load(); const msg = document.getElementById('prMsg'); msg.textContent = '✓ Preço ideal aplicado na Shopee.'; msg.style.color = 'var(--green)'; }
-  else alert('Erro ao aplicar: ' + (res?.resultados?.[0]?.error || res?.error || 'falha'));
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

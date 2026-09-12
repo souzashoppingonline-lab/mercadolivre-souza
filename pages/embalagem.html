@@ -936,7 +936,7 @@ async function confirmAndSendPrint(payload) {
       });
       if (enq.ok) {
         console.log('[thermal] ✓ enfileirado pro agente de impressão');
-        showScanMsg('🖨️ Etiqueta enviada para impressão automática', 'success');
+        showBigSuccessMsg('🖨️ Etiqueta enviada', 'Impressão automática na estação da loja');
         document.getElementById('scanInput').focus();
         return;
       }

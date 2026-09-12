@@ -23,6 +23,21 @@
     @keyframes embTagBlink { 0%,100% { background: rgba(255,230,0,.12); color: var(--primary); box-shadow: none; } 50% { background: #FFE600; color: #000; box-shadow: 0 0 10px 2px rgba(255,230,0,.65); } }
     .emb-order-qty.attention { display: inline-block; animation: embQtyBlink .9s infinite; }
     .emb-order-tag.attention { animation: embTagBlink .9s infinite; }
+
+    /* Cronômetro de bipagem — mostra há quanto tempo a gravação atual está
+       rodando, com escalada visual pra ninguém deixar um pedido "aberto"
+       esquecido: verde até 2min, vermelho fixo até 3min, vermelho piscando
+       até 4min, e piscando alternando com amarelo depois disso. Ver
+       .claude/embalagem.md e startDurationWatcher() no script. */
+    .emb-crono-box { background: var(--bg-card2, #1a1a1a); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 24px 12px; min-height: 140px; }
+    .emb-crono-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+    .emb-crono-valor { font-size: 40px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; color: var(--text-muted); }
+    .emb-crono-valor.crono-ok { color: var(--green); }
+    .emb-crono-valor.crono-alerta { color: var(--red); }
+    .emb-crono-valor.crono-critico { color: var(--red); animation: embCronoPiscaRed 1s infinite; }
+    .emb-crono-valor.crono-urgente { animation: embCronoPiscaRedYellow .6s infinite; }
+    @keyframes embCronoPiscaRed { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+    @keyframes embCronoPiscaRedYellow { 0%,100% { color: var(--red); } 50% { color: #FFE600; } }
     .emb-qty-row { display: flex; align-items: center; gap: 8px; }
     .emb-qty-arrow { color: var(--red); font-size: 30px; animation: embArrowBlink .8s infinite; }
     @keyframes embArrowBlink { 0%,100% { opacity: 1; transform: translateX(0); } 50% { opacity: .15; transform: translateX(-10px); } }
@@ -271,6 +286,10 @@
           <div class="emb-card">
             <div class="emb-ult-title"><i class="fas fa-clock-rotate-left"></i> Últimos bipados <span class="cnt" id="ultBipadosCnt">0</span></div>
             <div id="ultBipadosBox"><div class="emb-ult-empty">Nenhum pedido bipado ainda hoje.</div></div>
+          </div>
+          <div class="emb-card emb-crono-box">
+            <div class="emb-crono-label"><i class="fas fa-stopwatch"></i> Tempo da bipagem</div>
+            <div class="emb-crono-valor" id="cronoValor">--:--</div>
           </div>
         </div>
       </div>
@@ -589,6 +608,33 @@ function fmtElapsed(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// Cronômetro grande (emb-crono-box): mesma contagem do scanTimer, só que com
+// escalada visual de cor pra chamar atenção de longe — verde até 2min,
+// vermelho fixo até 3min, vermelho piscando até 4min, piscando alternado
+// com amarelo depois disso. Pedido explícito do usuário (ver decisions.md
+// se quiser tornar os limiares configuráveis no futuro).
+const CRONO_VERDE_ATE = 120;   // 2min
+const CRONO_VERMELHO_ATE = 180; // 3min
+const CRONO_PISCA_ATE = 240;    // 4min
+
+function updateCronoVisual(elapsed) {
+  const el = document.getElementById('cronoValor');
+  if (!el) return;
+  el.textContent = fmtElapsed(elapsed);
+  el.classList.remove('crono-ok', 'crono-alerta', 'crono-critico', 'crono-urgente');
+  if (elapsed < CRONO_VERDE_ATE) el.classList.add('crono-ok');
+  else if (elapsed < CRONO_VERMELHO_ATE) el.classList.add('crono-alerta');
+  else if (elapsed < CRONO_PISCA_ATE) el.classList.add('crono-critico');
+  else el.classList.add('crono-urgente');
+}
+
+function resetCronoVisual() {
+  const el = document.getElementById('cronoValor');
+  if (!el) return;
+  el.textContent = '--:--';
+  el.classList.remove('crono-ok', 'crono-alerta', 'crono-critico', 'crono-urgente');
+}
+
 function startDurationWatcher() {
   longWarnShown = false;
   document.getElementById('durationWarn').innerHTML = '';
@@ -596,6 +642,7 @@ function startDurationWatcher() {
     if (!currentSession) return;
     const elapsed = (Date.now() - currentSession.startedAt) / 1000;
     document.getElementById('scanTimer').textContent = `⏱ ${fmtElapsed(elapsed)}`;
+    updateCronoVisual(elapsed);
     if (elapsed > MAX_RECORDING_SECONDS && !longWarnShown) {
       longWarnShown = true;
       document.getElementById('durationWarn').innerHTML =
@@ -609,6 +656,7 @@ function stopDurationWatcher() {
   durationWatcherId = null;
   document.getElementById('scanTimer').textContent = '';
   document.getElementById('durationWarn').innerHTML = '';
+  resetCronoVisual();
 }
 
 function setScanState(s) {

@@ -25,8 +25,7 @@ const TIKTOK_POLL_INTERVAL_MS = 15 * 60 * 1000; // 15min — mesmo padrão de Am
 const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar feedback visível em dev
 const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens não lidas do chat Shopee
 const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS || 30 * 60 * 1000); // 30min — sync do catálogo (Product API)
-const SHOPEE_PROMO_INTERVAL_MS = Number(process.env.SHOPEE_PROMO_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de promoções + alerta de vencimento
-const SHOPEE_PROMO_ALERT_HOURS = Number(process.env.SHOPEE_PROMO_ALERT_HOURS || 24); // alerta quando a promoção vence em menos de X horas
+const SHOPEE_PROMO_INTERVAL_MS = Number(process.env.SHOPEE_PROMO_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de promoções (alerta de vencimento é checkShopeeCampanhasVencendo, worker.js, 1x/dia)
 const SHOPEE_RETURNS_INTERVAL_MS = Number(process.env.SHOPEE_RETURNS_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de devoluções/reembolsos
 const SHOPEE_RETURNS_LOOKBACK_DAYS = Number(process.env.SHOPEE_RETURNS_LOOKBACK_DAYS || 180); // histórico de devoluções (varrido em janelas de 15d)
 
@@ -646,9 +645,13 @@ function promoStatus(startS, endS) {
   return 'ongoing';
 }
 
-// Sincroniza promoções Shopee (descontos + vouchers) pra shopee_promotions e
-// alerta no Telegram as que vão vencer em < SHOPEE_PROMO_ALERT_HOURS (dedup por
-// expiry_notified). Isolado do pipeline ML.
+// Sincroniza promoções Shopee (descontos + vouchers) pra shopee_promotions —
+// só sincronização, sem alertar aqui. O alerta de vencimento (5/4/3/2/1 dias +
+// 1x/dia depois de vencida, Telegram+e-mail) é `checkShopeeCampanhasVencendo`
+// em worker.js — roda 1x/dia direto na tabela (não depende do que a API
+// devolve como 'ongoing'/'upcoming', porque uma campanha já vencida some
+// desses filtros e nunca mais seria vista se o alerta ficasse aqui dentro).
+// Isolado do pipeline ML.
 async function syncShopeePromos() {
   const nowS = Math.floor(Date.now() / 1000);
   for (const [storeId, client] of shopeeClients) {
@@ -680,28 +683,15 @@ async function syncShopeePromos() {
     } catch (e) { console.warn(`[promos] loja ${storeId} vouchers: ${e.message}`); }
 
     for (const p of promos) {
-      const { rows } = await pool.query(
+      await pool.query(
         `INSERT INTO shopee_promotions (tipo, promo_id, store_id, name, code, start_time, end_time, desconto, status, raw, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
          ON CONFLICT (tipo, promo_id, store_id) DO UPDATE SET
            name=EXCLUDED.name, code=EXCLUDED.code,
            start_time=EXCLUDED.start_time, end_time=EXCLUDED.end_time, desconto=EXCLUDED.desconto,
-           status=EXCLUDED.status, raw=EXCLUDED.raw, updated_at=now()
-         RETURNING expiry_notified`,
+           status=EXCLUDED.status, raw=EXCLUDED.raw, updated_at=now()`,
         [p.tipo, p.promo_id, storeId, p.name, p.code, p.start_time, p.end_time, p.desconto, p.status, JSON.stringify(p.raw)]
       );
-      const jaNotificado = rows[0]?.expiry_notified;
-      // Alerta de vencimento: promoção ativa que vence em < X horas e ainda não avisada.
-      const faltaHoras = (Number(p.end_time) - nowS) / 3600;
-      if (p.status === 'ongoing' && faltaHoras > 0 && faltaHoras <= SHOPEE_PROMO_ALERT_HOURS && !jaNotificado) {
-        const fim = new Date(Number(p.end_time) * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-        const tag = p.tipo === 'voucher' ? `🎟️ Voucher ${p.code || ''}` : '🏷️ Desconto';
-        await tgNotify('tg_vendas', `⏰ <b>Promoção Shopee vencendo</b>\n${tag}\n📝 ${p.name || ''}${p.desconto ? ` (${p.desconto})` : ''}\n⌛ vence em ${faltaHoras.toFixed(1)}h — ${fim}`);
-        await pool.query(`UPDATE shopee_promotions SET expiry_notified = true WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`, [p.tipo, p.promo_id, storeId]);
-      } else if (faltaHoras > SHOPEE_PROMO_ALERT_HOURS && jaNotificado) {
-        // Promoção foi estendida (novo end_time distante) → rearma o alerta.
-        await pool.query(`UPDATE shopee_promotions SET expiry_notified = false WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`, [p.tipo, p.promo_id, storeId]);
-      }
     }
     console.log(`[promos] loja ${storeId}: ${promos.length} promoção(ões) sincronizada(s)`);
   }

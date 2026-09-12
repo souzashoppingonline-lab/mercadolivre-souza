@@ -2937,6 +2937,99 @@ async function checkTaxaDevolucaoAlta() {
   scheduleAt(6, 30, checkTaxaDevolucaoAlta, 'taxa-devolucao');
 }
 
+// ── Vencimento de campanhas Shopee (descontos + vouchers) ──────────────────
+// shopee_promotions já é sincronizada a cada 1h por syncShopeePromos
+// (marketplaceEventWorker.js) — este job só LÊ a tabela e alerta, 1x/dia,
+// direto pelo end_time armazenado (não pelo que a API Shopee devolve como
+// 'ongoing'/'upcoming' — uma campanha já vencida some desses filtros, então
+// alertar de dentro do sync nunca chegaria a avisar "vencida"). Pedido do
+// usuário: avisar quando faltar 5/4/3/2/1 dias, e 1x por dia depois de
+// vencida — por Telegram (tg_shopee_campanhas) E e-mail (email_shopee_campanhas).
+const SHOPEE_PROMO_EXPIRY_DAYS_WINDOW = 5; // avisa a partir de quantos dias antes de vencer
+// Não varre campanha vencida há mais de N dias — evita o alerta "vencida" virar
+// eterno sobre uma campanha antiga esquecida (mesmo racional de outros
+// lookbacks do projeto, ex. SHOPEE_RETURNS_LOOKBACK_DAYS).
+const SHOPEE_PROMO_EXPIRED_ALERT_DAYS = Number(process.env.SHOPEE_PROMO_EXPIRED_ALERT_DAYS || 30);
+
+// Data de calendário (America/Sao_Paulo) em 'YYYY-MM-DD' — base de todo o
+// cálculo de "dias restantes" abaixo, pra bater com a expectativa do usuário
+// (vence 23h ainda conta como "hoje", não vira "amanhã de manhã" por causa de UTC).
+function diaSP(ms) {
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+function diasRestantesCampanha(endTimeS) {
+  const hoje = new Date(diaSP(Date.now()) + 'T00:00:00Z').getTime();
+  const fim = new Date(diaSP(Number(endTimeS) * 1000) + 'T00:00:00Z').getTime();
+  return Math.round((fim - hoje) / 86400000);
+}
+
+async function checkShopeeCampanhasVencendo() {
+  console.log('[shopee-campanhas] verificando vencimento de campanhas...');
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.tipo, p.promo_id, p.store_id, p.name, p.code, p.desconto, p.end_time,
+              p.expiry_alert_min_days, p.expiry_alert_expired_date, s.nickname AS conta
+       FROM shopee_promotions p LEFT JOIN stores s ON s.id = p.store_id
+       WHERE p.end_time > extract(epoch FROM now() - make_interval(days => $1::int))`,
+      [SHOPEE_PROMO_EXPIRED_ALERT_DAYS]
+    );
+    const hojeStr = diaSP(Date.now());
+    const avisos = []; // 1 mensagem/e-mail consolidado, não 1 por campanha
+    for (const p of rows) {
+      const dias = diasRestantesCampanha(p.end_time);
+      const tag = p.tipo === 'voucher' ? `Voucher ${p.code || ''}`.trim() : 'Desconto';
+      const fimFmt = new Date(Number(p.end_time) * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const expiredDateStr = p.expiry_alert_expired_date ? new Date(p.expiry_alert_expired_date).toISOString().slice(0, 10) : null;
+
+      if (dias > SHOPEE_PROMO_EXPIRY_DAYS_WINDOW) {
+        // Fora da janela (ou campanha estendida) — rearma pra alertar de novo se voltar a vencer perto.
+        if (p.expiry_alert_min_days != null || expiredDateStr != null) {
+          await pool.query(
+            `UPDATE shopee_promotions SET expiry_alert_min_days = NULL, expiry_alert_expired_date = NULL
+             WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`,
+            [p.tipo, p.promo_id, p.store_id]
+          );
+        }
+        continue;
+      }
+
+      if (dias >= 1) {
+        // Janela 5..1 dias — avisa só ao CRUZAR um novo degrau, nunca repete o mesmo.
+        if (p.expiry_alert_min_days == null || dias < p.expiry_alert_min_days) {
+          avisos.push({ tag, dias, vencida: false, name: p.name, conta: p.conta, desconto: p.desconto, fimFmt });
+          await pool.query(
+            `UPDATE shopee_promotions SET expiry_alert_min_days = $4 WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`,
+            [p.tipo, p.promo_id, p.store_id, dias]
+          );
+        }
+      } else if (expiredDateStr !== hojeStr) {
+        // Vencida (dias <= 0) — no máximo 1 alerta por dia de calendário.
+        avisos.push({ tag, dias, vencida: true, name: p.name, conta: p.conta, desconto: p.desconto, fimFmt });
+        await pool.query(
+          `UPDATE shopee_promotions SET expiry_alert_expired_date = $4 WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`,
+          [p.tipo, p.promo_id, p.store_id, hojeStr]
+        );
+      }
+    }
+
+    if (avisos.length) {
+      const linhasTg = avisos.map((a) =>
+        `${a.vencida ? '🔴 VENCIDA' : `⏰ vence em ${a.dias}d`} — ${a.tag}${a.desconto ? ` (${a.desconto})` : ''}\n📝 ${a.name || ''}${a.conta ? ` · ${a.conta}` : ''}\n📅 ${a.fimFmt}`
+      );
+      await tgNotify('tg_shopee_campanhas', `🏷️ <b>Campanhas Shopee — ${avisos.length} aviso(s)</b>\n\n${linhasTg.join('\n\n')}`);
+
+      const linhasEmail = avisos.map((a) =>
+        [a.vencida ? 'VENCIDA' : `${a.dias}d restante(s)`, a.tag, a.name || '—', a.conta || '—', a.desconto || '—', a.fimFmt]
+      );
+      await sendReportEmail('email_shopee_campanhas', 'Campanhas Shopee vencendo/vencidas',
+        emailTable(['Status', 'Tipo', 'Campanha', 'Loja', 'Desconto', 'Vencimento'], linhasEmail));
+    }
+  } catch (e) {
+    console.error('[shopee-campanhas] erro:', e.message);
+  }
+  scheduleAt(6, 35, checkShopeeCampanhasVencendo, 'shopee-campanhas-vencendo');
+}
+
 // ── Conciliação Bancária: divergências — 05:25 diário ─────────────────────
 // Dois tipos de alerta, numa única mensagem consolidada (mesmo padrão de
 // checkTarefasAtrasadas): (1) diferença bruto/líquido anormalmente alta —
@@ -3208,6 +3301,7 @@ scheduleAt(6,  5,  fechamentoDiario, 'fechamento-diario');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');
+scheduleAt(6, 35,  checkShopeeCampanhasVencendo, 'shopee-campanhas-vencendo');
 scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
 scheduleAt(7, 30,  checkRupturaEstoque, 'ruptura-estoque');
 scheduleAt(7,  0,  () => syncClaimsStatus(false), 'sync-claims-status'); // reconsulta devoluções → alerta quando encerra
@@ -3267,6 +3361,7 @@ cmdSub.on('message', (channel, msg) => {
       'top-vendas': 'syncTopVendas', 'email-diario': 'emailDailyReports', 'email-semanal': 'emailRelatorioSemanal',
       'outlier-check': 'checkOutlierEstatistico', 'taxa-devolucao': 'checkTaxaDevolucaoAlta',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
+      'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
       // sync-catalog-competition, sync-payment-releases, sync-shipping-status,
       // sync-claims-status, mp-reports, conciliacao-divergencias.
@@ -3379,6 +3474,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkTaxaDevolucaoAlta') {
       console.log('[worker] checkTaxaDevolucaoAlta disparado manualmente');
       checkTaxaDevolucaoAlta().catch(e => console.error('[worker] checkTaxaDevolucaoAlta erro:', e.message));
+    }
+    if (cmd === 'checkShopeeCampanhasVencendo') {
+      console.log('[worker] checkShopeeCampanhasVencendo disparado manualmente');
+      checkShopeeCampanhasVencendo().catch(e => console.error('[worker] checkShopeeCampanhasVencendo erro:', e.message));
     }
     if (cmd === 'checkTarefasAtrasadas') {
       console.log('[worker] checkTarefasAtrasadas disparado manualmente');

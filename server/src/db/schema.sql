@@ -341,6 +341,8 @@ CREATE INDEX IF NOT EXISTS idx_shopee_item_cost_store ON shopee_item_cost(store_
 
 -- v41: promoções Shopee (descontos + vouchers) com prazos + alerta de vencimento. Ver .claude/shopee.md.
 -- v47: multi-loja — PRIMARY KEY estendida para incluir store_id
+-- v95: expiry_notified (dedup <24h/Telegram) trocado por expiry_alert_min_days
+-- + expiry_alert_expired_date (alerta granular 5/4/3/2/1 dias + diário pós-vencimento, Telegram+e-mail)
 CREATE TABLE IF NOT EXISTS shopee_promotions (
   tipo TEXT NOT NULL,
   promo_id TEXT NOT NULL,
@@ -352,7 +354,8 @@ CREATE TABLE IF NOT EXISTS shopee_promotions (
   desconto TEXT,
   status TEXT,
   raw JSONB,
-  expiry_notified BOOLEAN DEFAULT false,
+  expiry_alert_min_days SMALLINT,       -- menor "dias restantes" já alertado (5..1); NULL = fora da janela
+  expiry_alert_expired_date DATE,       -- data (SP) do último alerta "vencida" — 1x/dia
   updated_at TIMESTAMPTZ DEFAULT now(),
   PRIMARY KEY (tipo, promo_id, store_id)
 );

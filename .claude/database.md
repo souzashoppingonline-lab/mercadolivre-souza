@@ -308,10 +308,11 @@ end_time BIGINT         -- epoch s (o "prazo")
 desconto TEXT           -- resumo legível (12% / R$5)
 status TEXT             -- upcoming | ongoing | expired
 raw JSONB
-expiry_notified BOOLEAN -- dedup do alerta de vencimento no Telegram
+expiry_alert_min_days SMALLINT     -- v95: menor "dias restantes" já alertado (5..1); NULL = fora da janela
+expiry_alert_expired_date DATE     -- v95: data (America/Sao_Paulo) do último alerta "vencida" — 1x/dia
 updated_at TIMESTAMPTZ
 ```
-Preenchida pelo job `syncShopeePromos` (`marketplaceEventWorker`, 1h). Alimenta a página **Promoções** (`/api/shopee/promocoes`) e o alerta de vencimento no Telegram. Ver `shopee.md`.
+Preenchida pelo job `syncShopeePromos` (`marketplaceEventWorker`, 1h — só sincroniza, não alerta). Alimenta a página **Promoções** (`/api/shopee/promocoes`) e o alerta de vencimento (`checkShopeeCampanhasVencendo`, `worker.js`, 1x/dia — Telegram+e-mail). **v95** trocou o antigo `expiry_notified` (dedup único <24h/Telegram) pelas duas colunas acima, pra suportar o alerta granular 5/4/3/2/1 dias + repetição diária pós-vencimento. Ver `shopee.md`/`workers.md`.
 
 ### `shopee_returns` — v42: devoluções/reembolsos Shopee (Returns API)
 ```

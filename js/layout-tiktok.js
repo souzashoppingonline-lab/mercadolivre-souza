@@ -34,7 +34,30 @@ function buildTiktokSidebar(activeHref) {
     </aside>`;
 }
 
-function buildTiktokTopbar(title) {
+// Sessão de staff (login de acesso restrito) — mesmo contrato de js/layout.js
+// e js/layout-shopee.js (/auth/staff/me). Sem sessão (gate desligado, ou
+// staffAuth não usado) fica null e o botão de sair não aparece. Ver
+// .claude/auth-staff.md.
+async function fetchTiktokStaffUser() {
+  try {
+    const res = await fetch('/auth/staff/me', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function buildTiktokLogoutButton(staffUser) {
+  if (!staffUser) return '';
+  return `
+    <span style="font-size:12px;color:var(--text-muted)" title="Logado como ${staffUser.username}">
+      <i class="fas fa-user-circle"></i> ${staffUser.username}
+    </span>
+    <button class="btn-refresh" id="btnStaffLogout" title="Sair"><i class="fas fa-sign-out-alt"></i></button>`;
+}
+
+function buildTiktokTopbar(title, staffUser) {
   return `
     <header class="topbar">
       <div class="topbar-left">
@@ -49,13 +72,23 @@ function buildTiktokTopbar(title) {
           <a href="dashboard-tiktok.html" class="active"><i class="fab fa-tiktok"></i> TikTok Shop</a>
         </nav>
         <button class="btn-refresh" id="btnRefresh"><i class="fas fa-sync-alt"></i></button>
+        ${buildTiktokLogoutButton(staffUser)}
       </div>
     </header>`;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function initTiktokLogout() {
+  document.getElementById('btnStaffLogout')?.addEventListener('click', async () => {
+    try { await fetch('/auth/staff/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+    window.location.href = '/pages/login.html';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
   const sidebarEl = document.getElementById('app-sidebar');
   const topbarEl  = document.getElementById('app-topbar');
+  const staffUser = await fetchTiktokStaffUser();
   if (sidebarEl) sidebarEl.outerHTML = buildTiktokSidebar(window.ACTIVE_NAV || '');
-  if (topbarEl)  topbarEl.outerHTML  = buildTiktokTopbar(window.PAGE_TITLE || 'TikTok Shop');
+  if (topbarEl)  topbarEl.outerHTML  = buildTiktokTopbar(window.PAGE_TITLE || 'TikTok Shop', staffUser);
+  initTiktokLogout();
 });

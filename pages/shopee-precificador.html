@@ -15,7 +15,9 @@
     .param label { display:block; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
     .param input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:7px; padding:8px 10px; color:var(--text); font-size:15px; font-weight:700; box-sizing:border-box; }
     .param input:focus { outline:none; border-color:var(--shopee); }
+    .param input:read-only { opacity:.75; cursor:default; }
     .param .hint { font-size:10px; color:var(--text-muted); margin-top:4px; }
+    .param .display-value { font-size:20px; font-weight:800; color:var(--text); }
     .shp-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px; }
     .shp-filters select, .shp-filters input { background:var(--bg-card); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:13px; }
     .pr-table { width:100%; border-collapse:collapse; }
@@ -24,6 +26,8 @@
     .item-head td { background:var(--surface); padding:10px 12px; border-top:1px solid var(--border); }
     .item-head .ttl { display:flex; align-items:center; gap:10px; font-weight:700; font-size:13px; }
     .item-head img { width:34px; height:34px; border-radius:6px; object-fit:cover; }
+    .var-row { cursor:pointer; }
+    .var-row:hover td { background:rgba(238,77,45,.06); }
     .var-row td { padding:8px 12px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:middle; }
     .var-row td.num { text-align:right; }
     .cost-input { width:95px; background:var(--bg-card); border:1px solid var(--border); border-radius:7px; padding:6px 8px; color:var(--text); font-size:13px; text-align:right; }
@@ -35,6 +39,55 @@
     .btn-aplicar-1:hover { background:var(--shopee); color:#fff; }
     .btn-aplicar-1:disabled { opacity:.4; cursor:not-allowed; }
     .topbar-actions { display:flex; gap:10px; align-items:center; margin-bottom:14px; }
+
+    /* Tabela oficial de comissão (spec seção 3) — vem da mesma fonte que o
+       backend usa pra calcular (GET /precificador devolve `tiers`), nunca
+       hardcoded duas vezes no frontend. */
+    .comissao-box { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:18px; }
+    .comissao-box .titulo { font-size:13px; font-weight:700; margin-bottom:10px; }
+    .comissao-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .comissao-table th { text-align:left; padding:8px 10px; background:var(--shopee); color:#fff; font-size:11px; text-transform:uppercase; }
+    .comissao-table td { padding:8px 10px; border-bottom:1px solid var(--border); }
+    .comissao-table tr:nth-child(even) td { background:var(--surface); }
+
+    /* Modal "Precificação do Anúncio" (spec seção 8) — visual próprio, mesmo
+       padrão de cards/cores da página (não existe componente de modal
+       compartilhado no projeto; cada página constrói o seu, ver frontend.md). */
+    .prm-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none; align-items:center; justify-content:center; z-index:1000; padding:20px; overflow-y:auto; }
+    .prm-backdrop.open { display:flex; }
+    .prm-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:640px; padding:22px; margin:auto; }
+    .prm-modal h3 { font-size:16px; font-weight:800; margin-bottom:2px; display:flex; align-items:center; justify-content:space-between; }
+    .prm-modal .sub { font-size:12px; color:var(--text-muted); margin-bottom:16px; }
+    .prm-modal .close { cursor:pointer; color:var(--text-muted); font-weight:400; }
+    .prm-section { margin-bottom:16px; }
+    .prm-section .label { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+    .prm-custo-box { background:var(--surface); border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; }
+    .prm-custo-box .valor { font-size:18px; font-weight:800; }
+    .prm-custo-box .origem { font-size:11px; color:var(--text-muted); }
+    .prm-custo-box.faltando { border:1px dashed var(--red); }
+    .prm-custo-box.faltando .valor { color:var(--red); font-size:13px; font-weight:700; }
+    .prm-precos { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .prm-preco-card { background:var(--surface); border-radius:8px; padding:10px 12px; text-align:center; }
+    .prm-preco-card .rot { font-size:11px; color:var(--text-muted); text-transform:uppercase; }
+    .prm-preco-card .val { font-size:22px; font-weight:800; margin-top:2px; }
+    .prm-preco-card.ideal .val { color:var(--shopee); }
+    .prm-promos { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    .prm-promos .param { padding:8px 10px; }
+    .prm-promos .param input { font-size:13px; padding:6px 8px; }
+    .prm-sim-table { width:100%; font-size:13px; border-collapse:collapse; }
+    .prm-sim-table td { padding:5px 4px; border-bottom:1px dashed var(--border); }
+    .prm-sim-table td.num { text-align:right; font-weight:600; }
+    .prm-sim-table tr.destaque td { font-weight:800; border-bottom:none; padding-top:8px; }
+    .prm-margens { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:6px; }
+    .prm-margem-badge { font-size:11px; font-weight:700; padding:4px 8px; border-radius:6px; display:inline-block; margin-top:4px; }
+    .prm-margem-badge.ok { background:rgba(39,174,96,.15); color:var(--green); }
+    .prm-margem-badge.abaixo { background:rgba(231,76,60,.15); color:var(--red); }
+    .prm-acoes { display:flex; gap:10px; margin-top:20px; }
+    .prm-acoes button { flex:1; padding:12px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; }
+    .prm-btn-fechar { background:transparent; border:1px solid var(--border); color:var(--text); }
+    .prm-btn-aplicar { background:var(--shopee); border:none; color:#fff; }
+    .prm-btn-aplicar:disabled { opacity:.4; cursor:not-allowed; }
+    @media (max-width:640px) { .prm-precos, .prm-promos, .prm-margens { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -45,16 +98,27 @@
     <div class="content-area">
 
       <div class="params">
-        <div class="param"><label>Margem desejada (%)</label><input type="number" id="pMargem" value="30" step="0.5" min="0" max="90" oninput="recarregar()"><div class="hint">lucro sobre o preço de venda</div></div>
-        <div class="param"><label>Taxa Shopee (%)</label><input type="number" id="pTaxa" value="20" step="0.1" min="0" max="90" oninput="recarregar()"><div class="hint" id="taxaHint">taxa real do escrow</div></div>
-        <div class="param"><label>Taxa fixa (R$)</label><input type="number" id="pFixa" value="4" step="0.5" min="0" oninput="recarregar()"><div class="hint">por venda (ex: frete fixo)</div></div>
-        <div class="param"><label>Imposto (%)</label><input type="number" id="pImposto" value="0" step="0.5" min="0" max="90" oninput="recarregar()"><div class="hint">sobre o preço de venda</div></div>
+        <div class="param"><label>Margem desejada (%)</label><input type="number" id="pMargem" value="30" step="0.5" min="0" max="90" oninput="recarregar()"><div class="hint">Lucro sobre o preço de venda</div></div>
+        <div class="param"><label>Taxa Shopee (%)</label><div class="display-value" id="pTaxaShow">—</div><div class="hint">Calculada conforme a faixa de preço — abra um anúncio pra ver</div></div>
+        <div class="param"><label>Taxa fixa (R$)</label><div class="display-value" id="pFixaShow">—</div><div class="hint">Calculada automaticamente</div></div>
+        <div class="param"><label>Imposto (%)</label><input type="number" id="pImposto" value="0" step="0.5" min="0" max="90" oninput="recarregar()"><div class="hint">Sobre o preço de venda</div></div>
+      </div>
+
+      <div class="comissao-box">
+        <div class="titulo">Veja a seguir como é a comissão para vendedores CNPJ:</div>
+        <div class="table-responsive">
+          <table class="comissao-table" id="comissaoTable">
+            <thead><tr><th>Valor do item</th><th>Comissão</th><th>Subsídio Pix</th></tr></thead>
+            <tbody><tr><td colspan="3">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="hint" style="margin-top:8px">O subsídio Pix é só informativo — não entra no cálculo de margem/lucro/preço ideal, porque não dá pra garantir que o comprador vai pagar por Pix.</div>
       </div>
 
       <div class="shp-filters">
         <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
         <select id="pLoja" onchange="recarregar()"><option value="">Todas as lojas</option></select>
-        <input type="text" id="pBusca" placeholder="Buscar título ou SKU..." style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')recarregar()">
+        <input type="text" id="pBusca" placeholder="Buscar título ou ID..." style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')recarregar()">
         <button class="action-btn" onclick="recarregar()"><i class="fas fa-magnifying-glass"></i> Buscar</button>
       </div>
 
@@ -67,11 +131,11 @@
         <div class="table-responsive">
           <table class="pr-table">
             <thead><tr>
-              <th style="width:32%">Produto / Variação</th>
+              <th style="width:32%">Anúncio / Variação</th>
               <th class="num">Custo (R$)</th>
               <th class="num">Preço atual</th>
               <th class="num">Margem atual</th>
-              <th class="num">Preço sugerido</th>
+              <th class="num">Preço ideal</th>
               <th class="num"></th>
             </tr></thead>
             <tbody id="prBody"><tr><td colspan="6" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
@@ -82,14 +146,67 @@
     </div>
   </main>
 </div>
+
+<!-- Modal "Precificação do Anúncio" — spec seção 8 -->
+<div class="prm-backdrop" id="prmBackdrop">
+  <div class="prm-modal">
+    <h3><span>Precificação do anúncio</span> <span class="close" onclick="fecharModal()"><i class="fas fa-times"></i></span></h3>
+    <div class="sub" id="prmSub">—</div>
+
+    <div class="prm-section">
+      <div class="label">Custo do produto</div>
+      <div class="prm-custo-box" id="prmCustoBox"><div class="valor" id="prmCustoValor">—</div><div class="origem" id="prmCustoOrigem"></div></div>
+    </div>
+
+    <div class="prm-section">
+      <div class="prm-precos">
+        <div class="prm-preco-card"><div class="rot">Preço atual</div><div class="val" id="prmPrecoAtual">—</div></div>
+        <div class="prm-preco-card ideal"><div class="rot">Preço ideal</div><div class="val" id="prmPrecoIdeal">—</div></div>
+      </div>
+    </div>
+
+    <div class="prm-section">
+      <div class="label">Promoções e cupons</div>
+      <div class="prm-promos">
+        <div class="param"><label>Promoção relâmpago (%)</label><input type="number" id="prmPromo" value="0" min="0" max="100" step="1" oninput="simularDebounce()"></div>
+        <div class="param"><label>Cupom da loja (%)</label><input type="number" id="prmCupomLoja" value="0" min="0" max="100" step="1" oninput="simularDebounce()"></div>
+        <div class="param"><label>Cupom do produto (%)</label><input type="number" id="prmCupomProduto" value="0" min="0" max="100" step="1" oninput="simularDebounce()"></div>
+      </div>
+    </div>
+
+    <div class="prm-section">
+      <div class="label">Simulação da venda</div>
+      <table class="prm-sim-table" id="prmSimTable"></table>
+    </div>
+
+    <div class="prm-margens">
+      <div>
+        <div class="rot" style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Margem atual</div>
+        <div style="font-size:20px;font-weight:800" id="prmMargemAtual">—</div>
+        <span class="prm-margem-badge" id="prmMargemAtualBadge"></span>
+      </div>
+      <div>
+        <div class="rot" style="font-size:11px;color:var(--text-muted);text-transform:uppercase">Margem no preço ideal</div>
+        <div style="font-size:20px;font-weight:800" id="prmMargemIdeal">—</div>
+        <span class="prm-margem-badge" id="prmMargemIdealBadge"></span>
+      </div>
+    </div>
+
+    <div class="prm-acoes">
+      <button class="prm-btn-fechar" onclick="fecharModal()">Fechar</button>
+      <button class="prm-btn-aplicar" id="prmBtnAplicar" onclick="aplicarPrecoIdealModal()" disabled>Aplicar preço ideal</button>
+    </div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/websocket.js"></script>
 <script src="../js/layout-shopee.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
 const R = v => v==null||v===''?'—':'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v));
+const PCT = v => v==null?'—':new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v))+'%';
 const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let taxaPreenchida = false;
 
 async function loadLojas() {
   const d = await DB.getShopeeLojas();
@@ -102,10 +219,18 @@ function params() {
     store_id: document.getElementById('pLoja').value,
     q: document.getElementById('pBusca').value.trim(),
     margem: document.getElementById('pMargem').value,
-    taxa_pct: document.getElementById('pTaxa').value,
-    taxa_fixa: document.getElementById('pFixa').value,
     imposto: document.getElementById('pImposto').value,
   };
+}
+
+function renderTiers(tiers) {
+  const body = document.querySelector('#comissaoTable tbody');
+  body.innerHTML = tiers.map(t => {
+    const faixa = t.maxPrice == null
+      ? `Acima de ${R(t.minPrice)}`
+      : (t.minPrice === 0 ? `Até ${R(t.maxPrice)}` : `Acima de ${R(t.minPrice)} até ${R(t.maxPrice)}`);
+    return `<tr><td>${faixa}</td><td>${t.commissionRate}% + ${R(t.fixedFee)}</td><td>${t.pixSubsidy ? t.pixSubsidy+'%' : '—'}</td></tr>`;
+  }).join('');
 }
 
 let _timer;
@@ -115,39 +240,36 @@ async function load() {
   const body = document.getElementById('prBody');
   const d = await DB.getShopeePrecificador(params());
   if (!d || d.error) { body.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
-  // preenche a taxa (do escrow) na 1ª carga, se o campo estava vazio
-  const tx = document.getElementById('pTaxa');
-  if (!taxaPreenchida && (tx.value === '' || tx.value == null)) { tx.value = d.taxa_pct; taxaPreenchida = true; }
-  document.getElementById('taxaHint').textContent = d.fee_escrow != null ? `taxa real do escrow: ${Number(d.fee_escrow).toFixed(2)}%` : 'sem escrow ainda — padrão 14%';
+  if (d.tiers) renderTiers(d.tiers);
 
   const rows = d.rows || [];
   body.innerHTML = rows.length ? rows.map(it => `
     <tr class="item-head">
-      <td colspan="6"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')}</span></div></div></td>
+      <td colspan="6"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')} · ID ${esc(it.item_id)}</span></div></div></td>
     </tr>
     ${it.variacoes.map(v => rowVar(it, v)).join('')}
-  `).join('') : '<tr><td colspan="6" class="empty-state" style="padding:30px">Nenhum produto. Sincronize o catálogo ou ajuste a busca.</td></tr>';
+  `).join('') : '<tr><td colspan="6" class="empty-state" style="padding:30px">Nenhum anúncio. Sincronize o catálogo ou ajuste a busca.</td></tr>';
 }
 
 function rowVar(it, v) {
   const mgClass = v.current_margin == null ? '' : (v.current_margin < 0 ? 'mg-neg' : 'mg-pos');
   const mg = v.current_margin == null ? '—' : v.current_margin.toFixed(1)+'%';
   const canApply = v.suggested_price != null;
-  return `<tr class="var-row" data-item="${esc(it.item_id)}" data-model="${v.model_id}">
+  return `<tr class="var-row" data-item="${esc(it.item_id)}" data-model="${v.model_id}" onclick="abrirModalLinha(event,'${esc(it.item_id)}',${v.model_id})">
     <td style="padding-left:34px" class="var-name">${esc(v.model_name||'—')}<div style="font-size:10px;color:var(--text-muted)">${esc(v.model_sku||it.item_sku||'')}</div></td>
-    <td class="num"><input class="cost-input" type="number" step="0.01" min="0" value="${v.cost ?? ''}" placeholder="—"
+    <td class="num" onclick="event.stopPropagation()"><input class="cost-input" type="number" step="0.01" min="0" value="${v.cost ?? ''}" placeholder="—"
         onchange="salvarCusto('${esc(it.item_id)}', ${v.model_id}, this.value)"></td>
     <td class="num">${R(v.current_price)}</td>
     <td class="num ${mgClass}">${mg}</td>
     <td class="num sug">${R(v.suggested_price)}</td>
-    <td class="num"><button class="btn-aplicar-1" ${canApply?'':'disabled'}
+    <td class="num" onclick="event.stopPropagation()"><button class="btn-aplicar-1" ${canApply?'':'disabled'}
         onclick="aplicarUm('${esc(it.item_id)}', ${v.model_id}, ${v.suggested_price})">aplicar</button></td>
   </tr>`;
 }
 
 async function salvarCusto(itemId, modelId, cost) {
   await DB.salvarShopeeCusto(itemId, modelId, cost === '' ? 0 : Number(cost));
-  load(); // recalcula o sugerido com o novo custo
+  load(); // recalcula o ideal com o novo custo
 }
 
 async function aplicarUm(itemId, modelId, price) {
@@ -171,7 +293,7 @@ async function aplicarTodos() {
   }
   const msg = document.getElementById('prMsg');
   if (!changes.length) { msg.textContent = 'Nada pra aplicar — defina os custos primeiro.'; msg.style.color = 'var(--text-muted)'; return; }
-  if (!confirm(`Aplicar o preço sugerido em ${changes.length} variação(ões) na Shopee?`)) return;
+  if (!confirm(`Aplicar o preço ideal em ${changes.length} variação(ões) na Shopee?`)) return;
   msg.textContent = `Aplicando ${changes.length}...`; msg.style.color = 'var(--text-muted)';
   const res = await DB.aplicarShopeeEstoquePreco(changes);
   if (res?.error) { msg.textContent = 'Erro: ' + res.error; msg.style.color = 'var(--red)'; return; }
@@ -179,6 +301,111 @@ async function aplicarTodos() {
   msg.textContent = falhas ? `${res.aplicados}/${res.total} aplicados (${falhas} falha(s)).` : `✓ ${res.aplicados} preços aplicados na Shopee.`;
   msg.style.color = falhas ? 'var(--red)' : 'var(--green)';
   load();
+}
+
+// ── Modal "Precificação do Anúncio" ──────────────────────────────────────
+let modalCtx = null; // { itemId, modelId }
+let _simTimer;
+
+function abrirModalLinha(ev, itemId, modelId) {
+  if (ev) ev.stopPropagation();
+  modalCtx = { itemId, modelId };
+  document.getElementById('prmPromo').value = 0;
+  document.getElementById('prmCupomLoja').value = 0;
+  document.getElementById('prmCupomProduto').value = 0;
+  document.getElementById('prmBackdrop').classList.add('open');
+  simular();
+}
+function fecharModal() {
+  document.getElementById('prmBackdrop').classList.remove('open');
+  modalCtx = null;
+}
+function simularDebounce() { clearTimeout(_simTimer); _simTimer = setTimeout(simular, 250); }
+
+async function simular() {
+  if (!modalCtx) return;
+  const p = {
+    item_id: modalCtx.itemId, model_id: modalCtx.modelId,
+    margem: document.getElementById('pMargem').value,
+    imposto: document.getElementById('pImposto').value,
+    promo: document.getElementById('prmPromo').value || 0,
+    cupom_loja: document.getElementById('prmCupomLoja').value || 0,
+    cupom_produto: document.getElementById('prmCupomProduto').value || 0,
+  };
+  const d = await DB.getShopeeSimulacaoPrecificador(p);
+  if (!d || d.error) { document.getElementById('prmSub').textContent = 'Erro: ' + (d?.error || 'falha ao simular'); return; }
+  renderModal(d);
+}
+
+function renderModal(d) {
+  document.getElementById('prmSub').textContent = `${d.title || '—'} · ID ${d.item_id} · SKU ${d.model_sku || '—'}`;
+
+  // Cards de config no topo — refletem a faixa do anúncio ABERTO (spec: "taxa
+  // correspondente ao preço atualmente selecionado").
+  document.getElementById('pTaxaShow').textContent = d.commissionRate != null ? d.commissionRate+'%' : '—';
+  document.getElementById('pFixaShow').textContent = d.fixedFee != null ? R(d.fixedFee) : '—';
+
+  const custoBox = document.getElementById('prmCustoBox');
+  if (d.cost == null) {
+    custoBox.classList.add('faltando');
+    document.getElementById('prmCustoValor').textContent = 'Custo do produto não cadastrado.';
+    document.getElementById('prmCustoOrigem').textContent = 'Cadastre o custo desta variação na lista pra calcular o preço ideal.';
+  } else {
+    custoBox.classList.remove('faltando');
+    document.getElementById('prmCustoValor').textContent = R(d.cost);
+    document.getElementById('prmCustoOrigem').textContent = d.cost_origem || '';
+  }
+
+  document.getElementById('prmPrecoAtual').textContent = R(d.currentPrice);
+  document.getElementById('prmPrecoIdeal').textContent = d.idealPrice != null ? R(d.idealPrice) : '—';
+
+  const precoAtual = Number(d.currentPrice) || 0;
+  const promo = Number(document.getElementById('prmPromo').value) || 0;
+  const cLoja = Number(document.getElementById('prmCupomLoja').value) || 0;
+  const cProd = Number(document.getElementById('prmCupomProduto').value) || 0;
+  const posDesconto = precoAtual * (1-promo/100) * (1-cLoja/100) * (1-cProd/100);
+  const comissaoValor = d.commissionRate != null ? posDesconto * d.commissionRate/100 : null;
+  const impostoValor = posDesconto * (Number(document.getElementById('pImposto').value)||0)/100;
+
+  document.getElementById('prmSimTable').innerHTML = `
+    <tr><td>Preço anunciado</td><td class="num">${R(precoAtual)}</td></tr>
+    <tr><td>Promoção relâmpago</td><td class="num">${promo?'-'+PCT(promo):'—'}</td></tr>
+    <tr><td>Cupom da loja</td><td class="num">${cLoja?'-'+PCT(cLoja):'—'}</td></tr>
+    <tr><td>Cupom do produto</td><td class="num">${cProd?'-'+PCT(cProd):'—'}</td></tr>
+    <tr><td>Preço após descontos</td><td class="num">${R(posDesconto)}</td></tr>
+    <tr><td>Comissão Shopee (${d.commissionRate ?? '—'}%)</td><td class="num">${comissaoValor!=null?'-'+R(comissaoValor):'—'}</td></tr>
+    <tr><td>Taxa fixa</td><td class="num">${d.fixedFee!=null?'-'+R(d.fixedFee):'—'}</td></tr>
+    <tr><td>Imposto</td><td class="num">${'-'+R(impostoValor)}</td></tr>
+    <tr><td>Subsídio Pix (${d.pixSubsidy ?? 0}% — não aplicado no cálculo)</td><td class="num">—</td></tr>
+    <tr><td>Custo do produto</td><td class="num">${d.cost!=null?'-'+R(d.cost):'—'}</td></tr>
+    <tr class="destaque"><td>Lucro</td><td class="num">${R(d.profit)}</td></tr>
+    <tr class="destaque"><td>Margem</td><td class="num">${PCT(d.margin)}</td></tr>
+  `;
+
+  const margemDesejada = Number(document.getElementById('pMargem').value) || 0;
+  document.getElementById('prmMargemAtual').textContent = PCT(d.margin);
+  setMargemBadge('prmMargemAtualBadge', d.margin, margemDesejada);
+  document.getElementById('prmMargemIdeal').textContent = PCT(d.margin_no_ideal);
+  setMargemBadge('prmMargemIdealBadge', d.margin_no_ideal, margemDesejada);
+
+  document.getElementById('prmBtnAplicar').disabled = d.idealPrice == null;
+  document.getElementById('prmBtnAplicar').dataset.price = d.idealPrice ?? '';
+}
+
+function setMargemBadge(elId, margin, alvo) {
+  const el = document.getElementById(elId);
+  if (margin == null) { el.textContent = ''; return; }
+  if (margin >= alvo) { el.textContent = 'MARGEM DENTRO DA META'; el.className = 'prm-margem-badge ok'; }
+  else { el.textContent = 'MARGEM ABAIXO DA META'; el.className = 'prm-margem-badge abaixo'; }
+}
+
+async function aplicarPrecoIdealModal() {
+  const price = document.getElementById('prmBtnAplicar').dataset.price;
+  if (!price || !modalCtx) return;
+  if (!confirm(`Aplicar o preço ideal (${R(price)}) na Shopee agora?`)) return;
+  const res = await DB.aplicarShopeeEstoquePreco([{ item_id: modalCtx.itemId, model_id: modalCtx.modelId, price: Number(price).toFixed(2) }]);
+  if (res?.ok) { fecharModal(); load(); const msg = document.getElementById('prMsg'); msg.textContent = '✓ Preço ideal aplicado na Shopee.'; msg.style.color = 'var(--green)'; }
+  else alert('Erro ao aplicar: ' + (res?.resultados?.[0]?.error || res?.error || 'falha'));
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

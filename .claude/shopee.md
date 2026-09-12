@@ -170,14 +170,27 @@ Página **Promoções** (`pages/shopee-promocoes.html`, `SHOPEE_NAV_ITEMS` + all
 - **Loja em destaque** no card (chip no topo) e **clique → modal** com os anúncios dentro da promoção: `GET /api/shopee/promocoes/:tipo/:promoId/itens` (desconto via `get_discount`→item_list com preço promocional; voucher via `item_id_list` ou escopo "loja toda"), enriquecido com título/foto de `items`.
 - Tabela `shopee_promotions` (v41) — ver `database.md`.
 
-## Precificador — implementado (tela própria)
+## Precificador — implementado (tela própria), atualizado p/ faixas oficiais de comissão
 
-Página **Precificador** (`pages/shopee-precificador.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): calcula o **preço ideal por variação** a partir de custo + margem + taxa, e aplica com 1 clique (reusa o `/anuncios/aplicar`).
+Página **Precificador** (`pages/shopee-precificador.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): calcula o **preço ideal por variação** a partir de custo + margem desejada + imposto, considerando as **faixas oficiais de comissão da Shopee** (não mais uma taxa única pra tudo), com modal de simulação por promoção/cupom. Aplica com 1 clique (reusa `/anuncios/aplicar`).
 
-- **Fórmula**: `preço_sugerido = (custo + taxa_fixa) / (1 − taxa% − imposto% − margem%)` (margem, taxa Shopee e imposto todos sobre o preço de venda). Mostra também a **margem atual** no preço vigente (verde/vermelho). Campos: margem, taxa Shopee, taxa fixa (R$) e **imposto (%)**.
-- **Custo** (decisão do usuário): **digitado na tela**, salvo em `shopee_item_cost` (v40) **por variação** (`item_id`+`model_id`) — tabela separada de propósito, porque o sync de catálogo reescreve `shopee_item_data.models` a cada 30min. Rota `POST /api/shopee/custo`.
-- **Taxa Shopee** (decisão do usuário): **automática do escrow** — `escrowFeePct()` calcula a taxa efetiva real (`SUM(commission_fee)/SUM(buyer_total)` de `shopee_order_data`), pré-preenchida e editável; cai pra 14% se ainda não há escrow. Rota `GET /api/shopee/precificador` (margem/taxa/taxa_fixa por query).
-- Tabela `shopee_item_cost` (v40) — ver `database.md`.
+**Motor de cálculo** — `server/src/marketplaces/shopee/pricingEngine.js` (puro, sem banco/HTTP; testado em `server/test/shopeePricing.test.js`, `npm test`):
+
+- `SHOPEE_PRICING_TIERS` — 5 faixas por valor do item (fornecidas pelo usuário, comissão vendedor CNPJ): até R$79,99 (20%+R$4), R$80–99,99 (14%+R$16), R$100–199,99 (14%+R$20), R$200–499,99 (14%+R$26), acima de R$500 (14%+R$26). Única fonte da tabela — o frontend renderiza a partir do array `tiers` que a API devolve, nunca hardcoded duas vezes.
+- **Subsídio Pix**: cada faixa carrega `pixSubsidy` (5% ou 8%), mas é **só informativo** (exibido na tabela e na simulação) — **decisão explícita do usuário**: nunca dá pra saber de antemão se o comprador vai pagar via Pix, então o valor **nunca entra** em comissão/lucro/margem/preço ideal. Se a regra mudar no futuro, os 3 pontos de cálculo (`calculateShopeePricing`, `netProfitCentsForPrice`, `findIdealPrice`) precisam reintroduzir o termo — buscar por "pixSubsidy" no arquivo.
+- **Empilhamento de descontos** (promoção relâmpago + cupom loja + cupom produto): sequencial/multiplicativo (`applyStackedDiscounts`), não soma simples de percentuais — cada desconto aplica sobre o preço já reduzido pelo anterior. **Premissa não confirmada com a Shopee** (documentada em decisions.md), mas é a forma padrão de empilhar cupons em e-commerce e nunca produz desconto negativo/>100%.
+- **Base da comissão/imposto**: o preço APÓS os descontos (é o que o comprador de fato paga, e a Shopee cobra comissão sobre o valor transacionado real) — não sobre o preço anunciado. A **margem**, porém, é sempre "lucro sobre o preço anunciado" (não sobre o preço pós-desconto), seguindo o texto auxiliar do card "Margem desejada".
+- `findIdealPrice()` — pra CADA faixa, resolve o preço mínimo algebricamente (fórmula fechada) e testa se ele pertence de fato àquela faixa; se o arredondamento a centavo raspar a margem por uma fração de ponto percentual, incrementa 1 centavo por vez até bater de verdade (evita falso-negativo por tolerância de epsilon — bug real encontrado e corrigido durante os testes). Compara todas as faixas válidas e devolve o **menor preço**.
+- **Custo** (decisão do usuário, reconfirmada nesta atualização): **digitado pelo usuário na tela** (nunca calculado/inferido de um catálogo de produto — não existe essa tabela no sistema), salvo em `shopee_item_cost` (v40) **por variação** (`item_id`+`model_id`+`store_id`). O modal de precificação mostra o campo **somente leitura**, com a mensagem "Custo do produto não cadastrado" quando ainda não foi digitado (nunca assume custo zero).
+
+**Rotas**:
+- `GET /api/shopee/precificador` (query: `store_id`, `q` — busca por título/SKU/**ID exato** do anúncio —, `margem`, `imposto`) — lista de anúncios+variações com custo, preço atual, margem atual e preço ideal (sem desconto/promoção — cenário "preço de tabela"). Devolve `tiers` (array oficial, pro frontend renderizar a tabela) junto.
+- `GET /api/shopee/precificador/simular` (query: `item_id`, `model_id`, `margem`, `imposto`, `promo`, `cupom_loja`, `cupom_produto`) — simulação completa de UMA variação (usada pelo modal "Precificação do anúncio"), incluindo margem/lucro no preço atual E no preço ideal. Erros dedicados: `"Anúncio não encontrado."`, `"Item 1 não identificado."` (model_id não existe nesse anúncio).
+- `POST /api/shopee/custo` (já existia) — grava o custo digitado.
+
+**Frontend**: cards de configuração (Margem desejada, editável; Taxa Shopee/Taxa fixa, somente exibição — refletem a faixa do anúncio aberto no modal, já que uma lista com preços variados não tem uma "taxa única" que faça sentido mostrar; Imposto, editável) + tabela oficial de comissão (renderizada a partir de `tiers`) + lista de anúncios (custo editável inline, "aplicar" rápido por variação — fluxo que já existia, mantido) + modal ao clicar na linha, com promoção/cupom (atualização em tempo real via debounce), simulação de 12 linhas, margem/lucro atual × no preço ideal com selo "MARGEM DENTRO DA META"/"MARGEM ABAIXO DA META", e botão "Aplicar preço ideal" (reusa `/anuncios/aplicar`, com `confirm()` antes — nunca aplica sem confirmação explícita).
+
+Tabela `shopee_item_cost` (v40) — ver `database.md`.
 
 ## Score de Anúncios — implementado (tela própria)
 

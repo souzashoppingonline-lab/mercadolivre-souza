@@ -20,6 +20,17 @@ const { router: staffAuthRoutes, requireStaffAuth } = require('./routes/staffAut
 const wsHub = require('./ws/hub');
 
 const app = express();
+// Atrás do nginx (SSL termination — nginx fala HTTPS com o mundo, HTTP com o
+// Node). Sem isso, req.protocol SEMPRE vem 'http' (conexão real nginx→Node),
+// mesmo a nginx já mandando `X-Forwarded-Proto: $scheme` corretinho (ver
+// deployment.md) — o Express só confia nesses headers com trust proxy ligado.
+// Causa raiz real: TODA assinatura de webhook Shopee (HMAC sobre pushUrl,
+// ver shopeeWebhook.js) vinha calculada com "http://..." em vez de
+// "https://...", batendo errado com a assinatura que a Shopee gera pra cima
+// da URL https:// real — rejeitando 100% dos webhooks silenciosamente
+// (sistema dependia só do polling de 15min). Descoberto investigando por que
+// pedido recém-criado nunca sincronizava a tempo do bipe na Embalagem.
+app.set('trust proxy', 1);
 app.use(cors());
 // Webhook Shopee ("Mecanismo de Empurra") — montado ANTES do express.json()
 // global porque a validação de assinatura precisa do corpo CRU (o router usa

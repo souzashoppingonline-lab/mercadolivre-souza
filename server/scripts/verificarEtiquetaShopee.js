@@ -137,6 +137,34 @@ async function main() {
     }
   }
 
+  // 8. Busca DIRETA na API oficial, sem depender de banco local nem de lista/
+  // janela de tempo (listRecentOrders pode não trazer o pedido se o
+  // update_time dele já estiver fora da janela testada) — chama getOrder
+  // direto pra cada loja Shopee cadastrada. É o teste mais definitivo:
+  // se a Shopee não devolve nada aqui, o pedido genuinamente não está
+  // disponível via API ainda (problema do lado da Shopee, não nosso).
+  if (orderSn) {
+    console.log(`\n8. Busca DIRETA na API (getOrder, sem lista/janela) por order_sn="${orderSn}" em cada loja Shopee:`);
+    const { rows: lojas } = await pool.query(
+      `SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'SHOPEE')`
+    );
+    for (const loja of lojas) {
+      let client;
+      try { client = await getShopeeClientForStore(pool, loja.id, env.shopee); }
+      catch (e) { console.log(`   [loja ${loja.nickname}] falha ao montar client: ${e.message}`); continue; }
+      try {
+        const o = await client.getOrder(orderSn);
+        if (o?.order_sn) {
+          console.log(`   [loja ${loja.nickname}] ✅ encontrado ao vivo: status=${o.order_status} total=${o.total_amount}`);
+        } else {
+          console.log(`   [loja ${loja.nickname}] resposta vazia (pedido não pertence a essa loja, ou API não devolveu nada)`);
+        }
+      } catch (e) {
+        console.log(`   [loja ${loja.nickname}] erro na API: ${e.message}`);
+      }
+    }
+  }
+
   await pool.end();
 }
 

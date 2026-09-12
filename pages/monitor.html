@@ -205,6 +205,13 @@
               </div>
               <label class="toggle-wrap"><input type="checkbox" id="tg_conciliacao"><span class="toggle-slider"></span></label>
             </div>
+            <div class="notif-item">
+              <div class="notif-info">
+                <span class="notif-name"><i class="fas fa-bullhorn" style="color:#ee4d2d;margin-right:6px"></i>Campanhas Shopee vencendo</span>
+                <span class="notif-desc">Falta 5/4/3/2/1 dias pro fim, e 1x/dia se já venceu — 06:35</span>
+              </div>
+              <label class="toggle-wrap"><input type="checkbox" id="tg_shopee_campanhas"><span class="toggle-slider"></span></label>
+            </div>
           </div>
 
           <div class="notif-section-title" style="margin-top:14px"><i class="fas fa-exclamation-triangle" style="color:var(--red)"></i> Alertas Críticos — Sistema</div>
@@ -300,6 +307,13 @@
             </div>
             <label class="toggle-wrap"><input type="checkbox" id="email_semanal"><span class="toggle-slider"></span></label>
           </div>
+          <div class="notif-item">
+            <div class="notif-info">
+              <span class="notif-name"><i class="fas fa-bullhorn" style="color:#ee4d2d;margin-right:6px"></i>Campanhas Shopee vencendo</span>
+              <span class="notif-desc">Falta 5/4/3/2/1 dias pro fim, e 1x/dia se já venceu — 06:35</span>
+            </div>
+            <label class="toggle-wrap"><input type="checkbox" id="email_shopee_campanhas"><span class="toggle-slider"></span></label>
+          </div>
         </div>
 
         <div class="tg-actions">
@@ -377,7 +391,7 @@ async function loadTelegramConfig() {
   if (d.bot_token) document.getElementById('tgToken').placeholder = d.bot_token;
 
   // Load notification prefs
-  const keys = ['tg_vendas','tg_rankeamento','tg_topvendas','tg_outlier','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_tarefas','tg_conciliacao','tg_token','tg_fila','tg_429','tg_infra'];
+  const keys = ['tg_vendas','tg_rankeamento','tg_topvendas','tg_outlier','tg_servicos','tg_recursos','tg_reposicao','tg_perguntas','tg_mensagens','tg_promocoes','tg_devolucoes','tg_anuncios','tg_tarefas','tg_conciliacao','tg_shopee_campanhas','tg_token','tg_fila','tg_429','tg_infra'];
   keys.forEach(k => {
     const el = document.getElementById(k);
     if (el && d[k] !== undefined) el.checked = d[k] === true || d[k] === 'true';
@@ -403,6 +417,7 @@ async function saveNotifConfig() {
     tg_anuncios:   document.getElementById('tg_anuncios').checked,
     tg_tarefas:    document.getElementById('tg_tarefas').checked,
     tg_conciliacao: document.getElementById('tg_conciliacao').checked,
+    tg_shopee_campanhas: document.getElementById('tg_shopee_campanhas').checked,
     tg_token:      document.getElementById('tg_token').checked,
     tg_fila:       document.getElementById('tg_fila').checked,
     tg_429:        document.getElementById('tg_429').checked,
@@ -445,7 +460,7 @@ function showFeedback(msg, ok) {
 // ── E-mail (Resend) ────────────────────────────────────────
 async function loadEmailConfig() {
   const d = await DB.getEmailConfig() || {};
-  ['email_resumo', 'email_topvendas', 'email_semanal'].forEach(k => {
+  ['email_resumo', 'email_topvendas', 'email_semanal', 'email_shopee_campanhas'].forEach(k => {
     const el = document.getElementById(k);
     if (el) el.checked = d[k] === true;
   });
@@ -460,6 +475,7 @@ async function saveEmailConfig() {
     email_resumo:    document.getElementById('email_resumo').checked,
     email_topvendas: document.getElementById('email_topvendas').checked,
     email_semanal:   document.getElementById('email_semanal').checked,
+    email_shopee_campanhas: document.getElementById('email_shopee_campanhas').checked,
   };
   const res = await DB.saveEmailConfig(body);
   const fb = document.getElementById('emailFeedback');

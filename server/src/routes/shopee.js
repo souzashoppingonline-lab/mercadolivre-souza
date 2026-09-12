@@ -832,6 +832,15 @@ router.get('/precificador/simular', async (req, res) => {
       currentPrice: currentPrice,
       margin_no_ideal: calcNoIdeal?.margin ?? null,
       profit_no_ideal: calcNoIdeal?.profit ?? null,
+      // Comissão/taxa fixa/receita líquida NO PREÇO IDEAL — sem isso, quando
+      // o preço atual não está sincronizado (currentPrice null), a simulação
+      // inteira ficava em branco ("—" em tudo: comissão, imposto, lucro) mesmo
+      // já tendo um preço ideal calculado e uma faixa/comissão bem definidas
+      // pra ELE. Frontend usa esses campos como fallback (mostra a simulação
+      // no preço ideal em vez de deixar tudo em branco quando não há atual).
+      commission_rate_ideal: calcNoIdeal?.commissionRate ?? null,
+      fixed_fee_ideal: calcNoIdeal?.fixedFee ?? null,
+      net_revenue_ideal: calcNoIdeal?.netRevenue ?? null,
       tiers: SHOPEE_PRICING_TIERS,
     });
   } catch (e) {

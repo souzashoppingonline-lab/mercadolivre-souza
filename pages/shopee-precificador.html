@@ -421,9 +421,13 @@ function renderModal(d) {
   document.getElementById('prmSub').textContent = `${d.title || '—'} · ID ${d.item_id} · SKU ${d.model_sku || '—'}`;
 
   // Cards de config no topo — refletem a faixa do anúncio ABERTO (spec: "taxa
-  // correspondente ao preço atualmente selecionado").
-  document.getElementById('pTaxaShow').textContent = d.commissionRate != null ? d.commissionRate+'%' : '—';
-  document.getElementById('pFixaShow').textContent = d.fixedFee != null ? R(d.fixedFee) : '—';
+  // correspondente ao preço atualmente selecionado"). Sem preço atual
+  // sincronizado, cai pra faixa do preço IDEAL (mesma lógica da simulação
+  // abaixo) em vez de mostrar "—" — é a faixa que vai valer de fato.
+  const taxaTop = d.commissionRate ?? d.commission_rate_ideal;
+  const fixaTop = d.fixedFee ?? d.fixed_fee_ideal;
+  document.getElementById('pTaxaShow').textContent = taxaTop != null ? taxaTop+'%' : '—';
+  document.getElementById('pFixaShow').textContent = fixaTop != null ? R(fixaTop) : '—';
 
   const custoBox = document.getElementById('prmCustoBox');
   if (d.cost == null) {
@@ -443,33 +447,44 @@ function renderModal(d) {
   // anúncio (não é um preço real de R$0,00 — Shopee não vende de graça).
   // Antes este bloco fazia `Number(d.currentPrice) || 0`, que mascarava o
   // null e zerava a simulação inteira (bug relatado: "preço após descontos
-  // R$0,00" mesmo com custo/preço ideal calculados normalmente).
+  // R$0,00" mesmo com custo/preço ideal calculados normalmente). Depois de
+  // corrigir isso, a simulação inteira ficava em branco (comissão/imposto/
+  // lucro "—") sempre que faltava o preço atual — mesmo já tendo um preço
+  // IDEAL calculado, com faixa/comissão bem definidas pra ele. Como o preço
+  // ideal É o preço que vai ser anunciado (definição do próprio usuário),
+  // a simulação usa ELE como base quando o atual não está disponível, em
+  // vez de deixar tudo em branco — só o card "PREÇO ATUAL" continua "—"
+  // (isso sim é informação real que falta).
   const semPrecoAtual = d.currentPrice == null;
-  const precoAtual = semPrecoAtual ? null : Number(d.currentPrice);
+  const precoBase = semPrecoAtual ? (d.idealPrice ?? null) : Number(d.currentPrice);
+  const commissionRate = semPrecoAtual ? d.commission_rate_ideal : d.commissionRate;
+  const fixedFee = semPrecoAtual ? d.fixed_fee_ideal : d.fixedFee;
+  const lucro = semPrecoAtual ? d.profit_no_ideal : d.profit;
+  const margemLinha = semPrecoAtual ? d.margin_no_ideal : d.margin;
   const promo = Number(document.getElementById('prmPromo').value) || 0;
   const cLoja = Number(document.getElementById('prmCupomLoja').value) || 0;
   const cProd = Number(document.getElementById('prmCupomProduto').value) || 0;
-  const posDesconto = semPrecoAtual ? null : precoAtual * (1-promo/100) * (1-cLoja/100) * (1-cProd/100);
-  const comissaoValor = (!semPrecoAtual && d.commissionRate != null) ? posDesconto * d.commissionRate/100 : null;
-  const impostoValor = semPrecoAtual ? null : posDesconto * (Number(document.getElementById('pImposto').value)||0)/100;
+  const posDesconto = precoBase != null ? precoBase * (1-promo/100) * (1-cLoja/100) * (1-cProd/100) : null;
+  const comissaoValor = (posDesconto != null && commissionRate != null) ? posDesconto * commissionRate/100 : null;
+  const impostoValor = posDesconto != null ? posDesconto * (Number(document.getElementById('pImposto').value)||0)/100 : null;
 
   const avisoSemPreco = semPrecoAtual
-    ? `<tr><td colspan="2" style="color:var(--text-muted);font-size:11px;padding-top:6px">⚠ Preço atual ainda não sincronizado com a Shopee — aguarde a próxima sincronização do catálogo para calcular a margem no preço atual. A margem no <b>preço ideal</b> abaixo já pode ser usada.</td></tr>`
+    ? `<tr><td colspan="2" style="color:var(--text-muted);font-size:11px;padding-top:6px">⚠ Preço atual ainda não sincronizado com a Shopee — a simulação abaixo usa o <b>preço ideal</b> (o preço que será anunciado), não o preço hoje ativo no anúncio.</td></tr>`
     : '';
 
   document.getElementById('prmSimTable').innerHTML = `
-    <tr><td>Preço anunciado</td><td class="num">${semPrecoAtual?'—':R(precoAtual)}</td></tr>
+    <tr><td>${semPrecoAtual ? 'Preço anunciado (preço ideal)' : 'Preço anunciado'}</td><td class="num">${precoBase!=null?R(precoBase):'—'}</td></tr>
     <tr><td>Promoção relâmpago</td><td class="num">${promo?'-'+PCT(promo):'—'}</td></tr>
     <tr><td>Cupom da loja</td><td class="num">${cLoja?'-'+PCT(cLoja):'—'}</td></tr>
     <tr><td>Cupom do produto</td><td class="num">${cProd?'-'+PCT(cProd):'—'}</td></tr>
-    <tr><td>Preço após descontos</td><td class="num">${semPrecoAtual?'—':R(posDesconto)}</td></tr>
-    <tr><td>Comissão Shopee (${d.commissionRate ?? '—'}%)</td><td class="num">${comissaoValor!=null?'-'+R(comissaoValor):'—'}</td></tr>
-    <tr><td>Taxa fixa</td><td class="num">${d.fixedFee!=null?'-'+R(d.fixedFee):'—'}</td></tr>
+    <tr><td>Preço após descontos</td><td class="num">${posDesconto!=null?R(posDesconto):'—'}</td></tr>
+    <tr><td>Comissão Shopee (${commissionRate ?? '—'}%)</td><td class="num">${comissaoValor!=null?'-'+R(comissaoValor):'—'}</td></tr>
+    <tr><td>Taxa fixa</td><td class="num">${fixedFee!=null?'-'+R(fixedFee):'—'}</td></tr>
     <tr><td>Imposto</td><td class="num">${impostoValor!=null?'-'+R(impostoValor):'—'}</td></tr>
     <tr><td>Subsídio Pix (${d.pixSubsidy ?? 0}% — não aplicado no cálculo)</td><td class="num">—</td></tr>
     <tr><td>Custo do produto</td><td class="num">${d.cost!=null?'-'+R(d.cost):'—'}</td></tr>
-    <tr class="destaque"><td>Lucro</td><td class="num">${R(d.profit)}</td></tr>
-    <tr class="destaque"><td>Margem de contribuição (com todos os descontos)</td><td class="num">${PCT(d.margin)}</td></tr>
+    <tr class="destaque"><td>Lucro</td><td class="num">${lucro!=null?R(lucro):'—'}</td></tr>
+    <tr class="destaque"><td>Margem de contribuição (com todos os descontos)</td><td class="num">${PCT(margemLinha)}</td></tr>
     ${avisoSemPreco}
   `;
 

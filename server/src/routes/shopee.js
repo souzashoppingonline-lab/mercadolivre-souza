@@ -7,6 +7,7 @@ const pool = require('../db/pool');
 const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
 const { scoreItem } = require('../marketplaces/shopee/shopeeScore');
+const { SHOPEE_PRICING_TIERS, calculateShopeePricing } = require('../marketplaces/shopee/pricingEngine');
 
 const router = express.Router();
 
@@ -659,25 +660,28 @@ async function escrowFeePct(mpId, storeId) {
 }
 
 // Precificador — itens+variações com custo (shopee_item_cost), preço atual e
-// preço SUGERIDO por margem/taxa. Preço sugerido = (custo + taxa_fixa) /
-// (1 - taxa% - margem%). Taxa% default = taxa efetiva do escrow (ou 14% se
-// ainda não houver histórico). Só leitura (não grava — aplicar reusa /aplicar).
+// preço IDEAL calculado pelo motor de faixas oficiais da Shopee (ver
+// marketplaces/shopee/pricingEngine.js — comissão/taxa fixa variam por preço,
+// não é mais uma taxa única pra tudo). Simulação de promoção/cupom fica na
+// rota /precificador/simular (por variação, aberta pelo modal) — aqui é só a
+// listagem com margem atual e preço ideal SEM desconto, pra não confundir
+// "quanto eu ganho vendendo pelo preço de tabela" com um cenário promocional
+// específico. Só leitura (não grava — aplicar reusa /anuncios/aplicar).
 router.get('/precificador', async (req, res) => {
   try {
     const mpId = await shopeeMarketplaceId();
     const storeId = req.query.store_id || '';
     const q = (req.query.q || '').trim();
-    const margem = Number(req.query.margem);            // % desejada sobre o preço
-    const taxaFixa = Number(req.query.taxa_fixa) || 0;  // R$ por venda
-    const impostoPct = Number(req.query.imposto) || 0;  // % de imposto sobre o preço
-    const feeEscrow = await escrowFeePct(mpId, storeId);
-    const taxaPct = req.query.taxa_pct != null && req.query.taxa_pct !== ''
-      ? Number(req.query.taxa_pct)
-      : (feeEscrow != null ? Number(feeEscrow.toFixed(2)) : 14);
+    const margem = Number(req.query.margem) || 0;   // % desejada sobre o preço anunciado
+    const impostoPct = Number(req.query.imposto) || 0; // % de imposto sobre o preço após descontos
 
     const params = [mpId, storeId];
     let qFilter = '';
-    if (q) { params.push(`%${q}%`); qFilter = `AND (i.title ILIKE $${params.length} OR sid.item_sku ILIKE $${params.length})`; }
+    // Busca por nome OU id do anúncio (spec: "buscar por nome ou ID").
+    if (q) {
+      params.push(`%${q}%`, q);
+      qFilter = `AND (i.title ILIKE $${params.length - 1} OR sid.item_sku ILIKE $${params.length - 1} OR i.ml_id = $${params.length})`;
+    }
     const { rows } = await pool.query(
       `SELECT i.ml_id AS item_id, i.title, i.thumbnail, s.nickname AS conta,
               sid.item_sku, sid.has_model, sid.variation_count, sid.models
@@ -695,15 +699,6 @@ router.get('/precificador', async (req, res) => {
     );
     const costMap = new Map(costRows.map((c) => [`${c.item_id}::${Number(c.model_id)}`, Number(c.cost)]));
 
-    const denom = 1 - (taxaPct / 100) - (impostoPct / 100) - (margem / 100);
-    const calcSuggested = (cost) => (denom > 0 && cost != null) ? (Number(cost) + taxaFixa) / denom : null;
-    const calcMargin = (price, cost) => {
-      const p = Number(price);
-      if (!p || cost == null) return null;
-      const lucro = p - Number(cost) - (p * taxaPct / 100) - (p * impostoPct / 100) - taxaFixa;
-      return (lucro / p) * 100;
-    };
-
     const out = rows.map((it) => {
       const models = (it.models && it.models.length) ? it.models : [{ model_id: 0, model_name: '—', current_price: null }];
       return {
@@ -711,19 +706,87 @@ router.get('/precificador', async (req, res) => {
         item_sku: it.item_sku, has_model: it.has_model, variation_count: it.variation_count,
         variacoes: models.map((m) => {
           const cost = costMap.has(`${it.item_id}::${Number(m.model_id || 0)}`) ? costMap.get(`${it.item_id}::${Number(m.model_id || 0)}`) : null;
+          const calc = calculateShopeePricing({ cost, currentPrice: m.current_price, targetMargin: margem, taxRate: impostoPct });
           return {
             model_id: m.model_id || 0, model_name: m.model_name, model_sku: m.model_sku,
             cost, current_price: m.current_price ?? null,
-            suggested_price: calcSuggested(cost),
-            current_margin: calcMargin(m.current_price, cost),
+            suggested_price: calc.idealPrice,
+            current_margin: calc.margin,
+            commission_rate: calc.commissionRate, fixed_fee: calc.fixedFee,
           };
         }),
       };
     });
-    res.json({ rows: out, taxa_pct: taxaPct, taxa_fixa: taxaFixa, imposto: impostoPct, margem, fee_escrow: feeEscrow });
+    res.json({ rows: out, tiers: SHOPEE_PRICING_TIERS, margem, imposto: impostoPct });
   } catch (e) {
     console.error('[api/shopee] /precificador', e.message);
     res.status(500).json({ error: e.message, rows: [] });
+  }
+});
+
+// Simulação detalhada de UMA variação (o modal "Precificação do Anúncio").
+// Recebe promoção relâmpago/cupom loja/cupom produto (spec seções 9/10) —
+// diferente da listagem acima, que mostra o cenário SEM desconto algum.
+// Custo e preço atual vêm do banco (nunca do frontend) — mesma garantia de
+// "usuário não digita custo, campo é somente leitura" da spec seção 7,
+// adaptada à arquitetura real (custo mora em shopee_item_cost, não em um
+// catálogo de produto genérico — ver .claude/shopee.md).
+router.get('/precificador/simular', async (req, res) => {
+  try {
+    const itemId = String(req.query.item_id || '').trim();
+    const modelId = Number(req.query.model_id || 0);
+    if (!itemId) return res.status(400).json({ error: 'item_id é obrigatório' });
+    const mpId = await shopeeMarketplaceId();
+
+    const { rows } = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title, i.thumbnail, s.nickname AS conta,
+              sid.item_sku, sid.models
+         FROM items i
+         LEFT JOIN stores s ON s.id = i.store_id
+         LEFT JOIN shopee_item_data sid ON sid.item_id = i.ml_id
+        WHERE i.ml_id = $1 AND i.marketplace_id = $2`,
+      [itemId, mpId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Anúncio não encontrado.' });
+    const it = rows[0];
+    const models = (it.models && it.models.length) ? it.models : [{ model_id: 0, model_name: '—', current_price: null, model_sku: it.item_sku }];
+    const modelo = models.find((m) => Number(m.model_id || 0) === modelId) || null;
+    if (!modelo) return res.status(404).json({ error: 'Item 1 não identificado.' }); // spec seção 29
+
+    const { rows: costRows } = await pool.query(
+      `SELECT cost FROM shopee_item_cost WHERE item_id = $1 AND model_id = $2`,
+      [itemId, modelId]
+    );
+    const cost = costRows.length ? Number(costRows[0].cost) : null; // spec seção 28: não assumir custo zero
+
+    const margem = Number(req.query.margem) || 0;
+    const imposto = Number(req.query.imposto) || 0;
+    const flashSaleDiscount = Number(req.query.promo) || 0;
+    const storeCouponDiscount = Number(req.query.cupom_loja) || 0;
+    const productCouponDiscount = Number(req.query.cupom_produto) || 0;
+
+    const calc = calculateShopeePricing({
+      cost, currentPrice: modelo.current_price, targetMargin: margem, taxRate: imposto,
+      flashSaleDiscount, storeCouponDiscount, productCouponDiscount,
+    });
+    // Margem/lucro no preço IDEAL (não só no atual) — spec seções 11/12 pedem os dois.
+    const calcNoIdeal = calc.idealPrice != null
+      ? calculateShopeePricing({ cost, currentPrice: calc.idealPrice, targetMargin: margem, taxRate: imposto, flashSaleDiscount, storeCouponDiscount, productCouponDiscount })
+      : null;
+
+    res.json({
+      item_id: it.item_id, title: it.title, thumbnail: it.thumbnail, conta: it.conta,
+      model_id: modelId, model_name: modelo.model_name, model_sku: modelo.model_sku || it.item_sku,
+      cost, cost_origem: cost != null ? 'Custo cadastrado nesta variação' : null,
+      current_price: modelo.current_price ?? null,
+      ...calc,
+      margin_no_ideal: calcNoIdeal?.margin ?? null,
+      profit_no_ideal: calcNoIdeal?.profit ?? null,
+      tiers: SHOPEE_PRICING_TIERS,
+    });
+  } catch (e) {
+    console.error('[api/shopee] /precificador/simular', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 

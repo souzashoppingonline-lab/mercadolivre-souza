@@ -29,9 +29,9 @@
        esquecido: verde até 2min, vermelho fixo até 3min, vermelho piscando
        até 4min, e piscando alternando com amarelo depois disso. Ver
        .claude/embalagem.md e startDurationWatcher() no script. */
-    .emb-crono-box { background: var(--bg-card2, #1a1a1a); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 32px 12px; min-height: 220px; }
-    .emb-crono-label { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
-    .emb-crono-valor { font-size: 84px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; color: var(--text-muted); }
+    .emb-crono-box { background: var(--bg-card2, #1a1a1a); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 18px 12px; min-height: 140px; }
+    .emb-crono-label { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+    .emb-crono-valor { font-size: 60px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; color: var(--text-muted); }
     .emb-crono-valor.crono-ok { color: var(--green); }
     .emb-crono-valor.crono-alerta { color: var(--red); }
     .emb-crono-valor.crono-critico { color: var(--red); animation: embCronoPiscaRed 1s infinite; }
@@ -47,6 +47,14 @@
 
     .emb-grid { display: grid; grid-template-columns: 1.7fr .7fr; gap: 18px; align-items: start; }
     @media (max-width: 980px) { .emb-grid { grid-template-columns: 1fr; } }
+    /* Cada coluna é 1 item de grid só, com os cards empilhados via flex —
+       assim a coluna da câmera+cronômetro nunca depende da altura da coluna
+       do pedido (que varia MUITO conforme o pedido tem foto/variação/etc.).
+       Antes (3+ .emb-card soltos com auto-flow do grid) o cronômetro caía
+       na "2ª linha" do grid, que só começava depois que a 1ª linha (definida
+       pela coluna mais alta) terminava — em telas de notebook mais baixas,
+       ficava fora da área visível sem rolar. Ver .claude/embalagem.md. */
+    .emb-grid-col { display: flex; flex-direction: column; gap: 18px; }
 
     .emb-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
 
@@ -261,6 +269,7 @@
       <!-- ═══ ABA: BIPAR ═══ -->
       <div class="emb-panel active" id="panelBipar">
         <div class="emb-grid">
+          <div class="emb-grid-col">
           <div class="emb-card">
             <div class="emb-scan-row">
               <input id="scanInput" autocomplete="off" placeholder="Clique aqui e bipe a etiqueta...">
@@ -284,6 +293,12 @@
             </div>
           </div>
           <div class="emb-card">
+            <div class="emb-ult-title"><i class="fas fa-clock-rotate-left"></i> Últimos bipados <span class="cnt" id="ultBipadosCnt">0</span></div>
+            <div id="ultBipadosBox"><div class="emb-ult-empty">Nenhum pedido bipado ainda hoje.</div></div>
+          </div>
+          </div>
+          <div class="emb-grid-col">
+          <div class="emb-card">
             <div class="emb-camera-box">
               <video id="cameraPreview" autoplay muted playsinline></video>
               <div class="emb-camera-rec" id="cameraRecBadge"><span class="dot"></span> GRAVANDO</div>
@@ -294,13 +309,10 @@
               </div>
             </div>
           </div>
-          <div class="emb-card">
-            <div class="emb-ult-title"><i class="fas fa-clock-rotate-left"></i> Últimos bipados <span class="cnt" id="ultBipadosCnt">0</span></div>
-            <div id="ultBipadosBox"><div class="emb-ult-empty">Nenhum pedido bipado ainda hoje.</div></div>
-          </div>
           <div class="emb-card emb-crono-box">
             <div class="emb-crono-label"><i class="fas fa-stopwatch"></i> Tempo da bipagem</div>
             <div class="emb-crono-valor" id="cronoValor">--:--</div>
+          </div>
           </div>
         </div>
       </div>

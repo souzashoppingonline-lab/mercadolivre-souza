@@ -224,7 +224,11 @@ async function liveLookupNewShopeeOrder(tracking) {
   const marketplaceId = mp[0]?.id;
   if (!marketplaceId) { console.warn('[api/embalagem] liveLookupNewShopeeOrder: marketplace SHOPEE não cadastrado'); return false; }
 
-  const sinceISO = new Date(Date.now() - 6 * 3600 * 1000).toISOString(); // 6h — cobre a corrida de "etiqueta impressa antes de sincronizar"
+  // 24h em vez de 6h: o order_sn ter o prefixo do dia atual não garante que o
+  // update_time (usado pelo filtro da API) seja recente — a Shopee grava
+  // update_time = create_time se nada mudou desde a criação, então um pedido
+  // "de hoje de manhã" pode já estar fora de uma janela curta à tarde.
+  const sinceISO = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   for (const store of stores) {
     let client;
     try { client = await getShopeeClientForStore(pool, store.id, env.shopee); }
@@ -232,7 +236,7 @@ async function liveLookupNewShopeeOrder(tracking) {
     let recentes;
     try { recentes = await client.listRecentOrders(sinceISO); }
     catch (e) { console.warn(`[api/embalagem] listRecentOrders ao vivo falhou loja ${store.id}: ${e.message}`); continue; }
-    console.log(`[api/embalagem] busca ao vivo (loja ${store.id}): ${recentes.length} pedido(s) recente(s), testando tracking de cada um contra "${tracking}"`);
+    console.log(`[api/embalagem] busca ao vivo (loja ${store.id}): ${recentes.length} pedido(s) recente(s) [${recentes.map(r => r.order_sn).join(', ')}], testando tracking de cada um contra "${tracking}"`);
 
     for (const ro of recentes) {
       const orderSn = ro.order_sn;

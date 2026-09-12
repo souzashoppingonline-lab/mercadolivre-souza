@@ -746,4 +746,7 @@ async function syncShopeeReturns() {
   }
 }
 
-module.exports = { startMarketplaceEventWorkers };
+// mapShopeeStatus exportada (função pura, sem efeito colateral) pra
+// server/src/routes/embalagem.js reaproveitar no fallback ao vivo de bipagem
+// (liveLookupNewShopeeOrder) sem duplicar a tabela de mapeamento de status.
+module.exports = { startMarketplaceEventWorkers, mapShopeeStatus };

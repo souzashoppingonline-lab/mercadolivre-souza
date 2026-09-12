@@ -215,28 +215,30 @@ async function refreshShopeeTrackingOnDemand(tracking) {
 // depois, no próximo ciclo normal do worker — aqui só o essencial pra
 // desbloquear o bipe na hora.
 async function liveLookupNewShopeeOrder(tracking) {
+  console.log(`[api/embalagem] liveLookupNewShopeeOrder acionado para tracking="${tracking}"`);
   const { rows: stores } = await pool.query(
     `SELECT id FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'SHOPEE')`
   );
-  if (!stores.length) return false;
+  if (!stores.length) { console.warn('[api/embalagem] liveLookupNewShopeeOrder: nenhuma loja Shopee cadastrada'); return false; }
   const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = 'SHOPEE'`);
   const marketplaceId = mp[0]?.id;
-  if (!marketplaceId) return false;
+  if (!marketplaceId) { console.warn('[api/embalagem] liveLookupNewShopeeOrder: marketplace SHOPEE não cadastrado'); return false; }
 
   const sinceISO = new Date(Date.now() - 6 * 3600 * 1000).toISOString(); // 6h — cobre a corrida de "etiqueta impressa antes de sincronizar"
   for (const store of stores) {
     let client;
     try { client = await getShopeeClientForStore(pool, store.id, env.shopee); }
-    catch (e) { continue; }
+    catch (e) { console.warn(`[api/embalagem] client Shopee ao vivo falhou loja ${store.id}: ${e.message}`); continue; }
     let recentes;
     try { recentes = await client.listRecentOrders(sinceISO); }
     catch (e) { console.warn(`[api/embalagem] listRecentOrders ao vivo falhou loja ${store.id}: ${e.message}`); continue; }
+    console.log(`[api/embalagem] busca ao vivo (loja ${store.id}): ${recentes.length} pedido(s) recente(s), testando tracking de cada um contra "${tracking}"`);
 
     for (const ro of recentes) {
       const orderSn = ro.order_sn;
       if (!orderSn) continue;
       let tn;
-      try { tn = await client.getTrackingNumber(orderSn); } catch (e) { continue; }
+      try { tn = await client.getTrackingNumber(orderSn); } catch (e) { console.warn(`[api/embalagem] getTrackingNumber ao vivo falhou ${orderSn}: ${e.message}`); continue; }
       if (tn !== tracking) continue;
 
       // Achou — busca o detalhe completo e grava o mínimo pra aparecer na Embalagem.

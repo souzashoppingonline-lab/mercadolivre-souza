@@ -12,6 +12,7 @@ const fs = require('fs');
 const pool = require('../db/pool');
 const env = require('../config/env');
 const { getShopeeClientForStore } = require('../marketplaces/shopee/shopeeClient');
+const { mapShopeeStatus } = require('../marketplaceEventWorker');
 const { generateLabelPDF } = require('../thermal/pdfLabel');
 const ml = require('../mlClient');
 const { packageDimsFromItem } = require('../mlDims');
@@ -200,6 +201,67 @@ async function refreshShopeeTrackingOnDemand(tracking) {
     } catch (e) { /* ignora e tenta o próximo pedido */ }
   }
   return found;
+}
+
+// Segundo nível de fallback — só entra em ação quando refreshShopeeTrackingOnDemand
+// não achou nada, porque o pedido nem tem linha em orders/shopee_order_data ainda
+// (etiqueta impressa pela Shopee quase no mesmo instante do bipe, antes do
+// webhook/polling sincronizar — causa real investigada em 08-12/09/2026, ver
+// .claude/known-bugs.md). Busca a lista de pedidos AO VIVO na API da Shopee
+// (mesma listRecentOrders do polling), não depende de já existir linha local,
+// testa o rastreio de cada um e, se achar o bipado, grava um upsert mínimo em
+// orders/shopee_order_data pra lookupShopeeByTracking() achar na sequência.
+// O sync completo (escrow/logistics/Telegram/ranking) continua acontecendo
+// depois, no próximo ciclo normal do worker — aqui só o essencial pra
+// desbloquear o bipe na hora.
+async function liveLookupNewShopeeOrder(tracking) {
+  const { rows: stores } = await pool.query(
+    `SELECT id FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'SHOPEE')`
+  );
+  if (!stores.length) return false;
+  const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = 'SHOPEE'`);
+  const marketplaceId = mp[0]?.id;
+  if (!marketplaceId) return false;
+
+  const sinceISO = new Date(Date.now() - 6 * 3600 * 1000).toISOString(); // 6h — cobre a corrida de "etiqueta impressa antes de sincronizar"
+  for (const store of stores) {
+    let client;
+    try { client = await getShopeeClientForStore(pool, store.id, env.shopee); }
+    catch (e) { continue; }
+    let recentes;
+    try { recentes = await client.listRecentOrders(sinceISO); }
+    catch (e) { console.warn(`[api/embalagem] listRecentOrders ao vivo falhou loja ${store.id}: ${e.message}`); continue; }
+
+    for (const ro of recentes) {
+      const orderSn = ro.order_sn;
+      if (!orderSn) continue;
+      let tn;
+      try { tn = await client.getTrackingNumber(orderSn); } catch (e) { continue; }
+      if (tn !== tracking) continue;
+
+      // Achou — busca o detalhe completo e grava o mínimo pra aparecer na Embalagem.
+      let o;
+      try { o = await client.getOrder(orderSn); } catch (e) { console.warn(`[api/embalagem] getOrder ao vivo falhou ${orderSn}: ${e.message}`); return false; }
+      if (!o?.order_sn) return false;
+      const status = mapShopeeStatus(o.order_status);
+      await pool.query(
+        `INSERT INTO orders (ml_id, marketplace_id, store_id, total_amount, status, date_created, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6, now())
+         ON CONFLICT (ml_id) DO UPDATE SET status = EXCLUDED.status, updated_at = now()`,
+        [o.order_sn, marketplaceId, store.id, Number(o.total_amount || 0), status, o.create_time ? new Date(o.create_time * 1000) : null]
+      );
+      await pool.query(
+        `INSERT INTO shopee_order_data (order_id, order_sn, shop_id, order_status, raw_data, tracking_number, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6, now())
+         ON CONFLICT (order_id) DO UPDATE SET
+           order_status = EXCLUDED.order_status, raw_data = EXCLUDED.raw_data,
+           tracking_number = COALESCE(EXCLUDED.tracking_number, shopee_order_data.tracking_number), updated_at = now()`,
+        [o.order_sn, o.order_sn, client.cfg?.shopId || null, o.order_status || null, JSON.stringify(o), tn]
+      );
+      return true;
+    }
+  }
+  return false;
 }
 
 // Helper para extrair foto da variação de um pedido ML — se houver variation_name
@@ -447,6 +509,18 @@ router.get('/pedido/:shippingId', async (req, res) => {
         if (achou) shopeeOrders = await lookupShopeeByTracking(codigo);
       } catch (e) {
         console.error('[api/embalagem] auto-busca rastreio Shopee falhou:', e.message);
+      }
+    }
+    // 2º nível: o pedido pode nem ter linha local ainda (etiqueta impressa
+    // quase no mesmo instante do bipe, antes do webhook/polling sincronizar).
+    // Busca AO VIVO na lista de pedidos recentes da Shopee (não depende de já
+    // existir localmente) — ver liveLookupNewShopeeOrder acima.
+    if (!shopeeOrders.length && !/^\d+$/.test(codigo)) {
+      try {
+        const achouAoVivo = await liveLookupNewShopeeOrder(codigo);
+        if (achouAoVivo) shopeeOrders = await lookupShopeeByTracking(codigo);
+      } catch (e) {
+        console.error('[api/embalagem] busca ao vivo (pedido novo) Shopee falhou:', e.message);
       }
     }
     if (shopeeOrders.length) {

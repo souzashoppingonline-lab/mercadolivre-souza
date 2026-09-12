@@ -233,9 +233,22 @@ async function liveLookupNewShopeeOrder(tracking) {
     let client;
     try { client = await getShopeeClientForStore(pool, store.id, env.shopee); }
     catch (e) { console.warn(`[api/embalagem] client Shopee ao vivo falhou loja ${store.id}: ${e.message}`); continue; }
-    let recentes;
-    try { recentes = await client.listRecentOrders(sinceISO); }
-    catch (e) { console.warn(`[api/embalagem] listRecentOrders ao vivo falhou loja ${store.id}: ${e.message}`); continue; }
+    // Consulta por create_time E update_time e mescla (dedupe por order_sn) —
+    // um pedido recém-criado pode não contar como "atualizado" pro filtro
+    // update_time (que o polling normal usa), então não dá pra confiar só
+    // nele aqui. Caso real investigado 12/09/2026: getOrder direto achava o
+    // pedido, mas listRecentOrders('update_time') não trazia — ver known-bugs.md.
+    let recentes = [];
+    try {
+      const [porCreate, porUpdate] = await Promise.all([
+        client.listRecentOrders(sinceISO, 'create_time'),
+        client.listRecentOrders(sinceISO, 'update_time'),
+      ]);
+      const vistos = new Set();
+      for (const ro of [...porCreate, ...porUpdate]) {
+        if (ro.order_sn && !vistos.has(ro.order_sn)) { vistos.add(ro.order_sn); recentes.push(ro); }
+      }
+    } catch (e) { console.warn(`[api/embalagem] listRecentOrders ao vivo falhou loja ${store.id}: ${e.message}`); continue; }
     console.log(`[api/embalagem] busca ao vivo (loja ${store.id}): ${recentes.length} pedido(s) recente(s) [${recentes.map(r => r.order_sn).join(', ')}], testando tracking de cada um contra "${tracking}"`);
 
     for (const ro of recentes) {

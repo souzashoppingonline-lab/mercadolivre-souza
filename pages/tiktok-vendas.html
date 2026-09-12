@@ -175,8 +175,12 @@ async function loadAll() {
   set('kPedidos', N(r.pedidos)); set('kPedidosHoje', 'Hoje: ' + N(r.pedidos_hoje));
   set('kTicket', R(r.ticket_medio));
   set('kCancelados', N(r.cancelados));
-  drawDia(d.por_dia || []);
-  drawStatus(d.por_status || []);
+  // Cada gráfico embrulhado no próprio try/catch: se o Chart.js não carregar
+  // (CDN indisponível/bloqueada, ad-blocker), os KPIs e a tabela de pedidos
+  // abaixo — dados independentes dos gráficos — continuam carregando normal,
+  // em vez de travar tudo com uma exceção não tratada.
+  try { drawDia(d.por_dia || []); } catch (e) { console.error('drawDia falhou:', e); }
+  try { drawStatus(d.por_status || []); } catch (e) { console.error('drawStatus falhou:', e); }
   await loadPedidos();
 }
 

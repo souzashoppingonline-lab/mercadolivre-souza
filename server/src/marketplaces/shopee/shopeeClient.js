@@ -194,7 +194,13 @@ class ShopeeClient extends MarketplaceClient {
   }
 
   // sinceISODate: ISO 8601 — filtra por update_time (equivalente ao dateFrom do ml.searchOrders).
-  async listRecentOrders(sinceISODate) {
+  // timeRangeField: 'update_time' (default, usado pelo polling — pega
+  // qualquer pedido que MUDOU no período, é o certo pra sync incremental) ou
+  // 'create_time' (usado pelo fallback ao vivo da Embalagem — um pedido
+  // recém-criado pode não aparecer filtrando por update_time se a Shopee não
+  // considerar a criação em si uma "atualização" pra esse campo; ver
+  // .claude/embalagem.md, caso investigado em 12/09/2026).
+  async listRecentOrders(sinceISODate, timeRangeField = 'update_time') {
     this._assertConfigured();
     const timeFrom = Math.floor(new Date(sinceISODate).getTime() / 1000);
     const timeTo = nowSeconds();
@@ -203,7 +209,7 @@ class ShopeeClient extends MarketplaceClient {
     const list = await this._call('/api/v2/order/get_order_list', {
       method: 'GET',
       query: {
-        time_range_field: 'update_time',
+        time_range_field: timeRangeField,
         time_from: timeFrom,
         time_to: timeTo,
         page_size: 50,

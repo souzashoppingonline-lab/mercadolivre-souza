@@ -723,8 +723,12 @@ router.get('/precificador', async (req, res) => {
         item_sku: it.item_sku, has_model: it.has_model, variation_count: it.variation_count,
         variacoes: models.map((m) => {
           const cost = costMap.has(`${it.item_id}::${Number(m.model_id || 0)}`) ? costMap.get(`${it.item_id}::${Number(m.model_id || 0)}`) : null;
+          // Mesma regra do modal (/precificador/simular): 0/ausente = catálogo
+          // ainda não sincronizou o preço, não é um preço real de R$0,00.
+          const currentPrice = (m.current_price != null && Number(m.current_price) > 0)
+            ? Number(m.current_price) : null;
           const descontos = { flashSaleDiscount: promoPct, storeCouponDiscount: cupomLojaPct, productCouponDiscount: cupomProdutoPct };
-          const calc = calculateShopeePricing({ cost, currentPrice: m.current_price, targetMargin: margem, taxRate: impostoPct, ...descontos });
+          const calc = calculateShopeePricing({ cost, currentPrice, targetMargin: margem, taxRate: impostoPct, ...descontos });
           // Faixa forçada manualmente (spec do usuário: "clico numa faixa da
           // tabela e quero saber o preço pra vender nela") substitui o preço
           // ideal automático só nesse caso — withinTier=false avisa quando o
@@ -732,7 +736,7 @@ router.get('/precificador', async (req, res) => {
           const forcado = faixaEscolhida ? priceForTier(faixaEscolhida, { cost, targetMargin: margem, taxRate: impostoPct, ...descontos }) : null;
           return {
             model_id: m.model_id || 0, model_name: m.model_name, model_sku: m.model_sku,
-            cost, current_price: m.current_price ?? null,
+            cost, current_price: currentPrice, current_price_sincronizado: currentPrice != null,
             suggested_price: forcado ? forcado.price : calc.idealPrice,
             suggested_price_within_tier: forcado ? forcado.withinTier : true,
             current_margin: calc.margin,
@@ -787,6 +791,14 @@ router.get('/precificador/simular', async (req, res) => {
     );
     const cost = costRows.length ? Number(costRows[0].cost) : null; // spec seção 28: não assumir custo zero
 
+    // Preço atual 0/ausente = catálogo ainda não sincronizou o preço desse
+    // anúncio — NÃO é um preço real de R$0,00 (Shopee não vende de graça).
+    // Bug real visto em produção: tratar 0 como preço válido fazia a
+    // simulação inteira zerar (comissão/margem/lucro tudo "—" ou R$0,00),
+    // parecendo quebrado em vez de "sem dado ainda".
+    const currentPrice = (modelo.current_price != null && Number(modelo.current_price) > 0)
+      ? Number(modelo.current_price) : null;
+
     const margem = Number(req.query.margem) || 0;
     const imposto = Number(req.query.imposto) || 0;
     const flashSaleDiscount = Number(req.query.promo) || 0;
@@ -794,7 +806,7 @@ router.get('/precificador/simular', async (req, res) => {
     const productCouponDiscount = Number(req.query.cupom_produto) || 0;
 
     const calc = calculateShopeePricing({
-      cost, currentPrice: modelo.current_price, targetMargin: margem, taxRate: imposto,
+      cost, currentPrice, targetMargin: margem, taxRate: imposto,
       flashSaleDiscount, storeCouponDiscount, productCouponDiscount,
     });
     // Margem/lucro no preço IDEAL (não só no atual) — spec seções 11/12 pedem os dois.
@@ -806,8 +818,18 @@ router.get('/precificador/simular', async (req, res) => {
       item_id: it.item_id, title: it.title, thumbnail: it.thumbnail, conta: it.conta,
       model_id: modelId, model_name: modelo.model_name, model_sku: modelo.model_sku || it.item_sku,
       cost, cost_origem: cost != null ? 'Custo cadastrado nesta variação' : null,
-      current_price: modelo.current_price ?? null,
+      current_price: currentPrice,
+      current_price_sincronizado: currentPrice != null,
+      // margin/profit de `calc` JÁ são "com todos os descontos informados"
+      // (promo+cupom loja+cupom produto) aplicados sobre o preço ATUAL — é
+      // a margem de contribuição real que sobra depois de tudo.
       ...calc,
+      // `calc.currentPrice` (camelCase) sempre vem de calculateShopeePricing,
+      // que devolve toReais(toCents(null)) = 0 mesmo sem preço válido — o
+      // frontend lê justamente essa chave (d.currentPrice) no modal, então
+      // sem essa sobrescrita ele voltava a mostrar "R$ 0,00" em vez de "—"
+      // mesmo depois do fix acima. Precisa vir DEPOIS do spread de `calc`.
+      currentPrice: currentPrice,
       margin_no_ideal: calcNoIdeal?.margin ?? null,
       profit_no_ideal: calcNoIdeal?.profit ?? null,
       tiers: SHOPEE_PRICING_TIERS,

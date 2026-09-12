@@ -1283,7 +1283,7 @@ router.get('/schedule/jobs', async (req, res) => {
 
 router.post('/schedule/jobs/:name/trigger', async (req, res) => {
   const { name } = req.params;
-  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal','checkOutlierEstatistico','checkTaxaDevolucaoAlta','syncShippingStatus','syncClaimsStatus','finance-reconciliation'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
+  if (!['dailySync','syncVendas','syncMetricas','syncReturns','syncParentItems','syncVisitas','syncPrecos','syncScores','syncNotionTarefas','syncTopVendas','emailDailyReports','emailRelatorioSemanal','checkOutlierEstatistico','checkTaxaDevolucaoAlta','syncShippingStatus','syncClaimsStatus','finance-reconciliation','syncShopeeCatalog'].includes(name)) return res.status(400).json({ error: 'job desconhecido' });
   await redis.publish('worker:cmd', JSON.stringify({ cmd: name }));
   res.json({ ok: true, message: 'comando enviado ao worker' });
 });

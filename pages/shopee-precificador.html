@@ -137,6 +137,8 @@
         <select id="pLoja" onchange="recarregar()"><option value="">Todas as lojas</option></select>
         <input type="text" id="pBusca" placeholder="Buscar título ou ID..." style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')recarregar()">
         <button class="action-btn" onclick="recarregar()"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+        <button class="action-btn" id="btnAtualizarAnuncios" onclick="atualizarAnuncios()" title="Força a sincronização do catálogo Shopee agora, sem esperar o ciclo automático de 30min — use quando editar um anúncio na Shopee e ele não aparecer/atualizar aqui">
+          <i class="fas fa-rotate"></i> Atualizar anúncios</button>
       </div>
 
       <div class="topbar-actions">
@@ -312,6 +314,36 @@ function rowVar(it, v) {
   </tr>`;
 }
 
+// "Atualizar anúncios" — dispara agora a mesma sincronização de catálogo que
+// já roda sozinha a cada 30min (worker `syncShopeeCatalog`), pra anúncios
+// editados na Shopee (preço/variação/anúncio novo) aparecerem aqui sem
+// esperar o próximo ciclo. Só publica o comando (worker:cmd) e recarrega a
+// lista depois de um tempo — a sincronização em si roda no processo worker,
+// não no request HTTP (arquitetura EDA: rota nunca chama a API da Shopee
+// direto pra leitura de listagem).
+async function atualizarAnuncios() {
+  const btn = document.getElementById('btnAtualizarAnuncios');
+  const msg = document.getElementById('prMsg');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
+  const res = await DB.triggerJob('syncShopeeCatalog');
+  if (res?.error) {
+    msg.textContent = 'Erro ao pedir atualização: ' + res.error; msg.style.color = 'var(--red)';
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate"></i> Atualizar anúncios';
+    return;
+  }
+  msg.textContent = 'Sincronizando catálogo com a Shopee... a lista recarrega sozinha em instantes.';
+  msg.style.color = 'var(--text-muted)';
+  // Sincronização é assíncrona no worker (1 request por anúncio pra Shopee,
+  // com throttling) — não dá pra saber quando termina daqui. Recarrega a
+  // lista uma vez depois de um tempo razoável; se ainda faltar algo, o botão
+  // já está reabilitado pra clicar de novo.
+  setTimeout(() => { load(); }, 20000);
+  setTimeout(() => {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate"></i> Atualizar anúncios';
+  }, 5000);
+}
+
 async function salvarCusto(itemId, modelId, cost) {
   await DB.salvarShopeeCusto(itemId, modelId, cost === '' ? 0 : Number(cost));
   load(); // recalcula o ideal com o novo custo
@@ -407,27 +439,38 @@ function renderModal(d) {
   document.getElementById('prmPrecoAtual').textContent = R(d.currentPrice);
   document.getElementById('prmPrecoIdeal').textContent = d.idealPrice != null ? R(d.idealPrice) : '—';
 
-  const precoAtual = Number(d.currentPrice) || 0;
+  // d.currentPrice null = catálogo ainda não sincronizou o preço deste
+  // anúncio (não é um preço real de R$0,00 — Shopee não vende de graça).
+  // Antes este bloco fazia `Number(d.currentPrice) || 0`, que mascarava o
+  // null e zerava a simulação inteira (bug relatado: "preço após descontos
+  // R$0,00" mesmo com custo/preço ideal calculados normalmente).
+  const semPrecoAtual = d.currentPrice == null;
+  const precoAtual = semPrecoAtual ? null : Number(d.currentPrice);
   const promo = Number(document.getElementById('prmPromo').value) || 0;
   const cLoja = Number(document.getElementById('prmCupomLoja').value) || 0;
   const cProd = Number(document.getElementById('prmCupomProduto').value) || 0;
-  const posDesconto = precoAtual * (1-promo/100) * (1-cLoja/100) * (1-cProd/100);
-  const comissaoValor = d.commissionRate != null ? posDesconto * d.commissionRate/100 : null;
-  const impostoValor = posDesconto * (Number(document.getElementById('pImposto').value)||0)/100;
+  const posDesconto = semPrecoAtual ? null : precoAtual * (1-promo/100) * (1-cLoja/100) * (1-cProd/100);
+  const comissaoValor = (!semPrecoAtual && d.commissionRate != null) ? posDesconto * d.commissionRate/100 : null;
+  const impostoValor = semPrecoAtual ? null : posDesconto * (Number(document.getElementById('pImposto').value)||0)/100;
+
+  const avisoSemPreco = semPrecoAtual
+    ? `<tr><td colspan="2" style="color:var(--text-muted);font-size:11px;padding-top:6px">⚠ Preço atual ainda não sincronizado com a Shopee — aguarde a próxima sincronização do catálogo para calcular a margem no preço atual. A margem no <b>preço ideal</b> abaixo já pode ser usada.</td></tr>`
+    : '';
 
   document.getElementById('prmSimTable').innerHTML = `
-    <tr><td>Preço anunciado</td><td class="num">${R(precoAtual)}</td></tr>
+    <tr><td>Preço anunciado</td><td class="num">${semPrecoAtual?'—':R(precoAtual)}</td></tr>
     <tr><td>Promoção relâmpago</td><td class="num">${promo?'-'+PCT(promo):'—'}</td></tr>
     <tr><td>Cupom da loja</td><td class="num">${cLoja?'-'+PCT(cLoja):'—'}</td></tr>
     <tr><td>Cupom do produto</td><td class="num">${cProd?'-'+PCT(cProd):'—'}</td></tr>
-    <tr><td>Preço após descontos</td><td class="num">${R(posDesconto)}</td></tr>
+    <tr><td>Preço após descontos</td><td class="num">${semPrecoAtual?'—':R(posDesconto)}</td></tr>
     <tr><td>Comissão Shopee (${d.commissionRate ?? '—'}%)</td><td class="num">${comissaoValor!=null?'-'+R(comissaoValor):'—'}</td></tr>
     <tr><td>Taxa fixa</td><td class="num">${d.fixedFee!=null?'-'+R(d.fixedFee):'—'}</td></tr>
-    <tr><td>Imposto</td><td class="num">${'-'+R(impostoValor)}</td></tr>
+    <tr><td>Imposto</td><td class="num">${impostoValor!=null?'-'+R(impostoValor):'—'}</td></tr>
     <tr><td>Subsídio Pix (${d.pixSubsidy ?? 0}% — não aplicado no cálculo)</td><td class="num">—</td></tr>
     <tr><td>Custo do produto</td><td class="num">${d.cost!=null?'-'+R(d.cost):'—'}</td></tr>
     <tr class="destaque"><td>Lucro</td><td class="num">${R(d.profit)}</td></tr>
-    <tr class="destaque"><td>Margem</td><td class="num">${PCT(d.margin)}</td></tr>
+    <tr class="destaque"><td>Margem de contribuição (com todos os descontos)</td><td class="num">${PCT(d.margin)}</td></tr>
+    ${avisoSemPreco}
   `;
 
   const margemDesejada = Number(document.getElementById('pMargem').value) || 0;
@@ -446,7 +489,7 @@ function setMargemBadge(elId, margin, alvo) {
   const el = document.getElementById(elId);
   if (margin == null) { el.textContent = ''; return; }
   if (margin >= alvo) { el.textContent = 'MARGEM DENTRO DA META'; el.className = 'prm-margem-badge ok'; }
-  else { el.textContent = 'MARGEM ABAIXO DA META'; el.className = 'prm-margem-badge abaixo'; }
+  else { el.textContent = 'MARGEM DO ANÚNCIO APÓS CUPOM'; el.className = 'prm-margem-badge abaixo'; }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

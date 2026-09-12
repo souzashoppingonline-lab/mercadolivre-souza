@@ -3301,6 +3301,13 @@ cmdSub.on('message', (channel, msg) => {
       console.log('[worker] syncScores disparado manualmente');
       syncScores().catch(e => console.error('[worker] syncScores erro:', e.message));
     }
+    if (cmd === 'sync-shopee-catalog' || cmd === 'syncShopeeCatalog') {
+      // Botão "Atualizar anúncios" do Precificador Shopee — força a mesma
+      // sincronização que já roda sozinha a cada 30min (SHOPEE_CATALOG_INTERVAL_MS),
+      // pra anúncios recém-editados aparecerem sem esperar o próximo ciclo.
+      console.log('[worker] syncShopeeCatalog disparado manualmente');
+      marketplaceEventWorker.syncShopeeCatalog().catch(e => console.error('[worker] syncShopeeCatalog erro:', e.message));
+    }
     if (cmd === 'sync-seo-score' || cmd === 'syncSeoScore') {
       console.log('[worker] syncSeoScore disparado manualmente');
       syncSeoScore().catch(e => console.error('[worker] syncSeoScore erro:', e.message));
@@ -3539,4 +3546,5 @@ console.log('[worker] listening for ml-webhooks jobs...');
 
 // Marketplace Engine — consumo de eventos de outros marketplaces (Amazon hoje),
 // totalmente à parte do dispatch table ML acima. Ver .claude/decisions.md.
-require('./marketplaceEventWorker').startMarketplaceEventWorkers();
+const marketplaceEventWorker = require('./marketplaceEventWorker');
+marketplaceEventWorker.startMarketplaceEventWorkers();

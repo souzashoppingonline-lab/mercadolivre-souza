@@ -3001,6 +3001,12 @@ async function checkShopeeCampanhasVencendo() {
             `UPDATE shopee_promotions SET expiry_alert_min_days = $4 WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`,
             [p.tipo, p.promo_id, p.store_id, dias]
           );
+          // Agenda Trello (v97) — Regra 5: reaproveita o MESMO cálculo de dias
+          // restantes que já dispara Telegram/e-mail, só transformando em cartão.
+          const vencTask = await taskEngine.checkPromoVencendo({
+            tipo: p.tipo, promoId: p.promo_id, nome: p.name, storeId: p.store_id, storeName: p.conta, diasRestantes: dias, vencida: false,
+          });
+          if (vencTask?.created) await publish('task_created', { id: vencTask.id, rule_key: 'promocao_vencendo_shopee', title: `Promoção vencendo em ${dias}d: ${p.name || p.promo_id}` });
         }
       } else if (expiredDateStr !== hojeStr) {
         // Vencida (dias <= 0) — no máximo 1 alerta por dia de calendário.
@@ -3009,6 +3015,10 @@ async function checkShopeeCampanhasVencendo() {
           `UPDATE shopee_promotions SET expiry_alert_expired_date = $4 WHERE tipo=$1 AND promo_id=$2 AND store_id=$3`,
           [p.tipo, p.promo_id, p.store_id, hojeStr]
         );
+        const vencTask = await taskEngine.checkPromoVencendo({
+          tipo: p.tipo, promoId: p.promo_id, nome: p.name, storeId: p.store_id, storeName: p.conta, diasRestantes: dias, vencida: true,
+        });
+        if (vencTask?.created) await publish('task_created', { id: vencTask.id, rule_key: 'promocao_vencendo_shopee', title: `Promoção vencida: ${p.name || p.promo_id}` });
       }
     }
 

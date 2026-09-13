@@ -16,6 +16,12 @@
     .shp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:12px; padding:16px 18px; }
     .shp-kpi .lbl { font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
     .shp-kpi .val { font-size:26px; font-weight:800; line-height:1.1; }
+    /* KPIs que filtram a lista ao clicar (Ativas/Agendadas/Expiradas) —
+       pedido do usuário: "campanhas expiradas só aparecem quando
+       selecionado no card". */
+    .shp-kpi.filtro { cursor:pointer; transition:border-color .15s, background .15s; }
+    .shp-kpi.filtro:hover { border-color:var(--shopee); }
+    .shp-kpi.filtro.selecionado { background:rgba(238,77,45,.08); border-color:var(--shopee); }
     .promo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
     .promo-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:border-color .15s; }
     .promo-card:hover { border-color:var(--shopee); }
@@ -70,14 +76,15 @@
         <label style="font-size:12px;color:var(--text-muted);margin-left:8px"><i class="fas fa-tag"></i> Tipo</label>
         <select id="prTipo" onchange="load()"><option value="">Todos</option><option value="discount">Descontos</option><option value="voucher">Vouchers</option></select>
         <label style="font-size:12px;color:var(--text-muted);margin-left:8px">Status</label>
-        <select id="prStatus" onchange="render()"><option value="">Todos</option><option value="ongoing">Ativas</option><option value="upcoming">Agendadas</option><option value="expired">Expiradas</option></select>
+        <select id="prStatus" onchange="render()"><option value="ongoing" selected>Ativas</option><option value="upcoming">Agendadas</option><option value="expired">Expiradas</option><option value="">Todos</option></select>
         <button class="action-btn" onclick="load()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
       </div>
 
       <div class="shp-kpis">
-        <div class="shp-kpi"><div class="lbl"><i class="fas fa-bolt"></i> Ativas</div><div class="val" id="kAtivas">—</div></div>
-        <div class="shp-kpi"><div class="lbl"><i class="fas fa-clock"></i> Agendadas</div><div class="val" id="kAgendadas">—</div></div>
+        <div class="shp-kpi filtro" data-status="ongoing" onclick="filtrarPorCard('ongoing')"><div class="lbl"><i class="fas fa-bolt"></i> Ativas</div><div class="val" id="kAtivas">—</div></div>
+        <div class="shp-kpi filtro" data-status="upcoming" onclick="filtrarPorCard('upcoming')"><div class="lbl"><i class="fas fa-clock"></i> Agendadas</div><div class="val" id="kAgendadas">—</div></div>
         <div class="shp-kpi"><div class="lbl"><i class="fas fa-hourglass-end"></i> Vencendo em 24h</div><div class="val" id="kVencendo" style="color:var(--shopee)">—</div></div>
+        <div class="shp-kpi filtro" data-status="expired" onclick="filtrarPorCard('expired')"><div class="lbl"><i class="fas fa-box-archive"></i> Expiradas</div><div class="val" id="kExpiradas">—</div></div>
       </div>
 
       <div class="promo-grid" id="promoGrid"><div class="empty-state" style="grid-column:1/-1;padding:30px"><div class="spinner" style="margin:auto"></div></div></div>
@@ -131,14 +138,24 @@ async function load() {
   const d = await DB.getShopeePromocoes({ store_id, tipo });
   if (!d || d.error) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</div>`; return; }
   const r = d.resumo || {};
-  set('kAtivas', r.ativas ?? 0); set('kAgendadas', r.agendadas ?? 0); set('kVencendo', r.vencendo_24h ?? 0);
+  set('kAtivas', r.ativas ?? 0); set('kAgendadas', r.agendadas ?? 0); set('kVencendo', r.vencendo_24h ?? 0); set('kExpiradas', r.expiradas ?? 0);
   _promos = d.rows || [];
+  render();
+}
+
+// Cards "Ativas"/"Agendadas"/"Expiradas" funcionam como atalho do mesmo
+// filtro de Status do topo — clicar sincroniza o <select> e realça o card
+// selecionado. Pedido do usuário: campanhas expiradas só aparecem quando
+// esse card é clicado (nunca aparecem sozinhas ao abrir a tela).
+function filtrarPorCard(status) {
+  document.getElementById('prStatus').value = status;
   render();
 }
 
 function render() {
   const grid = document.getElementById('promoGrid');
   const fStatus = document.getElementById('prStatus').value;
+  document.querySelectorAll('.shp-kpi.filtro').forEach(el => el.classList.toggle('selecionado', el.dataset.status === fStatus));
   const list = _promos.filter(p => !fStatus || p.status === fStatus);
   grid.innerHTML = list.length ? list.map(p => {
     const cd = countdown(p.end_ms);

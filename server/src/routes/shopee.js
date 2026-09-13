@@ -511,19 +511,77 @@ router.get('/problemas', async (req, res) => {
          AND (sod.logistics_status IS NULL OR sod.logistics_status NOT IN
               ('LOGISTICS_DELIVERY_DONE','LOGISTICS_REQUEST_DONE','LOGISTICS_PICKUP_DONE'))${fltO}
        ORDER BY o.date_created ASC LIMIT 50`, P);
-    // Reclamações = devoluções abertas (status ainda em andamento)
+    // Reclamações = devoluções abertas (status ainda em andamento).
+    // `shopee_returns` não tem marketplace_id (tabela é só Shopee) — usa só
+    // storeId em $1, não o array `P` de 2 posições (mpId, storeId) usado nas
+    // queries de items/orders acima. Bug real de produção: passar `P` aqui
+    // mas só referenciar `$2` no texto (nunca `$1`) fazia o Postgres falhar
+    // com "could not determine data type of parameter $1" — o driver `pg`
+    // não consegue inferir o tipo de um parâmetro que nunca aparece na query.
     const reclamacoes = await pool.query(
       `SELECT order_sn AS pedido, item_name, refund_amount AS valor, status, text_reason
        FROM shopee_returns
-       WHERE ($2 = '' OR store_id = $2::bigint) AND status NOT IN ('CANCELLED','CLOSED')
-       ORDER BY create_time DESC LIMIT 50`, P);
+       WHERE ($1 = '' OR store_id = $1::bigint) AND status NOT IN ('CANCELLED','CLOSED')
+       ORDER BY create_time DESC LIMIT 50`, [storeId]);
     // Reembolsos = devoluções dos últimos 30 dias (com valor de reembolso)
     const reembolsos = await pool.query(
       `SELECT order_sn AS pedido, item_name, refund_amount AS valor, status
        FROM shopee_returns
-       WHERE ($2 = '' OR store_id = $2::bigint)
+       WHERE ($1 = '' OR store_id = $1::bigint)
          AND create_time > extract(epoch from now()) - 30*86400
-       ORDER BY create_time DESC LIMIT 50`, P);
+       ORDER BY create_time DESC LIMIT 50`, [storeId]);
+
+    // Anúncio (ampliação pedida pelo usuário) — Score de Qualidade ruim.
+    // Mesmo motor puro de pages/shopee-score.html (scoreItem, sem chamar a
+    // Shopee de novo — calcula em cima do `raw` já sincronizado).
+    const scoreBase = await pool.query(
+      `SELECT i.ml_id AS item_id, i.title, i.available_quantity, sid.has_model, sid.variation_count, sid.raw
+       FROM items i JOIN shopee_item_data sid ON sid.item_id = i.ml_id
+       WHERE i.marketplace_id = $1 AND i.status = 'active'${flt}`, P);
+    const scoreRuim = scoreBase.rows
+      .map((r) => {
+        const s = scoreItem(r.raw || {}, { title: r.title, available_quantity: r.available_quantity }, { has_model: r.has_model, variation_count: r.variation_count });
+        return { item_id: r.item_id, title: r.title, score: s.score, nivel: s.nivel, resumo: s.resumo };
+      })
+      .filter((r) => r.nivel === 'ruim')
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 50);
+
+    // Cupons/Desconto (ampliação pedida) — vencendo em <24h, mesma janela do
+    // alerta Telegram/e-mail (checkShopeeCampanhasVencendo, worker.js) mas
+    // recalculado na hora pra tela, sem esperar o job diário.
+    const nowS = Math.floor(Date.now() / 1000);
+    const promoRows = await pool.query(
+      `SELECT tipo, promo_id, name, code, end_time FROM shopee_promotions
+       WHERE ($1 = '' OR store_id = $1::bigint)`, [storeId]);
+    const vencendo24h = (tipo) => promoRows.rows
+      .filter((p) => p.tipo === tipo && Number(p.end_time) > nowS && (Number(p.end_time) - nowS) < 24 * 3600)
+      .map((p) => ({ item_id: p.promo_id, title: p.name, code: p.code }));
+    const cuponsVencendo = vencendo24h('voucher');
+    const descontosVencendo = vencendo24h('discount');
+
+    // Gestão de chat (ampliação pedida) — conversas com mensagem não lida.
+    const chatSemResposta = await pool.query(
+      `SELECT conversation_id AS item_id, buyer_name AS title, unread_count
+       FROM shopee_chat WHERE ($1 = '' OR store_id = $1::bigint) AND unread_count > 0
+       ORDER BY last_message_time DESC NULLS LAST LIMIT 50`, [storeId]);
+
+    // Perfil da loja / Plataforma (ampliação pedida) — não existe hoje uma
+    // API de "saúde da conta"/penalidades da Shopee integrada neste projeto
+    // (ver nota_indisponiveis abaixo); o que já temos e é genuinamente
+    // "problema de plataforma" é o TOKEN da integração — sem ele a loja para
+    // de sincronizar tudo (pedidos, catálogo, chat, promoções). Limiar é
+    // "já expirou" (< now()), não "vai expirar em breve": o token de acesso
+    // da Shopee dura só ~4h e é renovado sozinho com 10min de margem
+    // (ShopeePollingEventSource._ensureValidToken) — numa loja saudável ele
+    // SEMPRE está a poucas horas de expirar, então "expira em <48h" daria
+    // falso positivo o tempo todo. Só é problema de verdade se passou da
+    // hora (renovação parou de funcionar) — inclui os tokens "epoch zero"
+    // (ano 2000, ver known-bugs.md/workers.md) que nunca renovam sozinhos.
+    const lojaToken = await pool.query(
+      `SELECT id AS item_id, nickname AS title, token_expires_at
+       FROM stores WHERE marketplace_id = $1 AND ($2 = '' OR id = $2::bigint)
+         AND (token_expires_at IS NULL OR token_expires_at < now())`, P);
 
     const list = (r) => r.rows;
     res.json({
@@ -532,12 +590,24 @@ router.get('/problemas', async (req, res) => {
         anuncios_pausados: { total: pausados.rowCount, itens: list(pausados), acao: 'Reativar se for pra vender' },
         sem_estoque:       { total: semEstoque.rowCount, itens: list(semEstoque), acao: 'Repor estoque' },
         sem_imagem:        { total: semImagem.rowCount, itens: list(semImagem), acao: 'Adicionar foto' },
+        score_baixo:       { total: scoreRuim.length, itens: scoreRuim, acao: 'Melhorar título/fotos/descrição/atributos (Score de Qualidade)' },
         pedidos_cancelados:{ total: cancelados.rowCount, itens: list(cancelados), acao: 'Investigar motivo (30 dias)' },
         reclamacoes:       { total: reclamacoes.rowCount, itens: list(reclamacoes), acao: 'Responder/resolver a devolução' },
         reembolsos:        { total: reembolsos.rowCount, itens: list(reembolsos), acao: 'Reembolsos nos últimos 30 dias' },
+        cupons_vencendo:   { total: cuponsVencendo.length, itens: cuponsVencendo, acao: 'Renovar ou deixar vencer o cupom' },
+        descontos_vencendo:{ total: descontosVencendo.length, itens: descontosVencendo, acao: 'Renovar ou deixar vencer a campanha' },
+        chat_sem_resposta: { total: chatSemResposta.rowCount, itens: list(chatSemResposta), acao: 'Responder o comprador' },
+        loja_token:        { total: lojaToken.rowCount, itens: list(lojaToken), acao: 'Reconectar a loja em Configurações → Shopee' },
       },
-      indisponiveis: [],
-      nota_indisponiveis: 'Devoluções/reembolsos vêm da Returns API da Shopee (sincronizada a cada 1h pelo worker).',
+      // Categorias pedidas que a Shopee expõe numa API própria, mas que este
+      // projeto ainda NÃO integra (nenhum client/sync existe hoje pra elas —
+      // ver .claude/shopee.md/roadmap.md). Listadas explicitamente em vez de
+      // fingir "zero problemas": Ads (Shopee Ads/Marketing API — CPC
+      // negativo, saldo baixo, campanha rejeitada), Violação de
+      // conteúdo/anúncio banido (Content Diagnosis / Listing Violation API)
+      // e Penalidades/saúde da conta (Account Health API, além do rating).
+      indisponiveis: ['Ads (Shopee Ads/Marketing)', 'Violação de conteúdo do anúncio', 'Penalidades/saúde da conta (Account Health)'],
+      nota_indisponiveis: 'Ads, violação de conteúdo e penalidades de conta ainda não têm integração neste sistema (a Shopee expõe API própria pra cada uma, mas nenhuma foi implementada aqui ainda). Devoluções/reembolsos vêm da Returns API (sincronizada a cada 1h pelo worker); cupons/desconto vêm de shopee_promotions; token, chat e score usam dados já sincronizados, sem chamar a Shopee de novo.',
     });
   } catch (e) {
     console.error('[api/shopee] /problemas', e.message);

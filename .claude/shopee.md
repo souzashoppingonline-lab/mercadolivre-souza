@@ -148,9 +148,13 @@ O **dashboard-shopee** (tela inicial) ganhou os KPIs executivos de hoje: **Fatur
 
 Página **Painel de Problemas** (`pages/shopee-problemas.html`, `SHOPEE_NAV_ITEMS` + allowlist `shopee-demo`): cards do que precisa de ação na Shopee, cada um expansível com a amostra dos itens. Tudo `marketplace_id=SHOPEE` (isolado do ML). Backend `GET /api/shopee/problemas?store_id`.
 
-- **Pedidos atrasados**: pagos, `date_created < now−2 dias` e `logistics_status` ainda não despachado (não em DELIVERY/REQUEST/PICKUP_DONE). Aproximado (não temos o prazo RTS exato da Shopee).
-- **Anúncios pausados** (`status='paused'`), **Sem estoque** (`available_quantity=0` ativos), **Sem imagem** (`thumbnail` vazio), **Pedidos cancelados** (30 dias).
+- **Bug real corrigido**: `reclamacoes`/`reembolsos` (queries em `shopee_returns`) passavam o array `P=[mpId, storeId]` (2 posições) mas o texto da query só referenciava `$2` — nunca `$1`. O driver `pg` não consegue inferir o tipo de um parâmetro que nunca aparece no texto da query, e isso quebrava com `Erro: could not determine data type of parameter $1`. Corrigido usando só `[storeId]`/`$1` nessas duas queries (a tabela `shopee_returns` não tem `marketplace_id` — é só Shopee, não precisa do 1º filtro).
+- **Anúncio**: **Pedidos atrasados** (pagos, `date_created < now−2 dias` e `logistics_status` ainda não despachado — aproximado, não temos o prazo RTS exato da Shopee), **Anúncios pausados** (`status='paused'`), **Sem estoque** (`available_quantity=0` ativos), **Sem imagem** (`thumbnail` vazio), **Score ruim** (reusa `scoreItem()` do motor de `pages/shopee-score.html` sobre o `raw` já sincronizado — zero chamada nova à Shopee), **Pedidos cancelados** (30 dias).
+- **Cupons/Desconto**: vencendo em <24h, recalculado na hora a partir de `shopee_promotions` (mesma janela do alerta `checkShopeeCampanhasVencendo`, mas sem esperar o job diário).
+- **Gestão de chat**: conversas com `unread_count > 0` (de `shopee_chat`, já sincronizado pelo chat).
+- **Perfil da loja/Plataforma**: `loja_token` — lojas Shopee com `token_expires_at` **já vencido** (não "vencendo em breve": o token de acesso dura só ~4h e é renovado sozinho com 10min de margem, então numa loja saudável ele sempre está a poucas horas de vencer — usar um limiar de "vencendo em 48h" daria falso positivo sempre; só é problema de verdade se já passou da hora, incluindo tokens "epoch zero" que nunca renovam sozinhos, ver `workers.md`).
 - **Devoluções abertas (reclamações)** e **Reembolsos (30d)**: da Returns API (v42) — ver abaixo.
+- **`indisponiveis`**: lista explícita do que a Shopee expõe em API própria mas este projeto **ainda não integra** — Ads (Shopee Ads/Marketing), violação de conteúdo do anúncio (Content Diagnosis/Listing Violation) e penalidades/saúde da conta (Account Health). Pedido pelo usuário, mas nenhuma dessas 3 tem client/sync implementado hoje — listadas honestamente em vez de fingir "zero problemas".
 
 ### Devoluções/Reembolsos (Returns API) — implementado (v42)
 

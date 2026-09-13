@@ -26,6 +26,7 @@ const MOCK_POLL_INTERVAL_MS = 2 * 60 * 1000; // 2min — mais rápido para dar f
 const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens não lidas do chat Shopee
 const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS || 30 * 60 * 1000); // 30min — sync do catálogo (Product API)
 const SHOPEE_PROMO_INTERVAL_MS = Number(process.env.SHOPEE_PROMO_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de promoções (alerta de vencimento é checkShopeeCampanhasVencendo, worker.js, 1x/dia)
+const SHOPEE_VIOLATIONS_INTERVAL_MS = Number(process.env.SHOPEE_VIOLATIONS_INTERVAL_MS || 6 * 60 * 60 * 1000); // 6h — anúncios banidos por violação não mudam de status de repente, não precisa da mesma frequência do catálogo (30min)
 const SHOPEE_RETURNS_INTERVAL_MS = Number(process.env.SHOPEE_RETURNS_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de devoluções/reembolsos
 const SHOPEE_RETURNS_LOOKBACK_DAYS = Number(process.env.SHOPEE_RETURNS_LOOKBACK_DAYS || 180); // histórico de devoluções (varrido em janelas de 15d)
 
@@ -499,6 +500,12 @@ async function startMarketplaceEventWorkers() {
     // Devoluções/reembolsos Shopee (Returns API) — sync + alerta Telegram de nova.
     syncShopeeReturns().catch((e) => console.warn('[marketplace-worker] devoluções Shopee 1º run:', e.message));
     setInterval(() => syncShopeeReturns().catch((e) => console.warn('[marketplace-worker] devoluções Shopee:', e.message)), SHOPEE_RETURNS_INTERVAL_MS);
+
+    // Anúncios banidos por violação de conteúdo — reusa listAllItems/
+    // getItemsBaseInfo (mesmos do catálogo normal), só com item_status
+    // diferente. Alimenta o Painel de Problemas. Isolado do pipeline ML.
+    syncShopeeItemViolations().catch((e) => console.warn('[marketplace-worker] violações Shopee 1º run:', e.message));
+    setInterval(() => syncShopeeItemViolations().catch((e) => console.warn('[marketplace-worker] violações Shopee:', e.message)), SHOPEE_VIOLATIONS_INTERVAL_MS);
   }
 }
 
@@ -628,6 +635,61 @@ async function syncShopeeCatalog() {
       ok++;
     }
     console.log(`[catalog] loja ${storeId}: ${ok}/${items.length} itens Shopee sincronizados`);
+  }
+}
+
+// Anúncios banidos por violação de conteúdo — reaproveita EXATAMENTE os
+// mesmos métodos do client usados em syncShopeeCatalog (listAllItems +
+// getItemsBaseInfo), só pedindo item_status='BANNED' em vez de 'NORMAL'.
+// Nenhuma API nova precisou ser integrada — a Shopee já devolve isso pelo
+// mesmo get_item_list/get_item_base_info. Não entra em `items`/
+// `shopee_item_data` (essas duas tabelas assumem NORMAL); fica em
+// `shopee_item_violations`, tabela própria (v96). A cada sync, o SET de
+// banidos é recalculado do zero — item que deixou de ser banido (seller
+// corrigiu e a Shopee reativou) é removido daqui automaticamente.
+async function syncShopeeItemViolations() {
+  const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = 'SHOPEE'`);
+  if (!mp[0]?.id) return;
+
+  for (const [storeId, client] of shopeeClients) {
+    let banidos;
+    try { banidos = await client.listAllItems('BANNED', 100); }
+    catch (e) { console.warn(`[violations] loja ${storeId} get_item_list(BANNED): ${e.message}`); continue; }
+
+    if (!banidos.length) {
+      await pool.query(`DELETE FROM shopee_item_violations WHERE store_id = $1`, [storeId]);
+      console.log(`[violations] loja ${storeId}: nenhum anúncio banido`);
+      continue;
+    }
+
+    const baseById = new Map();
+    const ids = banidos.map((i) => i.item_id);
+    for (let i = 0; i < ids.length; i += 50) {
+      try {
+        const list = await client.getItemsBaseInfo(ids.slice(i, i + 50));
+        for (const it of list) baseById.set(it.item_id, it);
+      } catch (e) { console.warn(`[violations] loja ${storeId} base_info: ${e.message}`); }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+
+    for (const it of banidos) {
+      const base = baseById.get(it.item_id);
+      const image = base?.image?.image_url_list?.[0] || null;
+      await pool.query(
+        `INSERT INTO shopee_item_violations (item_id, store_id, title, thumbnail, item_status, raw, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6, now())
+         ON CONFLICT (item_id, store_id) DO UPDATE SET
+           title=EXCLUDED.title, thumbnail=EXCLUDED.thumbnail, item_status=EXCLUDED.item_status,
+           raw=EXCLUDED.raw, updated_at=now()`,
+        [String(it.item_id), storeId, base?.item_name || null, image, 'BANNED', JSON.stringify(base || it)]
+      );
+    }
+    // Remove quem estava banido antes e não está mais nesta varredura.
+    await pool.query(
+      `DELETE FROM shopee_item_violations WHERE store_id = $1 AND item_id != ALL($2::text[])`,
+      [storeId, banidos.map((i) => String(i.item_id))]
+    );
+    console.log(`[violations] loja ${storeId}: ${banidos.length} anúncio(s) banido(s) por violação`);
   }
 }
 

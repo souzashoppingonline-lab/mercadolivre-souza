@@ -314,6 +314,18 @@ updated_at TIMESTAMPTZ
 ```
 Preenchida pelo job `syncShopeePromos` (`marketplaceEventWorker`, 1h — só sincroniza, não alerta). Alimenta a página **Promoções** (`/api/shopee/promocoes`) e o alerta de vencimento (`checkShopeeCampanhasVencendo`, `worker.js`, 1x/dia — Telegram+e-mail). **v95** trocou o antigo `expiry_notified` (dedup único <24h/Telegram) pelas duas colunas acima, pra suportar o alerta granular 5/4/3/2/1 dias + repetição diária pós-vencimento. Ver `shopee.md`/`workers.md`.
 
+### `shopee_item_violations` — v96: anúncios Shopee banidos por violação de conteúdo
+```
+item_id TEXT        ┐ PK
+store_id BIGINT      ┘ (item_id, store_id)
+title TEXT
+thumbnail TEXT
+item_status TEXT    -- 'BANNED' (único status varrido hoje)
+raw JSONB
+updated_at TIMESTAMPTZ
+```
+Preenchida pelo job `syncShopeeItemViolations` (`marketplaceEventWorker`, 6h) — reusa `listAllItems('BANNED')`+`getItemsBaseInfo`, os MESMOS métodos do sync de catálogo normal (`syncShopeeCatalog`), sem nenhuma API nova. Não entra em `items`/`shopee_item_data` (essas duas assumem `item_status='NORMAL'`). A cada rodada, quem não está mais banido é removido (item reativado pela Shopee some sozinho). Alimenta o Painel de Problemas (`violacao_conteudo`). Ver `shopee.md`.
+
 ### `shopee_returns` — v42: devoluções/reembolsos Shopee (Returns API)
 ```
 return_sn TEXT PK

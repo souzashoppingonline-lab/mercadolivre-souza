@@ -1,6 +1,8 @@
 server/node_modules/
 server/.env
 server/storage/
+server/dump.rdb
+dump.rdb
 .env
 .claude/worktrees/
 ml-backups/

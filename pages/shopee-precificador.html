@@ -150,6 +150,9 @@
         <div class="table-responsive">
           <table class="pr-table">
             <thead><tr>
+              <th style="width:34px" title="Marcar pra aplicar a faixa de comissão selecionada só nessas variações">
+                <input type="checkbox" id="chkTodos" onchange="toggleTodos(this.checked)">
+              </th>
               <th style="width:32%">Anúncio / Variação</th>
               <th class="num">Custo (R$)</th>
               <th class="num">Preço atual</th>
@@ -157,7 +160,7 @@
               <th class="num">Preço ideal</th>
               <th class="num"></th>
             </tr></thead>
-            <tbody id="prBody"><tr><td colspan="6" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+            <tbody id="prBody"><tr><td colspan="7" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -251,10 +254,17 @@ function params() {
 // já fazia). Afeta a coluna "Preço ideal" da lista inteira.
 let faixaSelecionadaIdx = null;
 
+// Variações marcadas ("${item_id}::${model_id}") — pedido do usuário: clicar
+// numa faixa da tabela de comissão aplicava o preço forçado em TODA a lista;
+// agora só nas linhas com o checkbox marcado. As demais continuam usando o
+// preço ideal automático (a melhor faixa, calculada sozinha, como sempre).
+let selecionados = new Set();
+let lastData = null; // último resultado de GET /precificador — marcar/desmarcar re-renderiza sem refazer a chamada
+
 function selecionarFaixa(idx) {
   faixaSelecionadaIdx = (faixaSelecionadaIdx === idx) ? null : idx; // clicar de novo desmarca (volta ao automático)
   document.querySelectorAll('#comissaoTable tr.faixa-row').forEach((tr, i) => tr.classList.toggle('selected', i === faixaSelecionadaIdx));
-  recarregar();
+  recarregar(); // precisa buscar de novo — o preço forçado pra essa faixa ainda não foi calculado pelo backend
 }
 
 function renderTiers(tiers) {
@@ -274,43 +284,85 @@ function recarregar() { clearTimeout(_timer); _timer = setTimeout(load, 350); }
 async function load() {
   const body = document.getElementById('prBody');
   const d = await DB.getShopeePrecificador(params());
-  if (!d || d.error) { body.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
+  if (!d || d.error) { body.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
   if (d.tiers) renderTiers(d.tiers);
   if (d.faixa) {
     document.getElementById('pTaxaShow').textContent = d.faixa.commissionRate + '%';
     document.getElementById('pFixaShow').textContent = R(d.faixa.fixedFee);
-    document.getElementById('pTaxaHint').textContent = 'Faixa selecionada manualmente';
-    document.getElementById('pFixaHint').textContent = 'Faixa selecionada manualmente';
+    document.getElementById('pTaxaHint').textContent = 'Faixa selecionada manualmente — aplicada só nas variações marcadas';
+    document.getElementById('pFixaHint').textContent = 'Faixa selecionada manualmente — aplicada só nas variações marcadas';
+  } else {
+    document.getElementById('pTaxaHint').textContent = 'Clique numa faixa da tabela abaixo, ou abra um anúncio';
+    document.getElementById('pFixaHint').textContent = 'Calculada automaticamente';
   }
+  // Recarga da lista (busca/loja/parâmetros mudaram) — mantém a seleção de
+  // checkboxes só das variações que ainda existem no novo resultado.
+  const chavesNovas = new Set();
+  (d.rows || []).forEach(it => it.variacoes.forEach(v => chavesNovas.add(`${it.item_id}::${v.model_id}`)));
+  selecionados = new Set([...selecionados].filter(k => chavesNovas.has(k)));
+  lastData = d;
+  renderRows(d);
+}
 
+// Re-renderiza a tabela a partir do último resultado já buscado — usado ao
+// marcar/desmarcar um checkbox, pra não refazer a chamada ao backend (os
+// dois preços, automático e forçado, já vieram juntos na mesma resposta).
+function renderRows(d) {
+  const body = document.getElementById('prBody');
   const rows = d.rows || [];
+  document.getElementById('chkTodos').checked = rows.length > 0 && rows.every(it => it.variacoes.every(v => selecionados.has(`${it.item_id}::${v.model_id}`)));
   body.innerHTML = rows.length ? rows.map(it => `
     <tr class="item-head">
-      <td colspan="6"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')} · ID ${esc(it.item_id)}</span></div></div></td>
+      <td colspan="7"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')} · ID ${esc(it.item_id)}</span></div></div></td>
     </tr>
     ${it.variacoes.map(v => rowVar(it, v)).join('')}
-  `).join('') : '<tr><td colspan="6" class="empty-state" style="padding:30px">Nenhum anúncio. Sincronize o catálogo ou ajuste a busca.</td></tr>';
+  `).join('') : '<tr><td colspan="7" class="empty-state" style="padding:30px">Nenhum anúncio. Sincronize o catálogo ou ajuste a busca.</td></tr>';
+}
+
+function toggleSelecionado(chave, marcado) {
+  if (marcado) selecionados.add(chave); else selecionados.delete(chave);
+  if (lastData) renderRows(lastData);
+}
+
+function toggleTodos(marcado) {
+  if (!lastData) return;
+  (lastData.rows || []).forEach(it => it.variacoes.forEach(v => {
+    const chave = `${it.item_id}::${v.model_id}`;
+    if (marcado) selecionados.add(chave); else selecionados.delete(chave);
+  }));
+  renderRows(lastData);
 }
 
 function rowVar(it, v) {
+  const chave = `${it.item_id}::${v.model_id}`;
+  const marcado = selecionados.has(chave);
+  // Faixa forçada (clique na tabela de comissão) só vale nas variações
+  // marcadas — as demais usam sempre o preço ideal automático (a melhor
+  // faixa, calculada sozinha). suggested_price_faixa só existe quando uma
+  // faixa foi selecionada (backend sempre calcula os dois, ver routes/shopee.js).
+  const usaFaixa = faixaSelecionadaIdx != null && marcado && v.suggested_price_faixa != null;
+  const sugerido = usaFaixa ? v.suggested_price_faixa : v.suggested_price;
+  const dentroDaFaixa = usaFaixa ? v.suggested_price_faixa_within_tier : true;
   const mgClass = v.current_margin == null ? '' : (v.current_margin < 0 ? 'mg-neg' : 'mg-pos');
   const mg = v.current_margin == null ? '—' : v.current_margin.toFixed(1)+'%';
-  const canApply = v.suggested_price != null;
+  const canApply = sugerido != null;
   // withinTier=false: a faixa escolhida manualmente não comporta esse custo/
   // margem — mostra o preço mesmo assim, mas avisa que não é o valor real
   // (o produto sairia de outra faixa depois do desconto), em vez de deixar
   // o vendedor aplicar um preço que na prática não bate a margem esperada.
-  const avisoFaixa = v.suggested_price_within_tier === false
+  const avisoFaixa = dentroDaFaixa === false
     ? `<i class="fas fa-triangle-exclamation" style="color:var(--red)" title="Esse custo/margem não cabe na faixa selecionada — o preço mostrado não é confiável"></i> ` : '';
-  return `<tr class="var-row" data-item="${esc(it.item_id)}" data-model="${v.model_id}" onclick="abrirModalLinha(event,'${esc(it.item_id)}',${v.model_id})">
-    <td style="padding-left:34px" class="var-name">${esc(v.model_name||'—')}<div style="font-size:10px;color:var(--text-muted)">${esc(v.model_sku||it.item_sku||'')}</div></td>
+  return `<tr class="var-row" data-item="${esc(it.item_id)}" data-model="${v.model_id}" onclick="abrirModalLinha(event,'${esc(it.item_id)}',${v.model_id},${v.suggested_price ?? 'null'})">
+    <td onclick="event.stopPropagation()"><input type="checkbox" ${marcado?'checked':''} onchange="toggleSelecionado('${esc(chave)}', this.checked)"
+        title="Marcar pra usar a faixa de comissão selecionada acima nesta variação"></td>
+    <td style="padding-left:12px" class="var-name">${esc(v.model_name||'—')}<div style="font-size:10px;color:var(--text-muted)">${esc(v.model_sku||it.item_sku||'')}</div></td>
     <td class="num" onclick="event.stopPropagation()"><input class="cost-input" type="number" step="0.01" min="0" value="${v.cost ?? ''}" placeholder="—"
         onchange="salvarCusto('${esc(it.item_id)}', ${v.model_id}, this.value)"></td>
     <td class="num">${R(v.current_price)}</td>
     <td class="num ${mgClass}">${mg}</td>
-    <td class="num sug">${avisoFaixa}${R(v.suggested_price)}</td>
+    <td class="num sug">${avisoFaixa}${R(sugerido)}</td>
     <td class="num" onclick="event.stopPropagation()"><button class="btn-aplicar-1" ${canApply?'':'disabled'}
-        onclick="aplicarUm('${esc(it.item_id)}', ${v.model_id}, ${v.suggested_price})">aplicar</button></td>
+        onclick="aplicarUm('${esc(it.item_id)}', ${v.model_id}, ${sugerido})">aplicar</button></td>
   </tr>`;
 }
 
@@ -381,12 +433,19 @@ async function aplicarTodos() {
 }
 
 // ── Modal "Precificação do Anúncio" ──────────────────────────────────────
-let modalCtx = null; // { itemId, modelId }
+let modalCtx = null; // { itemId, modelId, precoIdealLinha }
 let _simTimer;
 
-function abrirModalLinha(ev, itemId, modelId) {
+function abrirModalLinha(ev, itemId, modelId, precoIdealLinha) {
   if (ev) ev.stopPropagation();
-  modalCtx = { itemId, modelId };
+  // precoIdealLinha = o "preço ideal" que JÁ estava na coluna da lista antes
+  // de abrir o modal (calculado FORA daqui, com a margem/desconto globais da
+  // página) — vira preço de referência único pra esta sessão do modal, nunca
+  // recalculado enquanto o usuário mexe em promoção/cupom aqui dentro.
+  // Pedido explícito do usuário: "esse preço não pode mudar" quando não há
+  // preço real disponível — senão a margem mostrada não é real, é só um
+  // reflexo de qual preço o backend recalcularia pra bater a meta.
+  modalCtx = { itemId, modelId, precoIdealLinha };
   // Pré-preenche com o desconto padrão configurado no topo da página (o
   // mesmo usado pra calcular o preço ideal da lista) — editável aqui só
   // pra este anúncio, sem afetar a configuração global.
@@ -411,6 +470,7 @@ async function simular() {
     promo: document.getElementById('prmPromo').value || 0,
     cupom_loja: document.getElementById('prmCupomLoja').value || 0,
     cupom_produto: document.getElementById('prmCupomProduto').value || 0,
+    preco_referencia: modalCtx.precoIdealLinha ?? '',
   };
   const d = await DB.getShopeeSimulacaoPrecificador(p);
   if (!d || d.error) { document.getElementById('prmSub').textContent = 'Erro: ' + (d?.error || 'falha ao simular'); return; }
@@ -421,13 +481,11 @@ function renderModal(d) {
   document.getElementById('prmSub').textContent = `${d.title || '—'} · ID ${d.item_id} · SKU ${d.model_sku || '—'}`;
 
   // Cards de config no topo — refletem a faixa do anúncio ABERTO (spec: "taxa
-  // correspondente ao preço atualmente selecionado"). Sem preço atual
-  // sincronizado, cai pra faixa do preço IDEAL (mesma lógica da simulação
-  // abaixo) em vez de mostrar "—" — é a faixa que vai valer de fato.
-  const taxaTop = d.commissionRate ?? d.commission_rate_ideal;
-  const fixaTop = d.fixedFee ?? d.fixed_fee_ideal;
-  document.getElementById('pTaxaShow').textContent = taxaTop != null ? taxaTop+'%' : '—';
-  document.getElementById('pFixaShow').textContent = fixaTop != null ? R(fixaTop) : '—';
+  // correspondente ao preço atualmente selecionado"). d.commissionRate/
+  // d.fixedFee já vêm calculados pelo backend em cima do preço usado na
+  // simulação (real OU de referência, no fallback — ver /precificador/simular).
+  document.getElementById('pTaxaShow').textContent = d.commissionRate != null ? d.commissionRate+'%' : '—';
+  document.getElementById('pFixaShow').textContent = d.fixedFee != null ? R(d.fixedFee) : '—';
 
   const custoBox = document.getElementById('prmCustoBox');
   if (d.cost == null) {
@@ -443,48 +501,45 @@ function renderModal(d) {
   document.getElementById('prmPrecoAtual').textContent = R(d.currentPrice);
   document.getElementById('prmPrecoIdeal').textContent = d.idealPrice != null ? R(d.idealPrice) : '—';
 
-  // d.currentPrice null = catálogo ainda não sincronizou o preço deste
-  // anúncio (não é um preço real de R$0,00 — Shopee não vende de graça).
-  // Antes este bloco fazia `Number(d.currentPrice) || 0`, que mascarava o
-  // null e zerava a simulação inteira (bug relatado: "preço após descontos
-  // R$0,00" mesmo com custo/preço ideal calculados normalmente). Depois de
-  // corrigir isso, a simulação inteira ficava em branco (comissão/imposto/
-  // lucro "—") sempre que faltava o preço atual — mesmo já tendo um preço
-  // IDEAL calculado, com faixa/comissão bem definidas pra ele. Como o preço
-  // ideal É o preço que vai ser anunciado (definição do próprio usuário),
-  // a simulação usa ELE como base quando o atual não está disponível, em
-  // vez de deixar tudo em branco — só o card "PREÇO ATUAL" continua "—"
-  // (isso sim é informação real que falta).
+  // d.currentPrice null = o preço REAL do anúncio não pôde ser obtido — nem
+  // do cache, nem ao vivo (o backend já tenta buscar direto na Shopee
+  // quando o cache não tem, ver routes/shopee.js — isso cobre a grande
+  // maioria dos casos). Só nesse resíduo o backend usa o preço de
+  // REFERÊNCIA (o "preço ideal" que já estava na linha da lista, mandado
+  // fixo em `preco_referencia` — nunca recalculado aqui) pra simular; nesse
+  // caso d.commissionRate/d.fixedFee/d.profit/d.margin JÁ vêm calculados em
+  // cima dele, então não tem branch nenhum aqui — só o preço exibido na
+  // 1ª linha e o aviso mudam. Pedido explícito do usuário: "esse preço não
+  // pode mudar" (tem que ficar fixo enquanto mexe no cupom) e "se não,
+  // nunca vou ter a margem real".
   const semPrecoAtual = d.currentPrice == null;
-  const precoBase = semPrecoAtual ? (d.idealPrice ?? null) : Number(d.currentPrice);
-  const commissionRate = semPrecoAtual ? d.commission_rate_ideal : d.commissionRate;
-  const fixedFee = semPrecoAtual ? d.fixed_fee_ideal : d.fixedFee;
-  const lucro = semPrecoAtual ? d.profit_no_ideal : d.profit;
-  const margemLinha = semPrecoAtual ? d.margin_no_ideal : d.margin;
+  const precoAtual = semPrecoAtual ? (d.preco_referencia_usado ?? null) : Number(d.currentPrice);
   const promo = Number(document.getElementById('prmPromo').value) || 0;
   const cLoja = Number(document.getElementById('prmCupomLoja').value) || 0;
   const cProd = Number(document.getElementById('prmCupomProduto').value) || 0;
-  const posDesconto = precoBase != null ? precoBase * (1-promo/100) * (1-cLoja/100) * (1-cProd/100) : null;
-  const comissaoValor = (posDesconto != null && commissionRate != null) ? posDesconto * commissionRate/100 : null;
+  const posDesconto = precoAtual != null ? precoAtual * (1-promo/100) * (1-cLoja/100) * (1-cProd/100) : null;
+  const comissaoValor = (posDesconto != null && d.commissionRate != null) ? posDesconto * d.commissionRate/100 : null;
   const impostoValor = posDesconto != null ? posDesconto * (Number(document.getElementById('pImposto').value)||0)/100 : null;
 
   const avisoSemPreco = semPrecoAtual
-    ? `<tr><td colspan="2" style="color:var(--text-muted);font-size:11px;padding-top:6px">⚠ Preço atual ainda não sincronizado com a Shopee — a simulação abaixo usa o <b>preço ideal</b> (o preço que será anunciado), não o preço hoje ativo no anúncio.</td></tr>`
+    ? (precoAtual != null
+        ? `<tr><td colspan="2" style="color:var(--text-muted);font-size:11px;padding-top:6px">⚠ Preço real não encontrado agora (nem em cache, nem ao vivo na Shopee) — simulação abaixo usando o <b>preço ideal</b> como referência fixa (não muda ao ajustar promoção/cupom).</td></tr>`
+        : `<tr><td colspan="2" style="color:var(--text-muted);font-size:11px;padding-top:6px">⚠ Preço real não encontrado e sem custo cadastrado pra estimar um preço ideal — cadastre o custo desta variação na lista.</td></tr>`)
     : '';
 
   document.getElementById('prmSimTable').innerHTML = `
-    <tr><td>${semPrecoAtual ? 'Preço anunciado (preço ideal)' : 'Preço anunciado'}</td><td class="num">${precoBase!=null?R(precoBase):'—'}</td></tr>
+    <tr><td>${semPrecoAtual ? 'Preço anunciado (referência)' : 'Preço anunciado'}</td><td class="num">${precoAtual!=null?R(precoAtual):'—'}</td></tr>
     <tr><td>Promoção relâmpago</td><td class="num">${promo?'-'+PCT(promo):'—'}</td></tr>
     <tr><td>Cupom da loja</td><td class="num">${cLoja?'-'+PCT(cLoja):'—'}</td></tr>
     <tr><td>Cupom do produto</td><td class="num">${cProd?'-'+PCT(cProd):'—'}</td></tr>
     <tr><td>Preço após descontos</td><td class="num">${posDesconto!=null?R(posDesconto):'—'}</td></tr>
-    <tr><td>Comissão Shopee (${commissionRate ?? '—'}%)</td><td class="num">${comissaoValor!=null?'-'+R(comissaoValor):'—'}</td></tr>
-    <tr><td>Taxa fixa</td><td class="num">${fixedFee!=null?'-'+R(fixedFee):'—'}</td></tr>
+    <tr><td>Comissão Shopee (${d.commissionRate ?? '—'}%)</td><td class="num">${comissaoValor!=null?'-'+R(comissaoValor):'—'}</td></tr>
+    <tr><td>Taxa fixa</td><td class="num">${d.fixedFee!=null?'-'+R(d.fixedFee):'—'}</td></tr>
     <tr><td>Imposto</td><td class="num">${impostoValor!=null?'-'+R(impostoValor):'—'}</td></tr>
     <tr><td>Subsídio Pix (${d.pixSubsidy ?? 0}% — não aplicado no cálculo)</td><td class="num">—</td></tr>
     <tr><td>Custo do produto</td><td class="num">${d.cost!=null?'-'+R(d.cost):'—'}</td></tr>
-    <tr class="destaque"><td>Lucro</td><td class="num">${lucro!=null?R(lucro):'—'}</td></tr>
-    <tr class="destaque"><td>Margem de contribuição (com todos os descontos)</td><td class="num">${PCT(margemLinha)}</td></tr>
+    <tr class="destaque"><td>Lucro</td><td class="num">${R(d.profit)}</td></tr>
+    <tr class="destaque"><td>Margem de contribuição (com todos os descontos)</td><td class="num">${PCT(d.margin)}</td></tr>
     ${avisoSemPreco}
   `;
 

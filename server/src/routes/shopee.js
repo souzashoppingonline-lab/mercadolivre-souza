@@ -730,18 +730,25 @@ router.get('/precificador', async (req, res) => {
           const descontos = { flashSaleDiscount: promoPct, storeCouponDiscount: cupomLojaPct, productCouponDiscount: cupomProdutoPct };
           const calc = calculateShopeePricing({ cost, currentPrice, targetMargin: margem, taxRate: impostoPct, ...descontos });
           // Faixa forçada manualmente (spec do usuário: "clico numa faixa da
-          // tabela e quero saber o preço pra vender nela") substitui o preço
-          // ideal automático só nesse caso — withinTier=false avisa quando o
-          // custo/margem não cabem de fato na faixa escolhida.
+          // tabela e quero saber o preço pra vender nela") — devolvida à parte
+          // (suggested_price_faixa*), NUNCA substituindo suggested_price/
+          // commission_rate/fixed_fee (automáticos). Antes essa troca era
+          // incondicional pra TODA a lista assim que uma faixa era clicada
+          // (bug relatado: "aplica em todos"); agora quem decide linha a linha
+          // é o frontend, com base no checkbox de seleção de cada variação —
+          // withinTier=false avisa quando o custo/margem não cabem de fato na
+          // faixa escolhida.
           const forcado = faixaEscolhida ? priceForTier(faixaEscolhida, { cost, targetMargin: margem, taxRate: impostoPct, ...descontos }) : null;
           return {
             model_id: m.model_id || 0, model_name: m.model_name, model_sku: m.model_sku,
             cost, current_price: currentPrice, current_price_sincronizado: currentPrice != null,
-            suggested_price: forcado ? forcado.price : calc.idealPrice,
-            suggested_price_within_tier: forcado ? forcado.withinTier : true,
+            suggested_price: calc.idealPrice,
+            suggested_price_within_tier: true,
+            suggested_price_faixa: forcado ? forcado.price : null,
+            suggested_price_faixa_within_tier: forcado ? forcado.withinTier : null,
             current_margin: calc.margin,
-            commission_rate: forcado ? forcado.pricingTier.commissionRate : calc.commissionRate,
-            fixed_fee: forcado ? forcado.pricingTier.fixedFee : calc.fixedFee,
+            commission_rate: calc.commissionRate,
+            fixed_fee: calc.fixedFee,
           };
         }),
       };
@@ -771,7 +778,7 @@ router.get('/precificador/simular', async (req, res) => {
     const mpId = await shopeeMarketplaceId();
 
     const { rows } = await pool.query(
-      `SELECT i.ml_id AS item_id, i.title, i.thumbnail, s.nickname AS conta,
+      `SELECT i.ml_id AS item_id, i.title, i.thumbnail, i.store_id, s.nickname AS conta,
               sid.item_sku, sid.models
          FROM items i
          LEFT JOIN stores s ON s.id = i.store_id
@@ -796,8 +803,38 @@ router.get('/precificador/simular', async (req, res) => {
     // Bug real visto em produção: tratar 0 como preço válido fazia a
     // simulação inteira zerar (comissão/margem/lucro tudo "—" ou R$0,00),
     // parecendo quebrado em vez de "sem dado ainda".
-    const currentPrice = (modelo.current_price != null && Number(modelo.current_price) > 0)
+    let currentPrice = (modelo.current_price != null && Number(modelo.current_price) > 0)
       ? Number(modelo.current_price) : null;
+
+    // Sem preço em cache: busca AO VIVO na Shopee. Diferente da listagem
+    // (nunca chama o client — regra de arquitetura), o modal é uma AÇÃO
+    // PONTUAL EXPLÍCITA sobre UM anúncio (usuário clicou nessa linha
+    // específica), o mesmo caso que a arquitetura já permite (ver
+    // architecture.md regra 3). Pedido explícito do usuário: a margem/preço
+    // anunciado da simulação tem que ser o preço REAL aplicado no anúncio —
+    // nunca um valor hipotético (preço ideal) no lugar dele, senão "nunca vou
+    // ter a margem real". Também atualiza o cache local, pra próxima
+    // abertura já vir sincronizada sem precisar buscar de novo.
+    if (currentPrice == null && it.store_id) {
+      try {
+        const client = await getShopeeClientForStore(pool, it.store_id, env.shopee);
+        const ml = await client.getModelList(itemId);
+        const liveModelo = (ml?.model || []).find((m) => Number(m.model_id || 0) === modelId);
+        const livePrice = Number(liveModelo?.price_info?.[0]?.current_price);
+        if (liveModelo && Number.isFinite(livePrice) && livePrice > 0) {
+          currentPrice = livePrice;
+          const modelsAtualizados = models.map((m) =>
+            Number(m.model_id || 0) === modelId ? { ...m, current_price: livePrice } : m
+          );
+          await pool.query(
+            `UPDATE shopee_item_data SET models = $1, updated_at = now() WHERE item_id = $2 AND store_id = $3`,
+            [JSON.stringify(modelsAtualizados), itemId, it.store_id]
+          );
+        }
+      } catch (e) {
+        console.warn(`[api/shopee] /precificador/simular busca ao vivo do preço (item ${itemId}) falhou:`, e.message);
+      }
+    }
 
     const margem = Number(req.query.margem) || 0;
     const imposto = Number(req.query.imposto) || 0;
@@ -805,11 +842,29 @@ router.get('/precificador/simular', async (req, res) => {
     const storeCouponDiscount = Number(req.query.cupom_loja) || 0;
     const productCouponDiscount = Number(req.query.cupom_produto) || 0;
 
+    // Preço de referência (opcional): o "preço ideal" que JÁ estava sendo
+    // mostrado na linha da LISTA, fora do modal, antes de abrir — o
+    // frontend manda o mesmo valor em toda requisição desta sessão do
+    // modal, sem recalcular. Só é usado quando cache e busca ao vivo (acima)
+    // não acharam o preço real; nesse caso alimenta a MESMA simulação do
+    // preço atual (não uma cópia separada baseada em findIdealPrice), pra
+    // virar de fato uma calculadora: o preço fica FIXO enquanto o usuário
+    // mexe em promoção/cupom, e só a margem resultante muda — exatamente
+    // como já acontecia com um preço atual real. Pedido explícito do
+    // usuário: "esse preço não pode mudar [ao mexer no cupom]".
+    const precoReferencia = Number(req.query.preco_referencia) || null;
+    let precoUsadoNaSimulacao = currentPrice;
+    let precoReferenciaUsado = null;
+    if (precoUsadoNaSimulacao == null && precoReferencia != null && precoReferencia > 0) {
+      precoUsadoNaSimulacao = precoReferencia;
+      precoReferenciaUsado = precoReferencia;
+    }
+
     const calc = calculateShopeePricing({
-      cost, currentPrice, targetMargin: margem, taxRate: imposto,
+      cost, currentPrice: precoUsadoNaSimulacao, targetMargin: margem, taxRate: imposto,
       flashSaleDiscount, storeCouponDiscount, productCouponDiscount,
     });
-    // Margem/lucro no preço IDEAL (não só no atual) — spec seções 11/12 pedem os dois.
+    // Margem/lucro no preço IDEAL (não só no atual/referência) — spec seções 11/12 pedem os dois.
     const calcNoIdeal = calc.idealPrice != null
       ? calculateShopeePricing({ cost, currentPrice: calc.idealPrice, targetMargin: margem, taxRate: imposto, flashSaleDiscount, storeCouponDiscount, productCouponDiscount })
       : null;
@@ -820,27 +875,24 @@ router.get('/precificador/simular', async (req, res) => {
       cost, cost_origem: cost != null ? 'Custo cadastrado nesta variação' : null,
       current_price: currentPrice,
       current_price_sincronizado: currentPrice != null,
+      // preco_referencia_usado != null só quando nem o cache nem a busca ao
+      // vivo acharam o preço real — a simulação abaixo (comissão/lucro/
+      // margem) então reflete ESSE preço, nunca o real (current_price
+      // continua null, honesto: "PREÇO ATUAL" da tela não deve mentir).
+      preco_referencia_usado: precoReferenciaUsado,
       // margin/profit de `calc` JÁ são "com todos os descontos informados"
-      // (promo+cupom loja+cupom produto) aplicados sobre o preço ATUAL — é
-      // a margem de contribuição real que sobra depois de tudo.
+      // (promo+cupom loja+cupom produto) aplicados sobre o preço ATUAL (ou
+      // de referência, no fallback) — é a margem de contribuição real que
+      // sobra depois de tudo.
       ...calc,
-      // `calc.currentPrice` (camelCase) sempre vem de calculateShopeePricing,
-      // que devolve toReais(toCents(null)) = 0 mesmo sem preço válido — o
-      // frontend lê justamente essa chave (d.currentPrice) no modal, então
-      // sem essa sobrescrita ele voltava a mostrar "R$ 0,00" em vez de "—"
-      // mesmo depois do fix acima. Precisa vir DEPOIS do spread de `calc`.
+      // `calc.currentPrice` (camelCase) sempre vem de calculateShopeePricing —
+      // no fallback ele reflete o preço de REFERÊNCIA (não o real), então
+      // sobrescreve aqui com o valor REAL (`currentPrice`, pode ser null) pro
+      // frontend nunca confundir os dois lendo a chave errada. Precisa vir
+      // DEPOIS do spread de `calc`.
       currentPrice: currentPrice,
       margin_no_ideal: calcNoIdeal?.margin ?? null,
       profit_no_ideal: calcNoIdeal?.profit ?? null,
-      // Comissão/taxa fixa/receita líquida NO PREÇO IDEAL — sem isso, quando
-      // o preço atual não está sincronizado (currentPrice null), a simulação
-      // inteira ficava em branco ("—" em tudo: comissão, imposto, lucro) mesmo
-      // já tendo um preço ideal calculado e uma faixa/comissão bem definidas
-      // pra ELE. Frontend usa esses campos como fallback (mostra a simulação
-      // no preço ideal em vez de deixar tudo em branco quando não há atual).
-      commission_rate_ideal: calcNoIdeal?.commissionRate ?? null,
-      fixed_fee_ideal: calcNoIdeal?.fixedFee ?? null,
-      net_revenue_ideal: calcNoIdeal?.netRevenue ?? null,
       tiers: SHOPEE_PRICING_TIERS,
     });
   } catch (e) {

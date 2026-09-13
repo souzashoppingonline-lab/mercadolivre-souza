@@ -536,7 +536,20 @@ function renderModal(d) {
   const promo = Number(document.getElementById('prmPromo').value) || 0;
   const cLoja = Number(document.getElementById('prmCupomLoja').value) || 0;
   const cProd = Number(document.getElementById('prmCupomProduto').value) || 0;
-  const posDesconto = precoAtual != null ? precoAtual * (1-promo/100) * (1-cLoja/100) * (1-cProd/100) : null;
+  // Valor em R$ de CADA desconto — pedido do usuário ("quero entre
+  // parênteses o valor em reais que vai dar"). Empilhamento sequencial:
+  // cada desconto incide sobre o preço já reduzido pelo anterior (mesma
+  // premissa de applyStackedDiscounts no backend), então o valor em reais
+  // de cada um é a diferença entre o preço antes e depois DAQUELE desconto
+  // específico — não promo/cLoja/cProd% aplicados direto sobre o preço
+  // cheio (isso somaria mais do que o desconto total de fato tirado).
+  const apósPromo = precoAtual != null ? precoAtual * (1-promo/100) : null;
+  const valorPromoReais = precoAtual != null ? precoAtual - apósPromo : null;
+  const apósCupomLoja = apósPromo != null ? apósPromo * (1-cLoja/100) : null;
+  const valorCupomLojaReais = apósPromo != null ? apósPromo - apósCupomLoja : null;
+  const apósCupomProduto = apósCupomLoja != null ? apósCupomLoja * (1-cProd/100) : null;
+  const valorCupomProdutoReais = apósCupomLoja != null ? apósCupomLoja - apósCupomProduto : null;
+  const posDesconto = apósCupomProduto;
   const comissaoValor = (posDesconto != null && d.commissionRate != null) ? posDesconto * d.commissionRate/100 : null;
   const impostoValor = posDesconto != null ? posDesconto * (Number(document.getElementById('pImposto').value)||0)/100 : null;
 
@@ -548,9 +561,9 @@ function renderModal(d) {
 
   document.getElementById('prmSimTable').innerHTML = `
     <tr><td>${semPrecoAtual ? 'Preço anunciado (referência)' : 'Preço anunciado'}</td><td class="num">${precoAtual!=null?R(precoAtual):'—'}</td></tr>
-    <tr><td>Promoção relâmpago</td><td class="num">${promo?'-'+PCT(promo):'—'}</td></tr>
-    <tr><td>Cupom da loja</td><td class="num">${cLoja?'-'+PCT(cLoja):'—'}</td></tr>
-    <tr><td>Cupom do produto</td><td class="num">${cProd?'-'+PCT(cProd):'—'}</td></tr>
+    <tr><td>Promoção relâmpago</td><td class="num">${promo?`-${PCT(promo)} (-${R(valorPromoReais)})`:'—'}</td></tr>
+    <tr><td>Cupom da loja</td><td class="num">${cLoja?`-${PCT(cLoja)} (-${R(valorCupomLojaReais)})`:'—'}</td></tr>
+    <tr><td>Cupom do produto</td><td class="num">${cProd?`-${PCT(cProd)} (-${R(valorCupomProdutoReais)})`:'—'}</td></tr>
     <tr><td>Preço após descontos</td><td class="num">${posDesconto!=null?R(posDesconto):'—'}</td></tr>
     <tr><td>Comissão Shopee (${d.commissionRate ?? '—'}%)</td><td class="num">${comissaoValor!=null?'-'+R(comissaoValor):'—'}</td></tr>
     <tr><td>Taxa fixa</td><td class="num">${d.fixedFee!=null?'-'+R(d.fixedFee):'—'}</td></tr>

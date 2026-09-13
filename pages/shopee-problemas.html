@@ -65,11 +65,20 @@ const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 const R = v => 'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0);
 const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '';
 
+// Ordem = grupos pedidos pelo usuário: Anúncio, Cupons/Desconto, Chat,
+// Perfil da loja/Plataforma, Devolução. Ads/violação de conteúdo/saúde da
+// conta não têm card aqui — ver `indisponiveis`/nota abaixo (a Shopee expõe
+// API própria pra cada uma, mas nenhuma foi integrada neste projeto ainda).
 const META = {
-  pedidos_atrasados:  { label: 'Pedidos atrasados', icon: 'fa-truck-clock' },
   anuncios_pausados:  { label: 'Anúncios pausados', icon: 'fa-pause' },
   sem_estoque:        { label: 'Produtos sem estoque', icon: 'fa-box-open' },
   sem_imagem:         { label: 'Produtos sem imagem', icon: 'fa-image' },
+  score_baixo:        { label: 'Anúncios com Score ruim', icon: 'fa-star-half-stroke' },
+  cupons_vencendo:    { label: 'Cupons vencendo (24h)', icon: 'fa-ticket' },
+  descontos_vencendo: { label: 'Descontos vencendo (24h)', icon: 'fa-percent' },
+  chat_sem_resposta:  { label: 'Conversas sem resposta', icon: 'fa-comment-dots' },
+  loja_token:         { label: 'Loja desconectada (token)', icon: 'fa-plug-circle-exclamation' },
+  pedidos_atrasados:  { label: 'Pedidos atrasados', icon: 'fa-truck-clock' },
   pedidos_cancelados: { label: 'Pedidos cancelados (30d)', icon: 'fa-ban' },
   reclamacoes:        { label: 'Devoluções abertas', icon: 'fa-rotate-left' },
   reembolsos:         { label: 'Reembolsos (30d)', icon: 'fa-money-bill-transfer' },
@@ -79,6 +88,10 @@ function itemLine(cat, it) {
   if (cat === 'pedidos_atrasados') return `<div class="prob-item"><span class="t">#${esc(it.pedido)}</span><span class="x">${fmtD(it.data)} · ${esc((it.logistics_status||'').replace('LOGISTICS_',''))}</span></div>`;
   if (cat === 'pedidos_cancelados') return `<div class="prob-item"><span class="t">#${esc(it.pedido)}</span><span class="x">${R(it.valor)} · ${fmtD(it.data)}</span></div>`;
   if (cat === 'reclamacoes' || cat === 'reembolsos') return `<div class="prob-item"><span class="t">${esc(it.item_name||it.pedido)}<br><span style="font-size:10px;color:var(--text-muted)">#${esc(it.pedido)} · ${esc(it.status||'')}</span></span><span class="x">${R(it.valor)}</span></div>`;
+  if (cat === 'score_baixo') return `<div class="prob-item"><span class="t">${esc(it.title||it.item_id)}</span><span class="x">${it.score}/100</span></div>`;
+  if (cat === 'cupons_vencendo' || cat === 'descontos_vencendo') return `<div class="prob-item"><span class="t">${esc(it.title||'—')}</span><span class="x">${it.code?esc(it.code):esc(it.item_id)}</span></div>`;
+  if (cat === 'chat_sem_resposta') return `<div class="prob-item"><span class="t">${esc(it.title||'Comprador')}</span><span class="x">${it.unread_count} não lida(s)</span></div>`;
+  if (cat === 'loja_token') return `<div class="prob-item"><span class="t">${esc(it.title||it.item_id)}</span><span class="x">${it.token_expires_at?fmtD(it.token_expires_at):'sem token'}</span></div>`;
   return `<div class="prob-item"><span class="t">${esc(it.title||it.item_id)}</span><span class="x">${esc(it.item_id)}</span></div>`;
 }
 

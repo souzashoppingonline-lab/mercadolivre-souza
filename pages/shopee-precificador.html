@@ -311,12 +311,17 @@ function renderRows(d) {
   const body = document.getElementById('prBody');
   const rows = d.rows || [];
   document.getElementById('chkTodos').checked = rows.length > 0 && rows.every(it => it.variacoes.every(v => selecionados.has(`${it.item_id}::${v.model_id}`)));
-  body.innerHTML = rows.length ? rows.map(it => `
+  body.innerHTML = rows.length ? rows.map(it => {
+    const marcadoAnuncio = it.variacoes.every(v => selecionados.has(`${it.item_id}::${v.model_id}`));
+    return `
     <tr class="item-head">
-      <td colspan="7"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')} · ID ${esc(it.item_id)}</span></div></div></td>
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${marcadoAnuncio?'checked':''} onchange="toggleAnuncio('${esc(it.item_id)}', this.checked)"
+          title="Marcar todas as variações deste anúncio"></td>
+      <td colspan="6"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')} · ID ${esc(it.item_id)}</span></div></div></td>
     </tr>
     ${it.variacoes.map(v => rowVar(it, v)).join('')}
-  `).join('') : '<tr><td colspan="7" class="empty-state" style="padding:30px">Nenhum anúncio. Sincronize o catálogo ou ajuste a busca.</td></tr>';
+  `;
+  }).join('') : '<tr><td colspan="7" class="empty-state" style="padding:30px">Nenhum anúncio. Sincronize o catálogo ou ajuste a busca.</td></tr>';
 }
 
 function toggleSelecionado(chave, marcado) {
@@ -330,6 +335,20 @@ function toggleTodos(marcado) {
     const chave = `${it.item_id}::${v.model_id}`;
     if (marcado) selecionados.add(chave); else selecionados.delete(chave);
   }));
+  renderRows(lastData);
+}
+
+// Checkbox na linha do ANÚNCIO — marca/desmarca de uma vez todas as
+// variações desse anúncio (pedido do usuário: "checkbox no anúncio e na
+// variação"), sem precisar marcar uma por uma quando o anúncio tem várias.
+function toggleAnuncio(itemId, marcado) {
+  if (!lastData) return;
+  const it = (lastData.rows || []).find(r => r.item_id === itemId);
+  if (!it) return;
+  it.variacoes.forEach(v => {
+    const chave = `${itemId}::${v.model_id}`;
+    if (marcado) selecionados.add(chave); else selecionados.delete(chave);
+  });
   renderRows(lastData);
 }
 

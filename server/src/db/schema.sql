@@ -362,6 +362,20 @@ CREATE TABLE IF NOT EXISTS shopee_promotions (
 CREATE INDEX IF NOT EXISTS idx_shopee_promotions_store ON shopee_promotions(store_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_promotions_end ON shopee_promotions(end_time);
 
+-- v96: anúncios Shopee banidos por violação de conteúdo. Não fica em `items`
+-- (sync de catálogo só busca item_status='NORMAL'). Ver .claude/shopee.md.
+CREATE TABLE IF NOT EXISTS shopee_item_violations (
+  item_id TEXT NOT NULL,
+  store_id BIGINT NOT NULL,
+  title TEXT,
+  thumbnail TEXT,
+  item_status TEXT,
+  raw JSONB,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (item_id, store_id)
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_item_violations_store ON shopee_item_violations(store_id);
+
 -- v42: devoluções/reembolsos Shopee (Returns API). Ver .claude/shopee.md.
 -- v47: multi-loja — return_sn não é mais PK, mas parte de UNIQUE com store_id
 CREATE TABLE IF NOT EXISTS shopee_returns (

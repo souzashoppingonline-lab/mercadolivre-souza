@@ -583,6 +583,15 @@ router.get('/problemas', async (req, res) => {
        FROM stores WHERE marketplace_id = $1 AND ($2 = '' OR id = $2::bigint)
          AND (token_expires_at IS NULL OR token_expires_at < now())`, P);
 
+    // Anúncio (ampliação pedida) — violação de conteúdo/banido. Preenchida
+    // por syncShopeeItemViolations (marketplaceEventWorker, a cada 6h),
+    // reaproveitando listAllItems('BANNED')+getItemsBaseInfo — mesmos
+    // métodos do client já usados no sync de catálogo normal, nenhuma API
+    // nova. `shopee_item_violations` não tem marketplace_id (só Shopee).
+    const violacoes = await pool.query(
+      `SELECT item_id, title, thumbnail FROM shopee_item_violations
+       WHERE ($1 = '' OR store_id = $1::bigint) ORDER BY updated_at DESC LIMIT 50`, [storeId]);
+
     const list = (r) => r.rows;
     res.json({
       categorias: {
@@ -591,6 +600,7 @@ router.get('/problemas', async (req, res) => {
         sem_estoque:       { total: semEstoque.rowCount, itens: list(semEstoque), acao: 'Repor estoque' },
         sem_imagem:        { total: semImagem.rowCount, itens: list(semImagem), acao: 'Adicionar foto' },
         score_baixo:       { total: scoreRuim.length, itens: scoreRuim, acao: 'Melhorar título/fotos/descrição/atributos (Score de Qualidade)' },
+        violacao_conteudo: { total: violacoes.rowCount, itens: list(violacoes), acao: 'Corrigir e solicitar reanálise na Shopee (Seller Center)' },
         pedidos_cancelados:{ total: cancelados.rowCount, itens: list(cancelados), acao: 'Investigar motivo (30 dias)' },
         reclamacoes:       { total: reclamacoes.rowCount, itens: list(reclamacoes), acao: 'Responder/resolver a devolução' },
         reembolsos:        { total: reembolsos.rowCount, itens: list(reembolsos), acao: 'Reembolsos nos últimos 30 dias' },
@@ -603,11 +613,11 @@ router.get('/problemas', async (req, res) => {
       // projeto ainda NÃO integra (nenhum client/sync existe hoje pra elas —
       // ver .claude/shopee.md/roadmap.md). Listadas explicitamente em vez de
       // fingir "zero problemas": Ads (Shopee Ads/Marketing API — CPC
-      // negativo, saldo baixo, campanha rejeitada), Violação de
-      // conteúdo/anúncio banido (Content Diagnosis / Listing Violation API)
-      // e Penalidades/saúde da conta (Account Health API, além do rating).
-      indisponiveis: ['Ads (Shopee Ads/Marketing)', 'Violação de conteúdo do anúncio', 'Penalidades/saúde da conta (Account Health)'],
-      nota_indisponiveis: 'Ads, violação de conteúdo e penalidades de conta ainda não têm integração neste sistema (a Shopee expõe API própria pra cada uma, mas nenhuma foi implementada aqui ainda). Devoluções/reembolsos vêm da Returns API (sincronizada a cada 1h pelo worker); cupons/desconto vêm de shopee_promotions; token, chat e score usam dados já sincronizados, sem chamar a Shopee de novo.',
+      // negativo, saldo baixo, campanha rejeitada) e Penalidades/saúde da
+      // conta (Account Health API, além do rating). Violação de conteúdo
+      // saiu daqui (v96, ver categoria `violacao_conteudo` acima).
+      indisponiveis: ['Ads (Shopee Ads/Marketing)', 'Penalidades/saúde da conta (Account Health)'],
+      nota_indisponiveis: 'Ads e penalidades de conta ainda não têm integração neste sistema (a Shopee expõe API própria pra cada uma, mas nenhuma foi implementada aqui ainda). Devoluções/reembolsos vêm da Returns API (sincronizada a cada 1h pelo worker); cupons/desconto vêm de shopee_promotions; token, chat, score e violação de conteúdo usam dados já sincronizados, sem chamar a Shopee de novo na hora de montar o painel.',
     });
   } catch (e) {
     console.error('[api/shopee] /problemas', e.message);

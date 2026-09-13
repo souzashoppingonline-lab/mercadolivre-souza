@@ -573,6 +573,10 @@ router.get('/promocoes', async (req, res) => {
         ativas: out.filter((p) => p.status === 'ongoing').length,
         agendadas: out.filter((p) => p.status === 'upcoming').length,
         vencendo_24h: vencendo,
+        // Card "Campanhas Expiradas" (pedido do usuário) — expiradas ficam
+        // fora da tela por padrão (ver frontend), esse número é só o que
+        // aparece no card antes de clicar pra ver a lista.
+        expiradas: out.filter((p) => p.status === 'expired').length,
       },
     });
   } catch (e) {

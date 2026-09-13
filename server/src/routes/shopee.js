@@ -730,18 +730,25 @@ router.get('/precificador', async (req, res) => {
           const descontos = { flashSaleDiscount: promoPct, storeCouponDiscount: cupomLojaPct, productCouponDiscount: cupomProdutoPct };
           const calc = calculateShopeePricing({ cost, currentPrice, targetMargin: margem, taxRate: impostoPct, ...descontos });
           // Faixa forçada manualmente (spec do usuário: "clico numa faixa da
-          // tabela e quero saber o preço pra vender nela") substitui o preço
-          // ideal automático só nesse caso — withinTier=false avisa quando o
-          // custo/margem não cabem de fato na faixa escolhida.
+          // tabela e quero saber o preço pra vender nela") — devolvida à parte
+          // (suggested_price_faixa*), NUNCA substituindo suggested_price/
+          // commission_rate/fixed_fee (automáticos). Antes essa troca era
+          // incondicional pra TODA a lista assim que uma faixa era clicada
+          // (bug relatado: "aplica em todos"); agora quem decide linha a linha
+          // é o frontend, com base no checkbox de seleção de cada variação —
+          // withinTier=false avisa quando o custo/margem não cabem de fato na
+          // faixa escolhida.
           const forcado = faixaEscolhida ? priceForTier(faixaEscolhida, { cost, targetMargin: margem, taxRate: impostoPct, ...descontos }) : null;
           return {
             model_id: m.model_id || 0, model_name: m.model_name, model_sku: m.model_sku,
             cost, current_price: currentPrice, current_price_sincronizado: currentPrice != null,
-            suggested_price: forcado ? forcado.price : calc.idealPrice,
-            suggested_price_within_tier: forcado ? forcado.withinTier : true,
+            suggested_price: calc.idealPrice,
+            suggested_price_within_tier: true,
+            suggested_price_faixa: forcado ? forcado.price : null,
+            suggested_price_faixa_within_tier: forcado ? forcado.withinTier : null,
             current_margin: calc.margin,
-            commission_rate: forcado ? forcado.pricingTier.commissionRate : calc.commissionRate,
-            fixed_fee: forcado ? forcado.pricingTier.fixedFee : calc.fixedFee,
+            commission_rate: calc.commissionRate,
+            fixed_fee: calc.fixedFee,
           };
         }),
       };

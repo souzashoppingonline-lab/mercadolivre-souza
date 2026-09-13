@@ -150,6 +150,9 @@
         <div class="table-responsive">
           <table class="pr-table">
             <thead><tr>
+              <th style="width:34px" title="Marcar pra aplicar a faixa de comissão selecionada só nessas variações">
+                <input type="checkbox" id="chkTodos" onchange="toggleTodos(this.checked)">
+              </th>
               <th style="width:32%">Anúncio / Variação</th>
               <th class="num">Custo (R$)</th>
               <th class="num">Preço atual</th>
@@ -157,7 +160,7 @@
               <th class="num">Preço ideal</th>
               <th class="num"></th>
             </tr></thead>
-            <tbody id="prBody"><tr><td colspan="6" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
+            <tbody id="prBody"><tr><td colspan="7" class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -251,10 +254,17 @@ function params() {
 // já fazia). Afeta a coluna "Preço ideal" da lista inteira.
 let faixaSelecionadaIdx = null;
 
+// Variações marcadas ("${item_id}::${model_id}") — pedido do usuário: clicar
+// numa faixa da tabela de comissão aplicava o preço forçado em TODA a lista;
+// agora só nas linhas com o checkbox marcado. As demais continuam usando o
+// preço ideal automático (a melhor faixa, calculada sozinha, como sempre).
+let selecionados = new Set();
+let lastData = null; // último resultado de GET /precificador — marcar/desmarcar re-renderiza sem refazer a chamada
+
 function selecionarFaixa(idx) {
   faixaSelecionadaIdx = (faixaSelecionadaIdx === idx) ? null : idx; // clicar de novo desmarca (volta ao automático)
   document.querySelectorAll('#comissaoTable tr.faixa-row').forEach((tr, i) => tr.classList.toggle('selected', i === faixaSelecionadaIdx));
-  recarregar();
+  recarregar(); // precisa buscar de novo — o preço forçado pra essa faixa ainda não foi calculado pelo backend
 }
 
 function renderTiers(tiers) {
@@ -274,43 +284,85 @@ function recarregar() { clearTimeout(_timer); _timer = setTimeout(load, 350); }
 async function load() {
   const body = document.getElementById('prBody');
   const d = await DB.getShopeePrecificador(params());
-  if (!d || d.error) { body.innerHTML = `<tr><td colspan="6" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
+  if (!d || d.error) { body.innerHTML = `<tr><td colspan="7" class="empty-state" style="color:var(--red)">Erro: ${esc(d?.error||'sem dados')}</td></tr>`; return; }
   if (d.tiers) renderTiers(d.tiers);
   if (d.faixa) {
     document.getElementById('pTaxaShow').textContent = d.faixa.commissionRate + '%';
     document.getElementById('pFixaShow').textContent = R(d.faixa.fixedFee);
-    document.getElementById('pTaxaHint').textContent = 'Faixa selecionada manualmente';
-    document.getElementById('pFixaHint').textContent = 'Faixa selecionada manualmente';
+    document.getElementById('pTaxaHint').textContent = 'Faixa selecionada manualmente — aplicada só nas variações marcadas';
+    document.getElementById('pFixaHint').textContent = 'Faixa selecionada manualmente — aplicada só nas variações marcadas';
+  } else {
+    document.getElementById('pTaxaHint').textContent = 'Clique numa faixa da tabela abaixo, ou abra um anúncio';
+    document.getElementById('pFixaHint').textContent = 'Calculada automaticamente';
   }
+  // Recarga da lista (busca/loja/parâmetros mudaram) — mantém a seleção de
+  // checkboxes só das variações que ainda existem no novo resultado.
+  const chavesNovas = new Set();
+  (d.rows || []).forEach(it => it.variacoes.forEach(v => chavesNovas.add(`${it.item_id}::${v.model_id}`)));
+  selecionados = new Set([...selecionados].filter(k => chavesNovas.has(k)));
+  lastData = d;
+  renderRows(d);
+}
 
+// Re-renderiza a tabela a partir do último resultado já buscado — usado ao
+// marcar/desmarcar um checkbox, pra não refazer a chamada ao backend (os
+// dois preços, automático e forçado, já vieram juntos na mesma resposta).
+function renderRows(d) {
+  const body = document.getElementById('prBody');
   const rows = d.rows || [];
+  document.getElementById('chkTodos').checked = rows.length > 0 && rows.every(it => it.variacoes.every(v => selecionados.has(`${it.item_id}::${v.model_id}`)));
   body.innerHTML = rows.length ? rows.map(it => `
     <tr class="item-head">
-      <td colspan="6"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')} · ID ${esc(it.item_id)}</span></div></div></td>
+      <td colspan="7"><div class="ttl">${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:''}<div>${esc(it.title||'—')} <span style="font-size:11px;color:var(--text-muted);font-weight:400">· ${esc(it.conta||'')} · ID ${esc(it.item_id)}</span></div></div></td>
     </tr>
     ${it.variacoes.map(v => rowVar(it, v)).join('')}
-  `).join('') : '<tr><td colspan="6" class="empty-state" style="padding:30px">Nenhum anúncio. Sincronize o catálogo ou ajuste a busca.</td></tr>';
+  `).join('') : '<tr><td colspan="7" class="empty-state" style="padding:30px">Nenhum anúncio. Sincronize o catálogo ou ajuste a busca.</td></tr>';
+}
+
+function toggleSelecionado(chave, marcado) {
+  if (marcado) selecionados.add(chave); else selecionados.delete(chave);
+  if (lastData) renderRows(lastData);
+}
+
+function toggleTodos(marcado) {
+  if (!lastData) return;
+  (lastData.rows || []).forEach(it => it.variacoes.forEach(v => {
+    const chave = `${it.item_id}::${v.model_id}`;
+    if (marcado) selecionados.add(chave); else selecionados.delete(chave);
+  }));
+  renderRows(lastData);
 }
 
 function rowVar(it, v) {
+  const chave = `${it.item_id}::${v.model_id}`;
+  const marcado = selecionados.has(chave);
+  // Faixa forçada (clique na tabela de comissão) só vale nas variações
+  // marcadas — as demais usam sempre o preço ideal automático (a melhor
+  // faixa, calculada sozinha). suggested_price_faixa só existe quando uma
+  // faixa foi selecionada (backend sempre calcula os dois, ver routes/shopee.js).
+  const usaFaixa = faixaSelecionadaIdx != null && marcado && v.suggested_price_faixa != null;
+  const sugerido = usaFaixa ? v.suggested_price_faixa : v.suggested_price;
+  const dentroDaFaixa = usaFaixa ? v.suggested_price_faixa_within_tier : true;
   const mgClass = v.current_margin == null ? '' : (v.current_margin < 0 ? 'mg-neg' : 'mg-pos');
   const mg = v.current_margin == null ? '—' : v.current_margin.toFixed(1)+'%';
-  const canApply = v.suggested_price != null;
+  const canApply = sugerido != null;
   // withinTier=false: a faixa escolhida manualmente não comporta esse custo/
   // margem — mostra o preço mesmo assim, mas avisa que não é o valor real
   // (o produto sairia de outra faixa depois do desconto), em vez de deixar
   // o vendedor aplicar um preço que na prática não bate a margem esperada.
-  const avisoFaixa = v.suggested_price_within_tier === false
+  const avisoFaixa = dentroDaFaixa === false
     ? `<i class="fas fa-triangle-exclamation" style="color:var(--red)" title="Esse custo/margem não cabe na faixa selecionada — o preço mostrado não é confiável"></i> ` : '';
   return `<tr class="var-row" data-item="${esc(it.item_id)}" data-model="${v.model_id}" onclick="abrirModalLinha(event,'${esc(it.item_id)}',${v.model_id})">
-    <td style="padding-left:34px" class="var-name">${esc(v.model_name||'—')}<div style="font-size:10px;color:var(--text-muted)">${esc(v.model_sku||it.item_sku||'')}</div></td>
+    <td onclick="event.stopPropagation()"><input type="checkbox" ${marcado?'checked':''} onchange="toggleSelecionado('${esc(chave)}', this.checked)"
+        title="Marcar pra usar a faixa de comissão selecionada acima nesta variação"></td>
+    <td style="padding-left:12px" class="var-name">${esc(v.model_name||'—')}<div style="font-size:10px;color:var(--text-muted)">${esc(v.model_sku||it.item_sku||'')}</div></td>
     <td class="num" onclick="event.stopPropagation()"><input class="cost-input" type="number" step="0.01" min="0" value="${v.cost ?? ''}" placeholder="—"
         onchange="salvarCusto('${esc(it.item_id)}', ${v.model_id}, this.value)"></td>
     <td class="num">${R(v.current_price)}</td>
     <td class="num ${mgClass}">${mg}</td>
-    <td class="num sug">${avisoFaixa}${R(v.suggested_price)}</td>
+    <td class="num sug">${avisoFaixa}${R(sugerido)}</td>
     <td class="num" onclick="event.stopPropagation()"><button class="btn-aplicar-1" ${canApply?'':'disabled'}
-        onclick="aplicarUm('${esc(it.item_id)}', ${v.model_id}, ${v.suggested_price})">aplicar</button></td>
+        onclick="aplicarUm('${esc(it.item_id)}', ${v.model_id}, ${sugerido})">aplicar</button></td>
   </tr>`;
 }
 

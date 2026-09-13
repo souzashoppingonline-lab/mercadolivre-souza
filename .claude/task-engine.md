@@ -11,16 +11,22 @@ O pedido original era um quadro de tarefas genérico do "Analista de E-commerce"
 Módulo puro (só Postgres, sem BullMQ/Telegram/WS) — mesmo espírito de `reports.js` (consultas compartilhadas): centraliza a lógica para que nenhuma página ou handler de worker monte um `INSERT INTO tasks` diretamente.
 
 ```js
-createTaskIfNotExists({ ruleKey, itemId, title, description, priority, storeId, source, metadata })
-checkStock({ itemId, title, availableQuantity, permalink, storeId, storeName })
+createTaskIfNotExists({ ruleKey, itemId, title, description, priority, storeId, source, marketplaceCode, metadata })
+checkStock({ itemId, title, availableQuantity, permalink, storeId, storeName, marketplace, marketplaceCode, source })
 checkQuality({ itemId, title, score, problems, permalink, storeId, storeName })
+checkVendaForte({ itemId, title, unidades24h, storeId, storeName, link })            // v97, Shopee
+checkPromoAtiva({ tipo, promoId, nome, desconto, storeId, storeName })               // v97, Shopee
+checkPromoVencendo({ tipo, promoId, nome, storeId, storeName, diasRestantes, vencida }) // v97, Shopee
 ```
 
-- **`createTaskIfNotExists`** é o único ponto que escreve em `tasks`. Resolve `marketplace_id` (hoje sempre `'ML'`, cacheado em memória após a 1ª consulta) e faz o dedup: `SELECT ... WHERE rule_key=$1 AND item_id=$2 AND board_column != 'excluido'`. Se já existe um cartão pra aquela regra+item em **qualquer status que não seja Excluído** (inclusive Finalizado), só atualiza `updated_at`/`metadata` — não move a coluna, não reabre o cartão. Só cria um cartão novo se o anterior já estiver em `board_column='excluido'`, ou se nunca existiu um. **Mudança de regra (v20)**: até a v19, o dedup só considerava cartões abertos (`NOT IN ('finalizado','excluido')`) — um item que voltasse a ter score baixo depois do cartão anterior ser Finalizado ganhava um cartão novo. Pedido explícito do usuário: só Excluído libera recriação, Finalizado também bloqueia. Índice parcial dedicado em `tasks` (ver `database.md`) foi recriado com o novo predicado (`WHERE board_column != 'excluido'`) pra continuar sendo usado por essa query.
-- **Regra 1 — `checkStock`** (`rule_key='estoque_critico'`): dispara quando `available_quantity <= 5` — **mesmo limiar** já usado no alerta Telegram `tg_reposicao` (não um novo threshold configurável; a Agenda Trello reflete o mesmo sinal que já existe, não inventa um segundo). Cartão: título `"Repor estoque urgente: <título do anúncio>"` (o título do item entra no título do cartão para diferenciar cartões desta regra na coluna sem precisar abrir cada um), prioridade `alta`, `metadata` com SKU/título/quantidade/loja/marketplace/link.
-- **Regra 2 — `checkQuality`** (`rule_key='score_baixo'`): dispara quando `score < 50` (score de qualidade do anúncio, `/item/:id/performance` do ML). Cartão: título `"Melhorar qualidade: <título do anúncio>"` (mesmo racional da regra 1), prioridade `media`, `metadata` com score atual, lista de problemas (`buckets[].variables` com `status='PENDING'`), loja/marketplace/link.
+- **`createTaskIfNotExists`** é o único ponto que escreve em `tasks`. Resolve `marketplace_id` a partir de `marketplaceCode` (**v97**: generalizado — era sempre `'ML'` hardcoded; agora aceita qualquer `code` de `marketplaces`, cacheado em memória por código após a 1ª consulta) e faz o dedup: `SELECT ... WHERE rule_key=$1 AND item_id=$2 AND board_column != 'excluido'`. Se já existe um cartão pra aquela regra+item em **qualquer status que não seja Excluído** (inclusive Finalizado), só atualiza `updated_at`/`metadata` — não move a coluna, não reabre o cartão. Só cria um cartão novo se o anterior já estiver em `board_column='excluido'`, ou se nunca existiu um. **Mudança de regra (v20)**: até a v19, o dedup só considerava cartões abertos (`NOT IN ('finalizado','excluido')`) — um item que voltasse a ter score baixo depois do cartão anterior ser Finalizado ganhava um cartão novo. Pedido explícito do usuário: só Excluído libera recriação, Finalizado também bloqueia. Índice parcial dedicado em `tasks` (ver `database.md`) foi recriado com o novo predicado (`WHERE board_column != 'excluido'`) pra continuar sendo usado por essa query.
+- **Regra 1 — `checkStock`** (`rule_key='estoque_critico'`): dispara quando `available_quantity <= 5` — **mesmo limiar** já usado no alerta Telegram `tg_reposicao` (não um novo threshold configurável; a Agenda Trello reflete o mesmo sinal que já existe, não inventa um segundo). Cartão: título `"Repor estoque urgente: <título do anúncio>"` (o título do item entra no título do cartão para diferenciar cartões desta regra na coluna sem precisar abrir cada um), prioridade `alta`, `metadata` com SKU/título/quantidade/loja/marketplace/link. **v97**: mesmo `rule_key` reusado pra Shopee (`checkStock` generalizado aceita `marketplace`/`marketplaceCode`/`source` como parâmetros opcionais, default = comportamento ML antigo intacto) — um `item_id` de Shopee nunca colide com um MLB, então ML e Shopee compartilham a mesma fila "estoque crítico" sem ambiguidade; um analista olhando essa regra vê os dois canais juntos.
+- **Regra 2 — `checkQuality`** (`rule_key='score_baixo'`): dispara quando `score < 50` (score de qualidade do anúncio, `/item/:id/performance` do ML). Cartão: título `"Melhorar qualidade: <título do anúncio>"` (mesmo racional da regra 1), prioridade `media`, `metadata` com score atual, lista de problemas (`buckets[].variables` com `status='PENDING'`), loja/marketplace/link. Só ML — ver Escopo abaixo.
+- **Regra 3 (v97, Shopee) — `checkVendaForte`** (`rule_key='venda_forte_shopee'`): dispara quando um anúncio vende `>= 10` unidades nas últimas 24h (`VENDA_FORTE_UNIDADES_24H`, limiar inicial ajustável — sem baseline histórico por item ainda, diferente do outlier estatístico de faturamento da loja). Cartão informativo/oportunidade, prioridade `media` (não é problema). Chamada por `checkShopeeVendasFortes()` (`marketplaceEventWorker`, a cada 4h) — só lê `orders` já sincronizado, zero chamada à Shopee.
+- **Regra 4 (v97, Shopee) — `checkPromoAtiva`** (`rule_key='promocao_ativa_shopee'`): cartão informativo, prioridade `baixa`, criado pra toda campanha `shopee_promotions` que está `ongoing`. Título distingue por tipo: `discount` → "Oferta relâmpago ativa" (a Shopee tem uma API de Flash Sale própria, **não integrada** neste projeto — `discount` synced via `getDiscountList` é o mais próximo disso hoje, ver `shopee.md`); `voucher` → "Cupom ativo". Chamada por `syncShopeePromos()` (`marketplaceEventWorker`, 1h) pra cada promo recém-sincronizada como ongoing.
+- **Regra 5 (v97, Shopee) — `checkPromoVencendo`** (`rule_key='promocao_vencendo_shopee'`): cartão criado quando uma campanha entra na janela de 5 dias pro fim, ou vence — reaproveita o MESMO cálculo de `checkShopeeCampanhasVencendo` (`worker.js`, 1x/dia) que já dispara Telegram/e-mail; não recalcula nada, só transforma o aviso existente também num cartão. Prioridade `media` (vencendo) ou `alta` (já vencida).
 - **Título do item no título do cartão, não recalculado na atualização**: quando um cartão automático já aberto é só "tocado" de novo pela mesma regra (dedup — ver abaixo), o `title` gravado na criação **não** é atualizado, só `metadata`/`updated_at`. Se o anúncio for renomeado depois, o título do cartão fica com o nome antigo até o cartão ser fechado e um novo ser criado — comportamento aceito, consistente com "não recriar, só atualizar a data" pedido na especificação original.
-- Ambas as funções engolem qualquer erro internamente (`try/catch` + `console.warn`) — uma falha do TaskEngine (ex.: tabela `tasks` indisponível) **nunca** deve derrubar `handleItem`/`syncScores`, que têm responsabilidades muito mais críticas (persistir o anúncio/score em si).
+- Todas as funções `checkX` engolem qualquer erro internamente (`try/catch` + `console.warn`) — uma falha do TaskEngine (ex.: tabela `tasks` indisponível) **nunca** deve derrubar o sync/handler que a chama, que tem responsabilidades muito mais críticas (persistir o anúncio/pedido/promoção em si).
 
 ## Ciclo de vida do cartão — soft delete (coluna) vs. hard delete (linha)
 
@@ -30,22 +36,30 @@ Mover um cartão para a coluna "Excluído" é reversível (só muda `board_colum
 
 Todo cartão pode ter um `due_date` opcional (editável em `pages/agenda-trello.html`). Um cartão com `due_date` vencido mostra badge vermelho no próprio card — isso já existia antes de qualquer regra sobre atraso ter sido documentada aqui (gap de documentação, não de código). O que foi adicionado depois: KPI "Atrasadas" no topo do quadro e alerta agregado no Telegram uma vez por dia (job `checkTarefasAtrasadas`) — regra completa em `business-rules.md`, schedule em `workers.md`.
 
-## Onde é chamado (`server/src/worker.js`)
+## Onde é chamado
 
+**Mercado Livre** (`server/src/worker.js`):
 - **`handleItem`** (handler do tópico webhook `items`): logo após o alerta de estoque existente (`if (item.available_quantity <= 5) { ... stock_alert ...}`), chama `taskEngine.checkStock(...)`. Roda a cada webhook de item — é o mesmo gatilho de tempo real que já existe para o alerta Telegram.
 - **`syncScores`** (job diário 01:00, ver `workers.md`): depois de gravar `item_performance`, chama `taskEngine.checkQuality(...)` para cada item com `score` calculado. Só roda uma vez por dia (ritmo do próprio job de score), não em tempo real.
-- Quando `createTaskIfNotExists` efetivamente **cria** um cartão novo (não quando só atualiza um existente), `worker.js` publica `task_created` no WS (`{ id, rule_key, title }`) — consumido por `pages/agenda-trello.html` para mostrar um toast e recarregar o quadro. Essa é a "notificação interna" pedida na especificação; integração com Telegram fica para o futuro (não implementada).
 
-## Escopo atual — só Mercado Livre
+**Shopee** (v97 — `server/src/marketplaceEventWorker.js` + `worker.js`):
+- **`syncShopeeCatalog`** (`marketplaceEventWorker`, 30min): pra cada item ativo, chama `taskEngine.checkStock(...)` com `marketplaceCode='SHOPEE'`/`source='shopee'`.
+- **`checkShopeeVendasFortes`** (`marketplaceEventWorker`, nova, a cada 4h): lê `orders` (marketplace Shopee, últimas 24h, agrupado por item) e chama `taskEngine.checkVendaForte(...)`.
+- **`syncShopeePromos`** (`marketplaceEventWorker`, 1h): pra cada promoção que ficou `ongoing`, chama `taskEngine.checkPromoAtiva(...)`.
+- **`checkShopeeCampanhasVencendo`** (`worker.js`, 1x/dia): pra cada promoção que entra na janela de vencimento ou vence, chama `taskEngine.checkPromoVencendo(...)` — mesmo loop que já monta o aviso Telegram/e-mail.
 
-Por pedido explícito, as duas regras automáticas hoje **só avaliam itens/lojas do Mercado Livre** (`checkStock`/`checkQuality` são chamadas só a partir de handlers ML em `worker.js`; `source` default é `'mercado_livre'`, `marketplace_id` resolvido sempre para `code='ML'`). A coluna `source` já aceita `amazon`/`shopee`/`sistema`/`manual` como valores válidos (schema pronto para o futuro), mas nenhuma regra automática os produz ainda — só a criação manual de tarefa (`POST /api/tasks`, `source='manual'`) pode gravar qualquer marketplace.
+Em ambos os processos: quando `createTaskIfNotExists` efetivamente **cria** um cartão novo (não quando só atualiza um existente), publica `task_created` no WS (`{ id, rule_key, title }`) — consumido por `pages/agenda-trello.html` para mostrar um toast e recarregar o quadro. Essa é a "notificação interna" pedida na especificação; integração com Telegram fica para o futuro (não implementada) — exceto a Regra 5, que JÁ tem alerta Telegram/e-mail próprio (`checkShopeeCampanhasVencendo`), reaproveitado, não duplicado.
+
+## Escopo — Mercado Livre (regras 1-2) + Shopee (regras 1, 3-5)
+
+Até a v96, as duas regras automáticas só avaliavam Mercado Livre. **v97** estendeu a Regra 1 (estoque crítico, mesmo `rule_key`) e adicionou 3 regras exclusivas de Shopee (venda forte, promoção ativa, promoção vencendo) — pedido explícito do usuário ("crie um Trello igual tem no Mercado Livre pra Shopee"). A Regra 2 (score de qualidade, `/item/:id/performance` do ML) continua só ML — o Score de Anúncios da Shopee já existe (`scoreItem()`, `pages/shopee-score.html`) mas não foi ligado ao TaskEngine nesta rodada (não foi pedido; ver Extensibilidade). Amazon/TikTok Shop continuam sem nenhuma regra automática — a coluna `source` já aceita esses valores (schema pronto), só a criação manual de tarefa (`POST /api/tasks`, `source='manual'`) grava esses marketplaces hoje.
 
 ## Extensibilidade — regras futuras (não implementadas)
 
-O padrão `checkX({ ... }) → createTaskIfNotExists({ ruleKey: 'x', ... })` foi desenhado para que uma regra nova seja só mais uma função em `taskEngine.js` + uma chamada no ponto certo de `worker.js`, sem tocar nas existentes. Regras cogitadas, citadas pelo usuário, **nenhuma implementada agora**:
+O padrão `checkX({ ... }) → createTaskIfNotExists({ ruleKey: 'x', ... })` foi desenhado para que uma regra nova seja só mais uma função em `taskEngine.js` + uma chamada no ponto certo do worker correspondente, sem tocar nas existentes. Regras cogitadas, citadas pelo usuário, **nenhuma implementada agora**:
 
-- Pedidos atrasados (SLA de envio estourado)
-- Perguntas sem resposta há X horas
+- Pedidos atrasados (SLA de envio estourado) — ML e Shopee (Shopee já tem o sinal em `GET /api/shopee/problemas` categoria `pedidos_atrasados`, reaproveitável)
+- Perguntas sem resposta há X horas (ML) / Chat sem resposta (Shopee — já tem o sinal em `GET /api/shopee/problemas` categoria `chat_sem_resposta`, reaproveitável)
 - Mensagens pós-venda sem resposta
 - ROI negativo (cruzar com `ml_turbo_sales`/`finance.md`)
 - Produto sem venda há 30 dias (já existe o dado em `GET /api/analises/estoque-parado?modo=parado` — reaproveitar, não recalcular)
@@ -53,7 +67,8 @@ O padrão `checkX({ ... }) → createTaskIfNotExists({ ruleKey: 'x', ... })` foi
 - Preço abaixo da margem mínima
 - Campanha ADS com performance ruim
 - Produto sem Buy Box (Amazon)
-- Problemas Shopee/Amazon (quando essas integrações amadurecerem)
+- Score de Anúncios Shopee baixo (motor já existe, `scoreItem()` — só falta ligar ao TaskEngine, mesmo padrão da Regra 2 do ML)
+- Anúncio Shopee banido por violação de conteúdo (já tem o sinal em `GET /api/shopee/problemas` categoria `violacao_conteudo`, v96, reaproveitável)
 - Boletos vencendo, fluxo de caixa, contas a pagar (módulo financeiro, fora do escopo de e-commerce operacional)
 
 Ao implementar qualquer uma, seguir o mesmo contrato (`rule_key` único, dedup por `rule_key+item_id`, engolir erro internamente) e atualizar esta seção.

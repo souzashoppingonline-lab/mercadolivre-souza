@@ -13,6 +13,7 @@ const redis = require('./db/redis');
 const { publish } = require('./ws/hub');
 const { tgNotify } = require('./notify');
 const ranking = require('./ranking');
+const taskEngine = require('./taskEngine'); // v97 — cartões automáticos da Agenda Trello pra Shopee (estoque/venda forte/promoções)
 const { Scheduler } = require('./marketplaces/Scheduler');
 const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
 const { ShopeePollingEventSource } = require('./marketplaces/shopee/ShopeePollingEventSource');
@@ -27,6 +28,7 @@ const SHOPEE_CHAT_INTERVAL_MS = 10 * 60 * 1000; // 10min — poll de mensagens n
 const SHOPEE_CATALOG_INTERVAL_MS = Number(process.env.SHOPEE_CATALOG_INTERVAL_MS || 30 * 60 * 1000); // 30min — sync do catálogo (Product API)
 const SHOPEE_PROMO_INTERVAL_MS = Number(process.env.SHOPEE_PROMO_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de promoções (alerta de vencimento é checkShopeeCampanhasVencendo, worker.js, 1x/dia)
 const SHOPEE_VIOLATIONS_INTERVAL_MS = Number(process.env.SHOPEE_VIOLATIONS_INTERVAL_MS || 6 * 60 * 60 * 1000); // 6h — anúncios banidos por violação não mudam de status de repente, não precisa da mesma frequência do catálogo (30min)
+const SHOPEE_VENDA_FORTE_INTERVAL_MS = Number(process.env.SHOPEE_VENDA_FORTE_INTERVAL_MS || 4 * 60 * 60 * 1000); // 4h — mesmo ritmo do syncTopVendas (ML), pra Agenda Trello (v97)
 const SHOPEE_RETURNS_INTERVAL_MS = Number(process.env.SHOPEE_RETURNS_INTERVAL_MS || 60 * 60 * 1000); // 1h — sync de devoluções/reembolsos
 const SHOPEE_RETURNS_LOOKBACK_DAYS = Number(process.env.SHOPEE_RETURNS_LOOKBACK_DAYS || 180); // histórico de devoluções (varrido em janelas de 15d)
 
@@ -506,6 +508,11 @@ async function startMarketplaceEventWorkers() {
     // diferente. Alimenta o Painel de Problemas. Isolado do pipeline ML.
     syncShopeeItemViolations().catch((e) => console.warn('[marketplace-worker] violações Shopee 1º run:', e.message));
     setInterval(() => syncShopeeItemViolations().catch((e) => console.warn('[marketplace-worker] violações Shopee:', e.message)), SHOPEE_VIOLATIONS_INTERVAL_MS);
+
+    // Agenda Trello (v97) — Regra 3: produto vendendo bem (>=10un/24h). Só
+    // lê `orders` já sincronizado (webhook/polling) — nenhuma chamada à Shopee.
+    checkShopeeVendasFortes().catch((e) => console.warn('[marketplace-worker] venda forte Shopee 1º run:', e.message));
+    setInterval(() => checkShopeeVendasFortes().catch((e) => console.warn('[marketplace-worker] venda forte Shopee:', e.message)), SHOPEE_VENDA_FORTE_INTERVAL_MS);
   }
 }
 
@@ -566,6 +573,11 @@ async function syncShopeeCatalog() {
     try { items = await client.listAllItems('NORMAL', 100); }
     catch (e) { console.warn(`[catalog] loja ${storeId} get_item_list: ${e.message}`); continue; }
     if (!items.length) { console.log(`[catalog] loja ${storeId}: sem itens ativos`); continue; }
+
+    // Nome da loja pro cartão da Agenda Trello (Regra 1, v97) — 1 query por
+    // loja, fora do loop de itens (não repete por item).
+    const { rows: storeRow } = await pool.query(`SELECT nickname FROM stores WHERE id = $1`, [storeId]);
+    const storeName = storeRow[0]?.nickname || `loja ${storeId}`;
 
     // Detalhe base em lotes de 50 (limite do get_item_base_info).
     const baseById = new Map();
@@ -632,6 +644,17 @@ async function syncShopeeCatalog() {
          priceMin, priceMax, stockTotal, JSON.stringify(modelsCompact), JSON.stringify(tier),
          base.category_id != null ? base.category_id : null, base.description || null, JSON.stringify(base)]
       );
+
+      // Agenda Trello (v97) — Regra 1 (estoque crítico), mesma regra/threshold
+      // já usada pro ML, só que disparada aqui (sync de catálogo, 30min) em
+      // vez de por webhook (Shopee não tem um webhook granular por item).
+      if (status === 'active') {
+        const stockTask = await taskEngine.checkStock({
+          itemId: String(it.item_id), title: base.item_name, availableQuantity: stockTotal,
+          permalink: null, storeId, storeName, marketplace: 'Shopee', marketplaceCode: 'SHOPEE', source: 'shopee',
+        });
+        if (stockTask?.created) await publish('task_created', { id: stockTask.id, rule_key: 'estoque_critico', title: 'Repor estoque urgente' });
+      }
       ok++;
     }
     console.log(`[catalog] loja ${storeId}: ${ok}/${items.length} itens Shopee sincronizados`);
@@ -693,6 +716,41 @@ async function syncShopeeItemViolations() {
   }
 }
 
+// Agenda Trello (v97) — Regra 3: produto vendendo bem. Só lê `orders` (já
+// sincronizado via evento/polling) — zero chamada à Shopee. Roda pra TODAS
+// as lojas Shopee de uma vez (1 query), não por loja como as outras funções
+// acima, porque não precisa de client nenhum aqui.
+async function checkShopeeVendasFortes() {
+  const { rows: mp } = await pool.query(`SELECT id FROM marketplaces WHERE code = 'SHOPEE'`);
+  const marketplaceId = mp[0]?.id;
+  if (!marketplaceId) return;
+
+  const { rows } = await pool.query(
+    `SELECT o.item_id, MAX(o.title) AS title, o.store_id, SUM(o.quantity) AS unidades
+     FROM orders o
+     WHERE o.marketplace_id = $1 AND o.status != 'cancelled'
+       AND o.date_created >= now() - interval '24 hours' AND o.item_id IS NOT NULL
+     GROUP BY o.item_id, o.store_id
+     HAVING SUM(o.quantity) >= 10`,
+    [marketplaceId]
+  );
+  if (!rows.length) { console.log('[venda-forte] nenhum produto Shopee vendendo forte nas últimas 24h'); return; }
+
+  const storeNames = new Map();
+  for (const r of rows) {
+    if (!storeNames.has(r.store_id)) {
+      const { rows: sn } = await pool.query(`SELECT nickname FROM stores WHERE id = $1`, [r.store_id]);
+      storeNames.set(r.store_id, sn[0]?.nickname || `loja ${r.store_id}`);
+    }
+    const vendaTask = await taskEngine.checkVendaForte({
+      itemId: r.item_id, title: r.title, unidades24h: Number(r.unidades),
+      storeId: r.store_id, storeName: storeNames.get(r.store_id), link: null,
+    });
+    if (vendaTask?.created) await publish('task_created', { id: vendaTask.id, rule_key: 'venda_forte_shopee', title: `Produto vendendo bem: ${r.title || r.item_id}` });
+  }
+  console.log(`[venda-forte] ${rows.length} produto(s) Shopee vendendo forte nas últimas 24h`);
+}
+
 // Resumo legível do desconto de um voucher (reward_type: 1=valor fixo, 2=%).
 function voucherDesconto(v) {
   if (Number(v.reward_type) === 2 && v.percentage != null) return `${v.percentage}%`;
@@ -717,6 +775,8 @@ function promoStatus(startS, endS) {
 async function syncShopeePromos() {
   const nowS = Math.floor(Date.now() / 1000);
   for (const [storeId, client] of shopeeClients) {
+    const { rows: storeRow } = await pool.query(`SELECT nickname FROM stores WHERE id = $1`, [storeId]);
+    const storeName = storeRow[0]?.nickname || `loja ${storeId}`;
     const promos = [];
     try {
       const [ongoing, upcoming] = await Promise.all([
@@ -754,6 +814,16 @@ async function syncShopeePromos() {
            status=EXCLUDED.status, raw=EXCLUDED.raw, updated_at=now()`,
         [p.tipo, p.promo_id, storeId, p.name, p.code, p.start_time, p.end_time, p.desconto, p.status, JSON.stringify(p.raw)]
       );
+
+      // Agenda Trello (v97) — Regra 4: cartão informativo pra toda campanha
+      // ATIVA (oferta relâmpago = tipo 'discount'; cupom = tipo 'voucher').
+      // Prioridade baixa — é acompanhamento, não problema.
+      if (p.status === 'ongoing') {
+        const promoTask = await taskEngine.checkPromoAtiva({
+          tipo: p.tipo, promoId: p.promo_id, nome: p.name, desconto: p.desconto, storeId, storeName,
+        });
+        if (promoTask?.created) await publish('task_created', { id: promoTask.id, rule_key: 'promocao_ativa_shopee', title: `${p.tipo === 'discount' ? 'Oferta relâmpago' : 'Cupom'} ativa: ${p.name || p.promo_id}` });
+      }
     }
     console.log(`[promos] loja ${storeId}: ${promos.length} promoção(ões) sincronizada(s)`);
   }

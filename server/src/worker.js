@@ -2977,7 +2977,7 @@ async function checkShopeeCampanhasVencendo() {
     const avisos = []; // 1 mensagem/e-mail consolidado, não 1 por campanha
     for (const p of rows) {
       const dias = diasRestantesCampanha(p.end_time);
-      const tag = p.tipo === 'voucher' ? `Voucher ${p.code || ''}`.trim() : 'Desconto';
+      const tag = p.tipo === 'voucher' ? `Voucher ${p.code || ''}`.trim() : (p.tipo === 'flash_sale' ? 'Oferta Relâmpago' : 'Desconto');
       const fimFmt = new Date(Number(p.end_time) * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
       const expiredDateStr = p.expiry_alert_expired_date ? new Date(p.expiry_alert_expired_date).toISOString().slice(0, 10) : null;
 

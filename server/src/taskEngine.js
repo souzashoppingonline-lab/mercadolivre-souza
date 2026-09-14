@@ -124,19 +124,23 @@ async function checkVendaForte({ itemId, title, unidades24h, storeId, storeName,
 
 // Regra 4 (v97, Shopee) — Promoção/cupom/oferta relâmpago ATIVA. Chamada por
 // syncShopeePromos (marketplaceEventWorker, 1h) pra cada promoção que virou
-// 'ongoing'. item_id = promo_id (não colide entre tipos porque discount_id e
-// voucher_id vivem em espaços separados na Shopee, e o rule_key já é único
-// por tipo). "Oferta relâmpago" aqui = campanha tipo 'discount' (a Shopee
-// tem uma API de Flash Sale própria, ainda NÃO integrada neste projeto —
-// ver shopee.md; até lá, 'discount' é o mais próximo do que já sincronizamos).
+// 'ongoing'. item_id = promo_id (não colide entre tipos porque discount_id,
+// voucher_id e flash_sale_id vivem em espaços separados na Shopee, e o
+// rule_key já é único por tipo). "Oferta relâmpago" = tipo 'flash_sale'
+// (Shop Flash Sale, API própria integrada na v99 — antes disso, esta regra
+// rotulava errado o tipo 'discount' como "oferta relâmpago"; corrigido a
+// pedido do usuário. 'discount' é um preço promocional comum do vendedor,
+// sem vitrine dedicada nem estoque reservado — coisa diferente. Ver shopee.md).
+const PROMO_ROTULO = { flash_sale: 'Oferta Relâmpago', discount: 'Desconto', voucher: 'Cupom' };
+const PROMO_DESC_TIPO = { flash_sale: 'de oferta relâmpago', discount: 'de desconto', voucher: 'de cupom' };
 async function checkPromoAtiva({ tipo, promoId, nome, desconto, storeId, storeName }) {
   try {
-    const rotulo = tipo === 'discount' ? 'Oferta relâmpago' : 'Cupom';
+    const rotulo = PROMO_ROTULO[tipo] || 'Promoção';
     return await createTaskIfNotExists({
       ruleKey: 'promocao_ativa_shopee',
       itemId: String(promoId),
       title: `${rotulo} ativa: ${nome || promoId}`,
-      description: `Campanha ${tipo === 'discount' ? 'de desconto' : 'de cupom'} em andamento na Shopee${desconto ? ` (${desconto})` : ''}.`,
+      description: `Campanha ${PROMO_DESC_TIPO[tipo] || ''} em andamento na Shopee${desconto ? ` (${desconto})` : ''}.`,
       priority: 'baixa',
       storeId,
       source: 'shopee',
@@ -161,7 +165,7 @@ async function checkPromoVencendo({ tipo, promoId, nome, storeId, storeName, dia
       itemId: String(promoId),
       title: titulo,
       description: vencida
-        ? `A campanha ${tipo === 'discount' ? 'de desconto' : 'de cupom'} já venceu — renove ou remova.`
+        ? `A campanha ${PROMO_DESC_TIPO[tipo] || ''} já venceu — renove ou remova.`
         : `Faltam ${diasRestantes} dia(s) pro fim da campanha — decida se renova.`,
       priority: vencida ? 'alta' : 'media',
       storeId,

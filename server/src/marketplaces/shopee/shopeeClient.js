@@ -406,6 +406,57 @@ class ShopeeClient extends MarketplaceClient {
     return resp?.response || null;
   }
 
+  // ── Shop Flash Sale — a "Oferta Relâmpago" DE VERDADE da Shopee ──
+  //
+  // v99: até aqui este projeto rotulava a campanha tipo 'discount' (preço
+  // promocional criado pelo próprio vendedor, sem vitrine dedicada nem
+  // estoque reservado) como "oferta relâmpago". Usuário corrigiu: são coisas
+  // diferentes dentro da própria Shopee. "Oferta Relâmpago" é o **Shop Flash
+  // Sale** — API própria (`/api/v2/shop_flash_sale/*`), com vitrine dedicada
+  // no app, horário em slots e estoque reservado por item. Ver shopee.md.
+  //
+  // type: 0=upcoming, 1=ongoing, 2=expired (paginação via `more`+`offset`).
+  async getShopFlashSaleList(type = 1, pageSize = 100) {
+    this._assertConfigured();
+    const all = [];
+    let offset = 0;
+    for (let guard = 0; guard < 100; guard++) {
+      const resp = await this._call('/api/v2/shop_flash_sale/get_shop_flash_sale_list', {
+        method: 'GET',
+        query: { type: String(type), offset: String(offset), limit: String(pageSize) },
+      });
+      const list = resp?.response?.flash_sale_list || [];
+      all.push(...list);
+      if (!resp?.response?.more || !list.length) break;
+      offset += list.length;
+    }
+    return all;
+  }
+
+  // Itens dentro de UMA oferta relâmpago, com preço promocional/estoque
+  // reservado por modelo. ATENÇÃO: campos conforme a documentação oficial
+  // (open.shopee.com/documents) — ainda NÃO confirmados empiricamente contra
+  // uma chamada real (nenhuma loja com Shop Flash Sale habilitado disponível
+  // pra testar até a v99 — ver shopee.md). Mesma defesa de nomes de campo já
+  // usada em getDiscountItems (a Shopee às vezes muda o nome do campo entre
+  // itens com/sem variação).
+  async getShopFlashSaleItems(flashSaleId, pageSize = 100) {
+    this._assertConfigured();
+    const all = [];
+    let offset = 0;
+    for (let guard = 0; guard < 100; guard++) {
+      const resp = await this._call('/api/v2/shop_flash_sale/get_shop_flash_sale_item_list', {
+        method: 'GET',
+        query: { flash_sale_id: String(flashSaleId), offset: String(offset), limit: String(pageSize) },
+      });
+      const list = resp?.response?.item_info || [];
+      all.push(...list);
+      if (!resp?.response?.more || !list.length) break;
+      offset += list.length;
+    }
+    return all;
+  }
+
   // ── Product API (ESCRITA) — POST com body. Altera a loja de verdade. ──
 
   // Atualiza o estoque de um item. stockList = [{model_id, stock}] (model_id=0

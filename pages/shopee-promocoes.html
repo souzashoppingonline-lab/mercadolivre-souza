@@ -47,6 +47,7 @@
     .promo-name { font-weight:700; font-size:14px; flex:1; }
     .tipo-badge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:20px; text-transform:uppercase; }
     .tipo-badge.discount { background:rgba(238,77,45,.15); color:var(--shopee); }
+    .tipo-badge.flash_sale { background:rgba(245,158,11,.18); color:#f59e0b; }
     .tipo-badge.voucher { background:rgba(99,102,241,.15); color:#818cf8; }
     .st-badge { font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; display:inline-flex; align-items:center; gap:5px; align-self:flex-start; }
     .st-ongoing { background:rgba(39,174,96,.15); color:var(--green); }
@@ -75,13 +76,13 @@
     <div id="app-topbar"></div>
     <div class="content-area">
 
-      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Promoções da Shopee (descontos e vouchers) com <b>contagem regressiva pro prazo</b>. As que vão vencer em menos de 24h também <b>avisam no Telegram</b>. Sincroniza a cada 1h.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px">Promoções da Shopee (descontos, ofertas relâmpago e vouchers) com <b>contagem regressiva pro prazo</b>. As que vão vencer em menos de 24h também <b>avisam no Telegram</b>. Sincroniza a cada 1h.</p>
 
       <div class="shp-filters">
         <label style="font-size:12px;color:var(--text-muted)"><i class="fas fa-store"></i> Loja</label>
         <select id="prLoja" onchange="load()"><option value="">Todas as lojas</option></select>
         <label style="font-size:12px;color:var(--text-muted);margin-left:8px"><i class="fas fa-tag"></i> Tipo</label>
-        <select id="prTipo" onchange="load()"><option value="">Todos</option><option value="discount">Descontos</option><option value="voucher">Vouchers</option></select>
+        <select id="prTipo" onchange="load()"><option value="">Todos</option><option value="discount">Descontos</option><option value="flash_sale">Oferta Relâmpago</option><option value="voucher">Vouchers</option></select>
         <label style="font-size:12px;color:var(--text-muted);margin-left:8px">Status</label>
         <select id="prStatus" onchange="render()"><option value="ongoing" selected>Ativas</option><option value="upcoming">Agendadas</option><option value="expired">Expiradas</option><option value="">Todos</option></select>
         <button class="action-btn" onclick="load()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
@@ -126,6 +127,7 @@ const set = (id,v) => { const el=document.getElementById(id); if(el) el.textCont
 const esc = v => String(v==null?'':v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtDt = ms => ms ? new Date(ms).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
 const ST_LABEL = { ongoing:'Ativa', upcoming:'Agendada', expired:'Expirada' };
+const TIPO_LABEL = { discount:'Desconto', flash_sale:'Oferta Relâmpago', voucher:'Voucher' };
 let _promos = [];
 
 function countdown(endMs) {
@@ -156,14 +158,15 @@ async function load() {
   loadLojasRelampago();
 }
 
-// Cards "Oferta Relâmpago por loja" — SEMPRE tipo='discount' + status ATIVA
-// AGORA, independente dos filtros de Tipo/Status/Loja acima (é um resumo do
-// dia, não a lista filtrável). Busca à parte porque a lista principal pode
+// Cards "Oferta Relâmpago por loja" — SEMPRE tipo='flash_sale' (Shop Flash
+// Sale, a oferta relâmpago de verdade da Shopee) + status ATIVA AGORA,
+// independente dos filtros de Tipo/Status/Loja acima (é um resumo do dia,
+// não a lista filtrável). Busca à parte porque a lista principal pode
 // estar filtrada por outro tipo/loja. Clique abre o modal com os produtos
 // (GET /api/shopee/promocoes/relampago/:storeId, que já chama a Shopee).
 async function loadLojasRelampago() {
   const box = document.getElementById('relampagoLojas');
-  const d = await DB.getShopeePromocoes({ tipo: 'discount' });
+  const d = await DB.getShopeePromocoes({ tipo: 'flash_sale' });
   if (!d || d.error) { box.innerHTML = `<div class="empty-state" style="grid-column:1/-1;color:var(--red)">Erro: ${esc(d?.error||'')}</div>`; return; }
   const ativas = (d.rows || []).filter((p) => p.status === 'ongoing');
   const porLoja = new Map();
@@ -220,7 +223,7 @@ function render() {
     return `<div class="promo-card ${p.status==='ongoing'&&cd.urgent?'venc':''}" onclick='abrirItens(${JSON.stringify({tipo:p.tipo,promo_id:p.promo_id,name:p.name}).replace(/'/g,"&#39;")})'>
       <span class="loja-chip"><i class="fas fa-store"></i> ${esc(p.conta||'Loja Shopee')}</span>
       <div class="promo-top">
-        <span class="tipo-badge ${p.tipo}">${p.tipo==='voucher'?'Voucher':'Desconto'}</span>
+        <span class="tipo-badge ${p.tipo}">${TIPO_LABEL[p.tipo]||p.tipo}</span>
         <span class="promo-name">${esc(p.name||'—')}</span>
       </div>
       <span class="st-badge st-${p.status}"><i class="fas fa-circle" style="font-size:7px"></i> ${ST_LABEL[p.status]||p.status}</span>
@@ -249,7 +252,7 @@ const RB = v => 'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,max
 
 async function abrirItens(p) {
   document.getElementById('mTitulo').textContent = p.name || 'Promoção';
-  document.getElementById('mSub').textContent = p.tipo === 'voucher' ? 'Voucher' : 'Desconto';
+  document.getElementById('mSub').textContent = TIPO_LABEL[p.tipo] || p.tipo;
   const body = document.getElementById('mBody');
   body.innerHTML = '<div class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></div>';
   document.getElementById('itensModal').classList.add('open');
@@ -257,7 +260,7 @@ async function abrirItens(p) {
   if (!d || d.error) { body.innerHTML = `<div class="empty-state" style="padding:30px;color:var(--red)">Erro: ${esc(d?.error||'')}</div>`; return; }
   if (d.escopo === 'loja') { body.innerHTML = `<div class="empty-state" style="padding:30px">${esc(d.nota||'Válido para a loja inteira.')}</div>`; return; }
   const itens = d.itens || [];
-  document.getElementById('mSub').textContent = `${d.tipo==='voucher'?'Voucher':'Desconto'} · ${itens.length} anúncio(s)`;
+  document.getElementById('mSub').textContent = `${TIPO_LABEL[d.tipo]||d.tipo} · ${itens.length} anúncio(s)`;
   body.innerHTML = itens.length ? itens.map(it => `
     <div class="mitem">
       ${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:'<div class="noimg"></div>'}

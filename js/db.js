@@ -215,6 +215,7 @@ const DB = {
   async salvarShopeeCusto(item_id, model_id, cost) { return this._post('/shopee/custo', { item_id, model_id, cost }); },
   async getShopeePromocoes(params = {}) { return this._get('/shopee/promocoes', params); },
   async getShopeePromocaoItens(tipo, promoId) { return this._get(`/shopee/promocoes/${tipo}/${encodeURIComponent(promoId)}/itens`); },
+  async getShopeePromocaoRelampagoLoja(storeId) { return this._get(`/shopee/promocoes/relampago/${encodeURIComponent(storeId)}`); },
   async getShopeeProblemas(params = {}) { return this._get('/shopee/problemas', params); },
   async getShopeeDevolucoes(params = {}) { return this._get('/shopee/devolucoes', params); },
   async getShopeeExecutivo(params = {}) { return this._get('/shopee/executivo', params); },

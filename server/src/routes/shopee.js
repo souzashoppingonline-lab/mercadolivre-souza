@@ -633,7 +633,7 @@ router.get('/promocoes', async (req, res) => {
     const storeId = req.query.store_id || '';
     const tipo = req.query.tipo || '';
     const { rows } = await pool.query(
-      `SELECT p.tipo, p.promo_id, p.name, p.code, p.start_time, p.end_time, p.desconto, p.status, s.nickname AS conta
+      `SELECT p.tipo, p.promo_id, p.name, p.code, p.start_time, p.end_time, p.desconto, p.status, p.store_id, s.nickname AS conta
        FROM shopee_promotions p LEFT JOIN stores s ON s.id = p.store_id
        WHERE ($1 = '' OR p.store_id = $1::bigint) AND ($2 = '' OR p.tipo = $2)
        ORDER BY p.end_time ASC`,
@@ -644,7 +644,7 @@ router.get('/promocoes', async (req, res) => {
     const out = rows.map((r) => ({
       tipo: r.tipo, promo_id: r.promo_id, name: r.name, code: r.code,
       start_ms: Number(r.start_time) * 1000, end_ms: Number(r.end_time) * 1000,
-      desconto: r.desconto, status: statusOf(r.start_time, r.end_time), conta: r.conta,
+      desconto: r.desconto, status: statusOf(r.start_time, r.end_time), conta: r.conta, store_id: r.store_id,
     }));
     const vencendo = out.filter((p) => p.status === 'ongoing' && (p.end_ms - Date.now()) < 24 * 3600 * 1000).length;
     res.json({
@@ -716,6 +716,71 @@ router.get('/promocoes/:tipo/:promoId/itens', async (req, res) => {
   } catch (e) {
     console.error('[api/shopee] /promocoes/itens', e.message);
     res.status(500).json({ error: e.message, itens: [] });
+  }
+});
+
+// Card "Oferta Relâmpago" por loja (pedido do usuário) — agrega TODAS as
+// campanhas tipo 'discount' ATIVAS AGORA de uma loja (status calculado na
+// hora, não o `status` da última sincronização) e traz os PRODUTOS de cada
+// uma, já com o preço promocional (mesma chamada get_discount usada em
+// /promocoes/:tipo/:promoId/itens — reaproveitada aqui, só que somando as N
+// campanhas ativas da loja em vez de 1 só). Ação pontual explícita: dispara
+// só quando o usuário clica no card da loja, nunca em background/listagem.
+// "Oferta relâmpago" aqui = campanha tipo 'discount', mesmo mapeamento já
+// usado pelo TaskEngine (a Shopee tem uma API de Flash Sale própria, ainda
+// NÃO integrada neste projeto — ver shopee.md).
+router.get('/promocoes/relampago/:storeId', async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { rows: storeRows } = await pool.query(`SELECT nickname FROM stores WHERE id = $1`, [storeId]);
+    const conta = storeRows[0]?.nickname || 'Loja Shopee';
+
+    const { rows: promos } = await pool.query(
+      `SELECT promo_id, name, end_time FROM shopee_promotions
+       WHERE store_id = $1::bigint AND tipo = 'discount'
+         AND to_timestamp(start_time) <= now() AND to_timestamp(end_time) >= now()
+       ORDER BY end_time ASC`,
+      [storeId]
+    );
+    if (!promos.length) return res.json({ conta, promocoes: [], itens: [] });
+
+    const client = await getShopeeClientForStore(pool, storeId, env.shopee);
+    // item_id -> { promo_price, promo_name } — se o mesmo anúncio estiver em
+    // mais de uma campanha ativa, fica o menor preço promocional.
+    const porProduto = new Map();
+    for (const p of promos) {
+      const { item_list } = await client.getDiscountItems(p.promo_id);
+      for (const it of item_list) {
+        if (!it.item_id) continue;
+        const models = it.model_list || [];
+        const precos = models.map((m) => Number(m.model_promotion_price ?? m.promotion_price)).filter((n) => !Number.isNaN(n));
+        const promoPrice = precos.length ? Math.min(...precos) : Number(it.item_promotion_price ?? it.promotion_price);
+        if (Number.isNaN(promoPrice) || !promoPrice) continue;
+        const atual = porProduto.get(String(it.item_id));
+        if (!atual || promoPrice < atual.promo_price) {
+          porProduto.set(String(it.item_id), { promo_price: promoPrice, promo_name: p.name });
+        }
+      }
+    }
+    const ids = [...porProduto.keys()];
+    const { rows: its } = ids.length
+      ? await pool.query(`SELECT ml_id AS item_id, title, thumbnail, price FROM items WHERE ml_id = ANY($1)`, [ids])
+      : { rows: [] };
+    const baseMap = new Map(its.map((i) => [String(i.item_id), i]));
+    const itens = ids.map((id) => {
+      const base = baseMap.get(id) || { item_id: id, title: '(anúncio não sincronizado)', thumbnail: null, price: null };
+      const extra = porProduto.get(id);
+      return { ...base, promo_price: extra.promo_price, promo_name: extra.promo_name };
+    });
+
+    res.json({
+      conta,
+      promocoes: promos.map((p) => ({ promo_id: p.promo_id, name: p.name, end_ms: Number(p.end_time) * 1000 })),
+      itens,
+    });
+  } catch (e) {
+    console.error('[api/shopee] /promocoes/relampago', e.message);
+    res.status(500).json({ error: e.message, promocoes: [], itens: [] });
   }
 });
 

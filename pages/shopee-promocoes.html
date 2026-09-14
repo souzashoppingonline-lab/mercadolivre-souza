@@ -59,6 +59,13 @@
     .countdown { font-weight:800; font-size:15px; }
     .countdown.urgent { color:var(--shopee); }
     .promo-code { font-family:monospace; background:var(--surface); border:1px dashed var(--border); border-radius:6px; padding:2px 8px; font-size:12px; }
+    .relampago-title { font-size:13px; font-weight:700; margin:0 0 10px; display:flex; align-items:center; gap:7px; }
+    .relampago-title i { color:var(--shopee); }
+    .loja-relampago-card { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--shopee); border-radius:12px; padding:16px 18px; cursor:pointer; transition:border-color .15s, transform .1s; }
+    .loja-relampago-card:hover { border-color:var(--shopee); transform:translateY(-1px); }
+    .loja-relampago-card .lbl { font-size:12px; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+    .loja-relampago-card .val { font-size:26px; font-weight:800; line-height:1.1; color:var(--shopee); }
+    .loja-relampago-card .sub { font-size:11px; color:var(--text-muted); margin-top:4px; }
   </style>
 </head>
 <body>
@@ -78,6 +85,11 @@
         <label style="font-size:12px;color:var(--text-muted);margin-left:8px">Status</label>
         <select id="prStatus" onchange="render()"><option value="ongoing" selected>Ativas</option><option value="upcoming">Agendadas</option><option value="expired">Expiradas</option><option value="">Todos</option></select>
         <button class="action-btn" onclick="load()" style="margin-left:auto"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <p class="relampago-title"><i class="fas fa-bolt-lightning"></i> Oferta Relâmpago por loja (agora)</p>
+      <div class="shp-kpis" id="relampagoLojas" style="margin-bottom:26px">
+        <div class="empty-state" style="grid-column:1/-1;padding:20px">Carregando...</div>
       </div>
 
       <div class="shp-kpis">
@@ -141,6 +153,52 @@ async function load() {
   set('kAtivas', r.ativas ?? 0); set('kAgendadas', r.agendadas ?? 0); set('kVencendo', r.vencendo_24h ?? 0); set('kExpiradas', r.expiradas ?? 0);
   _promos = d.rows || [];
   render();
+  loadLojasRelampago();
+}
+
+// Cards "Oferta Relâmpago por loja" — SEMPRE tipo='discount' + status ATIVA
+// AGORA, independente dos filtros de Tipo/Status/Loja acima (é um resumo do
+// dia, não a lista filtrável). Busca à parte porque a lista principal pode
+// estar filtrada por outro tipo/loja. Clique abre o modal com os produtos
+// (GET /api/shopee/promocoes/relampago/:storeId, que já chama a Shopee).
+async function loadLojasRelampago() {
+  const box = document.getElementById('relampagoLojas');
+  const d = await DB.getShopeePromocoes({ tipo: 'discount' });
+  if (!d || d.error) { box.innerHTML = `<div class="empty-state" style="grid-column:1/-1;color:var(--red)">Erro: ${esc(d?.error||'')}</div>`; return; }
+  const ativas = (d.rows || []).filter((p) => p.status === 'ongoing');
+  const porLoja = new Map();
+  ativas.forEach((p) => {
+    if (!porLoja.has(p.store_id)) porLoja.set(p.store_id, { store_id: p.store_id, conta: p.conta || 'Loja Shopee', qtd: 0 });
+    porLoja.get(p.store_id).qtd += 1;
+  });
+  const lojas = [...porLoja.values()];
+  box.innerHTML = lojas.length ? lojas.map((l) => `
+    <div class="loja-relampago-card" onclick='abrirOfertasLoja(${JSON.stringify(String(l.store_id)).replace(/'/g,"&#39;")}, ${JSON.stringify(l.conta).replace(/'/g,"&#39;")})'>
+      <div class="lbl"><i class="fas fa-store"></i> ${esc(l.conta)}</div>
+      <div class="val">${l.qtd}</div>
+      <div class="sub">oferta(s) relâmpago ativa(s) agora · clique pra ver os produtos</div>
+    </div>`).join('') : '<div class="empty-state" style="grid-column:1/-1;padding:20px;font-size:13px">Nenhuma loja com oferta relâmpago ativa agora.</div>';
+}
+
+async function abrirOfertasLoja(storeId, conta) {
+  document.getElementById('mTitulo').textContent = `Oferta Relâmpago — ${conta}`;
+  document.getElementById('mSub').textContent = 'Carregando...';
+  const body = document.getElementById('mBody');
+  body.innerHTML = '<div class="empty-state" style="padding:30px"><div class="spinner" style="margin:auto"></div></div>';
+  document.getElementById('itensModal').classList.add('open');
+  const d = await DB.getShopeePromocaoRelampagoLoja(storeId);
+  if (!d || d.error) { body.innerHTML = `<div class="empty-state" style="padding:30px;color:var(--red)">Erro: ${esc(d?.error||'')}</div>`; return; }
+  const itens = d.itens || [];
+  document.getElementById('mSub').textContent = `${(d.promocoes||[]).length} campanha(s) ativa(s) · ${itens.length} produto(s)`;
+  body.innerHTML = itens.length ? itens.map((it) => `
+    <div class="mitem">
+      ${it.thumbnail?`<img src="${esc(it.thumbnail)}" alt="">`:'<div class="noimg"></div>'}
+      <div class="t">${esc(it.title||'—')}<br><small>${esc(it.item_id)}${it.promo_name?' · '+esc(it.promo_name):''}</small></div>
+      <div class="pp">
+        ${it.price!=null?`<div style="color:var(--text-muted);text-decoration:line-through;font-size:11px">${RB(it.price)}</div>`:''}
+        <div class="promo">${RB(it.promo_price)}</div>
+      </div>
+    </div>`).join('') : '<div class="empty-state" style="padding:30px">Nenhum produto encontrado nas ofertas ativas dessa loja.</div>';
 }
 
 // Cards "Ativas"/"Agendadas"/"Expiradas" funcionam como atalho do mesmo

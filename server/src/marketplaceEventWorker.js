@@ -765,7 +765,8 @@ function promoStatus(startS, endS) {
   return 'ongoing';
 }
 
-// Sincroniza promoções Shopee (descontos + vouchers) pra shopee_promotions —
+// Sincroniza promoções Shopee (descontos + ofertas relâmpago/Shop Flash Sale
+// + vouchers) pra shopee_promotions —
 // só sincronização, sem alertar aqui. O alerta de vencimento (5/4/3/2/1 dias +
 // 1x/dia depois de vencida, Telegram+e-mail) é `checkShopeeCampanhasVencendo`
 // em worker.js — roda 1x/dia direto na tabela (não depende do que a API
@@ -792,6 +793,25 @@ async function syncShopeePromos() {
       }
     } catch (e) { console.warn(`[promos] loja ${storeId} descontos: ${e.message}`); }
 
+    // Shop Flash Sale (v99) — a "oferta relâmpago" DE VERDADE (ver
+    // shopeeClient.js). type 1=ongoing, 0=upcoming. Não tem `name` próprio
+    // na API (é um slot de horário, não uma campanha nomeada pelo vendedor
+    // como 'discount'/'voucher') — sintetiza um nome a partir do horário.
+    try {
+      const [ongoingFS, upcomingFS] = await Promise.all([
+        client.getShopFlashSaleList(1),
+        client.getShopFlashSaleList(0),
+      ]);
+      for (const fs of [...ongoingFS, ...upcomingFS]) {
+        const inicio = new Date(Number(fs.start_time) * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+        promos.push({
+          tipo: 'flash_sale', promo_id: String(fs.flash_sale_id), name: `Oferta Relâmpago ${inicio}`, code: null,
+          start_time: fs.start_time, end_time: fs.end_time, desconto: null,
+          status: promoStatus(fs.start_time, fs.end_time), raw: fs,
+        });
+      }
+    } catch (e) { console.warn(`[promos] loja ${storeId} oferta relâmpago (Shop Flash Sale): ${e.message}`); }
+
     try {
       const vouchers = await client.getVoucherList('all');
       for (const v of vouchers) {
@@ -816,13 +836,16 @@ async function syncShopeePromos() {
       );
 
       // Agenda Trello (v97) — Regra 4: cartão informativo pra toda campanha
-      // ATIVA (oferta relâmpago = tipo 'discount'; cupom = tipo 'voucher').
-      // Prioridade baixa — é acompanhamento, não problema.
+      // ATIVA (oferta relâmpago = tipo 'flash_sale'; desconto = 'discount';
+      // cupom = 'voucher' — v99 corrige o rótulo antigo que chamava
+      // 'discount' de "oferta relâmpago"). Prioridade baixa — é
+      // acompanhamento, não problema.
       if (p.status === 'ongoing') {
         const promoTask = await taskEngine.checkPromoAtiva({
           tipo: p.tipo, promoId: p.promo_id, nome: p.name, desconto: p.desconto, storeId, storeName,
         });
-        if (promoTask?.created) await publish('task_created', { id: promoTask.id, rule_key: 'promocao_ativa_shopee', title: `${p.tipo === 'discount' ? 'Oferta relâmpago' : 'Cupom'} ativa: ${p.name || p.promo_id}` });
+        const rotuloWs = p.tipo === 'flash_sale' ? 'Oferta Relâmpago' : (p.tipo === 'discount' ? 'Desconto' : 'Cupom');
+        if (promoTask?.created) await publish('task_created', { id: promoTask.id, rule_key: 'promocao_ativa_shopee', title: `${rotuloWs} ativa: ${p.name || p.promo_id}` });
       }
     }
     console.log(`[promos] loja ${storeId}: ${promos.length} promoção(ões) sincronizada(s)`);

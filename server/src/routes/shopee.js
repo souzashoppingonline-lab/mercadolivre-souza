@@ -11,6 +11,18 @@ const { SHOPEE_PRICING_TIERS, calculateShopeePricing, priceForTier } = require('
 
 const router = express.Router();
 
+// Preço promocional de 1 item dentro de uma campanha (desconto OU oferta
+// relâmpago/Shop Flash Sale) — mesmo formato de resposta nas duas APIs
+// (item com variação: `model_list[].model_promotion_price`; sem variação:
+// `item_promotion_price`). Extraído aqui pra não duplicar entre
+// /promocoes/:tipo/:promoId/itens e /promocoes/relampago/:storeId.
+function shopeePromoPriceOf(it) {
+  const models = it.model_list || [];
+  const precos = models.map((m) => Number(m.model_promotion_price ?? m.promotion_price)).filter((n) => !Number.isNaN(n));
+  const p = precos.length ? Math.min(...precos) : Number(it.item_promotion_price ?? it.promotion_price);
+  return Number.isNaN(p) || !p ? null : p;
+}
+
 async function shopeeMarketplaceId() {
   const { rows } = await pool.query(`SELECT id FROM marketplaces WHERE code = 'SHOPEE'`);
   return rows[0]?.id || null;
@@ -666,8 +678,10 @@ router.get('/promocoes', async (req, res) => {
 });
 
 // Anúncios dentro de uma promoção (modal). Desconto: get_discount → item_list.
-// Voucher: item_id_list (voucher de produto) ou "loja toda". Enriquece com
-// título/foto de `items`. Resolve o client pela loja da promoção.
+// Oferta relâmpago (Shop Flash Sale): get_shop_flash_sale_item_list → mesmo
+// formato de item que o desconto. Voucher: item_id_list (voucher de produto)
+// ou "loja toda". Enriquece com título/foto de `items`. Resolve o client
+// pela loja da promoção.
 router.get('/promocoes/:tipo/:promoId/itens', async (req, res) => {
   try {
     const { tipo, promoId } = req.params;
@@ -688,18 +702,17 @@ router.get('/promocoes/:tipo/:promoId/itens', async (req, res) => {
       return ids.map((id) => map.get(String(id)) || { item_id: String(id), title: '(anúncio não sincronizado)', thumbnail: null });
     };
 
-    if (tipo === 'discount') {
+    if (tipo === 'discount' || tipo === 'flash_sale') {
       const client = await getShopeeClientForStore(pool, promo.store_id, env.shopee);
-      const { item_list } = await client.getDiscountItems(promoId);
+      const item_list = tipo === 'discount'
+        ? (await client.getDiscountItems(promoId)).item_list
+        : await client.getShopFlashSaleItems(promoId);
       const ids = item_list.map((i) => i.item_id).filter(Boolean);
       const base = await enrich(ids);
-      // anexa o preço promocional (menor entre as variações) quando vier
       const promoPriceById = new Map();
       for (const it of item_list) {
-        const models = it.model_list || [];
-        const precos = models.map((m) => Number(m.model_promotion_price ?? m.promotion_price)).filter((n) => !Number.isNaN(n));
-        const p = precos.length ? Math.min(...precos) : Number(it.item_promotion_price ?? it.promotion_price);
-        if (!Number.isNaN(p) && p) promoPriceById.set(String(it.item_id), p);
+        const p = shopeePromoPriceOf(it);
+        if (p != null) promoPriceById.set(String(it.item_id), p);
       }
       const itens = base.map((b) => ({ ...b, promo_price: promoPriceById.get(String(b.item_id)) ?? null }));
       return res.json({ nome: promo.name, tipo, escopo: 'itens', itens });
@@ -720,15 +733,16 @@ router.get('/promocoes/:tipo/:promoId/itens', async (req, res) => {
 });
 
 // Card "Oferta Relâmpago" por loja (pedido do usuário) — agrega TODAS as
-// campanhas tipo 'discount' ATIVAS AGORA de uma loja (status calculado na
-// hora, não o `status` da última sincronização) e traz os PRODUTOS de cada
-// uma, já com o preço promocional (mesma chamada get_discount usada em
-// /promocoes/:tipo/:promoId/itens — reaproveitada aqui, só que somando as N
-// campanhas ativas da loja em vez de 1 só). Ação pontual explícita: dispara
-// só quando o usuário clica no card da loja, nunca em background/listagem.
-// "Oferta relâmpago" aqui = campanha tipo 'discount', mesmo mapeamento já
-// usado pelo TaskEngine (a Shopee tem uma API de Flash Sale própria, ainda
-// NÃO integrada neste projeto — ver shopee.md).
+// campanhas tipo 'flash_sale' (Shop Flash Sale, a oferta relâmpago DE
+// VERDADE da Shopee — v99 corrige a versão anterior, que usava 'discount'
+// por engano, apontado pelo usuário: "o que de me trouxe foi oferta de
+// desconto não a oferta relâmpago") ATIVAS AGORA de uma loja (status
+// calculado na hora, não o `status` da última sincronização) e traz os
+// PRODUTOS de cada uma, já com o preço promocional (mesma chamada
+// get_shop_flash_sale_item_list usada em /promocoes/:tipo/:promoId/itens —
+// reaproveitada aqui, só que somando as N campanhas ativas da loja em vez
+// de 1 só). Ação pontual explícita: dispara só quando o usuário clica no
+// card da loja, nunca em background/listagem.
 router.get('/promocoes/relampago/:storeId', async (req, res) => {
   try {
     const { storeId } = req.params;
@@ -737,7 +751,7 @@ router.get('/promocoes/relampago/:storeId', async (req, res) => {
 
     const { rows: promos } = await pool.query(
       `SELECT promo_id, name, end_time FROM shopee_promotions
-       WHERE store_id = $1::bigint AND tipo = 'discount'
+       WHERE store_id = $1::bigint AND tipo = 'flash_sale'
          AND to_timestamp(start_time) <= now() AND to_timestamp(end_time) >= now()
        ORDER BY end_time ASC`,
       [storeId]
@@ -749,13 +763,11 @@ router.get('/promocoes/relampago/:storeId', async (req, res) => {
     // mais de uma campanha ativa, fica o menor preço promocional.
     const porProduto = new Map();
     for (const p of promos) {
-      const { item_list } = await client.getDiscountItems(p.promo_id);
+      const item_list = await client.getShopFlashSaleItems(p.promo_id);
       for (const it of item_list) {
         if (!it.item_id) continue;
-        const models = it.model_list || [];
-        const precos = models.map((m) => Number(m.model_promotion_price ?? m.promotion_price)).filter((n) => !Number.isNaN(n));
-        const promoPrice = precos.length ? Math.min(...precos) : Number(it.item_promotion_price ?? it.promotion_price);
-        if (Number.isNaN(promoPrice) || !promoPrice) continue;
+        const promoPrice = shopeePromoPriceOf(it);
+        if (promoPrice == null) continue;
         const atual = porProduto.get(String(it.item_id));
         if (!atual || promoPrice < atual.promo_price) {
           porProduto.set(String(it.item_id), { promo_price: promoPrice, promo_name: p.name });

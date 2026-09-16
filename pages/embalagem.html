@@ -81,7 +81,25 @@
     .emb-placeholder .big { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
 
     .emb-orders { display: flex; flex-direction: column; gap: 16px; }
-    .emb-order-card { display: flex; gap: 24px; background: var(--bg-card2); border-radius: 14px; padding: 22px; align-items: flex-start; }
+    .emb-order-card { display: flex; gap: 24px; background: var(--bg-card2); border-radius: 14px; padding: 22px; align-items: flex-start; margin-bottom: 16px; position: relative; }
+    /* Aviso de "envio com mais de 1 pedido" (pack) — pedido do usuário: em
+       tela pequena o 2º pedido fica fora da área visível sem rolar, e o
+       embalador pode nem perceber que existe. Banner fixo no topo, antes de
+       qualquer card, só aparece quando orders.length > 1. */
+    .emb-pack-banner {
+      display: flex; align-items: center; gap: 14px; background: rgba(255,214,10,.12);
+      border: 2px solid #ffd60a; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;
+    }
+    .emb-pack-banner i.icon { color: #ffd60a; font-size: 26px; flex-shrink: 0; }
+    .emb-pack-banner .titulo { font-size: 16px; font-weight: 900; color: #ffd60a; text-transform: uppercase; letter-spacing: .3px; }
+    .emb-pack-banner .corpo { font-size: 12.5px; color: var(--text-main); margin-top: 2px; }
+    /* Numeração "Pedido X de N" em cada card, quando é pack — reforça de
+       relance mesmo se o embalador já tiver rolado a tela e perdido o banner
+       do topo de vista. */
+    .emb-order-pack-idx {
+      position: absolute; top: 14px; right: 18px; background: #ffd60a; color: #1a1a1a;
+      font-size: 12px; font-weight: 900; padding: 4px 10px; border-radius: 20px;
+    }
     .emb-order-img { width: 180px; height: 180px; object-fit: cover; border-radius: 12px; background: var(--bg-dark); flex-shrink: 0; }
     .emb-order-info { min-width: 0; flex: 1; }
     .emb-order-title { font-size: 28px; font-weight: 800; line-height: 1.25; margin-bottom: 10px; }
@@ -797,13 +815,25 @@ function renderOrders(orders, alreadyPacked) {
   const banner = alreadyPacked
     ? `<div class="emb-msg warn"><i class="fas fa-triangle-exclamation"></i> Esse pedido já tinha sido embalado em ${new Date(alreadyPacked.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} — gravando de novo.</div>`
     : '';
-  document.getElementById('ordersDisplay').innerHTML = banner + orders.map(o => {
+  // Envio com mais de 1 pedido (pack) — banner fixo no topo + numeração em
+  // cada card, pra não passar despercebido em tela pequena (pedido do usuário).
+  const packBanner = orders.length > 1
+    ? `<div class="emb-pack-banner">
+         <i class="fas fa-boxes-stacked icon"></i>
+         <div>
+           <div class="titulo">Este envio tem ${orders.length} pedidos</div>
+           <div class="corpo">Role a tela e confira todos antes de fechar a caixa — bipar de novo finaliza os ${orders.length} juntos.</div>
+         </div>
+       </div>`
+    : '';
+  document.getElementById('ordersDisplay').innerHTML = banner + packBanner + orders.map((o, idx) => {
     const variacoes = Array.isArray(o.variation_attributes)
       ? o.variation_attributes.map(v => `${v.name || v.id}: ${v.value_name}`)
       : [];
     const estoqueBaixo = o.available_quantity != null && Number(o.available_quantity) <= 5;
     return `
     <div class="emb-order-card">
+      ${orders.length > 1 ? `<span class="emb-order-pack-idx">Pedido ${idx + 1} de ${orders.length}</span>` : ''}
       ${o.thumbnail ? `<img class="emb-order-img" src="${escapeHtml(o.thumbnail)}" onerror="this.style.display='none'">` : ''}
       <div class="emb-order-info">
         <div class="emb-order-title">${o.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee">Shopee</span> ' : ''}${escapeHtml(o.title || '(sem título)')}</div>

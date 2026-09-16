@@ -113,6 +113,8 @@ CREATE TABLE IF NOT EXISTS orders (
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS marketplace_id INT REFERENCES marketplaces(id);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_orders_shipping_id ON orders(shipping_id);
+-- v102: alertas de devolução do bipe (embalagem.md) filtram orders por item_id a cada bipe.
+CREATE INDEX IF NOT EXISTS idx_orders_item_id ON orders(item_id);
 
 -- Status de Entrega (Conciliação Bancária) — ver migrate-v33.sql
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_status TEXT;
@@ -195,6 +197,9 @@ ALTER TABLE returns ADD COLUMN IF NOT EXISTS situacao TEXT;                     
 ALTER TABLE returns ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;               -- v59
 -- v59: uma reclamação, uma linha. Parcial pra não travar devoluções antigas sem claim_id.
 CREATE UNIQUE INDEX IF NOT EXISTS returns_claim_id_uidx ON returns (claim_id) WHERE claim_id IS NOT NULL;
+-- v102: alertas de devolução do bipe (embalagem.md) filtram por essas duas colunas a cada bipe.
+CREATE INDEX IF NOT EXISTS idx_returns_order_id ON returns(order_id);
+CREATE INDEX IF NOT EXISTS idx_returns_buyer_nickname ON returns(buyer_nickname);
 
 -- v59: histórico de TODAS as alterações de uma reclamação (a tabela `returns`
 -- guarda só o estado ATUAL; aqui fica a timeline). Um registro por transição real.
@@ -402,6 +407,8 @@ CREATE TABLE IF NOT EXISTS shopee_returns (
 CREATE INDEX IF NOT EXISTS idx_shopee_returns_store ON shopee_returns(store_id);
 CREATE INDEX IF NOT EXISTS idx_shopee_returns_status ON shopee_returns(status);
 CREATE INDEX IF NOT EXISTS idx_shopee_returns_create ON shopee_returns(create_time);
+-- v102: alerta de devolução do bipe (embalagem.md) filtra por item_id a cada bipe.
+CREATE INDEX IF NOT EXISTS idx_shopee_returns_item_id ON shopee_returns(item_id);
 
 -- Cursor de "última sincronização" para EventSources de polling (Amazon e Shopee).
 CREATE TABLE IF NOT EXISTS marketplace_sync_state (

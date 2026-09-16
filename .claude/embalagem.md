@@ -174,6 +174,8 @@ Enquanto grava, um timer ao lado do badge de status (`#scanTimer`, atualizado a 
 
 Os dois limiares são constantes no topo do `<script>` de `pages/embalagem.html`, ajustáveis se a operação real mostrar que os valores (5s/10min) não fazem sentido.
 
+**Lembrete "bipe de novo pra terminar"** (pedido do usuário — embaladores esquecendo de bipar a 2ª vez e perdendo o vídeo sem perceber): `#cronoLembrete`, dentro do mesmo card do cronômetro grande (`.emb-crono-box` — ponto fixo que o embalador olha a embalagem inteira, nunca sai da área visível por design, ver "Layout da aba Bipar" acima). Pílula amarela piscante (reusa a animação `emb-log-piscar` já usada na badge de logística — não criou keyframe novo), só visível durante `scanState === 'recording'` (`setScanState()` alterna `display:block/none`). Texto: "Bipe a MESMA etiqueta de novo ao terminar — senão o vídeo não é salvo!".
+
 ## Estação única ML + Shopee (v35)
 
 A mesma página `embalagem.html` atende ML e Shopee — o operador bipa qualquer etiqueta e a tela resolve sozinha qual marketplace é.

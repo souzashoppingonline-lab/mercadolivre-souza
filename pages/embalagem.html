@@ -35,6 +35,17 @@
     .emb-crono-valor.crono-ok { color: var(--green); }
     .emb-crono-valor.crono-alerta { color: var(--red); }
     .emb-crono-valor.crono-critico { color: var(--red); animation: embCronoPiscaRed 1s infinite; }
+    /* Lembrete "bipe de novo pra terminar" — pedido do usuário (embaladores
+       esquecendo de bipar a 2ª vez, perdendo o vídeo sem perceber). Fica no
+       mesmo card do cronômetro grande, que já é o ponto fixo que o
+       embalador olha durante toda a embalagem (design já existente pra
+       nunca sair da área visível, ver "Layout da aba Bipar" em
+       embalagem.md) — só visível durante a gravação. */
+    .emb-crono-lembrete {
+      font-size: 12px; font-weight: 800; color: #1a1a1a; background: #ffd60a;
+      border-radius: 8px; padding: 8px 12px; text-align: center; line-height: 1.35;
+      animation: emb-log-piscar 1s steps(1, end) infinite;
+    }
     .emb-crono-valor.crono-urgente { animation: embCronoPiscaRedYellow .6s infinite; }
     @keyframes embCronoPiscaRed { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
     @keyframes embCronoPiscaRedYellow { 0%,100% { color: var(--red); } 50% { color: #FFE600; } }
@@ -352,6 +363,7 @@
           <div class="emb-card emb-crono-box">
             <div class="emb-crono-label"><i class="fas fa-stopwatch"></i> Tempo da bipagem</div>
             <div class="emb-crono-valor" id="cronoValor">--:--</div>
+            <div class="emb-crono-lembrete" id="cronoLembrete" style="display:none"><i class="fas fa-triangle-exclamation"></i> Bipe a MESMA etiqueta de novo ao terminar — senão o vídeo não é salvo!</div>
           </div>
           </div>
         </div>
@@ -752,6 +764,7 @@ function setScanState(s) {
   badge.className = `emb-status-badge ${m.cls}`;
   badge.innerHTML = `<i class="fas ${m.icon}"></i> ${m.text}`;
   if (s !== 'recording') { document.getElementById('cameraRecBadge').classList.remove('on'); document.getElementById('tabRecDot').style.display = 'none'; }
+  document.getElementById('cronoLembrete').style.display = s === 'recording' ? 'block' : 'none';
 }
 
 function showScanMsg(text, type) {

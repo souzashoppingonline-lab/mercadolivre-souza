@@ -84,6 +84,13 @@ frete NUMERIC                      -- v93: frete SÓ deste anúncio (Analista Ec
                                    -- GLOBAL (app_config). Editável em
                                    -- PATCH /api/bi/analista-ecom/item/:mlId/frete (valor null limpa
                                    -- o override).
+observacao_embalagem TEXT          -- v101: frase livre pro embalador ("Frágil", "Conferir voltagem"...),
+                                   -- cadastrada no modal de pages/produtos.html, mostrada como alerta
+                                   -- na hora do bipe (pages/embalagem.html). NULL = sem observação
+                                   -- (nada aparece no bipe). Editável em PATCH
+                                   -- /api/items/:id/observacao-embalagem. Campo genérico (não amarrado
+                                   -- a marketplace) — hoje só o modal ML escreve, mas a leitura na
+                                   -- Embalagem já cobre item Shopee também. Ver embalagem.md.
 updated_at TIMESTAMPTZ
 ```
 

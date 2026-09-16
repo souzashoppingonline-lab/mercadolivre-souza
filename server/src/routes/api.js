@@ -226,6 +226,7 @@ router.get('/produtos/:id/detalhe', async (req, res) => {
       pool.query(
         `SELECT i.ml_id, i.title, i.price, i.original_price, i.available_quantity,
                 i.sold_quantity, i.status, i.category_id, i.thumbnail, i.permalink,
+                i.observacao_embalagem,
                 COALESCE(i.cost, 0) AS cost,
                 COALESCE(s.nickname, 'Loja '||i.store_id::text) AS loja,
                 COALESCE(s.imposto_pct, 0) AS imposto_pct,
@@ -710,6 +711,17 @@ router.patch('/items/:id/custo', async (req, res) => {
   // (ver vendaMargem.js custo_ausente / decisions.md).
   await pool.query(`UPDATE items SET cost=$2, cost_updated_at=now() WHERE ml_id=$1`, [req.params.id, Number(cost)]);
   res.json({ ok: true });
+});
+
+// Observação de Embalagem (v101) — frase livre cadastrada no produto, mostrada
+// como alerta na hora do bipe (pages/embalagem.html) quando preenchida.
+// Aceita string vazia/null pra LIMPAR a observação (botão "editar" reusa o
+// mesmo PATCH pra apagar) — trim() pra não gravar só espaços em branco como
+// "preenchido". Ver .claude/embalagem.md.
+router.patch('/items/:id/observacao-embalagem', async (req, res) => {
+  const texto = String(req.body.observacao ?? '').trim();
+  await pool.query(`UPDATE items SET observacao_embalagem=$2 WHERE ml_id=$1`, [req.params.id, texto || null]);
+  res.json({ ok: true, observacao_embalagem: texto || null });
 });
 
 // ── SKU Costs (custo por SKU, compartilhado entre lojas) ───

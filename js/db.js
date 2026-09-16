@@ -139,6 +139,7 @@ const DB = {
   async updateLojaConfig(id, body)     { return this._patch(`/lojas/${id}`, body); },
   async updateLojaCredentials(id, ml_client_id, ml_client_secret) { return this._patch(`/lojas/${id}/credentials`, { ml_client_id, ml_client_secret }); },
   async updateItemCusto(id, cost)      { return this._patch(`/items/${id}/custo`, { cost }); },
+  async saveObservacaoEmbalagem(id, observacao) { return this._patch(`/items/${id}/observacao-embalagem`, { observacao }); },
   async getPedidoDetalhes(id)          { return this._get(`/pedidos/${id}/detalhes`); },
   async getSkuCost(sku)                { return this._get(`/custos/${sku}`); },
   async saveSkuCost(sku, cost)         { return this._patch(`/custos/${sku}`, { cost }); },

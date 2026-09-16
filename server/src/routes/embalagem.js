@@ -231,6 +231,20 @@ async function lookupShopeeByTracking(tracking) {
         }
       } catch (e) { /* sem foto de variação — cai na foto principal do item */ }
     }
+    // Observação de Embalagem (v101) — campo genérico em `items`, cadastrado
+    // hoje só via pages/produtos.html (ML). Item Shopee lê da mesma tabela
+    // (marketplace_id=SHOPEE, ml_id=item_id da Shopee) — se um dia ganhar UI
+    // própria de cadastro, já funciona sem mexer aqui.
+    const obsMap = new Map();
+    if (itemIds.length) {
+      try {
+        const { rows: obsRows } = await pool.query(
+          `SELECT ml_id, observacao_embalagem FROM items WHERE ml_id = ANY($1::text[]) AND observacao_embalagem IS NOT NULL`,
+          [itemIds]
+        );
+        obsRows.forEach((o) => obsMap.set(o.ml_id, o.observacao_embalagem));
+      } catch (e) { /* sem observação — segue sem quebrar o bipe */ }
+    }
     for (const it of items) {
       const mainImg = it.image_info && (it.image_info.image_url || (Array.isArray(it.image_info.image_url_list) && it.image_info.image_url_list[0]));
       // Tenta a foto da variação primeiro, fallback para a foto principal
@@ -251,6 +265,7 @@ async function lookupShopeeByTracking(tracking) {
         // mesmo shape que o ML: array de {name, value_name} — a variação Shopee é o model_name.
         variation_attributes: it.model_name ? [{ name: 'Variação', value_name: it.model_name }] : null,
         thumbnail: img || null,
+        observacao_embalagem: it.item_id != null ? (obsMap.get(String(it.item_id)) || null) : null,
         permalink: null,
         available_quantity: null,
         store_nickname: r.store_nickname,
@@ -546,6 +561,7 @@ router.get('/pedido/:shippingId', async (req, res) => {
               o.raw_data->'order_items'->0->'item'->>'seller_sku' AS seller_sku,
               o.raw_data->'order_items'->0->'item'->'variation_attributes' AS variation_attributes,
               i.thumbnail, i.permalink, i.available_quantity, i.package_dims AS dimensoes,
+              i.observacao_embalagem,
               s.nickname AS store_nickname, o.raw_data
        FROM orders o
        LEFT JOIN items i ON i.ml_id = o.item_id

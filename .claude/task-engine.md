@@ -36,6 +36,10 @@ Mover um cartão para a coluna "Excluído" é reversível (só muda `board_colum
 
 Todo cartão pode ter um `due_date` opcional (editável em `pages/agenda-trello.html`). Um cartão com `due_date` vencido mostra badge vermelho no próprio card — isso já existia antes de qualquer regra sobre atraso ter sido documentada aqui (gap de documentação, não de código). O que foi adicionado depois: KPI "Atrasadas" no topo do quadro e alerta agregado no Telegram uma vez por dia (job `checkTarefasAtrasadas`) — regra completa em `business-rules.md`, schedule em `workers.md`.
 
+## Badge "Última atualização" no card (pedido do usuário)
+
+`tasks.updated_at` já era gravado a cada `createTaskIfNotExists` (dedup — "só atualiza `updated_at`/`metadata`") e já era lido por `GET /tasks`, mas só aparecia como texto pequeno/cinza no rodapé do card, fácil de passar despercebido — usuário pediu pra deixar visível. Virou badge (`.at-badge.updated`, azul, ícone de relógio) na mesma linha de Prioridade/Loja/Prazo, logo abaixo do título — não é dado novo, só mudou de posição/destaque em `cardHtml()` (`pages/agenda-trello.html`). O bloco de rodapé (`.at-card-status`) que sobrava só com Concluído/comentários passou a ser condicional — não renderiza mais vazio (com a linha divisória à toa) quando o cartão não tem nenhum dos dois.
+
 ## Onde é chamado
 
 **Mercado Livre** (`server/src/worker.js`):

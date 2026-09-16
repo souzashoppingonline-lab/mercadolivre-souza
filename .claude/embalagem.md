@@ -245,6 +245,22 @@ Ao confirmar, o navegador dispara um download automático (`etiqueta-{shipping_i
 - Nenhuma variável de ambiente necessária no `.env` — basta ter `pdfkit` instalado.
 - Se desejar customizar `company_name` por loja, a coluna já existe em `stores` (padrão "EMPRESA XYZ" é fallback no código).
 
+## Alertas de devolução na hora do bipe (v100)
+
+Pedido do usuário ("quais mais informações podemos ter pra ajudar o analista não errar?") — dois alertas visuais no card do pedido, calculados em cima de dado que já existe (nenhuma sincronização nova), **prévia visual aprovada como mockup HTML antes de implementar**. `server/src/routes/embalagem.js`: `checkDevolucaoSku()`, `checkDevolucaoComprador()` e `enrichDevolucaoAlerts()` (dedup por `item_id`/`buyer_nickname` único no pack, mesmo racional do cache de `dimensoes`), chamadas nas duas branches (ML e Shopee) de `GET /pedido/:shippingId` antes de responder.
+
+Constantes no topo do arquivo, ajustáveis se a operação mostrar que os valores não fazem sentido:
+```js
+DEVOLUCAO_JANELA_DIAS = 90            // janela pros dois alertas
+DEVOLUCAO_SKU_AMOSTRA_MIN = 5         // não avalia SKU com < 5 pedidos no período (amostra pequena demais)
+DEVOLUCAO_SKU_ALERTA_PCT = 10         // só alerta se a taxa do SKU passar disso
+DEVOLUCAO_COMPRADOR_ALERTA_MIN = 2    // só alerta com 2+ devoluções do mesmo comprador no período
+```
+
+- **`devolucao_sku`** (caixa vermelha, logo abaixo do SKU no card): taxa de devolução do item (mesma fórmula de `business-rules.md` — devoluções ÷ pedidos não cancelados × 100), cobrindo os **dois marketplaces**: ML (`returns`, motivo mais comum via `LEFT JOIN claim_reasons`, mesmo padrão de `GET /alertas/devolucoes`) **UNION** Shopee (`shopee_returns`, tabela própria — devolução Shopee não vive em `returns`). Os dois `item_id` nunca colidem (ML sempre com prefixo de site tipo `MLB…`; Shopee é numérico puro), então o `UNION` não precisa filtrar por marketplace. `motivo` só sai preenchido quando o mais comum vem do lado ML — o `text_reason` livre da Shopee é texto do comprador, raramente repete verbatim entre devoluções, não faz sentido ranquear como "mais comum" nem misturar com os códigos traduzidos do ML. `null` (nada aparece) se não bater a amostra mínima ou o limiar de %.
+- **`devolucao_comprador`** (badge laranja, ao lado do nome do comprador): contagem de devoluções desse `buyer_nickname` no período, **`returns.buyer_nickname` direto, sem join**. **ML apenas** — no Shopee o comprador chega `null` no card (dado sensível, ver "Estação única ML + Shopee" acima), então a função devolve `null` sozinha sem precisar de um `if` separado pra pular Shopee.
+- **Testado** com Postgres descartável: SKU com taxa alta (6/9 pedidos ML) mostra o alerta; SKU limpo (Capinha, 0 devolução) não mostra nada; comprador com 1 devolução só (abaixo do mínimo de 2) não mostra badge, mesmo item tendo o alerta de SKU; SKU Shopee com devolução em `shopee_returns` (sem estar em `returns`) mostra o alerta corretamente, sem `motivo`, sem badge de comprador (Shopee). Frontend testado chamando `renderOrders()` direto na tela real com dados mockados — sem precisar de câmera/bipe de verdade.
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.

@@ -90,6 +90,104 @@ async function lastPacking(key, orderIds = []) {
   return rows[0] || null;
 }
 
+// ── Alertas na hora do bipe (pedido do usuário, mockup aprovado antes de
+// implementar — ver .claude/embalagem.md) ──────────────────────────────────
+//
+// Janela e limiares em dias/%/qtd — mesma ideia de "amostra mínima" já usada
+// no alerta Telegram de taxa de devolução alta (`TAXA_DEVOLUCAO_AMOSTRA_MIN`
+// em worker.js), só que aqui é por SKU/comprador, não por loja/dia. Ajustável
+// se a operação real mostrar que os valores não fazem sentido.
+const DEVOLUCAO_JANELA_DIAS = 90;
+const DEVOLUCAO_SKU_AMOSTRA_MIN = 5;   // não avalia SKU com menos de 5 pedidos no período (amostra pequena demais)
+const DEVOLUCAO_SKU_ALERTA_PCT = 10;   // só alerta se a taxa do SKU passar disso
+const DEVOLUCAO_COMPRADOR_ALERTA_MIN = 2; // só alerta com 2+ devoluções do mesmo comprador no período
+
+// Taxa de devolução do item (mesma fórmula de business-rules.md: devoluções ÷
+// pedidos não cancelados × 100), restrita à janela de DEVOLUCAO_JANELA_DIAS e
+// só devolvida se passar da amostra mínima E do limiar — senão `null` (nada
+// aparece no card, evita alarme falso em item com pouca venda). Cobre os DOIS
+// marketplaces da Embalagem: ML (`returns`, motivo via join `claim_reasons`,
+// mesmo padrão de GET /alertas/devolucoes) e Shopee (`shopee_returns`, tabela
+// própria — devoluções Shopee NÃO vivem em `returns`). Os dois `item_id` nunca
+// colidem (ML sempre com prefixo de site, ex. "MLB123"; Shopee é numérico
+// puro), então o UNION não precisa filtrar por marketplace. `motivo` só sai
+// preenchido quando o mais comum vier do lado ML (código traduzido via
+// `claim_reasons`) — o `text_reason` livre da Shopee raramente se repete
+// verbatim entre devoluções, misturar os dois na mesma contagem de "mais
+// comum" não faria sentido.
+async function checkDevolucaoSku(itemId) {
+  if (!itemId) return null;
+  const { rows } = await pool.query(
+    `WITH pedidos AS (
+       SELECT COUNT(*) AS n FROM orders
+       WHERE item_id = $1 AND status <> 'cancelled' AND date_created >= now() - make_interval(days => $2::int)
+     ),
+     devs_ml AS (
+       SELECT COALESCE(cr.detail, r.reason) AS motivo
+       FROM returns r
+       JOIN orders o ON o.ml_id = r.order_id
+       LEFT JOIN claim_reasons cr ON cr.id = r.reason
+       WHERE o.item_id = $1 AND r.date >= now() - make_interval(days => $2::int)
+     ),
+     devs_shopee AS (
+       SELECT NULL::text AS motivo
+       FROM shopee_returns
+       WHERE item_id = $1 AND to_timestamp(create_time) >= now() - make_interval(days => $2::int)
+     ),
+     devs AS (SELECT motivo FROM devs_ml UNION ALL SELECT motivo FROM devs_shopee)
+     SELECT (SELECT n FROM pedidos) AS pedidos,
+            (SELECT COUNT(*) FROM devs) AS devolucoes,
+            (SELECT motivo FROM devs WHERE motivo IS NOT NULL GROUP BY motivo ORDER BY COUNT(*) DESC LIMIT 1) AS motivo`,
+    [itemId, DEVOLUCAO_JANELA_DIAS]
+  );
+  const r = rows[0];
+  const pedidos = Number(r?.pedidos || 0);
+  const devolucoes = Number(r?.devolucoes || 0);
+  if (pedidos < DEVOLUCAO_SKU_AMOSTRA_MIN || !devolucoes) return null;
+  const taxaPct = (devolucoes / pedidos) * 100;
+  if (taxaPct < DEVOLUCAO_SKU_ALERTA_PCT) return null;
+  return { devolucoes, pedidos, taxa_pct: Number(taxaPct.toFixed(1)), motivo: r.motivo || null, dias: DEVOLUCAO_JANELA_DIAS };
+}
+
+// Histórico de devolução do COMPRADOR — só existe pro ML (`returns.buyer_nickname`
+// vem direto do pedido); na Shopee o comprador chega `null` no card (app sem
+// acesso a dado sensível, ver "Estação única ML + Shopee" acima), então nunca
+// bate nenhuma linha e a função devolve `null` sozinha, sem precisar de um
+// `if` separado pra pular Shopee.
+async function checkDevolucaoComprador(buyerNickname) {
+  if (!buyerNickname) return null;
+  const { rows } = await pool.query(
+    `SELECT COUNT(*) AS n FROM returns
+     WHERE buyer_nickname = $1 AND date >= now() - make_interval(days => $2::int)`,
+    [buyerNickname, DEVOLUCAO_JANELA_DIAS]
+  );
+  const n = Number(rows[0]?.n || 0);
+  if (n < DEVOLUCAO_COMPRADOR_ALERTA_MIN) return null;
+  return { devolucoes: n, dias: DEVOLUCAO_JANELA_DIAS };
+}
+
+// Preenche `devolucao_sku`/`devolucao_comprador` em cada linha do card —
+// 1 query por item_id/buyer_nickname ÚNICO no pack (não 1 por linha; um pack
+// pode repetir o mesmo item ou o mesmo comprador em várias linhas), depois
+// propaga o resultado pras linhas repetidas. Mesmo racional do cache de
+// `dimensoes` acima (Set de "já calculado").
+async function enrichDevolucaoAlerts(rows) {
+  const skuCache = new Map();
+  const compradorCache = new Map();
+  await Promise.all(rows.map(async (row) => {
+    if (row.item_id && !skuCache.has(row.item_id)) {
+      skuCache.set(row.item_id, await checkDevolucaoSku(row.item_id).catch(() => null));
+    }
+    if (row.buyer_nickname && !compradorCache.has(row.buyer_nickname)) {
+      compradorCache.set(row.buyer_nickname, await checkDevolucaoComprador(row.buyer_nickname).catch(() => null));
+    }
+  }));
+  rows.forEach((row) => {
+    row.devolucao_sku = row.item_id ? (skuCache.get(row.item_id) || null) : null;
+    row.devolucao_comprador = row.buyer_nickname ? (compradorCache.get(row.buyer_nickname) || null) : null;
+  });
+}
+
 // Casa a etiqueta Shopee (tracking BR...) com o pedido e expande o item_list do
 // raw_data em "cards" no mesmo formato que o frontend já renderiza pro ML.
 // Foto vem de item.image_info.image_url (a resposta de get_order_detail traz),
@@ -510,6 +608,7 @@ router.get('/pedido/:shippingId', async (req, res) => {
           }
         } catch (_) { /* sem medida — segue sem quebrar o bipe */ }
       }));
+      await enrichDevolucaoAlerts(rows);
       const already = await lastPacking(req.params.shippingId, rows.map(r => r.order_id));
       return res.json({ shipping_id: req.params.shippingId, marketplace: 'ML', orders: rows, already_packed: already });
     }
@@ -543,6 +642,7 @@ router.get('/pedido/:shippingId', async (req, res) => {
       }
     }
     if (shopeeOrders.length) {
+      await enrichDevolucaoAlerts(shopeeOrders);
       const already = await lastPacking(codigo, shopeeOrders.map(o => o.order_id));
       return res.json({ shipping_id: codigo, marketplace: 'SHOPEE', orders: shopeeOrders, already_packed: already });
     }

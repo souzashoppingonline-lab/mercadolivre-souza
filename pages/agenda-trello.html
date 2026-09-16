@@ -60,6 +60,10 @@
     .at-badge.store { background: rgba(255,230,0,.1); color: var(--primary); }
     .at-badge.due { background: rgba(255,255,255,.06); color: var(--text-muted); }
     .at-badge.due.late { background: rgba(231,76,60,.15); color: var(--red); }
+    /* Última atualização — pedido do usuário: já existia como linha discreta
+       no rodapé do card, virou badge junto de Prioridade/Loja/Prazo pra ficar
+       visível de relance (mesmo padrão visual dos outros badges do card). */
+    .at-badge.updated { background: rgba(52,152,219,.12); color: #5dade2; }
     .at-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .at-tag { font-size: 9px; background: rgba(255,255,255,.06); color: var(--text-muted); padding: 1px 6px; border-radius: 8px; }
     .at-card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 10px; color: var(--text-muted); }
@@ -313,17 +317,18 @@ function cardHtml(t) {
         <span class="at-badge prio-${t.priority}">${PRIO_LABEL[t.priority] || t.priority}</span>
         ${t.store_nickname ? `<span class="at-badge store"><i class="fas fa-store"></i> ${escapeHtml(t.store_nickname)}</span>` : ''}
         ${due ? `<span class="at-badge due ${late ? 'late' : ''}"><i class="fas fa-calendar"></i> ${due}</span>` : ''}
+        <span class="at-badge updated" title="Última atualização"><i class="fas fa-clock"></i> ${fmtDateTime(t.updated_at)}</span>
       </div>
       ${tags.length ? `<div class="at-card-tags">${tags.map(tg => `<span class="at-tag">${escapeHtml(tg)}</span>`).join('')}</div>` : ''}
       <div class="at-card-foot">
         <span>${ORIGEM_LABEL[t.source] || t.source}</span>
         ${t.assigned_to ? `<span class="at-card-assignee"><i class="fas fa-user"></i> ${escapeHtml(t.assigned_to)}</span>` : ''}
       </div>
+      ${(t.completed_at || Number(t.comment_count) > 0) ? `
       <div class="at-card-status">
-        <div class="at-card-status-row"><i class="fas fa-clock"></i> Atualizado ${fmtDateTime(t.updated_at)}</div>
         ${t.completed_at ? `<div class="at-card-status-row resolved"><i class="fas fa-check-circle"></i> Concluído ${fmtDateTime(t.completed_at)}</div>` : ''}
         ${Number(t.comment_count) > 0 ? `<div class="at-card-status-row comment"><i class="fas fa-comment"></i> ${t.comment_count}${t.last_comment_text ? ` · "${escapeHtml(truncate(t.last_comment_text, 46))}"` : ''}</div>` : ''}
-      </div>
+      </div>` : ''}
     </div>`;
 }
 

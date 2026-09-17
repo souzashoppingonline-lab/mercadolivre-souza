@@ -17,6 +17,13 @@
     .rk-tab:not(.active) .rk-tab-badge { background: var(--bg-card2); }
     .rk-panel { display: none; }
     .rk-sort-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted); }
+    /* Filtro por status de Buy Box (aba Catálogo) — pedido do usuário. Cada
+       pílula usa a MESMA cor de statusBuyBox(), pra bater visualmente com o
+       badge que já aparece em cada card. */
+    .rk-bb-filter-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .rk-bb-filter-btn { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted); border-radius: 20px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .rk-bb-filter-btn .n { background: var(--bg-card2); color: inherit; font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 10px; }
+    .rk-bb-filter-btn.active { color: #fff; }
     .rk-sort-bar select { background: var(--bg-card2); color: var(--text-main); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; font-size: 13px; }
     .rk-panel.active { display: block; }
     .rk-chip-sug { display: inline-flex; align-items: center; gap: 4px; background: rgba(46,160,67,.15); color: #2ea043; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 5px; }
@@ -235,6 +242,7 @@
   <!-- Aba: Catálogo (Buy Box) — v88 -->
   <div class="rk-panel" id="panel-catalogo">
     <p class="rk-sub" style="margin-top:0">Anúncios de <b>catálogo</b> — o foco aqui é o <b>Buy Box</b>: ganhando, perdendo ou compartilhando o 1º lugar. Alocado sem limite de 30 (essa trava é só pro punhado sendo empurrado manualmente nos outros estágios). Ao alocar, busca a info na hora; os demais itens são cobertos aos poucos pelo job diário (04:50), sem estourar rate limit.</p>
+    <div class="rk-bb-filter-row" id="rkBbFiltro"></div>
     <div id="rkCardsCat" class="rk-cards"></div>
     <div id="rkCardsCatEmpty" class="rk-empty" style="display:none">Nenhum anúncio no estágio Catálogo. Em "Todos os anúncios", clique no botão amarelo do anúncio e escolha "Catálogo (Buy Box)" — ou mude o estágio de um card já existente pelo seletor.</div>
   </div>
@@ -493,8 +501,10 @@ async function loadCards() {
   await renderPanel(d2.ads || [], 'rkCardsRanq', 'rkCardsRanqEmpty');
   await renderPanel(d3.ads || [], 'rkCardsMon', 'rkCardsMonEmpty');
   await renderPanel(d4.ads || [], 'rkCardsRec', 'rkCardsRecEmpty');
-  await renderPanel(d5.ads || [], 'rkCardsCat', 'rkCardsCatEmpty');
-  document.getElementById('cnt-catalogo').textContent = (d5.ads || []).length;
+  CATALOGO_ADS = d5.ads || [];
+  renderFiltroBuyBox();
+  await renderCatalogoFiltrado();
+  document.getElementById('cnt-catalogo').textContent = CATALOGO_ADS.length;
   document.getElementById('cnt-rankeando').textContent = (d1.ads || []).length;
   document.getElementById('cnt-ranqueado').textContent = (d2.ads || []).length;
   document.getElementById('cnt-monitoramento').textContent = (d3.ads || []).length;
@@ -503,8 +513,49 @@ async function loadCards() {
 
 async function renderPanel(ads, wrapId, emptyId) {
   document.getElementById(emptyId).style.display = ads.length ? 'none' : 'block';
-  await Promise.all(ads.map(async a => { EVENTS[a.id] = (await DB.getRankingEventos(a.id, 100)).eventos || []; }));
+  // Só busca eventos de quem ainda não está em cache — o filtro de Buy Box
+  // (abaixo) re-chama renderPanel várias vezes pro MESMO conjunto de anúncios,
+  // sem isso repetiria a mesma chamada de rede a cada clique no filtro.
+  await Promise.all(ads.filter(a => !EVENTS[a.id]).map(async a => { EVENTS[a.id] = (await DB.getRankingEventos(a.id, 100)).eventos || []; }));
   document.getElementById(wrapId).innerHTML = ads.map(cardHtml).join('');
+}
+
+// Filtro de status de Buy Box (aba Catálogo, pedido do usuário) — client-side,
+// sobre o array já carregado (CATALOGO_ADS), sem refazer a chamada à API a
+// cada clique. Usa a MESMA statusBuyBox() do card, nunca uma 2ª classificação.
+let CATALOGO_ADS = [];
+let BB_FILTRO = '';
+const BB_FILTROS = [
+  { chave: '',                label: 'Todos',                          cor: '#8b949e' },
+  { chave: 'ganhando',        label: '🏆 Ganhando',                    cor: '#3fb950' },
+  { chave: 'compartilhando',  label: '🤝 Compartilhando o 1º lugar',   cor: '#f0883e' },
+  { chave: 'perdendo',        label: '📉 Perdendo',                    cor: '#f85149' },
+];
+function renderFiltroBuyBox() {
+  document.getElementById('rkBbFiltro').innerHTML = BB_FILTROS.map(f => {
+    const n = f.chave ? CATALOGO_ADS.filter(a => statusBuyBox(a).chave === f.chave).length : CATALOGO_ADS.length;
+    const ativo = BB_FILTRO === f.chave;
+    const style = ativo ? `background:${f.cor};border-color:${f.cor}` : '';
+    return `<button class="rk-bb-filter-btn${ativo ? ' active' : ''}" style="${style}" onclick="setFiltroBuyBox('${f.chave}')">${f.label} <span class="n">${n}</span></button>`;
+  }).join('');
+}
+function setFiltroBuyBox(chave) {
+  BB_FILTRO = chave;
+  renderFiltroBuyBox();
+  renderCatalogoFiltrado();
+}
+async function renderCatalogoFiltrado() {
+  const filtrados = BB_FILTRO ? CATALOGO_ADS.filter(a => statusBuyBox(a).chave === BB_FILTRO) : CATALOGO_ADS;
+  await renderPanel(filtrados, 'rkCardsCat', 'rkCardsCatEmpty');
+  // Mensagem de vazio diferente quando o filtro é quem zerou a lista (tem
+  // anúncio no estágio, só não bate o status escolhido) — a padrão de
+  // renderPanel fala em "nenhum anúncio no estágio", que confundiria aqui.
+  if (BB_FILTRO && !filtrados.length) {
+    const f = BB_FILTROS.find(x => x.chave === BB_FILTRO);
+    document.getElementById('rkCardsCatEmpty').textContent = `Nenhum anúncio no status "${f.label.replace(/^\S+\s/, '')}" agora.`;
+  } else if (!BB_FILTRO) {
+    document.getElementById('rkCardsCatEmpty').textContent = 'Nenhum anúncio no estágio Catálogo. Em "Todos os anúncios", clique no botão amarelo do anúncio e escolha "Catálogo (Buy Box)" — ou mude o estágio de um card já existente pelo seletor.';
+  }
 }
 
 const FASES = {
@@ -591,6 +642,22 @@ function intervHtml(a) {
   }).join('')}</div>`;
 }
 
+// Status de Buy Box (fase Catálogo) — extraído do render do card (era função
+// local dentro de cardHtml) pra reusar no filtro da aba, sem duplicar a
+// mesma lógica em dois lugares. `chave` é o valor estável usado pelo filtro
+// (o `label` tem acento/maiúscula, não serve de chave). Ganhando é decidido
+// por winner_item_id === próprio ml_id (nunca pela string de status crua —
+// só 'competing' foi confirmado ao vivo, ver business-rules.md);
+// 'sharing_first_place' é a única outra string tratada com confiança porque
+// veio documentada explicitamente pelo usuário nesta tarefa.
+function statusBuyBox(a) {
+  if (!a.buybox_calculated_at) return { chave: 'aguardando', label: 'Aguardando 1ª sincronização', cor: '#8b949e', ico: '⏳' };
+  if (a.winner_item_id === a.ml_id) return { chave: 'ganhando', label: 'GANHANDO', cor: '#3fb950', ico: '🏆' };
+  if (a.buybox_status === 'sharing_first_place') return { chave: 'compartilhando', label: 'COMPARTILHANDO O 1º LUGAR', cor: '#f0883e', ico: '🤝' };
+  if (a.winner_item_id) return { chave: 'perdendo', label: 'PERDENDO', cor: '#f85149', ico: '📉' };
+  return { chave: 'sem_concorrencia', label: 'Sem concorrência detectada', cor: '#8b949e', ico: '—' };
+}
+
 function cardHtml(a) {
   const fase = a.fase || 'rankeando';
   const F = FASES[fase] || FASES.rankeando;
@@ -673,13 +740,6 @@ function cardHtml(a) {
     loyalty_discount:     { label: 'Desconto por fidelidade',  tip: 'O vencedor oferece desconto pra clientes do programa de fidelidade (Mercado Pontos) e o seu anúncio não.' },
     free_installments:    { label: 'Parcelamento sem juros',   tip: 'O vencedor oferece parcelamento sem juros e o seu anúncio não.' },
   };
-  function statusBuyBox(a) {
-    if (!a.buybox_calculated_at) return { label: 'Aguardando 1ª sincronização', cor: '#8b949e', ico: '⏳' };
-    if (a.winner_item_id === a.ml_id) return { label: 'GANHANDO', cor: '#3fb950', ico: '🏆' };
-    if (a.buybox_status === 'sharing_first_place') return { label: 'COMPARTILHANDO O 1º LUGAR', cor: '#f0883e', ico: '🤝' };
-    if (a.winner_item_id) return { label: 'PERDENDO', cor: '#f85149', ico: '📉' };
-    return { label: 'Sem concorrência detectada', cor: '#8b949e', ico: '—' };
-  }
   const sbb = statusBuyBox(a);
   const diffPreco = (a.preco_atual != null && a.price_to_win != null) ? Number(a.preco_atual) - Number(a.price_to_win) : null;
   const souVencedor = a.winner_item_id && a.winner_item_id === a.ml_id;

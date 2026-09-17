@@ -18,6 +18,10 @@ const { fetchAndSaveCatalogCompetition } = require('./catalogCompetition');
 const { publish } = require('./ws/hub');
 const { refreshToken } = require('./routes/auth');
 const { getResumoDiarioData, getTopVendas, getResumoSemanal, getOutliersOntem, getMargemPorLoja, getRupturaEstoque } = require('./reports');
+// Reusa o MESMO cálculo de "Vendas por Estágio" da tela bi-rankeamento.html/
+// relatório em PDF (routes/bi.js) pro relatório diário do Telegram — nunca
+// uma 2ª fórmula/agregação de rankeamento. Ver relatorioRankeamentoDiario().
+const { computarRankeamento, FASE_LABEL_PT, FASES_RANKEAMENTO } = require('./routes/bi');
 const taskEngine = require('./taskEngine');
 const { computeSeoScore } = require('./seoScore');
 const { syncMpAccountReports, backfillMpReports } = require('./mpReports');
@@ -2683,6 +2687,97 @@ async function fechamentoDiario() {
   scheduleAt(6, 5, fechamentoDiario, 'fechamento-diario');
 }
 
+// ── Relatório diário de Rankeamento — "Vendas por Estágio" (08:00) ─────────
+// Pedido do usuário: quer saber, todo dia, o que vendeu e o que NÃO vendeu
+// ontem entre os anúncios acompanhados no módulo Rankeamento, por produto e
+// por estágio, e qual estágio vende mais/menos. Reusa computarRankeamento()
+// por inteiro (routes/bi.js — mesma fonte de bi-rankeamento.html e do
+// relatório em PDF) pro dia de ONTEM (dateFrom=dateTo=ontem) — nunca uma 2ª
+// fórmula/agregação de rankeamento.
+//
+// "Não vendendo" é a ÚNICA parte calculada aqui: `produtos_por_estagio` só
+// lista quem TEVE venda no período (é uma agregação de vendas, não um
+// catálogo) — pra achar quem não vendeu, cruza contra TODOS os anúncios
+// ativos no módulo (`ranking_ads WHERE active=true`), subtraindo quem
+// aparece em `produtos_por_estagio`.
+//
+// "Estágio que mais/menos vende" considera só os 5 estágios reais
+// (FASES_RANKEAMENTO) — 'sem_rankeamento' não é um estágio, é ausência de
+// rastreio, por isso fica de fora dessa comparação (mas ainda aparece na
+// lista "Vendas por Estágio" completa, como contexto).
+async function relatorioRankeamentoDiario() {
+  console.log('[relatorio-rankeamento] gerando relatório de ontem...');
+  try {
+    const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+    const y = new Date(Date.now() - 86400000);
+    const ontemISO = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+    const ontemFmt = y.toLocaleDateString('pt-BR');
+
+    const dados = await computarRankeamento({ dateFrom: ontemISO, dateTo: ontemISO, storeId: '' });
+    const porFase = dados.por_fase_periodo;
+    const produtos = dados.produtos_por_estagio;
+    const totalPedidos = produtos.reduce((s, p) => s + p.pedidos, 0);
+    const totalFaturamento = produtos.reduce((s, p) => s + p.faturamento, 0);
+
+    if (!totalPedidos) {
+      await tgNotifyForce('tg_rankeamento_diario', `📈 <b>Rankeamento — ${ontemFmt}</b>\n\nNenhuma venda de anúncio acompanhado ontem.`);
+      scheduleAt(8, 0, relatorioRankeamentoDiario, 'relatorio-rankeamento');
+      return;
+    }
+
+    // Quem NÃO vendeu ontem — todo ativo no módulo que não apareceu em produtos_por_estagio.
+    const { rows: ativos } = await pool.query(
+      `SELECT ml_id, title, fase FROM ranking_ads WHERE active = true ORDER BY fase, title`
+    );
+    const venderamSet = new Set(produtos.map(p => p.item_id));
+    const naoVenderam = ativos.filter(a => !venderamSet.has(a.ml_id));
+
+    const faseLabel = f => FASE_LABEL_PT[f] || f;
+    const reais = porFase.filter(b => FASES_RANKEAMENTO.includes(b.fase));
+    const porPedidosDesc = [...reais].sort((a, b) => b.pedidos - a.pedidos);
+    const maisVende = porPedidosDesc[0];
+    const menosVende = porPedidosDesc[porPedidosDesc.length - 1];
+
+    let msg = `📈 <b>Rankeamento — ${ontemFmt}</b>\n\n`;
+    msg += `💰 <b>Total:</b> ${totalPedidos} pedidos — ${Rfmt(totalFaturamento)}\n\n`;
+
+    if (maisVende && maisVende.pedidos > 0) msg += `🏆 <b>Estágio que mais vendeu:</b> ${faseLabel(maisVende.fase)} — ${maisVende.pedidos} pedidos (${Rfmt(maisVende.faturamento)})\n`;
+    if (menosVende) msg += `📉 <b>Estágio que menos vendeu:</b> ${faseLabel(menosVende.fase)} — ${menosVende.pedidos} pedidos (${Rfmt(menosVende.faturamento)})\n`;
+    msg += `\n`;
+
+    msg += `📊 <b>Vendas por estágio:</b>\n`;
+    for (const b of porFase) {
+      if (b.pedidos === 0 && b.fase === 'sem_rankeamento') continue; // sem venda fora do módulo, não polui
+      msg += `  • ${faseLabel(b.fase)}: ${b.pedidos} pedidos — ${Rfmt(b.faturamento)}\n`;
+    }
+
+    const vendendoOrdenado = [...produtos].sort((a, b) => b.faturamento - a.faturamento);
+    const VENDENDO_LIMITE = 20;
+    msg += `\n✅ <b>Vendendo</b> (${produtos.length} produto${produtos.length === 1 ? '' : 's'}):\n`;
+    for (const p of vendendoOrdenado.slice(0, VENDENDO_LIMITE)) {
+      msg += `  • [${faseLabel(p.fase)}] ${(p.title || p.item_id).slice(0, 45)} — ${p.qtd}un. (${Rfmt(p.faturamento)})\n`;
+    }
+    if (produtos.length > VENDENDO_LIMITE) msg += `  … + ${produtos.length - VENDENDO_LIMITE} outro(s)\n`;
+
+    const NAO_VENDENDO_LIMITE = 15;
+    msg += `\n⚠️ <b>NÃO vendeu ontem</b> (${naoVenderam.length} anúncio${naoVenderam.length === 1 ? '' : 's'} acompanhado${naoVenderam.length === 1 ? '' : 's'}):\n`;
+    if (!naoVenderam.length) {
+      msg += `  Nenhum — todos os anúncios acompanhados venderam ontem. 🎉\n`;
+    } else {
+      for (const a of naoVenderam.slice(0, NAO_VENDENDO_LIMITE)) {
+        msg += `  • [${faseLabel(a.fase)}] ${(a.title || a.ml_id).slice(0, 45)}\n`;
+      }
+      if (naoVenderam.length > NAO_VENDENDO_LIMITE) msg += `  … + ${naoVenderam.length - NAO_VENDENDO_LIMITE} outro(s)\n`;
+    }
+
+    await tgNotifyForce('tg_rankeamento_diario', msg);
+    console.log('[relatorio-rankeamento] enviado');
+  } catch (e) {
+    console.error('[relatorio-rankeamento] erro:', e.message);
+  }
+  scheduleAt(8, 0, relatorioRankeamentoDiario, 'relatorio-rankeamento');
+}
+
 // ── Ruptura iminente — alerta diário (07:30) ────────────────────────────────
 // Item que vende bem e vai acabar (dias_restantes < 7). Reaproveita
 // getRupturaEstoque (mesma fonte da página Reposição). Ver business-rules.md.
@@ -3308,6 +3403,7 @@ scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6,  5,  fechamentoDiario, 'fechamento-diario');
+scheduleAt(8,  0,  relatorioRankeamentoDiario, 'relatorio-rankeamento');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');

@@ -1101,7 +1101,11 @@ function insightsEstagios(buckets, comparacaoOntem, comparacao7d) {
   if (mcOrdenado.length && mcOrdenado[0].mc_pct > mcMedia + 5) insights.push(`${FASE_LABEL_PT[mcOrdenado[0].fase]} tem MC média de ${mcOrdenado[0].mc_pct.toFixed(1)}%, acima da média geral de ${mcMedia.toFixed(1)}%.`);
   return insights;
 }
-const FASE_LABEL_PT = { rankeando: 'Em rankeamento', ranqueado: 'Ranqueado', monitoramento: 'Monitoramento', recuperacao: 'Recuperação', sem_rankeamento: 'Sem rankeamento' };
+// v88 esqueceu de incluir 'catalogo' aqui — qualquer insight envolvendo esse
+// estágio (líder/maior alta/maior MC) imprimia "undefined representa X%..."
+// desde então. Corrigido junto com o relatório diário de rankeamento (abaixo),
+// que reusa este mesmo mapa — ver worker.js/relatorioRankeamentoDiario.
+const FASE_LABEL_PT = { rankeando: 'Em rankeamento', ranqueado: 'Ranqueado', monitoramento: 'Monitoramento', recuperacao: 'Recuperação', catalogo: 'Catálogo (Buy Box)', sem_rankeamento: 'Sem rankeamento' };
 
 // Período: ou `days` (padrão, N dias terminando hoje) ou `dateFrom`/`dateTo`
 // explícitos (Hoje/período personalizado, resolvidos no frontend — mesmo
@@ -1399,3 +1403,9 @@ module.exports = router;
 // — nunca uma 2ª fórmula de margem. `router` é uma função (Express Router),
 // então pendurar a propriedade nela não quebra `app.use('/api/bi', require('./routes/bi'))`.
 module.exports.computarMargem = computarMargem;
+// computarRankeamento + FASE_LABEL_PT também usados fora deste arquivo
+// (worker.js, relatorioRankeamentoDiario — relatório diário de "Vendas por
+// Estágio" no Telegram) — mesmo racional acima: nunca uma 2ª fórmula.
+module.exports.computarRankeamento = computarRankeamento;
+module.exports.FASE_LABEL_PT = FASE_LABEL_PT;
+module.exports.FASES_RANKEAMENTO = FASES_RANKEAMENTO;

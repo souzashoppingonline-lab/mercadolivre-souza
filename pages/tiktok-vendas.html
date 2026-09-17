@@ -117,7 +117,11 @@ const STATUS_COLORS = { paid:'#27ae60', pending:'#f0932b', cancelled:'#e74c3c', 
 let charts = {};
 
 function drawDia(porDia) {
-  const labels = porDia.map(d => new Date(d.dia + 'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));
+  // d.dia chega como timestamp ISO completo ("2026-08-19T00:00:00.000Z", tipo
+  // `date` do Postgres serializado pelo driver), não como "AAAA-MM-DD" puro —
+  // concatenar 'T12:00:00' direto nisso gera "Invalid Date" no eixo. Corta
+  // só os 10 primeiros caracteres antes de remontar com meio-dia local.
+  const labels = porDia.map(d => new Date(String(d.dia).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));
   charts.dia?.destroy();
   charts.dia = new Chart(document.getElementById('chartDia'), {
     type: 'line',

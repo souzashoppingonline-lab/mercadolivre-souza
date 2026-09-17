@@ -130,7 +130,11 @@ async function loadLojas() {
 }
 
 function drawDia(porDia) {
-  const labels = porDia.map(d => new Date(d.dia + 'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));
+  // d.dia chega como timestamp ISO completo ("2026-08-19T00:00:00.000Z", tipo
+  // `date` do Postgres serializado pelo driver), não como "AAAA-MM-DD" puro —
+  // concatenar 'T12:00:00' direto nisso gera "Invalid Date" no eixo. Corta
+  // só os 10 primeiros caracteres antes de remontar com meio-dia local.
+  const labels = porDia.map(d => new Date(String(d.dia).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}));
   charts.dia?.destroy();
   charts.dia = new Chart(document.getElementById('chartDia'), {
     type: 'line',
@@ -183,9 +187,14 @@ async function loadAll() {
   set('kPedidos', N(r.pedidos)); set('kPedidosHoje', 'Hoje: ' + N(r.pedidos_hoje));
   set('kTicket', R(r.ticket_medio));
   set('kCancelados', N(r.cancelados));
-  drawDia(d.por_dia || []);
-  drawStatus(d.por_status || []);
-  drawLoja(d.por_loja || []);
+  // Cada gráfico no próprio try/catch: se o Chart.js não carregar (CDN
+  // indisponível/bloqueada), a tabela de pedidos por loja abaixo — que não
+  // depende de nenhum gráfico — continua carregando normal, em vez de travar
+  // no spinner pra sempre (mesmo bug já corrigido em tiktok-vendas.html,
+  // ver known-bugs.md).
+  try { drawDia(d.por_dia || []); } catch (e) { console.error('drawDia falhou:', e); }
+  try { drawStatus(d.por_status || []); } catch (e) { console.error('drawStatus falhou:', e); }
+  try { drawLoja(d.por_loja || []); } catch (e) { console.error('drawLoja falhou:', e); }
   const lojas = d.por_loja || [];
   set('lojaCount', `${lojas.length} loja(s)`);
   document.getElementById('lojaTbody').innerHTML = lojas.length ? lojas.map(l => `

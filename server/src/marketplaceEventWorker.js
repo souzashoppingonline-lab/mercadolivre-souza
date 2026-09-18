@@ -13,7 +13,7 @@ const redis = require('./db/redis');
 const { publish } = require('./ws/hub');
 const { tgNotify } = require('./notify');
 const ranking = require('./ranking');
-const taskEngine = require('./taskEngine'); // v97 — cartões automáticos da Agenda Trello pra Shopee (estoque/venda forte/promoções)
+const taskEngine = require('./taskEngine'); // v97 — cartões automáticos da Agenda Trello pra Shopee (estoque/venda forte)
 const { Scheduler } = require('./marketplaces/Scheduler');
 const { AmazonPollingEventSource } = require('./marketplaces/amazon/AmazonPollingEventSource');
 const { ShopeePollingEventSource } = require('./marketplaces/shopee/ShopeePollingEventSource');
@@ -835,18 +835,11 @@ async function syncShopeePromos() {
         [p.tipo, p.promo_id, storeId, p.name, p.code, p.start_time, p.end_time, p.desconto, p.status, JSON.stringify(p.raw)]
       );
 
-      // Agenda Trello (v97) — Regra 4: cartão informativo pra toda campanha
-      // ATIVA (oferta relâmpago = tipo 'flash_sale'; desconto = 'discount';
-      // cupom = 'voucher' — v99 corrige o rótulo antigo que chamava
-      // 'discount' de "oferta relâmpago"). Prioridade baixa — é
-      // acompanhamento, não problema.
-      if (p.status === 'ongoing') {
-        const promoTask = await taskEngine.checkPromoAtiva({
-          tipo: p.tipo, promoId: p.promo_id, nome: p.name, desconto: p.desconto, storeId, storeName,
-        });
-        const rotuloWs = p.tipo === 'flash_sale' ? 'Oferta Relâmpago' : (p.tipo === 'discount' ? 'Desconto' : 'Cupom');
-        if (promoTask?.created) await publish('task_created', { id: promoTask.id, rule_key: 'promocao_ativa_shopee', title: `${rotuloWs} ativa: ${p.name || p.promo_id}` });
-      }
+      // Agenda Trello — Regra 4 (cartão pra campanha ATIVA) REMOVIDA a pedido
+      // do usuário (v105): promoção não é um problema/tarefa, só um estado
+      // do anúncio — poluía o quadro sem necessidade. shopee_promotions
+      // continua sincronizado normal, só parou de virar cartão. Ver
+      // task-engine.md/decisions.md.
     }
     console.log(`[promos] loja ${storeId}: ${promos.length} promoção(ões) sincronizada(s)`);
   }

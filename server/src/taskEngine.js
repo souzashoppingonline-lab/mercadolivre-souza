@@ -122,61 +122,10 @@ async function checkVendaForte({ itemId, title, unidades24h, storeId, storeName,
   }
 }
 
-// Regra 4 (v97, Shopee) — Promoção/cupom/oferta relâmpago ATIVA. Chamada por
-// syncShopeePromos (marketplaceEventWorker, 1h) pra cada promoção que virou
-// 'ongoing'. item_id = promo_id (não colide entre tipos porque discount_id,
-// voucher_id e flash_sale_id vivem em espaços separados na Shopee, e o
-// rule_key já é único por tipo). "Oferta relâmpago" = tipo 'flash_sale'
-// (Shop Flash Sale, API própria integrada na v99 — antes disso, esta regra
-// rotulava errado o tipo 'discount' como "oferta relâmpago"; corrigido a
-// pedido do usuário. 'discount' é um preço promocional comum do vendedor,
-// sem vitrine dedicada nem estoque reservado — coisa diferente. Ver shopee.md).
-const PROMO_ROTULO = { flash_sale: 'Oferta Relâmpago', discount: 'Desconto', voucher: 'Cupom' };
-const PROMO_DESC_TIPO = { flash_sale: 'de oferta relâmpago', discount: 'de desconto', voucher: 'de cupom' };
-async function checkPromoAtiva({ tipo, promoId, nome, desconto, storeId, storeName }) {
-  try {
-    const rotulo = PROMO_ROTULO[tipo] || 'Promoção';
-    return await createTaskIfNotExists({
-      ruleKey: 'promocao_ativa_shopee',
-      itemId: String(promoId),
-      title: `${rotulo} ativa: ${nome || promoId}`,
-      description: `Campanha ${PROMO_DESC_TIPO[tipo] || ''} em andamento na Shopee${desconto ? ` (${desconto})` : ''}.`,
-      priority: 'baixa',
-      storeId,
-      source: 'shopee',
-      marketplaceCode: 'SHOPEE',
-      metadata: { tipo, promoId, nome, desconto, loja: storeName, marketplace: 'Shopee' },
-    });
-  } catch (e) {
-    console.warn(`[task-engine] checkPromoAtiva falhou para ${promoId}: ${e.message}`);
-    return null;
-  }
-}
+// Regras 4 e 5 (promoção ativa / promoção vencendo, v97, Shopee) REMOVIDAS a
+// pedido do usuário (v105) — promoção não é uma tarefa/problema, só um
+// estado do anúncio, e poluía o quadro sem necessidade. O alerta de
+// vencimento por Telegram/e-mail (checkShopeeCampanhasVencendo, worker.js)
+// nunca dependeu daqui e continua funcionando normal. Ver task-engine.md.
 
-// Regra 5 (v97, Shopee) — Promoção vencendo/vencida. Chamada por
-// checkShopeeCampanhasVencendo (worker.js, 1x/dia), reaproveitando o MESMO
-// cálculo de dias restantes já usado pro alerta Telegram/e-mail — não
-// recalcula nada aqui, só transforma o aviso que já existe num cartão.
-async function checkPromoVencendo({ tipo, promoId, nome, storeId, storeName, diasRestantes, vencida }) {
-  try {
-    const titulo = vencida ? `Promoção vencida: ${nome || promoId}` : `Promoção vencendo em ${diasRestantes}d: ${nome || promoId}`;
-    return await createTaskIfNotExists({
-      ruleKey: 'promocao_vencendo_shopee',
-      itemId: String(promoId),
-      title: titulo,
-      description: vencida
-        ? `A campanha ${PROMO_DESC_TIPO[tipo] || ''} já venceu — renove ou remova.`
-        : `Faltam ${diasRestantes} dia(s) pro fim da campanha — decida se renova.`,
-      priority: vencida ? 'alta' : 'media',
-      storeId,
-      source: 'shopee',
-      marketplaceCode: 'SHOPEE',
-      metadata: { tipo, promoId, nome, diasRestantes, vencida, loja: storeName, marketplace: 'Shopee' },
-    });
-  } catch (e) {
-    console.warn(`[task-engine] checkPromoVencendo falhou para ${promoId}: ${e.message}`);
-    return null;
-  }
-}
-
-module.exports = { checkStock, checkQuality, checkVendaForte, checkPromoAtiva, checkPromoVencendo, createTaskIfNotExists };
+module.exports = { checkStock, checkQuality, checkVendaForte, createTaskIfNotExists };

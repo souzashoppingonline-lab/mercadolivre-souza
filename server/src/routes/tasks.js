@@ -165,6 +165,25 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// Esvaziar a coluna Excluído de uma vez — pedido do usuário (evita ter que
+// abrir cartão por cartão numa coluna que só cresce). Mesmo hard delete de
+// DELETE /:id (só afeta quem já está em 'excluido', não tem outra forma de
+// entrar aqui), só que em lote. Manda UM resumo pro Telegram em vez de 1
+// mensagem por cartão — com dezenas/centenas de cartões acumulados, notificar
+// individualmente viraria spam sem nenhum valor a mais que o resumo.
+router.delete('/excluidos/todos', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`DELETE FROM tasks WHERE board_column = 'excluido' RETURNING id`);
+    if (rows.length) {
+      await tgNotifyTaskDeleted(`🗑️ <b>${rows.length} cartão(ões) excluído(s) definitivamente</b> — coluna Excluído esvaziada.`);
+    }
+    res.json({ ok: true, count: rows.length });
+  } catch (e) {
+    console.error('[api/tasks] DELETE /excluidos/todos', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Exclusão definitiva — só permitida quando o cartão já está na coluna
 // Excluído (soft-delete via board_column vem antes; isto aqui é o hard
 // delete, chamado só a partir dela). task_comments cai junto via

@@ -99,6 +99,13 @@ async function handleShipment({ resource, storeId }) {
     // 404/403 em alguns envios — não é erro fatal, só não temos o custo em tempo real
   }
 
+  // Estado do comprador (aviso "embale bem" na Embalagem, ver embalagem.md) —
+  // reaproveita o `ship` já buscado acima pra esse mesmo webhook, sem nenhuma
+  // chamada nova ao ML. `receiver_address.state` só existe pra pedidos com
+  // endereço de entrega definido (nem todo envio tem, ex. retirada em ponto);
+  // nesses casos fica null e o COALESCE abaixo preserva o que já havia.
+  const state = ship?.receiver_address?.state || null;
+
   const { rows } = await pool.query(
     `UPDATE orders SET
        shipping_status = $1,
@@ -109,6 +116,8 @@ async function handleShipment({ resource, storeId }) {
        shipping_last_updated = $6,
        shipping_seller_cost = COALESCE($9, shipping_seller_cost),
        shipping_seller_reembolso = COALESCE($10, shipping_seller_reembolso),
+       buyer_state_id = COALESCE($11, buyer_state_id),
+       buyer_state_name = COALESCE($12, buyer_state_name),
        updated_at = now()
      WHERE store_id = $7 AND shipping_id = $8
      RETURNING ml_id`,
@@ -123,6 +132,8 @@ async function handleShipment({ resource, storeId }) {
       String(shipmentId),
       sellerCost,
       sellerCost != null ? sellerReembolso : null, // só atualiza reembolso junto de um custo confirmado
+      state?.id || null,
+      state?.name || null,
     ]
   );
   if (!rows.length) return;
@@ -1791,15 +1802,22 @@ async function syncShippingStatus() {
         try {
           const ship = await ml.getShipment(o.shipping_id, o.store_id);
           const sh = ship?.status_history || {};
+          // Mesmo backfill de buyer_state_id/name do handleShipment (webhook)
+          // — cobre pedidos cujo webhook `shipments` nunca chegou, pra não
+          // ficar sem o aviso "embale bem" na Embalagem (ver embalagem.md).
+          const state = ship?.receiver_address?.state || null;
           await pool.query(
             `UPDATE orders SET
                shipping_status=$2, shipping_substatus=$3, date_ready_to_ship=$4,
-               date_shipped=$5, date_delivered=$6, shipping_last_updated=$7, updated_at=now()
+               date_shipped=$5, date_delivered=$6, shipping_last_updated=$7,
+               buyer_state_id = COALESCE($8, buyer_state_id),
+               buyer_state_name = COALESCE($9, buyer_state_name),
+               updated_at=now()
              WHERE ml_id=$1`,
             [
               o.ml_id, ship?.status || null, ship?.substatus || null,
               sh.date_ready_to_ship || null, sh.date_shipped || null, sh.date_delivered || null,
-              ship?.last_updated || null,
+              ship?.last_updated || null, state?.id || null, state?.name || null,
             ]
           );
           updated++;

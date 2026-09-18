@@ -135,6 +135,10 @@ CREATE INDEX IF NOT EXISTS idx_orders_finance_pending
   ON orders (last_finance_sync_at NULLS FIRST, date_created)
   WHERE finance_synced = false AND status <> 'cancelled';
 
+-- Aviso "embale bem" na Embalagem para comprador fora de SP — v104, ver embalagem.md
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_state_id TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_state_name TEXT;
+
 CREATE TABLE IF NOT EXISTS questions (
   ml_id BIGINT PRIMARY KEY,
   store_id BIGINT REFERENCES stores(id),

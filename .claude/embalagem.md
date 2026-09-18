@@ -275,6 +275,16 @@ Pedido do usuário — continuação da lista de "informações pra ajudar o ana
   - **`pages/produtos.html` é só ML** (`vw_ml_items`) — hoje só existe UI de cadastro pra item ML. A **leitura** na Embalagem, porém, é genérica: tanto a branch ML (`JOIN items`) quanto a branch Shopee (`lookupShopeeByTracking`, novo `LEFT JOIN items` por `item_id`) trazem `observacao_embalagem` — se um dia a Shopee ganhar UI própria de cadastro (ex. em `shopee-anuncios.html`), a leitura já funciona sem mexer em `routes/embalagem.js`.
   - **Testado**: fluxo completo via Playwright na tela real de Produtos (exibir → editar → salvar → confirma no backend → limpar volta pro botão "+ Adicionar"); card de bipagem confirmado com peso piscando (`animationName === 'embPesoBlink'`) e caixa de observação renderizando o texto salvo.
 
+## Aviso "embale bem" — comprador fora de São Paulo (v104)
+
+Pedido do usuário — caixa azul (`.emb-alert-fora-sp`) no card de bipagem, logo acima do alerta de devolução do SKU, só quando o **estado do comprador não é SP**: "PEDIDO \<ESTADO\> — EMBALE BEM O PEDIDO" + "Pedido longo — capriche na embalagem." **Prévia em mockup aprovada antes de implementar**, mesmo processo do v100/v101.
+
+- **Origem do dado — `orders.buyer_state_id`/`buyer_state_name`** (v104, ver `database.md`): o Mercado Livre não manda endereço do comprador no pedido em si, só na consulta do **envio** (`GET /shipments/:id` → `receiver_address.state.{id,name}`, ex. `{id:"BR-BA", name:"Bahia"}`). O worker já busca esse envio a cada webhook `shipments` (`handleShipment`, pro Status de Entrega da Conciliação Bancária) — o estado é extraído da MESMA resposta, **sem nenhuma chamada nova ao ML**. Gravado com `COALESCE` (só sobrescreve se o novo valor vier preenchido — um envio sem endereço, ex. retirada em ponto, não apaga um valor já conhecido). O job de backfill `syncShippingStatus` (a cada 4h, `workers.md`) também popula, cobrindo pedidos cujo webhook nunca chegou.
+- **Comparação por `state.id`** (`foraDeSP()`, `pages/embalagem.html`): compara `buyer_state_id.toUpperCase() !== 'BR-SP'` quando o id veio preenchido (mais confiável que comparar nome com acento); cai pro nome normalizado (sem acento) só se o id não veio. **Formato `"BR-SP"` não confirmado contra um payload real de produção** — segue o padrão documentado publicamente da API de Shipments do ML; se divergir no 1º pedido de teste em produção, registrar em `known-bugs.md`.
+- **Só Mercado Livre** — a Shopee não expõe o estado do comprador pro app hoje (mesma limitação já documentada pro nome do comprador Shopee); `buyer_state_id`/`buyer_state_name` só são populados por `handleShipment`/`syncShippingStatus`, que são exclusivos do pipeline ML — pedidos Shopee simplesmente não têm esses campos, e o alerta não aparece (comportamento esperado, confirmado com o usuário).
+- **Pedidos já existentes no banco** ficam sem o dado até o próximo webhook `shipments` ou até o job de 4h alcançá-los — sem backfill retroativo dedicado (não fazia sentido reconsultar TODO o histórico só por causa desse campo).
+- **Testado**: throwaway DB com 1 pedido `BR-BA`/Bahia e 1 `BR-SP`/São Paulo — bipagem real (`#scanInput` → `Enter`) confirmada via Playwright mostrando o alerta só no pedido da Bahia.
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.

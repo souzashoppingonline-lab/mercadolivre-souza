@@ -162,6 +162,13 @@ frete_vendedor_manual NUMERIC            -- v86: edição manual do frete do ven
                                    -- edição. Ver business-rules.md.
 frete_vendedor_manual_by TEXT            -- v86: staff_user_name de quem editou (NULL ao remover)
 frete_vendedor_manual_at TIMESTAMPTZ     -- v86: quando editou (NULL ao remover)
+buyer_state_id TEXT                      -- v104: state.id do comprador (ex. "BR-BA"), de
+                                   -- receiver_address.state em /shipments/:id — extraído
+                                   -- de graça no handleShipment/syncShippingStatus (webhook
+                                   -- de Status de Entrega), nenhuma chamada nova ao ML. Só
+                                   -- ML (Shopee não expõe). Usado pro aviso "embale bem"
+                                   -- fora de SP na Embalagem — ver embalagem.md.
+buyer_state_name TEXT                    -- v104: state.name (ex. "Bahia"), mesma origem acima
 updated_at TIMESTAMPTZ
 ```
 Campos exclusivos de cada marketplace **não** ficam em `orders` — vão para uma tabela auxiliar por marketplace (`amazon_order_data`, `shopee_order_data`). `orders` só guarda os campos comuns entre marketplaces.

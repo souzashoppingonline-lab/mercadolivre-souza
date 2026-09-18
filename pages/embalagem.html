@@ -188,6 +188,14 @@
     .emb-alert-sku .corpo b { color: var(--red); }
     .emb-alert-comprador { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 20px; background: rgba(230,126,34,.18); color: var(--orange); text-transform: uppercase; letter-spacing: .3px; }
     .emb-alert-comprador i { font-size: 10px; }
+    /* Aviso "embale bem" — comprador fora de SP (pedido do usuário). Só ML por
+       enquanto: buyer_state_* vem de receiver_address.state (GET /shipments),
+       a Shopee não expõe esse dado hoje (mesma limitação do nome do comprador
+       Shopee, ver embalagem.md). */
+    .emb-alert-fora-sp { margin-top: 14px; margin-bottom: 14px; padding: 14px 16px; border-radius: 10px; background: rgba(74,144,255,.14); border: 2px solid #4a90ff; display: flex; gap: 12px; align-items: center; }
+    .emb-alert-fora-sp i.icon { color: #4a90ff; font-size: 22px; }
+    .emb-alert-fora-sp .titulo { font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: .4px; color: #9dc4ff; margin-bottom: 3px; }
+    .emb-alert-fora-sp .corpo { font-size: 13px; color: #d8e8ff; line-height: 1.4; font-weight: 700; }
 
     .emb-camera-box { position: relative; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; margin-bottom: 12px; }
     .emb-camera-box video { width: 100%; height: 100%; object-fit: cover; }
@@ -810,6 +818,16 @@ function parseShippingId(raw) {
   return raw.replace(/[^0-9]/g, '') || raw;
 }
 
+// Comprador fora de SP (pedido do usuário) — buyer_state_id vem no formato
+// "BR-SP" (receiver_address.state.id do ML); compara por id quando disponível
+// (mais confiável) e cai pro nome (sem acento) só quando o id não veio.
+function foraDeSP(o) {
+  if (!o.buyer_state_id && !o.buyer_state_name) return false;
+  if (o.buyer_state_id) return o.buyer_state_id.toUpperCase() !== 'BR-SP';
+  const nome = o.buyer_state_name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return nome !== 'sao paulo';
+}
+
 // Mesma classificação de logística usada em pages/top-vendas-online.html.
 function logLabel(tipo) {
   const l = (tipo || '').toLowerCase();
@@ -856,6 +874,14 @@ function renderOrders(orders, alreadyPacked) {
         </div>
         ${variacoes.length ? `<div class="emb-order-tags">${variacoes.map(v => `<span class="emb-order-tag attention">${escapeHtml(v)}</span>`).join('')}</div>` : ''}
         ${o.seller_sku ? `<div style="margin-bottom: 14px;"><span class="emb-order-sku attention">SKU: ${escapeHtml(o.seller_sku)}</span></div>` : ''}
+        ${foraDeSP(o) ? `
+        <div class="emb-alert-fora-sp">
+          <i class="fas fa-truck-fast icon"></i>
+          <div>
+            <div class="titulo">Pedido ${escapeHtml(o.buyer_state_name || o.buyer_state_id)} — embale bem o pedido</div>
+            <div class="corpo">Pedido longo — capriche na embalagem.</div>
+          </div>
+        </div>` : ''}
         ${o.devolucao_sku ? `
         <div class="emb-alert-sku">
           <i class="fas fa-triangle-exclamation icon"></i>

@@ -558,6 +558,7 @@ router.get('/pedido/:shippingId', async (req, res) => {
     const mlQuery = () => pool.query(
       `SELECT o.ml_id AS order_id, o.item_id, o.title, o.quantity, o.buyer_nickname, o.store_id,
               o.unit_price, o.status, o.shipping_type, o.date_created,
+              o.buyer_state_id, o.buyer_state_name,
               o.raw_data->'order_items'->0->'item'->>'seller_sku' AS seller_sku,
               o.raw_data->'order_items'->0->'item'->'variation_attributes' AS variation_attributes,
               i.thumbnail, i.permalink, i.available_quantity, i.package_dims AS dimensoes,

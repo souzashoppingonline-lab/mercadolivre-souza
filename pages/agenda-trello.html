@@ -364,7 +364,9 @@ async function excluirTodosDaLixeira() {
   if (!n) return;
   if (!confirm(`Excluir definitivamente os ${n} cartão(ões) da coluna Excluído? Essa ação não pode ser desfeita.`)) return;
   const res = await DB.deleteTasksExcluidos();
-  if (!res || res.error) { alert('Erro ao excluir: ' + (res?.error || '')); return; }
+  // _delete devolve null em qualquer falha (rede, 404, 500) — o motivo real
+  // só sobrevive em DB.lastError, ver comentário em js/db.js.
+  if (!res || res.error) { alert('Erro ao excluir: ' + (res?.error || DB.lastError || 'motivo desconhecido')); return; }
   loadBoard();
   loadSummary();
 }

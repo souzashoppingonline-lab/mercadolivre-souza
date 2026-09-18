@@ -32,6 +32,8 @@ checkPromoVencendo({ tipo, promoId, nome, storeId, storeName, diasRestantes, ven
 
 Mover um cartão para a coluna "Excluído" é reversível (só muda `board_column`, a linha continua em `tasks`). A exclusão definitiva (`DELETE /api/tasks/:id`, ver `api.md`) só é aceita pela rota quando o cartão já está em `board_column='excluido'` — é uma segunda etapa deliberada, não um clique só. O botão correspondente no frontend (`pages/agenda-trello.html`) só aparece nesse estado.
 
+**Excluir todos de uma vez (v104, pedido do usuário)**: a coluna Excluído só cresce (nada volta pra lá sozinho) e cartão por cartão era repetitivo. Botão de lixeira (`#btnExcluirTodos`) no cabeçalho da coluna, visível só quando há pelo menos 1 cartão nela (mesma condicional de `renderBoard()`), chama `DELETE /api/tasks/excluidos/todos` — mesmo hard delete do endpoint individual (`WHERE board_column='excluido'`, sem outro jeito de entrar aí), só que em lote, com `confirm()` nomeando a quantidade exata. Notificação Telegram é **1 resumo** ("N cartão(ões) excluído(s) definitivamente"), não 1 mensagem por cartão como no endpoint individual — evita spam quando a coluna acumula dezenas/centenas.
+
 ## Prazo (`due_date`) e alerta de atraso
 
 Todo cartão pode ter um `due_date` opcional (editável em `pages/agenda-trello.html`). Um cartão com `due_date` vencido mostra badge vermelho no próprio card — isso já existia antes de qualquer regra sobre atraso ter sido documentada aqui (gap de documentação, não de código). O que foi adicionado depois: KPI "Atrasadas" no topo do quadro e alerta agregado no Telegram uma vez por dia (job `checkTarefasAtrasadas`) — regra completa em `business-rules.md`, schedule em `workers.md`.

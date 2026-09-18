@@ -39,6 +39,8 @@
     .at-col[data-col="em_andamento"] .at-col-title i { color: var(--orange); }
     .at-col[data-col="finalizado"] .at-col-title i { color: var(--green); }
     .at-col[data-col="excluido"] .at-col-title i { color: var(--red); }
+    .at-col-clear-btn { background: none; border: 1px solid var(--red); color: var(--red); border-radius: 6px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: pointer; }
+    .at-col-clear-btn:hover { background: var(--red); color: #fff; }
     .at-col-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; transition: background .15s; }
     .at-col-body.drag-over { background: rgba(255,230,0,.06); }
     .at-col-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 20px 6px; }
@@ -174,7 +176,13 @@
           <div class="at-col-body" id="body_finalizado"></div>
         </div>
         <div class="at-col" data-col="excluido">
-          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-trash"></i> Excluído</div><span class="at-col-count" id="cnt_excluido">0</span></div>
+          <div class="at-col-head">
+            <div class="at-col-title"><i class="fas fa-trash"></i> Excluído</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="at-col-count" id="cnt_excluido">0</span>
+              <button class="at-col-clear-btn" id="btnExcluirTodos" onclick="excluirTodosDaLixeira()" title="Excluir todos os cartões desta coluna, definitivamente" style="display:none"><i class="fas fa-trash-can"></i></button>
+            </div>
+          </div>
           <div class="at-col-body" id="body_excluido"></div>
         </div>
       </div>
@@ -338,6 +346,7 @@ function renderBoard() {
     document.getElementById(`cnt_${col}`).textContent = items.length;
     const body = document.getElementById(`body_${col}`);
     body.innerHTML = items.length ? items.map(cardHtml).join('') : '<div class="at-col-empty">Nenhuma tarefa</div>';
+    if (col === 'excluido') document.getElementById('btnExcluirTodos').style.display = items.length ? '' : 'none';
   });
 }
 
@@ -345,6 +354,19 @@ async function loadBoard() {
   const data = await DB.getTasks(currentFilters());
   tasksCache = data?.rows || [];
   renderBoard();
+}
+
+// Esvazia a coluna Excluído de uma vez — pedido do usuário. Hard delete
+// (não tem "desfazer"), por isso a confirmação nomeia a quantidade exata
+// em vez de um genérico "tem certeza?".
+async function excluirTodosDaLixeira() {
+  const n = tasksCache.filter(t => t.board_column === 'excluido').length;
+  if (!n) return;
+  if (!confirm(`Excluir definitivamente os ${n} cartão(ões) da coluna Excluído? Essa ação não pode ser desfeita.`)) return;
+  const res = await DB.deleteTasksExcluidos();
+  if (!res || res.error) { alert('Erro ao excluir: ' + (res?.error || '')); return; }
+  loadBoard();
+  loadSummary();
 }
 
 // ── Drag and drop nativo (sem lib externa) ──────────────────

@@ -169,7 +169,7 @@
     /* Estoque atual em destaque (pedido do usuário) — mesmo racional do peso
        acima: número grande sempre, e pisca em vermelho quando baixo, pra não
        passar despercebido durante a bipagem. */
-    .emb-order-detail .v.estoque { font-size: 22px; font-weight: 800; }
+    .emb-order-detail .v.estoque { font-size: 34px; font-weight: 800; }
     @keyframes embEstoqueBlink { 0%,100% { filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { filter: drop-shadow(0 0 12px rgba(231,76,60,.85)); } }
     .emb-order-detail .v.estoque.baixo { color: var(--red); animation: embEstoqueBlink .9s infinite; }
     .emb-estoque-hint { font-size: 11px; color: var(--red); margin-top: 10px; display: flex; align-items: center; gap: 6px; font-weight: 700; }

@@ -177,10 +177,11 @@
     .emb-estoque-box-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
     .emb-estoque-box-row + .emb-estoque-box-row { border-top: 1px solid var(--border); }
     .emb-estoque-box-item { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .emb-estoque-box-val { font-size: 28px; font-weight: 800; white-space: nowrap; }
-    @keyframes embEstoqueBlink { 0%,100% { filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { filter: drop-shadow(0 0 12px rgba(231,76,60,.85)); } }
-    .emb-estoque-box-val.baixo { color: var(--red); animation: embEstoqueBlink .9s infinite; }
-    .emb-estoque-hint { font-size: 11px; color: var(--red); margin: -2px 0 6px; display: flex; align-items: center; gap: 6px; font-weight: 700; }
+    .emb-estoque-box-val { font-size: 38px; font-weight: 800; white-space: nowrap; }
+    /* Baixo (<20): amarelo piscando — pedido do usuário, mesmo amarelo/efeito
+       já usado pra quantidade (embQtyBlink), não um alerta vermelho novo. */
+    .emb-estoque-box-val.baixo { color: var(--primary); animation: embQtyBlink .9s infinite; }
+    .emb-estoque-hint { font-size: 12px; color: var(--primary); margin: -2px 0 6px; display: flex; align-items: center; gap: 6px; font-weight: 800; }
 
     /* Observação de Embalagem cadastrada no produto (pages/produtos.html) —
        só renderiza quando existe, ver embalagem.md. */

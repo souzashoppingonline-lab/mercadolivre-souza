@@ -295,6 +295,8 @@ Pedido do usuário. O campo "Estoque atual" já existia na grade de detalhes do 
 
 **Bug real corrigido no caminho — coluna direita "roubava" largura da esquerda**: `.emb-grid-col` (os 2 itens do grid `.emb-grid`) não tinha `min-width: 0`. Sem isso, quando a câmera está indisponível (mensagem "Câmera indisponível — permita o acesso..." sem quebra de linha suficiente) o item de grid da coluna direita tentava crescer além dos `.7fr` que devia ocupar, e a coluna esquerda encolhia — em telas mais estreitas isso descalibrava a proporção `1.7fr .7fr` inteira (confirmado medindo: coluna direita chegando a 724px de largura em vez dos ~443px esperados). `min-width: 0` em `.emb-grid-col` é o fix padrão pra esse comportamento do CSS Grid (item de grid tem mínimo automático = min-content do conteúdo, a menos que seja zerado) — sem efeito colateral visual, só permite as colunas respeitarem a proporção definida.
 
+**2ª causa, também corrigida (mesmo dia, pedido do usuário)**: o `.topbar` (compartilhado por todo o sistema, `js/layout.js`/`css/style.css`) estourava a largura da tela em notebook comum, empurrando essa mesma coluna direita pra fora da área visível de novo. Ver `decisions.md` ("Topbar estourava a largura da tela...").
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.

@@ -74,8 +74,16 @@ body {
 .mkt-switcher-compact a:hover { border-color: var(--primary); color: var(--text-main); }
 .mkt-switcher-compact a.active { background: var(--primary); color: #000; border-color: var(--primary); }
 
-/* Mobile: só ícone nos botões de marketplace */
-@media (max-width: 768px) {
+/* Notebook comum (inclusive com escala de 125% do Windows, que reduz a
+   largura efetiva em CSS pra ~1536px) — o switcher de marketplace por
+   extenso (5 marketplaces hoje: ML/Amazon/Shopee/TikTok Shop + o próprio)
+   não cabe ao lado do resto do .topbar-right (loja/status/sino/refresh/
+   sair) nessa faixa e empurrava .main-content inteiro pra fora da tela,
+   sem barra de rolagem visível pro usuário perceber (ver known-bugs.md,
+   achado bipando um pedido na Embalagem numa tela de ~1490px). Reusa o
+   MESMO modo ícone-só que já existia só a partir de 768px — só ativa bem
+   mais cedo. Pedido do usuário. */
+@media (max-width: 1850px) {
   .mkt-switcher-compact { gap: 4px; }
   .mkt-switcher-compact a {
     padding: 7px 10px;
@@ -85,7 +93,9 @@ body {
     justify-content: center;
   }
   .mkt-switcher-compact a i { font-size: 15px; }
-  /* Esconde a data e o botão refresh no mobile para dar espaço */
+}
+/* Mobile: esconde ainda mais coisa pra sobrar espaço */
+@media (max-width: 768px) {
   .date-display { display: none !important; }
   .btn-refresh  { display: none !important; }
   .topbar-right { gap: 8px; }
@@ -365,7 +375,14 @@ body {
 }
 .module-switcher a:hover { color: var(--text-main); border-color: var(--text-muted); }
 .module-switcher a.active { background: var(--primary); color: #000; border-color: var(--primary); }
-@media (max-width: 900px) { .module-switcher a span { display: none; } .module-switcher a { padding: 6px 9px; } }
+/* Mesmo breakpoint do switcher de marketplace (ver acima, ~1850px) — os
+   dois JUNTOS (módulo por extenso + 5 marketplaces) são a causa real do
+   overflow do topbar em notebook comum (ex. 1366×768, a resolução mais
+   usada historicamente); só o marketplace sozinho não bastava. Medido:
+   .module-switcher por extenso sozinho já ocupa ~470px. 1850px (não só
+   1600px) fecha também a faixa 1601-1825px, onde o topbar completo (modo
+   texto) precisaria de ~1826px pra caber sem estourar. Ver decisions.md. */
+@media (max-width: 1850px) { .module-switcher a span { display: none; } .module-switcher a { padding: 6px 9px; } }
 
 /* Página "em construção" (módulos ainda não implementados) */
 .em-construcao { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 70vh; gap: 14px; }

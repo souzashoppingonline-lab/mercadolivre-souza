@@ -528,14 +528,23 @@ async function resolveMlByShipment(code) {
     // primeiro (logistic_type / logistic.type / mode), depois o pedido.
     const logisticType = ship.logistic_type || ship.logistic?.type || ship.mode
       || order.shipping?.logistic_type || '';
+    // Estado do comprador (aviso "embale bem" fora de SP, embalagem.md) —
+    // reaproveita o MESMO `ship` já buscado acima, sem chamada nova ao ML.
+    // Esse self-heal existe exatamente pro caso de pedido bipado segundos
+    // depois de criado (antes do webhook `shipments` normal ter rodado) —
+    // é o caminho mais provável de NÃO ter o estado ainda, então também é
+    // o ponto mais importante de preencher.
+    const shipState = ship.receiver_address?.state || null;
     await pool.query(
       `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price,
-                           shipping_type, status, date_created, raw_data, shipping_id, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+                           shipping_type, status, date_created, raw_data, shipping_id, buyer_state_id, buyer_state_name, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
        ON CONFLICT (ml_id) DO UPDATE SET
          shipping_id = COALESCE(EXCLUDED.shipping_id, orders.shipping_id),
          raw_data = EXCLUDED.raw_data, status = EXCLUDED.status,
          shipping_type = COALESCE(NULLIF(EXCLUDED.shipping_type,''), orders.shipping_type),
+         buyer_state_id = COALESCE(EXCLUDED.buyer_state_id, orders.buyer_state_id),
+         buyer_state_name = COALESCE(EXCLUDED.buyer_state_name, orders.buyer_state_name),
          updated_at = now()`,
       [
         String(order.id), loja.id, order.buyer?.nickname || null,
@@ -543,6 +552,7 @@ async function resolveMlByShipment(code) {
         order.total_amount ?? null, it0.quantity ?? 1, it0.unit_price ?? null,
         logisticType, order.status || null,
         order.date_created || null, JSON.stringify(order), String(ship.id || shipId),
+        shipState?.id || null, shipState?.name || null,
       ]
     );
     return true;

@@ -65,7 +65,7 @@
        na "2ª linha" do grid, que só começava depois que a 1ª linha (definida
        pela coluna mais alta) terminava — em telas de notebook mais baixas,
        ficava fora da área visível sem rolar. Ver .claude/embalagem.md. */
-    .emb-grid-col { display: flex; flex-direction: column; gap: 18px; }
+    .emb-grid-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 
     .emb-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
 
@@ -166,13 +166,21 @@
     .emb-caixa-vals .peso b { font-size: 14px; text-transform: uppercase; letter-spacing: .5px; }
     .emb-caixa-hint { font-size: 11px; color: #ffe066; margin-top: 6px; display: flex; align-items: center; gap: 6px; }
 
-    /* Estoque atual em destaque (pedido do usuário) — mesmo racional do peso
-       acima: número grande sempre, e pisca em vermelho quando baixo, pra não
-       passar despercebido durante a bipagem. */
-    .emb-order-detail .v.estoque { font-size: 34px; font-weight: 800; }
+    /* Estoque atual em destaque (pedido do usuário) — movido pra coluna
+       direita (câmera+cronômetro), no espaço que sobrava vazio ali embaixo
+       do cronômetro (.emb-grid tem align-items:start, então a coluna direita
+       não estica pra acompanhar a esquerda, que cresce muito com
+       variações/alertas e empurrava o estoque pra fora da tela sem rolar em
+       telas baixas). Mesmo racional do peso: número grande sempre, pisca em
+       vermelho quando baixo. */
+    .emb-estoque-box-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .emb-estoque-box-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+    .emb-estoque-box-row + .emb-estoque-box-row { border-top: 1px solid var(--border); }
+    .emb-estoque-box-item { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .emb-estoque-box-val { font-size: 28px; font-weight: 800; white-space: nowrap; }
     @keyframes embEstoqueBlink { 0%,100% { filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { filter: drop-shadow(0 0 12px rgba(231,76,60,.85)); } }
-    .emb-order-detail .v.estoque.baixo { color: var(--red); animation: embEstoqueBlink .9s infinite; }
-    .emb-estoque-hint { font-size: 11px; color: var(--red); margin-top: 10px; display: flex; align-items: center; gap: 6px; font-weight: 700; }
+    .emb-estoque-box-val.baixo { color: var(--red); animation: embEstoqueBlink .9s infinite; }
+    .emb-estoque-hint { font-size: 11px; color: var(--red); margin: -2px 0 6px; display: flex; align-items: center; gap: 6px; font-weight: 700; }
 
     /* Observação de Embalagem cadastrada no produto (pages/produtos.html) —
        só renderiza quando existe, ver embalagem.md. */
@@ -381,6 +389,7 @@
             <div class="emb-crono-valor" id="cronoValor">--:--</div>
             <div class="emb-crono-lembrete" id="cronoLembrete" style="display:none"><i class="fas fa-triangle-exclamation"></i> Bipe a MESMA etiqueta de novo ao terminar — senão o vídeo não é salvo!</div>
           </div>
+          <div class="emb-card" id="estoqueBox" style="display:none"></div>
           </div>
         </div>
       </div>
@@ -850,6 +859,36 @@ function logLabel(tipo) {
 const STATUS_LABEL = { paid: 'Pago', confirmed: 'Confirmado', cancelled: 'Cancelado', invalid: 'Inválido' };
 const R$ = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 
+// Limiar de estoque baixo NA TELA DE BIPAGEM (pedido do usuário) — 20 unidades.
+// Diferente dos limiares de reposição/compra (5 no alerta Telegram
+// tg_reposicao/Agenda Trello, 15 na página Reposição — ver business-rules.md
+// "Estoque — thresholds diferentes por contexto"): aqui o objetivo é só o
+// embalador prestar atenção redobrada, não decidir compra.
+const ESTOQUE_BAIXO_EMBALAGEM = 20;
+
+// Coluna direita (câmera + cronômetro) — pedido do usuário: em tela baixa a
+// coluna esquerda (pedido/variações/alertas) cresce muito e empurra o
+// estoque pra fora da área visível sem rolar; a direita sobra vazia embaixo
+// do cronômetro (align-items:start no .emb-grid). Movido pra lá, sempre
+// visível, 1 linha por pedido do pack.
+function renderEstoqueBox(orders) {
+  const box = document.getElementById('estoqueBox');
+  const rows = orders.filter(o => o.available_quantity != null);
+  if (!rows.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  box.innerHTML = `
+    <div class="emb-estoque-box-title"><i class="fas fa-boxes-stacked"></i> Estoque atual</div>
+    ${rows.map(o => {
+      const baixo = Number(o.available_quantity) < ESTOQUE_BAIXO_EMBALAGEM;
+      return `
+      <div class="emb-estoque-box-row">
+        <span class="emb-estoque-box-item" title="${escapeHtml(o.title || '')}">${escapeHtml(o.title || '—')}</span>
+        <span class="emb-estoque-box-val ${baixo ? 'baixo' : ''}">${o.available_quantity} un.</span>
+      </div>
+      ${baixo ? `<div class="emb-estoque-hint"><i class="fas fa-triangle-exclamation"></i> Estoque baixo — verifique antes de finalizar.</div>` : ''}`;
+    }).join('')}`;
+}
+
 function renderOrders(orders, alreadyPacked) {
   const banner = alreadyPacked
     ? `<div class="emb-msg warn"><i class="fas fa-triangle-exclamation"></i> Esse pedido já tinha sido embalado em ${new Date(alreadyPacked.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} — gravando de novo.</div>`
@@ -869,13 +908,6 @@ function renderOrders(orders, alreadyPacked) {
     const variacoes = Array.isArray(o.variation_attributes)
       ? o.variation_attributes.map(v => `${v.name || v.id}: ${v.value_name}`)
       : [];
-    // Limiar de estoque baixo NA TELA DE BIPAGEM (pedido do usuário) — 20
-    // unidades. Diferente dos limiares de reposição/compra (5 no alerta
-    // Telegram tg_reposicao e na Agenda Trello, 15 na página Reposição, ver
-    // business-rules.md "Estoque — thresholds diferentes por contexto") —
-    // aqui o objetivo é só chamar atenção do embalador, não decidir compra.
-    const ESTOQUE_BAIXO_EMBALAGEM = 20;
-    const estoqueBaixo = o.available_quantity != null && Number(o.available_quantity) < ESTOQUE_BAIXO_EMBALAGEM;
     return `
     <div class="emb-order-card">
       ${orders.length > 1 ? `<span class="emb-order-pack-idx">Pedido ${idx + 1} de ${orders.length}</span>` : ''}
@@ -924,9 +956,7 @@ function renderOrders(orders, alreadyPacked) {
           })()}
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
           <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
-          ${o.available_quantity != null ? `<div class="emb-order-detail"><span class="k">Estoque atual</span><span class="v estoque ${estoqueBaixo ? 'baixo' : ''}">${o.available_quantity} un.</span></div>` : ''}
         </div>
-        ${estoqueBaixo ? `<div class="emb-estoque-hint"><i class="fas fa-triangle-exclamation"></i> Estoque baixo — restam ${o.available_quantity} unidade(s), verifique antes de finalizar.</div>` : ''}
         ${o.dimensoes && o.dimensoes.texto ? `
         <div class="emb-caixa-box">
           <div class="emb-caixa-title"><i class="fas fa-box"></i> Caixa (C×L×A)</div>
@@ -942,6 +972,7 @@ function renderOrders(orders, alreadyPacked) {
       </div>
     </div>`;
   }).join('');
+  renderEstoqueBox(orders);
 }
 
 function resetOrdersDisplay() {
@@ -951,6 +982,7 @@ function resetOrdersDisplay() {
       <div class="big">Bipe uma etiqueta para começar</div>
       <div>O pedido, a quantidade e o comprador vão aparecer aqui.</div>
     </div>`;
+  renderEstoqueBox([]);
 }
 
 async function startNew(shippingId) {

@@ -2,6 +2,18 @@
 
 > Escopo: defeitos e inconsistências reais identificados no código atual — não é uma lista de features faltando (isso é `roadmap.md`/`todo.md`) nem de decisões deliberadas documentadas (isso é `decisions.md`). Cada item aqui deve apontar arquivo/linha e o sintoma esperado. **Ao corrigir um item, mova-o para `decisions.md` (se a correção envolveu uma escolha de design) e remova daqui.**
 
+## Topbar (`.topbar-right`/`.mkt-switcher-compact`, `css/style.css`) estoura a largura da tela em resoluções médias — empurra o conteúdo pra fora, sem rolagem horizontal visível
+
+Descoberto testando o card de bipagem (`pages/embalagem.html`) numa viewport de ~1490px de largura (notebook comum): `.topbar-right` (5 botões do seletor de marketplace ML/Amazon/Shopee/TikTok Shop + seletor de loja "Todas as lojas" + indicador ao vivo + sino + mudo + refresh + usuário + sair) não cabe nessa largura e não quebra linha — o `@media` existente só compacta em `max-width: 768px`/`480px`, faixas bem menores que o caso real. O `.topbar`/`.main-content` cresce além do viewport pra acomodar, e TUDO que está à direita na página (inclusive, no card de bipagem, a coluna da câmera/cronômetro/estoque) fica parcialmente ou totalmente fora da área visível — sem barra de rolagem horizontal óbvia pro usuário perceber que há mais conteúdo pra cada lado. Confirmado medindo `document.body.scrollWidth` (1826px) vs. `window.innerWidth` (1493px) e isolando `.topbar-right` como a origem (871px de largura, ultrapassando a borda direita da viewport). Provavelmente piorou com a adição do TikTok Shop (5º botão do switcher) sem revisitar os breakpoints.
+
+**Reproduzido em toda página que usa `js/layout.js`/`.topbar` — não é específico da Embalagem.** Afeta qualquer estação de trabalho com tela menor que ~1550-1600px de largura (comum em notebook de embalagem/expedição).
+
+**Correção esperada** (não implementada — pede confirmação do usuário antes, por ser um componente global): adicionar um `@media` intermediário (algo entre 900-1550px) que reduza ainda mais o switcher (ex.: esconder o texto dos botões e manter só ícone+cor, como o breakpoint de 768px já faz parcialmente) ou permitir que `.topbar-right` quebre em 2 linhas nessa faixa, em vez de forçar overflow do `.main-content` inteiro.
+
+## Estoque em destaque na Embalagem escondia atrás desse overflow do topbar — CORRIGIDO em parte (v106.1)
+
+`.emb-grid-col` (as 2 colunas do grid câmera+cronômetro / pedido+últimos bipados, `pages/embalagem.html`) não tinha `min-width: 0` — sem isso, quando a coluna da câmera está sem vídeo (mensagem "Câmera indisponível..."), o item de grid tentava crescer além da proporção `.7fr` que devia ocupar (chegou a 724px medido, em vez de ~443px esperado), roubando espaço da coluna do pedido e descalibrando a proporção `1.7fr .7fr` do `.emb-grid`. **Corrigido**: `min-width: 0` em `.emb-grid-col` — fix padrão desse comportamento do CSS Grid (item de grid tem mínimo automático = min-content do conteúdo, a menos que seja zerado), sem efeito colateral visual. Isso por si só já resolve a maior parte do problema em resoluções normais (≥1600px, testado) — o overflow do topbar acima é uma causa remanescente, separada, só relevante em telas mais estreitas.
+
 ## 2. Tópico WebSocket `kpis_updated` documentado mas nunca publicado
 
 `js/websocket.js` e o `CLAUDE.md` original citam `kpis_updated` como tópico emitido pelo backend, e `dashboard.js` está inscrito nele. Nenhum handler em `worker.js` publica esse tópico hoje — o dashboard na prática se atualiza via `order_updated`/`stock_alert` e um polling de 60s (`setInterval` em `dashboard.js`). Não é um bug funcional grave (o polling cobre a lacuna), mas é documentação/código morto — ver `websocket.md`.

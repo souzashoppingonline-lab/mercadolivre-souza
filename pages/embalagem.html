@@ -166,6 +166,14 @@
     .emb-caixa-vals .peso b { font-size: 14px; text-transform: uppercase; letter-spacing: .5px; }
     .emb-caixa-hint { font-size: 11px; color: #ffe066; margin-top: 6px; display: flex; align-items: center; gap: 6px; }
 
+    /* Estoque atual em destaque (pedido do usuário) — mesmo racional do peso
+       acima: número grande sempre, e pisca em vermelho quando baixo, pra não
+       passar despercebido durante a bipagem. */
+    .emb-order-detail .v.estoque { font-size: 22px; font-weight: 800; }
+    @keyframes embEstoqueBlink { 0%,100% { filter: drop-shadow(0 0 0 rgba(231,76,60,0)); } 50% { filter: drop-shadow(0 0 12px rgba(231,76,60,.85)); } }
+    .emb-order-detail .v.estoque.baixo { color: var(--red); animation: embEstoqueBlink .9s infinite; }
+    .emb-estoque-hint { font-size: 11px; color: var(--red); margin-top: 10px; display: flex; align-items: center; gap: 6px; font-weight: 700; }
+
     /* Observação de Embalagem cadastrada no produto (pages/produtos.html) —
        só renderiza quando existe, ver embalagem.md. */
     .emb-alert-obs { margin-top: 14px; padding: 14px 16px; border-radius: 10px; background: rgba(165,107,209,.14); border: 2px solid #a56bd1; display: flex; gap: 12px; align-items: center; }
@@ -861,7 +869,13 @@ function renderOrders(orders, alreadyPacked) {
     const variacoes = Array.isArray(o.variation_attributes)
       ? o.variation_attributes.map(v => `${v.name || v.id}: ${v.value_name}`)
       : [];
-    const estoqueBaixo = o.available_quantity != null && Number(o.available_quantity) <= 5;
+    // Limiar de estoque baixo NA TELA DE BIPAGEM (pedido do usuário) — 20
+    // unidades. Diferente dos limiares de reposição/compra (5 no alerta
+    // Telegram tg_reposicao e na Agenda Trello, 15 na página Reposição, ver
+    // business-rules.md "Estoque — thresholds diferentes por contexto") —
+    // aqui o objetivo é só chamar atenção do embalador, não decidir compra.
+    const ESTOQUE_BAIXO_EMBALAGEM = 20;
+    const estoqueBaixo = o.available_quantity != null && Number(o.available_quantity) < ESTOQUE_BAIXO_EMBALAGEM;
     return `
     <div class="emb-order-card">
       ${orders.length > 1 ? `<span class="emb-order-pack-idx">Pedido ${idx + 1} de ${orders.length}</span>` : ''}
@@ -910,8 +924,9 @@ function renderOrders(orders, alreadyPacked) {
           })()}
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
           <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
-          ${o.available_quantity != null ? `<div class="emb-order-detail"><span class="k">Estoque atual</span><span class="v ${estoqueBaixo ? 'warn' : ''}">${o.available_quantity} un.</span></div>` : ''}
+          ${o.available_quantity != null ? `<div class="emb-order-detail"><span class="k">Estoque atual</span><span class="v estoque ${estoqueBaixo ? 'baixo' : ''}">${o.available_quantity} un.</span></div>` : ''}
         </div>
+        ${estoqueBaixo ? `<div class="emb-estoque-hint"><i class="fas fa-triangle-exclamation"></i> Estoque baixo — restam ${o.available_quantity} unidade(s), verifique antes de finalizar.</div>` : ''}
         ${o.dimensoes && o.dimensoes.texto ? `
         <div class="emb-caixa-box">
           <div class="emb-caixa-title"><i class="fas fa-box"></i> Caixa (C×L×A)</div>

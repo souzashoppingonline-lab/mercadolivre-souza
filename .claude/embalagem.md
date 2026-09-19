@@ -285,6 +285,12 @@ Pedido do usuário — caixa azul (`.emb-alert-fora-sp`) no card de bipagem, log
 - **Pedidos já existentes no banco** ficam sem o dado até o próximo webhook `shipments` ou até o job de 4h alcançá-los — sem backfill retroativo dedicado (não fazia sentido reconsultar TODO o histórico só por causa desse campo).
 - **Testado**: throwaway DB com 1 pedido `BR-BA`/Bahia e 1 `BR-SP`/São Paulo — bipagem real (`#scanInput` → `Enter`) confirmada via Playwright mostrando o alerta só no pedido da Bahia.
 
+## Estoque atual em destaque + alerta abaixo de 20 unidades (v106)
+
+Pedido do usuário. O campo "Estoque atual" já existia na grade de detalhes do card de bipagem (`items.available_quantity`, dado já carregado — nenhuma query nova), só não chamava atenção. Mesmo racional do peso na balança (v101, acima): número grande sempre (`.v.estoque`, 22px), e quando `available_quantity < 20` (`ESTOQUE_BAIXO_EMBALAGEM`, `renderOrders()`) fica vermelho com o mesmo efeito de piscar (`embEstoqueBlink`, cópia de `embPesoBlink` recolorida) + uma linha de aviso abaixo da grade: "⚠️ Estoque baixo — restam N unidade(s), verifique antes de finalizar."
+
+**Limiar 20, deliberadamente diferente dos outros limiares de estoque do sistema** (ver `business-rules.md` "Estoque — thresholds diferentes por contexto": 5 no alerta Telegram `tg_reposicao`/Agenda Trello, 15 na página Reposição) — aqui o objetivo não é decidir reposição/compra, é só o embalador prestar atenção redobrada num item que está acabando (pode ser o próximo pedido a ficar sem estoque, ou sinal de contagem física divergente). Constante local em `pages/embalagem.html`, não compartilhada com o resto do sistema.
+
 ## O que NÃO foi implementado (fora de escopo desta fase)
 
 - Backfill de `shipping_id` para pedidos antigos.

@@ -272,16 +272,25 @@ async function handleOrder({ resource, storeId, silent = false }) {
   // logística deste pedido (nem no payload atual, nem já persistida antes) —
   // evita 1 chamada extra à API por webhook já resolvido.
   let shippingType = order.shipping?.logistic_type || prevRows[0]?.shipping_type || '';
+  // Estado do comprador (aviso "embale bem" fora de SP, ver embalagem.md) —
+  // reaproveita a MESMA busca de shipment feita acima pra resolver a
+  // logística, sem chamada extra ao ML. É o caminho mais rápido pra popular
+  // buyer_state_id/name: roda já no 1º webhook de um pedido novo (quando
+  // shippingType ainda é desconhecido), minutos ou segundos antes do
+  // embalador conseguir bipar a etiqueta — antes disso, só o webhook
+  // `shipments` (mais lento) ou o job de 4h cobriam esse dado.
+  let shipState = null;
   if (!shippingType && order.shipping?.id) {
     try {
       const ship = await ml.getShipment(order.shipping.id, storeId);
       shippingType = ship?.logistic_type || ship?.shipping_option?.logistic_type || '';
+      shipState = ship?.receiver_address?.state || null;
     } catch (e) { /* ignora — próximo webhook/reconciliação tenta de novo */ }
   }
 
   await pool.query(
-    `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, raw_data, shipping_id, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())
+    `INSERT INTO orders (ml_id, store_id, buyer_nickname, item_id, title, total_amount, quantity, unit_price, ml_fee, shipping_type, shipping_cost, status, date_created, date_closed, raw_data, shipping_id, buyer_state_id, buyer_state_name, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        buyer_nickname = EXCLUDED.buyer_nickname,
        item_id = EXCLUDED.item_id,
@@ -296,6 +305,8 @@ async function handleOrder({ resource, storeId, silent = false }) {
        date_closed = EXCLUDED.date_closed,
        raw_data = EXCLUDED.raw_data,
        shipping_id = COALESCE(EXCLUDED.shipping_id, orders.shipping_id),
+       buyer_state_id = COALESCE(EXCLUDED.buyer_state_id, orders.buyer_state_id),
+       buyer_state_name = COALESCE(EXCLUDED.buyer_state_name, orders.buyer_state_name),
        updated_at = now()`,
     [
       order.id, storeId, order.buyer?.nickname,
@@ -311,6 +322,8 @@ async function handleOrder({ resource, storeId, silent = false }) {
       order.date_created, order.date_closed,
       JSON.stringify(order),
       order.shipping?.id ? String(order.shipping.id) : null,
+      shipState?.id || null,
+      shipState?.name || null,
     ]
   );
 

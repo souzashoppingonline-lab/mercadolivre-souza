@@ -297,15 +297,21 @@ module.exports = {
   // ── Aba "Adicionar Promoções" (pages/promocoes.html) — ações pontuais
   // disparadas por clique do usuário, nunca em job/listagem automática (ver
   // .claude/mercadolivre.md). storeId == user_id do ML (PK de stores).
-  // Endpoint de listagem confirmado ao vivo (já usado em GET /items/:id/promotion,
-  // routes/api.js). Sem filtro de status pra também trazer campanhas
-  // pending/candidate, não só started.
-  listSellerPromotions: (storeId) => get(`/seller-promotions/users/${storeId}/promotions?app_version=v2`, storeId),
-  // Itens de uma campanha — mesmo endpoint já usado (confirmado ao vivo) em
-  // GET /items/:id/promotion, agora exposto por nome pra também checar
-  // elegibilidade (status=candidate) de um item específico antes de aderir.
+  // CORRIGIDO ao vivo (produção, 2026-09-22): a variante com sufixo
+  // "/promotions" (`/seller-promotions/users/:id/promotions`), copiada de
+  // GET /items/:item_id/promotion (routes/api.js), NUNCA foi de fato
+  // confirmada — aquele trecho está dentro de um try/catch mudo (`catch {}`)
+  // e falha sempre, sem ninguém notar (a rota tem várias fontes redundantes).
+  // Path real, sem "/promotions": confirmado pela resposta 404 estruturada
+  // do próprio ML ao tentar o path errado. Ver known-bugs.md.
+  listSellerPromotions: (storeId) => get(`/seller-promotions/users/${storeId}?app_version=v2`, storeId),
+  // Itens de uma campanha — path corrigido (ver nota em listSellerPromotions
+  // acima): a variante sem o segmento "promotions" no meio, copiada do mesmo
+  // trecho silencioso de GET /items/:id/promotion, nunca foi de fato
+  // confirmada ao vivo. Usado também pra checar elegibilidade (status=
+  // candidate) de um item específico antes de aderir.
   getPromotionItems:   (promotionId, storeId, { limit = 100, offset = 0 } = {}) =>
-    get(`/seller-promotions/${promotionId}/items?offset=${offset}&limit=${limit}`, storeId),
+    get(`/seller-promotions/promotions/${promotionId}/items?offset=${offset}&limit=${limit}`, storeId),
   // Aderir/sair de campanha — formato de query (promotion_id + promotion_type)
   // e nome dos campos de preço (deal_price para LIGHTNING/DOD, price para os
   // demais) seguem o contrato documentado da Seller Promotions API do ML;

@@ -2,6 +2,13 @@
 
 > Lista viva de itens acionáveis e concretos — granularidade de tarefa, não de direção estratégica (`roadmap.md`) nem de defeito documentado sem plano de ação definido (`known-bugs.md`, embora todo item de `known-bugs.md` com "Correção esperada" definida vire candidato natural a entrar aqui). Marque `[x]` ao concluir e mova o resultado relevante para `decisions.md`/`database.md`/etc. conforme o caso. Adicione itens novos sempre que uma tarefa ficar pendente ao final de uma sessão.
 
+## Simulação de Ponto de Equilíbrio (v109, `financeiro-despesas.html`) — deixado fora do V1 por escolha explícita do usuário
+
+- [ ] Gráfico de barras Real × Simulado (Chart.js, já usado na página).
+- [ ] Análise de sensibilidade — grid de valores por categoria (ex.: PROLABORE em R$5.000/6.000/7.000/8.000...) mostrando o PE resultante de cada um.
+- [ ] Cenários salvos (ex.: "Redução de custos"/"Expansão") — exigiria tabela nova no Supabase Financeiro (`WRITE_ALLOW` novo) e é a única peça que gravaria algo; hoje o simulador é 100% em memória.
+- [ ] Cards dedicados pra mobile (a tabela hoje só tem scroll horizontal, sem o layout "1 card por categoria" pedido pro celular).
+
 ## Integração Amazon — v15 conectada, falta validar em sandbox e depois produção
 
 - [x] Confirmar a decisão de schema — coluna `marketplace_id` discriminadora, sem normalização profunda (ver `decisions.md`).

@@ -288,6 +288,7 @@
         <div class="dp-card">
           <div class="dp-card-h"><h3>🎛️ Simulação de Ponto de Equilíbrio <span id="dpSimLbl" class="desc"></span></h3>
             <div style="margin-left:auto;display:flex;gap:8px">
+              <button class="dp-btn" onclick="exportarSimPdf()"><i class="fas fa-file-pdf"></i> Exportar PDF</button>
               <button class="dp-btn" onclick="simRestaurar()"><i class="fas fa-rotate-left"></i> Restaurar valores reais</button>
             </div>
           </div>
@@ -692,6 +693,40 @@ function simSetValor(key,val){
   simRecalcular();
 }
 function simRestaurar(){ SIM_OVERRIDES={}; renderSim(selM(),selY()); }
+// Exportar PDF — mesmo padrão de exportarPdf() em financeiro-dre.html (janela +
+// window.print(), sem lib nova): captura os cards e a tabela como estão AGORA
+// (com a simulação em vigor), não os valores reais.
+function exportarSimPdf(){
+  const m=selM(), y=selY(), mcPct=simMcPct;
+  const totalSim=simArr.reduce((s,o)=>s+Math.max(simValorDe(o),0),0);
+  const beReal=mcPct>0?simTotalReal/mcPct:0, beSim=mcPct>0?totalSim/mcPct:0;
+  const reducao=beReal-beSim, reducaoPct=beReal?reducao/beReal*100:0, economia=simTotalReal-totalSim;
+  const cardsHtml=`
+    <div class="c"><div class="k">Ponto de Equilíbrio Atual</div><div class="v">${beReal>0?BRL(beReal):'—'}</div></div>
+    <div class="c"><div class="k">Ponto de Equilíbrio Simulado</div><div class="v">${beSim>0?BRL(beSim):'—'}</div></div>
+    <div class="c"><div class="k">${reducao>=0?'Redução':'Aumento'} do PE</div><div class="v">${BRL(Math.abs(reducao))} (${PCT(Math.abs(reducaoPct))})</div></div>
+    <div class="c"><div class="k">Economia Mensal</div><div class="v">${BRL(Math.abs(economia))}</div></div>
+    <div class="c"><div class="k">Margem de Contribuição</div><div class="v">${PCT(mcPct*100)}</div></div>`;
+  const tipoLabel=t=>t==='fixed'?'Fixo':t==='operational'?'Operacional':'Misto';
+  const rows=simArr.map(o=>{
+    const sv=simValorDe(o), variacao=sv-o.value, impacto=mcPct>0?-variacao/mcPct:0;
+    return `<tr><td>${esc(o.name)}</td><td>${tipoLabel(o.tipo)}</td><td class="r">${BRL(o.value)}</td><td class="r">${BRL(sv)}</td>`
+      +`<td class="r ${variacao<0?'pos':variacao>0?'neg':''}">${variacao===0?'—':(variacao<0?'-':'+')+BRL(Math.abs(variacao))}</td>`
+      +`<td class="r ${impacto>=0?'pos':'neg'}">${impacto===0?'—':(impacto>=0?'-':'+')+BRL(Math.abs(impacto))}</td></tr>`;
+  }).join('');
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Simulação de Ponto de Equilíbrio ${MESES[m-1]}/${y}</title>
+   <style>body{font-family:Arial,sans-serif;color:#111;padding:24px}h1{font-size:18px;margin:0}.sub{color:#666;font-size:12px;margin:2px 0 16px}
+   .warn{background:#fff8e1;border:1px solid #f0d060;border-radius:8px;padding:8px 12px;font-size:11px;margin-bottom:18px}
+   .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+   .c{border:1px solid #ddd;border-radius:8px;padding:10px}.c .k{font-size:10px;color:#666;text-transform:uppercase}.c .v{font-size:14px;font-weight:700;margin-top:4px}
+   table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:6px 8px;border-bottom:1px solid #ddd;text-align:left}td.r,th.r{text-align:right}.pos{color:#0a7d33}.neg{color:#b91c1c}</style></head>
+   <body><h1>Simulação de Ponto de Equilíbrio — ${MESES[m-1]}/${y}</h1><div class="sub">Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+   <div class="warn">Valores simulados — não refletem a DRE real.</div>
+   <div class="cards">${cardsHtml}</div>
+   <table><thead><tr><th>Categoria</th><th>Tipo</th><th class="r">Valor Real</th><th class="r">Valor Simulado</th><th class="r">Variação</th><th class="r">Impacto no PE</th></tr></thead><tbody>${rows}</tbody></table>
+   <script>window.onload=function(){window.print();}<\/script></body></html>`;
+  const w=window.open('','_blank'); if(!w){ alert('Permita pop-ups para gerar o PDF.'); return; } w.document.write(html); w.document.close();
+}
 
 function toggleRank(id,el){
   const d=document.getElementById(id); if(!d) return;

@@ -6,6 +6,10 @@
 
 O breakpoint intermediário do switcher de marketplace/módulo (`@media max-width:1850px`, ver `decisions.md`) resolve de ~1280px até 1920px+, mas telas de **1024px de largura ou menos** ainda estouram (~196px medido) — nessa faixa, mesmo com os dois switchers em modo ícone-só, o resto do `.topbar-right` (seletor de loja "Todas as lojas", texto de status "conectando"/"ao vivo", sino, mudo, refresh, sair) já não cabe. Não corrigido porque exigiria uma 3ª camada de compactação (esconder texto do seletor de loja, texto de status etc.) — mais invasivo, e 1024px é uma largura de tela pouco provável pra uma estação de trabalho de embalagem/desktop hoje. **Correção esperada, se algum dia necessário**: novo `@media` abaixo de ~1100px escondendo `#storeNameDisplay`/texto de `#wsStatus`, mantendo só ícones/avatar.
 
+## Escrita de "Adicionar Promoções" (v108) não testada ao vivo
+
+`mlClient.addPromotionItem`/`removePromotionItem` (aderir/sair de campanha, `POST`/`DELETE /seller-promotions/items/:itemId`) foram implementados seguindo o contrato documentado da Seller Promotions API do ML, mas **não puderam ser testados contra a API real** — este ambiente de desenvolvimento não tem token OAuth de nenhuma loja. A leitura (`listSellerPromotions`/`getPromotionItems`) reaproveita endpoints já confirmados ao vivo em produção (mesmos usados por `GET /items/:id/promotion`), então esses têm baixo risco. **Correção esperada**: antes de divulgar a aba pros usuários, testar aderir/sair com 1 item de baixo risco numa loja real e confirmar o formato exato de query/body que o ML aceita; ajustar `mlClient.js` se divergir.
+
 ## 2. Tópico WebSocket `kpis_updated` documentado mas nunca publicado
 
 `js/websocket.js` e o `CLAUDE.md` original citam `kpis_updated` como tópico emitido pelo backend, e `dashboard.js` está inscrito nele. Nenhum handler em `worker.js` publica esse tópico hoje — o dashboard na prática se atualiza via `order_updated`/`stock_alert` e um polling de 60s (`setInterval` em `dashboard.js`). Não é um bug funcional grave (o polling cobre a lacuna), mas é documentação/código morto — ver `websocket.md`.

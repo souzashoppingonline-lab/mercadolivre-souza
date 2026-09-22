@@ -294,4 +294,33 @@ module.exports = {
   getBillingPeriods:   (group, storeId, limit = 12) => get(`/billing/integration/monthly/periods?group=${group}&document_type=BILL&limit=${limit}`, storeId),
   getBillingDetails:   (periodKey, group, storeId, { lastId = 0, limit = 150 } = {}) =>
     get(`/billing/integration/periods/key/${periodKey}/group/${group}/details?document_type=BILL&limit=${limit}${lastId ? `&last_id=${lastId}` : ''}`, storeId),
+  // ── Aba "Adicionar Promoções" (pages/promocoes.html) — ações pontuais
+  // disparadas por clique do usuário, nunca em job/listagem automática (ver
+  // .claude/mercadolivre.md). storeId == user_id do ML (PK de stores).
+  // Endpoint de listagem confirmado ao vivo (já usado em GET /items/:id/promotion,
+  // routes/api.js). Sem filtro de status pra também trazer campanhas
+  // pending/candidate, não só started.
+  listSellerPromotions: (storeId) => get(`/seller-promotions/users/${storeId}/promotions?app_version=v2`, storeId),
+  // Itens de uma campanha — mesmo endpoint já usado (confirmado ao vivo) em
+  // GET /items/:id/promotion, agora exposto por nome pra também checar
+  // elegibilidade (status=candidate) de um item específico antes de aderir.
+  getPromotionItems:   (promotionId, storeId, { limit = 100, offset = 0 } = {}) =>
+    get(`/seller-promotions/${promotionId}/items?offset=${offset}&limit=${limit}`, storeId),
+  // Aderir/sair de campanha — formato de query (promotion_id + promotion_type)
+  // e nome dos campos de preço (deal_price para LIGHTNING/DOD, price para os
+  // demais) seguem o contrato documentado da Seller Promotions API do ML;
+  // não foi possível validar ao vivo neste ambiente (sem token real). Testar
+  // com 1 item de baixo risco antes de confiar em produção — ver known-bugs.md.
+  addPromotionItem:    (itemId, storeId, { promotionId, promotionType, price, dealPrice, stock }) => {
+    const qs = new URLSearchParams({ promotion_id: promotionId, promotion_type: promotionType, app_version: 'v2' });
+    const body = {};
+    if (dealPrice != null) body.deal_price = dealPrice;
+    if (price != null) body.price = price;
+    if (stock != null) body.stock = stock;
+    return post(`/seller-promotions/items/${itemId}?${qs}`, storeId, body);
+  },
+  removePromotionItem: (itemId, storeId, { promotionId, promotionType }) => {
+    const qs = new URLSearchParams({ promotion_id: promotionId, promotion_type: promotionType, app_version: 'v2' });
+    return del(`/seller-promotions/items/${itemId}?${qs}`, storeId);
+  },
 };

@@ -424,6 +424,11 @@ const DB = {
 
   // ── Promoções ──────────────────────────────────────────────
   async getPromocoes(params={})          { return this._get('/promocoes', params); },
+  // Adicionar Promoções (aba) — ver/aderir/sair de campanha, sob demanda.
+  async getPromoCampanhas(store_id)      { return this._get('/promocoes/campanhas', { store_id }); },
+  async getPromoElegibilidade(promotionId, store_id, item_id) { return this._get(`/promocoes/campanha/${promotionId}/elegibilidade`, { store_id, item_id }); },
+  async aderirPromocao(body)             { return this._post('/promocoes/aderir', body); },
+  async sairPromocao(body)               { return this._post('/promocoes/sair', body); },
 
   // ── Config Telegram ────────────────────────────────────────
   async getTelegramConfig()           { return this._get('/config/telegram'); },

@@ -147,6 +147,7 @@
         <div class="dp-tabs">
           <button class="dp-tab on" id="tabDre" onclick="setTab('dre')"><i class="fas fa-file-invoice-dollar"></i> DRE &amp; Despesas</button>
           <button class="dp-tab" id="tabBe" onclick="setTab('be')"><i class="fas fa-scale-balanced"></i> Ponto de Equilíbrio</button>
+          <button class="dp-tab" id="tabSim" onclick="setTab('sim')"><i class="fas fa-sliders"></i> Simulação de Ponto de Equilíbrio</button>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="dp-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> Exportar</button>
@@ -281,6 +282,30 @@
           <p style="font-size:11px;color:var(--text-muted);margin-top:8px">Cálculo: Redução no break-even = Custo da categoria ÷ Margem de Contribuição (%) · Margem baseada nos últimos 30 dias de vendas.</p>
         </div>
       </div>
+
+      <!-- ══════════ ABA SIMULAÇÃO DE PONTO DE EQUILÍBRIO ══════════ -->
+      <div id="paneSim" class="hidden">
+        <div class="dp-card">
+          <div class="dp-card-h"><h3>🎛️ Simulação de Ponto de Equilíbrio <span id="dpSimLbl" class="desc"></span></h3>
+            <div style="margin-left:auto;display:flex;gap:8px">
+              <button class="dp-btn" onclick="simRestaurar()"><i class="fas fa-rotate-left"></i> Restaurar valores reais</button>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:-6px">Simule alterações nas despesas estruturais e veja imediatamente o impacto no faturamento necessário para atingir o ponto de equilíbrio.</p>
+          <div class="dp-alav" style="margin-top:10px"><i class="fas fa-triangle-exclamation" style="color:#f59e0b"></i> Os valores alterados nesta tela são apenas simulação — não gravam no banco e não mudam a DRE real.</div>
+          <div class="dp-be" style="margin-top:16px" id="dpSimCards"></div>
+        </div>
+
+        <div class="dp-card">
+          <div class="dp-card-h"><h3>📋 Despesas Estruturais — valores simulados</h3><span class="desc">edite o valor simulado de qualquer categoria</span></div>
+          <div style="overflow:auto">
+            <table class="dp-t">
+              <thead><tr><th>Categoria</th><th>Tipo</th><th>Valor Real</th><th>Valor Simulado</th><th>Variação</th><th>Impacto no PE</th></tr></thead>
+              <tbody id="dpSimTbody"><tr><td colspan="6" class="dp-empty">Carregando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -319,6 +344,10 @@ function colorFor(key){ let h=0; const s=String(key||''); for(let i=0;i<s.length
 
 let SALES=[], EXPENSES=[], CATS=[], CATMAP={}, tipoSel='fixed';
 let fCusto='all', fRank='all', rTrend=6, rComp=6;
+// Simulação de Ponto de Equilíbrio (client-side only — nunca grava, nunca chama o backend).
+// Chave = mesma `key` de catAgg() (category_id ou '__none'); valor = quanto o usuário simulou.
+// Some/mês trocado limpa (simRestaurar), pra não vazar simulação de um mês pro outro.
+let SIM_OVERRIDES={}, simMY=null;
 let chCusto, chTrend;
 function showStatus(t,err){ const el=document.getElementById('dpStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
@@ -378,6 +407,7 @@ function render(){
   renderTrend(m,y);
   renderComp(m,y);
   renderRank(m,y);
+  renderSim(m,y);
 }
 
 function renderKpis(a,et,lb,ll,mLiq){
@@ -603,6 +633,66 @@ function renderRank(m,y){
       </div></div>`;
   }).join('');
 }
+
+// ── Simulação de Ponto de Equilíbrio ────────────────────────────────────
+// 100% client-side: reaproveita catAgg()/margin30()/salesAgg() (mesma fonte
+// da aba "Ponto de Equilíbrio", nenhuma fórmula nova) com um mapa de valores
+// simulados em memória (SIM_OVERRIDES). Nunca chama o backend, nunca grava —
+// a margem de contribuição é só exibida, não recalculada por edição de
+// despesa fixa (regra do pedido: alterar uma despesa fixa muda o break-even,
+// não a margem).
+let simArr=[], simMcPct=0, simTotalReal=0;
+function simValorDe(o){ return SIM_OVERRIDES.hasOwnProperty(o.key)?SIM_OVERRIDES[o.key]:o.value; }
+function renderSim(m,y){
+  const key=`${m}-${y}`;
+  if(simMY!==key){ SIM_OVERRIDES={}; simMY=key; } // troca de mês/ano limpa a simulação
+  document.getElementById('dpSimLbl').textContent=`— ${MESES[m-1]}/${y}`;
+  const a=salesAgg(m,y), mc30=margin30();
+  simMcPct=mc30>0?mc30:a.mcPct;
+  const {arr,total}=catAgg(m,y,'all');
+  simArr=arr; simTotalReal=total;
+
+  const tipoChip=t=>t==='fixed'?'<span class="dp-chip fixo">Fixo</span>':t==='operational'?'<span class="dp-chip oper">Operacional</span>':'<span class="dp-chip misto">Misto</span>';
+  const tb=document.getElementById('dpSimTbody');
+  tb.innerHTML=!arr.length?'<tr><td colspan="6" class="dp-empty">Sem despesas estruturais cadastradas neste mês.</td></tr>':arr.map(o=>`
+    <tr>
+      <td>${esc(o.name)}</td>
+      <td>${tipoChip(o.tipo)}</td>
+      <td>${BRL(o.value)}</td>
+      <td><input type="number" step="0.01" min="0" class="dp-in" style="width:120px;text-align:right" value="${simValorDe(o).toFixed(2)}" oninput="simSetValor('${esc(o.key)}',this.value)"></td>
+      <td id="simVar-${esc(o.key)}"></td>
+      <td id="simImp-${esc(o.key)}"></td>
+    </tr>`).join('');
+  simRecalcular();
+}
+// Recalcula cards + colunas Variação/Impacto sem re-renderizar os <input> —
+// re-renderizar o input a cada tecla digitada perderia o foco/cursor no meio da digitação.
+function simRecalcular(){
+  const mcPct=simMcPct, totalSim=simArr.reduce((s,o)=>s+Math.max(simValorDe(o),0),0);
+  const beReal=mcPct>0?simTotalReal/mcPct:0, beSim=mcPct>0?totalSim/mcPct:0;
+  const reducao=beReal-beSim, reducaoPct=beReal?reducao/beReal*100:0, economia=simTotalReal-totalSim;
+  const corRed=reducao>=0?'#3fb950':'#f87171';
+  document.getElementById('dpSimCards').innerHTML=`
+    <div class="box"><div class="k">Ponto de Equilíbrio Atual</div><div class="v">${beReal>0?BRL(beReal):'—'}</div></div>
+    <div class="box"><div class="k">Ponto de Equilíbrio Simulado</div><div class="v" style="color:${corRed}">${beSim>0?BRL(beSim):'—'}</div></div>
+    <div class="box"><div class="k">${reducao>=0?'Redução':'Aumento'} do Ponto de Equilíbrio</div><div class="v" style="color:${corRed}">${BRL(Math.abs(reducao))}</div><div style="font-size:11px;color:${corRed};margin-top:4px">${reducao>=0?'-':'+'}${PCT(Math.abs(reducaoPct))}</div></div>
+    <div class="box"><div class="k">Economia Mensal</div><div class="v" style="color:${economia>=0?'#3fb950':'#f87171'}">${BRL(Math.abs(economia))}</div></div>
+    <div class="box"><div class="k">Margem de Contribuição</div><div class="v" style="color:${margemColor(mcPct*100)}">${PCT(mcPct*100)}</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px">não muda com despesa fixa</div></div>`;
+  simArr.forEach(o=>{
+    const sv=simValorDe(o), variacao=sv-o.value, impacto=mcPct>0?-variacao/mcPct:0;
+    const elVar=document.getElementById(`simVar-${o.key}`), elImp=document.getElementById(`simImp-${o.key}`);
+    if(elVar){ elVar.style.color=variacao===0?'var(--text-muted)':(variacao<0?'#3fb950':'#f87171'); elVar.textContent=variacao===0?'—':(variacao<0?'-':'+')+BRL(Math.abs(variacao)); }
+    if(elImp){ elImp.style.color=impacto<0?'#f87171':'#3fb950'; elImp.textContent=impacto===0?'—':(impacto>=0?'-':'+')+BRL(Math.abs(impacto)); }
+  });
+}
+function simSetValor(key,val){
+  const n=Number(val);
+  if(!isFinite(n)||n<0) return;
+  SIM_OVERRIDES[key]=n;
+  simRecalcular();
+}
+function simRestaurar(){ SIM_OVERRIDES={}; renderSim(selM(),selY()); }
+
 function toggleRank(id,el){
   const d=document.getElementById(id); if(!d) return;
   const open=d.style.display==='none';
@@ -845,8 +935,10 @@ function exportarCsv(){ baixarLancCsv(); }
 function setTab(t){
   document.getElementById('tabDre').classList.toggle('on',t==='dre');
   document.getElementById('tabBe').classList.toggle('on',t==='be');
+  document.getElementById('tabSim').classList.toggle('on',t==='sim');
   document.getElementById('paneDre').classList.toggle('hidden',t!=='dre');
   document.getElementById('paneBe').classList.toggle('hidden',t!=='be');
+  document.getElementById('paneSim').classList.toggle('hidden',t!=='sim');
 }
 
 let modalAction=null;

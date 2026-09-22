@@ -3295,6 +3295,83 @@ router.get('/items/:item_id/promotion', async (req, res) => {
   }
 });
 
+// ── Adicionar Promoções — ações pontuais sob demanda (clique do usuário),
+// nunca em job/listagem automática, mesma exceção documentada da rota acima
+// (ver .claude/architecture.md regra 3 e .claude/mercadolivre.md).
+// Campanhas do vendedor (qualquer tipo/status) — pra escolher em qual aderir.
+router.get('/promocoes/campanhas', async (req, res) => {
+  const { store_id } = req.query;
+  if (!store_id) return res.status(400).json({ error: 'store_id obrigatório' });
+  try {
+    const ml = require('../mlClient');
+    const data = await ml.listSellerPromotions(Number(store_id));
+    const campanhas = Array.isArray(data) ? data : (data.results || []);
+    res.json({ campanhas });
+  } catch (e) {
+    console.error('[promocoes/campanhas]', e.message);
+    res.status(500).json({ error: e.message, campanhas: [] });
+  }
+});
+
+// Elegibilidade de UM item numa campanha específica: já participa (started/
+// active), é candidato (pode aderir), ou não tem relação com ela.
+router.get('/promocoes/campanha/:promotionId/elegibilidade', async (req, res) => {
+  const { promotionId } = req.params;
+  const { store_id, item_id } = req.query;
+  if (!store_id || !item_id) return res.status(400).json({ error: 'store_id e item_id obrigatórios' });
+  try {
+    const ml = require('../mlClient');
+    const data = await ml.getPromotionItems(promotionId, Number(store_id), { limit: 100 });
+    const itens = Array.isArray(data) ? data : (data.results || []);
+    const found = itens.find(i => String(i.id || i.item_id) === String(item_id));
+    res.json({
+      item_id,
+      promotion_id: promotionId,
+      relacao: found ? (found.status || 'active') : 'none',
+      detalhe: found || null,
+    });
+  } catch (e) {
+    console.error('[promocoes/elegibilidade]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/promocoes/aderir', async (req, res) => {
+  const { store_id, item_id, promotion_id, promotion_type, price, deal_price, stock } = req.body || {};
+  if (!store_id || !item_id || !promotion_id || !promotion_type) {
+    return res.status(400).json({ error: 'store_id, item_id, promotion_id e promotion_type obrigatórios' });
+  }
+  try {
+    const ml = require('../mlClient');
+    const result = await ml.addPromotionItem(item_id, Number(store_id), {
+      promotionId: promotion_id, promotionType: promotion_type, price, dealPrice: deal_price, stock,
+    });
+    console.log(`[promocoes/aderir] loja=${store_id} item=${item_id} promo=${promotion_id} (${promotion_type}) ok`);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[promocoes/aderir]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/promocoes/sair', async (req, res) => {
+  const { store_id, item_id, promotion_id, promotion_type } = req.body || {};
+  if (!store_id || !item_id || !promotion_id || !promotion_type) {
+    return res.status(400).json({ error: 'store_id, item_id, promotion_id e promotion_type obrigatórios' });
+  }
+  try {
+    const ml = require('../mlClient');
+    const result = await ml.removePromotionItem(item_id, Number(store_id), {
+      promotionId: promotion_id, promotionType: promotion_type,
+    });
+    console.log(`[promocoes/sair] loja=${store_id} item=${item_id} promo=${promotion_id} (${promotion_type}) ok`);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[promocoes/sair]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Conciliação Bancária ───────────────────────────────────
 // Agenda de Recebimentos: agrupa pagamentos ainda não liberados por dia de
 // money_release_date (cast pra date — o valor cru tem hora, agrupar pela

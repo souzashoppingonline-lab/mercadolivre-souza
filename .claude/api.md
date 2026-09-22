@@ -279,6 +279,14 @@ Página só **analisa/recomenda** — nenhuma destas rotas altera preço no Merc
 |---|---|
 | `GET /api/promocoes?store_id&days` | histórico de `promotions` + resumo (entrou/saiu hoje) |
 
+### Adicionar Promoções (v108) — aba de `promocoes.html`, ações sob demanda (mesma exceção de `GET /items/:item_id/promotion` acima — chama `mlClient` direto de rota de leitura, nunca em listagem/job). Ver `mercadolivre.md` pro detalhe dos endpoints ML e o aviso de risco.
+| Rota | Descrição |
+|---|---|
+| `GET /api/promocoes/campanhas?store_id` | lista as campanhas do vendedor (qualquer tipo/status) via `GET /seller-promotions/users/:uid/promotions` |
+| `GET /api/promocoes/campanha/:promotionId/elegibilidade?store_id&item_id` | verifica se o item já participa (`started`/`active`), é candidato (`candidate`) ou não tem relação (`none`) com aquela campanha |
+| `POST /api/promocoes/aderir { store_id, item_id, promotion_id, promotion_type, price?, deal_price?, stock? }` | adiciona o item à campanha (escreve na conta real do ML) |
+| `POST /api/promocoes/sair { store_id, item_id, promotion_id, promotion_type }` | remove o item da campanha (escreve na conta real do ML) |
+
 ## Monitor (infra do servidor)
 | Rota | Descrição |
 |---|---|

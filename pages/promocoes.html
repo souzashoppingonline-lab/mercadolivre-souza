@@ -42,6 +42,18 @@
     .discount   { color:var(--green); font-weight:700; }
     .time-col   { font-size:11px; color:var(--text-muted); white-space:nowrap; }
     .title-col  { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* Adicionar Promoções */
+    .ap-search { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .ap-search select, .ap-search input { background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:9px 12px; color:var(--text); font-size:13px; }
+    .ap-search input { flex:1; min-width:200px; }
+    .ap-section { margin-bottom:18px; }
+    .ap-section h4 { font-size:13px; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:.5px; }
+    .ap-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 14px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; margin-bottom:8px; flex-wrap:wrap; }
+    .ap-row .ap-info { font-size:13px; }
+    .ap-row .ap-type { font-weight:700; }
+    .ap-row .ap-code { font-size:11px; color:var(--text-muted); margin-left:6px; }
+    .ap-row .ap-status { font-size:11px; color:var(--text-muted); }
+    .ap-empty { color:var(--text-muted); font-size:13px; padding:8px 0; }
   </style>
 </head>
 <body>
@@ -51,47 +63,67 @@
     <div id="app-topbar"></div>
     <div class="content-area">
 
-      <!-- Tabs por loja -->
-      <div class="tabs" id="storeTabs">
-        <button class="tab-btn active" onclick="switchTab('')" data-id="">Todas as lojas</button>
+      <!-- Tabs de visão -->
+      <div class="tabs" id="viewTabs">
+        <button class="tab-btn active" data-view="historico" onclick="switchView('historico')">Histórico</button>
+        <button class="tab-btn" data-view="adicionar" onclick="switchView('adicionar')">Adicionar Promoções</button>
       </div>
 
-      <!-- Summary cards -->
-      <div class="promo-summary">
-        <div class="ps-card green"><div class="ps-label"><i class="fas fa-tag"></i> Entrou em promoção hoje</div><div class="ps-value" id="s-entrou">0</div></div>
-        <div class="ps-card red">  <div class="ps-label"><i class="fas fa-times-circle"></i> Saiu de promoção hoje</div><div class="ps-value" id="s-saiu">0</div></div>
-        <div class="ps-card gray"> <div class="ps-label"><i class="fas fa-list"></i> Total de alterações hoje</div><div class="ps-value" id="s-total">0</div></div>
-      </div>
+      <div id="viewHistorico">
+        <!-- Tabs por loja -->
+        <div class="tabs" id="storeTabs">
+          <button class="tab-btn active" onclick="switchTab('')" data-id="">Todas as lojas</button>
+        </div>
 
-      <!-- Table -->
-      <div class="card">
-        <div class="card-header">
-          <h3>Alterações de Promoção — Hoje</h3>
-          <div style="display:flex;gap:10px;align-items:center">
-            <span id="wsStatus" style="font-size:11px;color:var(--text-muted)"><i class="fas fa-circle" style="font-size:8px"></i> conectando...</span>
-            <span id="lastUpdate" style="font-size:11px;color:var(--text-muted)"></span>
-            <button class="action-btn" onclick="exportTableCSV(document.getElementById('promoTbody').closest('table'), 'promocoes.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        <!-- Summary cards -->
+        <div class="promo-summary">
+          <div class="ps-card green"><div class="ps-label"><i class="fas fa-tag"></i> Entrou em promoção hoje</div><div class="ps-value" id="s-entrou">0</div></div>
+          <div class="ps-card red">  <div class="ps-label"><i class="fas fa-times-circle"></i> Saiu de promoção hoje</div><div class="ps-value" id="s-saiu">0</div></div>
+          <div class="ps-card gray"> <div class="ps-label"><i class="fas fa-list"></i> Total de alterações hoje</div><div class="ps-value" id="s-total">0</div></div>
+        </div>
+
+        <!-- Table -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Alterações de Promoção — Hoje</h3>
+            <div style="display:flex;gap:10px;align-items:center">
+              <span id="wsStatus" style="font-size:11px;color:var(--text-muted)"><i class="fas fa-circle" style="font-size:8px"></i> conectando...</span>
+              <span id="lastUpdate" style="font-size:11px;color:var(--text-muted)"></span>
+              <button class="action-btn" onclick="exportTableCSV(document.getElementById('promoTbody').closest('table'), 'promocoes.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" style="font-size:13px">
+              <thead>
+                <tr>
+                  <th>Anúncio</th>
+                  <th>Conta</th>
+                  <th>SKU / MLB</th>
+                  <th class="tbl-price">Preço Original</th>
+                  <th class="tbl-price">Preço Promo</th>
+                  <th class="tbl-price">Desconto</th>
+                  <th>Status</th>
+                  <th>Anterior</th>
+                  <th class="time-col">Hora</th>
+                </tr>
+              </thead>
+              <tbody id="promoTbody">
+                <tr><td colspan="9" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
-        <div class="table-responsive">
-          <table class="data-table" style="font-size:13px">
-            <thead>
-              <tr>
-                <th>Anúncio</th>
-                <th>Conta</th>
-                <th>SKU / MLB</th>
-                <th class="tbl-price">Preço Original</th>
-                <th class="tbl-price">Preço Promo</th>
-                <th class="tbl-price">Desconto</th>
-                <th>Status</th>
-                <th>Anterior</th>
-                <th class="time-col">Hora</th>
-              </tr>
-            </thead>
-            <tbody id="promoTbody">
-              <tr><td colspan="9" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>
-            </tbody>
-          </table>
+      </div>
+
+      <div id="viewAdicionar" style="display:none">
+        <div class="card">
+          <div class="card-header"><h3>Buscar anúncio</h3></div>
+          <div class="ap-search">
+            <select id="apStoreSelect"></select>
+            <input type="text" id="apItemInput" placeholder="MLB do anúncio (ex: MLB1234567890)">
+            <button class="action-btn" onclick="buscarAnuncioPromo()"><i class="fas fa-search"></i> Buscar</button>
+          </div>
+          <div id="apResult"></div>
         </div>
       </div>
 
@@ -119,12 +151,14 @@ const set = (id,v) => { const el=document.getElementById(id); if(el) el.textCont
 
 let activeStore = '';
 let allRows = [];
+let storesList = [];
 
 // ── Load lojas for tabs ────────────────────────────────────
 async function initTabs() {
   const data = await DB.getLojas() || { stores:[] };
+  storesList = data.stores || [];
   const tabs = document.getElementById('storeTabs');
-  (data.stores||[]).forEach(s => {
+  storesList.forEach(s => {
     const btn = document.createElement('button');
     btn.className = 'tab-btn';
     btn.dataset.id = s.id;
@@ -132,6 +166,115 @@ async function initTabs() {
     btn.onclick = () => switchTab(String(s.id));
     tabs.appendChild(btn);
   });
+  const sel = document.getElementById('apStoreSelect');
+  sel.innerHTML = storesList.map(s => `<option value="${s.id}">${s.nickname.replace(/_/g,' ').trim()}</option>`).join('');
+}
+
+// ── Adicionar Promoções ─────────────────────────────────────
+function switchView(view) {
+  document.querySelectorAll('#viewTabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.getElementById('viewHistorico').style.display = view === 'historico' ? '' : 'none';
+  document.getElementById('viewAdicionar').style.display = view === 'adicionar' ? '' : 'none';
+}
+
+const PROMO_TYPE_LABELS = {
+  LIGHTNING: 'Oferta Relâmpago', DOD: 'Oferta do Dia', PRICE_MATCHING: 'Preços Competitivos',
+  SMART_CAMPAIGN: 'Campanha Smart (cofinanciada)', BANK: 'Campanha Pix', PIX_CAMPAIGN: 'Campanha Pix',
+  SELLER_CAMPAIGN: 'Campanha do Vendedor', MARKETPLACE_CAMPAIGN: 'Campanha do Mercado Livre',
+  PRE_NEGOTIATED: 'Pré-negociado', DEAL: 'Oferta', VOLUME: 'Desconto por Volume',
+  UNHEALTHY_STOCK: 'Estoque Parado', SELLER_COUPON_CAMPAIGN: 'Cupom do Vendedor',
+};
+const promoTypeLabel = t => PROMO_TYPE_LABELS[t] || t || '—';
+
+async function buscarAnuncioPromo() {
+  const storeId = document.getElementById('apStoreSelect').value;
+  const itemId = document.getElementById('apItemInput').value.trim().toUpperCase();
+  const result = document.getElementById('apResult');
+  if (!storeId || !itemId) { alert('Selecione a loja e informe o MLB do anúncio.'); return; }
+  result.innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
+
+  const [atual, campanhasRes] = await Promise.all([
+    DB.getItemPromotion(itemId, storeId),
+    DB.getPromoCampanhas(storeId),
+  ]);
+
+  const ativas = (atual && atual.promotions) || [];
+  const campanhas = (campanhasRes && campanhasRes.campanhas) || [];
+
+  result.innerHTML = `
+    <div class="ap-section">
+      <h4>Promoções ativas agora neste anúncio</h4>
+      <div id="apAtivas"></div>
+    </div>
+    <div class="ap-section">
+      <h4>Campanhas do vendedor disponíveis (verificar elegibilidade)</h4>
+      <div id="apCampanhas"></div>
+    </div>`;
+
+  const apAtivas = document.getElementById('apAtivas');
+  apAtivas.innerHTML = ativas.length ? ativas.map(p => `
+    <div class="ap-row">
+      <div class="ap-info"><span class="ap-type">${p.name || promoTypeLabel(p.type)}</span><span class="ap-code">${p.type || ''}</span></div>
+      <div class="ap-info">${p.promo_price > 0 ? R(p.promo_price) : '—'} ${p.discount_pct ? `<span class="discount">(-${p.discount_pct}%)</span>` : ''}</div>
+      <div>
+        <button class="action-btn" onclick="sairCampanha('${p.id}','${p.type}','${storeId}','${itemId}',this)"><i class="fas fa-times"></i> Sair</button>
+      </div>
+    </div>`).join('') : '<div class="ap-empty">Nenhuma promoção ativa neste anúncio agora.</div>';
+
+  const apCampanhas = document.getElementById('apCampanhas');
+  if (!campanhasRes || campanhasRes.error) {
+    apCampanhas.innerHTML = `<div class="ap-empty">Erro ao consultar campanhas: ${campanhasRes?.error || DB.lastError || 'motivo desconhecido'}</div>`;
+    return;
+  }
+  apCampanhas.innerHTML = campanhas.length ? campanhas.map(c => `
+    <div class="ap-row" id="camp-${c.id}">
+      <div class="ap-info"><span class="ap-type">${c.name || promoTypeLabel(c.type)}</span><span class="ap-code">${c.type || ''}</span> <span class="ap-status">${c.status || ''}</span></div>
+      <div id="camp-status-${c.id}" class="ap-status">—</div>
+      <div>
+        <button class="action-btn" onclick="verificarElegibilidade('${c.id}','${c.type}','${storeId}','${itemId}',this)"><i class="fas fa-check-circle"></i> Verificar item</button>
+      </div>
+    </div>`).join('') : '<div class="ap-empty">Nenhuma campanha disponível para esta loja no momento.</div>';
+}
+
+async function verificarElegibilidade(promotionId, type, storeId, itemId, btn) {
+  btn.disabled = true;
+  const statusEl = document.getElementById(`camp-status-${promotionId}`);
+  const res = await DB.getPromoElegibilidade(promotionId, storeId, itemId);
+  btn.disabled = false;
+  if (!res || res.error) { statusEl.textContent = 'erro: ' + (res?.error || DB.lastError || '?'); return; }
+
+  if (res.relacao === 'none') {
+    statusEl.innerHTML = '<span style="color:var(--text-muted)">não elegível</span>';
+  } else if (res.relacao === 'candidate') {
+    statusEl.innerHTML = `<button class="action-btn" style="background:var(--green);color:#000" onclick="aderirCampanha('${promotionId}','${type}','${storeId}','${itemId}',this)"><i class="fas fa-plus"></i> Aderir</button>`;
+  } else {
+    statusEl.innerHTML = `<span style="color:var(--green)">já participa (${res.relacao})</span>`;
+  }
+}
+
+async function aderirCampanha(promotionId, type, storeId, itemId, btn) {
+  let dealPrice = null;
+  if (type === 'LIGHTNING' || type === 'DOD') {
+    const v = prompt('Preço promocional (deal_price) pra esta oferta:');
+    if (v === null) return;
+    dealPrice = Number(v.replace(',', '.'));
+    if (!dealPrice || dealPrice <= 0) { alert('Preço inválido.'); return; }
+  }
+  if (!confirm(`Confirma aderir o item ${itemId} à campanha ${promoTypeLabel(type)}? Essa ação é enviada ao Mercado Livre.`)) return;
+  btn.disabled = true;
+  const res = await DB.aderirPromocao({ store_id: storeId, item_id: itemId, promotion_id: promotionId, promotion_type: type, deal_price: dealPrice });
+  if (!res || res.error) { alert('Erro ao aderir: ' + (res?.error || DB.lastError || 'motivo desconhecido')); btn.disabled = false; return; }
+  alert('Item adicionado à campanha.');
+  buscarAnuncioPromo();
+}
+
+async function sairCampanha(promotionId, type, storeId, itemId, btn) {
+  if (!confirm(`Remover o item ${itemId} desta promoção? Essa ação é enviada ao Mercado Livre.`)) return;
+  btn.disabled = true;
+  const res = await DB.sairPromocao({ store_id: storeId, item_id: itemId, promotion_id: promotionId, promotion_type: type });
+  if (!res || res.error) { alert('Erro ao sair: ' + (res?.error || DB.lastError || 'motivo desconhecido')); btn.disabled = false; return; }
+  alert('Item removido da promoção.');
+  buscarAnuncioPromo();
 }
 
 function switchTab(storeId) {

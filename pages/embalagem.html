@@ -375,6 +375,10 @@
           </div>
           <div class="emb-grid-col">
           <div class="emb-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:12px;color:var(--text-muted);font-weight:700"><i class="fas fa-volume-high"></i> Falar quantidade ao bipar</span>
+              <button class="emb-btn" id="vozToggleBtn" onclick="toggleVoz()" style="padding:4px 10px;font-size:12px"></button>
+            </div>
             <div class="emb-camera-box">
               <video id="cameraPreview" autoplay muted playsinline></video>
               <div class="emb-camera-rec" id="cameraRecBadge"><span class="dot"></span> GRAVANDO</div>
@@ -601,6 +605,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadUltimosBipados(); // tabela "Últimos bipados" abaixo da câmera
   setInterval(loadUltimosBipados, 30000); // reflete bipagens de outras estações
   primeAudBadge(); // badge da aba Auditoria = quantos faltam bipar
+  initVozToggle(); // liga/desliga a fala de quantidade ao bipar (pedido do usuário)
 });
 
 async function primeAudBadge() {
@@ -986,6 +991,42 @@ function resetOrdersDisplay() {
   renderEstoqueBox([]);
 }
 
+// ── Falar quantidade ao bipar (Web Speech API — sem lib nova, sem backend) ──
+// Mãos livres pro embalador: quando o pedido é encontrado, o navegador lê em
+// voz alta quantos pedidos tem o envio e quantos produtos no total, sem
+// precisar olhar a tela. Puro client-side; nunca trava o fluxo de bipagem se
+// o navegador não suportar ou a fala falhar (try/catch silencioso).
+function vozAtiva() { return localStorage.getItem('emb_voz_ativa') !== '0'; } // padrão: ligada
+function toggleVoz() {
+  localStorage.setItem('emb_voz_ativa', vozAtiva() ? '0' : '1');
+  if (!vozAtiva() && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+  atualizarVozToggleBtn();
+}
+function atualizarVozToggleBtn() {
+  const btn = document.getElementById('vozToggleBtn');
+  if (!btn) return;
+  const on = vozAtiva();
+  btn.innerHTML = on ? '<i class="fas fa-volume-high"></i> Ligada' : '<i class="fas fa-volume-xmark"></i> Desligada';
+  btn.style.color = on ? 'var(--primary)' : 'var(--text-muted)';
+}
+function initVozToggle() {
+  if (!('speechSynthesis' in window)) { const btn = document.getElementById('vozToggleBtn'); if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-volume-xmark"></i> Sem suporte'; } return; }
+  atualizarVozToggleBtn();
+}
+function falarQuantidades(orders) {
+  if (!vozAtiva() || !('speechSynthesis' in window) || !orders || !orders.length) return;
+  try {
+    const totalProdutos = orders.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+    const texto = orders.length > 1
+      ? `${orders.length} pedidos neste envio, totalizando ${totalProdutos} produtos.`
+      : `Pedido com ${totalProdutos} ${totalProdutos === 1 ? 'produto' : 'produtos'}.`;
+    window.speechSynthesis.cancel(); // corta fala anterior ainda tocando (bipagem rápida em sequência)
+    const u = new SpeechSynthesisUtterance(texto);
+    u.lang = 'pt-BR'; u.rate = 1.05;
+    window.speechSynthesis.speak(u);
+  } catch (_) { /* nunca deve travar a bipagem por causa da fala */ }
+}
+
 async function startNew(shippingId) {
   setScanState('loading');
   const data = await DB.getPedidoPorEtiqueta(shippingId);
@@ -1008,6 +1049,7 @@ async function startNew(shippingId) {
   }
   currentSession = { shippingId, orders: data.orders, startedAt: Date.now() };
   renderOrders(data.orders, data.already_packed);
+  falarQuantidades(data.orders);
   startRecording();
   setScanState('recording');
   startDurationWatcher();

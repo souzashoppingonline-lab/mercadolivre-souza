@@ -779,6 +779,7 @@ function stopDurationWatcher() {
   document.getElementById('scanTimer').textContent = '';
   document.getElementById('durationWarn').innerHTML = '';
   resetCronoVisual();
+  stopLembreteVozInterval();
 }
 
 function setScanState(s) {
@@ -1013,24 +1014,49 @@ function initVozToggle() {
   if (!('speechSynthesis' in window)) { const btn = document.getElementById('vozToggleBtn'); if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-volume-xmark"></i> Sem suporte'; } return; }
   atualizarVozToggleBtn();
 }
-function falarQuantidades(orders) {
-  if (!vozAtiva() || !('speechSynthesis' in window) || !orders || !orders.length) return;
+// Frase de lembrete — falada 1x logo após o título e repetida a cada 1min
+// enquanto a gravação estiver rolando (pedido explícito do usuário). Mesmo
+// texto do aviso visual já existente (#cronoLembrete), só que em voz.
+const LEMBRETE_BIP_TEXTO = 'Não esqueça de bipar pela segunda vez para finalizar a embalagem.';
+let lembreteVozIntervalId = null;
+
+function falarTexto(texto, { cancelarAnterior } = {}) {
+  if (!vozAtiva() || !('speechSynthesis' in window) || !texto) return;
   try {
-    const totalProdutos = orders.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
-    const qtdTexto = orders.length > 1
-      ? `${orders.length} pedidos neste envio, totalizando ${totalProdutos} produtos.`
-      : `Pedido com ${totalProdutos} ${totalProdutos === 1 ? 'produto' : 'produtos'}.`;
-    // Título do anúncio, falado logo depois da quantidade (pedido do usuário).
-    // Pack com mais de 1 pedido: um título por pedido, pra não confundir qual é qual.
-    const titulosTexto = orders.length > 1
-      ? orders.map((o, i) => `Pedido ${i + 1}: ${o.title || 'sem título'}.`).join(' ')
-      : (orders[0].title || '');
-    const texto = `${qtdTexto} ${titulosTexto}`.trim();
-    window.speechSynthesis.cancel(); // corta fala anterior ainda tocando (bipagem rápida em sequência)
+    if (cancelarAnterior) window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(texto);
     u.lang = 'pt-BR'; u.rate = 1.05;
     window.speechSynthesis.speak(u);
   } catch (_) { /* nunca deve travar a bipagem por causa da fala */ }
+}
+
+function falarQuantidades(orders) {
+  if (!orders || !orders.length) return;
+  const totalProdutos = orders.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+  const qtdTexto = orders.length > 1
+    ? `${orders.length} pedidos neste envio, totalizando ${totalProdutos} produtos.`
+    : `Pedido com ${totalProdutos} ${totalProdutos === 1 ? 'produto' : 'produtos'}.`;
+  // Título do anúncio, falado logo depois da quantidade (pedido do usuário).
+  // Pack com mais de 1 pedido: um título por pedido, pra não confundir qual é qual.
+  const titulosTexto = orders.length > 1
+    ? orders.map((o, i) => `Pedido ${i + 1}: ${o.title || 'sem título'}.`).join(' ')
+    : (orders[0].title || '');
+  // cancela fala anterior ainda tocando (bipagem rápida em sequência), depois
+  // enfileira quantidade+título e, por último, o lembrete de bipar de novo.
+  falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+  falarTexto(LEMBRETE_BIP_TEXTO);
+}
+
+// Repete o lembrete de voz a cada 1min enquanto durar a gravação — ligado ao
+// mesmo ciclo de vida do cronômetro (startDurationWatcher/stopDurationWatcher),
+// nunca um 2º timer solto rodando por conta própria.
+function startLembreteVozInterval() {
+  stopLembreteVozInterval();
+  lembreteVozIntervalId = setInterval(() => falarTexto(LEMBRETE_BIP_TEXTO), 60000);
+}
+function stopLembreteVozInterval() {
+  clearInterval(lembreteVozIntervalId);
+  lembreteVozIntervalId = null;
 }
 
 async function startNew(shippingId) {
@@ -1059,6 +1085,7 @@ async function startNew(shippingId) {
   startRecording();
   setScanState('recording');
   startDurationWatcher();
+  startLembreteVozInterval();
 }
 
 // Devolve true se de fato finalizou (upload disparado), false se o operador

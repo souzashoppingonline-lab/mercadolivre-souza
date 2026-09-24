@@ -1017,9 +1017,15 @@ function falarQuantidades(orders) {
   if (!vozAtiva() || !('speechSynthesis' in window) || !orders || !orders.length) return;
   try {
     const totalProdutos = orders.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
-    const texto = orders.length > 1
+    const qtdTexto = orders.length > 1
       ? `${orders.length} pedidos neste envio, totalizando ${totalProdutos} produtos.`
       : `Pedido com ${totalProdutos} ${totalProdutos === 1 ? 'produto' : 'produtos'}.`;
+    // Título do anúncio, falado logo depois da quantidade (pedido do usuário).
+    // Pack com mais de 1 pedido: um título por pedido, pra não confundir qual é qual.
+    const titulosTexto = orders.length > 1
+      ? orders.map((o, i) => `Pedido ${i + 1}: ${o.title || 'sem título'}.`).join(' ')
+      : (orders[0].title || '');
+    const texto = `${qtdTexto} ${titulosTexto}`.trim();
     window.speechSynthesis.cancel(); // corta fala anterior ainda tocando (bipagem rápida em sequência)
     const u = new SpeechSynthesisUtterance(texto);
     u.lang = 'pt-BR'; u.rate = 1.05;

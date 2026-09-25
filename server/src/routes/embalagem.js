@@ -16,6 +16,7 @@ const { mapShopeeStatus } = require('../marketplaceEventWorker');
 const { generateLabelPDF } = require('../thermal/pdfLabel');
 const ml = require('../mlClient');
 const { packageDimsFromItem } = require('../mlDims');
+const { publish } = require('../ws/hub');
 
 const router = express.Router();
 
@@ -702,6 +703,11 @@ router.post('/finalizar', uploadVideo, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`,
       [shipping_id, orderIdsArr, req.file.path, duration_seconds ? Number(duration_seconds) : null, store_id || null, staff_user_id || null, staff_user_name || null]
     );
+    // Empurra pra quem estiver com a tela de Expedição aberta atualizar o
+    // status "Bipado?" na hora, sem esperar o polling de 30s (pedido do
+    // usuário por atualização mais rápida). Payload leve — só o suficiente
+    // pra casar a linha (mesmos campos usados pela query de /auditoria).
+    publish('packing_video_saved', { shipping_id, order_ids: orderIdsArr, created_at: rows[0].created_at }).catch(() => {});
     res.status(201).json({ id: rows[0].id, created_at: rows[0].created_at });
   } catch (e) {
     console.error('[api/embalagem] POST /finalizar', e.message);

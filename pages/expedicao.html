@@ -151,6 +151,7 @@ async function loadExpedicao() {
         <td>
           <div class="aud-ped">${escapeHtml(String(o.order_id))}</div>
           <div title="${escapeHtml(o.title || '')}" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text-muted)">${escapeHtml(o.title || '—')}</div>
+          <div style="font-size:11px;color:var(--primary);font-weight:700;margin-top:2px">${escapeHtml(o.store_nickname || '—')}</div>
         </td>
         <td style="font-size:12px;white-space:nowrap">${o.date_created ? expFmtDT(o.date_created) : '—'}</td>
         <td><span class="aud-log ${logCls}">${escapeHtml(o.logistica)}</span></td>
@@ -178,6 +179,11 @@ let expAutoRefreshId = null;
 initLojas();
 loadExpedicao();
 expAutoRefreshId = setInterval(loadExpedicao, 30000);
+
+// Atualização instantânea do "Bipado?" ao gravar um vídeo em qualquer
+// estação de embalagem — pedido do usuário por algo mais rápido que os 30s
+// do polling. Mesmo padrão de WS.on já usado em pages/promocoes.html.
+WS.on('packing_video_saved', () => loadExpedicao());
 </script>
 </body>
 </html>

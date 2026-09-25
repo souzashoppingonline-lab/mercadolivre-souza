@@ -1938,6 +1938,72 @@ async function syncInvoiceStatus() {
   }
 }
 
+// ── Horário de corte (SLA de despacho) — página Expedição (v112) ───────────
+// GET /shipments/:id/sla é por-envio, sem listagem em lote — mesmo racional
+// de syncInvoiceStatus, sempre em background. Uma vez conhecido, o prazo de
+// um envio específico não muda mais (não é recalculado a cada bipagem), por
+// isso só reconsulta quem ainda está com sla_cutoff NULL.
+let isSyncingShipmentSla = false;
+async function syncShipmentSla() {
+  if (isSyncingShipmentSla) { console.warn('[sync-shipment-sla] já em execução — ignorando'); return; }
+  isSyncingShipmentSla = true;
+  console.log('[sync-shipment-sla] iniciando checagem de horário de corte...');
+  try {
+    return await recordSync('sync-shipment-sla', '0 */4 * * *', async () => {
+      const { rows: pending } = await pool.query(
+        `SELECT o.ml_id, o.store_id, o.shipping_id
+         FROM orders o
+         JOIN stores s ON s.id = o.store_id
+         LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
+         WHERE COALESCE(mk.code,'ML') = 'ML'
+           AND o.shipping_id IS NOT NULL
+           AND lower(COALESCE(o.shipping_type,'')) ~ 'self_service|flex|xd_drop_off|me1|me2|cross_docking'
+           AND o.shipping_status = 'ready_to_ship'
+           AND o.status <> 'cancelled'
+           AND o.sla_cutoff IS NULL
+           AND (o.sla_checked_at IS NULL OR o.sla_checked_at < now() - interval '6 hours')
+         ORDER BY o.sla_checked_at ASC NULLS FIRST
+         LIMIT 100`
+      );
+      let updated = 0, errors = 0;
+      const blockedStores = new Set();
+      const storeErrorStreak = new Map();
+      for (const o of pending) {
+        if (blockedStores.has(o.store_id)) continue;
+        let waitMs = 8000;
+        try {
+          const data = await ml.getShipmentSla(o.shipping_id, o.store_id);
+          const cutoff = data?.expected_date?.date || data?.expected_date || data?.date || null;
+          await pool.query(`UPDATE orders SET sla_cutoff=$2, sla_checked_at=now() WHERE ml_id=$1`, [o.ml_id, cutoff]);
+          updated++;
+          storeErrorStreak.set(o.store_id, 0);
+        } catch (e) {
+          console.warn(`[sync-shipment-sla] erro order=${o.ml_id} shipping_id=${o.shipping_id}: ${e.message}`);
+          errors++;
+          // marca checado mesmo em erro, pra não bater na mesma ordem toda
+          // hora — só um 429 reduz o intervalo de retry (circuit breaker).
+          await pool.query(`UPDATE orders SET sla_checked_at=now() WHERE ml_id=$1`, [o.ml_id]);
+          if (e.message?.includes('429')) {
+            waitMs = 20000;
+            const streak = (storeErrorStreak.get(o.store_id) || 0) + 1;
+            storeErrorStreak.set(o.store_id, streak);
+            if (streak >= 3) {
+              blockedStores.add(o.store_id);
+              console.warn(`[sync-shipment-sla] loja ${o.store_id} — 3 erros 429 seguidos, pausando o resto desta loja nesta execução`);
+            }
+          }
+        }
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+      console.log(`[sync-shipment-sla] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length} pendentes)`);
+      return { updated, errors, total: pending.length };
+    });
+  } finally {
+    isSyncingShipmentSla = false;
+    scheduleEvery(4, syncShipmentSla, 'sync-shipment-sla');
+  }
+}
+
 // Snapshot de rankeamento FASE 1 (a cada 6h): anúncios ainda 'rankeando' —
 // notifica qualquer mudança (visitas/qualidade/buy-box/Mais Vendidos). Vendas e
 // preço/estoque já vêm em tempo real pelos webhooks; este job cobre o resto.
@@ -3506,6 +3572,7 @@ scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
 scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
 scheduleEvery(4,   syncInvoiceStatus, 'sync-invoice-status');
+scheduleEvery(4,   syncShipmentSla, 'sync-shipment-sla');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6,  5,  fechamentoDiario, 'fechamento-diario');
 scheduleAt(8,  0,  relatorioRankeamentoDiario, 'relatorio-rankeamento');
@@ -3657,6 +3724,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'sync-invoice-status' || cmd === 'syncInvoiceStatus') {
       console.log('[worker] syncInvoiceStatus disparado manualmente');
       syncInvoiceStatus().catch(e => console.error('[worker] syncInvoiceStatus erro:', e.message));
+    }
+    if (cmd === 'sync-shipment-sla' || cmd === 'syncShipmentSla') {
+      console.log('[worker] syncShipmentSla disparado manualmente');
+      syncShipmentSla().catch(e => console.error('[worker] syncShipmentSla erro:', e.message));
     }
     if (cmd === 'sync-claims-status' || cmd === 'syncClaimsStatus') {
       console.log('[worker] syncClaimsStatus disparado manualmente');

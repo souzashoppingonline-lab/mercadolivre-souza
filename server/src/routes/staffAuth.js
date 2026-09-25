@@ -106,7 +106,7 @@ function restrictedModuleForPath(p) {
 const PUBLIC_PREFIXES = ['/webhooks', '/auth', '/ml', '/health', '/ws', '/pages/login.html', '/favicon.ico', '/api/embalagem/debug', '/politica-de-privacidade', '/politica-seguranca', '/protecao_dados_pessoais'];
 // Além de /api/embalagem/*, o papel 'embalagem' também precisa disso:
 const EMBALAGEM_EXTRA_API = ['/api/lojas']; // dropdown de loja na aba Conferência do Dia
-const EMBALAGEM_EXTRA_PAGES = ['/pages/embalagem.html'];
+const EMBALAGEM_EXTRA_PAGES = ['/pages/embalagem.html', '/pages/expedicao.html'];
 const EMBALAGEM_ASSET_PREFIXES = ['/css/', '/js/', '/favicon'];
 
 // Papel 'shopee-demo' — só a página/API do dashboard Shopee (ver

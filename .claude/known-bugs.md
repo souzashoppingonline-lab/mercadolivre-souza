@@ -14,9 +14,13 @@ Descoberto testando "Adicionar Promoções" (v108) ao vivo em produção: o path
 
 `mlClient.addPromotionItem`/`removePromotionItem` (aderir/sair de campanha, `POST`/`DELETE /seller-promotions/items/:itemId`) foram implementados seguindo o contrato documentado da Seller Promotions API do ML, mas **ainda não foram testados contra a API real** — a leitura (`listSellerPromotions`/`getPromotionItems`) já teve o path corrigido ao vivo (ver item acima), mas o path de escrita não foi validado do mesmo jeito. **Correção esperada**: testar aderir/sair com 1 item de baixo risco numa loja real e confirmar o formato exato de query/body que o ML aceita; ajustar `mlClient.js` se divergir.
 
-## Nota fiscal da Expedição (v111) — endpoint não testado ao vivo
+## Nota fiscal da aba Auditoria (v111) — endpoint não testado ao vivo
 
 `mlClient.getInvoicesByOrder` (`GET /orders/:id/invoices`, usado pelo job `syncInvoiceStatus`) segue o path documentado da API fiscal do ML pra Nota Fiscal Eletrônica associada a um pedido, mas **não foi possível confirmar ao vivo** neste ambiente (sem token real). Dado o histórico recente com `seller-promotions` (path errado só descoberto testando em produção, ver item acima), é bem possível que o path real seja outro. **Correção esperada**: rodar `redis-cli PUBLISH worker:cmd '{"cmd":"sync-invoice-status"}'` em produção, olhar o log (`[sync-invoice-status] erro order=...`) — se vier erro estruturado do ML (não um 404 "not found" reconhecido), ajustar o path em `mlClient.js`. O job é seguro de testar: só lê, nunca escreve na conta do ML, e erro em qualquer pedido não trava os demais.
+
+## Horário de corte da Expedição (v112) — endpoint não testado ao vivo
+
+`mlClient.getShipmentSla` (`GET /shipments/:id/sla`, job `syncShipmentSla`) segue o path documentado da API de SLA de despacho do ML, mas **não foi possível confirmar ao vivo** neste ambiente (sem token real) — nem o path, nem o formato exato do campo de data na resposta (`data?.expected_date?.date || data?.expected_date || data?.date`, tentativa defensiva com 3 formatos possíveis). **Correção esperada**: rodar `redis-cli PUBLISH worker:cmd '{"cmd":"sync-shipment-sla"}'` em produção, olhar o log (`[sync-shipment-sla] erro order=...`) e a coluna `orders.sla_cutoff` depois — se vier sempre `NULL` mesmo sem erro no log, o campo da resposta tem outro nome; ajustar em `worker.js`. Só leitura, seguro de testar.
 
 ## 2. Tópico WebSocket `kpis_updated` documentado mas nunca publicado
 

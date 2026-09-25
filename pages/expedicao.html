@@ -33,8 +33,6 @@
     .aud-table tr.falta td { background: rgba(255,69,58,.06); }
     .aud-table tr.ok td { background: rgba(48,209,88,.05); }
     .aud-ped { font-weight: 700; font-variant-numeric: tabular-nums; }
-    .emb-mp-badge { display: inline-block; font-size: 14px; font-weight: 800; padding: 2px 10px; border-radius: 8px; vertical-align: middle; }
-    .emb-mp-badge.shopee { background: #ee4d2d; color: #fff; }
     .aud-log { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 12px; }
     .aud-status { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 12px; }
     .aud-status.ok  { color: var(--green); }
@@ -55,7 +53,7 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
-      <p class="exp-subtitle">Pedidos que <b>precisam ser expedidos</b> (FLEX / Mercado Envios — <b>Full não entra aqui</b>, não é responsabilidade nossa), com logística, horário de corte, horário de envio e se já foi bipado no Embalagem. Atualiza sozinha a cada 30s.</p>
+      <p class="exp-subtitle">Só <b>Mercado Livre</b> (FLEX / Mercado Envios — <b>Full não entra aqui</b>, não é responsabilidade nossa; Shopee fica de fora desta tela). Data/horário da venda, logística, horário de corte, horário de envio e se já foi bipado no Embalagem. Atualiza sozinha a cada 30s.</p>
 
       <div class="emb-card">
         <div id="expKpis" class="aud-kpis"></div>
@@ -63,13 +61,14 @@
           <div class="emb-field"><label>Pedido ou rastreio</label><input id="fExpSearch" placeholder="Nº do pedido ou rastreio…" onkeydown="if(event.key==='Enter')loadExpedicao()"></div>
           <div class="emb-field"><label>Período (data da venda)</label>
             <select id="fExpPeriodo" onchange="loadExpedicao()">
-              <option value="">Todos</option>
+              <option value="hoje" selected>Hoje</option>
               <option value="3">Últimos 3 dias</option>
               <option value="5">Últimos 5 dias</option>
-              <option value="10" selected>Últimos 10 dias</option>
+              <option value="10">Últimos 10 dias</option>
               <option value="15">Últimos 15 dias</option>
               <option value="21">Últimos 21 dias</option>
               <option value="30">Últimos 30 dias</option>
+              <option value="">Todos</option>
             </select>
           </div>
           <div class="emb-field"><label>Horário do pedido — De</label><input type="time" id="fExpHoraFrom" onchange="loadExpedicao()"></div>
@@ -107,18 +106,27 @@ async function loadExpedicao() {
   const horaTo = document.getElementById('fExpHoraTo').value;
   if (horaFrom && horaTo) { params.time_from = horaFrom; params.time_to = horaTo; }
   const periodo = document.getElementById('fExpPeriodo').value;
-  if (periodo) params.days = periodo;
+  if (periodo === 'hoje') {
+    const now = new Date();
+    const hoje = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    params.date_from = hoje; params.date_to = hoje;
+  } else if (periodo) {
+    params.days = periodo;
+  }
 
   const d = await DB.getEmbalagemAuditoria(params);
   if (!d || d.error) { list.innerHTML = `<div class="emb-placeholder">Erro: ${d?.error || 'falha'}</div>`; return; }
-  const r = d.resumo || { total: 0, bipados: 0, faltando: 0 };
+  // Só Mercado Livre — pedido explícito do usuário (a rota compartilhada com
+  // a aba Auditoria do Embalagem também traz Shopee, filtrado aqui no cliente).
+  const allItems = (d.items || []).filter(o => o.marketplace !== 'SHOPEE');
+  const total = allItems.length, bipados = allItems.filter(o => o.bipado).length;
   kpis.innerHTML =
-    `<div class="aud-kpi total"><div class="n">${r.total}</div><div class="l">A expedir</div></div>
-     <div class="aud-kpi ok"><div class="n">${r.bipados}</div><div class="l">Já bipados</div></div>
-     <div class="aud-kpi falta"><div class="n">${r.faltando}</div><div class="l">Falta bipar</div></div>`;
+    `<div class="aud-kpi total"><div class="n">${total}</div><div class="l">A expedir</div></div>
+     <div class="aud-kpi ok"><div class="n">${bipados}</div><div class="l">Já bipados</div></div>
+     <div class="aud-kpi falta"><div class="n">${total - bipados}</div><div class="l">Falta bipar</div></div>`;
 
   // Quem falta bipar sobe pro topo; dentro de cada grupo, corte mais próximo primeiro.
-  const items = (d.items || []).slice().sort((a, b) => {
+  const items = allItems.slice().sort((a, b) => {
     if (a.bipado !== b.bipado) return a.bipado ? 1 : -1;
     const ca = a.sla_cutoff, cb = b.sla_cutoff;
     if (ca && cb) return new Date(ca) - new Date(cb);
@@ -129,15 +137,15 @@ async function loadExpedicao() {
 
   if (!items.length) { list.innerHTML = `<div class="emb-placeholder">${search ? 'Pedido/rastreio não encontrado.' : 'Nenhum pedido a expedir com os filtros atuais. 🎉'}</div>`; return; }
   list.innerHTML = `<div class="table-responsive"><table class="aud-table">
-    <thead><tr><th>Pedido</th><th>Logística</th><th>Horário de corte</th><th>Horário de envio</th><th>Bipado?</th></tr></thead>
+    <thead><tr><th>Pedido</th><th>Data e horário da venda</th><th>Logística</th><th>Horário de corte</th><th>Horário de envio</th><th>Bipado?</th></tr></thead>
     <tbody>${items.map(o => {
       const logCls = EXP_LOG_CLASS[o.logistica] || 'chip-desc';
-      const mk = o.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee">Shopee</span> ' : '';
       return `<tr class="${o.bipado ? 'ok' : 'falta'}">
         <td>
-          <div class="aud-ped">${mk}${escapeHtml(String(o.order_id))}</div>
+          <div class="aud-ped">${escapeHtml(String(o.order_id))}</div>
           <div title="${escapeHtml(o.title || '')}" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text-muted)">${escapeHtml(o.title || '—')}</div>
         </td>
+        <td style="font-size:12px;white-space:nowrap">${o.date_created ? expFmtDT(o.date_created) : '—'}</td>
         <td><span class="aud-log ${logCls}">${escapeHtml(o.logistica)}</span></td>
         <td style="font-size:12px;white-space:nowrap">${o.sla_cutoff ? expFmtDT(o.sla_cutoff) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td style="font-size:12px;white-space:nowrap">${o.date_shipped ? expFmtDT(o.date_shipped) : '<span style="color:var(--text-muted)">—</span>'}</td>

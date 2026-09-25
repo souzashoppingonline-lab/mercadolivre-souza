@@ -119,8 +119,10 @@ Tela **separada** (nav própria, seção Operação — `js/layout.js`), pedida 
 
 **Reaproveita 100% a rota `GET /api/embalagem/auditoria`** (mesmos parâmetros: `search`, `only_missing`, `days`, `time_from`/`time_to`) — nenhuma rota nova, nenhuma query duplicada. Só a apresentação é diferente:
 
-- **Colunas** (pedido explícito do usuário, lista enxuta): Pedido (nº + produto) · Logística · **Horário de corte** · Horário de envio · Bipado?
+- **Colunas** (pedido explícito do usuário, lista enxuta): Pedido (nº + produto) · **Data e horário da venda** (`date_created`) · Logística · **Horário de corte** · Horário de envio · Bipado?
 - **Horário de corte (v112, `orders.sla_cutoff`)** = prazo máximo de despacho (SLA) do envio, `GET /shipments/:id/sla` — **diferente** de `date_shipped` (quando foi de fato enviado) e de `date_ready_to_ship` (quando ficou pronto): é o prazo-limite, uma info nova que a Auditoria não tinha. Populado em background pelo job `syncShipmentSla` (`workers.md`) — mesmo racional do `syncInvoiceStatus`: `GET /shipments/:id/sla` é por-envio, sem listagem em lote, nunca chamado de rota de leitura. Uma vez conhecido, o corte de um envio não muda mais, então só reconsulta quem ainda está com `sla_cutoff` `NULL`. **Path/formato da resposta não testados ao vivo** — ver `known-bugs.md`.
+- **Só Mercado Livre (v112.1, pedido explícito do usuário)**: `loadExpedicao()` filtra `marketplace !== 'SHOPEE'` no cliente, em cima da mesma resposta de `/auditoria` (que também traz Shopee pra aba Auditoria do Embalagem) — sem rota nova, sem duplicar query. KPIs (total/bipados/faltando) recalculados no cliente depois do filtro, não usam o `resumo` cru da API (que ainda inclui Shopee).
+- **Filtro padrão "Hoje" (v112.1)**: 1ª opção do seletor de período, computa a data local do navegador e manda como `date_from=date_to=hoje` — pra abrir a tela já mostrando só o que precisa sair hoje, sem esperar o usuário filtrar.
 - **Ordenação**: quem falta bipar sobe pro topo; dentro de cada grupo, corte mais próximo primeiro (client-side, `loadExpedicao()`).
 - Sem coluna de nota fiscal aqui (ficou só na aba Auditoria) — escopo definido pelo próprio usuário nesta tarefa.
 - Atualiza sozinha a cada 30s (`expAutoRefreshId`), mesmo padrão da Auditoria.

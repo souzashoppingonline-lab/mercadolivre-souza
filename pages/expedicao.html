@@ -59,6 +59,11 @@
         <div id="expKpis" class="aud-kpis"></div>
         <div class="emb-filters">
           <div class="emb-field"><label>Pedido ou rastreio</label><input id="fExpSearch" placeholder="Nº do pedido ou rastreio…" onkeydown="if(event.key==='Enter')loadExpedicao()"></div>
+          <div class="emb-field"><label>Empresa</label>
+            <select id="fExpLoja" onchange="loadExpedicao()">
+              <option value="">Todas as empresas</option>
+            </select>
+          </div>
           <div class="emb-field"><label>Período (data da venda)</label>
             <select id="fExpPeriodo" onchange="loadExpedicao()">
               <option value="hoje" selected>Hoje</option>
@@ -118,7 +123,9 @@ async function loadExpedicao() {
   if (!d || d.error) { list.innerHTML = `<div class="emb-placeholder">Erro: ${d?.error || 'falha'}</div>`; return; }
   // Só Mercado Livre — pedido explícito do usuário (a rota compartilhada com
   // a aba Auditoria do Embalagem também traz Shopee, filtrado aqui no cliente).
-  const allItems = (d.items || []).filter(o => o.marketplace !== 'SHOPEE');
+  const lojaSel = document.getElementById('fExpLoja').value;
+  const allItems = (d.items || []).filter(o => o.marketplace !== 'SHOPEE')
+    .filter(o => !lojaSel || String(o.store_id) === lojaSel);
   const total = allItems.length, bipados = allItems.filter(o => o.bipado).length;
   kpis.innerHTML =
     `<div class="aud-kpi total"><div class="n">${total}</div><div class="l">A expedir</div></div>
@@ -156,7 +163,19 @@ async function loadExpedicao() {
     }).join('')}</tbody></table></div>`;
 }
 
+async function initLojas() {
+  const data = await DB.getLojas() || { stores: [] };
+  const sel = document.getElementById('fExpLoja');
+  (data.stores || []).forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = String(s.id);
+    opt.textContent = s.nickname.replace(/_/g, ' ').trim();
+    sel.appendChild(opt);
+  });
+}
+
 let expAutoRefreshId = null;
+initLojas();
 loadExpedicao();
 expAutoRefreshId = setInterval(loadExpedicao, 30000);
 </script>

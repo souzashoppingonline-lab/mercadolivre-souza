@@ -45,6 +45,30 @@
     .emb-field input, .emb-field select { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 7px 10px; font-size: 12px; min-width: 140px; }
     .emb-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
     .emb-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+    /* Modo TV — tela cheia pra ficar num monitor/TV na área de expedição,
+       acompanhamento passivo (pedido explícito do usuário). Some com
+       sidebar/topbar/filtros, aumenta tudo, mantém só o essencial: KPIs e
+       a tabela. Os dados continuam vindo do mesmo loadExpedicao()/WS de
+       sempre — só a apresentação muda. */
+    body.tv-mode { background: #000; }
+    body.tv-mode .sidebar, body.tv-mode .topbar, body.tv-mode .exp-subtitle,
+    body.tv-mode .emb-filters, body.tv-mode #btnTvMode { display: none !important; }
+    body.tv-mode .content-area { padding: 24px 32px; }
+    body.tv-mode .emb-card { border: none; background: transparent; padding: 0; }
+    body.tv-mode .aud-kpis { grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+    body.tv-mode .aud-kpi { padding: 22px 26px; }
+    body.tv-mode .aud-kpi .n { font-size: 56px; }
+    body.tv-mode .aud-kpi .l { font-size: 16px; }
+    body.tv-mode .aud-table { font-size: 22px; }
+    body.tv-mode .aud-table th { font-size: 14px; padding: 10px 14px; }
+    body.tv-mode .aud-table td { padding: 16px 14px; }
+    body.tv-mode .aud-ped { font-size: 24px; }
+    body.tv-mode .aud-log { font-size: 15px; padding: 4px 12px; }
+    body.tv-mode .aud-status { font-size: 20px; }
+    body.tv-mode #expLastUpdate { font-size: 16px; position: fixed; top: 18px; right: 24px; }
+    body.tv-mode #btnSairTv { display: inline-flex !important; position: fixed; top: 14px; left: 24px; z-index: 50; }
+    #btnSairTv { display: none; }
   </style>
 </head>
 <body>
@@ -80,8 +104,10 @@
           <div class="emb-field"><label>Até</label><input type="time" id="fExpHoraTo" onchange="loadExpedicao()"></div>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fExpMissing" onchange="loadExpedicao()"> Só o que falta bipar</label>
           <button class="emb-btn" onclick="loadExpedicao()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+          <button class="emb-btn" id="btnTvMode" onclick="ativarModoTv()"><i class="fas fa-tv"></i> Modo TV</button>
           <span id="expLastUpdate" style="font-size:11px;color:var(--text-muted);align-self:center"></span>
         </div>
+        <button class="emb-btn" id="btnSairTv" onclick="sairModoTv()"><i class="fas fa-compress"></i> Sair do Modo TV (Esc)</button>
         <div id="expList"><div class="emb-placeholder">Carregando...</div></div>
       </div>
     </div>
@@ -169,6 +195,23 @@ function atualizarExpLastUpdate() {
   const el = document.getElementById('expLastUpdate');
   if (el) el.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
 }
+
+// ── Modo TV — pra deixar num monitor/TV na área de expedição, acompanhamento
+// passivo (pedido explícito do usuário). Só troca CSS + pede tela cheia; os
+// dados continuam vindo do mesmo loadExpedicao()/WS de sempre.
+function ativarModoTv() {
+  document.body.classList.add('tv-mode');
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (req) req.call(el).catch(() => {}); // TV/navegador pode recusar — modo visual funciona mesmo assim
+}
+function sairModoTv() {
+  document.body.classList.remove('tv-mode');
+  if (document.fullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen)?.call(document);
+}
+// Sair da tela cheia pelo Esc do navegador também sai do Modo TV (senão o
+// layout fica "preso" gigante numa janela normal).
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('tv-mode'); });
 
 async function initLojas() {
   const data = await DB.getLojas() || { stores: [] };

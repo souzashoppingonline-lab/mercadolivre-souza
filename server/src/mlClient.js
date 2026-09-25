@@ -329,4 +329,10 @@ module.exports = {
     const qs = new URLSearchParams({ promotion_id: promotionId, promotion_type: promotionType, app_version: 'v2' });
     return del(`/seller-promotions/items/${itemId}?${qs}`, storeId);
   },
+  // Nota fiscal de um pedido (aba Expedição do Embalagem, v111) — o ML NÃO
+  // oferece listagem de "pedidos sem nota", só consulta 1 a 1; por isso só é
+  // chamado pelo job em segundo plano `syncInvoiceStatus` (worker.js), nunca
+  // numa rota de leitura. Path não testado ao vivo neste ambiente (sem token
+  // real) — ver known-bugs.md.
+  getInvoicesByOrder: (orderId, storeId) => get(`/orders/${orderId}/invoices`, storeId),
 };

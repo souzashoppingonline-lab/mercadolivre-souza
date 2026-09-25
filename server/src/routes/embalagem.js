@@ -771,6 +771,16 @@ router.get('/auditoria', async (req, res) => {
         params.push(Math.min(days, 365));
         dateCond = ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date > (current_date - $${params.length}::int)`;
       }
+      // Filtro por HORÁRIO do pedido (hora do dia, não a data) — pedido do
+      // usuário, útil pra achar pedidos dentro/fora da janela de corte de
+      // uma transportadora. Formato HH:MM, validado antes de virar parâmetro.
+      const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+      const tFrom = req.query.time_from, tTo = req.query.time_to;
+      if (HHMM.test(tFrom || '') && HHMM.test(tTo || '')) {
+        params.push(tFrom); const pFrom = `$${params.length}`;
+        params.push(tTo);   const pTo = `$${params.length}`;
+        dateCond += ` AND (o.date_created AT TIME ZONE 'America/Sao_Paulo')::time BETWEEN ${pFrom}::time AND ${pTo}::time`;
+      }
       filterBlock =
         `AND (
            (COALESCE(mk.code,'ML') = 'ML'
@@ -784,7 +794,8 @@ router.get('/auditoria', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT o.ml_id AS order_id, o.title, o.quantity, o.buyer_nickname, o.store_id,
               o.shipping_type, o.shipping_status, o.shipping_substatus, o.shipping_id,
-              o.date_created, o.date_ready_to_ship,
+              o.date_created, o.date_ready_to_ship, o.date_shipped,
+              o.nf_status, o.nf_checked_at,
               COALESCE(mk.code,'ML') AS marketplace,
               s.nickname AS store_nickname,
               sod.tracking_number AS shopee_tracking,
@@ -829,8 +840,17 @@ router.get('/auditoria', async (req, res) => {
                   : (r.shopee_carrier || 'Shopee');
         printed = r.shopee_status === 'PROCESSED';
       }
-      return { ...r, logistica, printed };
-    }).filter(r => (!onlyPrinted || r.printed) && (!onlyMissing || !r.bipado));
+      // "Completo" = já bipado E (não é ML, ou nota fiscal já emitida — Shopee
+      // não tem nota automática por aqui, não entra nesse critério). Pedido
+      // do usuário: quem está faltando QUALQUER informação sobe pro topo.
+      const completo = r.bipado && (!isML || r.nf_status === 'emitida');
+      return { ...r, logistica, printed, completo };
+    }).filter(r => (!onlyPrinted || r.printed) && (!onlyMissing || !r.bipado))
+      .sort((a, b) => {
+        if (a.completo !== b.completo) return a.completo ? 1 : -1; // incompletos primeiro
+        const da = a.date_ready_to_ship || a.date_created, db = b.date_ready_to_ship || b.date_created;
+        return new Date(da) - new Date(db);
+      });
     const total = items.length;
     const bipados = items.filter(r => r.bipado).length;
     // Quebra por logística (pra o card de resumo)

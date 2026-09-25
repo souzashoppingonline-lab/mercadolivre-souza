@@ -80,6 +80,7 @@
           <div class="emb-field"><label>Até</label><input type="time" id="fExpHoraTo" onchange="loadExpedicao()"></div>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fExpMissing" onchange="loadExpedicao()"> Só o que falta bipar</label>
           <button class="emb-btn" onclick="loadExpedicao()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+          <span id="expLastUpdate" style="font-size:11px;color:var(--text-muted);align-self:center"></span>
         </div>
         <div id="expList"><div class="emb-placeholder">Carregando...</div></div>
       </div>
@@ -142,7 +143,7 @@ async function loadExpedicao() {
     return new Date(a.date_ready_to_ship || a.date_created) - new Date(b.date_ready_to_ship || b.date_created);
   });
 
-  if (!items.length) { list.innerHTML = `<div class="emb-placeholder">${search ? 'Pedido/rastreio não encontrado.' : 'Nenhum pedido a expedir com os filtros atuais. 🎉'}</div>`; return; }
+  if (!items.length) { list.innerHTML = `<div class="emb-placeholder">${search ? 'Pedido/rastreio não encontrado.' : 'Nenhum pedido a expedir com os filtros atuais. 🎉'}</div>`; atualizarExpLastUpdate(); return; }
   list.innerHTML = `<div class="table-responsive"><table class="aud-table">
     <thead><tr><th>Pedido</th><th>Data e horário da venda</th><th>Logística</th><th>Horário de corte</th><th>Horário de envio</th><th>Bipado?</th></tr></thead>
     <tbody>${items.map(o => {
@@ -162,6 +163,11 @@ async function loadExpedicao() {
           : '<span class="aud-status no"><i class="fas fa-circle-xmark"></i> Falta</span>'}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
+  atualizarExpLastUpdate();
+}
+function atualizarExpLastUpdate() {
+  const el = document.getElementById('expLastUpdate');
+  if (el) el.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
 }
 
 async function initLojas() {

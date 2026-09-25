@@ -124,6 +124,11 @@ shipping_status, shipping_substatus TEXT       -- v33: status cru de /shipments/
                                    -- (mapeamento status→emoji/cor).
 date_ready_to_ship, date_shipped, date_delivered TIMESTAMPTZ  -- v33: de status_history do shipment
 shipping_last_updated TIMESTAMPTZ -- v33: last_updated do shipment
+nf_status TEXT                    -- v111: 'emitida'/'pendente'/NULL (nunca checado). Só pedidos ML
+                                   -- (FLEX/Mercado Envios, exclui Full) — Shopee não tem nota fiscal
+                                   -- automática por aqui. Preenchido pelo job syncInvoiceStatus
+                                   -- (worker.js), nunca por rota de leitura — ver workers.md.
+nf_checked_at TIMESTAMPTZ         -- v111: quando o job checou pela última vez. NULL = nunca checado.
 finance_synced BOOLEAN DEFAULT false     -- v82: marcador da reconciliação automática de
                                    -- frete/tarifa. `ml_fee`/`shipping_seller_cost` acima
                                    -- já nascem com DEFAULT 0 (nunca NULL), então não dá

@@ -1859,6 +1859,85 @@ async function syncShippingStatus() {
   }
 }
 
+// ── Nota fiscal — aba "Expedição" do Embalagem (v111) ──────────────────────
+// O Mercado Livre não tem endpoint de "pedidos sem nota" — só consulta 1
+// pedido por vez (GET /orders/:id/invoices) — por isso é sempre em segundo
+// plano, nunca numa rota de leitura (ver architecture.md regra 3 e
+// mercadolivre.md). Mesmo escopo "precisa expedir" da Auditoria (FLEX/ME,
+// exclui Full automaticamente pelo regex de shipping_type, exclui Shopee —
+// nota fiscal automática é recurso só do ML). Mesmo padrão de
+// syncShippingStatus: batch pequeno, circuit breaker por loja, nunca 2
+// execuções concorrentes.
+let isSyncingInvoiceStatus = false;
+async function syncInvoiceStatus() {
+  if (isSyncingInvoiceStatus) { console.warn('[sync-invoice-status] já em execução — ignorando'); return; }
+  isSyncingInvoiceStatus = true;
+  console.log('[sync-invoice-status] iniciando checagem de nota fiscal...');
+  try {
+    return await recordSync('sync-invoice-status', '0 */4 * * *', async () => {
+      const { rows: pending } = await pool.query(
+        `SELECT o.ml_id, o.store_id
+         FROM orders o
+         JOIN stores s ON s.id = o.store_id
+         LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id
+         WHERE COALESCE(mk.code,'ML') = 'ML'
+           AND lower(COALESCE(o.shipping_type,'')) ~ 'self_service|flex|xd_drop_off|me1|me2|cross_docking'
+           AND o.shipping_status = 'ready_to_ship'
+           AND o.status <> 'cancelled'
+           AND o.nf_status IS DISTINCT FROM 'emitida'
+           AND (o.nf_checked_at IS NULL OR o.nf_checked_at < now() - interval '6 hours')
+         ORDER BY o.nf_checked_at ASC NULLS FIRST
+         LIMIT 100`
+      );
+      let updated = 0, errors = 0;
+      const blockedStores = new Set();
+      const storeErrorStreak = new Map();
+      for (const o of pending) {
+        if (blockedStores.has(o.store_id)) continue;
+        let waitMs = 8000;
+        try {
+          const data = await ml.getInvoicesByOrder(o.ml_id, o.store_id);
+          const invoices = Array.isArray(data) ? data : (data?.results || data?.invoices || []);
+          const nfStatus = invoices.length > 0 ? 'emitida' : 'pendente';
+          await pool.query(`UPDATE orders SET nf_status=$2, nf_checked_at=now() WHERE ml_id=$1`, [o.ml_id, nfStatus]);
+          updated++;
+          storeErrorStreak.set(o.store_id, 0);
+        } catch (e) {
+          // 404 é resposta normal do ML pra "pedido sem nota ainda" em várias
+          // APIs de fatura — trata como pendente em vez de deixar sem checar,
+          // senão nunca sai do estado "não verificado" pra esses pedidos.
+          if (e.message?.includes('404')) {
+            await pool.query(`UPDATE orders SET nf_status='pendente', nf_checked_at=now() WHERE ml_id=$1`, [o.ml_id]);
+            updated++;
+          } else {
+            console.warn(`[sync-invoice-status] erro order=${o.ml_id}: ${e.message}`);
+            errors++;
+            // marca checado mesmo em erro genérico, pra não bater na mesma
+            // ordem toda hora e queimar orçamento de API com algo que já
+            // falhou — só um erro de rate limit reduz o intervalo de retry.
+            await pool.query(`UPDATE orders SET nf_checked_at=now() WHERE ml_id=$1`, [o.ml_id]);
+            if (e.message?.includes('429')) {
+              waitMs = 20000;
+              const streak = (storeErrorStreak.get(o.store_id) || 0) + 1;
+              storeErrorStreak.set(o.store_id, streak);
+              if (streak >= 3) {
+                blockedStores.add(o.store_id);
+                console.warn(`[sync-invoice-status] loja ${o.store_id} — 3 erros 429 seguidos, pausando o resto desta loja nesta execução`);
+              }
+            }
+          }
+        }
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+      console.log(`[sync-invoice-status] concluído: ${updated} atualizados, ${errors} erros (de ${pending.length} pendentes)`);
+      return { updated, errors, total: pending.length };
+    });
+  } finally {
+    isSyncingInvoiceStatus = false;
+    scheduleEvery(4, syncInvoiceStatus, 'sync-invoice-status');
+  }
+}
+
 // Snapshot de rankeamento FASE 1 (a cada 6h): anúncios ainda 'rankeando' —
 // notifica qualquer mudança (visitas/qualidade/buy-box/Mais Vendidos). Vendas e
 // preço/estoque já vêm em tempo real pelos webhooks; este job cobre o resto.
@@ -3426,6 +3505,7 @@ scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
 scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
 scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
+scheduleEvery(4,   syncInvoiceStatus, 'sync-invoice-status');
 scheduleAt(6,  0,  resumoDiario, 'resumo-diario');
 scheduleAt(6,  5,  fechamentoDiario, 'fechamento-diario');
 scheduleAt(8,  0,  relatorioRankeamentoDiario, 'relatorio-rankeamento');
@@ -3573,6 +3653,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'sync-shipping-status' || cmd === 'syncShippingStatus') {
       console.log('[worker] syncShippingStatus disparado manualmente');
       syncShippingStatus().catch(e => console.error('[worker] syncShippingStatus erro:', e.message));
+    }
+    if (cmd === 'sync-invoice-status' || cmd === 'syncInvoiceStatus') {
+      console.log('[worker] syncInvoiceStatus disparado manualmente');
+      syncInvoiceStatus().catch(e => console.error('[worker] syncInvoiceStatus erro:', e.message));
     }
     if (cmd === 'sync-claims-status' || cmd === 'syncClaimsStatus') {
       console.log('[worker] syncClaimsStatus disparado manualmente');

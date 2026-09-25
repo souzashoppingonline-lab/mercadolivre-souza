@@ -14,6 +14,10 @@ Descoberto testando "Adicionar Promoções" (v108) ao vivo em produção: o path
 
 `mlClient.addPromotionItem`/`removePromotionItem` (aderir/sair de campanha, `POST`/`DELETE /seller-promotions/items/:itemId`) foram implementados seguindo o contrato documentado da Seller Promotions API do ML, mas **ainda não foram testados contra a API real** — a leitura (`listSellerPromotions`/`getPromotionItems`) já teve o path corrigido ao vivo (ver item acima), mas o path de escrita não foi validado do mesmo jeito. **Correção esperada**: testar aderir/sair com 1 item de baixo risco numa loja real e confirmar o formato exato de query/body que o ML aceita; ajustar `mlClient.js` se divergir.
 
+## Nota fiscal da Expedição (v111) — endpoint não testado ao vivo
+
+`mlClient.getInvoicesByOrder` (`GET /orders/:id/invoices`, usado pelo job `syncInvoiceStatus`) segue o path documentado da API fiscal do ML pra Nota Fiscal Eletrônica associada a um pedido, mas **não foi possível confirmar ao vivo** neste ambiente (sem token real). Dado o histórico recente com `seller-promotions` (path errado só descoberto testando em produção, ver item acima), é bem possível que o path real seja outro. **Correção esperada**: rodar `redis-cli PUBLISH worker:cmd '{"cmd":"sync-invoice-status"}'` em produção, olhar o log (`[sync-invoice-status] erro order=...`) — se vier erro estruturado do ML (não um 404 "not found" reconhecido), ajustar o path em `mlClient.js`. O job é seguro de testar: só lê, nunca escreve na conta do ML, e erro em qualquer pedido não trava os demais.
+
 ## 2. Tópico WebSocket `kpis_updated` documentado mas nunca publicado
 
 `js/websocket.js` e o `CLAUDE.md` original citam `kpis_updated` como tópico emitido pelo backend, e `dashboard.js` está inscrito nele. Nenhum handler em `worker.js` publica esse tópico hoje — o dashboard na prática se atualiza via `order_updated`/`stock_alert` e um polling de 60s (`setInterval` em `dashboard.js`). Não é um bug funcional grave (o polling cobre a lacuna), mas é documentação/código morto — ver `websocket.md`.

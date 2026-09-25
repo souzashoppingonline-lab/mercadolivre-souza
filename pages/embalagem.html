@@ -259,6 +259,8 @@
     .aud-status { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 12px; }
     .aud-status.ok  { color: var(--green); }
     .aud-status.no  { color: var(--red); }
+    .aud-status.warn { color: #f59e0b; }
+    .aud-status.muted { color: var(--text-muted); font-weight: 700; }
     .aud-badge-print { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 10px; background: rgba(255,214,10,.18); color: var(--primary); }
 
     .emb-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 16px; }
@@ -338,7 +340,7 @@
         <button class="emb-tab-btn" id="tabBtnHistorico" onclick="switchTab('historico')"><i class="fas fa-chart-line"></i> Histórico</button>
         <button class="emb-tab-btn" id="tabBtnRelatorios" onclick="switchTab('relatorios')"><i class="fas fa-file-chart-bar"></i> Relatórios</button>
         <button class="emb-tab-btn" id="tabBtnRelDia" onclick="switchTab('reldia')"><i class="fas fa-file-pdf"></i> Relatório do Dia</button>
-        <button class="emb-tab-btn" id="tabBtnAuditoria" onclick="switchTab('auditoria')"><i class="fas fa-list-check"></i> Auditoria <span id="audBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
+        <button class="emb-tab-btn" id="tabBtnAuditoria" onclick="switchTab('auditoria')"><i class="fas fa-list-check"></i> Expedição <span id="audBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
         <button class="emb-tab-btn" id="tabBtnErros" onclick="switchTab('erros')"><i class="fas fa-triangle-exclamation"></i> Erros <span id="errosBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
       </div>
 
@@ -516,7 +518,7 @@
       <!-- ═══ ABA: AUDITORIA (expedição do dia) ═══ -->
       <div class="emb-panel" id="panelAuditoria">
         <div class="emb-card">
-          <p class="emb-subtitle" style="margin-top:0">O que <b>precisa sair</b> (FLEX / Mercado Envios no ML e Entrega Rápida / Agência no Shopee) e o que <b>ainda não foi bipado</b>. Base no status de envio (etiqueta impressa / pronto pra enviar), não na data.</p>
+          <p class="emb-subtitle" style="margin-top:0">O que <b>precisa sair</b> (FLEX / Mercado Envios no ML e Entrega Rápida / Agência no Shopee — <b>Full não entra aqui</b>, não é expedido por nós) e o que <b>ainda não foi bipado</b>, com horário de envio e nota fiscal. Base no status de envio (etiqueta impressa / pronto pra enviar), não na data.</p>
           <div class="aud-kpis" id="audKpis"></div>
           <div class="emb-filters">
             <div class="emb-field"><label>Pedido ou rastreio</label><input id="fAudSearch" placeholder="Nº do pedido ou rastreio…" onkeydown="if(event.key==='Enter')loadAuditoria()"></div>
@@ -534,6 +536,8 @@
             </div>
             <div class="emb-field" id="fAudCustomFrom" style="display:none"><label>De</label><input type="date" id="fAudFrom" onchange="loadAuditoria()"></div>
             <div class="emb-field" id="fAudCustomTo" style="display:none"><label>Até</label><input type="date" id="fAudTo" onchange="loadAuditoria()"></div>
+            <div class="emb-field"><label>Horário do pedido — De</label><input type="time" id="fAudHoraFrom" onchange="loadAuditoria()"></div>
+            <div class="emb-field"><label>Até</label><input type="time" id="fAudHoraTo" onchange="loadAuditoria()"></div>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fAudMissing" onchange="loadAuditoria()"> Só o que falta bipar</label>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fAudPrinted" onchange="loadAuditoria()"> Só etiqueta impressa</label>
             <button class="emb-btn" onclick="loadAuditoria()"><i class="fas fa-sync-alt"></i> Atualizar</button>
@@ -1314,6 +1318,7 @@ document.addEventListener('click', (e) => {
 scanInput.addEventListener('blur', () => setTimeout(refocusScan, 200));
 
 // ── Abas ────────────────────────────────────────────────────
+let auditoriaAutoRefreshId = null;
 function switchTab(tab) {
   document.getElementById('panelBipar').classList.toggle('active', tab === 'bipar');
   document.getElementById('panelBuscar').classList.toggle('active', tab === 'buscar');
@@ -1338,6 +1343,11 @@ function switchTab(tab) {
   if (tab === 'reldia') loadRelDia();
   if (tab === 'auditoria') loadAuditoria();
   if (tab === 'erros') loadErros();
+  // Expedição em "tempo real" (pedido do usuário) — atualiza sozinha a cada
+  // 30s só enquanto a aba estiver aberta, pra não gastar requisição à toa
+  // com o operador em outra aba.
+  clearInterval(auditoriaAutoRefreshId);
+  if (tab === 'auditoria') auditoriaAutoRefreshId = setInterval(loadAuditoria, 30000);
 }
 
 const AUD_LOG_CLASS = { 'Flex': 'chip-flex', 'Mercado Envios': 'chip-me', 'Entrega Rápida': 'chip-shopee', 'Agência': 'chip-coleta' };
@@ -1356,6 +1366,9 @@ async function loadAuditoria() {
   if (search) params.search = search; // busca direta ignora status/período no backend
   if (document.getElementById('fAudMissing').checked) params.only_missing = 1;
   if (document.getElementById('fAudPrinted').checked) params.only_printed = 1;
+  const horaFrom = document.getElementById('fAudHoraFrom').value;
+  const horaTo = document.getElementById('fAudHoraTo').value;
+  if (horaFrom && horaTo) { params.time_from = horaFrom; params.time_to = horaTo; } // ignorado se a busca direta estiver ativa (backend)
   const periodo = document.getElementById('fAudPeriodo').value;
   if (periodo === 'custom') {
     const from = document.getElementById('fAudFrom').value;
@@ -1381,7 +1394,7 @@ async function loadAuditoria() {
   const items = d.items || [];
   if (!items.length) { list.innerHTML = `<div class="emb-placeholder">${search ? 'Pedido/rastreio não encontrado.' : 'Nenhum pedido a expedir com os filtros atuais. 🎉'}</div>`; return; }
   list.innerHTML = `<div class="table-responsive"><table class="aud-table">
-    <thead><tr><th>Pedido</th><th>Produto</th><th>Data venda</th><th>Loja</th><th>Logística</th><th>Etiqueta impressa</th><th>Bipado?</th><th>Bipado em</th></tr></thead>
+    <thead><tr><th>Pedido</th><th>Produto</th><th>Data venda</th><th>Loja</th><th>Logística</th><th>Horário de envio</th><th>Etiqueta impressa</th><th>Nota fiscal</th><th>Bipado?</th><th>Bipado em</th></tr></thead>
     <tbody>${items.map(o => {
       const logCls = AUD_LOG_CLASS[o.logistica] || 'chip-desc';
       const mk = o.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee">Shopee</span> ' : '';
@@ -1390,13 +1403,22 @@ async function loadAuditoria() {
       const etiqueta = o.etiqueta_impressa_at
         ? `<span style="font-size:12px;font-variant-numeric:tabular-nums">${audFmtDT(o.etiqueta_impressa_at)}</span>`
         : (o.printed ? '<span class="aud-badge-print">impressa</span>' : '<span style="color:var(--text-muted);font-size:11px">—</span>');
-      return `<tr class="${o.bipado ? 'ok' : 'falta'}">
+      // Nota fiscal: checada em segundo plano (syncInvoiceStatus, worker.js)
+      // — só existe pra pedidos ML (Shopee não emite nota automática por
+      // aqui). nf_checked_at null = ainda não checado pelo job.
+      const nf = o.marketplace === 'SHOPEE' ? '<span class="aud-status muted">—</span>'
+        : o.nf_status === 'emitida' ? '<span class="aud-status ok"><i class="fas fa-file-circle-check"></i> Emitida</span>'
+        : o.nf_status === 'pendente' ? '<span class="aud-status warn"><i class="fas fa-file-circle-exclamation"></i> Pendente</span>'
+        : '<span class="aud-status muted">Não verificado</span>';
+      return `<tr class="${o.completo ? 'ok' : 'falta'}">
         <td class="aud-ped">${mk}${escapeHtml(String(o.order_id))}</td>
         <td title="${escapeHtml(o.title || '')}" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(o.title || '—')}</td>
         <td style="font-size:12px;white-space:nowrap">${o.date_created ? audFmtDT(o.date_created) : '—'}</td>
         <td>${escapeHtml(o.store_nickname || '—')}</td>
         <td><span class="aud-log ${logCls}">${escapeHtml(o.logistica)}</span></td>
+        <td style="font-size:12px;white-space:nowrap">${o.date_shipped ? audFmtDT(o.date_shipped) : '<span style="color:var(--text-muted)">—</span>'}</td>
         <td>${etiqueta}</td>
+        <td>${nf}</td>
         <td>${o.bipado
           ? '<span class="aud-status ok"><i class="fas fa-circle-check"></i> Bipado</span>'
           : '<span class="aud-status no"><i class="fas fa-circle-xmark"></i> Falta</span>'}</td>

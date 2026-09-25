@@ -335,4 +335,7 @@ module.exports = {
   // numa rota de leitura. Path não testado ao vivo neste ambiente (sem token
   // real) — ver known-bugs.md.
   getInvoicesByOrder: (orderId, storeId) => get(`/orders/${orderId}/invoices`, storeId),
+  // Prazo máximo de despacho (SLA) de um envio — "horário de corte" da
+  // página Expedição (v112). Path não testado ao vivo — ver known-bugs.md.
+  getShipmentSla: (shipmentId, storeId) => get(`/shipments/${shipmentId}/sla`, storeId),
 };

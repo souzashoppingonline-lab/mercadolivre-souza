@@ -129,6 +129,10 @@ nf_status TEXT                    -- v111: 'emitida'/'pendente'/NULL (nunca chec
                                    -- automática por aqui. Preenchido pelo job syncInvoiceStatus
                                    -- (worker.js), nunca por rota de leitura — ver workers.md.
 nf_checked_at TIMESTAMPTZ         -- v111: quando o job checou pela última vez. NULL = nunca checado.
+sla_cutoff TIMESTAMPTZ            -- v112: prazo máximo de despacho (SLA), de /shipments/:id/sla.
+                                   -- "Horário de corte" na página expedicao.html. Preenchido pelo
+                                   -- job syncShipmentSla (worker.js) — ver workers.md.
+sla_checked_at TIMESTAMPTZ        -- v112: quando o job checou pela última vez.
 finance_synced BOOLEAN DEFAULT false     -- v82: marcador da reconciliação automática de
                                    -- frete/tarifa. `ml_fee`/`shipping_seller_cost` acima
                                    -- já nascem com DEFAULT 0 (nunca NULL), então não dá

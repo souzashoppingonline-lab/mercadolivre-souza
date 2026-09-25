@@ -795,7 +795,7 @@ router.get('/auditoria', async (req, res) => {
       `SELECT o.ml_id AS order_id, o.title, o.quantity, o.buyer_nickname, o.store_id,
               o.shipping_type, o.shipping_status, o.shipping_substatus, o.shipping_id,
               o.date_created, o.date_ready_to_ship, o.date_shipped,
-              o.nf_status, o.nf_checked_at,
+              o.nf_status, o.nf_checked_at, o.sla_cutoff,
               COALESCE(mk.code,'ML') AS marketplace,
               s.nickname AS store_nickname,
               sod.tracking_number AS shopee_tracking,

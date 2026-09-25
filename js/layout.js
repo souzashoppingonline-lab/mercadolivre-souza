@@ -13,6 +13,7 @@ const NAV_ITEMS = [
     { href: 'rankeamento.html', icon: 'fa-ranking-star', label: 'Rankeamento' },
     { href: 'pedidos.html', icon: 'fa-box', label: 'Pedidos' },
     { href: 'embalagem.html', icon: 'fa-barcode', label: 'Embalagem' },
+    { href: 'expedicao.html', icon: 'fa-truck-fast', label: 'Expedição' },
     { href: 'vendas.html', icon: 'fa-chart-line', label: 'Vendas Totais' },
     { href: 'vendas-por-loja.html', icon: 'fa-store', label: 'Vendas por Loja' },
     { href: 'promocoes.html', icon: 'fa-tags', label: 'Promoções' },
@@ -74,6 +75,7 @@ function navItemsForRole(role) {
   return [
     { section: 'Operação', items: [
       { href: 'embalagem.html', icon: 'fa-barcode', label: 'Embalagem' },
+      { href: 'expedicao.html', icon: 'fa-truck-fast', label: 'Expedição' },
     ]},
   ];
 }

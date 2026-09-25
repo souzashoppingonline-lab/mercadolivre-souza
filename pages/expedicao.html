@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expedição — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Expedição'; window.ACTIVE_NAV='expedicao.html';</script>
+  <style>
+    .exp-subtitle { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
+    .emb-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
+    .emb-placeholder { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .emb-placeholder i { font-size: 40px; margin-bottom: 14px; display: block; opacity: .4; }
+    .chip-flex { background: rgba(0,122,255,.18); color: #4da3ff; }
+    .chip-me   { background: rgba(255,214,10,.18); color: var(--primary); }
+    .chip-coleta { background: rgba(175,82,222,.18); color: #c07af0; }
+    .chip-shopee { background: rgba(255,94,0,.18); color: #ff7a33; }
+    .chip-desc { background: rgba(255,69,58,.18); color: var(--red); }
+    .aud-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 4px 0 16px; }
+    .aud-kpi { border-radius: 12px; padding: 14px 16px; border: 1px solid var(--border); }
+    .aud-kpi .n { font-size: 26px; font-weight: 800; line-height: 1; }
+    .aud-kpi .l { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-top: 6px; }
+    .aud-kpi.total { background: rgba(255,255,255,.03); }
+    .aud-kpi.ok    { background: rgba(48,209,88,.10); border-color: rgba(48,209,88,.35); }
+    .aud-kpi.ok .n    { color: var(--green); }
+    .aud-kpi.falta { background: rgba(255,69,58,.10); border-color: rgba(255,69,58,.35); }
+    .aud-kpi.falta .n { color: var(--red); }
+    .aud-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .aud-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    .aud-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .aud-table tr.falta td { background: rgba(255,69,58,.06); }
+    .aud-table tr.ok td { background: rgba(48,209,88,.05); }
+    .aud-ped { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .emb-mp-badge { display: inline-block; font-size: 14px; font-weight: 800; padding: 2px 10px; border-radius: 8px; vertical-align: middle; }
+    .emb-mp-badge.shopee { background: #ee4d2d; color: #fff; }
+    .aud-log { display: inline-block; font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 12px; }
+    .aud-status { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 12px; }
+    .aud-status.ok  { color: var(--green); }
+    .aud-status.no  { color: var(--red); }
+    .aud-status.warn { color: #f59e0b; }
+    .aud-status.muted { color: var(--text-muted); font-weight: 700; }
+    .emb-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 16px; }
+    .emb-field { display: flex; flex-direction: column; gap: 4px; }
+    .emb-field label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .emb-field input, .emb-field select { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 7px 10px; font-size: 12px; min-width: 140px; }
+    .emb-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .emb-btn:hover { border-color: var(--primary); color: var(--primary); }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="exp-subtitle">Pedidos que <b>precisam ser expedidos</b> (FLEX / Mercado Envios — <b>Full não entra aqui</b>, não é responsabilidade nossa), com logística, horário de corte, horário de envio e se já foi bipado no Embalagem. Atualiza sozinha a cada 30s.</p>
+
+      <div class="emb-card">
+        <div id="expKpis" class="aud-kpis"></div>
+        <div class="emb-filters">
+          <div class="emb-field"><label>Pedido ou rastreio</label><input id="fExpSearch" placeholder="Nº do pedido ou rastreio…" onkeydown="if(event.key==='Enter')loadExpedicao()"></div>
+          <div class="emb-field"><label>Período (data da venda)</label>
+            <select id="fExpPeriodo" onchange="loadExpedicao()">
+              <option value="">Todos</option>
+              <option value="3">Últimos 3 dias</option>
+              <option value="5">Últimos 5 dias</option>
+              <option value="10" selected>Últimos 10 dias</option>
+              <option value="15">Últimos 15 dias</option>
+              <option value="21">Últimos 21 dias</option>
+              <option value="30">Últimos 30 dias</option>
+            </select>
+          </div>
+          <div class="emb-field"><label>Horário do pedido — De</label><input type="time" id="fExpHoraFrom" onchange="loadExpedicao()"></div>
+          <div class="emb-field"><label>Até</label><input type="time" id="fExpHoraTo" onchange="loadExpedicao()"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="fExpMissing" onchange="loadExpedicao()"> Só o que falta bipar</label>
+          <button class="emb-btn" onclick="loadExpedicao()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+        <div id="expList"><div class="emb-placeholder">Carregando...</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const EXP_LOG_CLASS = { 'Flex': 'chip-flex', 'Mercado Envios': 'chip-me', 'Entrega Rápida': 'chip-shopee', 'Agência': 'chip-coleta' };
+function expFmtDT(v) {
+  if (!v) return '—';
+  return new Date(v).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function loadExpedicao() {
+  const list = document.getElementById('expList');
+  const kpis = document.getElementById('expKpis');
+  const params = {};
+  const search = document.getElementById('fExpSearch').value.trim();
+  if (search) params.search = search;
+  if (document.getElementById('fExpMissing').checked) params.only_missing = 1;
+  const horaFrom = document.getElementById('fExpHoraFrom').value;
+  const horaTo = document.getElementById('fExpHoraTo').value;
+  if (horaFrom && horaTo) { params.time_from = horaFrom; params.time_to = horaTo; }
+  const periodo = document.getElementById('fExpPeriodo').value;
+  if (periodo) params.days = periodo;
+
+  const d = await DB.getEmbalagemAuditoria(params);
+  if (!d || d.error) { list.innerHTML = `<div class="emb-placeholder">Erro: ${d?.error || 'falha'}</div>`; return; }
+  const r = d.resumo || { total: 0, bipados: 0, faltando: 0 };
+  kpis.innerHTML =
+    `<div class="aud-kpi total"><div class="n">${r.total}</div><div class="l">A expedir</div></div>
+     <div class="aud-kpi ok"><div class="n">${r.bipados}</div><div class="l">Já bipados</div></div>
+     <div class="aud-kpi falta"><div class="n">${r.faltando}</div><div class="l">Falta bipar</div></div>`;
+
+  // Quem falta bipar sobe pro topo; dentro de cada grupo, corte mais próximo primeiro.
+  const items = (d.items || []).slice().sort((a, b) => {
+    if (a.bipado !== b.bipado) return a.bipado ? 1 : -1;
+    const ca = a.sla_cutoff, cb = b.sla_cutoff;
+    if (ca && cb) return new Date(ca) - new Date(cb);
+    if (ca) return -1;
+    if (cb) return 1;
+    return new Date(a.date_ready_to_ship || a.date_created) - new Date(b.date_ready_to_ship || b.date_created);
+  });
+
+  if (!items.length) { list.innerHTML = `<div class="emb-placeholder">${search ? 'Pedido/rastreio não encontrado.' : 'Nenhum pedido a expedir com os filtros atuais. 🎉'}</div>`; return; }
+  list.innerHTML = `<div class="table-responsive"><table class="aud-table">
+    <thead><tr><th>Pedido</th><th>Logística</th><th>Horário de corte</th><th>Horário de envio</th><th>Bipado?</th></tr></thead>
+    <tbody>${items.map(o => {
+      const logCls = EXP_LOG_CLASS[o.logistica] || 'chip-desc';
+      const mk = o.marketplace === 'SHOPEE' ? '<span class="emb-mp-badge shopee">Shopee</span> ' : '';
+      return `<tr class="${o.bipado ? 'ok' : 'falta'}">
+        <td>
+          <div class="aud-ped">${mk}${escapeHtml(String(o.order_id))}</div>
+          <div title="${escapeHtml(o.title || '')}" style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text-muted)">${escapeHtml(o.title || '—')}</div>
+        </td>
+        <td><span class="aud-log ${logCls}">${escapeHtml(o.logistica)}</span></td>
+        <td style="font-size:12px;white-space:nowrap">${o.sla_cutoff ? expFmtDT(o.sla_cutoff) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td style="font-size:12px;white-space:nowrap">${o.date_shipped ? expFmtDT(o.date_shipped) : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>${o.bipado
+          ? '<span class="aud-status ok"><i class="fas fa-circle-check"></i> Bipado</span>'
+          : '<span class="aud-status no"><i class="fas fa-circle-xmark"></i> Falta</span>'}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+let expAutoRefreshId = null;
+loadExpedicao();
+expAutoRefreshId = setInterval(loadExpedicao, 30000);
+</script>
+</body>
+</html>

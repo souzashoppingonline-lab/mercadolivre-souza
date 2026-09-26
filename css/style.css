@@ -126,6 +126,24 @@ body {
 
 .content-area { padding: 24px; flex: 1; }
 
+/* Modo "embutido" (?embed=tv na URL) — usado pelo rodízio da página
+   pages/monitoramento.html pra exibir uma página já existente dentro de um
+   iframe, sem duplicar sidebar/topbar nem reimplementar a lógica de cada
+   tela. Central (style.css + js/layout.js) em vez de repetir isso em cada
+   uma das páginas do rodízio — ver .claude/frontend.md e monitoramento.md. */
+body.embed-tv .sidebar, body.embed-tv .topbar { display: none !important; }
+body.embed-tv .main-content { margin-left: 0 !important; }
+body.embed-tv .content-area { padding: 20px 28px; }
+/* Aumento genérico pros elementos compartilhados entre a maioria das
+   páginas (KPI/tabela/título de card) — pra dar legibilidade de longe sem
+   precisar de CSS dedicado em cada uma das telas do rodízio. */
+body.embed-tv .kpi-value { font-size: 34px; }
+body.embed-tv .kpi-card { padding: 20px; }
+body.embed-tv .card-header h3 { font-size: 19px; }
+body.embed-tv .data-table { font-size: 16px; }
+body.embed-tv .data-table th { font-size: 12px; padding: 10px 14px; }
+body.embed-tv .data-table td { padding: 12px 14px; }
+
 /* KPI Grid */
 .kpi-grid {
   display: grid;

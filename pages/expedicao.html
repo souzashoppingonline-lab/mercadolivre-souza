@@ -239,6 +239,11 @@ expAutoRefreshId = setInterval(loadExpedicao, 30000);
 // estação de embalagem — pedido do usuário por algo mais rápido que os 30s
 // do polling. Mesmo padrão de WS.on já usado em pages/promocoes.html.
 WS.on('packing_video_saved', () => loadExpedicao());
+
+// Venda nova aparece na hora, sem esperar o polling de 30s — pedido do
+// usuário pra acompanhar "em tempo real" (útil sobretudo no Modo TV). Ignora
+// Shopee (fora do escopo desta página) pra não recarregar à toa.
+WS.on('nova_venda', (data) => { if (data?.marketplace === 'ML') loadExpedicao(); });
 </script>
 </body>
 </html>

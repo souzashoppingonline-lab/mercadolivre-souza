@@ -610,6 +610,11 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(loadUltimosBipados, 30000); // reflete bipagens de outras estações
   primeAudBadge(); // badge da aba Auditoria = quantos faltam bipar
   initVozToggle(); // liga/desliga a fala de quantidade ao bipar (pedido do usuário)
+  // Slide do rodízio de pages/monitoramento.html (?embed=tv&tab=conferencia)
+  // abre direto na aba pedida, sem precisar clicar — só pra essa página, as
+  // outras 11 telas do rodízio não têm abas.
+  const embedTab = new URLSearchParams(location.search).get('tab');
+  if (embedTab) switchTab(embedTab);
 });
 
 async function primeAudBadge() {

@@ -219,6 +219,16 @@ function sairModoTv() {
 // layout fica "preso" gigante numa janela normal).
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('tv-mode'); });
 
+// Dentro do iframe do rodízio de pages/monitoramento.html (?embed=tv) o Modo
+// TV já entra ligado sozinho, sem pedir fullscreen (quem controla a tela
+// cheia é a página que embute) e sem os botões de alternar — não fazem
+// sentido dentro de um slide que troca sozinho a cada 1 minuto.
+if (new URLSearchParams(location.search).get('embed') === 'tv') {
+  document.body.classList.add('tv-mode');
+  document.getElementById('btnTvMode')?.remove();
+  document.getElementById('btnSairTv')?.remove();
+}
+
 async function initLojas() {
   const data = await DB.getLojas() || { stores: [] };
   const sel = document.getElementById('fExpLoja');

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitoramento — ML Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Monitoramento'; window.ACTIVE_NAV='monitoramento.html';</script>
+  <style>
+    .mon-subtitle { font-size: 13px; color: var(--text-muted); margin: -8px 0 20px; }
+    .mon-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+    .mon-controlbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .mon-slide-label { font-size: 13px; font-weight: 700; color: var(--primary); }
+    .emb-btn { background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .emb-btn:hover { border-color: var(--primary); }
+    .mon-frame-wrap { height: calc(100vh - 230px); min-height: 420px; border-radius: 10px; overflow: hidden; background: #0d0f13; }
+    .mon-frame { width: 100%; height: 100%; border: none; display: block; }
+
+    /* Modo TV — mesmo padrão de pages/expedicao.html: só troca CSS + pede
+       tela cheia, pra deixar num monitor/TV da sala acompanhando o rodízio
+       das telas abaixo (pedido explícito do usuário). */
+    body.tv-mode { background: #000; }
+    body.tv-mode .sidebar, body.tv-mode .topbar, body.tv-mode .mon-subtitle,
+    body.tv-mode #btnTvMode { display: none !important; }
+    body.tv-mode .content-area { padding: 0; }
+    body.tv-mode .mon-card { border: none; background: transparent; padding: 0; border-radius: 0; gap: 0; }
+    body.tv-mode .mon-controlbar { position: fixed; top: 18px; right: 24px; z-index: 50; gap: 0; }
+    body.tv-mode .mon-slide-label { font-size: 16px; background: rgba(0,0,0,.55); padding: 6px 14px; border-radius: 8px; }
+    body.tv-mode .mon-frame-wrap { height: 100vh; min-height: 0; border-radius: 0; }
+    body.tv-mode #btnSairTv { display: inline-flex !important; position: fixed; top: 14px; left: 24px; z-index: 50; }
+    #btnSairTv { display: none; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="mon-subtitle">Revezamento automático entre as principais telas do dashboard — 1 minuto em cada, depois reinicia do começo. Pensado pra ficar numa TV/monitor da sala, sem precisar trocar de tela na mão.</p>
+      <div class="mon-card">
+        <div class="mon-controlbar">
+          <span id="monSlideLabel" class="mon-slide-label">Carregando…</span>
+          <button class="emb-btn" id="btnTvMode" onclick="ativarModoTv()"><i class="fas fa-tv"></i> Modo TV</button>
+        </div>
+        <button class="emb-btn" id="btnSairTv" onclick="sairModoTv()"><i class="fas fa-compress"></i> Sair do Modo TV (Esc)</button>
+        <div class="mon-frame-wrap"><iframe id="monIframe" class="mon-frame" title="Monitoramento"></iframe></div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/websocket.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+// Cada tela do rodízio é a própria página já existente do dashboard, aberta
+// num iframe com ?embed=tv (ver body.embed-tv em css/style.css e o check em
+// js/layout.js) — sem duplicar nenhuma lógica de busca/gráfico das 12 telas.
+// A aba "Embalagem" abre direto na Conferência do Dia via ?tab=conferencia
+// (embalagem.html lê esse parâmetro e chama switchTab()). "Pedidos" é a
+// própria Expedição (bipado + horário de corte) — decisão do usuário pra não
+// perder essa tela, que continua acessível direto por fora do rodízio também
+// (ver .claude/embalagem.md e decisions.md).
+const SLIDES = [
+  { label: 'Pedidos (Expedição)',           url: 'expedicao.html?embed=tv' },
+  { label: 'Performance',                   url: 'performance.html?embed=tv' },
+  { label: 'Análise por Horário',           url: 'horarios.html?embed=tv' },
+  { label: 'Dias da Semana',                url: 'diasemana.html?embed=tv' },
+  { label: 'Anúncios com Problema',         url: 'anuncios-problema.html?embed=tv' },
+  { label: 'Webhooks',                      url: 'webhook.html?embed=tv' },
+  { label: 'Vendas por Loja',               url: 'vendas-por-loja.html?embed=tv' },
+  { label: 'Embalagem — Conferência do Dia', url: 'embalagem.html?embed=tv&tab=conferencia' },
+  { label: 'Saúde do Sistema',              url: 'saude-sistema.html?embed=tv' },
+  { label: 'Dashboard',                     url: '../index.html?embed=tv' },
+  { label: 'Evolução Diária',               url: 'evolucao.html?embed=tv' },
+  { label: 'Anúncios',                      url: 'anuncios.html?embed=tv' },
+];
+const SLIDE_MS = 60000;
+let slideIdx = 0;
+let slideTimerId = null;
+
+function showSlide(i) {
+  slideIdx = ((i % SLIDES.length) + SLIDES.length) % SLIDES.length;
+  const s = SLIDES[slideIdx];
+  document.getElementById('monIframe').src = s.url;
+  document.getElementById('monSlideLabel').textContent = `Tela ${slideIdx + 1}/${SLIDES.length} — ${s.label}`;
+}
+
+function startCarrossel() {
+  showSlide(0);
+  clearInterval(slideTimerId);
+  slideTimerId = setInterval(() => showSlide(slideIdx + 1), SLIDE_MS);
+}
+startCarrossel();
+
+// Modo TV — mesmo mecanismo de pages/expedicao.html.
+function ativarModoTv() {
+  document.body.classList.add('tv-mode');
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (req) req.call(el).catch(() => {}); // TV/navegador pode recusar — modo visual funciona mesmo assim
+}
+function sairModoTv() {
+  document.body.classList.remove('tv-mode');
+  if (document.fullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen)?.call(document);
+}
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('tv-mode'); });
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
 const NAV_ITEMS = [
   { section: 'Início', items: [
     { href: '../index.html', icon: 'fa-home', label: 'Dashboard' },
+    { href: 'monitoramento.html', icon: 'fa-tv', label: 'Monitoramento' },
     { href: 'top-vendas-online.html', icon: 'fa-bolt', label: 'Top Vendas Online' },
     { href: 'agenda-trello.html', icon: 'fa-clipboard-list', label: 'Agenda Trello' },
   ]},
@@ -13,7 +14,6 @@ const NAV_ITEMS = [
     { href: 'rankeamento.html', icon: 'fa-ranking-star', label: 'Rankeamento' },
     { href: 'pedidos.html', icon: 'fa-box', label: 'Pedidos' },
     { href: 'embalagem.html', icon: 'fa-barcode', label: 'Embalagem' },
-    { href: 'expedicao.html', icon: 'fa-truck-fast', label: 'Expedição' },
     { href: 'vendas.html', icon: 'fa-chart-line', label: 'Vendas Totais' },
     { href: 'vendas-por-loja.html', icon: 'fa-store', label: 'Vendas por Loja' },
     { href: 'promocoes.html', icon: 'fa-tags', label: 'Promoções' },
@@ -266,6 +266,15 @@ async function initStoreSwitcher() {
       window.dispatchEvent(new CustomEvent('storeChanged', { detail: { storeId: id, storeName: name } }));
     });
   });
+}
+
+// Modo "embutido" (?embed=tv) — usado pelo rodízio de pages/monitoramento.html
+// pra abrir qualquer página existente dentro de um iframe já sem sidebar/topbar
+// (ver a regra body.embed-tv em css/style.css). Roda antes de tudo, mesmo em
+// páginas como index.html que já escrevem o próprio sidebar/topbar estático
+// em vez de deixar o layout.js injetar (a classe no <body> vale pras duas).
+if (new URLSearchParams(location.search).get('embed') === 'tv') {
+  document.body.classList.add('embed-tv');
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

@@ -159,8 +159,14 @@ async function loadExpedicao() {
      <div class="aud-kpi ok"><div class="n">${bipados}</div><div class="l">Já bipados</div></div>
      <div class="aud-kpi falta"><div class="n">${total - bipados}</div><div class="l">Falta bipar</div></div>`;
 
-  // Quem falta bipar sobe pro topo; dentro de cada grupo, corte mais próximo primeiro.
+  // No Modo TV é acompanhamento passivo: sempre mostra a venda mais recente no
+  // topo (pedido explícito do usuário), em vez da ordem de prioridade normal.
+  // Fora do Modo TV: quem falta bipar sobe pro topo; dentro de cada grupo,
+  // corte mais próximo primeiro.
   const items = allItems.slice().sort((a, b) => {
+    if (document.body.classList.contains('tv-mode')) {
+      return new Date(b.date_created) - new Date(a.date_created);
+    }
     if (a.bipado !== b.bipado) return a.bipado ? 1 : -1;
     const ca = a.sla_cutoff, cb = b.sla_cutoff;
     if (ca && cb) return new Date(ca) - new Date(cb);

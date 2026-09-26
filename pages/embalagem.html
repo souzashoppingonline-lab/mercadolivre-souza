@@ -1116,12 +1116,11 @@ async function finalizeCurrent() {
   const session = currentSession;
   currentSession = null;
   stopDurationWatcher();
-  // Voz de finalização (2º bipe) — pedido explícito do usuário: reforça a
-  // conferência antes de fechar a caixa. cancela qualquer lembrete pendente
-  // na fila (stopDurationWatcher já parou o intervalo, mas pode ter sobrado
-  // uma fala já enfileirada) antes de começar a de finalização.
-  falarTexto('Conferiu a embalagem e a etiqueta? Está tudo certo com o pedido?', { cancelarAnterior: true });
-  falarTexto('Cliente feliz é o cliente com o pedido correto.');
+  // Voz de finalização (2º bipe) — pedido explícito do usuário. cancela
+  // qualquer lembrete pendente na fila (stopDurationWatcher já parou o
+  // intervalo, mas pode ter sobrado uma fala já enfileirada) antes de
+  // começar a de finalização.
+  falarTexto('Produto embalado com sucesso.', { cancelarAnterior: true });
   setScanState('saving');
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);

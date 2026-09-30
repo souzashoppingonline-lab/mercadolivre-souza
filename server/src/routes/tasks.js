@@ -165,6 +165,28 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// Mover vários cartões para a coluna Excluído de uma vez — botão de lixeira
+// nos cabeçalhos de A Fazer/Em Andamento/Finalizado (pedido do usuário). É o
+// soft delete (mesmo efeito do PATCH board_column='excluido' cartão por
+// cartão), NÃO o hard delete: a exclusão definitiva continua sendo a 2ª etapa,
+// feita só a partir da coluna Excluído. Recebe os ids visíveis no quadro (e não
+// "a coluna inteira") pra respeitar os filtros ativos na tela.
+router.post('/mover-para-excluido', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Number.isInteger) : [];
+    if (!ids.length) return res.status(400).json({ error: 'ids vazio' });
+    const { rowCount } = await pool.query(
+      `UPDATE tasks SET board_column = 'excluido', status = 'aberto', completed_at = NULL, updated_at = now()
+       WHERE id = ANY($1::bigint[]) AND board_column <> 'excluido'`,
+      [ids]
+    );
+    res.json({ ok: true, count: rowCount });
+  } catch (e) {
+    console.error('[api/tasks] POST /mover-para-excluido', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Esvaziar a coluna Excluído de uma vez — pedido do usuário (evita ter que
 // abrir cartão por cartão numa coluna que só cresce). Mesmo hard delete de
 // DELETE /:id (só afeta quem já está em 'excluido', não tem outra forma de

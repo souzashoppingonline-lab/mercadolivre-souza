@@ -462,6 +462,7 @@ const DB = {
   async updateTask(id, body)           { return this._patch(`/tasks/${id}`, body); },
   async deleteTask(id)                 { return this._delete(`/tasks/${id}`); },
   async deleteTasksExcluidos()         { return this._delete('/tasks/excluidos/todos'); },
+  async moverColunaParaExcluido(column) { return this._post('/tasks/mover-para-excluido', { column }); },
   async getTaskComments(id)            { return this._get(`/tasks/${id}/comments`); },
   async addTaskComment(id, body)       { return this._post(`/tasks/${id}/comments`, body); },
 

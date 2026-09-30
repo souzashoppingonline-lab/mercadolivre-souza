@@ -164,15 +164,33 @@
       <!-- ═══ QUADRO KANBAN ═══ -->
       <div class="at-board" id="atBoard">
         <div class="at-col" data-col="a_fazer">
-          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-inbox"></i> A Fazer</div><span class="at-col-count" id="cnt_a_fazer">0</span></div>
+          <div class="at-col-head">
+            <div class="at-col-title"><i class="fas fa-inbox"></i> A Fazer</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="at-col-count" id="cnt_a_fazer">0</span>
+              <button class="at-col-clear-btn" id="btnExcluir_a_fazer" onclick="excluirColuna('a_fazer')" title="Mover todos os cartões desta coluna para Excluído" style="display:none"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
           <div class="at-col-body" id="body_a_fazer"></div>
         </div>
         <div class="at-col" data-col="em_andamento">
-          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-spinner"></i> Em Andamento</div><span class="at-col-count" id="cnt_em_andamento">0</span></div>
+          <div class="at-col-head">
+            <div class="at-col-title"><i class="fas fa-spinner"></i> Em Andamento</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="at-col-count" id="cnt_em_andamento">0</span>
+              <button class="at-col-clear-btn" id="btnExcluir_em_andamento" onclick="excluirColuna('em_andamento')" title="Mover todos os cartões desta coluna para Excluído" style="display:none"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
           <div class="at-col-body" id="body_em_andamento"></div>
         </div>
         <div class="at-col" data-col="finalizado">
-          <div class="at-col-head"><div class="at-col-title"><i class="fas fa-circle-check"></i> Finalizado</div><span class="at-col-count" id="cnt_finalizado">0</span></div>
+          <div class="at-col-head">
+            <div class="at-col-title"><i class="fas fa-circle-check"></i> Finalizado</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="at-col-count" id="cnt_finalizado">0</span>
+              <button class="at-col-clear-btn" id="btnExcluir_finalizado" onclick="excluirColuna('finalizado')" title="Mover todos os cartões desta coluna para Excluído" style="display:none"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
           <div class="at-col-body" id="body_finalizado"></div>
         </div>
         <div class="at-col" data-col="excluido">
@@ -347,6 +365,7 @@ function renderBoard() {
     const body = document.getElementById(`body_${col}`);
     body.innerHTML = items.length ? items.map(cardHtml).join('') : '<div class="at-col-empty">Nenhuma tarefa</div>';
     if (col === 'excluido') document.getElementById('btnExcluirTodos').style.display = items.length ? '' : 'none';
+    else document.getElementById(`btnExcluir_${col}`).style.display = items.length ? '' : 'none';
   });
 }
 
@@ -367,6 +386,22 @@ async function excluirTodosDaLixeira() {
   // _delete devolve null em qualquer falha (rede, 404, 500) — o motivo real
   // só sobrevive em DB.lastError, ver comentário em js/db.js.
   if (!res || res.error) { alert('Erro ao excluir: ' + (res?.error || DB.lastError || 'motivo desconhecido')); return; }
+  loadBoard();
+  loadSummary();
+}
+
+const COL_LABEL = { a_fazer: 'A Fazer', em_andamento: 'Em Andamento', finalizado: 'Finalizado' };
+
+// Move todos os cartões de uma coluna pra Excluído de uma vez — pedido do
+// usuário: mesmo botão da coluna Excluído, mas aqui é MOVER (reversível),
+// não apagar — mantém o fluxo de 2 passos (excluirTodosDaLixeira acima é
+// quem apaga de vez, só a partir da coluna Excluído).
+async function excluirColuna(col) {
+  const n = tasksCache.filter(t => t.board_column === col).length;
+  if (!n) return;
+  if (!confirm(`Mover os ${n} cartão(ões) de "${COL_LABEL[col]}" para Excluído?`)) return;
+  const res = await DB.moverColunaParaExcluido(col);
+  if (!res || res.error) { alert('Erro ao mover: ' + (res?.error || DB.lastError || 'motivo desconhecido')); return; }
   loadBoard();
   loadSummary();
 }

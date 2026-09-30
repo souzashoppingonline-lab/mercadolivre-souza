@@ -165,6 +165,32 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// Mover todos os cartões de uma coluna pra Excluído de uma vez — pedido do
+// usuário: o mesmo botão "Excluir" que já existe na coluna Excluído (esvazia
+// tudo de uma vez), só que nas outras 3 colunas (A Fazer/Em Andamento/
+// Finalizado) ele MOVE em vez de apagar direto — mantém o mesmo fluxo de 2
+// passos que já existe hoje pra cada cartão individual (dá pra recuperar um
+// cartão movido por engano antes de esvaziar a coluna Excluído de vez, ver
+// DELETE /excluidos/todos abaixo). Mesmo efeito de status/completed_at que
+// PATCH /:id já aplica ao mover um cartão pra fora de 'finalizado'.
+router.post('/mover-para-excluido', async (req, res) => {
+  try {
+    const { column } = req.body || {};
+    if (!['a_fazer', 'em_andamento', 'finalizado'].includes(column)) {
+      return res.status(400).json({ error: 'column inválida' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE tasks SET board_column = 'excluido', status = 'aberto', completed_at = NULL, updated_at = now()
+       WHERE board_column = $1 RETURNING id`,
+      [column]
+    );
+    res.json({ ok: true, count: rows.length });
+  } catch (e) {
+    console.error('[api/tasks] POST /mover-para-excluido', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Esvaziar a coluna Excluído de uma vez — pedido do usuário (evita ter que
 // abrir cartão por cartão numa coluna que só cresce). Mesmo hard delete de
 // DELETE /:id (só afeta quem já está em 'excluido', não tem outra forma de

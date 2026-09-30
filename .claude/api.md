@@ -335,6 +335,7 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `PATCH /api/tasks/:id { board_column?, title?, description?, priority?, assigned_to?, due_date?, tags? }` | edição parcial; mover pra `board_column='finalizado'` seta `status='concluido'`+`completed_at=now()`, mover pra qualquer outra coluna limpa os dois (usado tanto pelo drag-and-drop quanto pelo modal de edição) |
 | `DELETE /api/tasks/:id` | exclusão definitiva (`DELETE FROM tasks`, `task_comments` cai junto via `ON DELETE CASCADE`) — só aceita se o cartão já está com `board_column='excluido'` (400 caso contrário); o botão correspondente no frontend só aparece nesse estado |
 | `DELETE /api/tasks/excluidos/todos` | **v104** — exclusão definitiva de TODOS os cartões já em `board_column='excluido'` de uma vez (pedido do usuário, evita apagar um por um). `{ok, count}`. Manda 1 mensagem-resumo ao Telegram (não 1 por cartão) — ver `task-engine.md` |
+| `POST /api/tasks/mover-para-excluido { column }` | **v113.2** — move de uma vez TODOS os cartões de `column` (`a_fazer`\|`em_andamento`\|`finalizado`, 400 pra qualquer outro valor incl. `excluido`) para `board_column='excluido'` — soft delete em lote, não apaga nada. `{ok, count}`. Sem notificação Telegram — ver `task-engine.md` |
 | `GET /api/tasks/:id/comments` | comentários do cartão, ordenados por data |
 | `POST /api/tasks/:id/comments { author?, text }` | adiciona comentário |
 

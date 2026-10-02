@@ -1046,6 +1046,12 @@ function falarQuantidades(orders) {
   // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
   // de falar a quantidade+título.
   falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+  // 2+ produtos no total (mesmo que seja 1 pedido só com quantidade 2) —
+  // reforço de atenção pra não embalar a quantidade errada, pedido explícito
+  // do usuário. Enfileira depois da fala acima, sem cancelar nada.
+  if (totalProdutos >= 2) {
+    falarTexto('Preste atenção, confira antes de embalar a quantidade. Isso é importante para o cliente receber o pedido correto.');
+  }
 }
 
 async function startNew(shippingId) {

@@ -1106,6 +1106,13 @@ async function finalizeCurrent() {
   // intervalo, mas pode ter sobrado uma fala já enfileirada) antes de
   // começar a de finalização.
   falarTexto('Produto embalado com sucesso.', { cancelarAnterior: true });
+  // 2+ produtos no total (mesmo critério de falarQuantidades) — reforça a
+  // conferência também no fechamento, não só na abertura. Pedido explícito
+  // do usuário.
+  const totalProdutosSessao = (session.orders || []).reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+  if (totalProdutosSessao >= 2) {
+    falarTexto('Confirmar se embalou o pedido com duas ou mais pedidos ou unidades?');
+  }
   setScanState('saving');
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);

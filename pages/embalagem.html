@@ -1041,12 +1041,30 @@ function initVozToggle() {
   if (!('speechSynthesis' in window)) { const btn = document.getElementById('vozToggleBtn'); if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-volume-xmark"></i> Sem suporte'; } return; }
   atualizarVozToggleBtn();
 }
-function falarTexto(texto, { cancelarAnterior } = {}) {
+// Escolhe uma voz feminina em pt-BR, se o navegador tiver alguma disponível —
+// a Web Speech API não expõe gênero (não existe isso no spec), só nome, então
+// é heurística por nome comum de voz feminina nos motores mais usados
+// (Chrome/Edge/Android). "De preferência" (pedido do usuário): se não achar
+// nenhuma, cai no voice default sem travar nada.
+function vozFemininaPtBr() {
+  try {
+    const vozes = window.speechSynthesis.getVoices();
+    const nomeFeminino = /fem|maria|luciana|helena|joana|camila|ana|vit[oó]ria|francisca/i;
+    return vozes.find(v => /pt(-|_)br/i.test(v.lang) && nomeFeminino.test(v.name)) || null;
+  } catch (_) { return null; }
+}
+function falarTexto(texto, { cancelarAnterior, vozFeminina } = {}) {
   if (!vozAtiva() || !('speechSynthesis' in window) || !texto) return;
   try {
     if (cancelarAnterior) window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(texto);
     u.lang = 'pt-BR'; u.rate = 1.05;
+    if (vozFeminina) {
+      // Try/catch PRÓPRIO: se a troca de voz falhar por qualquer motivo
+      // (voz inválida, navegador estrito), a fala não pode ser perdida —
+      // só cai no voice default, sem travar a mensagem principal.
+      try { const v = vozFemininaPtBr(); if (v) u.voice = v; } catch (_) {}
+    }
     window.speechSynthesis.speak(u);
   } catch (_) { /* nunca deve travar a bipagem por causa da fala */ }
 }
@@ -1105,9 +1123,16 @@ function falarQuantidades(orders) {
   // e, pra 2+ produtos, o reforço de atenção. Extraída numa função pra poder
   // rodar na hora (pedido único) ou só depois do bipe triplo (2+, ver abaixo).
   const falarSequencia = () => {
-    // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
-    // de falar a quantidade+título.
-    falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+    if (totalProdutos === 1) {
+      // Pedido de 1 unidade só (v113.9, pedido explícito do usuário) — fala
+      // diferente da de pack/2+: não lê o título (manda olhar a tela), e de
+      // preferência numa voz feminina, só pra diferenciar da fala padrão.
+      falarTexto('Pedido com 1 unidade, porém preste atenção no pedido se está embalando corretamente, leia a tela do computador!', { cancelarAnterior: true, vozFeminina: true });
+    } else {
+      // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
+      // de falar a quantidade+título.
+      falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+    }
     // Lembrete de bipar de novo — pedido explícito do usuário, de volta depois
     // de ter sido removido (v113.3): agora só 1x, logo após quantidade+título,
     // sem repetir a cada 1min como antes.

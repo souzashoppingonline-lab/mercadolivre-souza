@@ -1046,6 +1046,10 @@ function falarQuantidades(orders) {
   // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
   // de falar a quantidade+título.
   falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+  // Lembrete de bipar de novo — pedido explícito do usuário, de volta depois
+  // de ter sido removido (v113.3): agora só 1x, logo após quantidade+título,
+  // sem repetir a cada 1min como antes.
+  falarTexto('Não esqueça de bipar pela segunda vez para finalizar o pedido!');
   // 2+ produtos no total (mesmo que seja 1 pedido só com quantidade 2) —
   // reforço de atenção pra não embalar a quantidade errada, pedido explícito
   // do usuário. Enfileira depois da fala acima, sem cancelar nada.

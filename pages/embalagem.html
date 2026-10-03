@@ -788,6 +788,25 @@ function stopDurationWatcher() {
   document.getElementById('scanTimer').textContent = '';
   document.getElementById('durationWarn').innerHTML = '';
   resetCronoVisual();
+  stopLembreteConferenciaInterval();
+}
+
+// Lembrete repetido a cada 1 minuto, só pra pedido com 2+ produtos — pedido
+// explícito do usuário (outra ideia, depois do bipe triplo): pergunta se já
+// conferiu, não só avisa. Ligado ao mesmo ciclo de vida do cronômetro
+// (start/stopDurationWatcher) — nunca um 2º timer solto rodando sozinho.
+let lembreteConferenciaIntervalId = null;
+function startLembreteConferenciaInterval(orders) {
+  stopLembreteConferenciaInterval();
+  const totalProdutos = (orders || []).reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+  if (totalProdutos < 2) return;
+  lembreteConferenciaIntervalId = setInterval(() => {
+    falarTexto(`Pedido com ${totalProdutos} unidades, já conferiu?`);
+  }, 60000);
+}
+function stopLembreteConferenciaInterval() {
+  clearInterval(lembreteConferenciaIntervalId);
+  lembreteConferenciaIntervalId = null;
 }
 
 function setScanState(s) {
@@ -1137,6 +1156,7 @@ async function startNew(shippingId) {
   startRecording();
   setScanState('recording');
   startDurationWatcher();
+  startLembreteConferenciaInterval(data.orders);
 }
 
 // Devolve true se de fato finalizou (upload disparado), false se o operador

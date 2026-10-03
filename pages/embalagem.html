@@ -1032,6 +1032,45 @@ function falarTexto(texto, { cancelarAnterior } = {}) {
   } catch (_) { /* nunca deve travar a bipagem por causa da fala */ }
 }
 
+// Bipe sonoro — independente da voz (toca mesmo se o toggle "Falar quantidade"
+// estiver desligado, pedido do usuário: é um alerta de atenção, não uma fala).
+// Web Audio API, sem arquivo externo — mesmo padrão de js/layout.js
+// (playBeep/_getCtx), mas próprio desta página pra não depender dos internos
+// de outro script.
+let _bipAudioCtx = null;
+function _getBipCtx() {
+  try {
+    if (!_bipAudioCtx) _bipAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_bipAudioCtx.state === 'suspended') _bipAudioCtx.resume().catch(() => {});
+    return _bipAudioCtx;
+  } catch (_) { return null; }
+}
+function playBip(freq = 1000, duration = 0.12, volume = 0.5) {
+  try {
+    const ctx = _getBipCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch (_) { /* nunca deve travar a bipagem por causa do som */ }
+}
+// 3 bipes espaçados por 180ms — pedido explícito do usuário: chama a atenção
+// do embalador ANTES de qualquer fala, pra pedido com 2+ pedidos/unidades.
+// BIP_TRIPLO_MS é quanto esperar antes de seguir com a fala normal.
+const BIP_TRIPLO_MS = 620;
+function playBipTriplo() {
+  playBip();
+  setTimeout(() => playBip(), 180);
+  setTimeout(() => playBip(), 360);
+}
+
 function falarQuantidades(orders) {
   if (!orders || !orders.length) return;
   const totalProdutos = orders.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
@@ -1043,18 +1082,32 @@ function falarQuantidades(orders) {
   const titulosTexto = orders.length > 1
     ? orders.map((o, i) => `Pedido ${i + 1}: ${o.title || 'sem título'}.`).join(' ')
     : (orders[0].title || '');
-  // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
-  // de falar a quantidade+título.
-  falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
-  // Lembrete de bipar de novo — pedido explícito do usuário, de volta depois
-  // de ter sido removido (v113.3): agora só 1x, logo após quantidade+título,
-  // sem repetir a cada 1min como antes.
-  falarTexto('Não esqueça de bipar pela segunda vez para finalizar o pedido!');
-  // 2+ produtos no total (mesmo que seja 1 pedido só com quantidade 2) —
-  // reforço de atenção pra não embalar a quantidade errada, pedido explícito
-  // do usuário. Enfileira depois da fala acima, sem cancelar nada.
+  // Sequência de voz de sempre: quantidade+título, lembrete de bipar de novo
+  // e, pra 2+ produtos, o reforço de atenção. Extraída numa função pra poder
+  // rodar na hora (pedido único) ou só depois do bipe triplo (2+, ver abaixo).
+  const falarSequencia = () => {
+    // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
+    // de falar a quantidade+título.
+    falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+    // Lembrete de bipar de novo — pedido explícito do usuário, de volta depois
+    // de ter sido removido (v113.3): agora só 1x, logo após quantidade+título,
+    // sem repetir a cada 1min como antes.
+    falarTexto('Não esqueça de bipar pela segunda vez para finalizar o pedido!');
+    // 2+ produtos no total (mesmo que seja 1 pedido só com quantidade 2) —
+    // reforço de atenção pra não embalar a quantidade errada, pedido explícito
+    // do usuário. Enfileira depois da fala acima, sem cancelar nada.
+    if (totalProdutos >= 2) {
+      falarTexto('Preste atenção, confira antes de embalar a quantidade. Isso é importante para o cliente receber o pedido correto.');
+    }
+  };
+  // 2+ produtos — bipe triplo ANTES de qualquer fala (pedido explícito do
+  // usuário), pra chamar atenção antes de começar a falar. Toca mesmo com a
+  // voz desligada (é alerta sonoro, não fala). Depois do bipe, segue normal.
   if (totalProdutos >= 2) {
-    falarTexto('Preste atenção, confira antes de embalar a quantidade. Isso é importante para o cliente receber o pedido correto.');
+    playBipTriplo();
+    setTimeout(falarSequencia, BIP_TRIPLO_MS);
+  } else {
+    falarSequencia();
   }
 }
 
@@ -1109,13 +1162,21 @@ async function finalizeCurrent() {
   // qualquer lembrete pendente na fila (stopDurationWatcher já parou o
   // intervalo, mas pode ter sobrado uma fala já enfileirada) antes de
   // começar a de finalização.
-  falarTexto('Produto embalado com sucesso.', { cancelarAnterior: true });
   // 2+ produtos no total (mesmo critério de falarQuantidades) — reforça a
   // conferência também no fechamento, não só na abertura. Pedido explícito
-  // do usuário.
+  // do usuário: mesmo bipe triplo de atenção ANTES da fala, de novo.
   const totalProdutosSessao = (session.orders || []).reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+  const falarFinalizacao = () => {
+    falarTexto('Produto embalado com sucesso.', { cancelarAnterior: true });
+    if (totalProdutosSessao >= 2) {
+      falarTexto('Confirmar se embalou o pedido com duas ou mais pedidos ou unidades?');
+    }
+  };
   if (totalProdutosSessao >= 2) {
-    falarTexto('Confirmar se embalou o pedido com duas ou mais pedidos ou unidades?');
+    playBipTriplo();
+    setTimeout(falarFinalizacao, BIP_TRIPLO_MS);
+  } else {
+    falarFinalizacao();
   }
   setScanState('saving');
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede

@@ -799,10 +799,20 @@ let lembreteConferenciaIntervalId = null;
 function startLembreteConferenciaInterval(orders) {
   stopLembreteConferenciaInterval();
   const totalProdutos = (orders || []).reduce((s, o) => s + (Number(o.quantity) || 0), 0);
-  if (totalProdutos < 2) return;
-  lembreteConferenciaIntervalId = setInterval(() => {
-    falarTexto(`Pedido com ${totalProdutos} unidades, já conferiu?`);
-  }, 60000);
+  if (totalProdutos === 1) {
+    // Pedido de 1 produto e 1 unidade (v113.11, pedido explícito do usuário)
+    // — mesmo princípio do lembrete de 2+: repete a cada 1min perguntando,
+    // só que manda olhar a tela em vez de perguntar a quantidade (não faz
+    // sentido perguntar "já conferiu a quantidade" quando é só 1). Mesma voz
+    // feminina da fala de abertura de 1 unidade, pra diferenciar.
+    lembreteConferenciaIntervalId = setInterval(() => {
+      falarTexto('Leia a tela e veja se o pedido está correto.', { vozFeminina: true });
+    }, 60000);
+  } else if (totalProdutos >= 2) {
+    lembreteConferenciaIntervalId = setInterval(() => {
+      falarTexto(`Pedido com ${totalProdutos} unidades, já conferiu?`);
+    }, 60000);
+  }
 }
 function stopLembreteConferenciaInterval() {
   clearInterval(lembreteConferenciaIntervalId);

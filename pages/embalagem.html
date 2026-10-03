@@ -1124,10 +1124,12 @@ function falarQuantidades(orders) {
   // rodar na hora (pedido único) ou só depois do bipe triplo (2+, ver abaixo).
   const falarSequencia = () => {
     if (totalProdutos === 1) {
-      // Pedido de 1 unidade só (v113.9, pedido explícito do usuário) — fala
-      // diferente da de pack/2+: não lê o título (manda olhar a tela), e de
+      // Pedido de 1 unidade só (v113.9, ajustado na v113.10 — pedido explícito
+      // do usuário: "sempre o título deve ser lido primeiro"). Lê quantidade+
+      // título igual todo o resto, DEPOIS entra com a frase de atenção — de
       // preferência numa voz feminina, só pra diferenciar da fala padrão.
-      falarTexto('Pedido com 1 unidade, porém preste atenção no pedido se está embalando corretamente, leia a tela do computador!', { cancelarAnterior: true, vozFeminina: true });
+      falarTexto(`Pedido com 1 unidade. ${titulosTexto}`.trim(), { cancelarAnterior: true, vozFeminina: true });
+      falarTexto('Porém preste atenção no pedido se está embalando corretamente, leia a tela do computador!', { vozFeminina: true });
     } else {
       // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
       // de falar a quantidade+título.

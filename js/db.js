@@ -479,6 +479,7 @@ const DB = {
   async getRelatorioPeriodo(params={})   { return this._get('/embalagem/relatorio-periodo', params); },
   async getEmbalagemErros(days=30)       { return this._get('/embalagem/erros', { days }); },
   async getEmbalagemAuditoria(params={}) { return this._get('/embalagem/auditoria', params); },
+  async buscarProdutosEmbalagem(params={}) { return this._get('/embalagem/produtos/buscar', params); },
 
   // ── Conciliação Bancária ──
   async getAgendaRecebimentos(params={}) { return this._get('/conciliacao/agenda-recebimentos', params); },

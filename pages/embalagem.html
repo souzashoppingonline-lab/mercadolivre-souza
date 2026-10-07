@@ -320,6 +320,27 @@
     .rd-destaques { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .rd-chip { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 13px; font-size: 12px; }
     .rd-chip b { color: var(--primary); }
+
+    /* Aba Produtos/Anúncio (v114) — mesmo padrão visual da Observação de
+       Embalagem já usada em pages/produtos.html, só que por linha de
+       resultado (pode haver mais de 1 produto encontrado na busca). */
+    .prod-row { display: flex; gap: 14px; align-items: flex-start; background: var(--bg-card2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+    .prod-row img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--bg-dark); flex-shrink: 0; }
+    .prod-row .info { flex: 1; min-width: 0; }
+    .prod-row .titulo { font-size: 13px; font-weight: 700; }
+    .prod-row .meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .obs-emb-titulo { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin: 10px 0 6px; display: flex; align-items: center; gap: 6px; }
+    .obs-emb-titulo i { color: #a56bd1; }
+    .obs-emb-add-btn { display: inline-flex; align-items: center; gap: 8px; background: transparent; border: 1.5px dashed var(--border); color: var(--text-muted); border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .obs-emb-add-btn:hover { border-color: #a56bd1; color: #a56bd1; }
+    .obs-emb-box { display: flex; align-items: center; gap: 12px; background: rgba(165,107,209,.12); border: 2px solid #a56bd1; border-radius: 10px; padding: 10px 14px; }
+    .obs-emb-box i.icon { color: #a56bd1; font-size: 16px; }
+    .obs-emb-box .txt { flex: 1; font-size: 13px; font-weight: 700; color: #d9b8ef; }
+    .obs-emb-box .edit-btn { background: transparent; border: none; color: var(--text-muted); font-size: 12px; cursor: pointer; padding: 4px 8px; }
+    .obs-emb-box .edit-btn:hover { color: #a56bd1; }
+    .obs-emb-edit { display: flex; gap: 8px; }
+    .obs-emb-edit input { flex: 1; background: var(--bg-card2); border: 2px solid #a56bd1; color: var(--text-main); border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+    .obs-emb-edit button { background: #a56bd1; color: #1a0f22; border: none; border-radius: 8px; padding: 0 16px; font-size: 13px; font-weight: 800; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -342,6 +363,7 @@
         <button class="emb-tab-btn" id="tabBtnRelDia" onclick="switchTab('reldia')"><i class="fas fa-file-pdf"></i> Relatório do Dia</button>
         <button class="emb-tab-btn" id="tabBtnAuditoria" onclick="switchTab('auditoria')"><i class="fas fa-list-check"></i> Auditoria <span id="audBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
         <button class="emb-tab-btn" id="tabBtnErros" onclick="switchTab('erros')"><i class="fas fa-triangle-exclamation"></i> Erros <span id="errosBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:11px;padding:1px 7px;font-weight:700"></span></button>
+        <button class="emb-tab-btn" id="tabBtnProdutos" onclick="switchTab('produtos')" style="display:none"><i class="fas fa-tag"></i> Produtos/Anúncio</button>
       </div>
 
       <!-- ═══ ABA: BIPAR ═══ -->
@@ -561,6 +583,19 @@
             <button class="emb-btn" onclick="loadErros()"><i class="fas fa-sync-alt"></i> Atualizar</button>
           </div>
           <div class="emb-video-list" id="errosList"><div class="emb-placeholder">Carregando...</div></div>
+        </div>
+      </div>
+
+      <!-- ═══ ABA: PRODUTOS/ANÚNCIO (só admin) ═══ -->
+      <div class="emb-panel" id="panelProdutos">
+        <div class="emb-card">
+          <p class="emb-subtitle" style="margin-top:0">Busque um anúncio por SKU ou ID e cadastre uma frase — ela é lida em voz alta pro embalador na hora de bipar esse produto. Não muda nada do que já existe, só acrescenta um aviso falado específico daquele anúncio.</p>
+          <div class="emb-filters">
+            <div class="emb-field"><label>SKU</label><input id="fProdSku" placeholder="Ex: CAP-IP15-PM-BLK" onkeydown="if(event.key==='Enter')buscarProdutoEmbalagem()"></div>
+            <div class="emb-field"><label>ID do Anúncio</label><input id="fProdItemId" placeholder="Ex: MLB1234567890" onkeydown="if(event.key==='Enter')buscarProdutoEmbalagem()"></div>
+            <button class="emb-btn" onclick="buscarProdutoEmbalagem()"><i class="fas fa-search"></i> Buscar</button>
+          </div>
+          <div id="prodBuscaList"><div class="emb-placeholder">Informe o SKU e/ou o ID do anúncio pra buscar.</div></div>
         </div>
       </div>
 
@@ -1156,9 +1191,11 @@ function falarQuantidades(orders) {
     if (totalProdutos >= 2) {
       falarTexto('Preste atenção, confira antes de embalar a quantidade. Isso é importante para o cliente receber o pedido correto.');
     }
-    // Processo novo (v113.12), independente do resto desta sequência — só
-    // entra na fila depois do que já foi falado acima, nunca cancela nada.
+    // Processos novos (v113.12/v114), independentes do resto desta
+    // sequência — só entram na fila depois do que já foi falado acima,
+    // nunca cancelam nada.
     falarEstadoEntrega(orders);
+    falarObservacoesEmbalagem(orders);
   };
   // 2+ produtos — bipe triplo ANTES de qualquer fala (pedido explícito do
   // usuário), pra chamar atenção antes de começar a falar. Toca mesmo com a
@@ -1180,6 +1217,17 @@ function falarEstadoEntrega(orders) {
   const estado = orders?.[0]?.buyer_state_name;
   if (!estado) return;
   falarTexto(`Estado: ${estado}. Caso seja um produto frágil, por favor embalar bem.`);
+}
+
+// Lê a frase cadastrada por anúncio na aba Produtos/Anúncio (v114, pedido
+// explícito do usuário — outra forma de reduzir erro de embalagem: uma frase
+// extra, por produto, lida ALÉM do título, não no lugar dele). Mesmo
+// "processo novo" dos outros (`falarEstadoEntrega`): nunca cancela nada,
+// só entra na fila. Pack com 2+ pedidos — fala a frase de CADA pedido que
+// tiver uma cadastrada, não só do 1º (produtos diferentes podem ter avisos
+// diferentes dentro do mesmo envio).
+function falarObservacoesEmbalagem(orders) {
+  (orders || []).forEach(o => { if (o.observacao_embalagem) falarTexto(o.observacao_embalagem); });
 }
 
 async function startNew(shippingId) {
@@ -1461,6 +1509,7 @@ function switchTab(tab) {
   document.getElementById('panelRelDia').classList.toggle('active', tab === 'reldia');
   document.getElementById('panelAuditoria').classList.toggle('active', tab === 'auditoria');
   document.getElementById('panelErros').classList.toggle('active', tab === 'erros');
+  document.getElementById('panelProdutos').classList.toggle('active', tab === 'produtos');
   document.getElementById('tabBtnBipar').classList.toggle('active', tab === 'bipar');
   document.getElementById('tabBtnBuscar').classList.toggle('active', tab === 'buscar');
   document.getElementById('tabBtnConferencia').classList.toggle('active', tab === 'conferencia');
@@ -1469,6 +1518,7 @@ function switchTab(tab) {
   document.getElementById('tabBtnRelDia').classList.toggle('active', tab === 'reldia');
   document.getElementById('tabBtnAuditoria').classList.toggle('active', tab === 'auditoria');
   document.getElementById('tabBtnErros').classList.toggle('active', tab === 'erros');
+  document.getElementById('tabBtnProdutos').classList.toggle('active', tab === 'produtos');
   if (tab === 'bipar') refocusScan();
   // Carrega sozinha ao abrir a aba (v113, pedido do usuário — "dificuldade
   // de achar os vídeos"): sem filtro nenhum a rota já devolve os mais
@@ -1645,6 +1695,76 @@ async function loadVideos() {
   list.innerHTML = rows.length
     ? contagem + rows.map(v => videoRowHtml(v, { showStore: true })).join('')
     : '<div class="emb-placeholder">Nenhum vídeo encontrado com esses filtros.</div>';
+}
+
+// ── Aba: Produtos/Anúncio (v114) — só admin ───────────────────────────
+// Busca por SKU e/ou ID do anúncio, cadastra uma frase (observacao_embalagem,
+// campo que já existia desde v101) lida em voz alta DURANTE a bipagem, ALÉM
+// do título — não troca nada do que já existe, só acrescenta. Reaproveita o
+// mesmo padrão de edição (view/editar/salvar) de pages/produtos.html, mas
+// por linha de resultado (pode achar mais de 1 anúncio na busca).
+async function buscarProdutoEmbalagem() {
+  const sku = document.getElementById('fProdSku').value.trim();
+  const itemId = document.getElementById('fProdItemId').value.trim();
+  const list = document.getElementById('prodBuscaList');
+  if (!sku && !itemId) { list.innerHTML = '<div class="emb-placeholder">Informe o SKU e/ou o ID do anúncio pra buscar.</div>'; return; }
+  list.innerHTML = '<div class="emb-placeholder">Buscando...</div>';
+  const params = {}; if (sku) params.sku = sku; if (itemId) params.item_id = itemId;
+  const data = await DB.buscarProdutosEmbalagem(params);
+  const rows = data?.rows || [];
+  list.innerHTML = rows.length ? rows.map(prodRowHtml).join('') : '<div class="emb-placeholder">Nenhum anúncio encontrado com esse SKU/ID.</div>';
+}
+
+function prodRowHtml(p) {
+  return `<div class="prod-row" id="prodRow_${p.ml_id}">
+    <img src="${p.thumbnail || ''}" onerror="this.style.visibility='hidden'">
+    <div class="info">
+      <div class="titulo">${escapeHtml(p.title || '(sem título)')}</div>
+      <div class="meta">${escapeHtml(p.marketplace)} · ${escapeHtml(p.store_nickname || '—')} · ${escapeHtml(p.ml_id)}</div>
+      <div id="obsEmbContainer_${p.ml_id}" data-obs="${escapeHtml(p.observacao_embalagem || '')}">${obsEmbInnerView(p.ml_id, p.observacao_embalagem)}</div>
+    </div>
+  </div>`;
+}
+
+// Mesmos 3 estados de pages/produtos.html (sem cadastro / cadastrada / editando),
+// só que parametrizado por `id` em vez de depender de uma única variável global
+// — aqui pode ter várias linhas de resultado na tela ao mesmo tempo.
+function obsEmbInnerView(id, observacao) {
+  if (observacao) {
+    return `
+      <div class="obs-emb-titulo"><i class="fas fa-volume-high"></i> Frase lida na bipagem</div>
+      <div class="obs-emb-box">
+        <i class="fas fa-triangle-exclamation icon"></i>
+        <div class="txt">${escapeHtml(observacao)}</div>
+        <button class="edit-btn" onclick="obsEmbEditarRow('${id}')"><i class="fas fa-pen"></i> editar</button>
+      </div>`;
+  }
+  return `
+      <div class="obs-emb-titulo"><i class="fas fa-volume-high"></i> Frase lida na bipagem</div>
+      <button class="obs-emb-add-btn" onclick="obsEmbEditarRow('${id}')"><i class="fas fa-plus"></i> Cadastrar frase (lida além do título)</button>`;
+}
+
+function obsEmbEditarRow(id) {
+  const container = document.getElementById(`obsEmbContainer_${id}`);
+  const atual = container.dataset.obs || '';
+  container.innerHTML = `
+      <div class="obs-emb-titulo"><i class="fas fa-volume-high"></i> Frase lida na bipagem</div>
+      <div class="obs-emb-edit">
+        <input id="obsEmbInput_${id}" value="${escapeHtml(atual)}" placeholder="Ex: Frágil, conferir voltagem antes de embalar...">
+        <button onclick="obsEmbSalvarRow('${id}')">Salvar</button>
+      </div>`;
+  const inp = document.getElementById(`obsEmbInput_${id}`);
+  inp.focus();
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') obsEmbSalvarRow(id); });
+}
+
+async function obsEmbSalvarRow(id) {
+  const texto = document.getElementById(`obsEmbInput_${id}`).value;
+  const r = await DB.saveObservacaoEmbalagem(id, texto);
+  if (!r) { alert('Erro ao salvar a frase — tente de novo.'); return; }
+  const container = document.getElementById(`obsEmbContainer_${id}`);
+  container.dataset.obs = r.observacao_embalagem || '';
+  container.innerHTML = obsEmbInnerView(id, r.observacao_embalagem);
 }
 
 // ── Aba: Conferência do Dia — sempre os pedidos bipados hoje ──────────
@@ -2366,6 +2486,11 @@ async function initEmbalagemPorPapel() {
   if (staff?.role === 'admin') {
     const tabBipar = document.getElementById('tabBtnBipar');
     if (tabBipar) tabBipar.style.display = 'none';
+    // Produtos/Anúncio (v114) — só admin cadastra a frase lida na bipagem,
+    // pedido explícito do usuário. Papel 'embalagem' nunca vê o botão (e o
+    // backend também bloqueia a escrita pra esse papel, ver embalagem.md).
+    const tabProdutos = document.getElementById('tabBtnProdutos');
+    if (tabProdutos) tabProdutos.style.display = '';
     switchTab('conferencia'); // relatório de hoje — mesmo destino de quem só quer olhar dado
   } else {
     initCamera();

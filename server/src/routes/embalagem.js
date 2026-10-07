@@ -959,11 +959,15 @@ router.get('/videos', async (req, res) => {
 // Shopee (shopee_item_data.item_sku) e snapshot do pedido mais recente do ML
 // (orders.raw_data, mesmo caminho usado em GET /pedido/:shippingId). Ambos
 // indexados (migrate-v114.sql).
+// Sem filtro nenhum (sku/item_id), lista os já CADASTRADOS em vez de devolver
+// vazio (v114.2, pedido explícito do usuário — "saber quais anúncios estão
+// cadastrados"). Mesmo raciocínio já aplicado em GET /videos (v113): a aba
+// não deve depender do operador lembrar um SKU/ID só pra enxergar o que já
+// tem frase registrada.
 router.get('/produtos/buscar', async (req, res) => {
   try {
     const sku = (req.query.sku || '').trim();
     const itemId = (req.query.item_id || '').trim();
-    if (!sku && !itemId) return res.json({ rows: [] });
 
     const where = [];
     const params = [];
@@ -977,6 +981,7 @@ router.get('/produtos/buscar', async (req, res) => {
         SELECT o.item_id FROM orders o WHERE o.raw_data->'order_items'->0->'item'->>'seller_sku' = $${p}
       )`);
     }
+    if (!sku && !itemId) where.push(`i.observacao_embalagem IS NOT NULL`);
 
     const { rows } = await pool.query(
       `SELECT i.ml_id, i.title, i.thumbnail, i.observacao_embalagem,
@@ -986,7 +991,7 @@ router.get('/produtos/buscar', async (req, res) => {
        LEFT JOIN marketplaces mk ON mk.id = i.marketplace_id
        WHERE ${where.join(' AND ')}
        ORDER BY i.title ASC
-       LIMIT 20`,
+       LIMIT ${(!sku && !itemId) ? 200 : 20}`,
       params
     );
     res.json({ rows });

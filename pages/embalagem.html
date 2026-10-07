@@ -595,7 +595,7 @@
             <div class="emb-field"><label>ID do Anúncio</label><input id="fProdItemId" placeholder="Ex: MLB1234567890" onkeydown="if(event.key==='Enter')buscarProdutoEmbalagem()"></div>
             <button class="emb-btn" onclick="buscarProdutoEmbalagem()"><i class="fas fa-search"></i> Buscar</button>
           </div>
-          <div id="prodBuscaList"><div class="emb-placeholder">Informe o SKU e/ou o ID do anúncio pra buscar.</div></div>
+          <div id="prodBuscaList"><div class="emb-placeholder">Carregando...</div></div>
         </div>
       </div>
 
@@ -1534,6 +1534,9 @@ function switchTab(tab) {
   if (tab === 'reldia') loadRelDia();
   if (tab === 'auditoria') loadAuditoria();
   if (tab === 'erros') loadErros();
+  // Idem (v114.2, pedido do usuário — "saber quais anúncios estão
+  // cadastrados"): sem SKU/ID nenhum, a rota devolve os já cadastrados.
+  if (tab === 'produtos') buscarProdutoEmbalagem();
   // Expedição em "tempo real" (pedido do usuário) — atualiza sozinha a cada
   // 30s só enquanto a aba estiver aberta, pra não gastar requisição à toa
   // com o operador em outra aba.
@@ -1710,12 +1713,21 @@ async function buscarProdutoEmbalagem() {
   const sku = document.getElementById('fProdSku').value.trim();
   const itemId = document.getElementById('fProdItemId').value.trim();
   const list = document.getElementById('prodBuscaList');
-  if (!sku && !itemId) { list.innerHTML = '<div class="emb-placeholder">Informe o SKU e/ou o ID do anúncio pra buscar.</div>'; return; }
   list.innerHTML = '<div class="emb-placeholder">Buscando...</div>';
   const params = {}; if (sku) params.sku = sku; if (itemId) params.item_id = itemId;
   const data = await DB.buscarProdutosEmbalagem(params);
   const rows = data?.rows || [];
-  list.innerHTML = rows.length ? rows.map(prodRowHtml).join('') : '<div class="emb-placeholder">Nenhum anúncio encontrado com esse SKU/ID.</div>';
+  // Sem SKU/ID nenhum, a rota já devolve os anúncios JÁ CADASTRADOS (v114.2,
+  // pedido do usuário — "saber quais anúncios estão cadastrados") — mesmo
+  // padrão já usado em "Buscar vídeos" (v113): nunca fica vazio sem motivo.
+  const semFiltro = !sku && !itemId;
+  const contagem = semFiltro
+    ? `<div class="emb-subtitle" style="margin-bottom:10px">Mostrando os ${rows.length} anúncio(s) já cadastrado(s) com frase.</div>`
+    : `<div class="emb-subtitle" style="margin-bottom:10px">${rows.length} anúncio(s) encontrado(s).</div>`;
+  const vazio = semFiltro
+    ? '<div class="emb-placeholder">Nenhum anúncio cadastrado ainda — busque por SKU ou ID pra cadastrar o 1º.</div>'
+    : '<div class="emb-placeholder">Nenhum anúncio encontrado com esse SKU/ID.</div>';
+  list.innerHTML = rows.length ? contagem + rows.map(prodRowHtml).join('') : vazio;
 }
 
 function prodRowHtml(p) {

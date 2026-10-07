@@ -873,22 +873,46 @@ router.get('/auditoria', async (req, res) => {
   }
 });
 
-// GET /api/embalagem/videos?order_id&buyer&date_from&date_to — consulta
+// GET /api/embalagem/videos?order_id&titulo&buyer&date_from&date_to — consulta
 // (usado tanto na aba "Buscar vídeos" quanto, no futuro, num botão em
-// pages/devolucoes.html).
+// pages/devolucoes.html). Sem filtro nenhum, devolve os 100 mais recentes —
+// pedido do usuário: a aba não pode ficar vazia esperando o operador acertar
+// o termo de busca exato, dá pra simplesmente rolar a lista.
 router.get('/videos', async (req, res) => {
   try {
-    const { order_id, buyer, date_from, date_to, store_id, marketplace } = req.query;
+    const { order_id, titulo, buyer, date_from, date_to, store_id, marketplace } = req.query;
     const where = [];
     const params = [];
-    // Casa pelo RASTREIO/etiqueta (pv.shipping_id — o valor bipado: tracking BR...
-    // da Shopee ou shipping_id do ML) OU pelo número do pedido (pv.order_ids).
-    if (order_id) { params.push(order_id); where.push(`(pv.shipping_id = $${params.length} OR $${params.length} = ANY(pv.order_ids))`); }
+    // Rastreio/etiqueta (pv.shipping_id) aceita busca PARCIAL (ILIKE, índice
+    // trigram — ver migrate-v113.sql) — pedido do usuário, difícil lembrar o
+    // código inteiro. Número do pedido (pv.order_ids) continua exato: é um ID
+    // longo normalmente colado/escaneado por inteiro, e assim mantém o
+    // casamento pelo índice GIN existente (idx_packing_videos_order_ids),
+    // mais rápido que teria que desmontar o array pra comparar por ILIKE.
+    if (order_id) {
+      params.push(`%${order_id}%`); const likeP = params.length;
+      params.push(order_id); const eqP = params.length;
+      where.push(`(pv.shipping_id ILIKE $${likeP} OR $${eqP} = ANY(pv.order_ids))`);
+    }
+    // Produto (v113, pedido explícito do usuário — "melhore essa busca"): o
+    // operador muitas vezes lembra o que vendeu, não o número do pedido.
+    // Casa em QUALQUER pedido do pacote (não só o 1º, ver LATERAL abaixo) —
+    // EXISTS contra orders.ml_id = ANY(order_ids), que é um lookup pela PK de
+    // orders por elemento do array (pequeno, não um scan da tabela toda).
+    if (titulo) {
+      params.push(`%${titulo}%`);
+      where.push(`EXISTS (SELECT 1 FROM orders ot WHERE ot.ml_id = ANY(pv.order_ids) AND ot.title ILIKE $${params.length})`);
+    }
     if (store_id) { params.push(store_id); where.push(`pv.store_id = $${params.length}`); }
     if (marketplace) { params.push(marketplace); where.push(`mk.code = $${params.length}`); }
     if (date_from) { params.push(date_from); where.push(`pv.created_at >= $${params.length}`); }
     if (date_to) { params.push(date_to); where.push(`pv.created_at <= $${params.length}`); }
-    if (buyer) { params.push(`%${buyer}%`); where.push(`ord.buyer_nickname ILIKE $${params.length}`); }
+    // Comprador: mesmo raciocínio do título — casa em qualquer pedido do
+    // pacote, não só no que a LATERAL de exibição conseguiu resolver.
+    if (buyer) {
+      params.push(`%${buyer}%`);
+      where.push(`EXISTS (SELECT 1 FROM orders ob WHERE ob.ml_id = ANY(pv.order_ids) AND ob.buyer_nickname ILIKE $${params.length})`);
+    }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     // Marketplace de cada vídeo = marketplace da loja dona (stores.marketplace_id).
@@ -898,7 +922,15 @@ router.get('/videos', async (req, res) => {
               s.nickname AS store_nickname, COALESCE(mk.code, 'ML') AS marketplace
        FROM packing_videos pv
        LEFT JOIN LATERAL (
-         SELECT title, buyer_nickname, shipping_type FROM orders WHERE ml_id = pv.order_ids[1]
+         -- Pega o 1º pedido do pacote que REALMENTE existe em orders, não
+         -- cegamente order_ids[1] — bug real: se o 1º elemento do array não
+         -- resolvia (pedido deletado, Shopee com tracking em vez de ml_id na
+         -- 1ª posição...), a linha inteira ficava sem título/comprador na
+         -- lista, dificultando achar o vídeo certo (reportado pelo usuário).
+         SELECT title, buyer_nickname, shipping_type FROM orders
+          WHERE ml_id = ANY(pv.order_ids)
+          ORDER BY array_position(pv.order_ids, ml_id)
+          LIMIT 1
        ) ord ON true
        LEFT JOIN stores s ON s.id = pv.store_id
        LEFT JOIN marketplaces mk ON mk.id = s.marketplace_id

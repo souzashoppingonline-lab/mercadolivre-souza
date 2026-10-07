@@ -946,6 +946,56 @@ router.get('/videos', async (req, res) => {
   }
 });
 
+// GET /api/embalagem/produtos/buscar?sku&item_id — nova aba "Produtos/Anúncio"
+// (v114, pedido explícito do usuário): admin cadastra uma frase por anúncio
+// que é LIDA na hora da bipagem (ver observacao_embalagem — campo que já
+// existia desde v101, cadastrado hoje só via pages/produtos.html; esta rota
+// só acrescenta um jeito de achar o anúncio por SKU/ID direto de dentro do
+// Embalagem, sem trocar de tela). Escrita reaproveita a rota que já existe,
+// PATCH /api/items/:id/observacao-embalagem (routes/api.js) — zero endpoint
+// de escrita novo.
+// SKU não é coluna de `items` (não existe catálogo de SKU centralizado nesse
+// projeto) — resolve pelos 2 lugares onde SKU é persistido hoje: catálogo
+// Shopee (shopee_item_data.item_sku) e snapshot do pedido mais recente do ML
+// (orders.raw_data, mesmo caminho usado em GET /pedido/:shippingId). Ambos
+// indexados (migrate-v114.sql).
+router.get('/produtos/buscar', async (req, res) => {
+  try {
+    const sku = (req.query.sku || '').trim();
+    const itemId = (req.query.item_id || '').trim();
+    if (!sku && !itemId) return res.json({ rows: [] });
+
+    const where = [];
+    const params = [];
+    if (itemId) { params.push(itemId); where.push(`i.ml_id = $${params.length}`); }
+    if (sku) {
+      params.push(sku);
+      const p = params.length;
+      where.push(`i.ml_id IN (
+        SELECT item_id FROM shopee_item_data WHERE item_sku = $${p}
+        UNION
+        SELECT o.item_id FROM orders o WHERE o.raw_data->'order_items'->0->'item'->>'seller_sku' = $${p}
+      )`);
+    }
+
+    const { rows } = await pool.query(
+      `SELECT i.ml_id, i.title, i.thumbnail, i.observacao_embalagem,
+              s.nickname AS store_nickname, COALESCE(mk.code, 'ML') AS marketplace
+       FROM items i
+       LEFT JOIN stores s ON s.id = i.store_id
+       LEFT JOIN marketplaces mk ON mk.id = i.marketplace_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY i.title ASC
+       LIMIT 20`,
+      params
+    );
+    res.json({ rows });
+  } catch (e) {
+    console.error('[api/embalagem] GET /produtos/buscar', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/embalagem/videos-por-pedidos?order_ids=1,2,3 — lookup em lote
 // (usado por pages/devolucoes.html pra saber, sem N+1, quais pedidos de uma
 // lista têm vídeo de embalagem gravado, e mostrar um botão "Assistir" direto

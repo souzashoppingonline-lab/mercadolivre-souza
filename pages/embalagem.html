@@ -1175,11 +1175,16 @@ function falarQuantidades(orders) {
       // título igual todo o resto, DEPOIS entra com a frase de atenção — de
       // preferência numa voz feminina, só pra diferenciar da fala padrão.
       falarTexto(`Pedido com 1 unidade. ${titulosTexto}`.trim(), { cancelarAnterior: true, vozFeminina: true });
+      // Frase cadastrada por anúncio (v114) — pedido explícito do usuário:
+      // logo após a leitura do título, antes do resto da sequência de sempre.
+      falarObservacoesEmbalagem(orders);
       falarTexto('Porém preste atenção no pedido se está embalando corretamente, leia a tela do computador!', { vozFeminina: true });
     } else {
       // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
       // de falar a quantidade+título.
       falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+      // Frase cadastrada por anúncio (v114) — logo após o título, mesma posição do outro ramo acima.
+      falarObservacoesEmbalagem(orders);
     }
     // Lembrete de bipar de novo — pedido explícito do usuário, de volta depois
     // de ter sido removido (v113.3): agora só 1x, logo após quantidade+título,
@@ -1191,11 +1196,9 @@ function falarQuantidades(orders) {
     if (totalProdutos >= 2) {
       falarTexto('Preste atenção, confira antes de embalar a quantidade. Isso é importante para o cliente receber o pedido correto.');
     }
-    // Processos novos (v113.12/v114), independentes do resto desta
-    // sequência — só entram na fila depois do que já foi falado acima,
-    // nunca cancelam nada.
+    // Processo novo (v113.12), independente do resto desta sequência — só
+    // entra na fila depois do que já foi falado acima, nunca cancela nada.
     falarEstadoEntrega(orders);
-    falarObservacoesEmbalagem(orders);
   };
   // 2+ produtos — bipe triplo ANTES de qualquer fala (pedido explícito do
   // usuário), pra chamar atenção antes de começar a falar. Toca mesmo com a

@@ -405,14 +405,15 @@
       <div class="emb-panel" id="panelBuscar">
         <div class="emb-card">
           <div class="emb-filters">
-            <div class="emb-field"><label>Rastreio ou Pedido</label><input id="fVideoOrderId" placeholder="Ex: BR269090120689K (Shopee) ou 2000123456"></div>
-            <div class="emb-field"><label>Comprador</label><input id="fVideoBuyer" placeholder="Nickname"></div>
+            <div class="emb-field"><label>Rastreio ou Pedido</label><input id="fVideoOrderId" placeholder="Parte do rastreio ou nº do pedido" onkeydown="if(event.key==='Enter')loadVideos()"></div>
+            <div class="emb-field"><label>Produto</label><input id="fVideoTitulo" placeholder="Parte do título do anúncio" onkeydown="if(event.key==='Enter')loadVideos()"></div>
+            <div class="emb-field"><label>Comprador</label><input id="fVideoBuyer" placeholder="Nickname" onkeydown="if(event.key==='Enter')loadVideos()"></div>
             <div class="emb-field"><label>De</label><input type="date" id="fVideoDe"></div>
             <div class="emb-field"><label>Até</label><input type="date" id="fVideoAte"></div>
             <div class="emb-field"><label>Marketplace</label><select id="fVideoMkt"><option value="">Todos</option><option value="ML">Mercado Livre</option><option value="SHOPEE">Shopee</option></select></div>
             <button class="emb-btn" onclick="loadVideos()"><i class="fas fa-search"></i> Buscar</button>
           </div>
-          <div class="emb-video-list" id="videoList"><div class="emb-placeholder">Use os filtros para buscar vídeos de embalagem.</div></div>
+          <div class="emb-video-list" id="videoList"><div class="emb-placeholder">Carregando...</div></div>
         </div>
       </div>
 
@@ -1469,6 +1470,11 @@ function switchTab(tab) {
   document.getElementById('tabBtnAuditoria').classList.toggle('active', tab === 'auditoria');
   document.getElementById('tabBtnErros').classList.toggle('active', tab === 'erros');
   if (tab === 'bipar') refocusScan();
+  // Carrega sozinha ao abrir a aba (v113, pedido do usuário — "dificuldade
+  // de achar os vídeos"): sem filtro nenhum a rota já devolve os mais
+  // recentes, então a aba nunca fica vazia esperando o operador adivinhar o
+  // termo de busca certo. Mesmo padrão das outras abas abaixo.
+  if (tab === 'buscar') loadVideos();
   if (tab === 'conferencia') loadConferenciaDia();
   if (tab === 'historico') loadHistorico();
   if (tab === 'relatorios') loadRelatorios();
@@ -1620,6 +1626,7 @@ function videoRowHtml(v, { showStore = false } = {}) {
 async function loadVideos() {
   const params = {};
   const orderId = document.getElementById('fVideoOrderId').value.trim(); if (orderId) params.order_id = orderId;
+  const titulo = document.getElementById('fVideoTitulo').value.trim(); if (titulo) params.titulo = titulo;
   const buyer = document.getElementById('fVideoBuyer').value.trim(); if (buyer) params.buyer = buyer;
   const de = document.getElementById('fVideoDe').value; if (de) params.date_from = de;
   const ate = document.getElementById('fVideoAte').value; if (ate) params.date_to = ate + 'T23:59:59';
@@ -1629,7 +1636,15 @@ async function loadVideos() {
   list.innerHTML = '<div class="emb-placeholder">Buscando...</div>';
   const data = await DB.getVideosEmbalagem(params);
   const rows = data?.rows || [];
-  list.innerHTML = rows.length ? rows.map(v => videoRowHtml(v, { showStore: true })).join('') : '<div class="emb-placeholder">Nenhum vídeo encontrado com esses filtros.</div>';
+  // Sem filtro nenhum, a rota já devolve os 100 mais recentes — deixa isso
+  // claro no cabeçalho da lista pra não parecer que "buscou tudo" por engano.
+  const semFiltro = !Object.keys(params).length;
+  const contagem = semFiltro
+    ? `<div class="emb-subtitle" style="margin-bottom:10px">Mostrando os ${rows.length} vídeos mais recentes — use os filtros pra achar um específico.</div>`
+    : `<div class="emb-subtitle" style="margin-bottom:10px">${rows.length} vídeo(s) encontrado(s).</div>`;
+  list.innerHTML = rows.length
+    ? contagem + rows.map(v => videoRowHtml(v, { showStore: true })).join('')
+    : '<div class="emb-placeholder">Nenhum vídeo encontrado com esses filtros.</div>';
 }
 
 // ── Aba: Conferência do Dia — sempre os pedidos bipados hoje ──────────

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendas Detalhadas — Financeiro</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Vendas Detalhadas'; window.ACTIVE_NAV='financeiro-vendas-detalhadas.html';</script>
+  <style>
+    .vc-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .vc-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .vc-filters select, .vc-filters input[type=text] { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:14px; }
+    .vc-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .vc-card-h { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .vc-card-h h3 { font-size:15px; font-weight:800; margin:0; }
+    table.vc-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .vc-t th, .vc-t td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .vc-t th:first-child,.vc-t td:first-child,.vc-t th:nth-child(2),.vc-t td:nth-child(2),.vc-t th:nth-child(3),.vc-t td:nth-child(3),.vc-t th:nth-child(4),.vc-t td:nth-child(4){ text-align:left; }
+    .vc-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); }
+    .vc-t tr:hover td { background:var(--bg-card2); }
+    .vc-t tfoot td { position:sticky; bottom:0; background:var(--bg-card); font-weight:800; border-top:2px solid var(--border); }
+    .vc-produto { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .vc-chip { border-radius:999px; padding:2px 8px; font-size:10px; font-weight:800; }
+    .vc-chip.g{ background:rgba(46,160,67,.15); color:#3fb950;} .vc-chip.r{ background:rgba(239,68,68,.15); color:#f87171;} .vc-chip.n{ background:rgba(100,116,139,.2); color:#94a3b8;}
+    .vc-chip.y{ background:rgba(255,230,0,.15); color:#FFE600;}
+    .vc-empty { color:var(--text-muted); font-size:13px; padding:20px; text-align:center; }
+    .pacote-tag { font-size:9.5px; color:#a78bfa; font-weight:700; display:block; margin-top:2px; }
+    .down{ color:#f87171;} .pos{ color:#3fb950; font-weight:700;}
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="vc-sub">Uma linha por venda, igual à importação do Metrizap em <a href="financeiro-vendas.html" style="color:#3fb950">Vendas &amp; Custos</a> — somente leitura. Agregados diários (cards de meta/margem) ficam naquela página.</p>
+
+      <div class="vc-filters">
+        <select id="fMes"></select><select id="fAno"></select>
+        <select id="fLoja"><option value="">Todas as lojas</option></select>
+        <input type="text" id="fBusca" placeholder="Buscar produto ou pedido…">
+      </div>
+
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>📋 Vendas Detalhadas</h3><span id="count" style="font-size:12px;color:var(--text-muted)"></span></div>
+        <div style="overflow:auto;max-height:72vh">
+          <table class="vc-t">
+            <thead><tr>
+              <th>Data</th><th>Loja</th><th>Pedido</th><th>Produto</th><th>SKU</th>
+              <th>Qtd</th><th>Situação</th><th>Logística</th>
+              <th>Faturamento</th><th>Custo (-)</th><th>Imposto (-)</th><th>Tarifa (-)</th>
+              <th>Frete Vend. (-)</th><th>Frete Comp. (-)</th><th>Prejuízo Dev. (-)</th>
+              <th>Lucro (=)</th><th>Margem %</th>
+            </tr></thead>
+            <tbody id="tbody"><tr><td colspan="17" class="vc-empty">Carregando…</td></tr></tbody>
+            <tfoot id="tfoot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const fmtDate=s=>{ if(!s) return '—'; const p=String(s).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s; };
+
+let ALL=[], STORES={};
+
+function situacaoChip(s){
+  const l=(s||'').toLowerCase();
+  if(l.includes('cancel')) return `<span class="vc-chip r">${esc(s)}</span>`;
+  if(l.includes('venda')||l.includes('entreg')||l.includes('paga')) return `<span class="vc-chip g">${esc(s)||'—'}</span>`;
+  return `<span class="vc-chip n">${esc(s)||'—'}</span>`;
+}
+
+function rowHtml(r){
+  const neg=Number(r.margem_pct)<0;
+  return `<tr>
+    <td>${fmtDate(r.date)}</td>
+    <td>${esc(STORES[r.store_id]||'—')}</td>
+    <td style="text-align:left">${esc(r.pedido)}${r.pacote?'<span class="pacote-tag"><i class="fas fa-layer-group"></i> pacote</span>':''}</td>
+    <td class="vc-produto" title="${esc(r.produto)}">${esc(r.produto)||'—'}</td>
+    <td style="color:var(--text-muted);font-size:10px">${esc(r.sku)||'—'}</td>
+    <td>${r.quantidade??1}</td>
+    <td style="text-align:left">${situacaoChip(r.situacao)} ${r.venda_afiliado?'<span class="vc-chip y">Afiliado</span>':''}</td>
+    <td style="font-size:11px">${esc(r.logistica)||'—'}</td>
+    <td>${BRL(r.faturamento)}</td>
+    <td class="down">${BRL(r.custo_produto)}</td>
+    <td class="down">${BRL(r.imposto)}</td>
+    <td class="down">${BRL(r.tarifa)}</td>
+    <td class="down">${BRL(r.frete_vendedor)}</td>
+    <td class="down">${BRL(r.frete_comprador)}</td>
+    <td class="down" title="${esc(r.motivo_prejuizo)||''}">${BRL(r.prejuizo_devolucao)}</td>
+    <td class="${neg?'down':'pos'}">${BRL(r.lucro)}</td>
+    <td class="${neg?'down':'pos'}">${PCT(r.margem_pct)}</td>
+  </tr>`;
+}
+
+function filtered(){
+  const m=+document.getElementById('fMes').value, y=+document.getElementById('fAno').value;
+  const loja=document.getElementById('fLoja').value, busca=document.getElementById('fBusca').value.trim().toLowerCase();
+  return ALL.filter(r=>{
+    if(!r.date) return false;
+    const d=new Date(r.date+'T00:00:00');
+    if(d.getMonth()+1!==m||d.getFullYear()!==y) return false;
+    if(loja&&String(r.store_id)!==loja) return false;
+    if(busca&&!(String(r.produto||'').toLowerCase().includes(busca)||String(r.pedido||'').includes(busca))) return false;
+    return true;
+  }).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+}
+
+function render(){
+  const rows=filtered();
+  const tb=document.getElementById('tbody'), ft=document.getElementById('tfoot');
+  document.getElementById('count').textContent = rows.length ? `${rows.length} venda(s)` : '';
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="17" class="vc-empty">Sem vendas neste período.</td></tr>'; ft.innerHTML=''; return; }
+  tb.innerHTML=rows.map(rowHtml).join('');
+  const s={fat:0,custo:0,imp:0,tar:0,fv:0,fc:0,prej:0,lucro:0};
+  rows.forEach(r=>{ s.fat+=+r.faturamento||0; s.custo+=+r.custo_produto||0; s.imp+=+r.imposto||0; s.tar+=+r.tarifa||0; s.fv+=+r.frete_vendedor||0; s.fc+=+r.frete_comprador||0; s.prej+=+r.prejuizo_devolucao||0; s.lucro+=+r.lucro||0; });
+  const pct=s.fat?s.lucro/s.fat*100:0;
+  ft.innerHTML=`<tr>
+    <td colspan="8">TOTAL</td>
+    <td>${BRL(s.fat)}</td><td class="down">${BRL(s.custo)}</td><td class="down">${BRL(s.imp)}</td>
+    <td class="down">${BRL(s.tar)}</td><td class="down">${BRL(s.fv)}</td><td class="down">${BRL(s.fc)}</td>
+    <td class="down">${BRL(s.prej)}</td>
+    <td class="${pct<0?'down':'pos'}">${BRL(s.lucro)}</td><td class="${pct<0?'down':'pos'}">${PCT(pct)}</td>
+  </tr>`;
+}
+
+async function init(){
+  const now=new Date(), selM=document.getElementById('fMes'), selA=document.getElementById('fAno');
+  MESES.forEach((m,i)=>selM.insertAdjacentHTML('beforeend',`<option value="${i+1}">${m}</option>`)); selM.value=now.getMonth()+1;
+  for(let y=now.getFullYear();y>=now.getFullYear()-4;y--) selA.insertAdjacentHTML('beforeend',`<option value="${y}">${y}</option>`); selA.value=now.getFullYear();
+  [selM,selA,document.getElementById('fLoja')].forEach(s=>s.addEventListener('change',render));
+  document.getElementById('fBusca').addEventListener('input',render);
+
+  const rSt=await DB.getFinanceiroDados('stores',500);
+  (rSt.rows||[]).forEach(s=>{ STORES[s.id]=s.name||s.nome||s.nickname||String(s.id).slice(0,6); });
+  const sel=document.getElementById('fLoja');
+  Object.entries(STORES).forEach(([id,n])=>sel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`));
+
+  const r=await DB.getFinanceiroDados('sales_entries_detail',5000,'date.desc');
+  if(r&&r.error){ document.getElementById('tbody').innerHTML=`<tr><td colspan="17" class="vc-empty" style="color:var(--red)">Erro: ${esc(r.error)}</td></tr>`; return; }
+  ALL=r.rows||[];
+  render();
+}
+init();
+</script>
+</body>
+</html>

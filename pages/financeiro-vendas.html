@@ -103,10 +103,10 @@
         <span style="font-size:12px;color:var(--text-muted)">Margem = receita bruta − (taxas + frete + CMV + ads + impostos)</span>
       </div>
 
-      <!-- Importar planilha MercadoTurbo (agrega pedidos → lançamento diário) -->
+      <!-- Importar planilha Metrizap (agrega por dia em sales_entries + grava o detalhe por venda em sales_entries_detail) -->
       <div class="vc-card">
-        <div class="vc-card-h"><h3>📤 Importar planilha (MercadoTurbo)</h3><span id="impMsg" style="margin-left:auto;font-size:12px"></span></div>
-        <p class="vc-sub" style="margin:0 0 12px">Escolha a <b>loja</b>, suba o Excel de pedidos e o sistema soma os <b>pedidos pagos por dia</b> (receita, taxas, frete, CMV e imposto). O <b>ADS</b> não vem na planilha — é perguntado num modal antes de gravar.</p>
+        <div class="vc-card-h"><h3>📤 Importar planilha (Metrizap)</h3><span id="impMsg" style="margin-left:auto;font-size:12px"></span></div>
+        <p class="vc-sub" style="margin:0 0 12px">Escolha a <b>loja</b> ANTES de subir o Excel exportado pelo Metrizap (aba "Vendas") — o sistema soma os <b>pedidos não cancelados por dia</b> (receita, taxas, frete, CMV e imposto) aqui, e grava cada venda individual em <a href="financeiro-vendas-detalhadas.html" style="color:#3fb950">Vendas Detalhadas</a>. O <b>ADS</b> não vem na planilha — é perguntado num modal antes de gravar.</p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
           <label style="font-size:12px;color:var(--text-muted)">Loja *<select id="impLoja" class="vc-in"><option value="">Selecione…</option></select></label>
           <label style="font-size:12px;color:var(--text-muted)">Planilha (.xlsx)<input type="file" id="impFile" accept=".xlsx,.xls" class="vc-in" onchange="onImportFile(this)"></label>
@@ -791,7 +791,8 @@ function renderVolRent(rows,m,y){
       }}});
 }
 
-// ── Importar planilha MercadoTurbo → lançamentos diários ────────────────────
+// ── Importar planilha Metrizap → lançamentos diários (sales_entries) +
+// detalhe por venda (sales_entries_detail) ──────────────────────────────────
 function impMsg(t,err){ const el=document.getElementById('impMsg'); el.style.color=err?'var(--red)':'#3fb950'; el.innerHTML=t; }
 function impNum(v){ if(v==null||v==='') return 0; if(typeof v==='number') return v; let s=String(v).trim().replace('%','').replace('R$','').trim(); if(s.includes(',')&&s.includes('.')) s=s.replace(/\./g,'').replace(',','.'); else if(s.includes(',')) s=s.replace(',','.'); const n=parseFloat(s); return isNaN(n)?0:n; }
 function impDateISO(v){
@@ -804,6 +805,18 @@ function impDateISO(v){
 }
 const normHdr=s=>String(s==null?'':s).trim().toLowerCase();
 
+// Headers exatos da aba "Vendas" do export Metrizap (não normalizados — o
+// cabeçalho real tem acento/maiúsculas, casado por igualdade direta).
+const MZ_HEADERS={
+  data:'Data', pedido:'Pedido', pacote:'Pacote / envio conjunto', item_id:'ID do anúncio', sku:'SKU',
+  produto:'Produto', quantidade:'Quantidade', situacao:'Situação', status_mkt:'Status no marketplace',
+  afiliado:'Venda de afiliado', comissao:'Comissão de afiliado', logistica:'Logística', comprador:'Comprador',
+  valor_pago:'Valor pago pelo comprador', faturamento:'Faturamento', tarifa:'Tarifa', frete_vend:'Frete vendedor',
+  frete_comp:'Frete comprador', imposto:'Imposto', custo:'Custo do produto', prejuizo:'Prejuízo de devolução',
+  motivo:'Motivo do prejuízo', lucro:'Lucro', marketplace:'Marketplace', link:'Link do anúncio',
+};
+let IMP_DETALHE=[]; // linhas cruas da última leitura, prontas pra gravar em sales_entries_detail
+
 async function onImportFile(input){
   const store_id=document.getElementById('impLoja').value;
   const file=input.files&&input.files[0];
@@ -814,32 +827,54 @@ async function onImportFile(input){
   try{
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:'array'});
-    const ws=wb.Sheets[wb.SheetNames[0]];
+    const sheetName=wb.SheetNames.find(n=>n.trim().toLowerCase()==='vendas')||wb.SheetNames[wb.SheetNames.length-1];
+    const ws=wb.Sheets[sheetName];
     const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
-    if(!rows.length){ impMsg('Planilha vazia.',true); return; }
-    const hdr=rows[0].map(normHdr);
-    const col=name=>hdr.findIndex(h=>h===name);
-    const iData=col('data'), iFat=col('faturamento ml'), iCusto=col('custo (-)'), iImp=col('imposto (-)'),
-          iTar=col('tarifa de venda (-)'), iFVend=col('frete vendedor (-)'),
-          iStatus=col('status pedido'), iId=col('id da venda');
-    if(iData<0||iFat<0||iStatus<0){ impMsg('⚠️ Não parece a exportação de pedidos do MercadoTurbo (faltam colunas Data / Faturamento ML / Status Pedido).',true); return; }
-    const grp={}; let aprovados=0;
+    if(!rows.length){ impMsg('Aba "Vendas" vazia.',true); return; }
+    const hdr=rows[0].map(h=>String(h==null?'':h).trim());
+    const col=label=>hdr.indexOf(label);
+    const idx={}; Object.entries(MZ_HEADERS).forEach(([k,label])=>{ idx[k]=col(label); });
+    if(idx.data<0||idx.faturamento<0||idx.pedido<0){ impMsg('⚠️ Não parece a exportação "Vendas" do Metrizap (faltam colunas Data / Pedido / Faturamento).',true); return; }
+    const get=(r,k)=>idx[k]>=0?r[idx[k]]:null;
+
+    const grp={}; const detalhe=[]; let aprovados=0;
     for(let i=1;i<rows.length;i++){
-      const r=rows[i]; if(!r||(iId>=0&&!r[iId])) continue;
-      const st=normHdr(r[iStatus]); if(st==='cancelado'||st==='cancelada') continue; // exclui só canceladas (= "Vendas Aprovadas" do MercadoTurbo)
-      const d=impDateISO(r[iData]); if(!d) continue;
-      aprovados++;
-      const g=grp[d]||(grp[d]={date:d,quantity_sales:0,gross_revenue:0,marketplace_fees:0,subsidized_shipping:0,cogs:0,tax:0});
-      g.quantity_sales+=1;
-      g.gross_revenue+=impNum(r[iFat]);
-      g.marketplace_fees+=iTar>=0?impNum(r[iTar]):0;
-      g.subsidized_shipping+=iFVend>=0?impNum(r[iFVend]):0;
-      g.cogs+=iCusto>=0?impNum(r[iCusto]):0;
-      g.tax+=iImp>=0?impNum(r[iImp]):0;
+      const r=rows[i]; if(!r||!get(r,'pedido')) continue;
+      const d=impDateISO(get(r,'data')); if(!d) continue;
+      const situacao=String(get(r,'situacao')||'').trim();
+      const cancelada=/cancel/i.test(situacao);
+      const faturamento=impNum(get(r,'faturamento')), tarifa=impNum(get(r,'tarifa')),
+            freteVend=impNum(get(r,'frete_vend')), freteComp=impNum(get(r,'frete_comp')),
+            imposto=impNum(get(r,'imposto')), custo=impNum(get(r,'custo')),
+            prejuizo=impNum(get(r,'prejuizo')), lucro=impNum(get(r,'lucro'));
+      if(!cancelada){
+        aprovados++;
+        const g=grp[d]||(grp[d]={date:d,quantity_sales:0,gross_revenue:0,marketplace_fees:0,subsidized_shipping:0,cogs:0,tax:0});
+        g.quantity_sales+=1;
+        g.gross_revenue+=faturamento;
+        g.marketplace_fees+=tarifa;
+        g.subsidized_shipping+=freteVend;
+        g.cogs+=custo;
+        g.tax+=imposto;
+      }
+      detalhe.push({
+        store_id, date:d, pedido:String(get(r,'pedido')).trim(),
+        marketplace:get(r,'marketplace')||null, pacote:get(r,'pacote')||null,
+        item_id:get(r,'item_id')||null, sku:get(r,'sku')||null, produto:get(r,'produto')||null,
+        quantidade:parseInt(get(r,'quantidade'))||1, situacao:situacao||null,
+        status_marketplace:get(r,'status_mkt')||null,
+        venda_afiliado:/sim/i.test(String(get(r,'afiliado')||'')),
+        comissao_afiliado:impNum(get(r,'comissao')), logistica:get(r,'logistica')||null,
+        comprador:get(r,'comprador')||null, valor_pago_comprador:impNum(get(r,'valor_pago')),
+        faturamento, tarifa, frete_vendedor:freteVend, frete_comprador:freteComp, imposto,
+        custo_produto:custo, prejuizo_devolucao:prejuizo, motivo_prejuizo:get(r,'motivo')||null,
+        lucro, margem_pct:faturamento>0?(lucro/faturamento*100):0, link_anuncio:get(r,'link')||null,
+      });
     }
     const dias=Object.values(grp).sort((a,b)=>a.date<b.date?-1:1);
-    if(!dias.length){ impMsg('Nenhum pedido pago encontrado na planilha.',true); return; }
-    impMsg(`✅ ${aprovados} pedido(s) aprovado(s) em ${dias.length} dia(s). Confirme o ADS.`,false);
+    if(!dias.length){ impMsg('Nenhuma venda não cancelada encontrada na planilha.',true); return; }
+    IMP_DETALHE=detalhe;
+    impMsg(`✅ ${aprovados} venda(s) aprovada(s) em ${dias.length} dia(s), ${detalhe.length} linha(s) ao todo. Confirme o ADS.`,false);
     abrirImportModal(dias, store_id);
   }catch(e){ impMsg('Erro ao ler: '+esc(e.message||e),true); }
   finally{ input.value=''; }
@@ -900,11 +935,22 @@ async function salvarImport(dias, store_id){
     }
     if(r&&r.error) erros.push(`${fmtDate(date)}: ${r.error}`); else ok++;
   }
+  if(erros.length){ modalBusy(false); eMsgErr('Erros: '+esc(erros.join(' · '))); if(ok>0) render(); return; }
+
+  // Grava o detalhe por venda (sales_entries_detail) em lote, upsert por
+  // (store_id, pedido) — não bloqueia o lançamento diário acima se falhar,
+  // só avisa (o agregado em sales_entries já está gravado e é o que os
+  // cards desta página usam).
+  let detalheMsg='';
+  if(IMP_DETALHE.length){
+    const rDet=await DB.upsertFinanceiroRows('sales_entries_detail', IMP_DETALHE, 'store_id,pedido');
+    detalheMsg = rDet&&rDet.error ? ` ⚠️ Vendas Detalhadas não gravou: ${rDet.error}` : ` · ${IMP_DETALHE.length} linha(s) em Vendas Detalhadas.`;
+  }
   modalBusy(false);
-  if(erros.length){ eMsgErr('Erros: '+esc(erros.join(' · '))); if(ok>0) render(); return; }
   fecharModal();
   render();
-  impMsg(`✅ ${ok} lançamento(s) gravado(s) a partir da planilha.`,false);
+  IMP_DETALHE=[];
+  impMsg(`✅ ${ok} lançamento(s) gravado(s) a partir da planilha.${detalheMsg}`,false);
 }
 
 document.getElementById('vcModalOk').addEventListener('click', async ()=>{ if(modalAction) await modalAction(); });

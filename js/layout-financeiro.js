@@ -5,6 +5,7 @@
 
 const FIN_NAV_ITEMS = [
   { href: 'financeiro-vendas.html', icon: 'fa-chart-line', label: 'Vendas & Custos' },
+  { href: 'financeiro-vendas-detalhadas.html', icon: 'fa-list', label: 'Vendas Detalhadas' },
   { href: 'financeiro-despesas.html', icon: 'fa-file-invoice-dollar', label: 'Despesas & DRE' },
   { href: 'financeiro-dre.html', icon: 'fa-chart-pie', label: 'DRE — Resultado' },
   { href: 'financeiro-fechamento-mensal.html', icon: 'fa-calendar-check', label: 'Fechamento Mensal' },

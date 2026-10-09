@@ -392,6 +392,7 @@ const DB = {
   async addFinanceiroRow(nome, obj)        { return this._post(`/financeiro/dados/${encodeURIComponent(nome)}`, obj); },
   async updateFinanceiroRow(nome, id, obj) { return this._patch(`/financeiro/dados/${encodeURIComponent(nome)}/${encodeURIComponent(id)}`, obj); },
   async deleteFinanceiroRow(nome, id)      { return this._delete(`/financeiro/dados/${encodeURIComponent(nome)}/${encodeURIComponent(id)}`); },
+  async upsertFinanceiroRows(nome, rows, onConflict) { return this._post(`/financeiro/dados-upsert/${encodeURIComponent(nome)}`, { rows, onConflict }); },
   // Fechamento Mensal — checklist, status (open/in_progress/closed), e-mail.
   async getFechamentoResumo(ano)                { return this._get('/financeiro/fechamento/resumo', { ano }); },
   async getFechamentoMes(ano, mes)              { return this._get(`/financeiro/fechamento/${ano}/${mes}`); },

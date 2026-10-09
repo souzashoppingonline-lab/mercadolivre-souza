@@ -67,6 +67,18 @@ router.delete('/dados/:nome/:id', async (req, res) => {
   catch (e) { handleWriteErr(res, e); }
 });
 
+// Upsert em lote (array de linhas de uma vez, por `onConflict`) — usado pela
+// importação Metrizap em sales_entries_detail (~1 linha por venda, uma
+// chamada só em vez de N POST/PATCH individuais). Mesma allowlist/validação
+// de assertWritable que o resto da escrita, via supa.upsertRow.
+router.post('/dados-upsert/:nome', async (req, res) => {
+  try {
+    const { rows, onConflict } = req.body || {};
+    if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'rows deve ser um array não vazio' });
+    res.json({ rows: await supa.upsertRow(req.params.nome, rows, onConflict) });
+  } catch (e) { handleWriteErr(res, e); }
+});
+
 // ── Comprovante fiscal (arquivo) ────────────────────────────────────────────
 // Upload em memória: o arquivo só passa por aqui a caminho do Storage do
 // Supabase, não fica no disco do servidor (ao contrário do vídeo de embalagem,

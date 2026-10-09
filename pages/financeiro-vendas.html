@@ -127,6 +127,7 @@
           <label style="font-size:12px;color:var(--text-muted)">Ads Mercado Livre (R$)<input type="number" step="0.01" id="fAdsMl" class="vc-in" placeholder="0,00"></label>
           <label style="font-size:12px;color:var(--text-muted)">Ads Externos (R$)<input type="number" step="0.01" id="fAdsEx" class="vc-in" placeholder="0,00"></label>
           <label style="font-size:12px;color:var(--text-muted)">Imposto (R$)<input type="number" step="0.01" id="fTax" class="vc-in" placeholder="0,00"></label>
+          <label style="font-size:12px;color:var(--text-muted)">Outros/Custo Logístico (R$)<input type="number" step="0.01" id="fOutros" class="vc-in" placeholder="0,00"></label>
           <label style="font-size:12px;color:var(--text-muted)">Loja *<select id="fLoja" class="vc-in"><option value="">Selecione…</option></select></label>
         </div>
         <div style="text-align:right;margin-top:12px"><button id="fBtn" onclick="lancar()" style="background:#3fb950;color:#03210d;border:none;border-radius:10px;padding:10px 20px;font-weight:800;cursor:pointer">Lançar</button></div>
@@ -144,8 +145,8 @@
         </div>
         <div style="overflow:auto;max-height:60vh">
           <table class="vc-t">
-            <thead><tr><th>Data</th><th>Loja</th><th>Qtd</th><th>Rec. Bruta</th><th>Taxas MP</th><th>Frete Sub.</th><th>CMV</th><th>Ads ML</th><th>Ads Ext.</th><th>Imposto</th><th>Margem R$</th><th>Margem %</th><th class="act">Ações</th></tr></thead>
-            <tbody id="vcHist"><tr><td colspan="13" class="vc-empty">Carregando…</td></tr></tbody>
+            <thead><tr><th>Data</th><th>Loja</th><th>Qtd</th><th>Rec. Bruta</th><th>Taxas MP</th><th>Frete Sub.</th><th>CMV</th><th>Ads ML</th><th>Ads Ext.</th><th>Imposto</th><th>Outros</th><th>Margem R$</th><th>Margem %</th><th class="act">Ações</th></tr></thead>
+            <tbody id="vcHist"><tr><td colspan="14" class="vc-empty">Carregando…</td></tr></tbody>
             <tfoot id="vcHistFoot"></tfoot>
           </table>
         </div>
@@ -265,13 +266,13 @@ const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
 const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const DOW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const rev=e=>Number(e.gross_revenue)||0;
-const custoDe=e=>(+e.marketplace_fees||0)+(+e.subsidized_shipping||0)+(+e.cogs||0)+(+e.ads_ml||0)+(+e.ads_external||0)+(+e.tax||0);
+const custoDe=e=>(+e.marketplace_fees||0)+(+e.subsidized_shipping||0)+(+e.cogs||0)+(+e.ads_ml||0)+(+e.ads_external||0)+(+e.tax||0)+(+e.outros||0);
 const mcDe=e=>rev(e)-custoDe(e);
 function semClass(pct){ if(pct<0) return 'red'; if(pct<15) return 'red'; if(pct<25) return 'amber'; return 'green'; }
 function semColor(pct){ if(pct<0) return '#7f1d1d'; if(pct<15) return '#f87171'; if(pct<25) return '#f59e0b'; return '#3fb950'; }
 
 let ALL=[], STORES={}, GOALS_ALL=[], chM, chC, chReceita, chComp, chVR, custoTab='';
-const COLORS={ fees:'#f87171', frete:'#fb923c', cmv:'#f59e0b', adsMl:'#a78bfa', adsEx:'#3b82f6', imp:'#34d399', ads:'#64748b', margem:'#10b981', rec:'#cbd5e1' };
+const COLORS={ fees:'#f87171', frete:'#fb923c', cmv:'#f59e0b', adsMl:'#a78bfa', adsEx:'#3b82f6', imp:'#34d399', outros:'#ec4899', ads:'#64748b', margem:'#10b981', rec:'#cbd5e1' };
 function showStatus(t,err){ const el=document.getElementById('vcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
 // Porta fiel do useGoalCalculations do Readdy.
@@ -399,6 +400,7 @@ function lancar(){
     ads_ml:fNum('fAdsMl'),
     ads_external:fNum('fAdsEx'),
     tax:fNum('fTax'),
+    outros:fNum('fOutros'),
     store_id,
   };
   const mc=mcDe(row), pct=rev(row)?mc/rev(row)*100:0;
@@ -414,6 +416,7 @@ function lancar(){
       <tr><td>Ads Mercado Livre</td><td class="down">-${BRL(row.ads_ml)}</td></tr>
       <tr><td>Ads Externos</td><td class="down">-${BRL(row.ads_external)}</td></tr>
       <tr><td>Imposto</td><td class="down">-${BRL(row.tax)}</td></tr>
+      <tr><td>Outros/Custo Logístico</td><td class="down">-${BRL(row.outros)}</td></tr>
       <tr><td><b>Margem de Contribuição</b></td><td style="color:${semColor(pct)}"><b>${BRL(mc)} · ${PCT(pct)}</b></td></tr>
     </table>
     <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Confira empresa, data e valores antes de gravar.</div>`;
@@ -426,7 +429,7 @@ async function doInsert(row){
   const saved=Array.isArray(r&&r.rows)?r.rows[0]:null;
   ALL.unshift(saved||row);
   fecharModal();
-  ['fQtd','fRec','fFees','fFrete','fCmv','fAdsMl','fAdsEx','fTax'].forEach(id=>document.getElementById(id).value='');
+  ['fQtd','fRec','fFees','fFrete','fCmv','fAdsMl','fAdsEx','fTax','fOutros'].forEach(id=>document.getElementById(id).value='');
   render();
   fMsg('✅ Lançamento gravado.',false);
 }
@@ -446,6 +449,7 @@ function editForm(e){
       ${f('Ads Mercado Livre','eAdsMl',+e.ads_ml||0,true)}
       ${f('Ads Externos','eAdsEx',+e.ads_external||0,true)}
       ${f('Imposto','eTax',+e.tax||0,true)}
+      ${f('Outros/Custo Logístico','eOutros',+e.outros||0,true)}
     </div>
     <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Ajuste os campos (ex.: corrigir a data) e salve.</div>`;
 }
@@ -465,6 +469,7 @@ async function doUpdate(id){
     ads_ml:pNum(document.getElementById('eAdsMl').value),
     ads_external:pNum(document.getElementById('eAdsEx').value),
     tax:pNum(document.getElementById('eTax').value),
+    outros:pNum(document.getElementById('eOutros').value),
   };
   if(!patch.date){ eMsgErr('Informe a data.'); return; }
   modalBusy(true,'Salvando…');
@@ -495,7 +500,7 @@ async function doDelete(id){
 // Tabela de histórico do período (respeita os filtros mês/ano/loja).
 function renderHistory(rows){
   const tb=document.getElementById('vcHist'), ft=document.getElementById('vcHistFoot');
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="13" class="vc-empty">Sem lançamentos neste período.</td></tr>'; ft.innerHTML=''; return; }
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="14" class="vc-empty">Sem lançamentos neste período.</td></tr>'; ft.innerHTML=''; return; }
   tb.innerHTML=rows.map(r=>{
     const mc=mcDe(r), pct=rev(r)?mc/rev(r)*100:0, col=semColor(pct);
     const neg=v=>'-'+BRL(v);
@@ -510,6 +515,7 @@ function renderHistory(rows){
       <td class="down">${neg(+r.ads_ml||0)}</td>
       <td class="down">${neg(+r.ads_external||0)}</td>
       <td class="down">${neg(+r.tax||0)}</td>
+      <td class="down">${neg(+r.outros||0)}</td>
       <td style="font-weight:700;color:${col}">${BRL(mc)}</td>
       <td style="color:${col}">${PCT(pct)}</td>
       <td class="act">
@@ -518,8 +524,8 @@ function renderHistory(rows){
       </td></tr>`;
   }).join('');
   // Rodapé: soma de cada coluna + margem de contribuição total e média.
-  const s={qtd:0,rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,tax:0,mc:0};
-  rows.forEach(r=>{ s.qtd+=+r.quantity_sales||0; s.rec+=rev(r); s.fees+=+r.marketplace_fees||0; s.frete+=+r.subsidized_shipping||0; s.cmv+=+r.cogs||0; s.adsMl+=+r.ads_ml||0; s.adsEx+=+r.ads_external||0; s.tax+=+r.tax||0; s.mc+=mcDe(r); });
+  const s={qtd:0,rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,tax:0,outros:0,mc:0};
+  rows.forEach(r=>{ s.qtd+=+r.quantity_sales||0; s.rec+=rev(r); s.fees+=+r.marketplace_fees||0; s.frete+=+r.subsidized_shipping||0; s.cmv+=+r.cogs||0; s.adsMl+=+r.ads_ml||0; s.adsEx+=+r.ads_external||0; s.tax+=+r.tax||0; s.outros+=+r.outros||0; s.mc+=mcDe(r); });
   const pctTot=s.rec?s.mc/s.rec*100:0;                 // margem sobre a receita total
   const pctMedia=rows.reduce((a,r)=>a+(rev(r)?mcDe(r)/rev(r)*100:0),0)/rows.length; // média das margens por linha
   const colT=semColor(pctTot);
@@ -534,6 +540,7 @@ function renderHistory(rows){
     <td class="down">-${BRL(s.adsMl)}</td>
     <td class="down">-${BRL(s.adsEx)}</td>
     <td class="down">-${BRL(s.tax)}</td>
+    <td class="down">-${BRL(s.outros)}</td>
     <td style="color:${colT}">${BRL(s.mc)}</td>
     <td style="color:${colT}" title="Margem sobre a receita total: ${PCT(pctTot)} · Média das margens por lançamento: ${PCT(pctMedia)}">${PCT(pctTot)} · méd ${PCT(pctMedia)}</td>
     <td class="act"></td></tr>`;
@@ -631,7 +638,7 @@ function render(){
   renderVolRent(rows,m,y);
 }
 function curRows(){ const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value, loja=document.getElementById('vcLoja').value; return monthRows(m,y,loja); }
-function agg(rows){ const a={rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,imp:0,mc:0,vendas:0}; rows.forEach(r=>{ a.rec+=rev(r); a.fees+=+r.marketplace_fees||0; a.frete+=+r.subsidized_shipping||0; a.cmv+=+r.cogs||0; a.adsMl+=+r.ads_ml||0; a.adsEx+=+r.ads_external||0; a.imp+=+r.tax||0; a.mc+=mcDe(r); a.vendas+=+r.quantity_sales||0; }); a.ads=a.adsMl+a.adsEx; return a; }
+function agg(rows){ const a={rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,imp:0,outros:0,mc:0,vendas:0}; rows.forEach(r=>{ a.rec+=rev(r); a.fees+=+r.marketplace_fees||0; a.frete+=+r.subsidized_shipping||0; a.cmv+=+r.cogs||0; a.adsMl+=+r.ads_ml||0; a.adsEx+=+r.ads_external||0; a.imp+=+r.tax||0; a.outros+=+r.outros||0; a.mc+=mcDe(r); a.vendas+=+r.quantity_sales||0; }); a.ads=a.adsMl+a.adsEx; return a; }
 
 function renderMeta(g,goal,m,y){
   const badge=document.getElementById('vcMetaBadge');
@@ -720,6 +727,7 @@ function renderReceita(rows){
   const items=[
     ['Taxas MP',a.fees,COLORS.fees],['Frete Sub.',a.frete,COLORS.frete],['CMV',a.cmv,COLORS.cmv],
     ['Ads ML',a.adsMl,COLORS.adsMl],['Ads Ext.',a.adsEx,COLORS.adsEx],['Imposto',a.imp,COLORS.imp],
+    ['Outros',a.outros,COLORS.outros],
     ['Margem',Math.max(a.mc,0),COLORS.margem],
   ];
   document.getElementById('vcReceitaCards').innerHTML=items.map(([k,v,c])=>`<div class="vc-rc"><div class="k"><i style="background:${c}"></i>${k}</div><div class="v">${BRL(v)}</div><div class="p" style="color:${c}">${PCT(v/g*100)}</div></div>`).join('');
@@ -756,10 +764,10 @@ function renderMargemEvol(rows,m,y){
 
 // Comparativo por Empresa — barras agrupadas (receita, custos e margem por loja).
 function renderComparativo(rows){
-  const by={}; rows.forEach(r=>{ const k=r.store_id||'—'; const o=(by[k]=by[k]||{rec:0,cmv:0,frete:0,fees:0,imp:0,ads:0,mc:0}); o.rec+=rev(r); o.cmv+=+r.cogs||0; o.frete+=+r.subsidized_shipping||0; o.fees+=+r.marketplace_fees||0; o.imp+=+r.tax||0; o.ads+=(+r.ads_ml||0)+(+r.ads_external||0); o.mc+=mcDe(r); });
+  const by={}; rows.forEach(r=>{ const k=r.store_id||'—'; const o=(by[k]=by[k]||{rec:0,cmv:0,frete:0,fees:0,imp:0,ads:0,outros:0,mc:0}); o.rec+=rev(r); o.cmv+=+r.cogs||0; o.frete+=+r.subsidized_shipping||0; o.fees+=+r.marketplace_fees||0; o.imp+=+r.tax||0; o.ads+=(+r.ads_ml||0)+(+r.ads_external||0); o.outros+=+r.outros||0; o.mc+=mcDe(r); });
   const ids=Object.keys(by).sort((a,b)=>by[b].rec-by[a].rec);
   const labels=ids.map(id=>STORES[id]||'—');
-  const ds=[['Rec. Bruta','rec',COLORS.rec],['CMV','cmv',COLORS.cmv],['Frete','frete',COLORS.frete],['Tarifas','fees',COLORS.fees],['Imposto','imp',COLORS.imp],['Ads','ads',COLORS.ads],['Margem','mc',COLORS.margem]]
+  const ds=[['Rec. Bruta','rec',COLORS.rec],['CMV','cmv',COLORS.cmv],['Frete','frete',COLORS.frete],['Tarifas','fees',COLORS.fees],['Imposto','imp',COLORS.imp],['Ads','ads',COLORS.ads],['Outros','outros',COLORS.outros],['Margem','mc',COLORS.margem]]
     .map(([lbl,key,c])=>({label:lbl,data:ids.map(id=>+by[id][key].toFixed(2)),backgroundColor:c}));
   chComp&&chComp.destroy();
   chComp=new Chart(document.getElementById('vcChComp'),{type:'bar',data:{labels,datasets:ds},options:{plugins:{legend:{labels:{color:'#94a3b8',boxWidth:11,font:{size:10}}},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>'R$'+(Math.abs(v)>=1000?(v/1000)+'k':v)},grid:{color:'rgba(148,163,184,.1)'}}}}});
@@ -776,7 +784,7 @@ function setCustoTab(id){ custoTab=id; const rows=curRows(); buildCustoTabs(rows
 function renderCustos(rows){
   const sub=custoTab?rows.filter(r=>String(r.store_id)===String(custoTab)):rows;
   const a=agg(sub), g=a.rec||1;
-  const items=[['CMV',a.cmv,COLORS.cmv],['Frete',a.frete,COLORS.frete],['Tarifas',a.fees,COLORS.fees],['Imposto',a.imp,COLORS.imp],['Ads',a.ads,COLORS.ads],['Margem',Math.max(a.mc,0),COLORS.margem]];
+  const items=[['CMV',a.cmv,COLORS.cmv],['Frete',a.frete,COLORS.frete],['Tarifas',a.fees,COLORS.fees],['Imposto',a.imp,COLORS.imp],['Ads',a.ads,COLORS.ads],['Outros',a.outros,COLORS.outros],['Margem',Math.max(a.mc,0),COLORS.margem]];
   document.getElementById('vcCustoCards').innerHTML=items.map(([k,v,c])=>`<div class="vc-rc"><div class="k"><i style="background:${c}"></i>${k}</div><div class="v">${BRL(v)}</div><div class="p" style="color:${c}">${PCT(v/g*100)}</div></div>`).join('');
   chC&&chC.destroy();
   chC=new Chart(document.getElementById('vcChC'),{type:'doughnut',data:{labels:items.map(i=>i[0]),datasets:[{data:items.map(i=>Math.max(i[1],0)),backgroundColor:items.map(i=>i[2]),borderWidth:0}]},options:{cutout:'60%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${BRL(c.raw)} (${PCT(c.raw/g*100)})`}}}}});
@@ -925,10 +933,11 @@ function abrirImportModal(dias, store_id){
         ${il('CMV (R$)','imp_cmv_'+i,round2(g.cogs))}
         ${il('Imposto (R$)','imp_tax_'+i,round2(g.tax))}
         ${il('💰 ADS (R$)','imp_ads_'+i,0)}
+        ${il('📦 Outros/Custo Logístico (R$)','imp_outros_'+i,0)}
       </div>
     </div>`;
   }).join('');
-  const body=`<p style="margin-bottom:10px">Loja: <b>${esc(lojaNome)}</b>. Confira/ajuste os campos (todos editáveis) e informe o <b>ADS</b> antes de gravar. Já vem somado da planilha (pedidos <b>aprovados</b>, canceladas fora).</p>${linhas}
+  const body=`<p style="margin-bottom:10px">Loja: <b>${esc(lojaNome)}</b>. Confira/ajuste os campos (todos editáveis) e informe o <b>ADS</b> e o <b>Outros/Custo Logístico</b> antes de gravar — nenhum dos dois vem na planilha; sem valor, fica 0. Já vem somado da planilha (pedidos <b>aprovados</b>, canceladas fora).</p>${linhas}
     <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)"></div>`;
   abrirModal('📤 Confirmar importação', body, 'Gravar tudo', ()=>salvarImport(dias, store_id));
 }
@@ -948,7 +957,8 @@ async function salvarImport(dias, store_id){
       subsidized_shipping:round2(gv('imp_frete_'+i)),
       cogs:round2(gv('imp_cmv_'+i)),
       tax:round2(gv('imp_tax_'+i)),
-      ads_ml:round2(gv('imp_ads_'+i)), ads_external:0 };
+      ads_ml:round2(gv('imp_ads_'+i)), ads_external:0,
+      outros:round2(gv('imp_outros_'+i)) };
     const existe=ALL.find(e=>e.date===date&&String(e.store_id)===String(store_id));
     let r;
     if(existe&&existe.id!=null){

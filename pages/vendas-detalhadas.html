@@ -83,12 +83,13 @@
                 <th class="tbl-neg">Frete Vend. (-)</th>
                 <th class="tbl-neg">Frete Comp. (-)</th>
                 <th class="tbl-neg">Prejuízo Dev. (-)</th>
+                <th class="tbl-neg">Comissão Afiliado (-)</th>
                 <th class="tbl-pos">Lucro (=)</th>
                 <th class="tbl-pos">Margem %</th>
               </tr>
             </thead>
             <tbody id="vendasTbody">
-              <tr><td colspan="17" class="empty-state">Use os filtros acima e clique em Buscar</td></tr>
+              <tr><td colspan="18" class="empty-state">Use os filtros acima e clique em Buscar</td></tr>
             </tbody>
           </table>
         </div>
@@ -140,6 +141,7 @@ function rowHtml(r) {
       <td class="${Number(r.frete_vendedor)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_vendedor)}</td>
       <td class="${Number(r.frete_comprador)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_comprador)}</td>
       <td class="${Number(r.prejuizo_devolucao)>0?'tbl-neg':'tbl-neg0'}" title="${r.motivo_prejuizo||''}">${R(r.prejuizo_devolucao)}</td>
+      <td class="${Number(r.comissao_afiliado)>0?'tbl-neg':'tbl-neg0'}">${R(r.comissao_afiliado)}</td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${R(r.lucro)}</td>
       <td class="${neg?'tbl-neg':'tbl-pos'}">${N(r.margem_pct)}%</td>
     </tr>`;
@@ -147,7 +149,7 @@ function rowHtml(r) {
 
 async function load() {
   const tbody = document.getElementById('vendasTbody');
-  tbody.innerHTML = '<tr><td colspan="17" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
+  tbody.innerHTML = '<tr><td colspan="18" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
 
   const isCustom = document.getElementById('filterDays').value === 'custom';
   const dateTo = isCustom ? document.getElementById('dateTo').value : new Date().toISOString().slice(0,10);
@@ -162,13 +164,13 @@ async function load() {
     limit: 500,
   });
   if (!data || data.error) {
-    tbody.innerHTML = `<tr><td colspan="17" class="empty-state" style="color:var(--red)">Erro ao carregar: ${data?.error||'servidor indisponível'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="18" class="empty-state" style="color:var(--red)">Erro ao carregar: ${data?.error||'servidor indisponível'}</td></tr>`;
     return;
   }
 
   const rows = data.vendas || [];
   set('s-count', data.total > rows.length ? `mostrando ${rows.length} de ${data.total}` : `${rows.length} registros`);
-  tbody.innerHTML = rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="17" class="empty-state">Nenhuma venda encontrada</td></tr>';
+  tbody.innerHTML = rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="18" class="empty-state">Nenhuma venda encontrada</td></tr>';
 }
 const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
 

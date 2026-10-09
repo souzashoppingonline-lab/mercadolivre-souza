@@ -106,10 +106,13 @@ Decisão do usuário (ver `decisions.md`): a partir desta tarefa, a planilha do 
 **Margem**: o Excel já traz `Lucro` e `Margem %`, mas a importação **recalcula** `margem_pct = lucro / faturamento × 100` em vez de usar a coluna da planilha — mais simples que confiar no formato percentual da célula do Excel (fração vs. já-multiplicado por 100 varia entre exports) e consistente com o resto do sistema, que sempre recalcula em vez de confiar em percentual pronto.
 
 ```
-custo + imposto + tarifa + frete_vendedor + frete_comprador  → vêm prontos do Excel, por linha
-lucro        = faturamento − tarifa − frete_vendedor − imposto − custo_produto − prejuizo_devolucao  (fórmula do Metrizap, validada por reconciliação exata contra os totais do export de exemplo)
+custo + imposto + tarifa + frete_vendedor + frete_comprador + comissao_afiliado  → vêm prontos do Excel, por linha
+lucro        = faturamento − tarifa − frete_vendedor − imposto − custo_produto − prejuizo_devolucao − comissao_afiliado
 margem_pct   = lucro / faturamento × 100                                                              (recalculado pelo sistema, não lido da planilha)
 ```
+Fórmula do Lucro validada por reconciliação exata contra dois exports reais: o de Mercado Livre (sem venda de afiliado, `comissao_afiliado` sempre 0 — por isso o termo não apareceu na 1ª reconciliação) e um export de **TikTok Shop** (v115.4) com `venda_afiliado='Sim'` em várias linhas — ali `comissao_afiliado` chega a ~9,5% do faturamento numa venda, e só bate com o `Lucro` da planilha subtraindo esse termo também. O sistema nunca reconstrói o Lucro a partir das partes — sempre usa o valor pronto da coluna `Lucro` da planilha; a fórmula acima é só documentação de como o Metrizap chega nesse número, não um cálculo que o código faz.
+
+**Multi-marketplace confirmado estrutural, não precisou de mudança nenhuma de schema**: o export do TikTok Shop usa as **mesmas 27 colunas, mesma ordem, mesmas abas "Resumo"/"Vendas"** do export de Mercado Livre — o Metrizap normaliza o formato entre marketplaces. Diferenças são só de conteúdo: `Conta` do TikTok é uma string longa (cifra da loja), não um ID numérico curto como no ML (sem problema — a empresa já é escolhida no dropdown antes do upload, nunca lida dessa coluna); `Logística` traz o nome da transportadora cross-border (`"iMile BR"`) em vez dos códigos do ML, armazenado como texto livre sem mapeamento fixo. `metrizap_sales`/`sales_entries_detail` recebem qualquer marketplace sem alteração de código — só é preciso cadastrar a empresa (`metrizap_contas`/`stores`) antes do 1º upload daquela conta.
 
 **Ads/Publicidade não vem na planilha** — é lançamento manual, por empresa+dia (`metrizap_ads_manual`, `UNIQUE(conta, data_ref)`), editável no card "Ads" de `pages/vendas.html`. Entra no ROI:
 ```

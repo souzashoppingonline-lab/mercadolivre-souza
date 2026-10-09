@@ -109,6 +109,7 @@
         <p class="vc-sub" style="margin:0 0 12px">Escolha a <b>loja</b> ANTES de subir o Excel exportado pelo Metrizap (aba "Vendas") — o sistema soma os <b>pedidos não cancelados por dia</b> (receita, taxas, frete, CMV e imposto) aqui, e grava cada venda individual em <a href="financeiro-vendas-detalhadas.html" style="color:#3fb950">Vendas Detalhadas</a>. O <b>ADS</b> não vem na planilha — é perguntado num modal antes de gravar.</p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
           <label style="font-size:12px;color:var(--text-muted)">Loja *<select id="impLoja" class="vc-in"><option value="">Selecione…</option></select></label>
+          <button class="action-btn" onclick="abrirNovaLoja()" style="height:36px"><i class="fas fa-plus"></i> Nova loja/marketplace</button>
           <label style="font-size:12px;color:var(--text-muted)">Planilha (.xlsx)<input type="file" id="impFile" accept=".xlsx,.xls" class="vc-in" onchange="onImportFile(this)"></label>
         </div>
       </div>
@@ -336,6 +337,30 @@ async function init(){
     showStatus(`✅ Carregado: ${ALL.length} lançamentos, ${st.length} lojas, ${GOALS_ALL.length} metas.`, false);
   }
   render();
+}
+
+// ── Nova loja/marketplace (escrita em stores) ───────────────────────────────
+function abrirNovaLoja(){
+  const body=`<label style="font-size:12px;color:var(--text-muted);display:block">Nome da loja/marketplace<input type="text" id="novaLojaNome" class="vc-in" style="width:100%" placeholder="ex.: Shopee, Amazon, Loja 2…" autofocus></label>
+    <div id="eMsg" style="font-size:12px;margin-top:10px;color:var(--text-muted)">Aparece nos seletores de loja desta tela e de Vendas Detalhadas.</div>`;
+  abrirModal('🏪 Nova loja/marketplace', body, 'Salvar', doSalvarLoja, false);
+}
+async function doSalvarLoja(){
+  const nome=(document.getElementById('novaLojaNome').value||'').trim();
+  if(!nome){ eMsgErr('Informe o nome.'); return; }
+  modalBusy(true,'Salvando…');
+  const r=await DB.addFinanceiroRow('stores',{name:nome});
+  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const saved=Array.isArray(r&&r.rows)?r.rows[0]:null;
+  if(saved){
+    STORES[saved.id]=saved.name;
+    [document.getElementById('vcLoja'),document.getElementById('fLoja'),document.getElementById('impLoja')].forEach(sel=>{
+      sel.insertAdjacentHTML('beforeend',`<option value="${esc(saved.id)}">${esc(saved.name)}</option>`);
+    });
+    document.getElementById('impLoja').value=saved.id; // já deixa selecionada p/ o upload seguinte
+  }
+  modalBusy(false);
+  fecharModal();
 }
 
 // ── Escrita: grava um lançamento diário em sales_entries (migração p/ o Supabase).

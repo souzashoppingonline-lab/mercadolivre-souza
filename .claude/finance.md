@@ -97,6 +97,30 @@ Upsert por `sale_id` (chave `UNIQUE`) — reimportar a mesma planilha atualiza o
 
 Não há uma lista fechada de status possíveis — a classificação é por substring porque o texto de `order_status` vem literal da planilha (varia entre exports).
 
+## Metrizap — fonte de "Vendas e Custos" (`pages/vendas.html`), substitui o Turbo só nessa página
+
+Decisão do usuário (ver `decisions.md`): a partir desta tarefa, a planilha do **Metrizap** (novo sistema do vendedor) é a fonte dos 9 cards de `pages/vendas.html` — **não** `ml_turbo_sales`. O Turbo continua sendo a fonte oficial de **Vendas por Loja** e **Inteligência de Margem** (não tocadas) — ver tabela no topo deste arquivo, que passa a valer só para essas duas páginas.
+
+**Tabela**: `metrizap_sales` (uma linha por venda, igual à aba "Vendas" do Excel — ver `database.md`). Upsert por `(conta, pedido)`.
+
+**Margem**: o Excel já traz `Lucro` e `Margem %`, mas a importação **recalcula** `margem_pct = lucro / faturamento × 100` em vez de usar a coluna da planilha — mais simples que confiar no formato percentual da célula do Excel (fração vs. já-multiplicado por 100 varia entre exports) e consistente com o resto do sistema, que sempre recalcula em vez de confiar em percentual pronto.
+
+```
+custo + imposto + tarifa + frete_vendedor + frete_comprador  → vêm prontos do Excel, por linha
+lucro        = faturamento − tarifa − frete_vendedor − imposto − custo_produto − prejuizo_devolucao  (fórmula do Metrizap, validada por reconciliação exata contra os totais do export de exemplo)
+margem_pct   = lucro / faturamento × 100                                                              (recalculado pelo sistema, não lido da planilha)
+```
+
+**Ads/Publicidade não vem na planilha** — é lançamento manual, por empresa+dia (`metrizap_ads_manual`, `UNIQUE(conta, data_ref)`), editável no card "Ads" de `pages/vendas.html`. Entra no ROI:
+```
+custos_totais = custo + imposto + tarifa + frete_vendedor + ads
+roi = (lucro_aprovado − ads) / custos_totais × 100
+```
+
+**Empresa/conta é obrigatória e escolhida ANTES do upload** (não inferida da coluna "Conta" do Excel) — decisão explícita do usuário porque o projeto está expandindo para TikTok Shop e Amazon e o formato de export de cada marketplace não traz necessariamente essa coluna de forma consistente. `POST /api/metrizap/upload` rejeita o arquivo se `conta` não vier no form ou não estiver cadastrada em `metrizap_contas` (cadastro pelo botão "+ Nova empresa/marketplace" em `pages/vendas.html`). Toda linha importada é gravada com essa `conta`, não com o valor da coluna "Conta" da planilha.
+
+**"Vendas Detalhadas"** (`pages/vendas-detalhadas.html`, nova) é a listagem crua, uma linha por venda, da mesma tabela `metrizap_sales` — **sem** agregação/análise por produto. Essa parte ("inteligência" por produto) foi explicitamente deixada para uma tarefa futura, a pedido do usuário — ver `roadmap.md`/`decisions.md`.
+
 ## Custo por SKU vs. custo por item
 
 `sku_costs` guarda custo por `sku` (compartilhado entre lojas — útil quando o mesmo produto é vendido em contas diferentes com o mesmo código interno). Ao salvar via `PATCH /api/custos/:sku`, o valor também é gravado em `items.cost` **usando `sku` como se fosse `ml_id`** — ou seja, esse endpoint só funciona corretamente hoje se o "SKU" usado for exatamente o `ml_id` do anúncio (não há coluna `sku` própria em `items`). Ver `known-bugs.md`.

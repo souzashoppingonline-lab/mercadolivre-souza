@@ -269,6 +269,29 @@ const DB = {
   async getTurboCharts(params={})    { return this._get('/turbo/charts', params); },
   async getTurboFiltersMeta()        { return this._get('/turbo/filters-meta'); },
 
+  // ── Metrizap (fonte de "Vendas e Custos" — pages/vendas.html) ──
+  async getMetrizapResumo(params={})  { return this._get('/metrizap/resumo', params); },
+  async getMetrizapVendas(params={})  { return this._get('/metrizap/vendas', params); },
+  async getMetrizapContas()           { return this._get('/metrizap/contas'); },
+  async addMetrizapConta(body)        { return this._post('/metrizap/contas', body); },
+  async getMetrizapAds(params={})     { return this._get('/metrizap/ads', params); },
+  async saveMetrizapAds(body)         { return this._post('/metrizap/ads', body); },
+  async uploadMetrizap(conta, file) {
+    const fd = new FormData();
+    fd.append('conta', conta);
+    fd.append('file', file);
+    try {
+      const res = await fetch(`${this.BASE}/metrizap/upload`, { method: 'POST', body: fd });
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      if (!res.ok) { this.lastError = body?.error || `HTTP ${res.status}`; return null; }
+      return body;
+    } catch (e) {
+      console.error('[DB] uploadMetrizap error', e);
+      this.lastError = e.message;
+      return null;
+    }
+  },
+
   // ── Publicidade & Concorrentes ─────────────────────────────
   async getPublicidade()          { return this._get('/publicidade'); },
   async getConcorrentes(itemId)   { return this._get('/concorrentes', { itemId }); },

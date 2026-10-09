@@ -15,6 +15,7 @@ const NAV_ITEMS = [
     { href: 'pedidos.html', icon: 'fa-box', label: 'Pedidos' },
     { href: 'embalagem.html', icon: 'fa-barcode', label: 'Embalagem' },
     { href: 'vendas.html', icon: 'fa-chart-line', label: 'Vendas Totais' },
+    { href: 'vendas-detalhadas.html', icon: 'fa-list', label: 'Vendas Detalhadas' },
     { href: 'vendas-por-loja.html', icon: 'fa-store', label: 'Vendas por Loja' },
     { href: 'promocoes.html', icon: 'fa-tags', label: 'Promoções' },
     { href: 'perguntas.html', icon: 'fa-question-circle', label: 'Perguntas' },

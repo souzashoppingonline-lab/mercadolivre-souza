@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Vendas Detalhadas — ML Dashboard</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#e6c200">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ML Dashboard">
+  <link rel="apple-touch-icon" href="/assets/icon-128.png">
+  <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));}</script>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Vendas Detalhadas'; window.ACTIVE_NAV='vendas-detalhadas.html';</script>
+  <style>
+    .filters-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .filters-row select, .filters-row input[type=text], .filters-row input[type=date] { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
+    .tbl-num  { text-align: right; white-space: nowrap; }
+    .tbl-neg  { text-align: right; white-space: nowrap; color: var(--red); }
+    .tbl-pos  { text-align: right; white-space: nowrap; color: var(--green); font-weight: 600; }
+    .tbl-neg0 { text-align: right; white-space: nowrap; color: var(--text-muted); }
+    .tbl-produto { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    th { white-space: nowrap; font-size: 11px; }
+    .chip { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+    .chip-ok      { background: rgba(39,174,96,.15); color: var(--green); }
+    .chip-cancel  { background: rgba(231,76,60,.15); color: var(--red); }
+    .chip-outro   { background: rgba(100,100,100,.2); color: var(--text-muted); }
+    .chip-afiliado{ background: rgba(255,230,0,.15); color: var(--primary); }
+    .pacote-tag { font-size: 9.5px; color: #c79fe0; font-weight: 700; display:block; margin-top:2px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+
+      <div class="filters-row">
+        <select id="filterConta"><option value="">Todas as empresas</option></select>
+        <select id="filterDays" onchange="onPeriodChange()">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="custom">Período personalizado</option>
+        </select>
+        <div id="customDates" style="display:none;gap:6px;align-items:center">
+          <input type="date" id="dateFrom">
+          <span style="color:var(--text-muted);font-size:12px">até</span>
+          <input type="date" id="dateTo">
+        </div>
+        <input type="text" id="filterSituacao" placeholder="Situação (ex: venda, cancelada)">
+        <div class="search-box"><i class="fas fa-search"></i><input type="text" id="filterSearch" placeholder="Buscar produto ou pedido..."></div>
+        <button class="btn-primary" id="btnLoad"><i class="fas fa-search"></i> Buscar</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Vendas Detalhadas — importação Metrizap</h3>
+          <span id="s-count" style="font-size:12px;color:var(--text-muted)"></span>
+          <button class="action-btn" style="margin-left:auto" onclick="exportTableCSV(document.getElementById('vendasTbody').closest('table'), 'vendas-detalhadas.csv')"><i class="fas fa-file-csv"></i> CSV</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="vendasTable" style="font-size:12px">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Empresa</th>
+                <th>Pedido</th>
+                <th>Produto</th>
+                <th>SKU</th>
+                <th class="tbl-num">Qtd.</th>
+                <th>Situação</th>
+                <th>Logística</th>
+                <th class="tbl-num">Faturamento</th>
+                <th class="tbl-neg">Custo (-)</th>
+                <th class="tbl-neg">Imposto (-)</th>
+                <th class="tbl-neg">Tarifa (-)</th>
+                <th class="tbl-neg">Frete Vend. (-)</th>
+                <th class="tbl-neg">Frete Comp. (-)</th>
+                <th class="tbl-neg">Prejuízo Dev. (-)</th>
+                <th class="tbl-pos">Lucro (=)</th>
+                <th class="tbl-pos">Margem %</th>
+              </tr>
+            </thead>
+            <tbody id="vendasTbody">
+              <tr><td colspan="17" class="empty-state">Use os filtros acima e clique em Buscar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/tableExport.js"></script>
+<script src="../js/layout.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const R = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
+const N = (v,d=2) => Number(v||0).toFixed(d);
+const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+
+async function initContas() {
+  const data = await DB.getMetrizapContas() || { contas: [] };
+  const sel = document.getElementById('filterConta');
+  (data.contas||[]).forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.conta; o.textContent = `${c.nome} (${c.marketplace})`;
+    sel.appendChild(o);
+  });
+}
+
+function situacaoChip(situacao) {
+  const l = (situacao || '').toLowerCase();
+  if (l.includes('cancel')) return `<span class="chip chip-cancel">${situacao}</span>`;
+  if (l.includes('venda') || l.includes('entreg') || l.includes('paga')) return `<span class="chip chip-ok">${situacao||'—'}</span>`;
+  return `<span class="chip chip-outro">${situacao||'—'}</span>`;
+}
+
+function rowHtml(r) {
+  const neg = Number(r.margem_pct) < 0;
+  return `<tr>
+      <td style="white-space:nowrap;font-size:11px">${fmtDt(r.data_venda)}</td>
+      <td style="font-size:11px;white-space:nowrap">${r.conta_nome||r.conta||'—'}</td>
+      <td style="font-size:11px;white-space:nowrap">${r.pedido}${r.pacote ? `<span class="pacote-tag"><i class="fas fa-layer-group"></i> pacote</span>` : ''}</td>
+      <td class="tbl-produto" title="${r.produto||''}">${r.produto||'—'}</td>
+      <td style="font-size:10px;color:var(--text-muted)">${r.sku||'—'}</td>
+      <td class="tbl-num">${r.quantidade??1}</td>
+      <td>${situacaoChip(r.situacao)} ${r.venda_afiliado ? '<span class="chip chip-afiliado">Afiliado</span>' : ''}</td>
+      <td style="font-size:11px">${r.logistica||'—'}</td>
+      <td class="tbl-num">${R(r.faturamento)}</td>
+      <td class="${Number(r.custo_produto)>0?'tbl-neg':'tbl-neg0'}">${R(r.custo_produto)}</td>
+      <td class="${Number(r.imposto)>0?'tbl-neg':'tbl-neg0'}">${R(r.imposto)}</td>
+      <td class="${Number(r.tarifa)>0?'tbl-neg':'tbl-neg0'}">${R(r.tarifa)}</td>
+      <td class="${Number(r.frete_vendedor)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_vendedor)}</td>
+      <td class="${Number(r.frete_comprador)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_comprador)}</td>
+      <td class="${Number(r.prejuizo_devolucao)>0?'tbl-neg':'tbl-neg0'}" title="${r.motivo_prejuizo||''}">${R(r.prejuizo_devolucao)}</td>
+      <td class="${neg?'tbl-neg':'tbl-pos'}">${R(r.lucro)}</td>
+      <td class="${neg?'tbl-neg':'tbl-pos'}">${N(r.margem_pct)}%</td>
+    </tr>`;
+}
+
+async function load() {
+  const tbody = document.getElementById('vendasTbody');
+  tbody.innerHTML = '<tr><td colspan="17" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
+
+  const isCustom = document.getElementById('filterDays').value === 'custom';
+  const dateTo = isCustom ? document.getElementById('dateTo').value : new Date().toISOString().slice(0,10);
+  const dateFrom = isCustom ? document.getElementById('dateFrom').value : new Date(Date.now() - Number(document.getElementById('filterDays').value)*86400000).toISOString().slice(0,10);
+
+  const data = await DB.getMetrizapVendas({
+    conta: document.getElementById('filterConta').value,
+    situacao: document.getElementById('filterSituacao').value,
+    search: document.getElementById('filterSearch').value,
+    date_from: dateFrom,
+    date_to: dateTo,
+    limit: 500,
+  });
+  if (!data || data.error) {
+    tbody.innerHTML = `<tr><td colspan="17" class="empty-state" style="color:var(--red)">Erro ao carregar: ${data?.error||'servidor indisponível'}</td></tr>`;
+    return;
+  }
+
+  const rows = data.vendas || [];
+  set('s-count', data.total > rows.length ? `mostrando ${rows.length} de ${data.total}` : `${rows.length} registros`);
+  tbody.innerHTML = rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="17" class="empty-state">Nenhuma venda encontrada</td></tr>';
+}
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+
+function onPeriodChange() {
+  const isCustom = document.getElementById('filterDays').value === 'custom';
+  document.getElementById('customDates').style.display = isCustom ? 'flex' : 'none';
+  if (isCustom) {
+    const today = new Date().toISOString().slice(0,10);
+    const from  = new Date(Date.now() - 7*86400000).toISOString().slice(0,10);
+    if (!document.getElementById('dateFrom').value) document.getElementById('dateFrom').value = from;
+    if (!document.getElementById('dateTo').value)   document.getElementById('dateTo').value   = today;
+  }
+}
+
+document.getElementById('btnLoad').addEventListener('click', load);
+document.getElementById('filterSearch').addEventListener('keydown', e => { if(e.key==='Enter') load(); });
+document.getElementById('filterConta').addEventListener('change', load);
+
+initContas().then(load);
+</script>
+</body>
+</html>

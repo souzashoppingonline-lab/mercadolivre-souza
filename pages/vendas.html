@@ -35,26 +35,6 @@
     .sec-card .label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
     .sec-card .value { font-size: 18px; font-weight: 700; }
     .sec-card .sub   { font-size: 11px; color: var(--text-muted); }
-    .filters-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-    .filters-row select, .filters-row input[type=text] { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
-    .tbl-num  { text-align: right; white-space: nowrap; }
-    .tbl-neg  { text-align: right; white-space: nowrap; color: var(--red); }
-    .tbl-pos  { text-align: right; white-space: nowrap; color: var(--green); font-weight: 600; }
-    .tbl-neg0 { text-align: right; white-space: nowrap; color: var(--text-muted); }
-    .tbl-anuncio { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    th { white-space: nowrap; font-size: 11px; }
-    .badge-frete { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(100,100,100,0.2); color: var(--text-muted); }
-    .badge-frete.Full            { background: rgba(39,174,96,0.15); color: var(--green); }
-    .badge-frete.Flex            { background: rgba(155,89,182,0.15); color: #a569bd; }
-    .badge-frete.MercadoEnvios   { background: rgba(230,126,34,0.15); color: var(--orange); }
-    .badge-frete.Coleta          { background: rgba(41,128,185,0.15); color: #5dade2; }
-    .tbl-refresh { background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:5px; padding:1px 5px; font-size:9px; cursor:pointer; margin-left:4px; }
-    .tbl-refresh:hover { color:var(--primary); border-color:var(--primary); }
-    .tbl-refresh:disabled { opacity:.5; cursor:default; }
-    .tbl-sync-ok { color:var(--green); font-size:10px; margin-left:4px; }
-    /* Máscara de dados sensíveis */
-    .masked .col-sensivel { filter: blur(6px); user-select: none; pointer-events: none; transition: filter .25s; }
-    #maskBtn.active { background: rgba(255,230,0,.12); border-color: var(--primary); color: var(--primary); }
     /* Hero Vendas Hoje */
     .hoje-hero{background:linear-gradient(135deg,rgba(255,230,0,.07),rgba(39,174,96,.05));border:1px solid rgba(255,230,0,.3);border-radius:14px;padding:18px 22px;margin-bottom:18px}
     .hoje-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
@@ -72,6 +52,17 @@
     .hoje-mc-badge{position:absolute;top:12px;right:12px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px}
     .skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:4px;height:28px;width:80%}
     @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .upload-zone{border:2px dashed var(--border);border-radius:12px;padding:20px 24px;text-align:center;cursor:pointer;transition:.2s;background:var(--bg-card)}
+    .upload-zone:hover,.upload-zone.drag{border-color:var(--primary);background:rgba(255,230,0,.04)}
+    .upload-zone i{font-size:26px;color:var(--primary);margin-bottom:6px;display:block}
+    .upload-zone p{font-size:12px;color:var(--text-muted);margin:0}
+    .mz-topbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px}
+    .mz-topbar select, .mz-topbar input[type=text] { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
+    .mz-upload-col{flex:1;min-width:260px}
+    .mz-conta-form{display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+    .mz-conta-form.show{display:flex}
+    .ads-card input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text-primary);font-size:14px;font-weight:700;margin-bottom:4px}
+    .ads-card button{background:var(--primary);border:none;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;color:#000}
   </style>
 </head>
 <body>
@@ -119,15 +110,8 @@
         </div>
       </div>
 
-      <div class="filters-row">
-        <select id="filterStore"><option value="">Todas as lojas</option></select>
-        <select id="filterStatus">
-          <option value="">Todos os status</option>
-          <option value="paid" selected>Pago</option>
-          <option value="shipped">Enviado</option>
-          <option value="delivered">Entregue</option>
-          <option value="cancelled">Cancelado</option>
-        </select>
+      <div class="mz-topbar">
+        <select id="filterConta"><option value="">Todas as empresas</option></select>
         <select id="filterDays" onchange="onPeriodChange()">
           <option value="7">Últimos 7 dias</option>
           <option value="30" selected>Últimos 30 dias</option>
@@ -135,13 +119,34 @@
           <option value="90">Últimos 90 dias</option>
           <option value="custom">Período personalizado</option>
         </select>
-        <div id="customDates" style="display:none;gap:6px;align-items:center;display:none">
+        <div id="customDates" style="display:none;gap:6px;align-items:center">
           <input type="date" id="dateFrom" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
           <span style="color:var(--text-muted);font-size:12px">até</span>
           <input type="date" id="dateTo" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:7px 10px;font-size:13px">
         </div>
-        <div class="search-box"><i class="fas fa-search"></i><input type="text" id="filterSearch" placeholder="Buscar produto..."></div>
         <button class="btn-primary" id="btnLoad"><i class="fas fa-search"></i> Buscar</button>
+        <button class="action-btn" onclick="toggleContaForm()"><i class="fas fa-plus"></i> Nova empresa/marketplace</button>
+
+        <div class="mz-upload-col">
+          <div class="upload-zone" id="uploadZone">
+            <i class="fas fa-file-excel"></i>
+            <p><b>Arraste o Excel do Metrizap</b> ou clique para escolher<br>escolha a empresa no dropdown acima antes de importar</p>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
+          </div>
+          <div id="uploadMsg" style="font-size:12px;margin-top:6px"></div>
+        </div>
+      </div>
+      <div class="mz-conta-form" id="contaForm">
+        <input type="text" id="novaContaId" placeholder="ID da conta (coluna 'Conta' do Excel)" style="width:220px">
+        <input type="text" id="novaContaNome" placeholder="Nome da empresa" style="width:200px">
+        <select id="novaContaMkt">
+          <option value="Mercado Livre">Mercado Livre</option>
+          <option value="TikTok Shop">TikTok Shop</option>
+          <option value="Amazon">Amazon</option>
+          <option value="Shopee">Shopee</option>
+          <option value="Outro">Outro</option>
+        </select>
+        <button class="btn-primary" onclick="salvarConta()">Salvar</button>
       </div>
 
       <div class="summary-grid">
@@ -149,7 +154,6 @@
           <div class="sum-label"><i class="fas fa-dollar-sign"></i> Vendas Aprovadas</div>
           <div class="sum-value" id="s-fat">R$ 0,00</div>
           <div class="sum-sub">
-            <span><span>Faturamento ML</span><span id="s-fat2">R$ 0,00</span></span>
             <span><span>Vendas Canceladas</span><span id="s-canc" style="color:var(--red)">R$ 0,00</span></span>
           </div>
         </div>
@@ -164,7 +168,7 @@
         <div class="sum-card yellow">
           <div class="sum-label"><i class="fas fa-percentage"></i> Tarifa de Venda</div>
           <div class="sum-value" id="s-tar">R$ 0,00</div>
-          <div class="sum-sub"><span><span>Taxa cobrada pelo ML</span><span id="s-tarsub" style="color:var(--text-muted)"></span></span></div>
+          <div class="sum-sub"><span><span>Prejuízo de devolução</span><span id="s-prej" style="color:var(--text-muted)">R$ 0,00</span></span></div>
         </div>
         <div class="sum-card blue">
           <div class="sum-label"><i class="fas fa-truck"></i> Frete Total</div>
@@ -187,11 +191,6 @@
         <div class="sec-card">
           <div class="label">Qtd Vendas Aprovadas</div>
           <div class="value" id="s-qtdap">0</div>
-          <div class="sub" id="s-qtdap2">0 pedidos</div>
-        </div>
-        <div class="sec-card">
-          <div class="label">Qtd Total Vendas</div>
-          <div class="value" id="s-qtdtot">0</div>
           <div class="sub" id="s-qtdcanc">0 canceladas</div>
         </div>
         <div class="sec-card">
@@ -204,60 +203,21 @@
           <div class="value" id="s-mcmed">R$ 0,00</div>
           <div class="sub" id="s-mcmedpct">0,00%</div>
         </div>
+        <div class="sec-card ads-card">
+          <div class="label">Ads / Publicidade (manual)</div>
+          <input type="number" id="s-ads-input" min="0" step="0.01" placeholder="0,00">
+          <button onclick="salvarAds()">Salvar</button>
+        </div>
+        <div class="sec-card">
+          <div class="label">ROI</div>
+          <div class="value" id="s-roi">0,0%</div>
+          <div class="sub">lucro líq. / (custo+imposto+tarifa+frete vend.+ads)</div>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <h3>Detalhamento por Venda</h3>
-          <span id="s-count" style="font-size:12px;color:var(--text-muted)"></span>
-          <button id="syncInfoBtn" onclick="toggleSyncInfo()" title="Como funciona a atualização de frete/tarifa" style="
-            margin-left:auto;background:transparent;border:1px solid var(--border);
-            color:var(--text-muted);padding:5px 12px;border-radius:6px;cursor:pointer;
-            font-size:.78rem;display:flex;align-items:center;gap:6px;transition:all .2s;
-          ">
-            <i class="fas fa-circle-info"></i><span> Como funciona a atualização</span>
-          </button>
-          <button id="maskBtn" onclick="toggleMask()" title="Ocultar/mostrar dados sensíveis" style="
-            background:transparent;border:1px solid var(--border);
-            color:var(--text-muted);padding:5px 12px;border-radius:6px;cursor:pointer;
-            font-size:.78rem;display:flex;align-items:center;gap:6px;transition:all .2s;
-          ">
-            <i class="fas fa-eye-slash" id="maskIcon"></i><span id="maskLabel"> Mascarar</span>
-          </button>
-          <button class="action-btn" onclick="exportTableCSV(document.getElementById('vendasTbody').closest('table'), 'vendas-totais.csv')"><i class="fas fa-file-csv"></i> CSV</button>
-        </div>
-        <div id="syncInfoBox" style="display:none;margin:0 16px 14px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card2);font-size:12.5px;color:var(--text-muted);line-height:1.6">
-          <b style="color:var(--text-primary)">Frete do vendedor e tarifa são atualizados de duas formas:</b><br>
-          <b>Automática:</b> a cada 10 minutos, um job busca na API do Mercado Livre até 50 vendas ainda pendentes (que nunca tiveram frete/tarifa confirmados), priorizando as das últimas 24h. Não é "todas as vendas de 10 em 10 min" — só as que ainda faltam.<br>
-          <b>Manual:</b> clique no botão <i class="fas fa-sync-alt"></i> na linha da venda para forçar a atualização imediatamente, sem esperar o job.<br>
-          <i class="fas fa-check tbl-sync-ok"></i> ao lado do botão = já sincronizado (frete/tarifa confirmados pela API). Sem o ícone = ainda pendente.
-        </div>
-        <div class="table-responsive">
-          <table class="data-table" id="vendasTable" style="font-size:12px">
-            <thead>
-              <tr>
-                <th class="col-sensivel">Anúncio</th>
-                <th class="col-sensivel">Conta</th>
-                <th class="col-sensivel">SKU</th>
-                <th>Data</th>
-                <th>Frete</th>
-                <th class="tbl-num">Valor Unit.</th>
-                <th class="tbl-num">Qtd.</th>
-                <th class="tbl-num">Faturamento ML</th>
-                <th class="tbl-neg">Custo (-)</th>
-                <th class="tbl-neg">Imposto (-)</th>
-                <th class="tbl-neg">Tarifa (-)</th>
-                <th class="tbl-neg">Frete Comp. (-)</th>
-                <th class="tbl-neg">Frete Vend. (-)</th>
-                <th class="tbl-pos">Margem (=)</th>
-                <th class="tbl-pos">MC %</th>
-              </tr>
-            </thead>
-            <tbody id="vendasTbody">
-              <tr><td colspan="15" class="empty-state">Use os filtros acima e clique em Buscar</td></tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="card" style="padding:14px 18px;font-size:12.5px;color:var(--text-muted)">
+        Fonte: importação Metrizap. Detalhe venda a venda em
+        <a href="vendas-detalhadas.html" style="color:var(--primary)">Vendas Detalhadas</a>.
       </div>
     </div>
   </main>
@@ -268,178 +228,131 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-function toggleSyncInfo() {
-  const box = document.getElementById('syncInfoBox');
-  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
-}
-let _masked = false;
-function toggleMask() {
-  _masked = !_masked;
-  const tbl = document.getElementById('vendasTable');
-  const btn = document.getElementById('maskBtn');
-  const icon = document.getElementById('maskIcon');
-  if (tbl) tbl.classList.toggle('masked', _masked);
-  if (btn) btn.classList.toggle('active', _masked);
-  if (icon) icon.className = _masked ? 'fas fa-eye' : 'fas fa-eye-slash';
-  const lbl = document.getElementById('maskLabel');
-  if (lbl) lbl.textContent = _masked ? ' Revelar' : ' Mascarar';
-}
-
 const R   = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v)||0);
 const N   = (v,d=2) => Number(v||0).toFixed(d);
-const fmtDt = d => d ? new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
-function fmtFreteLabel(raw) {
-  const l = (raw || '').toLowerCase();
-  if (l.includes('fulfillment'))   return 'Full';
-  if (l.includes('self_service'))  return 'Flex';
-  if (l.includes('flex'))          return 'Flex';
-  if (l.includes('xd_drop_off'))   return 'Mercado Envios';
-  if (l.includes('me2') || l.includes('me1') || l.includes('cross_docking')) return 'Mercado Envios';
-  if (l.includes('pickup'))        return 'Coleta';
-  return raw || '—';
-}
-function fmtFreteClass(raw) {
-  const label = fmtFreteLabel(raw);
-  return label === 'Mercado Envios' ? 'MercadoEnvios' : label;
-}
-const set   = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
 
-let ROWS = [], SUMMARY = {};
+let SUMMARY = {};
 
-async function initStores() {
-  const data = await DB.getLojas() || { stores:[] };
-  const sel = document.getElementById('filterStore');
-  (data.stores||[]).forEach(s => {
+function currentFilters() {
+  const isCustom = document.getElementById('filterDays').value === 'custom';
+  return {
+    conta: document.getElementById('filterConta').value,
+    date_from: isCustom ? document.getElementById('dateFrom').value : diasAtras(document.getElementById('filterDays').value),
+    date_to:   isCustom ? document.getElementById('dateTo').value   : new Date().toISOString().slice(0,10),
+  };
+}
+function diasAtras(dias) {
+  return new Date(Date.now() - Number(dias)*86400000).toISOString().slice(0,10);
+}
+
+async function initContas() {
+  const data = await DB.getMetrizapContas() || { contas: [] };
+  const sel = document.getElementById('filterConta');
+  sel.querySelectorAll('option:not(:first-child)').forEach(o => o.remove());
+  (data.contas||[]).forEach(c => {
     const o = document.createElement('option');
-    o.value = s.id; o.textContent = s.nickname;
+    o.value = c.conta; o.textContent = `${c.nome} (${c.marketplace})`;
     sel.appendChild(o);
   });
-  const active = localStorage.getItem('ml_active_store') || '';
-  if (active) sel.value = active;
+}
+
+function toggleContaForm() {
+  document.getElementById('contaForm').classList.toggle('show');
+}
+
+async function salvarConta() {
+  const conta = document.getElementById('novaContaId').value.trim();
+  const nome  = document.getElementById('novaContaNome').value.trim();
+  const marketplace = document.getElementById('novaContaMkt').value;
+  if (!conta || !nome) { alert('Preencha o ID da conta e o nome da empresa'); return; }
+  const res = await DB.addMetrizapConta({ conta, nome, marketplace });
+  if (!res?.ok) { alert('Erro ao salvar: ' + (DB.lastError||'desconhecido')); return; }
+  document.getElementById('novaContaId').value = '';
+  document.getElementById('novaContaNome').value = '';
+  document.getElementById('contaForm').classList.remove('show');
+  await initContas();
+  document.getElementById('filterConta').value = conta;
 }
 
 async function load() {
-  const tbody = document.getElementById('vendasTbody');
-  tbody.innerHTML = '<tr><td colspan="15" class="empty-state"><div class="spinner" style="margin:auto"></div></td></tr>';
-
-  const isCustom = document.getElementById('filterDays').value === 'custom';
-  const data = await DB.getVendasDetalhado({
-    store_id:  document.getElementById('filterStore').value,
-    status:    document.getElementById('filterStatus').value,
-    days:      isCustom ? 30 : document.getElementById('filterDays').value,
-    search:    document.getElementById('filterSearch').value,
-    date_from: isCustom ? document.getElementById('dateFrom').value : '',
-    date_to:   isCustom ? document.getElementById('dateTo').value   : '',
-  });
-  if (!data) {
-    tbody.innerHTML = '<tr><td colspan="15" class="empty-state" style="color:var(--red)">Erro ao carregar — verifique se o servidor está online</td></tr>';
+  const f = currentFilters();
+  const data = await DB.getMetrizapResumo(f);
+  if (!data || data.error) {
+    console.error('[vendas] erro ao carregar resumo Metrizap:', data?.error);
     return;
   }
-  if (data.error) {
-    tbody.innerHTML = `<tr><td colspan="15" class="empty-state" style="color:var(--red);font-size:11px">Erro: ${data.error}</td></tr>`;
-    return;
-  }
-
-  SUMMARY = data.summary || {};
+  SUMMARY = data;
   renderSummary();
-
-  ROWS = data.rows || [];
-  const totalPedidosFiltro = (SUMMARY.pedidos_aprovados||0) + (SUMMARY.pedidos_cancelados||0);
-  set('s-count', ROWS.length < totalPedidosFiltro
-    ? `mostrando ${ROWS.length} de ${totalPedidosFiltro} pedidos (totais acima já refletem os ${totalPedidosFiltro})`
-    : `${ROWS.length} registros`);
-  renderRows();
+  document.getElementById('s-ads-input').value = Number(data.ads||0).toFixed(2);
 }
 
 function renderSummary() {
   const s = SUMMARY;
-  set('s-fat',   R(s.vendas_aprovadas));
-  set('s-fat2',  R(s.vendas_aprovadas));
-  set('s-canc',  R(s.vendas_canceladas));
-  set('s-ci',    R((s.custo_total||0)+(s.imposto_total||0)));
-  set('s-custo', R(s.custo_total));
-  set('s-imp',   R(s.imposto_total));
-  set('s-tar',   R(s.tarifa_total));
-  set('s-tarsub', s.pedidos_aprovados > 0
-    ? `${s.pedidos_conciliados||0}/${s.pedidos_aprovados} conciliados`
-    : '');
-  set('s-frete', R((s.frete_comprador_total||0)+(s.frete_vendedor_total||0)));
-  set('s-fc',    R(s.frete_comprador_total));
-  set('s-fv',    R(s.frete_vendedor_total));
-  set('s-mc',    R(s.margem_total));
+  set('s-fat',   R(s.faturamento_aprovado));
+  set('s-canc',  R(s.faturamento_cancelado));
+  set('s-ci',    R((s.custo||0)+(s.imposto||0)));
+  set('s-custo', R(s.custo));
+  set('s-imp',   R(s.imposto));
+  set('s-tar',   R(s.tarifa));
+  set('s-prej',  R(s.prejuizo_devolucao));
+  set('s-frete', R((s.frete_comprador||0)+(s.frete_vendedor||0)));
+  set('s-fc',    R(s.frete_comprador));
+  set('s-fv',    R(s.frete_vendedor));
+  set('s-mc',    R(s.lucro_aprovado));
   set('s-qtdap', s.qtd_aprovadas ?? 0);
-  set('s-qtdap2',`${s.pedidos_aprovados ?? 0} pedidos`);
-  set('s-qtdtot',(s.qtd_aprovadas||0)+(s.qtd_canceladas||0));
-  set('s-qtdcanc',`${s.qtd_canceladas??0} canceladas`);
+  set('s-qtdcanc', `${s.qtd_canceladas??0} canceladas`);
   set('s-ticket', R(s.ticket_medio));
-  set('s-mcmed',  R(s.pedidos_aprovados > 0 ? (s.margem_total/s.pedidos_aprovados) : 0));
-  set('s-mcmedpct', N(s.mc_pct)+'%');
+  set('s-mcmed',  R(s.mc_medio));
+  set('s-mcmedpct', N(s.qtd_aprovadas>0 ? (s.mc_medio/(s.faturamento_aprovado/s.qtd_aprovadas)*100) : 0)+'%');
+  set('s-roi', N(s.roi,1)+'%');
 
   const mcEl = document.getElementById('s-mcpct');
-  if (mcEl) { mcEl.textContent = N(s.mc_pct)+'%'; mcEl.className = 'mc-pct'+(s.mc_pct<0?' neg':''); }
+  if (mcEl) { mcEl.textContent = N(s.margem_pct)+'%'; mcEl.className = 'mc-pct'+(s.margem_pct<0?' neg':''); }
 }
 
-function rowHtml(r) {
-  const neg = Number(r.mc_pct) < 0;
-  const hasCusto = Number(r.custo) > 0;
-  return `<tr>
-      <td class="tbl-anuncio col-sensivel" title="${r.title||''}" style="cursor:pointer;color:var(--primary)" onclick="openModal('${r.ml_id}')">${r.title||'—'}</td>
-      <td class="col-sensivel" style="font-size:11px;white-space:nowrap">${r.conta||'—'}</td>
-      <td class="col-sensivel" style="font-size:10px;color:var(--text-muted)">${r.item_id||'—'}</td>
-      <td style="white-space:nowrap;font-size:11px">${fmtDt(r.date_created)}</td>
-      <td><span class="badge-frete ${fmtFreteClass(r.frete_tipo)}">${fmtFreteLabel(r.frete_tipo)}</span></td>
-      <td class="tbl-num">${R(r.unit_price)}</td>
-      <td class="tbl-num">${r.quantity??1}</td>
-      <td class="tbl-num">${R(r.faturamento)}</td>
-      <td class="${hasCusto?'tbl-neg':'tbl-neg0'}">${R(r.custo)}</td>
-      <td class="tbl-neg">${R(r.imposto)}</td>
-      <td class="${Number(r.tarifa)>0?'tbl-neg':'tbl-neg0'}">${R(r.tarifa)}</td>
-      <td class="${Number(r.frete_comprador)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_comprador)}</td>
-      <td class="${Number(r.frete_vendedor)>0?'tbl-neg':'tbl-neg0'}">${R(r.frete_vendedor)}
-        <button class="tbl-refresh" title="Buscar tarifa/frete do vendedor atualizados no Mercado Livre (venda recente ainda não conciliada)" onclick="atualizarLinha('${r.ml_id}', this)"><i class="fas fa-rotate"></i></button>
-        ${r.finance_synced ? `<i class="fas fa-check tbl-sync-ok" title="Sincronizado automaticamente${r.last_finance_sync_at ? ' — ' + fmtDt(r.last_finance_sync_at) : ''}"></i>` : ''}
-      </td>
-      <td class="${neg?'tbl-neg':'tbl-pos'}">${R(r.margem)}</td>
-      <td class="${neg?'tbl-neg':'tbl-pos'}">${N(r.mc_pct)}%</td>
-    </tr>`;
+async function salvarAds() {
+  const f = currentFilters();
+  const valor = parseFloat(document.getElementById('s-ads-input').value) || 0;
+  const conta = f.conta || document.getElementById('filterConta').options[1]?.value;
+  if (!conta) { alert('Selecione uma empresa para lançar o Ads'); return; }
+  const res = await DB.saveMetrizapAds({ conta, data_ref: f.date_to, valor });
+  if (!res?.ok) { alert('Erro ao salvar Ads: ' + (DB.lastError||'desconhecido')); return; }
+  load();
 }
 
-function renderRows() {
-  const tbody = document.getElementById('vendasTbody');
-  tbody.innerHTML = ROWS.length ? ROWS.map(rowHtml).join('') : '<tr><td colspan="15" class="empty-state">Nenhuma venda encontrada</td></tr>';
-}
+// ── Upload Metrizap ─────────────────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleUpload(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleUpload(fileInput.files[0]); });
 
-// Reconsulta 1 pedido na API do ML na hora (tarifa/frete vendedor/ml_fee) —
-// venda recente ("Hoje"/período curto) costuma vir zerada porque a
-// Conciliação oficial (relatório do Mercado Pago) só fecha no dia seguinte, e
-// o webhook de pagamento/envio pode não ter chegado ainda. Mesma ideia e
-// mesmo endpoint do card "Resumo por Venda" do módulo BI — ver modules.md.
-async function atualizarLinha(mlId, btn) {
-  const icon = btn.querySelector('i'); const original = icon.className;
-  icon.className = 'fas fa-spinner fa-spin'; btn.disabled = true;
-  const res = await DB.atualizarVendaDetalhe(mlId);
-  btn.disabled = false;
-  if (!res || res.error) {
-    icon.className = original;
-    alert('Não consegui atualizar essa venda: ' + (res && res.error || DB.lastError || 'erro desconhecido'));
+async function handleUpload(file) {
+  const conta = document.getElementById('filterConta').value;
+  const msg = document.getElementById('uploadMsg');
+  if (!conta) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Selecione a empresa no dropdown ANTES de enviar o Excel.';
     return;
   }
-  const idx = ROWS.findIndex(r => r.ml_id === mlId);
-  if (idx >= 0) {
-    const antiga = ROWS[idx];
-    const aprovado = antiga.status !== 'cancelled';
-    if (aprovado && SUMMARY.tarifa_total != null) {
-      SUMMARY.tarifa_total        += (Number(res.row.tarifa)||0)          - (Number(antiga.tarifa)||0);
-      SUMMARY.frete_vendedor_total += (Number(res.row.frete_vendedor)||0) - (Number(antiga.frete_vendedor)||0);
-      SUMMARY.margem_total        += (Number(res.row.margem)||0)         - (Number(antiga.margem)||0);
-      SUMMARY.mc_pct = SUMMARY.vendas_aprovadas > 0 ? (SUMMARY.margem_total / SUMMARY.vendas_aprovadas) * 100 : 0;
-      renderSummary();
-    }
-    ROWS[idx] = res.row;
+  msg.style.color = 'var(--text-muted)';
+  msg.textContent = 'Importando...';
+  const res = await DB.uploadMetrizap(conta, file);
+  if (!res?.ok) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Erro: ' + (res?.error || DB.lastError || 'desconhecido');
+    return;
   }
-  renderRows();
-  if (res.shipping_error) console.warn('[vendas] frete do vendedor não atualizado:', res.shipping_error);
-  if (res.payment_error) console.warn('[vendas] tarifa não atualizada:', res.payment_error);
+  msg.style.color = 'var(--green)';
+  msg.textContent = `Importado: ${res.inserted} novas, ${res.updated} atualizadas, ${res.errors} erros.`;
+  fileInput.value = '';
+  load();
 }
 
 // ── Vendas Hoje ────────────────────────────────────────────
@@ -486,8 +399,7 @@ function onPeriodChange() {
 }
 
 document.getElementById('btnLoad').addEventListener('click', load);
-document.getElementById('filterSearch').addEventListener('keydown', e => { if(e.key==='Enter') load(); });
-window.addEventListener('storeChanged', e => { document.getElementById('filterStore').value=e.detail.storeId; load(); });
+document.getElementById('filterConta').addEventListener('change', load);
 WS.on('order_updated', () => {
   loadHoje(); load();
   try {
@@ -510,151 +422,7 @@ WS.on('_connected', () => {
 });
 setInterval(() => loadHoje(), 60000); // fallback: atualiza a cada 60s
 
-initStores().then(() => { loadHoje(); load(); });
-
-// ── Modal ──────────────────────────────────────────────────
-async function openModal(orderId) {
-  document.getElementById('modalOverlay').style.display = 'flex';
-  document.getElementById('modalBody').innerHTML = '<div class="spinner" style="margin:40px auto"></div>';
-
-  let d;
-  try {
-    const res = await fetch(`${DB.BASE}/pedidos/${orderId}/detalhes`);
-    d = await res.json();
-    if (!res.ok || d.error) throw new Error(d.error || `HTTP ${res.status}`);
-  } catch(e) {
-    document.getElementById('modalBody').innerHTML = `<p style="color:var(--red);grid-column:1/-1">Erro: ${e.message}</p>`;
-    return;
-  }
-
-  const raw = d.raw_data || {};
-  const pmt = raw.payments?.[0] || {};
-  const ship = raw.shipping || {};
-  const buyer = raw.buyer || {};
-  const item0 = raw.order_items?.[0] || {};
-
-  const row = (label, val, cls='') => val != null && val !== '' && val !== '—'
-    ? `<div class="mrow"><span class="mk">${label}</span><span class="mv ${cls}">${val}</span></div>` : '';
-
-  document.getElementById('modalBody').innerHTML = `
-    <div class="msec"><div class="msec-title"><i class="fas fa-box"></i> Pedido</div>
-      ${row('Nº Pedido', d.ml_id)}
-      ${row('Loja', d.store_name)}
-      ${row('Status', d.status)}
-      ${row('Data', fmtDt(d.date_created))}
-      ${row('Fechado em', fmtDt(d.date_closed))}
-    </div>
-    <div class="msec"><div class="msec-title"><i class="fas fa-user"></i> Comprador</div>
-      ${row('Nome', buyer.nickname || d.buyer_nickname)}
-      ${row('ID ML', buyer.id)}
-      ${row('Email', buyer.email)}
-      ${row('Telefone', buyer.phone?.number ? `(${buyer.phone.area_code}) ${buyer.phone.number}` : null)}
-      ${row('Cidade', buyer.shipping_address?.city?.name)}
-      ${row('Estado', buyer.shipping_address?.state?.name)}
-    </div>
-    <div class="msec"><div class="msec-title"><i class="fas fa-tag"></i> Produto</div>
-      ${row('Título', d.title)}
-      ${row('SKU / MLB', d.item_id)}
-      ${row('Quantidade', d.quantity)}
-      ${row('Valor Unitário', R(d.unit_price))}
-      ${row('Faturamento ML', R(d.total_amount), 'pos')}
-      ${row('Variação', item0.item?.variation_id)}
-    </div>
-    <div class="msec"><div class="msec-title"><i class="fas fa-truck"></i> Envio</div>
-      ${row('Tipo', d.shipping_type)}
-      ${row('ID Envio', ship.id)}
-      ${row('Rastreio', ship.tracking_number)}
-      ${row('Transportadora', ship.shipping_option?.name)}
-      ${row('Frete Comprador', R(d.shipping_cost), Number(d.shipping_cost)>0?'neg':'')}
-      <div class="mrow"><span class="mk">Frete Vendedor</span>
-        <span class="mv" style="display:flex;gap:6px;align-items:center">
-          <input type="number" id="freteVendInput" min="0" step="0.01"
-            value="${Number(d.shipping_seller_cost||0).toFixed(2)}"
-            style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:13px;text-align:right">
-          <button onclick="saveFreteVend('${d.ml_id}')" style="background:var(--primary);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#000">Salvar</button>
-        </span>
-      </div>
-      ${row('Endereço', ship.receiver_address ? `${ship.receiver_address.street_name||''} ${ship.receiver_address.street_number||''}, ${ship.receiver_address.city?.name||''}` : null)}
-    </div>
-    <div class="msec"><div class="msec-title"><i class="fas fa-credit-card"></i> Pagamento</div>
-      ${row('Método', pmt.payment_type)}
-      ${row('Parcelas', pmt.installments)}
-      ${row('Valor Pago', R(pmt.total_paid_amount), 'pos')}
-      ${row('Cupom', pmt.coupon?.amount ? `R$ ${pmt.coupon.amount}` : null)}
-      ${row('Status', pmt.status)}
-    </div>
-    <div class="msec"><div class="msec-title"><i class="fas fa-calculator"></i> Financeiro</div>
-      ${row('Faturamento', R(d.total_amount), 'pos')}
-      ${row('Tarifa ML', R(d.tarifa), 'neg')}
-      ${row('Imposto ('+N(d.imposto_pct)+'%)', R(d.imposto), 'neg')}
-      ${row('Frete Comprador', R(d.shipping_cost), 'neg')}
-      ${Number(d.freteVend||0)>0 ? row('Frete Vendedor', R(d.freteVend), 'neg') : ''}
-      <div class="mrow"><span class="mk">Custo Produto</span>
-        <span class="mv" style="display:flex;gap:6px;align-items:center">
-          <input type="number" id="custoInput" min="0" step="0.01"
-            value="${Number(d.custo_unitario||0).toFixed(2)}"
-            style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:13px;text-align:right">
-          <button onclick="saveCusto('${d.item_id}')" style="background:var(--primary);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#000">Salvar</button>
-        </span>
-      </div>
-      <div id="margemCalc" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-        ${row('Margem', R(d.margem), Number(d.margem)<0?'neg':'pos')}
-        ${row('MC %', N(d.mc_pct)+'%', Number(d.mc_pct)<0?'neg':'pos')}
-      </div>
-    </div>
-  `;
-  document.getElementById('modalTitle').textContent = d.title || 'Detalhes do Pedido';
-}
-
-async function saveFreteVend(orderId) {
-  const input = document.getElementById('freteVendInput');
-  const cost = parseFloat(input.value) || 0;
-  const res = await DB.saveFreteVendedor(orderId, cost);
-  if (res?.ok) {
-    input.style.borderColor = 'var(--green)';
-    setTimeout(() => { input.style.borderColor=''; }, 2000);
-    load();
-  }
-}
-
-async function saveCusto(sku) {
-  if (!sku) return;
-  const input = document.getElementById('custoInput');
-  const cost = parseFloat(input.value) || 0;
-  const res = await DB.saveSkuCost(sku, cost);
-  if (res?.ok) {
-    input.style.borderColor = 'var(--green)';
-    setTimeout(() => { input.style.borderColor=''; }, 2000);
-    load(); // refresh table
-  }
-}
-
-document.getElementById('modalOverlay')?.addEventListener('click', e => {
-  if (e.target.id === 'modalOverlay') closeModal();
-});
-function closeModal() { document.getElementById('modalOverlay').style.display='none'; }
+initContas().then(() => { loadHoje(); load(); });
 </script>
-
-<!-- Modal -->
-<div id="modalOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;padding:20px">
-  <div style="background:#23272f;border:1px solid #444;border-radius:14px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #333;position:sticky;top:0;background:#23272f;z-index:1">
-      <h3 id="modalTitle" style="margin:0;font-size:14px;font-weight:700"></h3>
-      <button onclick="closeModal()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1">&times;</button>
-    </div>
-    <div id="modalBody" style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px"></div>
-  </div>
-</div>
-
-<style>
-.msec { background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px; }
-.msec-title { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;gap:6px; }
-.mrow { display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04); }
-.mk { color:var(--text-muted); }
-.mv { font-weight:600; }
-.mv.pos { color:var(--green); }
-.mv.neg { color:var(--red); }
-@media(max-width:600px){ #modalBody { grid-template-columns:1fr; } }
-</style>
 </body>
 </html>

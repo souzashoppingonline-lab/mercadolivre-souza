@@ -502,6 +502,51 @@ changed_at TIMESTAMPTZ, raw_data JSONB
 ### `ml_turbo_sales` — fonte financeira oficial (planilha, não webhook)
 25 colunas — ver `finance.md` para o significado de cada campo e o mapeamento de aliases da planilha. `sale_id` é `UNIQUE` (chave de upsert).
 
+### `metrizap_contas` / `metrizap_sales` / `metrizap_ads_manual` — v115: fonte de "Vendas e Custos" (`pages/vendas.html`), ver `finance.md`
+```
+metrizap_contas
+  id SERIAL PK
+  conta TEXT UNIQUE NOT NULL        -- ID numérico da conta (coluna "Conta" do Excel)
+  nome TEXT NOT NULL                -- nome amigável, cadastrado manualmente (o Excel só traz o ID)
+  marketplace TEXT DEFAULT 'Mercado Livre'
+  created_at TIMESTAMPTZ DEFAULT now()
+
+metrizap_sales                      -- 1 linha por venda, igual à aba "Vendas" do Excel Metrizap
+  id SERIAL PK
+  pedido TEXT NOT NULL
+  data_venda TIMESTAMPTZ
+  marketplace TEXT
+  conta TEXT                        -- vem do formulário de upload (dropdown), NÃO da coluna "Conta" do Excel — ver finance.md
+  pacote TEXT                       -- "Pacote / envio conjunto"
+  item_id, sku, produto TEXT
+  quantidade INT DEFAULT 1
+  situacao TEXT                     -- "Venda", "Cancelada" etc. (texto livre do Metrizap)
+  status_marketplace TEXT
+  venda_afiliado BOOLEAN DEFAULT false
+  comissao_afiliado NUMERIC DEFAULT 0
+  logistica TEXT                    -- ex. "xd_drop_off", "fulfillment"
+  comprador TEXT
+  valor_pago_comprador, faturamento, tarifa, frete_vendedor, frete_comprador,
+  imposto, custo_produto, prejuizo_devolucao NUMERIC DEFAULT 0
+  motivo_prejuizo TEXT
+  lucro NUMERIC DEFAULT 0
+  margem_pct NUMERIC DEFAULT 0      -- recalculado na importação (lucro/faturamento×100), não lido da planilha
+  link_anuncio TEXT
+  created_at, updated_at TIMESTAMPTZ DEFAULT now()
+  UNIQUE(conta, pedido)             -- chave do upsert — NÃO é UNIQUE(pedido) sozinho: com múltiplas
+                                     -- empresas/marketplaces (ML, TikTok Shop, Amazon) o número do
+                                     -- pedido não é garantidamente único entre contas diferentes
+  índices: data_venda DESC, conta, sku, situacao
+
+metrizap_ads_manual                 -- Ads não vem na planilha — lançamento manual por empresa+dia
+  id SERIAL PK
+  conta TEXT NOT NULL
+  data_ref DATE NOT NULL
+  valor NUMERIC DEFAULT 0
+  updated_at TIMESTAMPTZ DEFAULT now()
+  UNIQUE(conta, data_ref)           -- 1 valor por empresa por dia; reimportar o mesmo dia atualiza
+```
+
 ### `ml_payments` — v29/v30: pagamento por pedido (Conciliação Bancária, Fase 1)
 ```
 id BIGSERIAL PK

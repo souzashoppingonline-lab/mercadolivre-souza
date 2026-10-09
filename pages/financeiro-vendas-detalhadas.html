@@ -39,7 +39,8 @@
       <p class="vc-sub">Uma linha por venda, igual à importação do Metrizap em <a href="financeiro-vendas.html" style="color:#3fb950">Vendas &amp; Custos</a> — somente leitura. Agregados diários (cards de meta/margem) ficam naquela página.</p>
 
       <div class="vc-filters">
-        <select id="fMes"></select><select id="fAno"></select>
+        <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">De<input type="date" id="fDe"></label>
+        <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">Até<input type="date" id="fAte"></label>
         <select id="fLoja"><option value="">Todas as lojas</option></select>
         <input type="text" id="fBusca" placeholder="Buscar produto ou pedido…">
       </div>
@@ -70,7 +71,6 @@
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const fmtDate=s=>{ if(!s) return '—'; const p=String(s).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:s; };
 
 let ALL=[], STORES={};
@@ -106,12 +106,13 @@ function rowHtml(r){
 }
 
 function filtered(){
-  const m=+document.getElementById('fMes').value, y=+document.getElementById('fAno').value;
+  const de=document.getElementById('fDe').value, ate=document.getElementById('fAte').value;
   const loja=document.getElementById('fLoja').value, busca=document.getElementById('fBusca').value.trim().toLowerCase();
   return ALL.filter(r=>{
     if(!r.date) return false;
-    const d=new Date(r.date+'T00:00:00');
-    if(d.getMonth()+1!==m||d.getFullYear()!==y) return false;
+    const d=String(r.date).slice(0,10);
+    if(de&&d<de) return false;
+    if(ate&&d>ate) return false;
     if(loja&&String(r.store_id)!==loja) return false;
     if(busca&&!(String(r.produto||'').toLowerCase().includes(busca)||String(r.pedido||'').includes(busca))) return false;
     return true;
@@ -137,10 +138,11 @@ function render(){
 }
 
 async function init(){
-  const now=new Date(), selM=document.getElementById('fMes'), selA=document.getElementById('fAno');
-  MESES.forEach((m,i)=>selM.insertAdjacentHTML('beforeend',`<option value="${i+1}">${m}</option>`)); selM.value=now.getMonth()+1;
-  for(let y=now.getFullYear();y>=now.getFullYear()-4;y--) selA.insertAdjacentHTML('beforeend',`<option value="${y}">${y}</option>`); selA.value=now.getFullYear();
-  [selM,selA,document.getElementById('fLoja')].forEach(s=>s.addEventListener('change',render));
+  const now=new Date(), p=n=>String(n).padStart(2,'0');
+  const primeiroDia=`${now.getFullYear()}-${p(now.getMonth()+1)}-01`, hoje=`${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}`;
+  document.getElementById('fDe').value=primeiroDia;
+  document.getElementById('fAte').value=hoje;
+  [document.getElementById('fDe'),document.getElementById('fAte'),document.getElementById('fLoja')].forEach(s=>s.addEventListener('change',render));
   document.getElementById('fBusca').addEventListener('input',render);
 
   const rSt=await DB.getFinanceiroDados('stores',500);

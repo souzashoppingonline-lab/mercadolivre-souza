@@ -2,7 +2,7 @@
 
 > Escopo: contrato de todos os endpoints HTTP expostos pelo backend. Único ponto de acesso a dados permitido para o frontend (via `js/db.js` — ver `frontend.md`). Nenhum destes handlers chama a API do Mercado Livre, exceto os marcados explicitamente. **Sempre que uma rota nova for criada em `routes/*.js`, documente-a aqui e adicione o método correspondente em `js/db.js` na mesma tarefa.**
 
-Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/turbo.js), `/webhooks` (routes/webhookGateway.js), `/auth` e `/ml` (routes/auth.js — ver `mercadolivre.md`).
+Prefixos montados em `server.js`: `/api` (routes/api.js), `/api/turbo` (routes/turbo.js), `/api/metrizap` (routes/metrizap.js), `/webhooks` (routes/webhookGateway.js), `/auth` e `/ml` (routes/auth.js — ver `mercadolivre.md`).
 
 ## Dashboard
 | Rota | Descrição |
@@ -310,6 +310,18 @@ Ver `finance.md` para o significado de cada campo e o formato da planilha.
 | `GET /api/turbo/sales?...&page&limit` | listagem paginada |
 | `GET /api/turbo/charts?date_from&date_to&account&order_status` | 10 séries agregadas em paralelo (diária, por estado, por conta, top receita/margem, baixa margem, por modal de envio, semanal, top quantidade, por status) |
 | `GET /api/turbo/filters-meta` | valores distintos para popular filtros do frontend |
+
+## `/api/metrizap/*` — Vendas e Custos (`pages/vendas.html`) + Vendas Detalhadas, ver `finance.md`
+
+| Rota | Descrição |
+|---|---|
+| `POST /api/metrizap/upload` (multipart `file` + `conta`) | `conta` é **obrigatório** (empresa escolhida no dropdown antes do upload, não a coluna "Conta" do Excel) e precisa já estar cadastrada em `metrizap_contas`; parseia a aba "Vendas" do Excel e faz upsert em `metrizap_sales` por `(conta, pedido)` |
+| `GET /api/metrizap/contas` | lista empresas/marketplaces cadastrados |
+| `POST /api/metrizap/contas` `{conta, nome, marketplace}` | cadastra/atualiza uma empresa (upsert por `conta`) |
+| `GET /api/metrizap/resumo?date_from&date_to&conta` | agregados para os 9 cards de `vendas.html` (inclui soma de `metrizap_ads_manual` e ROI) |
+| `GET /api/metrizap/ads?conta&date_from&date_to` | lançamentos manuais de Ads no período |
+| `POST /api/metrizap/ads` `{conta, data_ref, valor}` | grava/atualiza o Ads manual do dia (upsert por `conta+data_ref`) |
+| `GET /api/metrizap/vendas?date_from&date_to&conta&sku&situacao&search&page&limit` | listagem crua, uma linha por venda — alimenta `pages/vendas-detalhadas.html` (sem agregação por produto, deixada para depois) |
 
 ## `/webhooks/*` — ver `mercadolivre.md` e `websocket.md`
 

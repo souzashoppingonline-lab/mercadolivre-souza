@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 const env = require('./config/env');
 const apiRoutes = require('./routes/api');
 const turboRoutes = require('./routes/turbo');
+const metrizapRoutes = require('./routes/metrizap');
 const amazonRoutes = require('./routes/amazon');
 const shopeeRoutes = require('./routes/shopee');
 const tasksRoutes = require('./routes/tasks');
@@ -62,6 +63,8 @@ app.use('/auth/staff', staffAuthRoutes);
 // Frontend reads exclusively from here.
 app.use('/api', apiRoutes);
 app.use('/api/turbo', turboRoutes);
+// Vendas e Custos (pages/vendas.html) — fonte Metrizap, substitui o Turbo nessa página.
+app.use('/api/metrizap', metrizapRoutes);
 // Dashboard Amazon — isolado, não reutiliza nada do ML (ver routes/amazon.js).
 app.use('/api/amazon', amazonRoutes);
 // Dashboard Shopee — mesmo padrão isolado da Amazon (ver routes/shopee.js).

@@ -181,6 +181,7 @@ Pedido explícito do usuário: numa contestação aberta pelo comprador no Merca
 - Formato: `video/webm` (codec padrão do `MediaRecorder` em Chrome/Firefox) — sem transcodificação no servidor, é só gravado como veio do navegador. Desde v115.6, o conteúdo vem do `canvas` com overlay (ver seção acima), não mais do stream cru da câmera.
 - **Retenção: 30 dias** (pedido explícito do usuário) — job `cleanupPackingVideos` (worker, 03:30 diário) apaga o arquivo em disco e a linha em `packing_videos` de tudo com `created_at` mais velho que 30 dias. Ver `workers.md`.
 - **Sem backup/replicação** — se o disco da VPS falhar, os vídeos somem (mesma característica de qualquer arquivo local não versionado). Não implementado por não ter sido pedido; se o volume de devoluções justificar, mover pra object storage (S3-compatible) é o caminho natural — trocar só o `multer.diskStorage` por um storage engine de S3 e o `res.sendFile` por um redirect/proxy pra URL assinada, sem mexer no resto do fluxo.
+- **Download avulso direto da pasta, fora do dashboard** (v115.7, pedido explícito do usuário — pra pegar um vídeo rápido numa contestação sem precisar logar no sistema): pasta navegável via nginx (`autoindex`) em `/embalagem-videos/YYYY-MM-DD/`, protegida por usuário/senha do próprio nginx (Basic Auth, **não** o login do dashboard) — ver `deployment.md` pro config e o passo a passo de criar a senha. Só leitura; não interfere no upload nem na limpeza de 30 dias.
 
 ## Requisito de infraestrutura — `client_max_body_size` no nginx
 

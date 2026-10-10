@@ -206,4 +206,88 @@ router.get('/lojas', async (req, res) => {
   }
 });
 
+// "Mesmo dia do mês passado" — mesmo número de dia, um mês antes, com
+// clamp pro último dia válido (ex.: 31/mar → 28 ou 29/fev). "Dia anterior"
+// é trivial (dia − 1).
+function mesmoDiaMesPassado(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const alvo = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate();
+  alvo.setDate(Math.min(d.getDate(), ultimoDia));
+  return alvo.toISOString().slice(0, 10);
+}
+function diaAnterior(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+function crescPct(atual, anterior) {
+  return anterior > 0 ? round2((atual - anterior) / anterior * 100) : null;
+}
+
+// GET /api/bi/vendas/lojas/:storeId/dias?date_from&date_to — modal de
+// detalhamento dia a dia de UMA loja (clique na linha da tabela "Vendas por
+// Loja"): faturamento/Ads/margem de contribuição de cada dia do período
+// filtrado, comparado com o dia anterior e com o mesmo dia do mês passado.
+// Carrega uma janela mais larga que o período (1 mês + 2 dias antes de
+// date_from) só pra ter de onde tirar essas duas comparações — não grava
+// nada novo, não duplica cálculo de margem (usa o `lucro` já pronto de
+// `sales_entries_detail`, igual ao resto do arquivo).
+router.get('/lojas/:storeId/dias', async (req, res) => {
+  try {
+    const { storeId } = req.params;
+    const { date_from = '', date_to = '' } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: 'date_from e date_to são obrigatórios' });
+
+    const d1 = new Date(date_from + 'T00:00:00');
+    const janela = new Date(d1.getFullYear(), d1.getMonth() - 1, d1.getDate() - 2);
+    const janelaStr = janela.toISOString().slice(0, 10);
+
+    const [detalhe, entries] = await Promise.all([
+      loadDetalhe(janelaStr, date_to, storeId),
+      loadAds(janelaStr, date_to, storeId),
+    ]);
+
+    const porDia = {};
+    const getDia = (d) => porDia[d] || (porDia[d] = { faturamento: 0, lucro: 0, ads: 0 });
+    detalhe.forEach(r => {
+      if (!r.date) return;
+      const g = getDia(String(r.date).slice(0, 10));
+      g.faturamento += Number(r.faturamento) || 0;
+      g.lucro += Number(r.lucro) || 0;
+    });
+    entries.forEach(e => {
+      if (!e.date) return;
+      getDia(String(e.date).slice(0, 10)).ads += (Number(e.ads_ml) || 0) + (Number(e.ads_external) || 0);
+    });
+
+    const dias = [];
+    const cursor = new Date(date_from + 'T00:00:00');
+    const fim = new Date(date_to + 'T00:00:00');
+    while (cursor <= fim) {
+      const dia = cursor.toISOString().slice(0, 10);
+      const atual = porDia[dia] || { faturamento: 0, lucro: 0, ads: 0 };
+      const ant = porDia[diaAnterior(dia)] || null;
+      const mesPassado = porDia[mesmoDiaMesPassado(dia)] || null;
+      dias.push({
+        date: dia,
+        faturamento: round2(atual.faturamento),
+        lucro: round2(atual.lucro),
+        margem_pct: atual.faturamento > 0 ? round2(atual.lucro / atual.faturamento * 100) : 0,
+        ads: round2(atual.ads),
+        faturamento_dia_anterior: ant ? round2(ant.faturamento) : null,
+        cresc_dia_anterior_pct: ant ? crescPct(atual.faturamento, ant.faturamento) : null,
+        faturamento_mes_passado: mesPassado ? round2(mesPassado.faturamento) : null,
+        cresc_mes_passado_pct: mesPassado ? crescPct(atual.faturamento, mesPassado.faturamento) : null,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    res.json({ store_id: storeId, dias });
+  } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

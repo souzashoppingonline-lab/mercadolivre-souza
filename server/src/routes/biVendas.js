@@ -102,7 +102,25 @@ router.get('/resumo', async (req, res) => {
       s.lucro += Number(r.lucro) || 0;
     });
     const ads = entries.reduce((sum, e) => sum + (Number(e.ads_ml) || 0) + (Number(e.ads_external) || 0), 0);
-    const custosTotais = s.custo + s.imposto + s.tarifa + s.frete_vendedor + ads;
+
+    // ROI é só Mercado Livre — pedido explícito do usuário: os outros
+    // marketplaces (TikTok Shop, Shopee) não usam Ads hoje, então misturar o
+    // lucro/custo deles no mesmo ROI que leva Ads em conta distorce o número
+    // (lucro "de graça" sem Ads inflando o ROI de uma conta que só é cara
+    // por causa do ML). Usa só `ads_ml` no numerador/denominador também, não
+    // `ads_external`. Ver decisions.md.
+    const detalheML = detalhe.filter(r => r.marketplace === 'Mercado Livre');
+    const sML = { custo: 0, imposto: 0, tarifa: 0, frete_vendedor: 0, lucro: 0 };
+    detalheML.forEach(r => {
+      sML.custo += Number(r.custo_produto) || 0;
+      sML.imposto += Number(r.imposto) || 0;
+      sML.tarifa += Number(r.tarifa) || 0;
+      sML.frete_vendedor += Number(r.frete_vendedor) || 0;
+      sML.lucro += Number(r.lucro) || 0;
+    });
+    const adsMl = entries.reduce((sum, e) => sum + (Number(e.ads_ml) || 0), 0);
+    const custosTotaisML = sML.custo + sML.imposto + sML.tarifa + sML.frete_vendedor + adsMl;
+
     const skusDistintos = new Set(detalhe.map(r => `${r.store_id}::${r.sku || r.produto}`)).size;
     res.json({
       total_vendas: detalhe.length,
@@ -111,8 +129,77 @@ router.get('/resumo', async (req, res) => {
       lucro: round2(s.lucro),
       margem_pct: s.faturamento > 0 ? round2(s.lucro / s.faturamento * 100) : 0,
       ads: round2(ads),
-      roi: custosTotais > 0 ? round2((s.lucro - ads) / custosTotais * 100) : 0,
+      roi: custosTotaisML > 0 ? round2((sML.lucro - adsMl) / custosTotaisML * 100) : 0,
     });
+  } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Período imediatamente anterior, mesma duração — mesmo critério já usado em
+// GET /api/bi/painel (Painel Estratégico, cresc_receita/cresc_pedidos).
+function periodoAnterior(date_from, date_to) {
+  if (!date_from || !date_to) return { de: '', ate: '' };
+  const d1 = new Date(date_from + 'T00:00:00');
+  const d2 = new Date(date_to + 'T00:00:00');
+  const dias = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+  const ateAnt = new Date(d1.getTime() - 86400000);
+  const deAnt = new Date(ateAnt.getTime() - (dias - 1) * 86400000);
+  const iso = d => d.toISOString().slice(0, 10);
+  return { de: iso(deAnt), ate: iso(ateAnt) };
+}
+
+// GET /api/bi/vendas/lojas?date_from&date_to — aba "Vendas por Loja":
+// faturamento/margem/qtd por loja no período, Ads por loja (mesmo campo
+// manual do /resumo, aqui desagregado por loja em vez de somado), e
+// crescimento % vs. o período anterior de mesma duração (mesmo critério do
+// Painel Estratégico). `diaria` alimenta o gráfico de aumento/queda.
+router.get('/lojas', async (req, res) => {
+  try {
+    const { date_from = '', date_to = '' } = req.query;
+    const anterior = periodoAnterior(date_from, date_to);
+    const [atual, passado, ads] = await Promise.all([
+      loadDetalhe(date_from, date_to),
+      anterior.de ? loadDetalhe(anterior.de, anterior.ate) : Promise.resolve([]),
+      loadAds(date_from, date_to),
+    ]);
+
+    const porLoja = {};
+    const getG = (id) => porLoja[id] || (porLoja[id] = { store_id: id, faturamento: 0, lucro: 0, quantidade: 0, faturamento_anterior: 0, ads: 0 });
+    atual.forEach(r => {
+      const g = getG(r.store_id);
+      g.faturamento += Number(r.faturamento) || 0;
+      g.lucro += Number(r.lucro) || 0;
+      g.quantidade += Number(r.quantidade) || 0;
+    });
+    passado.forEach(r => { getG(r.store_id).faturamento_anterior += Number(r.faturamento) || 0; });
+    ads.forEach(e => { getG(e.store_id).ads += (Number(e.ads_ml) || 0) + (Number(e.ads_external) || 0); });
+
+    const lojas = Object.values(porLoja).map(g => ({
+      store_id: g.store_id,
+      faturamento: round2(g.faturamento),
+      lucro: round2(g.lucro),
+      quantidade: g.quantidade,
+      faturamento_anterior: round2(g.faturamento_anterior),
+      ads: round2(g.ads),
+      margem_pct: g.faturamento > 0 ? round2(g.lucro / g.faturamento * 100) : 0,
+      // null (não 0) quando não há período anterior pra comparar — frontend
+      // mostra "sem comparativo" em vez de uma queda de 100% inventada.
+      cresc_pct: g.faturamento_anterior > 0 ? round2((g.faturamento - g.faturamento_anterior) / g.faturamento_anterior * 100) : null,
+    })).sort((a, b) => b.faturamento - a.faturamento);
+
+    const diariaMap = {};
+    atual.forEach(r => {
+      if (!r.date) return;
+      const key = `${String(r.date).slice(0, 10)}::${r.store_id}`;
+      diariaMap[key] = (diariaMap[key] || 0) + (Number(r.faturamento) || 0);
+    });
+    const diaria = Object.entries(diariaMap)
+      .map(([key, faturamento]) => { const [date, store_id] = key.split('::'); return { date, store_id, faturamento: round2(faturamento) }; })
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json({ lojas, diaria, periodo_anterior: anterior });
   } catch (e) {
     if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
     res.status(e.status || 500).json({ error: e.message });

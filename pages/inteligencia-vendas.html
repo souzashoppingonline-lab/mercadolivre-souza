@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="../css/sidebar.css">
   <link rel="stylesheet" href="../css/cards.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>window.PAGE_TITLE='Inteligência de Vendas'; window.ACTIVE_NAV='inteligencia-vendas.html';</script>
   <style>
     .iv-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
@@ -32,6 +33,11 @@
     .iv-t td.produto { white-space:normal; max-width:320px; }
     .iv-pos { color:#3fb950; font-weight:700; } .iv-neg { color:#f87171; font-weight:700; }
     .iv-rank { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--bg-card2); font-size:11px; font-weight:800; color:var(--text-muted); }
+    .iv-cresc { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:800; padding:2px 8px; border-radius:999px; }
+    .iv-cresc.up { background:rgba(63,185,80,.15); color:#3fb950; }
+    .iv-cresc.down { background:rgba(248,113,113,.15); color:#f87171; }
+    .iv-cresc.sem { background:rgba(148,163,184,.15); color:var(--text-muted); }
+    .iv-loja-chart { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:14px; margin-top:16px; }
   </style>
 </head>
 <body>
@@ -56,6 +62,7 @@
         <button class="iv-tab" data-tab="giro" onclick="trocarAba('giro')"><i class="fas fa-box-open"></i> Baixo Giro</button>
         <button class="iv-tab" data-tab="margem" onclick="trocarAba('margem')"><i class="fas fa-sack-dollar"></i> Margem por Produto</button>
         <button class="iv-tab" data-tab="prospeccao" onclick="trocarAba('prospeccao')"><i class="fas fa-chart-line"></i> Prospecção de Vendas</button>
+        <button class="iv-tab" data-tab="lojas" onclick="trocarAba('lojas')"><i class="fas fa-store"></i> Vendas por Loja</button>
       </div>
 
       <div class="iv-card" id="ivCardRanking">
@@ -86,6 +93,21 @@
           </table>
         </div>
       </div>
+
+      <div class="iv-card" id="ivCardLojas" style="display:none">
+        <h3>🏪 Vendas por Loja</h3>
+        <p class="d">Faturamento, margem de contribuição, Ads e crescimento vs. o período anterior de mesma duração, por loja.</p>
+        <div style="overflow:auto">
+          <table class="iv-t">
+            <thead><tr>
+              <th>Loja</th><th class="num">Faturamento</th><th class="num">Qtd.</th>
+              <th class="num">Lucro</th><th class="num">Margem %</th><th class="num">Ads</th><th class="num">Crescimento</th>
+            </tr></thead>
+            <tbody id="ivLojasTbody"><tr><td colspan="7" class="iv-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="iv-loja-chart"><canvas id="ivLojasChart" height="90"></canvas></div>
+      </div>
     </div>
   </main>
 </div>
@@ -115,10 +137,12 @@ function filtros() {
 function trocarAba(aba) {
   abaAtual = aba;
   document.querySelectorAll('.iv-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === aba));
-  const eProspeccao = aba === 'prospeccao';
-  document.getElementById('ivCardRanking').style.display = eProspeccao ? 'none' : '';
+  const eProspeccao = aba === 'prospeccao', eLojas = aba === 'lojas';
+  document.getElementById('ivCardRanking').style.display = (eProspeccao || eLojas) ? 'none' : '';
   document.getElementById('ivCardProspeccao').style.display = eProspeccao ? '' : 'none';
+  document.getElementById('ivCardLojas').style.display = eLojas ? '' : 'none';
   if (eProspeccao) { carregarProspeccao(); return; }
+  if (eLojas) { carregarLojas(); return; }
   document.getElementById('ivTabTitulo').textContent = ABAS[aba].titulo;
   document.getElementById('ivTabDesc').textContent = ABAS[aba].desc;
   carregarProdutos();
@@ -133,7 +157,7 @@ async function carregarKpis() {
     ['Lucro', BRL(r.lucro), `Margem ${PCT(r.margem_pct)}`],
     ['SKUs distintos', r.skus_distintos, 'no período/loja'],
     ['Ads do período', BRL(r.ads), 'manual, Vendas & Custos'],
-    ['ROI aproximado', PCT(r.roi), '(lucro − ads) / custos'],
+    ['ROI aproximado', PCT(r.roi), 'só Mercado Livre — outros não usam Ads'],
   ];
   el.innerHTML = cards.map(([k,v,s]) => `<div class="iv-kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
 }
@@ -206,7 +230,67 @@ function atualizarComprar(i, pctStr) {
   if (cel) cel.textContent = Math.max(comprar, 0);
 }
 
-function carregarTudo() { carregarKpis(); if (abaAtual === 'prospeccao') carregarProspeccao(); else carregarProdutos(); }
+// Vendas por Loja — faturamento/margem/Ads/qtd por loja + crescimento vs. o
+// período anterior de mesma duração (mesmo critério do Painel Estratégico) +
+// gráfico de linha (faturamento diário por loja) pra visualizar a tendência.
+let chartLojas = null;
+const CORES_LOJA = ['#8b5cf6','#3fb950','#f59e0b','#60a5fa','#f87171','#ec4899','#34d399','#fb923c'];
+
+function crescHtml(pct) {
+  if (pct == null) return '<span class="iv-cresc sem">sem comparativo</span>';
+  const up = pct >= 0;
+  return `<span class="iv-cresc ${up?'up':'down'}"><i class="fas fa-arrow-${up?'up':'down'}"></i> ${PCT(Math.abs(pct))}</span>`;
+}
+
+async function carregarLojas() {
+  const tbody = document.getElementById('ivLojasTbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const { date_from, date_to } = filtros();
+  const r = await DB.getBiVendasLojas({ date_from, date_to });
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="7" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  const lojas = r.lojas || [];
+  if (!lojas.length) { tbody.innerHTML = '<tr><td colspan="7" class="iv-empty">Nenhuma venda no período selecionado.</td></tr>'; return; }
+  tbody.innerHTML = lojas.map(l => {
+    const neg = Number(l.margem_pct) < 0;
+    return `<tr>
+      <td>${esc(STORES[l.store_id]||'—')}</td>
+      <td class="num">${BRL(l.faturamento)}</td>
+      <td class="num">${l.quantidade}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${BRL(l.lucro)}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${PCT(l.margem_pct)}</td>
+      <td class="num">${BRL(l.ads)}</td>
+      <td class="num">${crescHtml(l.cresc_pct)}</td>
+    </tr>`;
+  }).join('');
+
+  // Gráfico: 1 linha por loja, faturamento diário no período.
+  const dias = [...new Set((r.diaria||[]).map(d => d.date))].sort();
+  const datasets = lojas.map((l, i) => ({
+    label: STORES[l.store_id] || l.store_id,
+    data: dias.map(d => { const row = (r.diaria||[]).find(x => x.date === d && x.store_id === l.store_id); return row ? row.faturamento : 0; }),
+    borderColor: CORES_LOJA[i % CORES_LOJA.length],
+    backgroundColor: CORES_LOJA[i % CORES_LOJA.length],
+    tension: 0.3, pointRadius: 2, fill: false,
+  }));
+  chartLojas && chartLojas.destroy();
+  chartLojas = new Chart(document.getElementById('ivLojasChart'), {
+    type: 'line',
+    data: { labels: dias.map(d => new Date(d+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})), datasets },
+    options: {
+      plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 11, font: { size: 10 } } },
+        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${BRL(c.raw)}` } } },
+      scales: { x: { ticks: { color: '#64748b' } },
+        y: { ticks: { color: '#64748b', callback: v => 'R$'+(Math.abs(v)>=1000?(v/1000)+'k':v) }, grid: { color: 'rgba(148,163,184,.1)' } } },
+    },
+  });
+}
+
+function carregarTudo() {
+  carregarKpis();
+  if (abaAtual === 'prospeccao') carregarProspeccao();
+  else if (abaAtual === 'lojas') carregarLojas();
+  else carregarProdutos();
+}
 
 async function init() {
   const now = new Date(), p = n => String(n).padStart(2,'0');

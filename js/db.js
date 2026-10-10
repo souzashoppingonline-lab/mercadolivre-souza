@@ -389,6 +389,7 @@ const DB = {
   // ── Inteligência de Vendas (BI — ranking de produtos sobre o Financeiro) ──
   async getBiVendasProdutos(params = {}) { return this._get('/bi/vendas/produtos', params); },
   async getBiVendasResumo(params = {})   { return this._get('/bi/vendas/resumo', params); },
+  async getBiVendasLojas(params = {})    { return this._get('/bi/vendas/lojas', params); },
   // Comprovante fiscal: sobe o arquivo pro Storage do Supabase (via servidor) e
   // devolve o caminho, que é gravado em compras_cmv.xml_url.
   async uploadFinanceiroArquivo(formData) { return this._postForm('/financeiro/arquivo', formData); },

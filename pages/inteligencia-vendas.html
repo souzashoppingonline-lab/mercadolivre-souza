@@ -13,6 +13,7 @@
     .iv-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
     .iv-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
     .iv-filters label { font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+    #ivPeriodoMes, #ivPeriodoCustom { display:flex; gap:10px; align-items:center; }
     .iv-filters input, .iv-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:13px; }
     .iv-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
     .iv-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:13px 15px; }
@@ -49,8 +50,18 @@
       <p class="iv-sub">Ranking de produtos sobre as vendas detalhadas do Metrizap (todos os marketplaces) — fonte: <a href="financeiro-vendas-detalhadas.html" style="color:#8b5cf6">Vendas Detalhadas</a> do Financeiro.</p>
 
       <div class="iv-filters">
-        <label>De<input type="date" id="ivDe"></label>
-        <label>Até<input type="date" id="ivAte"></label>
+        <select id="ivPeriodoTipo" onchange="trocarTipoPeriodo()">
+          <option value="mes" selected>Mês</option>
+          <option value="custom">Período personalizado (De/Até)</option>
+        </select>
+        <span id="ivPeriodoMes">
+          <select id="ivMes" onchange="aplicarPeriodoMes()"></select>
+          <select id="ivAno" onchange="aplicarPeriodoMes()"></select>
+        </span>
+        <span id="ivPeriodoCustom" style="display:none">
+          <label>De<input type="date" id="ivDe" onchange="carregarTudo()"></label>
+          <label>Até<input type="date" id="ivAte" onchange="carregarTudo()"></label>
+        </span>
         <select id="ivLoja"><option value="">Todas as lojas</option></select>
         <button class="action-btn" onclick="carregarTudo()"><i class="fas fa-sync"></i> Atualizar</button>
       </div>
@@ -292,10 +303,36 @@ function carregarTudo() {
   else carregarProdutos();
 }
 
+const MESES_IV = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+// Mês/Ano (modo padrão) → calcula De/Até (1º ao último dia do mês) e grava
+// nos mesmos inputs ivDe/ivAte que filtros()/diasNoPeriodo() já leem — resto
+// da página não precisa saber que existe um modo "mês", só vê De/Até.
+function aplicarPeriodoMes() {
+  const p = n => String(n).padStart(2,'0');
+  const m = +document.getElementById('ivMes').value, a = +document.getElementById('ivAno').value;
+  const ultimoDia = new Date(a, m, 0).getDate();
+  document.getElementById('ivDe').value = `${a}-${p(m)}-01`;
+  document.getElementById('ivAte').value = `${a}-${p(m)}-${p(ultimoDia)}`;
+  carregarTudo();
+}
+
+function trocarTipoPeriodo() {
+  const custom = document.getElementById('ivPeriodoTipo').value === 'custom';
+  document.getElementById('ivPeriodoMes').style.display = custom ? 'none' : '';
+  document.getElementById('ivPeriodoCustom').style.display = custom ? '' : 'none';
+  if (!custom) aplicarPeriodoMes(); // volta pro mês selecionado, recarrega
+}
+
 async function init() {
-  const now = new Date(), p = n => String(n).padStart(2,'0');
+  const now = new Date();
+  MESES_IV.forEach((m,i) => document.getElementById('ivMes').insertAdjacentHTML('beforeend', `<option value="${i+1}">${m}</option>`));
+  document.getElementById('ivMes').value = now.getMonth()+1;
+  for (let y = now.getFullYear(); y >= now.getFullYear()-4; y--) document.getElementById('ivAno').insertAdjacentHTML('beforeend', `<option value="${y}">${y}</option>`);
+  document.getElementById('ivAno').value = now.getFullYear();
+  const p = n => String(n).padStart(2,'0'), ultimoDia = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
   document.getElementById('ivDe').value = `${now.getFullYear()}-${p(now.getMonth()+1)}-01`;
-  document.getElementById('ivAte').value = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}`;
+  document.getElementById('ivAte').value = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(ultimoDia)}`;
 
   const rSt = await DB.getFinanceiroDados('stores', 500);
   (rSt.rows||[]).forEach(s => { STORES[s.id] = s.name || s.nome || String(s.id).slice(0,6); });

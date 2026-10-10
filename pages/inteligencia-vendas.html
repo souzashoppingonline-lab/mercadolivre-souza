@@ -55,9 +55,10 @@
         <button class="iv-tab on" data-tab="vendidos" onclick="trocarAba('vendidos')"><i class="fas fa-fire"></i> Mais Vendidos</button>
         <button class="iv-tab" data-tab="giro" onclick="trocarAba('giro')"><i class="fas fa-box-open"></i> Baixo Giro</button>
         <button class="iv-tab" data-tab="margem" onclick="trocarAba('margem')"><i class="fas fa-sack-dollar"></i> Margem por Produto</button>
+        <button class="iv-tab" data-tab="prospeccao" onclick="trocarAba('prospeccao')"><i class="fas fa-chart-line"></i> Prospecção de Vendas</button>
       </div>
 
-      <div class="iv-card">
+      <div class="iv-card" id="ivCardRanking">
         <h3 id="ivTabTitulo">🔥 Produtos Mais Vendidos</h3>
         <p class="d" id="ivTabDesc">Ranking por quantidade vendida no período, por loja.</p>
         <div style="overflow:auto">
@@ -67,6 +68,21 @@
               <th class="num">Qtd.</th><th class="num">Faturamento</th><th class="num">Lucro</th><th class="num">Margem %</th>
             </tr></thead>
             <tbody id="ivTbody"><tr><td colspan="8" class="iv-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="iv-card" id="ivCardProspeccao" style="display:none">
+        <h3>📈 Prospecção de Vendas</h3>
+        <p class="d" id="ivProspDesc">Se a demanda se mantiver igual ao período filtrado, é isso que precisa comprar pra cobrir o mesmo número de dias no futuro. Ajuste o % de crescimento/queda por produto pra simular um cenário diferente — a coluna "Precisa comprar" recalcula na hora, sem precisar buscar de novo.</p>
+        <div style="overflow:auto">
+          <table class="iv-t">
+            <thead><tr>
+              <th>#</th><th>Loja</th><th>Produto</th><th>SKU</th>
+              <th class="num">Vendido no período</th><th class="num">Méd./dia</th>
+              <th class="num">Crescimento %</th><th class="num">Precisa comprar</th>
+            </tr></thead>
+            <tbody id="ivProspTbody"><tr><td colspan="8" class="iv-empty">Carregando…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -99,6 +115,10 @@ function filtros() {
 function trocarAba(aba) {
   abaAtual = aba;
   document.querySelectorAll('.iv-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === aba));
+  const eProspeccao = aba === 'prospeccao';
+  document.getElementById('ivCardRanking').style.display = eProspeccao ? 'none' : '';
+  document.getElementById('ivCardProspeccao').style.display = eProspeccao ? '' : 'none';
+  if (eProspeccao) { carregarProspeccao(); return; }
   document.getElementById('ivTabTitulo').textContent = ABAS[aba].titulo;
   document.getElementById('ivTabDesc').textContent = ABAS[aba].desc;
   carregarProdutos();
@@ -141,7 +161,52 @@ async function carregarProdutos() {
   }).join('');
 }
 
-function carregarTudo() { carregarKpis(); carregarProdutos(); }
+// Prospecção de Vendas — assume que a demanda do período filtrado se repete
+// num período futuro de mesmo tamanho (nº de dias). "Precisa comprar" =
+// vendido no período × (1 + crescimento%/100), arredondado pra cima (melhor
+// sobrar do que faltar). % é por produto (não um controle global), recalcula
+// na hora sem nova busca ao servidor.
+let PROSP_DATA = [];
+
+function diasNoPeriodo() {
+  const de = document.getElementById('ivDe').value, ate = document.getElementById('ivAte').value;
+  if (!de || !ate) return 1;
+  const d1 = new Date(de+'T00:00:00'), d2 = new Date(ate+'T00:00:00');
+  return Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+}
+
+async function carregarProspeccao() {
+  const tbody = document.getElementById('ivProspTbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const r = await DB.getBiVendasProdutos({ ...filtros(), ordenar: 'qtd', dir: 'desc', limit: 200 });
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="8" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  PROSP_DATA = r.produtos || [];
+  const dias = diasNoPeriodo();
+  const de = document.getElementById('ivDe').value, ate = document.getElementById('ivAte').value;
+  document.getElementById('ivProspDesc').textContent =
+    `Se a demanda se mantiver igual ao período filtrado (${dias} dia(s), ${de?new Date(de+'T00:00:00').toLocaleDateString('pt-BR'):''} a ${ate?new Date(ate+'T00:00:00').toLocaleDateString('pt-BR'):''}), é isso que precisa comprar pra cobrir os próximos ${dias} dia(s). Ajuste o % por produto pra simular um cenário diferente.`;
+  if (!PROSP_DATA.length) { tbody.innerHTML = '<tr><td colspan="8" class="iv-empty">Nenhuma venda no período/loja selecionados.</td></tr>'; return; }
+  tbody.innerHTML = PROSP_DATA.map((p, i) => `<tr>
+      <td><span class="iv-rank">${i+1}</span></td>
+      <td>${esc(STORES[p.store_id]||'—')}</td>
+      <td class="produto" title="${esc(p.produto)}">${esc(p.produto)}</td>
+      <td style="color:var(--text-muted);font-size:11px">${esc(p.sku)||'—'}</td>
+      <td class="num">${p.quantidade}</td>
+      <td class="num">${(p.quantidade/dias).toFixed(1)}</td>
+      <td class="num"><input type="number" step="1" value="0" style="width:64px;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:6px;padding:4px 6px;text-align:right" oninput="atualizarComprar(${i}, this.value)">%</td>
+      <td class="num" id="ivComprar${i}" style="font-weight:800">${p.quantidade}</td>
+    </tr>`).join('');
+}
+
+function atualizarComprar(i, pctStr) {
+  const p = PROSP_DATA[i]; if (!p) return;
+  const pct = parseFloat(String(pctStr).replace(',','.')) || 0;
+  const comprar = Math.ceil(p.quantidade * (1 + pct/100));
+  const cel = document.getElementById('ivComprar'+i);
+  if (cel) cel.textContent = Math.max(comprar, 0);
+}
+
+function carregarTudo() { carregarKpis(); if (abaAtual === 'prospeccao') carregarProspeccao(); else carregarProdutos(); }
 
 async function init() {
   const now = new Date(), p = n => String(n).padStart(2,'0');

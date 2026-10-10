@@ -51,6 +51,33 @@ client_max_body_size 300m;
 ```
 (300MB casa com o limite configurado no `multer` de `routes/embalagem.js` — é só uma trava de segurança, uma gravação de conferência normal fica bem abaixo disso.) Depois de editar, `sudo nginx -t && sudo systemctl reload nginx`.
 
+## Nginx — pasta navegável dos vídeos de Embalagem (download direto, fora do dashboard)
+
+Pedido explícito do usuário: poder entrar direto na pasta de vídeos (por data) e baixar um `.webm` avulso, sem passar pela tela do sistema. Config de referência versionada em `server/nginx-embalagem-videos.conf` — cola dentro do mesmo `server{}` já usado pro resto (WebSocket/upload):
+
+```nginx
+location /embalagem-videos/ {
+    alias /opt/ml-dashboard-novo/server/storage/embalagem-videos/;
+    autoindex on;
+    autoindex_exact_size off;
+    autoindex_localtime on;
+
+    auth_basic "Vídeos de Embalagem";
+    auth_basic_user_file /etc/nginx/.htpasswd-embalagem;
+}
+```
+
+**O Basic Auth não é opcional**: essa pasta fica fora do login do sistema (`requireStaffAuth` só protege o que passa pelo Node/Express) — sem senha aqui, qualquer um com a URL veria/baixaria vídeos com nome de comprador e produto. Criar o usuário/senha (1ª vez):
+```bash
+sudo apt-get install -y apache2-utils   # se 'htpasswd' não existir ainda
+sudo htpasswd -c /etc/nginx/.htpasswd-embalagem <usuario>   # pede a senha
+```
+Pra adicionar um 2º usuário depois, **sem** o `-c` (que recria o arquivo do zero e apagaria o 1º usuário):
+```bash
+sudo htpasswd /etc/nginx/.htpasswd-embalagem <outro_usuario>
+```
+Esse usuário/senha é **separado** do login do dashboard (`staff_users`) — não reaproveita credencial nenhuma. Depois de editar o nginx: `sudo nginx -t && sudo systemctl reload nginx`. Acesso: `https://<domínio>/embalagem-videos/` → pasta por data (`YYYY-MM-DD/`) → clicar num `.webm` reproduz/baixa direto do navegador.
+
 ## Nginx — WebSocket
 
 Sem os headers de upgrade e timeouts corretos, o nginx derruba conexões WS ociosas em 60s. Config de referência versionada em `server/nginx-websocket.conf` (aplicar dentro do `location /ws` do server block):

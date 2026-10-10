@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inteligência de Vendas</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Inteligência de Vendas'; window.ACTIVE_NAV='inteligencia-vendas.html';</script>
+  <style>
+    .iv-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .iv-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+    .iv-filters label { font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+    .iv-filters input, .iv-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:13px; }
+    .iv-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+    .iv-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:13px 15px; }
+    .iv-kpi .k { font-size:10.5px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; }
+    .iv-kpi .v { font-size:20px; font-weight:800; margin-top:4px; }
+    .iv-kpi .s { font-size:11px; color:var(--text-muted); margin-top:2px; }
+    .iv-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:5px; }
+    .iv-tab { background:transparent; border:0; color:var(--text-muted); padding:9px 16px; border-radius:9px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }
+    .iv-tab.on { background:#8b5cf6; color:#fff; }
+    .iv-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .iv-card h3 { font-size:14.5px; font-weight:800; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+    .iv-card .d { font-size:12px; color:var(--text-muted); margin:0 0 12px; }
+    .iv-empty { color:var(--text-muted); font-size:13px; padding:22px; text-align:center; }
+    table.iv-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .iv-t th, .iv-t td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+    .iv-t th { color:var(--text-muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; }
+    .iv-t td.num { text-align:right; }
+    .iv-t td.produto { white-space:normal; max-width:320px; }
+    .iv-pos { color:#3fb950; font-weight:700; } .iv-neg { color:#f87171; font-weight:700; }
+    .iv-rank { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--bg-card2); font-size:11px; font-weight:800; color:var(--text-muted); }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="iv-sub">Ranking de produtos sobre as vendas detalhadas do Metrizap (todos os marketplaces) — fonte: <a href="financeiro-vendas-detalhadas.html" style="color:#8b5cf6">Vendas Detalhadas</a> do Financeiro.</p>
+
+      <div class="iv-filters">
+        <label>De<input type="date" id="ivDe"></label>
+        <label>Até<input type="date" id="ivAte"></label>
+        <select id="ivLoja"><option value="">Todas as lojas</option></select>
+        <button class="action-btn" onclick="carregarTudo()"><i class="fas fa-sync"></i> Atualizar</button>
+      </div>
+
+      <div class="iv-kpis" id="ivKpis"></div>
+
+      <div class="iv-tabs">
+        <button class="iv-tab on" data-tab="vendidos" onclick="trocarAba('vendidos')"><i class="fas fa-fire"></i> Mais Vendidos</button>
+        <button class="iv-tab" data-tab="giro" onclick="trocarAba('giro')"><i class="fas fa-box-open"></i> Baixo Giro</button>
+        <button class="iv-tab" data-tab="margem" onclick="trocarAba('margem')"><i class="fas fa-sack-dollar"></i> Margem por Produto</button>
+      </div>
+
+      <div class="iv-card">
+        <h3 id="ivTabTitulo">🔥 Produtos Mais Vendidos</h3>
+        <p class="d" id="ivTabDesc">Ranking por quantidade vendida no período, por loja.</p>
+        <div style="overflow:auto">
+          <table class="iv-t">
+            <thead><tr>
+              <th>#</th><th>Loja</th><th>Produto</th><th>SKU</th>
+              <th class="num">Qtd.</th><th class="num">Faturamento</th><th class="num">Lucro</th><th class="num">Margem %</th>
+            </tr></thead>
+            <tbody id="ivTbody"><tr><td colspan="8" class="iv-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../js/db.js"></script>
+<script src="../js/layout-bi.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const ABAS = {
+  vendidos: { titulo: '🔥 Produtos Mais Vendidos', desc: 'Ranking por quantidade vendida no período, por loja.', ordenar: 'qtd', dir: 'desc' },
+  giro:     { titulo: '📦 Produtos com Baixo Giro', desc: 'Os que menos venderam no período (entre os que tiveram alguma venda — não inclui itens com zero venda, que exigiriam o catálogo completo).', ordenar: 'qtd', dir: 'asc' },
+  margem:   { titulo: '💰 Margem por Produto', desc: 'Ranking por margem de contribuição (%) no período. Ads do card acima é do período/loja inteiro — não é possível ratear por produto (granularidade é por dia, não por venda).', ordenar: 'margem', dir: 'desc' },
+};
+let STORES = {}, abaAtual = 'vendidos';
+
+function filtros() {
+  return {
+    date_from: document.getElementById('ivDe').value,
+    date_to: document.getElementById('ivAte').value,
+    store_id: document.getElementById('ivLoja').value,
+  };
+}
+
+function trocarAba(aba) {
+  abaAtual = aba;
+  document.querySelectorAll('.iv-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === aba));
+  document.getElementById('ivTabTitulo').textContent = ABAS[aba].titulo;
+  document.getElementById('ivTabDesc').textContent = ABAS[aba].desc;
+  carregarProdutos();
+}
+
+async function carregarKpis() {
+  const r = await DB.getBiVendasResumo(filtros());
+  const el = document.getElementById('ivKpis');
+  if (!r || r.error) { el.innerHTML = `<div class="iv-empty" style="grid-column:1/-1">Erro: ${esc(r?.error||'servidor indisponível')}</div>`; return; }
+  const cards = [
+    ['Faturamento', BRL(r.faturamento), `${r.total_vendas} venda(s)`],
+    ['Lucro', BRL(r.lucro), `Margem ${PCT(r.margem_pct)}`],
+    ['SKUs distintos', r.skus_distintos, 'no período/loja'],
+    ['Ads do período', BRL(r.ads), 'manual, Vendas & Custos'],
+    ['ROI aproximado', PCT(r.roi), '(lucro − ads) / custos'],
+  ];
+  el.innerHTML = cards.map(([k,v,s]) => `<div class="iv-kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+}
+
+async function carregarProdutos() {
+  const tbody = document.getElementById('ivTbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const cfg = ABAS[abaAtual];
+  const r = await DB.getBiVendasProdutos({ ...filtros(), ordenar: cfg.ordenar, dir: cfg.dir, limit: 50 });
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="8" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  const produtos = r.produtos || [];
+  if (!produtos.length) { tbody.innerHTML = '<tr><td colspan="8" class="iv-empty">Nenhuma venda no período/loja selecionados.</td></tr>'; return; }
+  tbody.innerHTML = produtos.map((p, i) => {
+    const neg = Number(p.margem_pct) < 0;
+    return `<tr>
+      <td><span class="iv-rank">${i+1}</span></td>
+      <td>${esc(STORES[p.store_id]||'—')}</td>
+      <td class="produto" title="${esc(p.produto)}">${esc(p.produto)}</td>
+      <td style="color:var(--text-muted);font-size:11px">${esc(p.sku)||'—'}</td>
+      <td class="num">${p.quantidade}</td>
+      <td class="num">${BRL(p.faturamento)}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${BRL(p.lucro)}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${PCT(p.margem_pct)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function carregarTudo() { carregarKpis(); carregarProdutos(); }
+
+async function init() {
+  const now = new Date(), p = n => String(n).padStart(2,'0');
+  document.getElementById('ivDe').value = `${now.getFullYear()}-${p(now.getMonth()+1)}-01`;
+  document.getElementById('ivAte').value = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}`;
+
+  const rSt = await DB.getFinanceiroDados('stores', 500);
+  (rSt.rows||[]).forEach(s => { STORES[s.id] = s.name || s.nome || String(s.id).slice(0,6); });
+  const sel = document.getElementById('ivLoja');
+  Object.entries(STORES).forEach(([id,n]) => sel.insertAdjacentHTML('beforeend', `<option value="${esc(id)}">${esc(n)}</option>`));
+  document.getElementById('ivLoja').addEventListener('change', carregarTudo);
+
+  carregarTudo();
+}
+init();
+</script>
+</body>
+</html>

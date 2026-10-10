@@ -39,6 +39,16 @@
     .iv-cresc.down { background:rgba(248,113,113,.15); color:#f87171; }
     .iv-cresc.sem { background:rgba(148,163,184,.15); color:var(--text-muted); }
     .iv-loja-chart { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:14px; margin-top:16px; }
+    .iv-row-clicavel { cursor:pointer; }
+    .iv-row-clicavel:hover td { background:var(--bg-card2); }
+    .iv-modal-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:1000; padding:16px; }
+    .iv-modal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:100%; max-width:920px; max-height:88vh; overflow:auto; }
+    .iv-modal-h { display:flex; align-items:center; gap:10px; padding:16px 20px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg-card); }
+    .iv-modal-h h3 { margin:0; font-size:15px; font-weight:800; }
+    .iv-modal-x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; }
+    .iv-modal-b { padding:16px 20px; }
+    .iv-cresc-cell { display:flex; flex-direction:column; gap:3px; }
+    .iv-cresc-cell .l { font-size:9.5px; color:var(--text-muted); }
   </style>
 </head>
 <body>
@@ -122,6 +132,25 @@
     </div>
   </main>
 </div>
+
+<div class="iv-modal-ov" id="ivModalOv" onclick="if(event.target.id==='ivModalOv') fecharModalLoja()">
+  <div class="iv-modal">
+    <div class="iv-modal-h">
+      <h3 id="ivModalTitulo">Detalhamento por dia</h3>
+      <button class="iv-modal-x" onclick="fecharModalLoja()">✕</button>
+    </div>
+    <div class="iv-modal-b">
+      <table class="iv-t">
+        <thead><tr>
+          <th>Dia</th><th class="num">Faturamento</th><th class="num">Ads</th><th class="num">Margem de Contribuição</th>
+          <th class="num">vs. Dia Anterior</th><th class="num">vs. Mesmo Dia Mês Passado</th>
+        </tr></thead>
+        <tbody id="ivModalTbody"><tr><td colspan="6" class="iv-empty">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script src="../js/db.js"></script>
 <script src="../js/layout-bi.js"></script>
 <script src="../js/sidebar.js"></script>
@@ -263,7 +292,7 @@ async function carregarLojas() {
   if (!lojas.length) { tbody.innerHTML = '<tr><td colspan="7" class="iv-empty">Nenhuma venda no período selecionado.</td></tr>'; return; }
   tbody.innerHTML = lojas.map(l => {
     const neg = Number(l.margem_pct) < 0;
-    return `<tr>
+    return `<tr class="iv-row-clicavel" onclick="abrirModalLoja('${esc(l.store_id)}')" title="Clique pra ver o detalhamento dia a dia">
       <td>${esc(STORES[l.store_id]||'—')}</td>
       <td class="num">${BRL(l.faturamento)}</td>
       <td class="num">${l.quantidade}</td>
@@ -302,6 +331,39 @@ function carregarTudo() {
   else if (abaAtual === 'lojas') carregarLojas();
   else carregarProdutos();
 }
+
+// Modal "Vendas por Loja" → clique na linha abre o detalhamento dia a dia
+// daquela loja, no mesmo período filtrado na tela (ver biVendas.js pra como
+// "vs. dia anterior"/"vs. mesmo dia mês passado" são calculados).
+function cresDiaHtml(label, atual, anteriorVal, pct) {
+  if (anteriorVal == null) return `<div class="iv-cresc-cell"><span class="l">${label}</span><span class="iv-cresc sem">sem dado</span></div>`;
+  return `<div class="iv-cresc-cell"><span class="l">${label} (${BRL(anteriorVal)})</span>${crescHtml(pct)}</div>`;
+}
+
+async function abrirModalLoja(storeId) {
+  document.getElementById('ivModalOv').style.display = 'flex';
+  document.getElementById('ivModalTitulo').textContent = `📅 ${STORES[storeId]||'Loja'} — detalhamento por dia`;
+  const tbody = document.getElementById('ivModalTbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const { date_from, date_to } = filtros();
+  const r = await DB.getBiVendasLojaDias(storeId, { date_from, date_to });
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="6" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  const dias = r.dias || [];
+  if (!dias.length) { tbody.innerHTML = '<tr><td colspan="6" class="iv-empty">Sem dias no período.</td></tr>'; return; }
+  tbody.innerHTML = dias.map(d => {
+    const neg = Number(d.margem_pct) < 0;
+    return `<tr>
+      <td>${new Date(d.date+'T00:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'})}</td>
+      <td class="num">${BRL(d.faturamento)}</td>
+      <td class="num">${BRL(d.ads)}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${BRL(d.lucro)} <span style="color:var(--text-muted);font-size:10.5px">(${PCT(d.margem_pct)})</span></td>
+      <td class="num">${cresDiaHtml('ontem', d.faturamento, d.faturamento_dia_anterior, d.cresc_dia_anterior_pct)}</td>
+      <td class="num">${cresDiaHtml('mês passado', d.faturamento, d.faturamento_mes_passado, d.cresc_mes_passado_pct)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function fecharModalLoja() { document.getElementById('ivModalOv').style.display = 'none'; }
 
 const MESES_IV = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 

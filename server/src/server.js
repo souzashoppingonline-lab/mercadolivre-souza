@@ -88,6 +88,10 @@ app.use('/api/bi', require('./routes/bi'));
 // Supabase Financeiro. Fica sob /api/bi (mesmo gate de módulo do BI, não do
 // Financeiro — ver .claude/decisions.md). Ver .claude/modules.md.
 app.use('/api/bi/agente-financeiro', require('./routes/agenteFinanceiro'));
+// Inteligência de Vendas — ranking de produtos (mais vendidos/baixo giro/
+// margem) sobre sales_entries_detail do Supabase Financeiro. Mesmo gate
+// /api/bi acima (admin). Ver .claude/modules.md.
+app.use('/api/bi/vendas', require('./routes/biVendas'));
 // Gestão de usuários de acesso restrito — só admin (gate em staffAuth.js).
 app.use('/api/usuarios', require('./routes/staffUsers'));
 

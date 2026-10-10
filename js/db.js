@@ -385,6 +385,10 @@ const DB = {
   async getFinanceiroTabelas()       { return this._get('/financeiro/tabelas'); },
   async getFinanceiroTabela(nome, limit = 50) { return this._get(`/financeiro/tabela/${encodeURIComponent(nome)}`, { limit }); },
   async getFinanceiroDados(nome, limit = 1000, order = '', filtro = '') { return this._get(`/financeiro/dados/${encodeURIComponent(nome)}`, { limit, order, filtro }); },
+
+  // ── Inteligência de Vendas (BI — ranking de produtos sobre o Financeiro) ──
+  async getBiVendasProdutos(params = {}) { return this._get('/bi/vendas/produtos', params); },
+  async getBiVendasResumo(params = {})   { return this._get('/bi/vendas/resumo', params); },
   // Comprovante fiscal: sobe o arquivo pro Storage do Supabase (via servidor) e
   // devolve o caminho, que é gravado em compras_cmv.xml_url.
   async uploadFinanceiroArquivo(formData) { return this._postForm('/financeiro/arquivo', formData); },

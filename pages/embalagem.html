@@ -697,6 +697,66 @@ let confRows = []; // última carga da aba Conferência do Dia — usado pelos c
 let stream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
+// Overlay gravado dentro do vídeo (data/hora/pedido/comprador/título) — pedido
+// explícito do usuário, pra provar em contestação do Mercado Livre que aquele
+// vídeo é daquele pedido específico. Em vez de gravar o stream da câmera direto,
+// desenha cada frame num <canvas> (com o texto por cima) e grava o stream DESSE
+// canvas — texto fica queimado nos pixels do .webm salvo, não é só uma camada
+// de tela que some se o vídeo sair do dashboard.
+let overlayCanvas = null, overlayCtx = null, overlayRAF = null;
+
+function montarLinhasOverlay(orders) {
+  const pedidos = (orders || []).map(o => String(o.order_id || '—')).join(', ');
+  const comprador = (orders && orders[0] && orders[0].buyer_nickname) || '—';
+  const titulos = (orders || []).map(o => o.title).filter(Boolean);
+  let produto = titulos[0] || '(sem título)';
+  if (produto.length > 70) produto = produto.slice(0, 67) + '…';
+  if (titulos.length > 1) produto += ` (+${titulos.length - 1})`;
+  return { pedidos, comprador, produto };
+}
+
+function desenharFrameOverlay(video, canvas, ctx, linhas) {
+  const w = canvas.width, h = canvas.height;
+  ctx.drawImage(video, 0, 0, w, h);
+
+  const fonte = Math.max(14, Math.round(w / 46));
+  const padV = Math.round(fonte * 0.5);
+  const textos = [
+    `${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' })}`,
+    `Pedido: ${linhas.pedidos}`,
+    `Comprador: ${linhas.comprador}`,
+    `Produto: ${linhas.produto}`,
+  ];
+  const barH = textos.length * (fonte + padV) + padV;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, w, barH);
+  ctx.font = `700 ${fonte}px -apple-system, Arial, sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.textBaseline = 'top';
+  textos.forEach((t, i) => ctx.fillText(t, padV, padV + i * (fonte + padV)));
+}
+
+function iniciarOverlayGravacao(orders) {
+  const video = document.getElementById('cameraPreview');
+  const w = video.videoWidth || 1280, h = video.videoHeight || 720;
+  overlayCanvas = document.createElement('canvas');
+  overlayCanvas.width = w; overlayCanvas.height = h;
+  overlayCtx = overlayCanvas.getContext('2d');
+  const linhas = montarLinhasOverlay(orders);
+  const loop = () => {
+    desenharFrameOverlay(video, overlayCanvas, overlayCtx, linhas);
+    overlayRAF = requestAnimationFrame(loop);
+  };
+  loop();
+  const canvasStream = overlayCanvas.captureStream(25);
+  const audioTracks = stream ? stream.getAudioTracks() : [];
+  return new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+}
+
+function pararOverlayGravacao() {
+  if (overlayRAF) { cancelAnimationFrame(overlayRAF); overlayRAF = null; }
+  overlayCanvas = null; overlayCtx = null;
+}
 
 // --- Últimos 10 pedidos bipados (tabela pequena colorida abaixo da câmera) ---
 // Reaproveita GET /embalagem/videos (já ordenado por mais recente) — sem rota nova.
@@ -740,11 +800,17 @@ async function initCamera() {
   }
 }
 
-function startRecording() {
+function startRecording(orders) {
   if (!stream) return;
   recordedChunks = [];
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus' : 'video/webm';
-  mediaRecorder = new MediaRecorder(stream, { mimeType });
+  // Grava o stream do canvas com overlay (data/hora/pedido/comprador/título
+  // queimados no vídeo), não a câmera crua — se o canvas falhar por algum
+  // motivo (ex. captureStream indisponível), cai pro stream da câmera sem
+  // overlay em vez de travar a gravação.
+  let recStream = stream;
+  try { recStream = iniciarOverlayGravacao(orders); } catch (e) { console.error('[embalagem] overlay de vídeo falhou, gravando sem overlay:', e); }
+  mediaRecorder = new MediaRecorder(recStream, { mimeType });
   mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
   mediaRecorder.start();
   document.getElementById('cameraRecBadge').classList.add('on');
@@ -753,6 +819,7 @@ function startRecording() {
 
 function stopRecordingAndGetBlob() {
   return new Promise((resolve) => {
+    pararOverlayGravacao();
     if (!mediaRecorder || mediaRecorder.state === 'inactive') { resolve(new Blob(recordedChunks, { type: 'video/webm' })); return; }
     mediaRecorder.onstop = () => resolve(new Blob(recordedChunks, { type: 'video/webm' }));
     mediaRecorder.stop();
@@ -1256,7 +1323,7 @@ async function startNew(shippingId) {
   currentSession = { shippingId, orders: data.orders, startedAt: Date.now() };
   renderOrders(data.orders, data.already_packed);
   falarQuantidades(data.orders);
-  startRecording();
+  startRecording(data.orders);
   setScanState('recording');
   startDurationWatcher();
   startLembreteConferenciaInterval(data.orders);

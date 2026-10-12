@@ -21,20 +21,47 @@ function noPeriodo(dateStr, date_from, date_to) {
   return true;
 }
 
-async function loadDetalhe(date_from, date_to, store_id) {
-  const rows = await supa.selectRows('sales_entries_detail', 5000, 'date.desc');
-  return rows.filter(r =>
+// Busca só o período pedido, filtrando por data/loja NO Supabase e paginando
+// de 1000 em 1000 (teto padrão de linhas por resposta do PostgREST do
+// Supabase). Antes lia "as 5000 mais recentes" e filtrava em JS: passando de
+// 1000 vendas na tabela, períodos antigos sumiam da análise sem aviso.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const PAGINA = 1000;
+const MAX_PAGINAS = 50;
+async function loadPeriodo(tabela, date_from, date_to, store_id) {
+  let base = `/${tabela}?order=date.desc,id.desc`;
+  if (ISO_DATE.test(date_from || '')) base += `&date=gte.${date_from}`;
+  if (ISO_DATE.test(date_to || '')) base += `&date=lte.${date_to}`;
+  if (store_id) base += `&store_id=eq.${encodeURIComponent(store_id)}`;
+  const out = [];
+  for (let p = 0; p < MAX_PAGINAS; p++) {
+    const page = await supa.get(`${base}&limit=${PAGINA}&offset=${p * PAGINA}`);
+    if (!Array.isArray(page) || !page.length) break;
+    out.push(...page);
+    if (page.length < PAGINA) break;
+  }
+  return out.filter(r =>
     noPeriodo(r.date, date_from, date_to) &&
     (!store_id || String(r.store_id) === String(store_id))
   );
 }
 
+// Venda cancelada fica de fora de TODA análise — mesma regra do import
+// Metrizap (financeiro-vendas.html, `/cancel/i` em "Situação"), que já não
+// soma canceladas no agregado diário de sales_entries. Sem isso, cancelada
+// entrava como venda (faturamento + qtd, lucro 0) e inflava ranking,
+// Prospecção ("precisa comprar") e derrubava a margem. Devolução parcial
+// continua contando — é venda real, com lucro próprio.
+async function loadDetalhe(date_from, date_to, store_id) {
+  const rows = await loadPeriodo('sales_entries_detail', date_from, date_to, store_id);
+  return rows.filter(r => !/cancel/i.test(String(r.situacao || '')));
+}
+
+// Ads é o único número que não vem de sales_entries_detail: a planilha
+// Metrizap não tem coluna de Ads — o valor é digitado no modal do próprio
+// import Metrizap e gravado por dia+loja em sales_entries.ads_ml.
 async function loadAds(date_from, date_to, store_id) {
-  const rows = await supa.selectRows('sales_entries', 5000, 'date.desc');
-  return rows.filter(r =>
-    noPeriodo(r.date, date_from, date_to) &&
-    (!store_id || String(r.store_id) === String(store_id))
-  );
+  return loadPeriodo('sales_entries', date_from, date_to, store_id);
 }
 
 function agruparPorProduto(rows) {

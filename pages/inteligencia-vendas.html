@@ -84,6 +84,10 @@
         <button class="iv-tab" data-tab="margem" onclick="trocarAba('margem')"><i class="fas fa-sack-dollar"></i> Margem por Produto</button>
         <button class="iv-tab" data-tab="prospeccao" onclick="trocarAba('prospeccao')"><i class="fas fa-chart-line"></i> Prospecção de Vendas</button>
         <button class="iv-tab" data-tab="lojas" onclick="trocarAba('lojas')"><i class="fas fa-store"></i> Vendas por Loja</button>
+        <button class="iv-tab" data-tab="afiliado" onclick="trocarAba('afiliado')"><i class="fas fa-handshake"></i> Custo de Afiliado</button>
+        <button class="iv-tab" data-tab="abc" onclick="trocarAba('abc')"><i class="fas fa-layer-group"></i> Curva ABC</button>
+        <button class="iv-tab" data-tab="logistica" onclick="trocarAba('logistica')"><i class="fas fa-truck"></i> Logística</button>
+        <button class="iv-tab" data-tab="queda" onclick="trocarAba('queda')"><i class="fas fa-triangle-exclamation"></i> Alerta de Queda</button>
       </div>
 
       <div class="iv-card" id="ivCardRanking">
@@ -128,6 +132,64 @@
           </table>
         </div>
         <div class="iv-loja-chart"><canvas id="ivLojasChart" height="90"></canvas></div>
+      </div>
+
+      <div class="iv-card" id="ivCardAfiliado" style="display:none">
+        <h3>🤝 Custo de Afiliado por Produto</h3>
+        <p class="d">Quanto o programa de afiliado está custando em cada produto (já descontado do lucro/margem abaixo — ver finance.md) e se a margem ainda compensa.</p>
+        <div style="overflow:auto">
+          <table class="iv-t">
+            <thead><tr>
+              <th>#</th><th>Loja</th><th>Produto</th><th>SKU</th>
+              <th class="num">Faturamento</th><th class="num">Comissão Afiliado</th><th class="num">% Faturamento</th><th class="num">Margem %</th>
+            </tr></thead>
+            <tbody id="ivAfiliadoTbody"><tr><td colspan="8" class="iv-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="iv-card" id="ivCardAbc" style="display:none">
+        <h3>📚 Curva ABC</h3>
+        <p class="d">Classificação por % acumulado de faturamento (A ≤80%, B ≤95%, C o restante) — mesmo limiar da Curva ABC do Operacional (<a href="curvaABC.html" style="color:#8b5cf6">curvaABC.html</a>), aqui sobre todos os marketplaces.</p>
+        <div class="iv-kpis" id="ivAbcResumo" style="margin-bottom:14px"></div>
+        <div style="overflow:auto">
+          <table class="iv-t">
+            <thead><tr>
+              <th>#</th><th>Loja</th><th>Produto</th><th>SKU</th>
+              <th class="num">Faturamento</th><th class="num">% Acumulado</th><th>Curva</th>
+            </tr></thead>
+            <tbody id="ivAbcTbody"><tr><td colspan="7" class="iv-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="iv-card" id="ivCardLogistica" style="display:none">
+        <h3>🚚 Logística com Melhor Margem Líquida</h3>
+        <p class="d">Faturamento, custo do produto, frete do vendedor e margem líquida por modalidade de envio (xd_drop_off/fulfillment/self_service/iMile BR etc.) — qual modalidade realmente compensa.</p>
+        <div style="overflow:auto">
+          <table class="iv-t">
+            <thead><tr>
+              <th>Logística</th><th class="num">Qtd.</th><th class="num">Faturamento</th>
+              <th class="num">Custo Produto</th><th class="num">Frete Vendedor</th><th class="num">Lucro</th><th class="num">Margem %</th>
+            </tr></thead>
+            <tbody id="ivLogisticaTbody"><tr><td colspan="7" class="iv-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="iv-card" id="ivCardQueda" style="display:none">
+        <h3>⚠️ Alerta de Queda por Produto</h3>
+        <p class="d" id="ivQuedaDesc">Produtos com queda de faturamento ≥40% vs. o período anterior de mesma duração (faturamento anterior ≥R$100 — evita ruído de produto pequeno). Também monitorado diariamente (7 dias vs. 7 dias anteriores) com alerta no Telegram.</p>
+        <div style="overflow:auto">
+          <table class="iv-t">
+            <thead><tr>
+              <th>#</th><th>Loja</th><th>Produto</th><th>SKU</th>
+              <th class="num">Faturamento</th><th class="num">Faturamento Anterior</th><th class="num">Queda</th>
+              <th class="num">Qtd.</th><th class="num">Qtd. Anterior</th>
+            </tr></thead>
+            <tbody id="ivQuedaTbody"><tr><td colspan="9" class="iv-empty">Carregando…</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </main>
@@ -174,15 +236,24 @@ function filtros() {
   };
 }
 
+const CARDS_DEDICADOS = {
+  prospeccao: { card: 'ivCardProspeccao', fn: () => carregarProspeccao() },
+  lojas:      { card: 'ivCardLojas',      fn: () => carregarLojas() },
+  afiliado:   { card: 'ivCardAfiliado',   fn: () => carregarAfiliado() },
+  abc:        { card: 'ivCardAbc',        fn: () => carregarAbc() },
+  logistica:  { card: 'ivCardLogistica',  fn: () => carregarLogistica() },
+  queda:      { card: 'ivCardQueda',      fn: () => carregarQueda() },
+};
+
 function trocarAba(aba) {
   abaAtual = aba;
   document.querySelectorAll('.iv-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === aba));
-  const eProspeccao = aba === 'prospeccao', eLojas = aba === 'lojas';
-  document.getElementById('ivCardRanking').style.display = (eProspeccao || eLojas) ? 'none' : '';
-  document.getElementById('ivCardProspeccao').style.display = eProspeccao ? '' : 'none';
-  document.getElementById('ivCardLojas').style.display = eLojas ? '' : 'none';
-  if (eProspeccao) { carregarProspeccao(); return; }
-  if (eLojas) { carregarLojas(); return; }
+  const dedicado = CARDS_DEDICADOS[aba];
+  document.getElementById('ivCardRanking').style.display = dedicado ? 'none' : '';
+  Object.values(CARDS_DEDICADOS).forEach(d => {
+    document.getElementById(d.card).style.display = (dedicado && d.card === dedicado.card) ? '' : 'none';
+  });
+  if (dedicado) { dedicado.fn(); return; }
   document.getElementById('ivTabTitulo').textContent = ABAS[aba].titulo;
   document.getElementById('ivTabDesc').textContent = ABAS[aba].desc;
   carregarProdutos();
@@ -325,10 +396,107 @@ async function carregarLojas() {
   });
 }
 
+// Custo de Afiliado por Produto — reusa /produtos (ordenar=afiliado), sem
+// rota nova; só mostra quem tem comissão de afiliado > 0 (produto sem
+// afiliado não interessa nesta aba).
+async function carregarAfiliado() {
+  const tbody = document.getElementById('ivAfiliadoTbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const r = await DB.getBiVendasProdutos({ ...filtros(), ordenar: 'afiliado', dir: 'desc', limit: 200 });
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="8" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  const produtos = (r.produtos || []).filter(p => Number(p.comissao_afiliado) > 0);
+  if (!produtos.length) { tbody.innerHTML = '<tr><td colspan="8" class="iv-empty">Nenhum produto com comissão de afiliado no período/loja selecionados.</td></tr>'; return; }
+  tbody.innerHTML = produtos.map((p, i) => {
+    const neg = Number(p.margem_pct) < 0;
+    return `<tr>
+      <td><span class="iv-rank">${i+1}</span></td>
+      <td>${esc(STORES[p.store_id]||'—')}</td>
+      <td class="produto" title="${esc(p.produto)}">${esc(p.produto)}</td>
+      <td style="color:var(--text-muted);font-size:11px">${esc(p.sku)||'—'}</td>
+      <td class="num">${BRL(p.faturamento)}</td>
+      <td class="num iv-neg">${BRL(p.comissao_afiliado)}</td>
+      <td class="num">${PCT(p.pct_afiliado)}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${PCT(p.margem_pct)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Curva ABC — mesmo limiar de GET /api/comparativos/curva-abc (Operacional),
+// aplicado sobre sales_entries_detail (todos os marketplaces).
+async function carregarAbc() {
+  const tbody = document.getElementById('ivAbcTbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const r = await DB.getBiVendasCurvaAbc(filtros());
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="7" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  const items = r.items || [];
+  const CORES_CURVA = { A: '#3fb950', B: '#f59e0b', C: '#f87171' };
+  document.getElementById('ivAbcResumo').innerHTML = ['A','B','C'].map(c => `
+    <div class="iv-kpi"><div class="k" style="color:${CORES_CURVA[c]}">Curva ${c}</div>
+      <div class="v">${r.summary?.[c]?.count||0} produto(s)</div>
+      <div class="s">${BRL(r.summary?.[c]?.faturamento||0)}</div></div>`).join('');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" class="iv-empty">Nenhuma venda no período/loja selecionados.</td></tr>'; return; }
+  tbody.innerHTML = items.map((p, i) => `<tr>
+      <td><span class="iv-rank">${i+1}</span></td>
+      <td>${esc(STORES[p.store_id]||'—')}</td>
+      <td class="produto" title="${esc(p.produto)}">${esc(p.produto)}</td>
+      <td style="color:var(--text-muted);font-size:11px">${esc(p.sku)||'—'}</td>
+      <td class="num">${BRL(p.faturamento)}</td>
+      <td class="num">${PCT(p.pct_acum)}</td>
+      <td><span style="font-weight:800;color:${CORES_CURVA[p.curva]}">${p.curva}</span></td>
+    </tr>`).join('');
+}
+
+// Logística com Melhor Margem Líquida — agrupado por modalidade de envio.
+async function carregarLogistica() {
+  const tbody = document.getElementById('ivLogisticaTbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const r = await DB.getBiVendasLogistica(filtros());
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="7" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  const modalidades = r.modalidades || [];
+  if (!modalidades.length) { tbody.innerHTML = '<tr><td colspan="7" class="iv-empty">Nenhuma venda no período/loja selecionados.</td></tr>'; return; }
+  tbody.innerHTML = modalidades.map(m => {
+    const neg = Number(m.margem_pct) < 0;
+    return `<tr>
+      <td>${esc(m.logistica)}</td>
+      <td class="num">${m.quantidade}</td>
+      <td class="num">${BRL(m.faturamento)}</td>
+      <td class="num">${BRL(m.custo_produto)}</td>
+      <td class="num">${BRL(m.frete_vendedor)}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${BRL(m.lucro)}</td>
+      <td class="num ${neg?'iv-neg':'iv-pos'}">${PCT(m.margem_pct)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Alerta de Queda por Produto — mesma comparação (período atual vs. anterior
+// de mesma duração) que roda diariamente no worker e manda pro Telegram
+// (ver workers.md); aqui é a visão sob o filtro escolhido na tela.
+async function carregarQueda() {
+  const tbody = document.getElementById('ivQuedaTbody');
+  tbody.innerHTML = '<tr><td colspan="9" class="iv-empty"><div class="spinner" style="margin:auto"></div></td></tr>';
+  const { date_from, date_to, store_id } = filtros();
+  if (!date_from || !date_to) { tbody.innerHTML = '<tr><td colspan="9" class="iv-empty">Selecione um período.</td></tr>'; return; }
+  const r = await DB.getBiVendasAlertasQueda({ date_from, date_to, store_id });
+  if (!r || r.error) { tbody.innerHTML = `<tr><td colspan="9" class="iv-empty" style="color:var(--red)">Erro: ${esc(r?.error||'servidor indisponível')}</td></tr>`; return; }
+  const alertas = r.alertas || [];
+  if (!alertas.length) { tbody.innerHTML = '<tr><td colspan="9" class="iv-empty">Nenhuma queda ≥40% detectada no período filtrado vs. o anterior.</td></tr>'; return; }
+  tbody.innerHTML = alertas.map((p, i) => `<tr>
+      <td><span class="iv-rank">${i+1}</span></td>
+      <td>${esc(STORES[p.store_id]||'—')}</td>
+      <td class="produto" title="${esc(p.produto)}">${esc(p.produto)}</td>
+      <td style="color:var(--text-muted);font-size:11px">${esc(p.sku)||'—'}</td>
+      <td class="num">${BRL(p.faturamento)}</td>
+      <td class="num">${BRL(p.faturamento_anterior)}</td>
+      <td class="num">${crescHtml(p.cresc_pct)}</td>
+      <td class="num">${p.quantidade}</td>
+      <td class="num">${p.quantidade_anterior}</td>
+    </tr>`).join('');
+}
+
 function carregarTudo() {
   carregarKpis();
-  if (abaAtual === 'prospeccao') carregarProspeccao();
-  else if (abaAtual === 'lojas') carregarLojas();
+  const dedicado = CARDS_DEDICADOS[abaAtual];
+  if (dedicado) dedicado.fn();
   else carregarProdutos();
 }
 

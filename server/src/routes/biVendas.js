@@ -43,12 +43,13 @@ function agruparPorProduto(rows) {
     const key = `${r.store_id}::${r.sku || r.produto || '—'}`;
     const g = by[key] || (by[key] = {
       store_id: r.store_id, sku: r.sku || null, produto: null,
-      quantidade: 0, faturamento: 0, lucro: 0, vendas: 0,
+      quantidade: 0, faturamento: 0, lucro: 0, vendas: 0, comissao_afiliado: 0,
     });
     if (!g.produto && r.produto) g.produto = r.produto;
     g.quantidade += Number(r.quantidade) || 0;
     g.faturamento += Number(r.faturamento) || 0;
     g.lucro += Number(r.lucro) || 0;
+    g.comissao_afiliado += Number(r.comissao_afiliado) || 0;
     g.vendas += 1;
   });
   return Object.values(by).map(g => ({
@@ -56,11 +57,15 @@ function agruparPorProduto(rows) {
     produto: g.produto || '(sem título)',
     faturamento: round2(g.faturamento),
     lucro: round2(g.lucro),
+    comissao_afiliado: round2(g.comissao_afiliado),
+    // já é custo que SAIU do lucro gravado por venda (ver finance.md) — aqui só
+    // expõe o valor/% pra enxergar o quanto o afiliado está custando por produto.
+    pct_afiliado: g.faturamento > 0 ? round2(g.comissao_afiliado / g.faturamento * 100) : 0,
     margem_pct: g.faturamento > 0 ? round2(g.lucro / g.faturamento * 100) : 0,
   }));
 }
 
-const CAMPO_ORDENACAO = { qtd: 'quantidade', faturamento: 'faturamento', lucro: 'lucro', margem: 'margem_pct' };
+const CAMPO_ORDENACAO = { qtd: 'quantidade', faturamento: 'faturamento', lucro: 'lucro', margem: 'margem_pct', afiliado: 'comissao_afiliado' };
 
 // GET /api/bi/vendas/produtos?date_from&date_to&store_id&ordenar=qtd|faturamento|lucro|margem&dir=asc|desc&limit
 // Serve as 3 abas da Fase 1: "Mais Vendidos" (ordenar=qtd&dir=desc, default),
@@ -290,4 +295,130 @@ router.get('/lojas/:storeId/dias', async (req, res) => {
   }
 });
 
+// GET /api/bi/vendas/curva-abc?date_from&date_to&store_id — classificação
+// A/B/C por % acumulado de faturamento, por produto. MESMO limiar de
+// GET /api/comparativos/curva-abc (server/src/routes/api.js, Operacional/
+// Postgres, só ML — bi.js já referencia essa fonte como canônica, nunca uma
+// 2ª fórmula): pct_acum<=80→A, <=95→B, senão C. Fonte aqui é
+// sales_entries_detail (Supabase, todos os marketplaces via Metrizap), por
+// isso é uma rota própria em vez de reusar a de api.js.
+router.get('/curva-abc', async (req, res) => {
+  try {
+    const { date_from = '', date_to = '', store_id = '' } = req.query;
+    const rows = await loadDetalhe(date_from, date_to, store_id);
+    const produtos = agruparPorProduto(rows).sort((a, b) => b.faturamento - a.faturamento);
+    const total = produtos.reduce((s, p) => s + p.faturamento, 0);
+    let acum = 0;
+    const items = produtos.map(p => {
+      acum += p.faturamento;
+      const pctAcum = total > 0 ? (acum / total) * 100 : 0;
+      const curva = pctAcum <= 80 ? 'A' : pctAcum <= 95 ? 'B' : 'C';
+      return { ...p, pct_acum: round2(pctAcum), curva };
+    });
+    const summary = { A: { count: 0, faturamento: 0 }, B: { count: 0, faturamento: 0 }, C: { count: 0, faturamento: 0 } };
+    items.forEach(i => { summary[i.curva].count++; summary[i.curva].faturamento += i.faturamento; });
+    res.json({ items, summary, total: round2(total) });
+  } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// GET /api/bi/vendas/logistica?date_from&date_to&store_id — agrupa por
+// modalidade de logística (campo `logistica` de sales_entries_detail —
+// xd_drop_off/fulfillment/self_service/iMile BR etc., varia por marketplace),
+// descontando custo do produto + frete do vendedor, pra ver qual modalidade
+// realmente compensa. Nunca recalcula lucro por pedido — soma o `lucro` já
+// gravado por venda, igual ao resto do arquivo (ver finance.md).
+router.get('/logistica', async (req, res) => {
+  try {
+    const { date_from = '', date_to = '', store_id = '' } = req.query;
+    const rows = await loadDetalhe(date_from, date_to, store_id);
+    const by = {};
+    rows.forEach(r => {
+      const key = r.logistica || '(não informado)';
+      const g = by[key] || (by[key] = {
+        logistica: key, quantidade: 0, faturamento: 0, custo_produto: 0, frete_vendedor: 0, lucro: 0, vendas: 0,
+      });
+      g.quantidade += Number(r.quantidade) || 0;
+      g.faturamento += Number(r.faturamento) || 0;
+      g.custo_produto += Number(r.custo_produto) || 0;
+      g.frete_vendedor += Number(r.frete_vendedor) || 0;
+      g.lucro += Number(r.lucro) || 0;
+      g.vendas += 1;
+    });
+    const modalidades = Object.values(by).map(g => ({
+      ...g,
+      faturamento: round2(g.faturamento),
+      custo_produto: round2(g.custo_produto),
+      frete_vendedor: round2(g.frete_vendedor),
+      lucro: round2(g.lucro),
+      margem_pct: g.faturamento > 0 ? round2(g.lucro / g.faturamento * 100) : 0,
+    })).sort((a, b) => b.margem_pct - a.margem_pct);
+    res.json({ modalidades });
+  } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Alerta de Queda por Produto — compara o período atual vs. o período
+// anterior de mesma duração (periodoAnterior, MESMA fórmula já usada em
+// /lojas acima) por produto (store_id+sku). Função pura exportada
+// (router.detectarQuedasProdutos) pra ser a MESMA fonte usada tanto pela
+// rota de leitura da página quanto pelo job agendado do worker.js que manda
+// o alerta no Telegram — nunca uma 2ª cópia da comparação (mesmo princípio
+// de server/src/reports.js, ver workers.md).
+const QUEDA_PRODUTO_ALERTA_PCT = 40; // "queda grande" — mesmo limiar já usado no Rankeamento pra queda de visitas
+const QUEDA_PRODUTO_FATURAMENTO_MIN = 100; // ignora produto com faturamento anterior pequeno (ruído estatístico)
+
+async function detectarQuedasProdutos(date_from, date_to, store_id) {
+  const anterior = periodoAnterior(date_from, date_to);
+  const [atualRows, passadoRows] = await Promise.all([
+    loadDetalhe(date_from, date_to, store_id),
+    anterior.de ? loadDetalhe(anterior.de, anterior.ate, store_id) : Promise.resolve([]),
+  ]);
+  // União das chaves dos dois períodos: produto que PAROU de vender (só
+  // existe no anterior) é a queda mais grave (−100%) e precisa aparecer.
+  const chave = p => `${p.store_id}::${p.sku || p.produto}`;
+  const atualByKey = {}, passadoByKey = {};
+  agruparPorProduto(atualRows).forEach(p => { atualByKey[chave(p)] = p; });
+  agruparPorProduto(passadoRows).forEach(p => { passadoByKey[chave(p)] = p; });
+
+  const produtos = [...new Set([...Object.keys(atualByKey), ...Object.keys(passadoByKey)])].map(k => {
+    const at = atualByKey[k] || null, ant = passadoByKey[k] || null;
+    const base = at || ant;
+    const faturamento = at ? at.faturamento : 0;
+    const faturamentoAnterior = ant ? ant.faturamento : 0;
+    return {
+      store_id: base.store_id, sku: base.sku, produto: base.produto,
+      quantidade: at ? at.quantidade : 0, quantidade_anterior: ant ? ant.quantidade : 0,
+      faturamento, faturamento_anterior: round2(faturamentoAnterior),
+      cresc_pct: faturamentoAnterior > 0 ? round2((faturamento - faturamentoAnterior) / faturamentoAnterior * 100) : null,
+    };
+  });
+
+  const alertas = produtos
+    .filter(p => p.cresc_pct != null && p.cresc_pct <= -QUEDA_PRODUTO_ALERTA_PCT && p.faturamento_anterior >= QUEDA_PRODUTO_FATURAMENTO_MIN)
+    .sort((a, b) => a.cresc_pct - b.cresc_pct);
+
+  return { alertas, periodo_anterior: anterior };
+}
+
+// GET /api/bi/vendas/alertas-queda?date_from&date_to&store_id
+router.get('/alertas-queda', async (req, res) => {
+  try {
+    const { date_from = '', date_to = '', store_id = '' } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: 'date_from e date_to são obrigatórios' });
+    const r = await detectarQuedasProdutos(date_from, date_to, store_id);
+    res.json(r);
+  } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+router.detectarQuedasProdutos = detectarQuedasProdutos;
+router.QUEDA_PRODUTO_ALERTA_PCT = QUEDA_PRODUTO_ALERTA_PCT;
+router.QUEDA_PRODUTO_FATURAMENTO_MIN = QUEDA_PRODUTO_FATURAMENTO_MIN;
 module.exports = router;

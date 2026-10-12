@@ -391,6 +391,9 @@ const DB = {
   async getBiVendasResumo(params = {})   { return this._get('/bi/vendas/resumo', params); },
   async getBiVendasLojas(params = {})    { return this._get('/bi/vendas/lojas', params); },
   async getBiVendasLojaDias(storeId, params = {}) { return this._get(`/bi/vendas/lojas/${encodeURIComponent(storeId)}/dias`, params); },
+  async getBiVendasCurvaAbc(params = {})  { return this._get('/bi/vendas/curva-abc', params); },
+  async getBiVendasLogistica(params = {}) { return this._get('/bi/vendas/logistica', params); },
+  async getBiVendasAlertasQueda(params = {}) { return this._get('/bi/vendas/alertas-queda', params); },
   // Comprovante fiscal: sobe o arquivo pro Storage do Supabase (via servidor) e
   // devolve o caminho, que é gravado em compras_cmv.xml_url.
   async uploadFinanceiroArquivo(formData) { return this._postForm('/financeiro/arquivo', formData); },

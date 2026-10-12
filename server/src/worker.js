@@ -57,6 +57,7 @@ function fmtLogistica(raw) {
 // token/chat/silêncio/throttle, sem duplicar.
 const { tgNotify, tgNotifyForce } = require('./notify');
 const { upsertClaim } = require('./claims');
+const biVendas = require('./routes/biVendas'); // só pra reusar detectarQuedasProdutos (Alerta de Queda) — ver checkQuedaProdutos
 
 const noop = () => {};  // topics we receive but don't need to process
 
@@ -3160,6 +3161,44 @@ async function checkOutlierEstatistico() {
   scheduleAt(6, 20, checkOutlierEstatistico, 'outlier-check');
 }
 
+// ── Alerta de Queda por Produto — 06:25 diário ────────────────────────────
+// Compara os últimos 7 dias com os 7 dias anteriores (mesma janela de 7d×7d
+// de emailRelatorioSemanal, mas por produto em vez de loja, e todo dia em
+// vez de só segunda) sobre sales_entries_detail do Financeiro — TODOS os
+// marketplaces (Metrizap), não só ML, ver finance.md. Reusa a MESMA função
+// de server/src/routes/biVendas.js usada pela aba "Alerta de Queda" de
+// Inteligência de Vendas (GET /api/bi/vendas/alertas-queda) — nunca uma 2ª
+// cópia da comparação/limiar, ver workers.md. Primeiro require do worker.js
+// cruzando pro Supabase do Financeiro — precedente já existe do lado das
+// rotas HTTP (agenteFinanceiro.js/biVendas.js sob o módulo BI); aqui é o
+// mesmo client, só chamado por um job agendado em vez de uma rota HTTP (ver
+// decisions.md).
+async function checkQuedaProdutos() {
+  console.log('[queda-produtos] verificando queda de vendas por produto...');
+  try {
+    const fmt = d => d.toISOString().slice(0, 10);
+    const hoje = new Date();
+    const date_to = fmt(new Date(hoje.getTime() - 86400000));       // ontem
+    const date_from = fmt(new Date(hoje.getTime() - 7 * 86400000)); // 7 dias atrás
+    const { alertas } = await biVendas.detectarQuedasProdutos(date_from, date_to, '');
+    if (alertas.length) {
+      const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+      const linhas = alertas.slice(0, 20)
+        .map(p => `• <b>${p.produto}</b>${p.sku ? ` (${p.sku})` : ''}: ${Rfmt(p.faturamento)} vs. ${Rfmt(p.faturamento_anterior)} (${p.cresc_pct}%)`)
+        .join('\n');
+      const extra = alertas.length > 20 ? `\n+${alertas.length - 20} outro(s)` : '';
+      await tgNotify('tg_queda_produtos',
+        `📉 <b>Queda de vendas por produto</b>\n` +
+        `Últimos 7 dias (${date_from} a ${date_to}) vs. os 7 dias anteriores — queda ≥${biVendas.QUEDA_PRODUTO_ALERTA_PCT}%:\n\n${linhas}${extra}`
+      );
+    }
+  } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') console.log('[queda-produtos] Supabase do Financeiro não configurado — pulando.');
+    else console.error('[queda-produtos] erro:', e.message);
+  }
+  scheduleAt(6, 25, checkQuedaProdutos, 'queda-produtos');
+}
+
 // ── Taxa de devolução alta — 06:30 diário ─────────────────────────────────
 // Mesma fórmula do card "Taxa de Devolução" de pages/devolucoes.html
 // (devoluções ÷ pedidos × 100), mas em janela fixa de últimas 24h por loja
@@ -3578,6 +3617,7 @@ scheduleAt(6,  5,  fechamentoDiario, 'fechamento-diario');
 scheduleAt(8,  0,  relatorioRankeamentoDiario, 'relatorio-rankeamento');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
+scheduleAt(6, 25,  checkQuedaProdutos, 'queda-produtos');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');
 scheduleAt(6, 35,  checkShopeeCampanhasVencendo, 'shopee-campanhas-vencendo');
 scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
@@ -3638,6 +3678,7 @@ cmdSub.on('message', (channel, msg) => {
       'sync-precos': 'syncPrecos', 'sync-scores': 'syncScores', 'sync-parent-items': 'syncParentItems',
       'top-vendas': 'syncTopVendas', 'email-diario': 'emailDailyReports', 'email-semanal': 'emailRelatorioSemanal',
       'outlier-check': 'checkOutlierEstatistico', 'taxa-devolucao': 'checkTaxaDevolucaoAlta',
+      'queda-produtos': 'checkQuedaProdutos',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
       'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
@@ -3760,6 +3801,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkTaxaDevolucaoAlta') {
       console.log('[worker] checkTaxaDevolucaoAlta disparado manualmente');
       checkTaxaDevolucaoAlta().catch(e => console.error('[worker] checkTaxaDevolucaoAlta erro:', e.message));
+    }
+    if (cmd === 'checkQuedaProdutos') {
+      console.log('[worker] checkQuedaProdutos disparado manualmente');
+      checkQuedaProdutos().catch(e => console.error('[worker] checkQuedaProdutos erro:', e.message));
     }
     if (cmd === 'checkShopeeCampanhasVencendo') {
       console.log('[worker] checkShopeeCampanhasVencendo disparado manualmente');

@@ -80,7 +80,7 @@
     const desc = i.fatura ? `${i.nome} (${i.parcelas} parcela${i.parcelas > 1 ? 's' : ''})`
       : (i.fornecedor && i.nome && i.fornecedor.toLowerCase() !== i.nome.toLowerCase()
         ? `${i.fornecedor} — ${i.nome}` : (i.nome || i.fornecedor || '(sem descrição)'));
-    return `• ${ddmm(i.date)} · ${desc} · *${BRL(i.valor)}*`;
+    return `• ${ddmm(i.date)} · ${desc} · ${i.valor > 0 ? `*${BRL(i.valor)}*` : '_valor a confirmar_'}`;
   }
 
   // maxPorSecao: com lista grande, mostra os N maiores valores de cada seção

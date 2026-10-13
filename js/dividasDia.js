@@ -16,45 +16,49 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  // Todos os itens (pagos E pendentes) — boletos + faturas de cartão.
   // hoje: 'YYYY-MM-DD' — o chamador passa o MESMO "hoje" que a página usa.
-  function calcular({ boletos = [], parcelas = [], cartoes = [], hoje, diasProximos = DIAS_PROXIMOS }) {
-    const limite = somaDias(hoje, diasProximos);
-    const secoes = { atrasadas: [], hoje: [], proximos: [] };
-    const secaoDe = (date, atrasada) => {
-      if (atrasada || date < hoje) return 'atrasadas';
-      if (date === hoje) return 'hoje';
-      if (date <= limite) return 'proximos';
-      return null;
-    };
-
+  // Fatura: data = 1º vencimento; pendente → valor = parcelas pendentes,
+  // atrasada se alguma pendente venceu; toda paga → valor = total, pago=true.
+  function montarItens({ boletos = [], parcelas = [], cartoes = [], hoje }) {
+    const itens = [];
     boletos.forEach(b => {
-      if (b.status === 'pago' || b.tipo === 'cartao' || !b.date) return;
-      const date = String(b.date).slice(0, 10);
-      const s = secaoDe(date, false); if (!s) return;
-      secoes[s].push({
-        id: b.id, date, valor: Number(b.value) || 0, fatura: false,
+      if (b.tipo === 'cartao' || !b.date) return;
+      const date = String(b.date).slice(0, 10), pago = b.status === 'pago';
+      itens.push({
+        id: b.id, date, valor: Number(b.value) || 0, fatura: false, pago, atrasada: !pago && date < hoje,
         empresa: String(b.empresa || '').trim() || 'Sem empresa',
         fornecedor: String(b.supplier || '').trim(), nome: String(b.name || '').trim(), tipo: b.tipo || 'boleto',
       });
     });
-
-    const ativos = cartoes.filter(c => c.ativo !== false);
-    ativos.forEach(c => {
+    cartoes.filter(c => c.ativo !== false).forEach(c => {
       const porFatura = {};
       parcelas.filter(p => p.cartao_id === c.id && p.fatura_mes).forEach(p => { (porFatura[p.fatura_mes] = porFatura[p.fatura_mes] || []).push(p); });
       Object.entries(porFatura).forEach(([mes, ps]) => {
         ps.sort((a, b) => String(a.data_vencimento || '').localeCompare(String(b.data_vencimento || '')));
-        const pend = ps.filter(p => p.status !== 'pago');
-        if (!pend.length) return;
+        const pend = ps.filter(p => p.status !== 'pago'), pago = !pend.length;
         const date = String(ps[0].data_vencimento || `${mes}-${String(c.dia_vencimento || 10).padStart(2, '0')}`).slice(0, 10);
-        const atrasada = pend.some(p => String(p.data_vencimento || '') < hoje);
-        const s = secaoDe(date, atrasada); if (!s) return;
-        secoes[s].push({
-          id: `fatura-${c.id}-${mes}`, date, fatura: true, parcelas: pend.length,
-          valor: pend.reduce((t, p) => t + (Number(p.valor) || 0), 0),
+        const base = pago ? ps : pend;
+        itens.push({
+          id: `fatura-${c.id}-${mes}`, date, fatura: true, parcelas: base.length, pago,
+          atrasada: pend.some(p => String(p.data_vencimento || '') < hoje),
+          valor: base.reduce((t, p) => t + (Number(p.valor) || 0), 0),
           empresa: '💳 Cartões', fornecedor: '', nome: `Fatura ${c.nome || 'cartão'}`, tipo: 'cartao',
         });
       });
+    });
+    return itens;
+  }
+
+  // Só o que falta pagar, em 3 seções (atrasadas / hoje / próximos dias) —
+  // base da mensagem do WhatsApp.
+  function calcular({ boletos = [], parcelas = [], cartoes = [], hoje, diasProximos = DIAS_PROXIMOS }) {
+    const limite = somaDias(hoje, diasProximos);
+    const secoes = { atrasadas: [], hoje: [], proximos: [] };
+    montarItens({ boletos, parcelas, cartoes, hoje }).forEach(i => {
+      if (i.pago) return;
+      const s = (i.atrasada || i.date < hoje) ? 'atrasadas' : i.date === hoje ? 'hoje' : i.date <= limite ? 'proximos' : null;
+      if (s) secoes[s].push(i);
     });
 
     Object.values(secoes).forEach(l => l.sort((a, b) => a.date.localeCompare(b.date) || b.valor - a.valor));
@@ -65,6 +69,13 @@
       total: tot(secoes.atrasadas) + tot(secoes.hoje) + tot(secoes.proximos),
       quantidade: secoes.atrasadas.length + secoes.hoje.length + secoes.proximos.length,
     };
+  }
+
+  // TODAS as dívidas (pagas e a pagar) com vencimento entre `de` e `ate`.
+  function listarPeriodo({ boletos = [], parcelas = [], cartoes = [], hoje, de, ate }) {
+    return montarItens({ boletos, parcelas, cartoes, hoje })
+      .filter(i => i.date >= de && i.date <= ate)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.pago - b.pago) || b.valor - a.valor);
   }
 
   const TITULOS = { atrasadas: '⚠️ *ATRASADAS*', hoje: '📅 *VENCEM HOJE*', proximos: '🔜 *PRÓXIMOS DIAS*' };
@@ -127,5 +138,5 @@
   // devolve o dia seguinte (ver known-bugs.md, hojeISO da página Boletos).
   function hojeLocal() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
-  window.DividasDia = { calcular, textoWhatsapp, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
+  window.DividasDia = { calcular, listarPeriodo, somaDias, textoWhatsapp, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
 })();

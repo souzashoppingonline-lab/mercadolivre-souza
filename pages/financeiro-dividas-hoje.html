@@ -15,16 +15,6 @@
     .dm-head .sub { font-size:12px; color:var(--text-muted); }
     .dm-ic { margin-left:auto; display:flex; gap:8px; }
     .dm-ic a, .dm-ic button { width:40px; height:40px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); display:flex; align-items:center; justify-content:center; font-size:15px; text-decoration:none; cursor:pointer; }
-    .dm-tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
-    .dm-tile { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:10px 8px; text-align:center; cursor:pointer; }
-    .dm-tile .l { font-size:11px; color:var(--text-muted); }
-    .dm-tile .v { font-size:15px; font-weight:800; margin-top:2px; white-space:nowrap; }
-    .dm-tile .n { font-size:10.5px; color:var(--text-muted); }
-    .dm-total { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; font-size:13px; }
-    .dm-total b { font-size:17px; }
-    .dm-sec { margin-bottom:18px; scroll-margin-top:10px; }
-    .dm-sec h2 { font-size:14px; margin:0 0 8px; display:flex; align-items:center; gap:8px; }
-    .dm-sec h2 .t { margin-left:auto; font-size:13px; }
     .dm-emp { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; margin:10px 2px 6px; }
     .dm-item { background:var(--bg-card); border:1px solid var(--border); border-left:4px solid var(--c); border-radius:12px; padding:10px 12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; }
     .dm-item .info { flex:1; min-width:0; }
@@ -35,6 +25,27 @@
     .dm-bar { position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(transparent, var(--bg-dark) 30%); }
     .dm-bar button { width:100%; max-width:560px; display:block; margin:0 auto; border:0; border-radius:14px; padding:14px; font-size:15px; font-weight:800; background:#25d366; color:#06281a; cursor:pointer; }
     .dm-msg { font-size:12px; color:var(--text-muted); text-align:center; margin:8px 0; }
+    .dm-atr { display:flex; align-items:center; gap:10px; background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.45); color:#f87171; border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:13px; font-weight:700; cursor:pointer; }
+    .dm-atr b { margin-left:auto; font-size:15px; }
+    .dm-atr.on { background:#f87171; color:#1a1d23; }
+    .dm-tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:5px; margin-bottom:12px; }
+    .dm-tabs button { border:0; background:transparent; color:var(--text-muted); border-radius:10px; padding:11px 4px; font-size:13.5px; font-weight:800; cursor:pointer; line-height:1.15; }
+    .dm-tabs button small { display:block; font-size:10.5px; font-weight:600; margin-top:2px; }
+    .dm-tabs button.on { background:#f59e0b; color:#1a1d23; }
+    .dm-tabs button.on small { color:#1a1d23; }
+    .dm-res { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+    .dm-res > div { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:9px 8px; text-align:center; }
+    .dm-res .l { font-size:11px; color:var(--text-muted); }
+    .dm-res .v { font-size:15px; font-weight:800; margin-top:2px; white-space:nowrap; }
+    .dm-res .n { font-size:10.5px; color:var(--text-muted); }
+    .dm-dia { font-size:13px; font-weight:800; margin:14px 2px 4px; display:flex; }
+    .dm-dia span { margin-left:auto; color:var(--text-muted); font-weight:700; }
+    .dm-item.pago { opacity:.55; }
+    .dm-item.pago .val { text-decoration:line-through; }
+    .dm-st { display:inline-block; font-size:10.5px; font-weight:800; border-radius:999px; padding:1px 7px; margin-right:4px; }
+    .dm-st.pago { background:rgba(63,185,80,.18); color:#3fb950; }
+    .dm-st.pend { background:rgba(245,158,11,.18); color:#f59e0b; }
+    .dm-st.atr { background:rgba(248,113,113,.18); color:#f87171; }
   </style>
 </head>
 <body>
@@ -49,8 +60,9 @@
       <a href="financeiro-boletos.html" title="Abrir Boletos completo"><i class="fas fa-table-list"></i></a>
     </div>
   </div>
-  <div class="dm-tiles" id="dmTiles"></div>
-  <div id="dmTotal"></div>
+  <div id="dmAtr"></div>
+  <div class="dm-tabs" id="dmTabs"></div>
+  <div class="dm-res" id="dmRes"></div>
   <div id="dmLista"><div class="dm-vazio">Carregando…</div></div>
   <div class="dm-msg" id="dmMsg"></div>
 </div>
@@ -60,17 +72,12 @@
 <script src="../js/dividasDia.js"></script>
 <script src="../js/recorrentesFin.js"></script>
 <script>
-// Visão de celular das dívidas do dia (atrasadas + hoje + próximos 3 dias,
-// com faturas de cartão). Somente leitura — pagar/editar continua em
+// Visão de celular das dívidas: botões Hoje / Amanhã / Próximos 3 dias com
+// TODAS as dívidas do período (pagas e a pagar) + aviso de atrasadas. Somente leitura — pagar/editar continua em
 // financeiro-boletos.html. Lista calculada por js/dividasDia.js, o MESMO
 // cálculo do botão "Enviar dívidas no WhatsApp" da página Boletos.
 const { BRL, ddmm } = DividasDia;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const SECOES = [
-  ['atrasadas', '⚠️ Atrasadas', '#f87171'],
-  ['hoje', '📅 Vencem hoje', '#f59e0b'],
-  ['proximos', '🔜 Próximos dias', '#60a5fa'],
-];
 const TIPO = { boleto: 'Boleto', manual: 'Imposto', cartao: 'Cartão', fatura_ml: 'Fatura ML', flex: 'Flex', pessoal: 'Pessoal', folha_pagamento: 'Folha', custo_fixo: 'Custo fixo', custo_variavel: 'Custo variável' };
 let R = null, CFG = { numero: '', nome: '' };
 
@@ -97,34 +104,73 @@ async function carregar() {
     if (g.criados) msg(`🔁 ${g.criados} dívida(s) recorrente(s) gerada(s) automaticamente — confira os valores em Boletos.`);
     if (g.erro) msg('Recorrentes não gerados: ' + esc(g.erro), true);
   }
-  R = DividasDia.calcular({ boletos: rB.rows || [], parcelas: rP.rows || [], cartoes: rC.rows || [], hoje: DividasDia.hojeLocal() });
+  DADOS = { boletos: rB.rows || [], parcelas: rP.rows || [], cartoes: rC.rows || [] };
+  R = DividasDia.calcular({ ...DADOS, hoje: DividasDia.hojeLocal() });
   render();
 }
 
-function render() {
-  const d = new Date(R.hoje + 'T12:00:00');
-  document.getElementById('dmData').textContent = d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
-  document.getElementById('dmTiles').innerHTML = SECOES.map(([k, l, c]) => `
-    <div class="dm-tile" onclick="document.getElementById('sec-${k}').scrollIntoView({behavior:'smooth'})">
-      <div class="l">${l}</div><div class="v" style="color:${c}">${BRL(R.totais[k])}</div><div class="n">${R.secoes[k].length} conta(s)</div>
-    </div>`).join('');
-  document.getElementById('dmTotal').innerHTML = `<div class="dm-total"><span>Total até ${ddmm(R.limite)}</span><b>${BRL(R.total)}</b></div>`;
-  document.getElementById('dmLista').innerHTML = SECOES.map(([k, l, c]) => {
-    const itens = R.secoes[k];
-    const titulo = k === 'proximos' ? `${l} (até ${ddmm(R.limite)})` : l;
-    const corpo = itens.length
-      ? DividasDia.agruparPorEmpresa(itens).map(([emp, lista]) => `<div class="dm-emp">${esc(emp)}</div>` + lista.map(i => item(i, c)).join('')).join('')
-      : `<div class="dm-vazio">Nada aqui ✅</div>`;
-    return `<div class="dm-sec" id="sec-${k}"><h2>${titulo}<span class="t" style="color:${c}">${BRL(R.totais[k])}</span></h2>${corpo}</div>`;
-  }).join('');
+// Visões (botões): TODAS as dívidas do período — pagas e a pagar. Atrasadas
+// ficam num aviso vermelho acima (clicável) pra não sumirem de vista.
+const VISOES = {
+  hoje:      { rotulo: 'Hoje',          de: h => h,                  ate: h => h },
+  amanha:    { rotulo: 'Amanhã',        de: h => DividasDia.somaDias(h, 1), ate: h => DividasDia.somaDias(h, 1) },
+  proximos:  { rotulo: 'Próx. 3 dias',  de: h => DividasDia.somaDias(h, 1), ate: h => DividasDia.somaDias(h, 3) },
+};
+let visao = 'hoje', DADOS = null;
+const COR = { pago: '#3fb950', pend: '#f59e0b', atr: '#f87171' };
+const diaSemana = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+
+function trocarVisao(v) { visao = v; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+function itensDaVisao() {
+  const h = R.hoje;
+  if (visao === 'atrasadas') return R.secoes.atrasadas;
+  const v = VISOES[visao];
+  return DividasDia.listarPeriodo({ ...DADOS, hoje: h, de: v.de(h), ate: v.ate(h) });
 }
 
-function item(i, cor) {
+function render() {
+  const h = R.hoje;
+  document.getElementById('dmData').textContent = new Date(h + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+  const atr = R.secoes.atrasadas;
+  document.getElementById('dmAtr').innerHTML = atr.length
+    ? `<div class="dm-atr${visao === 'atrasadas' ? ' on' : ''}" onclick="trocarVisao('${visao === 'atrasadas' ? 'hoje' : 'atrasadas'}')">⚠️ ${atr.length} atrasada(s) ${visao === 'atrasadas' ? '— toque pra voltar' : '— toque pra ver'}<b>${BRL(R.totais.atrasadas)}</b></div>`
+    : '';
+  document.getElementById('dmTabs').innerHTML = Object.entries(VISOES).map(([k, v]) => {
+    const de = v.de(h), ate = v.ate(h);
+    const sub = de === ate ? ddmm(de) : `${ddmm(de)} a ${ddmm(ate)}`;
+    return `<button class="${visao === k ? 'on' : ''}" onclick="trocarVisao('${k}')">${v.rotulo}<small>${sub}</small></button>`;
+  }).join('');
+
+  const itens = itensDaVisao();
+  const soma = l => l.reduce((t, i) => t + i.valor, 0);
+  const pagos = itens.filter(i => i.pago), abertos = itens.filter(i => !i.pago);
+  document.getElementById('dmRes').innerHTML = `
+    <div><div class="l">Total</div><div class="v">${BRL(soma(itens))}</div><div class="n">${itens.length} conta(s)</div></div>
+    <div><div class="l">✅ Pago</div><div class="v" style="color:${COR.pago}">${BRL(soma(pagos))}</div><div class="n">${pagos.length} conta(s)</div></div>
+    <div><div class="l">🕗 A pagar</div><div class="v" style="color:${COR.pend}">${BRL(soma(abertos))}</div><div class="n">${abertos.length} conta(s)</div></div>`;
+
+  const lista = document.getElementById('dmLista');
+  if (!itens.length) { lista.innerHTML = `<div class="dm-vazio">Nenhuma dívida ${visao === 'atrasadas' ? 'atrasada' : 'neste período'} ✅</div>`; return; }
+  const porEmpresa = l => DividasDia.agruparPorEmpresa(l).map(([emp, g]) => `<div class="dm-emp">${esc(emp)}</div>` + g.map(item).join('')).join('');
+  if (visao === 'proximos' || visao === 'atrasadas') {
+    const porDia = {}; itens.forEach(i => { (porDia[i.date] = porDia[i.date] || []).push(i); });
+    lista.innerHTML = Object.keys(porDia).sort().map(d =>
+      `<div class="dm-dia">${diaSemana(d)}<span>${BRL(soma(porDia[d]))}</span></div>` + porEmpresa(porDia[d])).join('');
+  } else {
+    lista.innerHTML = porEmpresa(itens);
+  }
+}
+
+function item(i) {
+  const st = i.pago ? 'pago' : (i.atrasada ? 'atr' : 'pend');
+  const chip = `<span class="dm-st ${st}">${i.pago ? '✅ Pago' : i.atrasada ? '⚠️ Atrasada' : '🕗 A pagar'}</span>`;
   const desc = i.fatura ? esc(i.nome) : esc(i.nome || i.fornecedor || '(sem descrição)');
   const meta = i.fatura
     ? `${i.parcelas} parcela(s) · vence ${ddmm(i.date)}`
-    : [i.fornecedor && i.nome ? esc(i.fornecedor) : '', TIPO[i.tipo] || esc(i.tipo), 'vence ' + ddmm(i.date)].filter(Boolean).join(' · ');
-  return `<div class="dm-item" style="--c:${cor}"><div class="info"><div class="desc">${desc}</div><div class="meta">${meta}</div></div><div class="val">${i.valor > 0 ? BRL(i.valor) : '<span style="font-size:11px;color:var(--text-muted)">valor a<br>confirmar</span>'}</div></div>`;
+    : [i.fornecedor && i.nome && i.fornecedor.toLowerCase() !== i.nome.toLowerCase() ? esc(i.fornecedor) : '', TIPO[i.tipo] || esc(i.tipo), 'vence ' + ddmm(i.date)].filter(Boolean).join(' · ');
+  const val = i.valor > 0 ? BRL(i.valor) : '<span style="font-size:11px;color:var(--text-muted)">valor a<br>confirmar</span>';
+  return `<div class="dm-item ${i.pago ? 'pago' : ''}" style="--c:${COR[st]}"><div class="info"><div class="desc">${desc}</div><div class="meta">${chip}${meta}</div></div><div class="val">${val}</div></div>`;
 }
 
 async function enviarWhatsapp() {

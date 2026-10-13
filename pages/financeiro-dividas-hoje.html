@@ -83,7 +83,7 @@
   <div class="dm-msg" id="dmMsg"></div>
 </div>
 <div class="dm-ov" id="dmOv" onclick="if(event.target.id==='dmOv') fecharSheet()"><div class="dm-sheet" id="dmSheet"></div></div>
-<div class="dm-bar"><button onclick="enviarWhatsapp()"><i class="fab fa-whatsapp"></i> Enviar no WhatsApp</button></div>
+<div class="dm-bar"><button onclick="enviarWhatsapp()" id="dmWaBtn"><i class="fab fa-whatsapp"></i> Enviar no WhatsApp</button></div>
 
 <script src="../js/db.js"></script>
 <script src="../js/dividasDia.js"></script>
@@ -147,6 +147,16 @@ let visao = 'hoje', DADOS = null, CONTAS = [], CONTAEMP = [], ITENS = {};
 const COR = { pago: '#3fb950', pend: '#f59e0b', atr: '#f87171' };
 const diaSemana = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
+const TITULO_WA = { hoje: '📅 *DÍVIDAS DE HOJE*', amanha: '⏭️ *DÍVIDAS DE AMANHÃ*', proximos: '🗓️ *DÍVIDAS DOS PRÓXIMOS 3 DIAS*', atrasadas: '🚨 *DÍVIDAS ATRASADAS*' };
+const ROTULO_WA = { hoje: 'Hoje', amanha: 'Amanhã', proximos: 'Próx. 3 dias', atrasadas: 'Atrasadas' };
+function cabecalhoVisao() {
+  const h = R.hoje, fmt = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+  let periodo;
+  if (visao === 'atrasadas') periodo = `vencidas até ${ddmm(DividasDia.somaDias(h, -1))}`;
+  else { const v = VISOES[visao], de = v.de(h), ate = v.ate(h); periodo = de === ate ? fmt(de) : `${fmt(de)} a ${fmt(ate)}`; }
+  return { titulo: TITULO_WA[visao], periodo };
+}
+
 function trocarVisao(v) { visao = v; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
 
 function itensDaVisao() {
@@ -169,6 +179,7 @@ function render() {
     return `<button class="${visao === k ? 'on' : ''}" onclick="trocarVisao('${k}')">${v.rotulo}<small>${sub}</small></button>`;
   }).join('');
 
+  document.getElementById('dmWaBtn').innerHTML = `<i class="fab fa-whatsapp"></i> Enviar "${ROTULO_WA[visao]}" no WhatsApp`;
   const itens = itensDaVisao();
   const soma = l => l.reduce((t, i) => t + i.valor, 0);
   const pagos = itens.filter(i => i.pago), abertos = itens.filter(i => !i.pago);
@@ -277,7 +288,9 @@ async function enviarWhatsapp() {
     if (rs && rs.error) { msg('Não salvei o número: ' + esc(rs.error), true); return; }
     CFG.numero = numero = n;
   }
-  window.location.href = DividasDia.linkWhatsapp(numero, DividasDia.textoWhatsapp(R, CFG.nome));
+  // Só a lista do botão selecionado (Hoje / Amanhã / Próx. 3 dias / Atrasadas),
+  // com todas as dívidas dela e o status de cada uma.
+  window.location.href = DividasDia.linkWhatsapp(numero, DividasDia.textoWhatsappLista({ ...cabecalhoVisao(), itens: itensDaVisao(), nome: CFG.nome }));
 }
 
 carregar();

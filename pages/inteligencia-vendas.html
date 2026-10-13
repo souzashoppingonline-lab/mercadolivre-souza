@@ -97,7 +97,7 @@
           <table class="iv-t">
             <thead><tr>
               <th>#</th><th>Loja</th><th>Produto</th><th>SKU</th>
-              <th class="num">Qtd.</th><th class="num">Faturamento</th><th class="num">Lucro</th><th class="num">Margem %</th>
+              <th class="num">Qtd.</th><th class="num">Faturamento</th><th class="num" title="Ads não existe por produto — lucro da venda, antes do Ads">Lucro s/ Ads</th><th class="num">Margem % s/ Ads</th>
             </tr></thead>
             <tbody id="ivTbody"><tr><td colspan="8" class="iv-empty">Carregando…</td></tr></tbody>
           </table>
@@ -126,7 +126,7 @@
           <table class="iv-t">
             <thead><tr>
               <th>Loja</th><th class="num">Faturamento</th><th class="num">Qtd.</th>
-              <th class="num">Lucro</th><th class="num">Margem %</th><th class="num">Ads</th><th class="num">Crescimento</th>
+              <th class="num">Lucro (após Ads)</th><th class="num">Margem %</th><th class="num">Ads</th><th class="num">Crescimento</th>
             </tr></thead>
             <tbody id="ivLojasTbody"><tr><td colspan="7" class="iv-empty">Carregando…</td></tr></tbody>
           </table>
@@ -170,7 +170,7 @@
           <table class="iv-t">
             <thead><tr>
               <th>Logística</th><th class="num">Qtd.</th><th class="num">Faturamento</th>
-              <th class="num">Custo Produto</th><th class="num">Frete Vendedor</th><th class="num">Lucro</th><th class="num">Margem %</th>
+              <th class="num">Custo Produto</th><th class="num">Frete Vendedor</th><th class="num" title="Ads não existe por venda — lucro antes do Ads">Lucro s/ Ads</th><th class="num">Margem % s/ Ads</th>
             </tr></thead>
             <tbody id="ivLogisticaTbody"><tr><td colspan="7" class="iv-empty">Carregando…</td></tr></tbody>
           </table>
@@ -204,7 +204,7 @@
     <div class="iv-modal-b">
       <table class="iv-t">
         <thead><tr>
-          <th>Dia</th><th class="num">Faturamento</th><th class="num">Ads</th><th class="num">Margem de Contribuição</th>
+          <th>Dia</th><th class="num">Faturamento</th><th class="num">Ads</th><th class="num">Margem de Contribuição (após Ads)</th>
           <th class="num">vs. Dia Anterior</th><th class="num">vs. Mesmo Dia Mês Passado</th>
         </tr></thead>
         <tbody id="ivModalTbody"><tr><td colspan="6" class="iv-empty">Carregando…</td></tr></tbody>
@@ -219,6 +219,7 @@
 <script>
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const PCT = n => (Number(n)||0).toFixed(1).replace('.',',')+'%';
+const dataBR = d => d ? new Date(String(d).slice(0,10)+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '';
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const ABAS = {
@@ -264,8 +265,8 @@ async function carregarKpis() {
   const el = document.getElementById('ivKpis');
   if (!r || r.error) { el.innerHTML = `<div class="iv-empty" style="grid-column:1/-1">Erro: ${esc(r?.error||'servidor indisponível')}</div>`; return; }
   const cards = [
-    ['Faturamento', BRL(r.faturamento), `${r.total_vendas} venda(s)`],
-    ['Lucro', BRL(r.lucro), `Margem ${PCT(r.margem_pct)}`],
+    ['Faturamento', BRL(r.faturamento), `${r.total_vendas} venda(s)${r.ultima_data ? ' · dados até '+dataBR(r.ultima_data) : ''}`],
+    ['Lucro (após Ads)', BRL(r.lucro), `Margem ${PCT(r.margem_pct)} · antes do Ads ${BRL(r.lucro_antes_ads)}`],
     ['SKUs distintos', r.skus_distintos, 'no período/loja'],
     ['Ads do período', BRL(r.ads), 'manual, Vendas & Custos'],
     ['ROI aproximado', PCT(r.roi), 'só Mercado Livre — outros não usam Ads'],
@@ -364,7 +365,7 @@ async function carregarLojas() {
   tbody.innerHTML = lojas.map(l => {
     const neg = Number(l.margem_pct) < 0;
     return `<tr class="iv-row-clicavel" onclick="abrirModalLoja('${esc(l.store_id)}')" title="Clique pra ver o detalhamento dia a dia">
-      <td>${esc(STORES[l.store_id]||'—')}</td>
+      <td>${esc(STORES[l.store_id]||'—')}${l.ultima_data ? `<div style="font-size:10.5px;color:var(--text-muted)">${l.vendas} venda(s) · até ${dataBR(l.ultima_data)}</div>` : ''}</td>
       <td class="num">${BRL(l.faturamento)}</td>
       <td class="num">${l.quantidade}</td>
       <td class="num ${neg?'iv-neg':'iv-pos'}">${BRL(l.lucro)}</td>

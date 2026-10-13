@@ -241,6 +241,18 @@
         <canvas id="vcChVR" height="130"></canvas>
         <div style="margin-top:10px;font-size:11px;color:var(--text-muted)">Barras cinzas = Receita Bruta · Barras verdes/vermelhas = Margem R$ · Linha âmbar = Margem %</div>
       </div>
+
+      <!-- Vendas por Empresa (tabela) — clique na linha abre o dia a dia da empresa no mês -->
+      <div class="vc-card">
+        <div class="vc-card-h"><h3>🏢 Vendas por Empresa</h3><span id="vcEmpSub" style="margin-left:auto;font-size:12px;color:var(--text-muted)">Clique numa empresa pra ver as vendas dia a dia</span></div>
+        <div style="overflow:auto">
+          <table class="vc-t">
+            <thead><tr><th>Empresa</th><th>Dias</th><th>Vendas</th><th>Receita Bruta</th><th>Ticket Médio</th><th>Custos</th><th>Ads</th><th>Margem R$</th><th>Margem %</th><th>% da Receita</th></tr></thead>
+            <tbody id="vcEmp"><tr><td colspan="10" class="vc-empty">Carregando…</td></tr></tbody>
+            <tfoot id="vcEmpFoot"></tfoot>
+          </table>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -372,7 +384,8 @@ function fmtDate(s){ if(!s) return '—'; const p=String(s).slice(0,10).split('-
 
 // ── Modal reutilizável (confirmar / editar / excluir) ───────────────────────
 let modalAction=null;
-function abrirModal(title, bodyHtml, okLabel, onOk, danger){
+function abrirModal(title, bodyHtml, okLabel, onOk, danger, largo){
+  document.querySelector('#vcModal .vc-modal').style.maxWidth=largo?'1100px':'';
   document.getElementById('vcModalTitle').textContent=title;
   document.getElementById('vcModalBody').innerHTML=bodyHtml;
   const ok=document.getElementById('vcModalOk');
@@ -636,6 +649,7 @@ function render(){
   buildCustoTabs(rows);
   renderCustos(rows);
   renderVolRent(rows,m,y);
+  renderVendasEmpresa(rows,m,y);
 }
 function curRows(){ const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value, loja=document.getElementById('vcLoja').value; return monthRows(m,y,loja); }
 function agg(rows){ const a={rec:0,fees:0,frete:0,cmv:0,adsMl:0,adsEx:0,imp:0,outros:0,mc:0,vendas:0}; rows.forEach(r=>{ a.rec+=rev(r); a.fees+=+r.marketplace_fees||0; a.frete+=+r.subsidized_shipping||0; a.cmv+=+r.cogs||0; a.adsMl+=+r.ads_ml||0; a.adsEx+=+r.ads_external||0; a.imp+=+r.tax||0; a.outros+=+r.outros||0; a.mc+=mcDe(r); a.vendas+=+r.quantity_sales||0; }); a.ads=a.adsMl+a.adsEx; return a; }
@@ -763,6 +777,44 @@ function renderMargemEvol(rows,m,y){
 }
 
 // Comparativo por Empresa — barras agrupadas (receita, custos e margem por loja).
+// ── Vendas por Empresa — tabela + modal dia a dia ─────────────────────────
+// Mesma base (sales_entries do mês/loja filtrados) e MESMAS fórmulas da página
+// (rev/custoDe/mcDe/agg) — margem já com Ads e Outros descontados, igual aos
+// cards e ao Comparativo por Empresa. Nenhum cálculo novo.
+function linhaMargemHtml(mc,rec){ const pct=rec?mc/rec*100:0, c=semColor(pct); return `<td style="color:${c};font-weight:700">${BRL(mc)}</td><td style="color:${c};font-weight:800">${PCT(pct)}</td>`; }
+function renderVendasEmpresa(rows,m,y){
+  const tb=document.getElementById('vcEmp'), ft=document.getElementById('vcEmpFoot');
+  document.getElementById('vcEmpSub').textContent=`${MESES[m-1]}/${y} · clique numa empresa pra ver as vendas dia a dia`;
+  const by={}; rows.forEach(r=>{ const k=r.store_id||'—'; (by[k]=by[k]||[]).push(r); });
+  const tot=agg(rows);
+  const ids=Object.keys(by).sort((a,b)=>agg(by[b]).rec-agg(by[a]).rec);
+  if(!ids.length){ tb.innerHTML='<tr><td colspan="10" class="vc-empty">Nenhum lançamento no mês.</td></tr>'; ft.innerHTML=''; return; }
+  tb.innerHTML=ids.map(id=>{
+    const a=agg(by[id]), dias=new Set(by[id].map(r=>r.date)).size;
+    return `<tr style="cursor:pointer" onclick="abrirDiasEmpresa('${esc(id)}')" title="Ver dia a dia">
+      <td><b>${esc(STORES[id]||'—')}</b> <i class="fas fa-chevron-right" style="font-size:9px;color:var(--text-muted)"></i></td>
+      <td>${dias}</td><td>${a.vendas}</td><td>${BRL(a.rec)}</td><td>${BRL(a.vendas?a.rec/a.vendas:0)}</td>
+      <td>${BRL(a.rec-a.mc)}</td><td>${BRL(a.ads)}</td>${linhaMargemHtml(a.mc,a.rec)}
+      <td>${PCT(tot.rec?a.rec/tot.rec*100:0)}</td></tr>`;
+  }).join('');
+  ft.innerHTML=`<tr><td>Total</td><td></td><td>${tot.vendas}</td><td>${BRL(tot.rec)}</td><td>${BRL(tot.vendas?tot.rec/tot.vendas:0)}</td><td>${BRL(tot.rec-tot.mc)}</td><td>${BRL(tot.ads)}</td>${linhaMargemHtml(tot.mc,tot.rec)}<td>100,0%</td></tr>`;
+}
+function abrirDiasEmpresa(storeId){
+  const m=+document.getElementById('vcMes').value, y=+document.getElementById('vcAno').value;
+  const rows=monthRows(m,y,storeId).sort((a,b)=>a.date<b.date?-1:1);
+  const porDia={}; rows.forEach(r=>{ (porDia[r.date]=porDia[r.date]||[]).push(r); });
+  const dias=Object.keys(porDia).sort();
+  const lin=dias.map(d=>{ const a=agg(porDia[d]), dw=DOW[new Date(d+'T00:00:00').getDay()];
+    return `<tr><td>${fmtDate(d)} <span style="color:var(--text-muted);font-size:10.5px">${dw}</span></td><td>${a.vendas}</td><td>${BRL(a.rec)}</td><td>${BRL(a.fees)}</td><td>${BRL(a.frete)}</td><td>${BRL(a.cmv)}</td><td>${BRL(a.imp)}</td><td>${BRL(a.ads)}</td><td>${BRL(a.outros)}</td>${linhaMargemHtml(a.mc,a.rec)}</tr>`; }).join('');
+  const t=agg(rows);
+  const body=dias.length?`<div style="overflow:auto;max-height:65vh"><table class="vc-t">
+      <thead><tr><th>Dia</th><th>Vendas</th><th>Receita Bruta</th><th>Tarifas</th><th>Frete</th><th>CMV</th><th>Imposto</th><th>Ads</th><th>Outros</th><th>Margem R$</th><th>Margem %</th></tr></thead>
+      <tbody>${lin}</tbody>
+      <tfoot><tr><td>Total (${dias.length} dia${dias.length>1?'s':''})</td><td>${t.vendas}</td><td>${BRL(t.rec)}</td><td>${BRL(t.fees)}</td><td>${BRL(t.frete)}</td><td>${BRL(t.cmv)}</td><td>${BRL(t.imp)}</td><td>${BRL(t.ads)}</td><td>${BRL(t.outros)}</td>${linhaMargemHtml(t.mc,t.rec)}</tr></tfoot>
+    </table></div>`:'<div class="vc-empty">Nenhum lançamento no mês.</div>';
+  abrirModal(`🏢 ${STORES[storeId]||'Empresa'} — vendas dia a dia · ${MESES[m-1]}/${y}`, body, 'Fechar', ()=>fecharModal(), false, true);
+}
+
 function renderComparativo(rows){
   const by={}; rows.forEach(r=>{ const k=r.store_id||'—'; const o=(by[k]=by[k]||{rec:0,cmv:0,frete:0,fees:0,imp:0,ads:0,outros:0,mc:0}); o.rec+=rev(r); o.cmv+=+r.cogs||0; o.frete+=+r.subsidized_shipping||0; o.fees+=+r.marketplace_fees||0; o.imp+=+r.tax||0; o.ads+=(+r.ads_ml||0)+(+r.ads_external||0); o.outros+=+r.outros||0; o.mc+=mcDe(r); });
   const ids=Object.keys(by).sort((a,b)=>by[b].rec-by[a].rec);
@@ -942,6 +994,20 @@ function abrirImportModal(dias, store_id){
   abrirModal('📤 Confirmar importação', body, 'Gravar tudo', ()=>salvarImport(dias, store_id));
 }
 
+const SOMAVEIS_DETALHE=['quantidade','valor_pago_comprador','faturamento','tarifa','frete_vendedor','frete_comprador','imposto','custo_produto','prejuizo_devolucao','lucro','comissao_afiliado'];
+// Mesma expressão da coluna gerada linha_key no Supabase.
+const chaveLinhaDetalhe=r=>`${r.pedido}|${r.item_id==null?'':String(r.item_id)}|${r.sku==null?'':String(r.sku)}`;
+function juntarLinhasDetalhe(rows){
+  const by=new Map();
+  rows.forEach(r=>{
+    const k=chaveLinhaDetalhe(r), g=by.get(k);
+    if(!g){ by.set(k,{...r}); return; }
+    SOMAVEIS_DETALHE.forEach(c=>{ g[c]=(Number(g[c])||0)+(Number(r[c])||0); });
+    g.margem_pct=g.faturamento>0?(g.lucro/g.faturamento*100):0;
+  });
+  return [...by.values()];
+}
+
 async function salvarImport(dias, store_id){
   modalBusy(true,'Gravando…');
   const round2=n=>Math.round(n*100)/100;
@@ -973,13 +1039,17 @@ async function salvarImport(dias, store_id){
   if(erros.length){ modalBusy(false); eMsgErr('Erros: '+esc(erros.join(' · '))); if(ok>0) render(); return; }
 
   // Grava o detalhe por venda (sales_entries_detail) em lote, upsert por
-  // (store_id, pedido) — não bloqueia o lançamento diário acima se falhar,
-  // só avisa (o agregado em sales_entries já está gravado e é o que os
-  // cards desta página usam).
+  // (store_id, linha_key) — linha_key = pedido|item_id|sku (coluna gerada no
+  // Supabase): 1 linha por PRODUTO do pedido. Antes era (store_id, pedido) e
+  // pedido com 2+ produtos (Shopee/TikTok) derrubava o lote inteiro. Linhas
+  // com a mesma chave no mesmo arquivo são somadas aqui antes de enviar —
+  // senão o Postgres recusa o lote ("cannot affect row a second time").
+  // Não bloqueia o lançamento diário acima se falhar, só avisa.
   let detalheMsg='';
   if(IMP_DETALHE.length){
-    const rDet=await DB.upsertFinanceiroRows('sales_entries_detail', IMP_DETALHE, 'store_id,pedido');
-    detalheMsg = rDet&&rDet.error ? ` ⚠️ Vendas Detalhadas não gravou: ${rDet.error}` : ` · ${IMP_DETALHE.length} linha(s) em Vendas Detalhadas.`;
+    const linhas=juntarLinhasDetalhe(IMP_DETALHE);
+    const rDet=await DB.upsertFinanceiroRows('sales_entries_detail', linhas, 'store_id,linha_key');
+    detalheMsg = rDet&&rDet.error ? ` ⚠️ Vendas Detalhadas NÃO gravou (os cards acima gravaram): ${rDet.error}` : ` · ${linhas.length} linha(s) em Vendas Detalhadas.`;
   }
   modalBusy(false);
   fecharModal();

@@ -26,7 +26,7 @@
       if (b.tipo === 'cartao' || !b.date) return;
       const date = String(b.date).slice(0, 10), pago = b.status === 'pago';
       itens.push({
-        id: b.id, date, valor: Number(b.value) || 0, fatura: false, pago, atrasada: !pago && date < hoje,
+        id: b.id, ref: b, date, valor: Number(b.value) || 0, fatura: false, pago, atrasada: !pago && date < hoje,
         empresa: String(b.empresa || '').trim() || 'Sem empresa',
         fornecedor: String(b.supplier || '').trim(), nome: String(b.name || '').trim(), tipo: b.tipo || 'boleto',
       });
@@ -40,7 +40,7 @@
         const date = String(ps[0].data_vencimento || `${mes}-${String(c.dia_vencimento || 10).padStart(2, '0')}`).slice(0, 10);
         const base = pago ? ps : pend;
         itens.push({
-          id: `fatura-${c.id}-${mes}`, date, fatura: true, parcelas: base.length, pago,
+          id: `fatura-${c.id}-${mes}`, cartao: c, faturaMes: mes, pendentes: pend, date, fatura: true, parcelas: base.length, pago,
           atrasada: pend.some(p => String(p.data_vencimento || '') < hoje),
           valor: base.reduce((t, p) => t + (Number(p.valor) || 0), 0),
           empresa: '💳 Cartões', fornecedor: '', nome: `Fatura ${c.nome || 'cartão'}`, tipo: 'cartao',

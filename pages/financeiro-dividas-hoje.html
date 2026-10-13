@@ -24,7 +24,7 @@
     .dm-vazio { background:var(--bg-card); border:1px dashed var(--border); border-radius:12px; padding:14px; text-align:center; color:var(--text-muted); font-size:13px; }
     .dm-bar { position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(transparent, var(--bg-dark) 30%); }
     .dm-bar button { width:100%; max-width:560px; display:block; margin:0 auto; border:0; border-radius:14px; padding:14px; font-size:15px; font-weight:800; background:#25d366; color:#06281a; cursor:pointer; }
-    .dm-msg { font-size:12px; color:var(--text-muted); text-align:center; margin:8px 0; }
+    .dm-msg { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(78px + env(safe-area-inset-bottom)); width:calc(100% - 28px); max-width:532px; box-sizing:border-box; background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:13px; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:40; display:none; }
     .dm-atr { display:flex; align-items:center; gap:10px; background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.45); color:#f87171; border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:13px; font-weight:700; cursor:pointer; }
     .dm-atr b { margin-left:auto; font-size:15px; }
     .dm-atr.on { background:#f87171; color:#1a1d23; }
@@ -46,6 +46,22 @@
     .dm-st.pago { background:rgba(63,185,80,.18); color:#3fb950; }
     .dm-st.pend { background:rgba(245,158,11,.18); color:#f59e0b; }
     .dm-st.atr { background:rgba(248,113,113,.18); color:#f87171; }
+    .dm-item .lado { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+    .dm-pagar { border:0; border-radius:9px; background:#3fb950; color:#06281a; font-weight:800; font-size:12.5px; padding:7px 14px; cursor:pointer; }
+    .dm-desfazer { border:0; background:none; color:var(--text-muted); font-size:11px; text-decoration:underline; cursor:pointer; padding:0; }
+    .dm-item.pago .dm-desfazer { text-decoration:underline; }
+    .dm-ov { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; z-index:50; }
+    .dm-sheet { background:var(--bg-card); border:1px solid var(--border); border-radius:18px 18px 0 0; width:100%; max-width:560px; padding:18px 16px calc(16px + env(safe-area-inset-bottom)); }
+    .dm-sheet h3 { margin:0 0 4px; font-size:16px; }
+    .dm-sheet .sub { color:var(--text-muted); font-size:12.5px; margin-bottom:12px; }
+    .dm-sheet label { display:block; font-size:12px; color:var(--text-muted); margin:10px 0 4px; }
+    .dm-sheet select, .dm-sheet input { width:100%; box-sizing:border-box; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:12px; font-size:15px; }
+    .dm-sheet .acoes { display:grid; grid-template-columns:1fr 2fr; gap:8px; margin-top:16px; }
+    .dm-sheet .acoes button { border:0; border-radius:12px; padding:14px; font-size:15px; font-weight:800; cursor:pointer; }
+    .dm-sheet .cancelar { background:var(--bg-card2); color:var(--text-main); }
+    .dm-sheet .confirmar { background:#3fb950; color:#06281a; }
+    .dm-sheet .confirmar:disabled { opacity:.6; }
+    .dm-sheet .erro { color:#f87171; font-size:12.5px; margin-top:8px; min-height:16px; }
   </style>
 </head>
 <body>
@@ -66,32 +82,42 @@
   <div id="dmLista"><div class="dm-vazio">Carregando…</div></div>
   <div class="dm-msg" id="dmMsg"></div>
 </div>
+<div class="dm-ov" id="dmOv" onclick="if(event.target.id==='dmOv') fecharSheet()"><div class="dm-sheet" id="dmSheet"></div></div>
 <div class="dm-bar"><button onclick="enviarWhatsapp()"><i class="fab fa-whatsapp"></i> Enviar no WhatsApp</button></div>
 
 <script src="../js/db.js"></script>
 <script src="../js/dividasDia.js"></script>
 <script src="../js/recorrentesFin.js"></script>
+<script src="../js/pagamentosFin.js"></script>
 <script>
 // Visão de celular das dívidas: botões Hoje / Amanhã / Próximos 3 dias com
-// TODAS as dívidas do período (pagas e a pagar) + aviso de atrasadas. Somente leitura — pagar/editar continua em
-// financeiro-boletos.html. Lista calculada por js/dividasDia.js, o MESMO
+// TODAS as dívidas do período (pagas e a pagar) + aviso de atrasadas. Botão
+// Pagar / desfazer igual ao da página Boletos (js/pagamentosFin.js); editar o
+// resto continua em financeiro-boletos.html. Lista calculada por js/dividasDia.js, o MESMO
 // cálculo do botão "Enviar dívidas no WhatsApp" da página Boletos.
 const { BRL, ddmm } = DividasDia;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const TIPO = { boleto: 'Boleto', manual: 'Imposto', cartao: 'Cartão', fatura_ml: 'Fatura ML', flex: 'Flex', pessoal: 'Pessoal', folha_pagamento: 'Folha', custo_fixo: 'Custo fixo', custo_variavel: 'Custo variável' };
 let R = null, CFG = { numero: '', nome: '' };
 
-function msg(t, erro) { const el = document.getElementById('dmMsg'); el.style.color = erro ? 'var(--red, #f87171)' : 'var(--text-muted)'; el.innerHTML = t; }
+let _msgTimer = null;
+function msg(t, erro) {
+  const el = document.getElementById('dmMsg');
+  el.style.color = erro ? 'var(--red, #f87171)' : 'var(--text-main)'; el.innerHTML = t; el.style.display = t ? 'block' : 'none';
+  clearTimeout(_msgTimer); if (t && !erro) _msgTimer = setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
 
 async function carregar() {
   document.getElementById('dmSync').classList.add('fa-spin');
   msg('');
-  const [rB, rP, rC, cfg, rRe] = await Promise.all([
+  const [rB, rP, rC, cfg, rRe, rBk, rCe] = await Promise.all([
     DB.getFinanceiroDados('boletos_mensais', 5000, 'date.asc'),
     DB.getFinanceiroDados('parcelas_cartao', 10000, 'data_vencimento.asc'),
     DB.getFinanceiroDados('cartoes', 500),
     DB.getWhatsappBoletosConfig(),
     DB.getFinanceiroDados('boletos_recorrentes', 2000),
+    DB.getFinanceiroDados('contas_bancarias', 1000),
+    DB.getFinanceiroDados('conta_empresas', 3000),
   ]);
   document.getElementById('dmSync').classList.remove('fa-spin');
   const erro = [rB, rP, rC].find(r => !r || r.error);
@@ -105,6 +131,7 @@ async function carregar() {
     if (g.erro) msg('Recorrentes não gerados: ' + esc(g.erro), true);
   }
   DADOS = { boletos: rB.rows || [], parcelas: rP.rows || [], cartoes: rC.rows || [] };
+  CONTAS = (rBk && !rBk.error && rBk.rows) || []; CONTAEMP = (rCe && !rCe.error && rCe.rows) || [];
   R = DividasDia.calcular({ ...DADOS, hoje: DividasDia.hojeLocal() });
   render();
 }
@@ -116,7 +143,7 @@ const VISOES = {
   amanha:    { rotulo: 'Amanhã',        de: h => DividasDia.somaDias(h, 1), ate: h => DividasDia.somaDias(h, 1) },
   proximos:  { rotulo: 'Próx. 3 dias',  de: h => DividasDia.somaDias(h, 1), ate: h => DividasDia.somaDias(h, 3) },
 };
-let visao = 'hoje', DADOS = null;
+let visao = 'hoje', DADOS = null, CONTAS = [], CONTAEMP = [], ITENS = {};
 const COR = { pago: '#3fb950', pend: '#f59e0b', atr: '#f87171' };
 const diaSemana = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
@@ -170,8 +197,75 @@ function item(i) {
     ? `${i.parcelas} parcela(s) · vence ${ddmm(i.date)}`
     : [i.fornecedor && i.nome && i.fornecedor.toLowerCase() !== i.nome.toLowerCase() ? esc(i.fornecedor) : '', TIPO[i.tipo] || esc(i.tipo), 'vence ' + ddmm(i.date)].filter(Boolean).join(' · ');
   const val = i.valor > 0 ? BRL(i.valor) : '<span style="font-size:11px;color:var(--text-muted)">valor a<br>confirmar</span>';
-  return `<div class="dm-item ${i.pago ? 'pago' : ''}" style="--c:${COR[st]}"><div class="info"><div class="desc">${desc}</div><div class="meta">${chip}${meta}</div></div><div class="val">${val}</div></div>`;
+  ITENS[i.id] = i;
+  const acao = !i.pago ? `<button class="dm-pagar" onclick="abrirPagar('${esc(i.id)}')">Pagar</button>`
+    : (!i.fatura ? `<button class="dm-desfazer" onclick="desfazer('${esc(i.id)}')">desfazer</button>` : '');
+  return `<div class="dm-item ${i.pago ? 'pago' : ''}" style="--c:${COR[st]}"><div class="info"><div class="desc">${desc}</div><div class="meta">${chip}${meta}</div></div><div class="lado"><div class="val">${val}</div>${acao}</div></div>`;
 }
+
+// ── Pagar (mesma rotina do botão Pagar da página Boletos: js/pagamentosFin.js) ──
+// Boleto: escolhe a conta de onde saiu o dinheiro → status 'pago' + saída no
+// Fluxo de Caixa. Fatura de cartão: quita as parcelas pendentes + saída no FC.
+function fecharSheet() { document.getElementById('dmOv').style.display = 'none'; }
+function erroSheet(t) { const e = document.getElementById('dmErro'); if (e) e.textContent = t || ''; }
+
+function abrirPagar(id) {
+  const i = ITENS[id]; if (!i) return;
+  const desc = esc(i.nome || i.fornecedor || 'dívida');
+  let corpo;
+  if (i.fatura) {
+    corpo = `<h3>💳 Pagar ${desc}</h3>
+      <div class="sub">Quita ${i.pendentes.length} parcela(s) · vence ${ddmm(i.date)} · <b>${BRL(i.valor)}</b></div>`;
+  } else {
+    const contas = PagamentosFin.contasDaEmpresa(CONTAS, CONTAEMP, i.ref.empresa);
+    const opts = contas.length ? contas.map(c => `<option value="${esc(c.id)}">${esc(c.nome || c.banco_nome || '—')}</option>`).join('') : '<option value="">— sem conta cadastrada —</option>';
+    corpo = `<h3>Pagar ${desc}</h3>
+      <div class="sub">${i.fornecedor && i.fornecedor !== i.nome ? esc(i.fornecedor) + ' · ' : ''}vence ${ddmm(i.date)}${i.ref.empresa ? ' · ' + esc(i.ref.empresa) : ''}${i.valor > 0 ? ` · <b>${BRL(i.valor)}</b>` : ''}</div>
+      ${i.valor > 0 ? '' : '<label>Valor pago (R$) — esta dívida está sem valor</label><input id="dmValor" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00">'}
+      <label>De qual conta saiu o pagamento?</label><select id="dmConta">${opts}</select>`;
+  }
+  document.getElementById('dmSheet').innerHTML = corpo + `<div class="erro" id="dmErro"></div>
+    <div class="acoes"><button class="cancelar" onclick="fecharSheet()">Cancelar</button><button class="confirmar" id="dmConfirmar" onclick="confirmarPagamento('${esc(id)}')">Confirmar pagamento</button></div>`;
+  document.getElementById('dmOv').style.display = 'flex';
+}
+
+async function confirmarPagamento(id) {
+  const i = ITENS[id]; if (!i) return;
+  const btn = document.getElementById('dmConfirmar');
+  const hoje = DividasDia.hojeLocal();
+  let extra = {};
+  if (!i.fatura && !(i.valor > 0)) {
+    const v = parseFloat(String(document.getElementById('dmValor').value).replace(',', '.'));
+    if (!(v > 0)) { erroSheet('Informe o valor pago.'); return; }
+    extra = { value: Math.round(v * 100) / 100 };
+  }
+  btn.disabled = true; btn.textContent = 'Pagando…'; erroSheet('');
+  if (i.fatura) {
+    const r = await PagamentosFin.pagarFatura(DB, { cartao: i.cartao, faturaMes: i.faturaMes, pendentes: i.pendentes, hoje });
+    (r.pagas || []).forEach(pid => { const p = DADOS.parcelas.find(x => String(x.id) === String(pid)); if (p) p.status = 'pago'; });
+    if (r.erro) { btn.disabled = false; btn.textContent = 'Confirmar pagamento'; erroSheet('Erro: ' + r.erro); recalcular(); return; }
+    msg(`✅ Fatura paga · ${BRL(r.total)} lançado no Fluxo de Caixa`);
+  } else {
+    const contaId = document.getElementById('dmConta').value || null;
+    const r = await PagamentosFin.pagarBoleto(DB, i.ref, contaId, hoje, extra);
+    if (r.erro) { btn.disabled = false; btn.textContent = 'Confirmar pagamento'; erroSheet('Erro: ' + r.erro); return; }
+    Object.assign(i.ref, { status: 'pago' }, extra);
+    msg(r.erroFC ? '⚠️ Pago, mas o Fluxo de Caixa não sincronizou: ' + esc(r.erroFC) : `✅ Pago · ${BRL(i.ref.value)} lançado no Fluxo de Caixa`, !!r.erroFC);
+  }
+  fecharSheet(); recalcular();
+}
+
+async function desfazer(id) {
+  const i = ITENS[id]; if (!i || i.fatura) return;
+  if (!confirm(`Desfazer o pagamento de "${i.nome}"? A saída no Fluxo de Caixa será apagada.`)) return;
+  const r = await PagamentosFin.desfazerPagamentoBoleto(DB, i.ref, DividasDia.hojeLocal());
+  if (r.erro) { msg('Erro: ' + esc(r.erro), true); return; }
+  i.ref.status = 'pendente';
+  msg(r.erroFC ? '⚠️ Voltou pra pendente, mas o Fluxo de Caixa não sincronizou: ' + esc(r.erroFC) : '↩️ Pagamento desfeito — voltou pra "a pagar".', !!r.erroFC);
+  recalcular();
+}
+
+function recalcular() { R = DividasDia.calcular({ ...DADOS, hoje: DividasDia.hojeLocal() }); render(); }
 
 async function enviarWhatsapp() {
   if (!R) return;

@@ -237,3 +237,7 @@ Descoberto na mesma rodada de capturas de tela do TikTok Partner Center: `drawDi
 ## `supabaseFin.selectRows` não pagina — teto real de 1000 linhas (Financeiro)
 
 `selectRows(nome, limit)` aceita `limit` até 5000, mas o PostgREST do Supabase devolve no máximo 1000 linhas por resposta por padrão — qualquer tela do Financeiro que liste uma tabela com mais de 1000 linhas recebe só as primeiras 1000 (pela `order` pedida), sem erro. Afeta principalmente `pages/financeiro-vendas-detalhadas.html` (`getFinanceiroDados('sales_entries_detail', 5000, 'date.desc')`) assim que a tabela passar de 1000 vendas. **Correção esperada**: paginar dentro de `selectRows` (mesmo padrão de `loadPeriodo()` em `routes/biVendas.js`) ou aceitar filtro de período na rota `/api/financeiro/dados/:nome`. A Inteligência de Vendas já não depende disso (v115.14).
+
+## Import Metrizap do Operacional sobrescreve produtos do mesmo pedido
+
+`server/src/routes/metrizap.js` grava linha a linha com `ON CONFLICT (conta, pedido)` (`metrizap_sales`, `UNIQUE(conta, pedido)` em `migrate-v115.sql`). O export Metrizap traz 1 linha por produto: num pedido com 2+ produtos, cada linha **sobrescreve** a anterior em silêncio — fica só o último produto e os valores dos outros somem. Mesmo defeito corrigido no Financeiro na v115.15 (ver `decisions.md`). **Correção esperada**: migration Postgres com chave `(conta, pedido, item_id, sku)` (ou coluna gerada como `linha_key`) e o `ON CONFLICT` correspondente.

@@ -154,12 +154,19 @@ router.get('/resumo', async (req, res) => {
     const custosTotaisML = sML.custo + sML.imposto + sML.tarifa + sML.frete_vendedor + adsMl;
 
     const skusDistintos = new Set(detalhe.map(r => `${r.store_id}::${r.sku || r.produto}`)).size;
+    // Lucro = mesmo critério do painel do Metrizap ("Ads descontado do
+    // lucro"): soma do lucro por venda MENOS o Ads do período. O lucro por
+    // venda da planilha não tem Ads (não existe coluna por venda), então sem
+    // isso o KPI ficava maior que o do Metrizap. Ver business-rules.md.
+    const lucroAposAds = s.lucro - ads;
     res.json({
       total_vendas: detalhe.length,
       skus_distintos: skusDistintos,
       faturamento: round2(s.faturamento),
-      lucro: round2(s.lucro),
-      margem_pct: s.faturamento > 0 ? round2(s.lucro / s.faturamento * 100) : 0,
+      lucro: round2(lucroAposAds),
+      lucro_antes_ads: round2(s.lucro),
+      margem_pct: s.faturamento > 0 ? round2(lucroAposAds / s.faturamento * 100) : 0,
+      ultima_data: detalhe.reduce((m, r) => (r.date && String(r.date).slice(0, 10) > m ? String(r.date).slice(0, 10) : m), '') || null,
       ads: round2(ads),
       roi: custosTotaisML > 0 ? round2((sML.lucro - adsMl) / custosTotaisML * 100) : 0,
     });
@@ -198,24 +205,32 @@ router.get('/lojas', async (req, res) => {
     ]);
 
     const porLoja = {};
-    const getG = (id) => porLoja[id] || (porLoja[id] = { store_id: id, faturamento: 0, lucro: 0, quantidade: 0, faturamento_anterior: 0, ads: 0 });
+    const getG = (id) => porLoja[id] || (porLoja[id] = { store_id: id, faturamento: 0, lucro: 0, quantidade: 0, vendas: 0, faturamento_anterior: 0, ads: 0, ultima_data: '' });
     atual.forEach(r => {
       const g = getG(r.store_id);
       g.faturamento += Number(r.faturamento) || 0;
       g.lucro += Number(r.lucro) || 0;
       g.quantidade += Number(r.quantidade) || 0;
+      g.vendas += 1;
+      const d = r.date ? String(r.date).slice(0, 10) : '';
+      if (d > g.ultima_data) g.ultima_data = d;
     });
     passado.forEach(r => { getG(r.store_id).faturamento_anterior += Number(r.faturamento) || 0; });
     ads.forEach(e => { getG(e.store_id).ads += (Number(e.ads_ml) || 0) + (Number(e.ads_external) || 0); });
 
+    // Lucro/margem da loja já com o Ads da loja descontado — mesmo critério
+    // do /resumo e do painel do Metrizap.
     const lojas = Object.values(porLoja).map(g => ({
       store_id: g.store_id,
       faturamento: round2(g.faturamento),
-      lucro: round2(g.lucro),
+      lucro: round2(g.lucro - g.ads),
+      lucro_antes_ads: round2(g.lucro),
       quantidade: g.quantidade,
+      vendas: g.vendas,
+      ultima_data: g.ultima_data || null,
       faturamento_anterior: round2(g.faturamento_anterior),
       ads: round2(g.ads),
-      margem_pct: g.faturamento > 0 ? round2(g.lucro / g.faturamento * 100) : 0,
+      margem_pct: g.faturamento > 0 ? round2((g.lucro - g.ads) / g.faturamento * 100) : 0,
       // null (não 0) quando não há período anterior pra comparar — frontend
       // mostra "sem comparativo" em vez de uma queda de 100% inventada.
       cresc_pct: g.faturamento_anterior > 0 ? round2((g.faturamento - g.faturamento_anterior) / g.faturamento_anterior * 100) : null,
@@ -301,11 +316,13 @@ router.get('/lojas/:storeId/dias', async (req, res) => {
       const atual = porDia[dia] || { faturamento: 0, lucro: 0, ads: 0 };
       const ant = porDia[diaAnterior(dia)] || null;
       const mesPassado = porDia[mesmoDiaMesPassado(dia)] || null;
+      const lucroDia = atual.lucro - atual.ads; // Ads do dia descontado, mesmo critério do /resumo
       dias.push({
         date: dia,
         faturamento: round2(atual.faturamento),
-        lucro: round2(atual.lucro),
-        margem_pct: atual.faturamento > 0 ? round2(atual.lucro / atual.faturamento * 100) : 0,
+        lucro: round2(lucroDia),
+        lucro_antes_ads: round2(atual.lucro),
+        margem_pct: atual.faturamento > 0 ? round2(lucroDia / atual.faturamento * 100) : 0,
         ads: round2(atual.ads),
         faturamento_dia_anterior: ant ? round2(ant.faturamento) : null,
         cresc_dia_anterior_pct: ant ? crescPct(atual.faturamento, ant.faturamento) : null,

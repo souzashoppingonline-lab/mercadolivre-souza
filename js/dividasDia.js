@@ -127,6 +127,61 @@
     return txt;
   }
 
+  // ── Mensagem da página do celular: SÓ a lista do botão selecionado ─────
+  // (Hoje / Amanhã / Próx. 3 dias / Atrasadas), TODAS as dívidas da lista com
+  // o status de cada uma, 1 bloco por dívida separado por linha (pedido do
+  // usuário: "separação por linha de cada dívida com data e bastante emoji").
+  const EMOJI_TIPO = { boleto: '🧾', manual: '🏛️', cartao: '💳', fatura_ml: '🛒', flex: '🛵', pessoal: '👤', folha_pagamento: '👥', custo_fixo: '📌', custo_variavel: '📈' };
+  const NOME_TIPO = { boleto: 'Boleto', manual: 'Imposto', cartao: 'Cartão', fatura_ml: 'Fatura ML', flex: 'Flex', pessoal: 'Pessoal', folha_pagamento: 'Folha', custo_fixo: 'Custo fixo', custo_variavel: 'Custo variável' };
+  const LINHA = '━━━━━━━━━━━━━━━';
+  const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const diaSemana = iso => DIAS_SEMANA[new Date(String(iso).slice(0, 10) + 'T12:00:00').getDay()];
+
+  function statusDe(i) {
+    if (i.pago) return '✅ *PAGO*';
+    if (i.atrasada) return '🚨 *ATRASADA*';
+    return '🕗 *A PAGAR*';
+  }
+
+  function blocoDivida(i) {
+    const L = [statusDe(i)];
+    L.push(`📆 ${diaSemana(i.date)}, ${ddmm(i.date)}${i.fatura || i.empresa === 'Sem empresa' ? '' : ` · 🏢 ${i.empresa}`}`);
+    if (i.fatura) {
+      L.push(`💳 ${i.nome} (${i.parcelas} parcela${i.parcelas > 1 ? 's' : ''})`);
+    } else {
+      L.push(`${EMOJI_TIPO[i.tipo] || '🧾'} ${i.nome || i.fornecedor || '(sem descrição)'}`);
+      if (i.fornecedor && i.nome && i.fornecedor.toLowerCase() !== i.nome.toLowerCase()) L.push(`🏭 ${i.fornecedor}`);
+      L.push(`🏷️ ${NOME_TIPO[i.tipo] || i.tipo}`);
+    }
+    L.push(i.valor > 0 ? `💰 *${BRL(i.valor)}*` : '❓ _valor a confirmar_');
+    return L.join('\n');
+  }
+
+  // titulo: ex. '📅 *DÍVIDAS DE HOJE*'; periodo: ex. 'Ter, 13/10/2026'.
+  function textoWhatsappLista({ titulo, periodo, itens, nome }) {
+    const soma = l => l.reduce((t, i) => t + i.valor, 0);
+    const pagos = itens.filter(i => i.pago), atrasadas = itens.filter(i => !i.pago && i.atrasada);
+    const aPagar = itens.filter(i => !i.pago && !i.atrasada);
+    const cab = [`💸 ${titulo} 💸`, `🗓️ ${periodo}`];
+    if (nome) cab.push(`👋 Olá, ${nome}!`);
+    const resumo = ['', '📊 *RESUMO*',
+      `🧾 Total: *${BRL(soma(itens))}* (${itens.length} conta${itens.length === 1 ? '' : 's'})`,
+      `✅ Pago: ${BRL(soma(pagos))} (${pagos.length})`,
+      `🕗 A pagar: ${BRL(soma(aPagar))} (${aPagar.length})`];
+    if (atrasadas.length) resumo.push(`🚨 Atrasadas: ${BRL(soma(atrasadas))} (${atrasadas.length})`);
+    resumo.push(aPagar.length + atrasadas.length ? `\n👉 Falta pagar: *${BRL(soma(aPagar) + soma(atrasadas))}*` : '\n🎉 Tudo pago! 🎉');
+    if (!itens.length) return [...cab, '', '✅ Nenhuma dívida neste período! 🎉'].join('\n');
+    // Lista longa (link wa.me corta texto grande): mostra as primeiras N e
+    // resume o resto — o RESUMO sempre soma todas.
+    for (let n = itens.length; n >= 1; n = n > 10 ? n - 5 : n - 1) {
+      const mostrar = itens.slice(0, n), resto = itens.slice(n);
+      const corpo = ['', LINHA, ...mostrar.map(i => blocoDivida(i) + '\n' + LINHA)];
+      if (resto.length) corpo.push(`➕ mais ${resto.length} conta(s) · ${BRL(soma(resto))} — veja na página`);
+      const txt = [...cab, ...corpo, ...resumo].join('\n');
+      if (txt.length <= MAX_CHARS_WHATSAPP || n === 1) return txt;
+    }
+  }
+
   // Número BR sem DDI (10–11 dígitos) ganha o 55 na frente.
   function linkWhatsapp(numero, texto) {
     let n = String(numero || '').replace(/\D/g, '');
@@ -138,5 +193,5 @@
   // devolve o dia seguinte (ver known-bugs.md, hojeISO da página Boletos).
   function hojeLocal() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
-  window.DividasDia = { calcular, listarPeriodo, somaDias, textoWhatsapp, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
+  window.DividasDia = { calcular, listarPeriodo, somaDias, textoWhatsapp, textoWhatsappLista, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
 })();

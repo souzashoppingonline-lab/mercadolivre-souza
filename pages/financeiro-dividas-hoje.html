@@ -58,6 +58,7 @@
 
 <script src="../js/db.js"></script>
 <script src="../js/dividasDia.js"></script>
+<script src="../js/recorrentesFin.js"></script>
 <script>
 // Visão de celular das dívidas do dia (atrasadas + hoje + próximos 3 dias,
 // com faturas de cartão). Somente leitura — pagar/editar continua em
@@ -78,16 +79,24 @@ function msg(t, erro) { const el = document.getElementById('dmMsg'); el.style.co
 async function carregar() {
   document.getElementById('dmSync').classList.add('fa-spin');
   msg('');
-  const [rB, rP, rC, cfg] = await Promise.all([
+  const [rB, rP, rC, cfg, rRe] = await Promise.all([
     DB.getFinanceiroDados('boletos_mensais', 5000, 'date.asc'),
     DB.getFinanceiroDados('parcelas_cartao', 10000, 'data_vencimento.asc'),
     DB.getFinanceiroDados('cartoes', 500),
     DB.getWhatsappBoletosConfig(),
+    DB.getFinanceiroDados('boletos_recorrentes', 2000),
   ]);
   document.getElementById('dmSync').classList.remove('fa-spin');
   const erro = [rB, rP, rC].find(r => !r || r.error);
   if (erro) { document.getElementById('dmLista').innerHTML = `<div class="dm-vazio" style="color:var(--red,#f87171)">Erro ao carregar: ${esc(erro && erro.error || 'servidor indisponível')}</div>`; return; }
   if (cfg && !cfg.error) CFG = cfg;
+  // Mesma geração automática da página Boletos (1x por mês, mês atual + próximo):
+  // sem isso, um recorrente ainda não gerado (ex.: carro do dia 9) não aparece aqui.
+  if (rRe && !rRe.error) {
+    const g = await RecorrentesFin.gerarAutomatico({ recorrentes: rRe.rows || [], boletos: rB.rows, DB });
+    if (g.criados) msg(`🔁 ${g.criados} dívida(s) recorrente(s) gerada(s) automaticamente — confira os valores em Boletos.`);
+    if (g.erro) msg('Recorrentes não gerados: ' + esc(g.erro), true);
+  }
   R = DividasDia.calcular({ boletos: rB.rows || [], parcelas: rP.rows || [], cartoes: rC.rows || [], hoje: DividasDia.hojeLocal() });
   render();
 }
@@ -115,7 +124,7 @@ function item(i, cor) {
   const meta = i.fatura
     ? `${i.parcelas} parcela(s) · vence ${ddmm(i.date)}`
     : [i.fornecedor && i.nome ? esc(i.fornecedor) : '', TIPO[i.tipo] || esc(i.tipo), 'vence ' + ddmm(i.date)].filter(Boolean).join(' · ');
-  return `<div class="dm-item" style="--c:${cor}"><div class="info"><div class="desc">${desc}</div><div class="meta">${meta}</div></div><div class="val">${BRL(i.valor)}</div></div>`;
+  return `<div class="dm-item" style="--c:${cor}"><div class="info"><div class="desc">${desc}</div><div class="meta">${meta}</div></div><div class="val">${i.valor > 0 ? BRL(i.valor) : '<span style="font-size:11px;color:var(--text-muted)">valor a<br>confirmar</span>'}</div></div>`;
 }
 
 async function enviarWhatsapp() {

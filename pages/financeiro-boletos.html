@@ -213,6 +213,7 @@
 
 <script src="../js/db.js"></script>
 <script src="../js/dividasDia.js"></script>
+<script src="../js/recorrentesFin.js"></script>
 <script src="../js/layout-financeiro.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
@@ -246,8 +247,15 @@ async function load(){
   const rBk=await DB.getFinanceiroDados('contas_bancarias',1000); CONTAS=(rBk.error?[]:rBk.rows)||[];
   const rCe=await DB.getFinanceiroDados('conta_empresas',3000); CONTAEMP=(rCe.error?[]:rCe.rows)||[];
   const errs=[['boletos_mensais',rB],['receivables',rR],['cartoes',rCa],['boleto_categories',rCt]].filter(([,r])=>r&&r.error).map(([n,r])=>`${n}: ${r.error}`);
+  // Recorrentes do mês atual + próximo: gerados sozinhos 1x por mês (ver js/recorrentesFin.js).
+  let autoMsg='';
+  if(!errs.length && !rRe.error){
+    const g=await RecorrentesFin.gerarAutomatico({ recorrentes:RECORRENTES, boletos:BOLETOS, DB });
+    if(g.criados) autoMsg=` 🔁 ${g.criados} dívida(s) recorrente(s) gerada(s) automaticamente (${g.meses.map(mr=>MESES[+mr.slice(5)-1]).join(', ')}) — confira os valores.`;
+    if(g.erro) autoMsg=` ⚠️ Recorrentes não gerados: ${esc(g.erro)}`;
+  }
   if(errs.length) showStatus(`⚠️ <b>Falha ao ler o banco.</b> ${esc(errs.join(' · '))}.`,true);
-  else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.`,false);
+  else showStatus(`✅ Carregado: ${BOLETOS.length} contas, ${RECS.length} recebíveis, ${CARTOES.length} cartões.${autoMsg}`,false);
   popularCatSelect(); popularFornSelect();
   document.getElementById('fCartao').innerHTML=CARTOES.length?CARTOES.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||'—')} · fecha ${c.dia_fechamento||'—'} / vence ${c.dia_vencimento||'—'}${c.limite?` · limite ${BRL(c.limite)}`:''}</option>`).join(''):'<option value="">— cadastre um cartão —</option>';
   atualizarInfoCartao();
@@ -850,20 +858,15 @@ function excluirRecorrente(id){ const t=RECORRENTES.find(x=>String(x.id)===Strin
   abrirModal('Excluir template', `<p>Excluir o template <b>${esc(t.nome||'—')}</b>?</p><div id="eMsg" style="font-size:12px"></div>`, 'Excluir', async()=>{ modalBusy(true); const r=await DB.deleteFinanceiroRow('boletos_recorrentes',id); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } RECORRENTES=RECORRENTES.filter(x=>String(x.id)!==String(id)); abrirRecorrentes(); }, true);
 }
 async function gerarRecorrentesMes(){
-  const m=+document.getElementById('boMes').value, y=+document.getElementById('boAno').value, mr=selMesRef();
+  const mr=selMesRef();
   const ativos=RECORRENTES.filter(t=>t.ativo!==false);
   if(!ativos.length){ eMsgErr('Nenhum template ativo.'); return; }
-  modalBusy(true,'Gerando…'); let criados=0, pulados=0, erro=null;
-  for(const t of ativos){
-    const jaExiste=BOLETOS.some(b=>(b.mes_referencia||'')===mr && (b.id_recorrente===t.id || (String(b.name||'').trim()===String(t.nome||'').trim())));
-    if(jaExiste){ pulados++; continue; }
-    const dia=Math.min(t.dia_vencimento||10, new Date(y,m,0).getDate());
-    const date=`${y}-${String(m).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
-    const row={ id_recorrente:t.id, name:t.nome, category:t.categoria||'Geral', empresa:t.empresa||null, date, value:+t.valor_total||0, status:'pendente', mes_referencia:mr, tipo:t.tipo||'boleto', is_origem:true };
-    const r=await DB.addFinanceiroRow('boletos_mensais',row);
-    if(r&&r.error){ erro=r.error; break; }
-    const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved){ BOLETOS.push(saved); criados++; }
-  }
+  modalBusy(true,'Gerando…');
+  // Mesma regra da geração automática (js/recorrentesFin.js) — aqui completa o
+  // mês selecionado mesmo que ele já tenha recorrentes gerados.
+  const linhas=RecorrentesFin.planejar(ativos, BOLETOS, mr);
+  const g=await RecorrentesFin.inserir(linhas, DB, BOLETOS);
+  const criados=g.criados, pulados=ativos.length-linhas.length+g.pulados, erro=g.erro;
   modalBusy(false);
   if(erro){ eMsgErr('Erro: '+esc(erro)); render(); return; }
   eMsgErr(''); fecharModal(); render(); fMsg(`✅ ${criados} gerado(s), ${pulados} já existiam.`,false);

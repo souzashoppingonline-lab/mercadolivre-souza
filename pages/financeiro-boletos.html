@@ -827,6 +827,9 @@ function abrirRecorrentes(){
   const mr=selMesRef();
   const list=RECORRENTES.length?RECORRENTES.map(t=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
     <div style="flex:1"><b>${esc(t.nome||'—')}</b> <span style="font-size:11px;color:var(--text-muted)">${esc(t.categoria||'')} · dia ${t.dia_vencimento||'—'} · ${tipoLabel(t.tipo)}${t.total_parcelas?` · ${t.parcela_atual||0}/${t.total_parcelas}`:''}${t.ativo===false?' · inativo':''}</span></div>
+    ${t.tipo==='flex'
+      ? '<span style="font-size:11px;color:var(--text-muted)" title="Flex nasce sempre com R$0 — valor a confirmar">Flex: R$0</span>'
+      : `<input type="number" step="0.01" min="0" id="tv_${esc(t.id)}" class="bo-in" value="${+t.valor_total>0?+t.valor_total:''}" placeholder="Valor R$" style="width:105px;${+t.valor_total>0?'':'border-color:#f59e0b'}" title="${+t.valor_total>0?'Valor usado ao gerar a dívida':'Sem valor — ao gerar usa o último valor lançado'}"><button class="bo-icon" title="Salvar valor" onclick="salvarValorRecorrente('${esc(t.id)}')"><i class="fas fa-check"></i></button>`}
     <button class="bo-icon del" title="Excluir" onclick="excluirRecorrente('${esc(t.id)}')"><i class="fas fa-trash"></i></button></div>`).join(''):'<div class="bo-empty">Nenhum template ainda.</div>';
   const body=`<div style="margin-bottom:10px">${list}</div>
     <button class="bo-btn" style="margin-bottom:12px" onclick="gerarRecorrentesMes()"><i class="fas fa-bolt"></i> Gerar ${MESES[+document.getElementById('boMes').value-1]}/${document.getElementById('boAno').value}</button>
@@ -837,8 +840,9 @@ function abrirRecorrentes(){
         <input id="tCat" class="bo-in" placeholder="Categoria">
         <input type="number" min="1" max="31" id="tDia" class="bo-in" placeholder="Dia venc.">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-        <input type="number" step="0.01" id="tVal" class="bo-in" placeholder="Valor (R$)">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+        <select id="tTipo" class="bo-in" onchange="const f=this.value==='flex', v=document.getElementById('tVal'); v.disabled=f; v.value=f?'':v.value; v.placeholder=f?'Flex: sempre R$0':'Valor (R$) *';">${TIPOS.filter(([k])=>k!=='todos'&&k!=='cartao').map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+        <input type="number" step="0.01" min="0" id="tVal" class="bo-in" placeholder="Valor (R$) *">
         <select id="tEmp" class="bo-in"><option value="">Empresa</option>${EMPRESAS.map(e=>`<option>${e}</option>`).join('')}</select>
       </div>
       <div id="eMsg" style="font-size:12px;margin-top:8px"></div>
@@ -848,11 +852,25 @@ function abrirRecorrentes(){
 async function doAddRecorrente(){
   const nome=document.getElementById('tNome').value.trim(); if(!nome){ eMsgErr('Informe o nome.'); return; }
   modalBusy(true,'Salvando…');
-  const row={ nome, categoria:document.getElementById('tCat').value.trim()||'Geral', dia_vencimento:Math.round(pNum(document.getElementById('tDia').value))||10, valor_total:pNum(document.getElementById('tVal').value)||null, empresa:document.getElementById('tEmp').value||null, tipo:'boleto', ativo:true };
+  // Valor obrigatório (a dívida gerada nasce com ele); Flex é a exceção: sempre R$0.
+  const tipo=document.getElementById('tTipo').value||'boleto';
+  const valor=tipo==='flex'?0:pNum(document.getElementById('tVal').value);
+  if(tipo!=='flex' && !(valor>0)){ modalBusy(false); eMsgErr('Informe o valor (R$) — a dívida é gerada com ele. Só Flex fica em R$0.'); return; }
+  const row={ nome, categoria:document.getElementById('tCat').value.trim()||'Geral', dia_vencimento:Math.round(pNum(document.getElementById('tDia').value))||10, valor_total:valor, empresa:document.getElementById('tEmp').value||null, tipo, ativo:true };
   const r=await DB.addFinanceiroRow('boletos_recorrentes',row);
   if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
   const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) RECORRENTES.push(saved);
   abrirRecorrentes();
+}
+async function salvarValorRecorrente(id){
+  const t=RECORRENTES.find(x=>String(x.id)===String(id)); if(!t) return;
+  const v=pNum(document.getElementById('tv_'+id).value);
+  if(!(v>0)){ eMsgErr('Valor deve ser maior que zero.'); return; }
+  const r=await DB.updateFinanceiroRow('boletos_recorrentes', id, { valor_total:v });
+  if(r&&r.error){ eMsgErr('Erro: '+esc(r.error)); return; }
+  t.valor_total=v;
+  const m=document.getElementById('eMsg'); if(m) m.innerHTML=`<span style="color:#3fb950">✅ ${esc(t.nome)}: ${BRL(v)} — vale pras próximas dívidas geradas.</span>`;
+  document.getElementById('tv_'+id).style.borderColor='';
 }
 function excluirRecorrente(id){ const t=RECORRENTES.find(x=>String(x.id)===String(id)); if(!t) return;
   abrirModal('Excluir template', `<p>Excluir o template <b>${esc(t.nome||'—')}</b>?</p><div id="eMsg" style="font-size:12px"></div>`, 'Excluir', async()=>{ modalBusy(true); const r=await DB.deleteFinanceiroRow('boletos_recorrentes',id); if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; } RECORRENTES=RECORRENTES.filter(x=>String(x.id)!==String(id)); abrirRecorrentes(); }, true);

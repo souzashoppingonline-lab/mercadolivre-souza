@@ -984,12 +984,12 @@ function abrirImportModal(dias, store_id){
         ${il('Frete Subsidiado (R$)','imp_frete_'+i,round2(g.subsidized_shipping))}
         ${il('CMV (R$)','imp_cmv_'+i,round2(g.cogs))}
         ${il('Imposto (R$)','imp_tax_'+i,round2(g.tax))}
-        ${il('💰 ADS (R$)','imp_ads_'+i,0)}
-        ${il('📦 Outros/Custo Logístico (R$)','imp_outros_'+i,0)}
+        ${il('💰 ADS (R$)','imp_ads_'+i,existe?round2(+existe.ads_ml||0):0)}
+        ${il('📦 Outros/Custo Logístico (R$)','imp_outros_'+i,existe?round2(+existe.outros||0):0)}
       </div>
     </div>`;
   }).join('');
-  const body=`<p style="margin-bottom:10px">Loja: <b>${esc(lojaNome)}</b>. Confira/ajuste os campos (todos editáveis) e informe o <b>ADS</b> e o <b>Outros/Custo Logístico</b> antes de gravar — nenhum dos dois vem na planilha; sem valor, fica 0. Já vem somado da planilha (pedidos <b>aprovados</b>, canceladas fora).</p>${linhas}
+  const body=`<p style="margin-bottom:10px">Loja: <b>${esc(lojaNome)}</b>. Confira/ajuste os campos (todos editáveis) e informe o <b>ADS</b> e o <b>Outros/Custo Logístico</b> antes de gravar — nenhum dos dois vem na planilha. Em dia que <b>já existe</b>, os dois já vêm preenchidos com o valor gravado (reimportar não zera); em dia novo, ficam 0. Já vem somado da planilha (pedidos <b>aprovados</b>, canceladas fora).</p>${linhas}
     <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)"></div>`;
   abrirModal('📤 Confirmar importação', body, 'Gravar tudo', ()=>salvarImport(dias, store_id));
 }

@@ -265,6 +265,9 @@
             <option value="Medium">🟡 Satisfatória</option>
             <option value="Good">🟢 Profissional</option>
           </select>
+          <select class="filter-select" id="storeFilter" onchange="load()">
+            <option value="">Todas as lojas</option>
+          </select>
           <select class="filter-select" id="sortFilter" onchange="load()">
             <option value="score_asc">Score ↑ (piores primeiro)</option>
             <option value="score_desc">Score ↓ (melhores primeiro)</option>
@@ -412,7 +415,7 @@ let allItems = [];
 async function load() {
   const level   = document.getElementById('levelFilter').value;
   const sort    = document.getElementById('sortFilter').value;
-  const storeId = localStorage.getItem('ml_active_store') || '';
+  const storeId = document.getElementById('storeFilter').value;
 
   const data = await DB.getAnunciosProblema({ level, sort, store_id: storeId });
   if (!data || data.error) {
@@ -743,7 +746,7 @@ async function startSync() {
   btn.innerHTML = '<i class="fas fa-sync-alt spin"></i> Sincronizando...';
   document.getElementById('syncInfo').textContent = 'Buscando scores no Mercado Livre...';
 
-  const storeId = localStorage.getItem('ml_active_store') || '';
+  const storeId = document.getElementById('storeFilter').value;
   const data = await DB.syncAnunciosPerformance({ store_id: storeId, limit: 50 });
 
   if (data?.status==='already_running') {
@@ -770,7 +773,24 @@ WS.on('_connected', () => {
   if(el) el.innerHTML='<i class="fas fa-circle" style="color:var(--green);font-size:8px"></i> ao vivo';
 });
 window.addEventListener('storeChanged', load);
-document.addEventListener('DOMContentLoaded', load);
+// Filtro por loja: começa na loja ativa do topo (ml_active_store, comportamento
+// de antes) e acompanha quando ela é trocada lá.
+async function initLojas() {
+  const data = await DB.getLojas() || { stores: [] };
+  const sel = document.getElementById('storeFilter');
+  (data.stores || []).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.nickname;
+    sel.appendChild(o);
+  });
+  const ativa = localStorage.getItem('ml_active_store') || '';
+  if ([...sel.options].some(o => o.value === ativa)) sel.value = ativa;
+}
+window.addEventListener('storeChanged', e => {
+  const sel = document.getElementById('storeFilter'), id = e.detail?.storeId || '';
+  if ([...sel.options].some(o => o.value === id)) { sel.value = id; load(); }
+});
+document.addEventListener('DOMContentLoaded', async () => { await initLojas(); load(); });
 </script>
 </body>
 </html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1d23">
+  <title>Dívidas do Dia</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { margin:0; background:var(--bg-dark); color:var(--text-main); font-size:14px; -webkit-text-size-adjust:100%; }
+    .dm-wrap { max-width:560px; margin:0 auto; padding:14px 14px 96px; }
+    .dm-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+    .dm-head h1 { font-size:19px; margin:0; font-weight:800; }
+    .dm-head .sub { font-size:12px; color:var(--text-muted); }
+    .dm-ic { margin-left:auto; display:flex; gap:8px; }
+    .dm-ic a, .dm-ic button { width:40px; height:40px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); display:flex; align-items:center; justify-content:center; font-size:15px; text-decoration:none; cursor:pointer; }
+    .dm-tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+    .dm-tile { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:10px 8px; text-align:center; cursor:pointer; }
+    .dm-tile .l { font-size:11px; color:var(--text-muted); }
+    .dm-tile .v { font-size:15px; font-weight:800; margin-top:2px; white-space:nowrap; }
+    .dm-tile .n { font-size:10.5px; color:var(--text-muted); }
+    .dm-total { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; font-size:13px; }
+    .dm-total b { font-size:17px; }
+    .dm-sec { margin-bottom:18px; scroll-margin-top:10px; }
+    .dm-sec h2 { font-size:14px; margin:0 0 8px; display:flex; align-items:center; gap:8px; }
+    .dm-sec h2 .t { margin-left:auto; font-size:13px; }
+    .dm-emp { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; margin:10px 2px 6px; }
+    .dm-item { background:var(--bg-card); border:1px solid var(--border); border-left:4px solid var(--c); border-radius:12px; padding:10px 12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; }
+    .dm-item .info { flex:1; min-width:0; }
+    .dm-item .desc { font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; }
+    .dm-item .meta { font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+    .dm-item .val { font-weight:800; font-size:15px; white-space:nowrap; }
+    .dm-vazio { background:var(--bg-card); border:1px dashed var(--border); border-radius:12px; padding:14px; text-align:center; color:var(--text-muted); font-size:13px; }
+    .dm-bar { position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(transparent, var(--bg-dark) 30%); }
+    .dm-bar button { width:100%; max-width:560px; display:block; margin:0 auto; border:0; border-radius:14px; padding:14px; font-size:15px; font-weight:800; background:#25d366; color:#06281a; cursor:pointer; }
+    .dm-msg { font-size:12px; color:var(--text-muted); text-align:center; margin:8px 0; }
+  </style>
+</head>
+<body>
+<div class="dm-wrap">
+  <div class="dm-head">
+    <div>
+      <h1>💸 Dívidas do Dia</h1>
+      <div class="sub" id="dmData">Carregando…</div>
+    </div>
+    <div class="dm-ic">
+      <button onclick="carregar()" title="Atualizar"><i class="fas fa-sync-alt" id="dmSync"></i></button>
+      <a href="financeiro-boletos.html" title="Abrir Boletos completo"><i class="fas fa-table-list"></i></a>
+    </div>
+  </div>
+  <div class="dm-tiles" id="dmTiles"></div>
+  <div id="dmTotal"></div>
+  <div id="dmLista"><div class="dm-vazio">Carregando…</div></div>
+  <div class="dm-msg" id="dmMsg"></div>
+</div>
+<div class="dm-bar"><button onclick="enviarWhatsapp()"><i class="fab fa-whatsapp"></i> Enviar no WhatsApp</button></div>
+
+<script src="../js/db.js"></script>
+<script src="../js/dividasDia.js"></script>
+<script>
+// Visão de celular das dívidas do dia (atrasadas + hoje + próximos 3 dias,
+// com faturas de cartão). Somente leitura — pagar/editar continua em
+// financeiro-boletos.html. Lista calculada por js/dividasDia.js, o MESMO
+// cálculo do botão "Enviar dívidas no WhatsApp" da página Boletos.
+const { BRL, ddmm } = DividasDia;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const SECOES = [
+  ['atrasadas', '⚠️ Atrasadas', '#f87171'],
+  ['hoje', '📅 Vencem hoje', '#f59e0b'],
+  ['proximos', '🔜 Próximos dias', '#60a5fa'],
+];
+const TIPO = { boleto: 'Boleto', manual: 'Imposto', cartao: 'Cartão', fatura_ml: 'Fatura ML', flex: 'Flex', pessoal: 'Pessoal', folha_pagamento: 'Folha', custo_fixo: 'Custo fixo', custo_variavel: 'Custo variável' };
+let R = null, CFG = { numero: '', nome: '' };
+
+function msg(t, erro) { const el = document.getElementById('dmMsg'); el.style.color = erro ? 'var(--red, #f87171)' : 'var(--text-muted)'; el.innerHTML = t; }
+
+async function carregar() {
+  document.getElementById('dmSync').classList.add('fa-spin');
+  msg('');
+  const [rB, rP, rC, cfg] = await Promise.all([
+    DB.getFinanceiroDados('boletos_mensais', 5000, 'date.asc'),
+    DB.getFinanceiroDados('parcelas_cartao', 10000, 'data_vencimento.asc'),
+    DB.getFinanceiroDados('cartoes', 500),
+    DB.getWhatsappBoletosConfig(),
+  ]);
+  document.getElementById('dmSync').classList.remove('fa-spin');
+  const erro = [rB, rP, rC].find(r => !r || r.error);
+  if (erro) { document.getElementById('dmLista').innerHTML = `<div class="dm-vazio" style="color:var(--red,#f87171)">Erro ao carregar: ${esc(erro && erro.error || 'servidor indisponível')}</div>`; return; }
+  if (cfg && !cfg.error) CFG = cfg;
+  R = DividasDia.calcular({ boletos: rB.rows || [], parcelas: rP.rows || [], cartoes: rC.rows || [], hoje: DividasDia.hojeLocal() });
+  render();
+}
+
+function render() {
+  const d = new Date(R.hoje + 'T12:00:00');
+  document.getElementById('dmData').textContent = d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+  document.getElementById('dmTiles').innerHTML = SECOES.map(([k, l, c]) => `
+    <div class="dm-tile" onclick="document.getElementById('sec-${k}').scrollIntoView({behavior:'smooth'})">
+      <div class="l">${l}</div><div class="v" style="color:${c}">${BRL(R.totais[k])}</div><div class="n">${R.secoes[k].length} conta(s)</div>
+    </div>`).join('');
+  document.getElementById('dmTotal').innerHTML = `<div class="dm-total"><span>Total até ${ddmm(R.limite)}</span><b>${BRL(R.total)}</b></div>`;
+  document.getElementById('dmLista').innerHTML = SECOES.map(([k, l, c]) => {
+    const itens = R.secoes[k];
+    const titulo = k === 'proximos' ? `${l} (até ${ddmm(R.limite)})` : l;
+    const corpo = itens.length
+      ? DividasDia.agruparPorEmpresa(itens).map(([emp, lista]) => `<div class="dm-emp">${esc(emp)}</div>` + lista.map(i => item(i, c)).join('')).join('')
+      : `<div class="dm-vazio">Nada aqui ✅</div>`;
+    return `<div class="dm-sec" id="sec-${k}"><h2>${titulo}<span class="t" style="color:${c}">${BRL(R.totais[k])}</span></h2>${corpo}</div>`;
+  }).join('');
+}
+
+function item(i, cor) {
+  const desc = i.fatura ? esc(i.nome) : esc(i.nome || i.fornecedor || '(sem descrição)');
+  const meta = i.fatura
+    ? `${i.parcelas} parcela(s) · vence ${ddmm(i.date)}`
+    : [i.fornecedor && i.nome ? esc(i.fornecedor) : '', TIPO[i.tipo] || esc(i.tipo), 'vence ' + ddmm(i.date)].filter(Boolean).join(' · ');
+  return `<div class="dm-item" style="--c:${cor}"><div class="info"><div class="desc">${desc}</div><div class="meta">${meta}</div></div><div class="val">${BRL(i.valor)}</div></div>`;
+}
+
+async function enviarWhatsapp() {
+  if (!R) return;
+  let numero = CFG.numero;
+  if (!numero) {
+    const n = (prompt('WhatsApp do responsável (DDD + número):') || '').replace(/\D/g, '');
+    if (n.length < 10 || n.length > 13) { msg('Número inválido — use DDD + número.', true); return; }
+    const rs = await DB.setWhatsappBoletosConfig(n, CFG.nome || '');
+    if (rs && rs.error) { msg('Não salvei o número: ' + esc(rs.error), true); return; }
+    CFG.numero = numero = n;
+  }
+  window.location.href = DividasDia.linkWhatsapp(numero, DividasDia.textoWhatsapp(R, CFG.nome));
+}
+
+carregar();
+</script>
+</body>
+</html>

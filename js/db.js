@@ -473,6 +473,8 @@ const DB = {
   async setImpostoFlexConfig(ativo)   { return this._patch('/config/imposto-flex', { imposto_flex_ativo: !!ativo }); },
   async getFreteMotoboyConfig()       { return this._get('/config/frete-motoboy'); },
   async setFreteMotoboyConfig(ativo, valor) { return this._patch('/config/frete-motoboy', { frete_motoboy_ativo: !!ativo, frete_motoboy_valor: valor }); },
+  async getWhatsappBoletosConfig()    { return this._get('/config/whatsapp-boletos'); },
+  async setWhatsappBoletosConfig(numero, nome) { return this._patch('/config/whatsapp-boletos', { numero, nome }); },
   async getEmailConfig()              { return this._get('/config/email'); },
   async saveEmailConfig(body)         { return this._patch('/config/email', body); },
   async testEmail()                   { return this._post('/config/email/test', {}); },

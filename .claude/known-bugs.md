@@ -241,3 +241,7 @@ Descoberto na mesma rodada de capturas de tela do TikTok Partner Center: `drawDi
 ## Import Metrizap do Operacional sobrescreve produtos do mesmo pedido
 
 `server/src/routes/metrizap.js` grava linha a linha com `ON CONFLICT (conta, pedido)` (`metrizap_sales`, `UNIQUE(conta, pedido)` em `migrate-v115.sql`). O export Metrizap traz 1 linha por produto: num pedido com 2+ produtos, cada linha **sobrescreve** a anterior em silêncio — fica só o último produto e os valores dos outros somem. Mesmo defeito corrigido no Financeiro na v115.15 (ver `decisions.md`). **Correção esperada**: migration Postgres com chave `(conta, pedido, item_id, sku)` (ou coluna gerada como `linha_key`) e o `ON CONFLICT` correspondente.
+
+## Boletos: `hojeISO()` usa UTC — depois das 21h (Brasil) o "hoje" já é amanhã
+
+`pages/financeiro-boletos.html` define `hojeISO=()=>new Date().toISOString().slice(0,10)` (UTC). Entre 21:00 e 23:59 no horário de Brasília, `statusReal()` marca como **atrasada** a conta que vence hoje e o calendário/KPIs consideram o dia seguinte. As funcionalidades novas (botão WhatsApp e `financeiro-dividas-hoje.html`, via `js/dividasDia.js`) já usam a data local (`DividasDia.hojeLocal()`), então nesse horário a lista do WhatsApp pode divergir do chip "Atrasado" da tabela. **Correção esperada**: trocar `hojeISO` da página por `DividasDia.hojeLocal()` (ou equivalente local).

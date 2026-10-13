@@ -214,6 +214,7 @@
 <script src="../js/db.js"></script>
 <script src="../js/dividasDia.js"></script>
 <script src="../js/recorrentesFin.js"></script>
+<script src="../js/pagamentosFin.js"></script>
 <script src="../js/layout-financeiro.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
@@ -324,12 +325,11 @@ async function pagarFaturaCartao(cid){
   if(!pend.length){ showStatus('Nenhuma parcela pendente nesta fatura.',false); return; }
   const tot=pend.reduce((s,p)=>s+(+p.valor||0),0);
   abrirModal('💳 Pagar Fatura', `<p>Pagar a fatura de <b>${esc(c?c.nome:'cartão')}</b> de <b>${MESES[+document.getElementById('boMes').value-1]}/${document.getElementById('boAno').value}</b>?</p><p style="color:var(--text-muted)">Quita <b>${pend.length}</b> parcela(s) · Total <b>${BRL(tot)}</b>.</p><div id="eMsg" style="font-size:12px"></div>`, `Pagar ${BRL(tot)}`, async()=>{
-    modalBusy(true,'Pagando…'); let erro=null;
-    for(const p of pend){ const r=await DB.updateFinanceiroRow('parcelas_cartao',p.id,{status:'pago'}); if(r&&r.error){ erro=r.error; break; } const i=PARCELAS.findIndex(x=>String(x.id)===String(p.id)); PARCELAS[i]={...PARCELAS[i],status:'pago'}; }
-    if(!erro){
-      await DB.addFinanceiroRow('fatura_pagamentos',{cartao_id:cid,fatura_mes:mr,data_pagamento:hojeISO(),valor_pago:+tot.toFixed(2),parcelas_count:pend.length});
-      await DB.addFinanceiroRow('cash_flow_entries',{ type:'expense', date:hojeISO(), value:+tot.toFixed(2), reason:`Fatura ${c?c.nome:'cartão'} ${mr}`, category:'Cartão de Crédito' }).catch(()=>{});
-    }
+    modalBusy(true,'Pagando…');
+    // Mesma rotina do botão Pagar da página Dívidas do Dia (js/pagamentosFin.js).
+    const r=await PagamentosFin.pagarFatura(DB,{ cartao:c||{id:cid,nome:'cartão'}, faturaMes:mr, pendentes:pend, hoje:hojeISO() });
+    (r.pagas||[]).forEach(id=>{ const i=PARCELAS.findIndex(x=>String(x.id)===String(id)); if(i>=0) PARCELAS[i]={...PARCELAS[i],status:'pago'}; });
+    const erro=r.erro;
     if(erro){ modalBusy(false); eMsgErr('Erro: '+esc(erro)); render(); return; }
     fecharModal(); render();
   }, false);
@@ -631,7 +631,12 @@ function limparForm(){ ['fName','fVal','fSup','fNf','fValTotal'].forEach(id=>{ c
 function togglePago(id){
   const b=BOLETOS.find(x=>String(x.id)===String(id)); if(!b) return;
   if(b.status==='pago'){ // desmarcar: volta pra pendente e remove a saída do FC
-    doPatchBoleto(id,{status:'pendente'}).then(()=>syncFCPagamento(b,false));
+    PagamentosFin.desfazerPagamentoBoleto(DB, b, hojeISO()).then(r=>{
+      if(r.erro){ showStatus('⚠️ '+esc(r.erro),true); return; }
+      const i=BOLETOS.findIndex(x=>String(x.id)===String(id)); if(i>=0) BOLETOS[i]={...BOLETOS[i],status:'pendente'};
+      if(r.erroFC) showStatus('⚠️ Fluxo de caixa não sincronizou: '+esc(r.erroFC),true);
+      render();
+    });
     return;
   }
   abrirModalBanco(b); // marcar pago → escolher a conta de onde saiu o dinheiro
@@ -639,11 +644,7 @@ function togglePago(id){
 // Modal "De qual conta saiu o pagamento?" — filtra pelas contas da empresa do boleto.
 function abrirModalBanco(b){
   const emp=String(b.empresa||'').trim();
-  let contas=CONTAS.filter(c=>c.ativa!==false);
-  if(emp){
-    const ids=new Set(CONTAEMP.filter(ce=>String(ce.empresa_nome||'').trim()===emp).map(ce=>ce.conta_id));
-    const f=contas.filter(c=>ids.has(c.id)); if(f.length) contas=f;
-  }
+  const contas=PagamentosFin.contasDaEmpresa(CONTAS, CONTAEMP, emp);
   const opts=contas.length?contas.map(c=>`<option value="${esc(c.id)}">${esc(c.nome||c.banco_nome||'—')}</option>`).join(''):'<option value="">— sem conta cadastrada —</option>';
   const body=`<p>Pagar <b>${esc(b.name||'—')}</b> · <b>${BRL(+b.value||0)}</b>${emp?` · ${esc(emp)}`:''}.</p>
     <label style="font-size:12px;color:var(--text-muted)">De qual conta saiu o pagamento?<select id="bkConta" class="bo-in">${opts}</select></label>
@@ -653,30 +654,17 @@ function abrirModalBanco(b){
 async function doPagarBoleto(b){
   const contaId=document.getElementById('bkConta').value||null;
   modalBusy(true,'Pagando…');
-  const r=await DB.updateFinanceiroRow('boletos_mensais',b.id,{status:'pago'});
-  if(r&&r.error){ modalBusy(false); eMsgErr('Erro: '+esc(r.error)); return; }
+  const r=await PagamentosFin.pagarBoleto(DB, b, contaId, hojeISO());
+  if(r.erro){ modalBusy(false); eMsgErr('Erro: '+esc(r.erro)); return; }
   const i=BOLETOS.findIndex(x=>String(x.id)===String(b.id)); if(i>=0) BOLETOS[i]={...BOLETOS[i],status:'pago'};
-  await syncFCPagamento(b, true, contaId);
+  if(r.erroFC) showStatus('⚠️ Fluxo de caixa não sincronizou: '+esc(r.erroFC),true);
   fecharModal(); render();
 }
-// Regra do Readdy: boleto PAGO gera uma saída em cash_flow_entries (vínculo por
-// boleto_id, com conta/empresa/NF); ao voltar pra pendente (ou excluir), a saída é
-// removida. Idempotente: apaga a entry existente daquele boleto antes de inserir.
+// Saída no fluxo de caixa ligada ao boleto — regra em js/pagamentosFin.js
+// (compartilhada com a página Dívidas do Dia).
 async function syncFCPagamento(boleto, pago, contaId){
-  try{
-    const r=await DB.getFinanceiroDados('cash_flow_entries',200,'','boleto_id=eq.'+encodeURIComponent(boleto.id));
-    const existentes=(r&&!r.error&&Array.isArray(r.rows))?r.rows:[];
-    for(const e of existentes){ await DB.deleteFinanceiroRow('cash_flow_entries', e.id); }
-    if(pago){
-      const row={ type:'expense', date:(boleto.date||'').slice(0,10)||hojeISO(), value:+boleto.value||0,
-        reason:(boleto.name||'Boleto')+(boleto.supplier?(' — '+boleto.supplier):''),
-        category:boleto.category||null, store_id:boleto.store_id||null, boleto_id:boleto.id };
-      if(boleto.empresa) row.empresa=boleto.empresa;
-      if(contaId) row.conta_bancaria_id=contaId;
-      const nf=nfDe(boleto); if(nf) row.nota_fiscal=nf;
-      await DB.addFinanceiroRow('cash_flow_entries', row);
-    }
-  }catch(e){ showStatus('⚠️ Fluxo de caixa não sincronizou: '+esc(e.message||e),true); }
+  const erro=await PagamentosFin.syncFCPagamento(DB, boleto, pago, contaId, hojeISO());
+  if(erro) showStatus('⚠️ Fluxo de caixa não sincronizou: '+esc(erro),true);
 }
 async function doPatchBoleto(id,patch){
   const r=await DB.updateFinanceiroRow('boletos_mensais',id,patch);

@@ -12,7 +12,10 @@
 
   // Valor do cadastro se > 0; senão o último valor > 0 já lançado daquele
   // recorrente (os cadastros estão com R$0 e o valor varia mês a mês).
+  // Flex nasce SEMPRE com 0 (pedido do usuário: o valor do Flex só é
+  // conhecido depois) — aparece como "valor a confirmar".
   function valorPadrao(t, boletos) {
+    if ((t.tipo || '') === 'flex') return 0;
     if (Number(t.valor_total) > 0) return Number(t.valor_total);
     const ult = boletos
       .filter(b => b.id_recorrente === t.id && Number(b.value) > 0)

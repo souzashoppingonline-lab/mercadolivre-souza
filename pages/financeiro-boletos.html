@@ -85,6 +85,7 @@
           <span class="bo-fpill"><i class="fas fa-calendar" style="color:#6366f1"></i><select id="boMes"></select><select id="boAno"></select></span>
           <div id="boStatusTabs" class="bo-strow" style="gap:6px"></div>
           <span id="boCount" style="margin-left:auto;font-size:12px;color:var(--text-muted)"></span>
+          <button class="bo-btn" onclick="abrirWhatsappDividas()" style="border-color:#25d36666;color:#25d366" title="Atrasadas + vencendo hoje + próximos 3 dias (inclui faturas de cartão)"><i class="fab fa-whatsapp"></i> Enviar dívidas no WhatsApp</button>
           <button class="bo-btn" onclick="exportarCsv()"><i class="fas fa-download"></i> CSV</button>
           <button class="bo-btn" onclick="load()"><i class="fas fa-sync-alt"></i> Atualizar</button>
         </div>
@@ -211,6 +212,7 @@
 </div>
 
 <script src="../js/db.js"></script>
+<script src="../js/dividasDia.js"></script>
 <script src="../js/layout-financeiro.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
@@ -981,6 +983,38 @@ function abrirDiaModal(ano, mes, dia){
 }
 
 function fecharModal(){ document.getElementById('boModal').style.display='none'; modalAction=null; }
+
+// ── Dívidas do dia → WhatsApp ────────────────────────────────────────────
+// Lista calculada por js/dividasDia.js (mesmo cálculo da página de celular
+// financeiro-dividas-hoje.html). Envio manual: abre o WhatsApp (wa.me) com o
+// texto pronto pro responsável — nada é enviado sem alguém apertar "enviar".
+// Ignora os filtros da tela de propósito: atrasada de mês anterior também entra.
+async function abrirWhatsappDividas(){
+  const cfg=await DB.getWhatsappBoletosConfig();
+  const r=DividasDia.calcular({ boletos:BOLETOS, parcelas:PARCELAS, cartoes:CARTOES, hoje:DividasDia.hojeLocal() });
+  const nome=(cfg&&cfg.nome)||'', numero=(cfg&&cfg.numero)||'';
+  const resumo=[['⚠️ Atrasadas','atrasadas','#f87171'],['📅 Vencem hoje','hoje','#f59e0b'],['🔜 Próximos '+r.diasProximos+' dias','proximos','#60a5fa']]
+    .map(([l,k,c])=>`<div style="flex:1;min-width:120px;background:var(--bg-card2);border:1px solid var(--border);border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:var(--text-muted)">${l}</div><div style="font-weight:800;color:${c}">${BRL(r.totais[k])}</div><div style="font-size:11px;color:var(--text-muted)">${r.secoes[k].length} conta(s)</div></div>`).join('');
+  const body=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${resumo}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px">Responsável<input id="waNome" class="bo-in" value="${esc(nome)}" placeholder="Nome" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:8px"></label>
+      <label style="font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px">WhatsApp (DDD + número)<input id="waNumero" inputmode="tel" value="${esc(numero)}" placeholder="(11) 91234-5678" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:8px"></label>
+    </div>
+    <label style="font-size:11px;color:var(--text-muted)">Mensagem (pode editar antes de abrir)</label>
+    <textarea id="waTexto" rows="14" style="width:100%;margin-top:4px;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;font-family:inherit;box-sizing:border-box">${esc(DividasDia.textoWhatsapp(r,nome))}</textarea>
+    <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)">Abre o WhatsApp com a mensagem pronta — confira e aperte enviar. Nome e número ficam salvos pra próxima vez.</div>`;
+  abrirModal('📲 Dívidas do dia no WhatsApp', body, 'Abrir WhatsApp', async()=>{
+    const novoNome=document.getElementById('waNome').value.trim();
+    const novoNum=document.getElementById('waNumero').value.replace(/\D/g,'');
+    if(novoNum.length<10||novoNum.length>13){ eMsgErr('Informe o WhatsApp com DDD (ex.: 11 91234-5678).'); return; }
+    if(novoNum!==numero.replace(/\D/g,'')||novoNome!==nome){
+      const rs=await DB.setWhatsappBoletosConfig(novoNum, novoNome);
+      if(rs&&rs.error){ eMsgErr('Não salvei o número: '+esc(rs.error)); return; }
+    }
+    window.open(DividasDia.linkWhatsapp(novoNum, document.getElementById('waTexto').value), '_blank');
+    fecharModal();
+  });
+}
 function modalBusy(on,label){ const ok=document.getElementById('boModalOk'); ok.disabled=on; ok.textContent=on&&label?label:(ok.dataset.prev||'Confirmar'); }
 function eMsgErr(t){ const m=document.getElementById('eMsg'); if(m) m.innerHTML='<span style="color:var(--red)">'+t+'</span>'; }
 

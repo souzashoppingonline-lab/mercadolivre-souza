@@ -1249,6 +1249,33 @@ router.patch('/config/frete-motoboy', async (req, res) => {
   res.json({ ok: true, frete_motoboy_ativo: ativo, frete_motoboy_valor: valor });
 });
 
+// Responsável pelo pagamento das dívidas (página Boletos → botão "Enviar
+// dívidas no WhatsApp"). Uma pessoa só pra todas as empresas (decisão do
+// usuário). Só guarda nome + número; o envio é pelo link wa.me no navegador,
+// sem API do WhatsApp. Mesmo padrão key/value de imposto_flex_ativo.
+router.get('/config/whatsapp-boletos', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT key, value FROM app_config WHERE key IN ('whatsapp_boletos_numero', 'whatsapp_boletos_nome')`
+  );
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  res.json({ numero: map.whatsapp_boletos_numero || '', nome: map.whatsapp_boletos_nome || '' });
+});
+router.patch('/config/whatsapp-boletos', async (req, res) => {
+  const numero = String(req.body?.numero || '').replace(/\D/g, '');
+  const nome = String(req.body?.nome || '').trim().slice(0, 60);
+  if (numero && (numero.length < 10 || numero.length > 13)) {
+    return res.status(400).json({ error: 'WhatsApp inválido — use DDD + número (ex.: 11 91234-5678)' });
+  }
+  for (const [key, value] of [['whatsapp_boletos_numero', numero], ['whatsapp_boletos_nome', nome]]) {
+    await pool.query(
+      `INSERT INTO app_config (key, value, updated_at) VALUES ($1, $2, now())
+       ON CONFLICT (key) DO UPDATE SET value=$2, updated_at=now()`,
+      [key, value]
+    );
+  }
+  res.json({ ok: true, numero, nome });
+});
+
 // Relatórios por e-mail (Resend) — credencial (API key/from/to) só via
 // .env (ver resendClient.js), aqui só os toggles liga/desliga por relatório.
 const EMAIL_NOTIF_KEYS = ['email_resumo', 'email_topvendas', 'email_semanal', 'email_shopee_campanhas'];

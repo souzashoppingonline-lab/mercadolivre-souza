@@ -62,6 +62,31 @@
     .dm-sheet .confirmar { background:#3fb950; color:#06281a; }
     .dm-sheet .confirmar:disabled { opacity:.6; }
     .dm-sheet .erro { color:#f87171; font-size:12.5px; margin-top:8px; min-height:16px; }
+    /* Animação de pagamento: ✅ desenhado + "Pago!" + confete + card piscando verde */
+    .dm-cel { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; background:rgba(10,12,16,.72); overflow:hidden; animation:dmFade .25s ease-out; }
+    .dm-cel.saindo { animation:dmFadeOut .35s ease-in forwards; }
+    .dm-cel-box { position:relative; z-index:2; text-align:center; background:var(--bg-card); border:1px solid rgba(63,185,80,.5); border-radius:22px; padding:26px 30px 22px; max-width:300px; box-shadow:0 0 0 0 rgba(63,185,80,.5), 0 20px 60px rgba(0,0,0,.5); animation:dmPop .45s cubic-bezier(.2,1.4,.4,1), dmGlow 1.6s ease-out .2s; }
+    .dm-cel svg { width:88px; height:88px; display:block; margin:0 auto 10px; }
+    .dm-cel .circ { fill:none; stroke:#3fb950; stroke-width:5; stroke-dasharray:252; stroke-dashoffset:252; animation:dmDraw .5s ease-out .1s forwards; }
+    .dm-cel .chk { fill:none; stroke:#3fb950; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:60; stroke-dashoffset:60; animation:dmDraw .35s ease-out .5s forwards; }
+    .dm-cel h2 { margin:0; font-size:26px; color:#3fb950; letter-spacing:.5px; }
+    .dm-cel .nome { font-size:13px; color:var(--text-muted); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dm-cel .valor { font-size:22px; font-weight:800; margin-top:4px; }
+    .dm-cel .extra { font-size:12px; color:var(--text-muted); margin-top:8px; }
+    .dm-conf { position:absolute; top:-12px; width:9px; height:14px; border-radius:2px; z-index:1; animation:dmCai linear forwards; }
+    .dm-item.recem-pago { animation:dmFlash 1.6s ease-out; }
+    @keyframes dmFade { from { opacity:0 } to { opacity:1 } }
+    @keyframes dmFadeOut { to { opacity:0 } }
+    @keyframes dmPop { 0% { transform:scale(.4); opacity:0 } 70% { transform:scale(1.06); opacity:1 } 100% { transform:scale(1) } }
+    @keyframes dmGlow { 0% { box-shadow:0 0 0 0 rgba(63,185,80,.55), 0 20px 60px rgba(0,0,0,.5) } 100% { box-shadow:0 0 0 28px rgba(63,185,80,0), 0 20px 60px rgba(0,0,0,.5) } }
+    @keyframes dmDraw { to { stroke-dashoffset:0 } }
+    @keyframes dmCai { 0% { transform:translate3d(0,0,0) rotate(0) } 100% { transform:translate3d(var(--dx),110vh,0) rotate(var(--rot)) } }
+    @keyframes dmFlash { 0%,30% { background:rgba(63,185,80,.35); box-shadow:0 0 0 3px rgba(63,185,80,.55) } 100% { background:var(--bg-card); box-shadow:none } }
+    @media (prefers-reduced-motion: reduce) {
+      .dm-cel, .dm-cel-box, .dm-item.recem-pago { animation:none !important; }
+      .dm-cel .circ, .dm-cel .chk { animation:none; stroke-dashoffset:0; }
+      .dm-conf { display:none; }
+    }
   </style>
 </head>
 <body>
@@ -211,7 +236,7 @@ function item(i) {
   ITENS[i.id] = i;
   const acao = !i.pago ? `<button class="dm-pagar" onclick="abrirPagar('${esc(i.id)}')">Pagar</button>`
     : (!i.fatura ? `<button class="dm-desfazer" onclick="desfazer('${esc(i.id)}')">desfazer</button>` : '');
-  return `<div class="dm-item ${i.pago ? 'pago' : ''}" style="--c:${COR[st]}"><div class="info"><div class="desc">${desc}</div><div class="meta">${chip}${meta}</div></div><div class="lado"><div class="val">${val}</div>${acao}</div></div>`;
+  return `<div class="dm-item ${i.pago ? 'pago' : ''}" data-id="${esc(i.id)}" style="--c:${COR[st]}"><div class="info"><div class="desc">${desc}</div><div class="meta">${chip}${meta}</div></div><div class="lado"><div class="val">${val}</div>${acao}</div></div>`;
 }
 
 // ── Pagar (mesma rotina do botão Pagar da página Boletos: js/pagamentosFin.js) ──
@@ -264,6 +289,44 @@ async function confirmarPagamento(id) {
     msg(r.erroFC ? '⚠️ Pago, mas o Fluxo de Caixa não sincronizou: ' + esc(r.erroFC) : `✅ Pago · ${BRL(i.ref.value)} lançado no Fluxo de Caixa`, !!r.erroFC);
   }
   fecharSheet(); recalcular();
+  celebrarPagamento(i, i.fatura ? i.valor : Number(i.ref.value) || 0);
+}
+
+// ── Animação de pagamento ─────────────────────────────────────────────────
+// ✅ desenhado + "Pago!" + confete + vibração leve; o card pago pisca verde na
+// lista. Se não sobrou nada a pagar na lista escolhida → "Tudo pago! 🎉".
+// Some sozinha em ~2,2s ou ao tocar. Respeita "reduzir movimento" do celular.
+const CORES_CONFETE = ['#3fb950', '#8b5cf6', '#f59e0b', '#60a5fa', '#f87171', '#facc15', '#34d399'];
+function celebrarPagamento(i, valor) {
+  const reduzir = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const faltam = itensDaVisao().filter(x => !x.pago).length;
+  const tudoPago = faltam === 0;
+  try { if (!reduzir && navigator.vibrate) navigator.vibrate(tudoPago ? [40, 60, 40, 60, 120] : [35, 50, 70]); } catch (_) {}
+  document.querySelectorAll('.dm-cel').forEach(e => e.remove());
+  const ov = document.createElement('div');
+  ov.className = 'dm-cel';
+  let confete = '';
+  if (!reduzir) {
+    const n = tudoPago ? 90 : 45;
+    for (let k = 0; k < n; k++) {
+      const cor = CORES_CONFETE[k % CORES_CONFETE.length];
+      const dur = (1.4 + Math.random() * 1.4).toFixed(2), atraso = (Math.random() * 0.5).toFixed(2);
+      confete += `<i class="dm-conf" style="left:${(Math.random() * 100).toFixed(1)}%;background:${cor};--dx:${Math.round(Math.random() * 160 - 80)}px;--rot:${Math.round(Math.random() * 720 - 360)}deg;animation-duration:${dur}s;animation-delay:${atraso}s;${k % 3 === 0 ? 'border-radius:50%;width:8px;height:8px;' : ''}"></i>`;
+    }
+  }
+  ov.innerHTML = confete + `<div class="dm-cel-box">
+      <svg viewBox="0 0 88 88"><circle class="circ" cx="44" cy="44" r="40"/><path class="chk" d="M26 45 l12 12 l24 -26"/></svg>
+      <h2>${tudoPago ? 'Tudo pago! 🎉' : 'Pago!'}</h2>
+      <div class="nome">${esc(i.nome || i.fornecedor || 'Dívida')}</div>
+      <div class="valor">${valor > 0 ? BRL(valor) : ''}</div>
+      <div class="extra">${tudoPago ? 'Nenhuma conta a pagar nesta lista 🙌' : `Faltam ${faltam} conta(s) nesta lista`} · lançado no Fluxo de Caixa</div>
+    </div>`;
+  const fechar = () => { if (!ov.isConnected) return; ov.classList.add('saindo'); setTimeout(() => ov.remove(), 350); };
+  ov.addEventListener('click', fechar);
+  document.body.appendChild(ov);
+  setTimeout(fechar, tudoPago ? 3000 : 2200);
+  const card = document.querySelector(`.dm-item[data-id="${CSS.escape(String(i.id))}"]`);
+  if (card) { card.classList.add('recem-pago'); card.scrollIntoView({ block: 'nearest' }); }
 }
 
 async function desfazer(id) {

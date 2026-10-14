@@ -16,7 +16,7 @@
     .dm-ic { margin-left:auto; display:flex; gap:8px; }
     .dm-ic a, .dm-ic button { width:40px; height:40px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); display:flex; align-items:center; justify-content:center; font-size:15px; text-decoration:none; cursor:pointer; }
     .dm-emp { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; margin:10px 2px 6px; }
-    .dm-item { background:var(--bg-card); border:1px solid var(--border); border-left:4px solid var(--c); border-radius:12px; padding:10px 12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; }
+    .dm-item { position:relative; transition:opacity .5s; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid var(--c); border-radius:12px; padding:10px 12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; }
     .dm-item .info { flex:1; min-width:0; }
     .dm-item .desc { font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; }
     .dm-item .meta { font-size:11.5px; color:var(--text-muted); margin-top:2px; }
@@ -88,10 +88,45 @@
     @keyframes dmCai { 0% { transform:translate3d(0,0,0) rotate(0) } 100% { transform:translate3d(var(--dx),110vh,0) rotate(var(--rot)) } }
     @keyframes dmVoa { 0% { transform:translate3d(0,0,0) rotate(0) scale(.7); opacity:0 } 10% { opacity:1 } 50% { transform:translate3d(calc(var(--dx) * -.6),-55vh,0) rotate(calc(var(--rot) * -.5)) scale(1.1) } 85% { opacity:1 } 100% { transform:translate3d(var(--dx),-115vh,0) rotate(var(--rot)) scale(1); opacity:0 } }
     @keyframes dmFlash { 0%,30% { background:rgba(63,185,80,.35); box-shadow:0 0 0 3px rgba(63,185,80,.55) } 100% { background:var(--bg-card); box-shadow:none } }
+    /* Carimbo PAGO (fica no card pago), texto riscado, barra de progresso, resumo contando */
+    .dm-carimbo { position:absolute; left:56%; top:50%; transform:translate(-50%,-50%) rotate(-12deg); border:3px solid #3fb950; box-shadow:inset 0 0 0 2px rgba(63,185,80,.35); color:#3fb950; border-radius:8px; padding:0 12px; font-size:22px; font-weight:900; letter-spacing:4px; line-height:1.35; opacity:.9; pointer-events:none; background:rgba(63,185,80,.07); }
+    .dm-item.espera-carimbo .dm-carimbo { opacity:0; }
+    .dm-carimbo.bate { animation:dmCarimbo .45s cubic-bezier(.55,0,.75,.2) both; }
+    .dm-item .tx { background:linear-gradient(currentColor,currentColor) no-repeat 0 56% / 0% 2px; transition:background-size .55s ease-out; }
+    .dm-item.pago .tx { background-size:100% 2px; }
+    .dm-item.espera-risco { opacity:1; }
+    .dm-item.espera-risco .tx { background-size:0% 2px; }
+    .dm-wrap.treme { animation:dmTreme .35s linear; }
+    .dm-prog { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:9px 12px 10px; margin:-4px 0 14px; }
+    .dm-prog .t { display:flex; font-size:12.5px; font-weight:700; margin-bottom:6px; }
+    .dm-prog .t b { margin-left:auto; color:#3fb950; }
+    .dm-prog .trilho { height:10px; border-radius:999px; background:var(--bg-card2); overflow:hidden; }
+    .dm-prog .enche { position:relative; height:100%; border-radius:999px; background:linear-gradient(90deg,#2ea043,#3fb950,#56d364); transition:width .9s cubic-bezier(.4,0,.2,1); overflow:hidden; }
+    .dm-prog .enche.enchendo::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent); animation:dmBrilho 1s ease-in-out 2; }
+    .dm-prog.cheio .enche { background:linear-gradient(90deg,#f59e0b,#facc15,#3fb950); box-shadow:0 0 12px rgba(250,204,21,.6); }
+    .dm-prog.cheio .t b { color:#facc15; }
+    .dm-res > div.pulsa, .dm-atr.ok { animation:dmPulsa .6s ease-out; }
+    .dm-atr { max-height:90px; transition:background .6s, color .6s, border-color .6s, max-height .5s, opacity .5s, margin .5s, padding .5s; }
+    .dm-atr.ok { background:rgba(63,185,80,.15); border-color:rgba(63,185,80,.5); color:#3fb950; cursor:default; }
+    .dm-atr.some { max-height:0; opacity:0; margin:0; padding-top:0; padding-bottom:0; border-width:0; }
+    /* Caixa "Pago!": frase, troféu e fogos (tudo pago) */
+    .dm-cel .frase { font-size:14px; font-weight:700; margin-top:8px; color:#facc15; animation:dmFade .5s ease-out 1.4s both; }
+    .dm-fogos { position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+    .dm-trofeu { position:absolute; left:50%; bottom:calc(100% + 12px); transform:translateX(-50%); text-align:center; white-space:nowrap; animation:dmTrofeu 1.3s cubic-bezier(.3,1.25,.5,1) .6s both; }
+    .dm-trofeu span { display:block; font-size:64px; line-height:1; animation:dmGira 1.3s ease-out .6s both; filter:drop-shadow(0 0 14px rgba(250,204,21,.65)); }
+    .dm-trofeu b { display:block; color:#facc15; font-size:20px; font-weight:900; margin-top:4px; text-shadow:0 2px 10px rgba(0,0,0,.6); }
+    @keyframes dmCarimbo { 0% { transform:translate(-50%,-50%) rotate(-32deg) scale(3.4); opacity:0 } 60% { transform:translate(-50%,-50%) rotate(-12deg) scale(.9); opacity:1 } 80% { transform:translate(-50%,-50%) rotate(-12deg) scale(1.07) } 100% { transform:translate(-50%,-50%) rotate(-12deg) scale(1); opacity:.9 } }
+    @keyframes dmTreme { 0%,100% { transform:translate(0,0) } 20% { transform:translate(-6px,2px) } 40% { transform:translate(6px,-2px) } 60% { transform:translate(-4px,1px) } 80% { transform:translate(3px,-1px) } }
+    @keyframes dmBrilho { from { transform:translateX(-100%) } to { transform:translateX(100%) } }
+    @keyframes dmPulsa { 50% { transform:scale(1.06); border-color:#3fb950 } }
+    @keyframes dmTrofeu { 0% { transform:translate(-50%,-70vh); opacity:0 } 15% { opacity:1 } 100% { transform:translate(-50%,0); opacity:1 } }
+    @keyframes dmGira { from { transform:rotateY(0) rotate(-20deg) } to { transform:rotateY(1080deg) rotate(0) } }
     @media (prefers-reduced-motion: reduce) {
       .dm-cel, .dm-cel-box, .dm-item.recem-pago { animation:none !important; }
       .dm-cel .circ, .dm-cel .chk { animation:none; stroke-dashoffset:0; }
-      .dm-conf, .dm-din, .dm-mao { display:none; }
+      .dm-conf, .dm-din, .dm-mao, .dm-fogos { display:none; }
+      .dm-carimbo.bate, .dm-wrap.treme, .dm-trofeu, .dm-trofeu span, .dm-cel .frase, .dm-res > div.pulsa, .dm-atr.ok, .dm-prog .enche.enchendo::after { animation:none !important; }
+      .dm-item, .dm-item .tx, .dm-prog .enche, .dm-atr { transition:none !important; }
     }
   </style>
 </head>
@@ -110,6 +145,7 @@
   <div id="dmAtr"></div>
   <div class="dm-tabs" id="dmTabs"></div>
   <div class="dm-res" id="dmRes"></div>
+  <div id="dmProg"></div>
   <div id="dmLista"><div class="dm-vazio">Carregando…</div></div>
   <div class="dm-msg" id="dmMsg"></div>
 </div>
@@ -213,15 +249,19 @@ function render() {
   document.getElementById('dmWaBtn').innerHTML = `<i class="fab fa-whatsapp"></i> Enviar "${ROTULO_WA[visao]}" no WhatsApp`;
   const itens = itensDaVisao();
   const soma = l => l.reduce((t, i) => t + i.valor, 0);
-  const pagos = itens.filter(i => i.pago), abertos = itens.filter(i => !i.pago);
+  const res = resumoVisao(itens);
   document.getElementById('dmRes').innerHTML = `
     <div><div class="l">Total</div><div class="v">${BRL(soma(itens))}</div><div class="n">${itens.length} conta(s)</div></div>
-    <div><div class="l">✅ Pago</div><div class="v" style="color:${COR.pago}">${BRL(soma(pagos))}</div><div class="n">${pagos.length} conta(s)</div></div>
-    <div><div class="l">🕗 A pagar</div><div class="v" style="color:${COR.pend}">${BRL(soma(abertos))}</div><div class="n">${abertos.length} conta(s)</div></div>`;
+    <div><div class="l">✅ Pago</div><div class="v" id="dmRsPago" style="color:${COR.pago}"></div><div class="n" id="dmRsPagoN"></div></div>
+    <div><div class="l">🕗 A pagar</div><div class="v" id="dmRsAbr" style="color:${COR.pend}"></div><div class="n" id="dmRsAbrN"></div></div>`;
+  document.getElementById('dmProg').innerHTML = itens.length
+    ? '<div class="dm-prog" id="dmProgBox"><div class="t"><span id="dmProgTxt"></span><b id="dmProgPct"></b></div><div class="trilho"><div class="enche" id="dmProgBar"></div></div></div>' : '';
+  pintarResumo(res, true);
 
   const lista = document.getElementById('dmLista');
   if (!itens.length) { lista.innerHTML = `<div class="dm-vazio">Nenhuma dívida ${visao === 'atrasadas' ? 'atrasada' : 'neste período'} ✅</div>`; return; }
-  const porEmpresa = l => DividasDia.agruparPorEmpresa(l).map(([emp, g]) => `<div class="dm-emp">${esc(emp)}</div>` + g.map(item).join('')).join('');
+  // Dentro de cada empresa: a pagar primeiro, pagas no fim (sort estável).
+  const porEmpresa = l => DividasDia.agruparPorEmpresa(l).map(([emp, g]) => `<div class="dm-emp">${esc(emp)}</div>` + g.slice().sort((a, b) => (a.pago ? 1 : 0) - (b.pago ? 1 : 0)).map(item).join('')).join('');
   if (visao === 'proximos' || visao === 'atrasadas') {
     const porDia = {}; itens.forEach(i => { (porDia[i.date] = porDia[i.date] || []).push(i); });
     lista.innerHTML = Object.keys(porDia).sort().map(d =>
@@ -229,6 +269,32 @@ function render() {
   } else {
     lista.innerHTML = porEmpresa(itens);
   }
+}
+
+// Resumo/progresso da visão atual (também usado pra animar o antes → depois).
+function resumoVisao(itens = itensDaVisao()) {
+  const soma = l => l.reduce((t, i) => t + i.valor, 0);
+  const pagos = itens.filter(i => i.pago), abertos = itens.filter(i => !i.pago);
+  return { n: itens.length, nPago: pagos.length, nAbr: abertos.length, pago: soma(pagos), abr: soma(abertos) };
+}
+function pintarResumo(s, barraInstantanea) {
+  const set = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+  set('dmRsPago', BRL(s.pago)); set('dmRsPagoN', `${s.nPago} conta(s)`);
+  set('dmRsAbr', BRL(s.abr)); set('dmRsAbrN', `${s.nAbr} conta(s)`);
+  progTexto(s.nPago, s.n, true);
+  progBarra(s.n ? s.nPago / s.n * 100 : 0, barraInstantanea);
+}
+function progTexto(nPago, n, final) {
+  const box = document.getElementById('dmProgBox'); if (!box) return;
+  const cheio = final && n > 0 && nPago === n;
+  box.classList.toggle('cheio', cheio);
+  document.getElementById('dmProgTxt').textContent = cheio ? `🎉 Tudo pago — ${n} de ${n}` : `✅ ${nPago} de ${n} paga(s)`;
+  document.getElementById('dmProgPct').textContent = `${n ? Math.round(nPago / n * 100) : 0}%`;
+}
+function progBarra(pct, instantanea) {
+  const bar = document.getElementById('dmProgBar'); if (!bar) return;
+  if (instantanea) { bar.style.transition = 'none'; bar.style.width = pct + '%'; void bar.offsetWidth; bar.style.transition = ''; }
+  else bar.style.width = pct + '%';
 }
 
 function item(i) {
@@ -242,7 +308,7 @@ function item(i) {
   ITENS[i.id] = i;
   const acao = !i.pago ? `<button class="dm-pagar" onclick="abrirPagar('${esc(i.id)}')">Pagar</button>`
     : (!i.fatura ? `<button class="dm-desfazer" onclick="desfazer('${esc(i.id)}')">desfazer</button>` : '');
-  return `<div class="dm-item ${i.pago ? 'pago' : ''}" data-id="${esc(i.id)}" style="--c:${COR[st]}"><div class="info"><div class="desc">${desc}</div><div class="meta">${chip}${meta}</div></div><div class="lado"><div class="val">${val}</div>${acao}</div></div>`;
+  return `<div class="dm-item ${i.pago ? 'pago' : ''}" data-id="${esc(i.id)}" style="--c:${COR[st]}">${i.pago ? '<span class="dm-carimbo">PAGO</span>' : ''}<div class="info"><div class="desc"><span class="tx">${desc}</span></div><div class="meta">${chip}${meta}</div></div><div class="lado"><div class="val">${val}</div>${acao}</div></div>`;
 }
 
 // ── Pagar (mesma rotina do botão Pagar da página Boletos: js/pagamentosFin.js) ──
@@ -281,6 +347,8 @@ async function confirmarPagamento(id) {
     if (!(v > 0)) { erroSheet('Informe o valor pago.'); return; }
     extra = { value: Math.round(v * 100) / 100 };
   }
+  prepararSom(); // ainda dentro do toque: iPhone só libera áudio assim
+  const antes = { res: resumoVisao(), atr: R.secoes.atrasadas.length, atrTotal: R.totais.atrasadas, atrOn: visao === 'atrasadas', pos: posicoesCards() };
   btn.disabled = true; btn.textContent = 'Pagando…'; erroSheet('');
   if (i.fatura) {
     const r = await PagamentosFin.pagarFatura(DB, { cartao: i.cartao, faturaMes: i.faturaMes, pendentes: i.pendentes, hoje });
@@ -295,27 +363,69 @@ async function confirmarPagamento(id) {
     msg(r.erroFC ? '⚠️ Pago, mas o Fluxo de Caixa não sincronizou: ' + esc(r.erroFC) : `✅ Pago · ${BRL(i.ref.value)} lançado no Fluxo de Caixa`, !!r.erroFC);
   }
   fecharSheet(); recalcular();
-  celebrarPagamento(i, i.fatura ? i.valor : Number(i.ref.value) || 0);
+  celebrarPagamento(i, i.fatura ? i.valor : Number(i.ref.value) || 0, antes);
 }
 
 // ── Animação de pagamento ─────────────────────────────────────────────────
-// ✅ desenhado + "Pago!" + confete + vibração leve; o card pago pisca verde na
-// lista. Se não sobrou nada a pagar na lista escolhida → "Tudo pago! 🎉".
-// 💸 dinheiro voando de baixo pra cima; aos ~3s a mãozinha ✋ sobe, puxa as
-// notas que estão voando, fecha (✊) e sai pra baixo com elas. Fica 6s na tela (ou até tocar). Respeita "reduzir movimento" do celular.
+// 1) Caixa "Pago!" (6s ou até tocar): ✅ desenhado, valor contando de R$ 0,00,
+//    frase aleatória, som cha-ching, confete, 💸 voando e a mãozinha puxando.
+//    Última conta da aba → "Tudo pago! 🎉" + troféu 🏆 descendo + fogos 🎆.
+// 2) Ao fechar, na lista: carimbo PAGO bate no card (tela treme), texto é
+//    riscado, o card desce pro fim do grupo, Pago/A pagar contam até o valor
+//    novo, a barra de progresso enche e, se zerou as atrasadas, o banner
+//    vermelho vira verde. Com "reduzir movimento": sem confete/fogos/tremida,
+//    tudo aparece direto no estado final (o som continua).
 const EMOJI_DINHEIRO = ['💸', '💵', '💰', '💸', '🤑'];
 const CORES_CONFETE = ['#3fb950', '#8b5cf6', '#f59e0b', '#60a5fa', '#f87171', '#facc15', '#34d399'];
-function celebrarPagamento(i, valor) {
+const FRASES = ['Mandou bem! 💪', 'Menos uma! 🔥', 'Boleto vencido? Hoje não! 😎', 'Conta paga, mente tranquila 😌', 'Pagou, riscou, zerou! ✍️', 'Uma a menos pra se preocupar 🙌', 'Show! O caixa agradece 💰', 'Organização é tudo! 📈'];
+const FRASES_TUDO = ['Zerou tudo! Você é fera 🏆', 'Nenhuma pendência, que orgulho! 🥇', 'Missão cumprida! 🚀'];
+const ZERADO = { hoje: 'Dia zerado!', amanha: 'Amanhã zerado!', proximos: '3 dias zerados!', atrasadas: 'Atrasadas zeradas!' };
+const sorteia = l => l[Math.floor(Math.random() * l.length)];
+const vibrar = p => { try { if (navigator.vibrate) navigator.vibrate(p); } catch (_) {} };
+
+function posicoesCards() {
+  const pos = {};
+  document.querySelectorAll('#dmLista .dm-item').forEach(el => { pos[el.dataset.id] = el.getBoundingClientRect().top + scrollY; });
+  return pos;
+}
+function contar(de, ate, ms, aCada) {
+  const t0 = performance.now();
+  const f = agora => { const p = Math.min(1, (agora - t0) / ms), e = 1 - Math.pow(1 - p, 3); aCada(de + (ate - de) * e, p === 1); if (p < 1) requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+}
+
+function celebrarPagamento(i, valor, antes) {
   const reduzir = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const faltam = itensDaVisao().filter(x => !x.pago).length;
-  const tudoPago = faltam === 0;
-  try { if (!reduzir && navigator.vibrate) navigator.vibrate(tudoPago ? [40, 60, 40, 60, 120] : [35, 50, 70]); } catch (_) {}
+  const depois = resumoVisao();
+  const faltam = depois.nAbr, tudoPago = faltam === 0;
+  const atrZerou = !!antes && antes.atr > 0 && R.secoes.atrasadas.length === 0;
+  if (!reduzir) vibrar(tudoPago ? [40, 60, 40, 60, 120] : [35, 50, 70]);
+  som(tudoPago ? 'festa' : 'chaching');
+
+  // Lista fica no estado "antes" (visualmente) por baixo da caixa; anima depois.
+  const card = document.querySelector(`.dm-item[data-id="${CSS.escape(String(i.id))}"]`);
+  let movidos = [];
+  if (antes) {
+    if (atrZerou) document.getElementById('dmAtr').innerHTML = `<div class="dm-atr${antes.atrOn ? ' on' : ''}" id="dmAtrBan">⚠️ ${antes.atr} atrasada(s)<b>${BRL(antes.atrTotal)}</b></div>`;
+    if (!reduzir) {
+      pintarResumo(antes.res, true);
+      if (card) card.classList.add('espera-carimbo', 'espera-risco');
+      document.querySelectorAll('#dmLista .dm-item').forEach(el => {
+        const y0 = antes.pos[el.dataset.id]; if (y0 == null) return;
+        const dy = y0 - (el.getBoundingClientRect().top + scrollY);
+        if (Math.abs(dy) < 1) return;
+        el.style.transition = 'none'; el.style.transform = `translateY(${dy}px)`; movidos.push(el);
+      });
+      if (card) card.style.zIndex = '2';
+    }
+  }
+
   document.querySelectorAll('.dm-cel').forEach(e => e.remove());
   const ov = document.createElement('div');
   ov.className = 'dm-cel';
   let confete = '';
   if (!reduzir) {
-    const n = tudoPago ? 90 : 45;
+    const n = tudoPago ? 60 : 45;
     for (let k = 0; k < n; k++) {
       const cor = CORES_CONFETE[k % CORES_CONFETE.length];
       const dur = (3.8 + Math.random() * 1.4).toFixed(2), atraso = (Math.random() * 1.2).toFixed(2);
@@ -327,20 +437,184 @@ function celebrarPagamento(i, valor) {
       confete += `<span class="dm-din" style="left:${(Math.random() * 92).toFixed(1)}%;font-size:${26 + Math.round(Math.random() * 18)}px;--dx:${Math.round(Math.random() * 120 - 60)}px;--rot:${Math.round(Math.random() * 60 - 30)}deg;animation-duration:${dur}s;animation-delay:${atraso}s">${EMOJI_DINHEIRO[k % EMOJI_DINHEIRO.length]}</span>`;
     }
   }
+  const frase = tudoPago ? sorteia(FRASES_TUDO) : (i.atrasada ? 'Atrasada resolvida! Ufa 😮‍💨' : sorteia(FRASES));
   ov.innerHTML = confete + `<div class="dm-cel-box">
+      ${tudoPago ? `<div class="dm-trofeu"><span>🏆</span><b>${ZERADO[visao] || 'Dia zerado!'}</b></div>` : ''}
       <svg viewBox="0 0 88 88"><circle class="circ" cx="44" cy="44" r="40"/><path class="chk" d="M26 45 l12 12 l24 -26"/></svg>
       <h2>${tudoPago ? 'Tudo pago! 🎉' : 'Pago!'}</h2>
       <div class="nome">${esc(i.nome || i.fornecedor || 'Dívida')}</div>
-      <div class="valor">${valor > 0 ? BRL(valor) : ''}</div>
+      <div class="valor">${valor > 0 ? BRL(reduzir ? valor : 0) : ''}</div>
+      <div class="frase">${frase}</div>
       <div class="extra">${tudoPago ? 'Nenhuma conta a pagar nesta lista 🙌' : `Faltam ${faltam} conta(s) nesta lista`} · lançado no Fluxo de Caixa</div>
     </div>`;
-  const fechar = () => { if (!ov.isConnected) return; ov.classList.add('saindo'); setTimeout(() => ov.remove(), 500); };
+  let fechado = false;
+  const fechar = () => {
+    if (fechado) return; fechado = true;
+    ov.classList.add('saindo');
+    setTimeout(() => { ov.remove(); animarLista({ card, antes, depois, movidos, atrZerou, reduzir }); }, 500);
+  };
   ov.addEventListener('click', fechar);
   document.body.appendChild(ov);
-  if (!reduzir) maoPuxaDinheiro(ov);
+  if (!reduzir) {
+    const elValor = ov.querySelector('.valor');
+    if (valor > 0) setTimeout(() => contar(0, valor, 1300, (v, fim) => { elValor.textContent = BRL(fim ? valor : v); }), 300);
+    maoPuxaDinheiro(ov);
+    if (tudoPago) fogos(ov);
+  }
   setTimeout(fechar, 6000);
-  const card = document.querySelector(`.dm-item[data-id="${CSS.escape(String(i.id))}"]`);
-  if (card) { card.classList.add('recem-pago'); card.scrollIntoView({ block: 'nearest' }); }
+}
+
+// Etapa 2 (depois que a caixa fecha): carimbo → tremida → risco → card desce +
+// resumo/progresso contando → banner de atrasadas verde.
+function animarLista({ card, antes, depois, movidos, atrZerou, reduzir }) {
+  const vivo = card && card.isConnected ? card : null;
+  if (reduzir || !antes) {
+    if (vivo) vivo.classList.add('recem-pago');
+    if (atrZerou) bannerAtrasadasOk();
+    return;
+  }
+  const passo = (ms, fn) => setTimeout(fn, ms);
+  if (vivo) vivo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  passo(350, () => {
+    if (!vivo) return;
+    vivo.classList.remove('espera-carimbo'); vivo.classList.add('recem-pago');
+    const c = vivo.querySelector('.dm-carimbo'); if (c) c.classList.add('bate');
+  });
+  passo(560, () => {
+    const w = document.querySelector('.dm-wrap');
+    w.classList.remove('treme'); void w.offsetWidth; w.classList.add('treme');
+    setTimeout(() => w.classList.remove('treme'), 400);
+    if (vivo) { vibrar(40); som('carimbo'); }
+  });
+  passo(950, () => { if (vivo) vivo.classList.remove('espera-risco'); });
+  passo(1550, () => {
+    movidos.forEach(el => {
+      if (!el.isConnected) return;
+      el.style.transition = 'transform .75s cubic-bezier(.4,0,.2,1)'; el.style.transform = '';
+      setTimeout(() => { el.style.transition = ''; el.style.zIndex = ''; }, 800);
+    });
+    if (vivo && !movidos.includes(vivo)) vivo.style.zIndex = '';
+    animarResumo(antes.res, depois);
+  });
+  passo(1750, () => { if (atrZerou) bannerAtrasadasOk(); });
+}
+
+function animarResumo(a, d) {
+  const els = ['dmRsPago', 'dmRsPagoN', 'dmRsAbr', 'dmRsAbrN'].map(id => document.getElementById(id));
+  if (els.some(e => !e)) return;
+  [els[0], els[2]].forEach(e => { const box = e.parentElement; box.classList.remove('pulsa'); void box.offsetWidth; box.classList.add('pulsa'); });
+  const bar = document.getElementById('dmProgBar');
+  if (bar) { bar.classList.add('enchendo'); setTimeout(() => bar.classList.remove('enchendo'), 2100); }
+  progBarra(d.n ? d.nPago / d.n * 100 : 0);
+  const lerp = (x, y, p) => x + (y - x) * p;
+  contar(0, 1, 900, (p, fim) => {
+    if (fim) { pintarResumo(d); return; }
+    els[0].textContent = BRL(lerp(a.pago, d.pago, p)); els[1].textContent = `${Math.round(lerp(a.nPago, d.nPago, p))} conta(s)`;
+    els[2].textContent = BRL(lerp(a.abr, d.abr, p)); els[3].textContent = `${Math.round(lerp(a.nAbr, d.nAbr, p))} conta(s)`;
+    progTexto(Math.round(lerp(a.nPago, d.nPago, p)), d.n, false);
+  });
+}
+
+function bannerAtrasadasOk() {
+  const b = document.getElementById('dmAtrBan'); if (!b) return;
+  b.classList.remove('on'); b.classList.add('ok');
+  b.innerHTML = '✅ Nenhuma atrasada<b>R$ 0,00</b>';
+  setTimeout(() => { if (!b.isConnected) return; b.classList.add('some'); setTimeout(() => b.remove(), 600); }, 5000);
+}
+
+// 🎆 Fogos (só no "tudo pago"): canvas atrás da caixa; foguetes sobem e
+// explodem em partículas com gravidade e rastro. Para sozinho em ~5,5s.
+function fogos(ov) {
+  const cv = document.createElement('canvas'); cv.className = 'dm-fogos';
+  ov.insertBefore(cv, ov.firstChild);
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); if (!g) return; g.scale(dpr, dpr);
+  const lancamentos = [150, 600, 1000, 1500, 1900, 2500, 3000, 3600];
+  const foguetes = [], parts = [], t0 = performance.now();
+  let ultimo = t0, prox = 0;
+  const explodir = f => {
+    const n = 55 + Math.floor(Math.random() * 25);
+    for (let k = 0; k < n; k++) {
+      const ang = Math.PI * 2 * k / n + Math.random() * 0.2, vel = 90 + Math.random() * 190;
+      parts.push({ x: f.x, y: f.y, vx: Math.cos(ang) * vel, vy: Math.sin(ang) * vel, vida: 1.1 + Math.random() * 0.8, idade: 0, cor: Math.random() < 0.8 ? f.cor : '#fff' });
+    }
+    if (prox < 4) som('estouro');
+  };
+  const quadro = agora => {
+    if (!ov.isConnected) return;
+    const t = agora - t0, dt = Math.min(0.05, (agora - ultimo) / 1000); ultimo = agora;
+    while (prox < lancamentos.length && t >= lancamentos[prox]) {
+      foguetes.push({ x: W * (0.15 + Math.random() * 0.7), y: H + 10, alvo: H * (0.12 + Math.random() * 0.33), cor: sorteia(CORES_CONFETE) });
+      prox++;
+    }
+    g.globalCompositeOperation = 'destination-out'; g.fillStyle = 'rgba(0,0,0,.22)'; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'lighter';
+    for (let k = foguetes.length - 1; k >= 0; k--) {
+      const f = foguetes[k]; f.y -= Math.max(4, (f.y - f.alvo) * 5.5 * dt + 2);
+      g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(f.x, f.y, 2.4, 0, 7); g.fill();
+      if (f.y <= f.alvo + 4) { explodir(f); foguetes.splice(k, 1); }
+    }
+    for (let k = parts.length - 1; k >= 0; k--) {
+      const p = parts[k]; p.idade += dt;
+      if (p.idade >= p.vida) { parts.splice(k, 1); continue; }
+      p.vx *= 0.985; p.vy = p.vy * 0.985 + 150 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      g.globalAlpha = 1 - p.idade / p.vida; g.fillStyle = p.cor;
+      g.beginPath(); g.arc(p.x, p.y, 2.2, 0, 7); g.fill();
+    }
+    g.globalAlpha = 1;
+    if (t < 6000 && (prox < lancamentos.length || foguetes.length || parts.length)) requestAnimationFrame(quadro);
+  };
+  requestAnimationFrame(quadro);
+}
+
+// 🔔 Sons sintetizados (Web Audio, sem arquivo). O contexto é criado/retomado
+// dentro do toque em "Confirmar" (prepararSom) — exigência do iPhone.
+let AUDIO = null;
+function prepararSom() {
+  try {
+    const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    AUDIO = AUDIO || new C();
+    if (AUDIO.state === 'suspended') AUDIO.resume();
+  } catch (_) { AUDIO = null; }
+}
+function som(tipo) {
+  const ctx = AUDIO; if (!ctx) return;
+  try {
+    const t = ctx.currentTime + 0.03;
+    const saida = ctx.createGain(); saida.gain.value = 0.55; saida.connect(ctx.destination);
+    const ruido = (t0, dur, freq, vol, tipoFiltro = 'bandpass') => {
+      const len = Math.max(1, Math.floor(ctx.sampleRate * dur)), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+      for (let k = 0; k < len; k++) d[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / len, 2);
+      const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), gn = ctx.createGain();
+      src.buffer = buf; f.type = tipoFiltro; f.frequency.value = freq; f.Q.value = 0.8; gn.gain.value = vol;
+      src.connect(f); f.connect(gn); gn.connect(saida); src.start(t0);
+    };
+    const sino = (freq, t0, dur, vol) => [1, 2.76, 5.4].forEach((m, j) => {
+      const o = ctx.createOscillator(), gn = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq * m;
+      gn.gain.setValueAtTime(0.0001, t0);
+      gn.gain.exponentialRampToValueAtTime(vol / (j + 1), t0 + 0.005);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur / (j + 1));
+      o.connect(gn); gn.connect(saida); o.start(t0); o.stop(t0 + dur);
+    });
+    if (tipo === 'chaching' || tipo === 'festa') {
+      ruido(t, 0.12, 3500, 0.9);              // "cha": gaveta da caixa registradora
+      sino(1318.5, t + 0.1, 1.2, 0.35);       // "ching"
+      sino(1760, t + 0.18, 1.4, 0.3);
+      if (tipo === 'festa') [2093, 2637, 3136].forEach((f, k) => sino(f, t + 0.55 + k * 0.12, 1, 0.18));
+    } else if (tipo === 'moeda') {
+      sino(2637, t, 0.35, 0.16); sino(3136, t + 0.07, 0.35, 0.12);
+    } else if (tipo === 'carimbo') {
+      const o = ctx.createOscillator(), gn = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(170, t); o.frequency.exponentialRampToValueAtTime(55, t + 0.14);
+      gn.gain.setValueAtTime(0.9, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.connect(gn); gn.connect(saida); o.start(t); o.stop(t + 0.2);
+      ruido(t, 0.06, 900, 0.6, 'lowpass');
+    } else if (tipo === 'estouro') {
+      ruido(t, 0.35, 600, 0.5, 'lowpass');
+    }
+  } catch (_) {}
 }
 
 // Mãozinha: entra 3,2s → puxa as notas (posição atual de cada uma, lida em
@@ -365,7 +639,7 @@ function maoPuxaDinheiro(ov) {
       el.style.opacity = '0';
     });
   });
-  passo(4900, () => { mao.textContent = '✊'; mao.classList.add('pega'); try { if (navigator.vibrate) navigator.vibrate(30); } catch (_) {} });
+  passo(4900, () => { mao.textContent = '✊'; mao.classList.add('pega'); vibrar(30); som('moeda'); });
   passo(5200, () => { mao.classList.remove('pega'); mao.classList.add('sai'); });
 }
 

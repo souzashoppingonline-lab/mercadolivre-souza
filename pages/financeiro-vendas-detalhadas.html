@@ -42,7 +42,7 @@
         <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">De<input type="date" id="fDe"></label>
         <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px">Até<input type="date" id="fAte"></label>
         <select id="fLoja"><option value="">Todas as lojas</option></select>
-        <input type="text" id="fBusca" placeholder="Buscar produto ou pedido…">
+        <input type="text" id="fBusca" placeholder="Buscar produto, pedido, SKU ou ID do anúncio…">
       </div>
 
       <div class="vc-card">
@@ -115,7 +115,7 @@ function filtered(){
     if(de&&d<de) return false;
     if(ate&&d>ate) return false;
     if(loja&&String(r.store_id)!==loja) return false;
-    if(busca&&!(String(r.produto||'').toLowerCase().includes(busca)||String(r.pedido||'').includes(busca))) return false;
+    if(busca&&!(String(r.produto||'').toLowerCase().includes(busca)||String(r.pedido||'').includes(busca)||String(r.item_id||'').toLowerCase().includes(busca)||String(r.sku||'').toLowerCase().includes(busca))) return false;
     return true;
   }).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
 }
@@ -150,6 +150,13 @@ async function init(){
   (rSt.rows||[]).forEach(s=>{ STORES[s.id]=s.name||s.nome||s.nickname||String(s.id).slice(0,6); });
   const sel=document.getElementById('fLoja');
   Object.entries(STORES).forEach(([id,n])=>sel.insertAdjacentHTML('beforeend',`<option value="${esc(id)}">${esc(n)}</option>`));
+  // Filtro vindo da URL (ex.: link "vendas" da aba Princípio de Pareto em
+  // Inteligência de Vendas): ?busca=<ID do anúncio>&loja=<store_id>&de=&ate=
+  const qs=new URLSearchParams(location.search), iso=/^\d{4}-\d{2}-\d{2}$/;
+  if(iso.test(qs.get('de')||'')) document.getElementById('fDe').value=qs.get('de');
+  if(iso.test(qs.get('ate')||'')) document.getElementById('fAte').value=qs.get('ate');
+  if(qs.get('loja')&&STORES[qs.get('loja')]) sel.value=qs.get('loja');
+  if(qs.get('busca')) document.getElementById('fBusca').value=qs.get('busca').slice(0,80);
 
   const r=await DB.getFinanceiroDados('sales_entries_detail',5000,'date.desc');
   if(r&&r.error){ document.getElementById('tbody').innerHTML=`<tr><td colspan="18" class="vc-empty" style="color:var(--red)">Erro: ${esc(r.error)}</td></tr>`; return; }

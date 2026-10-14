@@ -49,6 +49,21 @@
     .iv-modal-b { padding:16px 20px; }
     .iv-cresc-cell { display:flex; flex-direction:column; gap:3px; }
     .iv-cresc-cell .l { font-size:9.5px; color:var(--text-muted); }
+    .iv-pa-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:14px; }
+    .iv-pa-aviso { background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.4); color:#f5c26b; border-radius:10px; padding:9px 12px; font-size:12.5px; margin-bottom:10px; }
+    .iv-pa-ins { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:14px; }
+    .iv-pa-ins h4 { margin:0 0 8px; font-size:13px; }
+    .iv-pa-ins li { font-size:13px; margin:5px 0; line-height:1.4; }
+    .iv-pa-chart { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:14px; }
+    .iv-pa-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+    .iv-pa-bar input { flex:1; min-width:200px; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:13px; }
+    tr.iv-pa-p td { background:rgba(139,92,246,.09); }
+    tr.iv-pa-p td:first-child { box-shadow:inset 3px 0 0 #8b5cf6; }
+    .iv-pa-badge { font-size:10.5px; font-weight:800; border-radius:999px; padding:2px 9px; white-space:nowrap; }
+    .iv-pa-badge.p { background:rgba(139,92,246,.2); color:#c4b5fd; }
+    .iv-pa-badge.d { background:rgba(148,163,184,.15); color:var(--text-muted); }
+    .iv-pa-mp { font-size:10px; color:var(--text-muted); }
+    .iv-pa-link { color:#8b5cf6; text-decoration:none; font-size:11px; margin-left:6px; white-space:nowrap; }
   </style>
 </head>
 <body>
@@ -88,6 +103,7 @@
         <button class="iv-tab" data-tab="abc" onclick="trocarAba('abc')"><i class="fas fa-layer-group"></i> Curva ABC</button>
         <button class="iv-tab" data-tab="logistica" onclick="trocarAba('logistica')"><i class="fas fa-truck"></i> Logística</button>
         <button class="iv-tab" data-tab="queda" onclick="trocarAba('queda')"><i class="fas fa-triangle-exclamation"></i> Alerta de Queda</button>
+        <button class="iv-tab" data-tab="pareto" onclick="trocarAba('pareto')"><i class="fas fa-chart-simple"></i> Princípio de Pareto</button>
       </div>
 
       <div class="iv-card" id="ivCardRanking">
@@ -191,6 +207,37 @@
           </table>
         </div>
       </div>
+
+      <div class="iv-card" id="ivCardPareto" style="display:none">
+        <h3>📊 Princípio de Pareto</h3>
+        <p class="d">Anúncios que, juntos, geram ~80% do faturamento do período — o menor conjunto, em ordem decrescente, que atinge ou passa de 80% (o resultado real, não "20% dos anúncios"). <b>Métrica:</b> Faturamento do Metrizap (coluna Faturamento, bruto da venda — não é lucro nem receita líquida), sem vendas canceladas; anúncio = loja + ID do anúncio.</p>
+        <div id="ivPaEstado"></div>
+        <div id="ivPaConteudo" style="display:none">
+          <div class="iv-pa-kpis" id="ivPaKpis"></div>
+          <div id="ivPaAvisos"></div>
+          <div class="iv-pa-ins"><h4>💡 Conclusões do período</h4><ul id="ivPaInsights" style="margin:0;padding-left:18px"></ul></div>
+          <div class="iv-pa-chart">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px" id="ivPaChartSub"></div>
+            <canvas id="ivPaChart" height="110"></canvas>
+          </div>
+          <div class="iv-pa-bar">
+            <input id="ivPaBusca" placeholder="🔎 Buscar por título, SKU ou ID do anúncio…" oninput="renderParetoTabela()">
+            <select id="ivPaClasse" onchange="renderParetoTabela()" style="background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:13px">
+              <option value="">Todos</option><option value="p">Só Pareto (80%)</option><option value="d">Só Demais anúncios</option>
+            </select>
+            <span id="ivPaCount" style="font-size:12px;color:var(--text-muted)"></span>
+          </div>
+          <div style="overflow:auto">
+            <table class="iv-t">
+              <thead><tr>
+                <th>#</th><th>Anúncio</th><th>SKU</th><th>Loja</th>
+                <th class="num">Unidades</th><th class="num">Faturamento</th><th class="num">Participação</th><th class="num">Acumulado</th><th>Classificação</th>
+              </tr></thead>
+              <tbody id="ivPaTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -244,6 +291,7 @@ const CARDS_DEDICADOS = {
   abc:        { card: 'ivCardAbc',        fn: () => carregarAbc() },
   logistica:  { card: 'ivCardLogistica',  fn: () => carregarLogistica() },
   queda:      { card: 'ivCardQueda',      fn: () => carregarQueda() },
+  pareto:     { card: 'ivCardPareto',     fn: () => carregarPareto() },
 };
 
 function trocarAba(aba) {
@@ -492,6 +540,147 @@ async function carregarQueda() {
       <td class="num">${p.quantidade}</td>
       <td class="num">${p.quantidade_anterior}</td>
     </tr>`).join('');
+}
+
+// ── Princípio de Pareto (GET /api/bi/vendas/pareto — cálculo em
+// server/src/pareto.js). Usa os filtros globais da página (período + loja).
+// Resposta guardada por filtro: trocar de aba e voltar não busca de novo.
+let PARETO = null, PARETO_KEY = '', chartPareto = null;
+// Gráfico: TODOS os anúncios do conjunto de 80% + 10 seguintes (mín. 30, máx. 80
+// barras). O resto não vira barra agrupada (somada, ela fica maior que todas e
+// achata o gráfico) — vai citado no subtítulo; cálculo e tabela usam todos.
+const PARETO_BARRAS_MIN = 30, PARETO_BARRAS_MAX = 80, PARETO_BARRAS_EXTRA = 10;
+
+async function carregarPareto() {
+  const f = filtros(), key = JSON.stringify(f);
+  const estado = document.getElementById('ivPaEstado'), cont = document.getElementById('ivPaConteudo');
+  if (PARETO && PARETO_KEY === key) { renderPareto(); return; }
+  cont.style.display = 'none';
+  estado.innerHTML = '<div class="iv-empty"><div class="spinner" style="margin:auto"></div> Calculando o Pareto do período…</div>';
+  const r = await DB.getBiVendasPareto(f);
+  if (JSON.stringify(filtros()) !== key) return; // filtro mudou durante a busca
+  if (!r || r.error) { PARETO = null; estado.innerHTML = `<div class="iv-empty" style="color:var(--red)">Erro ao calcular: ${esc(r?.error||'servidor indisponível')}</div>`; return; }
+  PARETO = r; PARETO_KEY = key;
+  renderPareto();
+}
+
+function renderPareto() {
+  const r = PARETO, estado = document.getElementById('ivPaEstado'), cont = document.getElementById('ivPaConteudo');
+  if (r.vazio) {
+    cont.style.display = 'none';
+    const extra = r.nao_atribuido?.linhas ? ` Há ${r.nao_atribuido.linhas} venda(s) sem ID de anúncio (${BRL(r.nao_atribuido.faturamento)}), que não entram no ranking.` : '';
+    estado.innerHTML = `<div class="iv-empty">📭 Nenhum faturamento positivo neste período/loja — não há como calcular o Pareto.${extra}<br><span style="font-size:12px">Confira o filtro de período ou se as vendas já foram importadas do Metrizap.</span></div>`;
+    return;
+  }
+  estado.innerHTML = ''; cont.style.display = '';
+  const N = r.anuncios_pareto, T = r.total_anuncios;
+  const cards = [
+    ['Faturamento total', BRL(r.faturamento_total), 'base do Pareto no período'],
+    ['Anúncios com vendas', T, 'faturamento > 0'],
+    ['Anúncios até 80%', N, `menor conjunto que atinge 80%`],
+    ['% dos anúncios', PCT(r.pct_anuncios_pareto), `${N} de ${T} anúncios`],
+    ['Faturamento prioritário', BRL(r.faturamento_pareto), `${PCT(r.pct_receita_pareto)} da receita`],
+    ['Faturamento restante', BRL(r.faturamento_demais), `${T - N} demais anúncios`],
+  ];
+  document.getElementById('ivPaKpis').innerHTML = cards.map(([k,v,s]) => `<div class="iv-kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+
+  const av = [];
+  // Conciliação com o Vendas & Custos (resumo diário do mesmo import Metrizap).
+  const vc = r.vendas_custos;
+  if (vc) {
+    const dias = l => l.map(d => `${esc(STORES[d.store_id] || '—')} ${dataBR(d.date)} (${BRL(d.valor)})`).join(', ');
+    const fecha = `Vendas & Custos ${BRL(vc.faturamento)}${vc.sem_detalhe.faturamento ? ` − ${BRL(vc.sem_detalhe.faturamento)} sem detalhe` : ''}${vc.so_no_detalhe.faturamento ? ` + ${BRL(vc.so_no_detalhe.faturamento)} só no detalhe` : ''} = <b>${BRL(r.faturamento_total + (r.nao_atribuido?.faturamento || 0))}</b> no Pareto.`;
+    if (vc.sem_detalhe.faturamento) av.push(`📌 <b>${BRL(vc.sem_detalhe.faturamento)} do Vendas & Custos não têm anúncio conhecido</b> e ficam fora do Pareto: estão só no resumo diário, sem o detalhe por venda do Metrizap — ${dias(vc.sem_detalhe.dias)}. <b>Reimporte a planilha desses dias em Vendas & Custos</b> pra entrarem aqui. Conciliação: ${fecha}`);
+    else av.push(`✅ Conciliado com o Vendas & Custos: ${fecha}`);
+    if (vc.so_no_detalhe.faturamento) av.push(`ℹ️ ${BRL(vc.so_no_detalhe.faturamento)} estão no detalhe por venda mas não no resumo diário do Vendas & Custos — ${dias(vc.so_no_detalhe.dias)}.`);
+  }
+  if (r.duplicadas?.linhas) av.push(`⚠️ ${r.duplicadas.linhas} venda(s) importada(s) em mais de uma loja (${BRL(r.duplicadas.faturamento)} — pedido ${r.duplicadas.pedidos.map(esc).join(', ')}) foram contadas uma vez só (na loja do marketplace da venda).`);
+  if (r.nao_atribuido?.linhas) av.push(`⚠️ ${r.nao_atribuido.linhas} venda(s) sem ID de anúncio (${BRL(r.nao_atribuido.faturamento)}) ficaram fora do ranking — os percentuais são sobre o faturamento atribuído a anúncios.`);
+  if (r.anuncios_sem_receita) av.push(`ℹ️ ${r.anuncios_sem_receita} anúncio(s) com venda mas faturamento R$0 não contam como "anúncio com vendas".`);
+  document.getElementById('ivPaAvisos').innerHTML = av.map(t => `<div class="iv-pa-aviso">${t}</div>`).join('');
+
+  const top = r.anuncios[0];
+  const ins = [
+    `<b>${PCT(r.pct_anuncios_pareto)}</b> dos anúncios com vendas (<b>${N} de ${T}</b>) representam <b>${PCT(r.pct_receita_pareto)}</b> do faturamento — ${r.pct_anuncios_pareto <= 20 ? 'concentração forte, até mais que a regra clássica 80/20' : r.pct_anuncios_pareto <= 35 ? 'concentração moderada' : 'faturamento bem distribuído entre os anúncios'}.`,
+    `Os <b>${N}</b> anúncios prioritários geraram <b>${BRL(r.faturamento_pareto)}</b> no período.`,
+    `O anúncio com maior faturamento foi <b>${esc(top.titulo)}</b> (${esc(STORES[top.store_id] || '—')}), com <b>${BRL(top.faturamento)}</b> — ${PCT(top.pct)} do total sozinho.`,
+    T > N ? `Os demais <b>${T - N}</b> anúncios representam <b>${PCT(100 - r.pct_receita_pareto)}</b> da receita (${BRL(r.faturamento_demais)}).` : 'Todos os anúncios com vendas estão no conjunto de 80%.',
+  ];
+  document.getElementById('ivPaInsights').innerHTML = ins.map(t => `<li>${t}</li>`).join('');
+
+  renderParetoChart();
+  renderParetoTabela();
+}
+
+function renderParetoChart() {
+  const r = PARETO, lista = r.anuncios;
+  const n = Math.min(lista.length, PARETO_BARRAS_MAX, Math.max(PARETO_BARRAS_MIN, r.anuncios_pareto + PARETO_BARRAS_EXTRA));
+  const vis = lista.slice(0, n), resto = lista.slice(n);
+  const pontos = vis.map(a => ({ label: '#' + a.posicao, fat: a.faturamento, acum: a.pct_acum, pareto: a.pareto, titulo: a.titulo, pct: a.pct, loja: STORES[a.store_id] || '' }));
+  const fatResto = resto.reduce((s, a) => s + a.faturamento, 0);
+  document.getElementById('ivPaChartSub').innerHTML = `Barras = faturamento por anúncio (roxo = conjunto de 80%, cinza = demais) · linha âmbar = % acumulado · tracejado vermelho = 80%.${resto.length ? ` Mostrando os ${n} maiores${r.anuncios_pareto > n ? '' : ` (os ${r.anuncios_pareto} do conjunto de 80% + ${n - r.anuncios_pareto} seguintes)`}; os outros ${resto.length} anúncios (${BRL(fatResto)}, ${PCT(fatResto / r.faturamento_total * 100)} do faturamento) estão na tabela e no cálculo, só não viram barra.` : ''}`;
+  chartPareto && chartPareto.destroy();
+  chartPareto = new Chart(document.getElementById('ivPaChart'), {
+    data: {
+      labels: pontos.map(p => p.label),
+      datasets: [
+        { type: 'bar', label: 'Faturamento', data: pontos.map(p => p.fat), yAxisID: 'y', order: 3,
+          backgroundColor: pontos.map(p => p.pareto ? '#8b5cf6' : 'rgba(148,163,184,.45)') },
+        { type: 'line', label: '% acumulado', data: pontos.map(p => p.acum), yAxisID: 'y1', order: 1,
+          borderColor: '#f59e0b', backgroundColor: '#f59e0b', pointRadius: 2, tension: 0.2 },
+        { type: 'line', label: 'Referência 80%', data: pontos.map(() => r.corte_pct), yAxisID: 'y1', order: 2,
+          borderColor: '#f87171', borderDash: [6, 4], pointRadius: 0, borderWidth: 1.5 },
+      ],
+    },
+    options: {
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#94a3b8', boxWidth: 11, font: { size: 10 } } },
+        tooltip: { callbacks: {
+          title: it => { const p = pontos[it[0].dataIndex]; return `${p.label} · ${p.titulo}${p.loja ? ' (' + p.loja + ')' : ''}`; },
+          label: c => { const p = pontos[c.dataIndex];
+            if (c.datasetIndex === 0) return ` Faturamento: ${BRL(p.fat)} · participação ${PCT(p.pct)}`;
+            if (c.datasetIndex === 1) return ` Acumulado: ${PCT(p.acum)}`;
+            return ` Referência: ${r.corte_pct}%`; },
+        } },
+      },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { size: 10 } } },
+        y: { position: 'left', ticks: { color: '#64748b', callback: v => 'R$' + (Math.abs(v) >= 1000 ? (v / 1000) + 'k' : v) }, grid: { color: 'rgba(148,163,184,.1)' } },
+        y1: { position: 'right', min: 0, max: 100, ticks: { color: '#f59e0b', callback: v => v + '%' }, grid: { drawOnChartArea: false } },
+      },
+    },
+  });
+}
+
+function renderParetoTabela() {
+  const r = PARETO; if (!r || r.vazio) return;
+  const busca = document.getElementById('ivPaBusca').value.trim().toLowerCase();
+  const classe = document.getElementById('ivPaClasse').value;
+  const lista = r.anuncios.filter(a =>
+    (!classe || (classe === 'p') === a.pareto) &&
+    (!busca || String(a.titulo).toLowerCase().includes(busca) || String(a.item_id).toLowerCase().includes(busca) || a.skus.some(s => String(s).toLowerCase().includes(busca))));
+  const LIM = 500;
+  document.getElementById('ivPaCount').textContent = `${lista.length} de ${r.total_anuncios} anúncio(s)${lista.length > LIM ? ` — mostrando os ${LIM} primeiros` : ''}`;
+  const tb = document.getElementById('ivPaTbody');
+  if (!lista.length) { tb.innerHTML = '<tr><td colspan="9" class="iv-empty">Nenhum anúncio com essa busca.</td></tr>'; return; }
+  const { date_from, date_to } = filtros();
+  tb.innerHTML = lista.slice(0, LIM).map(a => {
+    const sku = a.skus.length ? esc(a.skus[0]) + (a.skus.length > 1 ? ` <span class="iv-pa-mp">+${a.skus.length - 1}</span>` : '') : '—';
+    const verVendas = `financeiro-vendas-detalhadas.html?busca=${encodeURIComponent(a.item_id)}&loja=${encodeURIComponent(a.store_id)}&de=${encodeURIComponent(date_from)}&ate=${encodeURIComponent(date_to)}`;
+    const abrir = /^https?:\/\//i.test(a.link || '') ? `<a class="iv-pa-link" href="${esc(a.link)}" target="_blank" rel="noopener" title="Abrir o anúncio no marketplace"><i class="fas fa-up-right-from-square"></i> anúncio</a>` : '';
+    return `<tr class="${a.pareto ? 'iv-pa-p' : ''}">
+      <td><span class="iv-rank">${a.posicao}</span></td>
+      <td class="produto" title="${esc(a.titulo)}">${esc(a.titulo)}<div class="iv-pa-mp">${esc(a.marketplace || '')} · ${esc(a.item_id)}${abrir}<a class="iv-pa-link" href="${verVendas}" title="Ver as vendas deste anúncio em Vendas Detalhadas"><i class="fas fa-list"></i> vendas</a></div></td>
+      <td style="color:var(--text-muted);font-size:11px" title="${esc(a.skus.join(', '))}">${sku}</td>
+      <td>${esc(STORES[a.store_id] || '—')}</td>
+      <td class="num">${a.unidades}</td>
+      <td class="num">${BRL(a.faturamento)}</td>
+      <td class="num">${PCT(a.pct)}</td>
+      <td class="num">${PCT(a.pct_acum)}</td>
+      <td><span class="iv-pa-badge ${a.pareto ? 'p' : 'd'}">${a.pareto ? 'Pareto' : 'Demais anúncios'}</span></td>
+    </tr>`;
+  }).join('');
 }
 
 function carregarTudo() {

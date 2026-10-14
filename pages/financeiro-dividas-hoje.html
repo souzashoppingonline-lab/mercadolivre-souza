@@ -65,7 +65,7 @@
     /* Animação de pagamento: ✅ desenhado + "Pago!" + confete + card piscando verde */
     .dm-cel { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; background:rgba(10,12,16,.72); overflow:hidden; animation:dmFade .25s ease-out; }
     .dm-cel.saindo { animation:dmFadeOut .5s ease-in forwards; }
-    .dm-cel-box { position:relative; z-index:2; text-align:center; background:var(--bg-card); border:1px solid rgba(63,185,80,.5); border-radius:22px; padding:26px 30px 22px; max-width:300px; box-shadow:0 0 0 0 rgba(63,185,80,.5), 0 20px 60px rgba(0,0,0,.5); animation:dmPop .8s cubic-bezier(.2,1.4,.4,1), dmGlow 2.4s ease-out .4s; }
+    .dm-cel-box { position:relative; z-index:2; text-align:center; background:var(--bg-card); border:1px solid rgba(63,185,80,.5); border-radius:22px; padding:26px 30px 22px; max-width:300px; box-shadow:0 0 0 0 rgba(63,185,80,.5), 0 20px 60px rgba(0,0,0,.5); animation:dmPop .8s cubic-bezier(.2,1.4,.4,1), dmGlow 1.8s ease-out .4s 3; }
     .dm-cel svg { width:88px; height:88px; display:block; margin:0 auto 10px; }
     .dm-cel .circ { fill:none; stroke:#3fb950; stroke-width:5; stroke-dasharray:252; stroke-dashoffset:252; animation:dmDraw .9s ease-out .2s forwards; }
     .dm-cel .chk { fill:none; stroke:#3fb950; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:60; stroke-dashoffset:60; animation:dmDraw .6s ease-out 1s forwards; }
@@ -297,7 +297,7 @@ async function confirmarPagamento(id) {
 // ── Animação de pagamento ─────────────────────────────────────────────────
 // ✅ desenhado + "Pago!" + confete + vibração leve; o card pago pisca verde na
 // lista. Se não sobrou nada a pagar na lista escolhida → "Tudo pago! 🎉".
-// 💸 dinheiro voando de baixo pra cima. Fica 4s na tela (ou até tocar). Respeita "reduzir movimento" do celular.
+// 💸 dinheiro voando de baixo pra cima. Fica 6s na tela (ou até tocar). Respeita "reduzir movimento" do celular.
 const EMOJI_DINHEIRO = ['💸', '💵', '💰', '💸', '🤑'];
 const CORES_CONFETE = ['#3fb950', '#8b5cf6', '#f59e0b', '#60a5fa', '#f87171', '#facc15', '#34d399'];
 function celebrarPagamento(i, valor) {
@@ -313,12 +313,12 @@ function celebrarPagamento(i, valor) {
     const n = tudoPago ? 90 : 45;
     for (let k = 0; k < n; k++) {
       const cor = CORES_CONFETE[k % CORES_CONFETE.length];
-      const dur = (2.6 + Math.random() * 1.2).toFixed(2), atraso = (Math.random() * 0.8).toFixed(2);
+      const dur = (3.8 + Math.random() * 1.4).toFixed(2), atraso = (Math.random() * 1.2).toFixed(2);
       confete += `<i class="dm-conf" style="left:${(Math.random() * 100).toFixed(1)}%;background:${cor};--dx:${Math.round(Math.random() * 160 - 80)}px;--rot:${Math.round(Math.random() * 720 - 360)}deg;animation-duration:${dur}s;animation-delay:${atraso}s;${k % 3 === 0 ? 'border-radius:50%;width:8px;height:8px;' : ''}"></i>`;
     }
     const notas = tudoPago ? 22 : 12;
     for (let k = 0; k < notas; k++) {
-      const dur = (2.8 + Math.random() * 1).toFixed(2), atraso = (Math.random() * 0.9).toFixed(2);
+      const dur = (4 + Math.random() * 1.2).toFixed(2), atraso = (Math.random() * 1.4).toFixed(2);
       confete += `<span class="dm-din" style="left:${(Math.random() * 92).toFixed(1)}%;font-size:${26 + Math.round(Math.random() * 18)}px;--dx:${Math.round(Math.random() * 120 - 60)}px;--rot:${Math.round(Math.random() * 60 - 30)}deg;animation-duration:${dur}s;animation-delay:${atraso}s">${EMOJI_DINHEIRO[k % EMOJI_DINHEIRO.length]}</span>`;
     }
   }
@@ -332,7 +332,7 @@ function celebrarPagamento(i, valor) {
   const fechar = () => { if (!ov.isConnected) return; ov.classList.add('saindo'); setTimeout(() => ov.remove(), 500); };
   ov.addEventListener('click', fechar);
   document.body.appendChild(ov);
-  setTimeout(fechar, 4000);
+  setTimeout(fechar, 6000);
   const card = document.querySelector(`.dm-item[data-id="${CSS.escape(String(i.id))}"]`);
   if (card) { card.classList.add('recem-pago'); card.scrollIntoView({ block: 'nearest' }); }
 }

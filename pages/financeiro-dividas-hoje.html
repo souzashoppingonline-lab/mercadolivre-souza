@@ -64,28 +64,30 @@
     .dm-sheet .erro { color:#f87171; font-size:12.5px; margin-top:8px; min-height:16px; }
     /* Animação de pagamento: ✅ desenhado + "Pago!" + confete + card piscando verde */
     .dm-cel { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; background:rgba(10,12,16,.72); overflow:hidden; animation:dmFade .25s ease-out; }
-    .dm-cel.saindo { animation:dmFadeOut .35s ease-in forwards; }
-    .dm-cel-box { position:relative; z-index:2; text-align:center; background:var(--bg-card); border:1px solid rgba(63,185,80,.5); border-radius:22px; padding:26px 30px 22px; max-width:300px; box-shadow:0 0 0 0 rgba(63,185,80,.5), 0 20px 60px rgba(0,0,0,.5); animation:dmPop .45s cubic-bezier(.2,1.4,.4,1), dmGlow 1.6s ease-out .2s; }
+    .dm-cel.saindo { animation:dmFadeOut .5s ease-in forwards; }
+    .dm-cel-box { position:relative; z-index:2; text-align:center; background:var(--bg-card); border:1px solid rgba(63,185,80,.5); border-radius:22px; padding:26px 30px 22px; max-width:300px; box-shadow:0 0 0 0 rgba(63,185,80,.5), 0 20px 60px rgba(0,0,0,.5); animation:dmPop .8s cubic-bezier(.2,1.4,.4,1), dmGlow 2.4s ease-out .4s; }
     .dm-cel svg { width:88px; height:88px; display:block; margin:0 auto 10px; }
-    .dm-cel .circ { fill:none; stroke:#3fb950; stroke-width:5; stroke-dasharray:252; stroke-dashoffset:252; animation:dmDraw .5s ease-out .1s forwards; }
-    .dm-cel .chk { fill:none; stroke:#3fb950; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:60; stroke-dashoffset:60; animation:dmDraw .35s ease-out .5s forwards; }
+    .dm-cel .circ { fill:none; stroke:#3fb950; stroke-width:5; stroke-dasharray:252; stroke-dashoffset:252; animation:dmDraw .9s ease-out .2s forwards; }
+    .dm-cel .chk { fill:none; stroke:#3fb950; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:60; stroke-dashoffset:60; animation:dmDraw .6s ease-out 1s forwards; }
     .dm-cel h2 { margin:0; font-size:26px; color:#3fb950; letter-spacing:.5px; }
     .dm-cel .nome { font-size:13px; color:var(--text-muted); margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .dm-cel .valor { font-size:22px; font-weight:800; margin-top:4px; }
     .dm-cel .extra { font-size:12px; color:var(--text-muted); margin-top:8px; }
     .dm-conf { position:absolute; top:-12px; width:9px; height:14px; border-radius:2px; z-index:1; animation:dmCai linear forwards; }
-    .dm-item.recem-pago { animation:dmFlash 1.6s ease-out; }
+    .dm-din { position:absolute; bottom:-60px; z-index:1; line-height:1; pointer-events:none; animation:dmVoa ease-in-out forwards; }
+    .dm-item.recem-pago { animation:dmFlash 2.5s ease-out; }
     @keyframes dmFade { from { opacity:0 } to { opacity:1 } }
     @keyframes dmFadeOut { to { opacity:0 } }
     @keyframes dmPop { 0% { transform:scale(.4); opacity:0 } 70% { transform:scale(1.06); opacity:1 } 100% { transform:scale(1) } }
     @keyframes dmGlow { 0% { box-shadow:0 0 0 0 rgba(63,185,80,.55), 0 20px 60px rgba(0,0,0,.5) } 100% { box-shadow:0 0 0 28px rgba(63,185,80,0), 0 20px 60px rgba(0,0,0,.5) } }
     @keyframes dmDraw { to { stroke-dashoffset:0 } }
     @keyframes dmCai { 0% { transform:translate3d(0,0,0) rotate(0) } 100% { transform:translate3d(var(--dx),110vh,0) rotate(var(--rot)) } }
+    @keyframes dmVoa { 0% { transform:translate3d(0,0,0) rotate(0) scale(.7); opacity:0 } 10% { opacity:1 } 50% { transform:translate3d(calc(var(--dx) * -.6),-55vh,0) rotate(calc(var(--rot) * -.5)) scale(1.1) } 85% { opacity:1 } 100% { transform:translate3d(var(--dx),-115vh,0) rotate(var(--rot)) scale(1); opacity:0 } }
     @keyframes dmFlash { 0%,30% { background:rgba(63,185,80,.35); box-shadow:0 0 0 3px rgba(63,185,80,.55) } 100% { background:var(--bg-card); box-shadow:none } }
     @media (prefers-reduced-motion: reduce) {
       .dm-cel, .dm-cel-box, .dm-item.recem-pago { animation:none !important; }
       .dm-cel .circ, .dm-cel .chk { animation:none; stroke-dashoffset:0; }
-      .dm-conf { display:none; }
+      .dm-conf, .dm-din { display:none; }
     }
   </style>
 </head>
@@ -295,7 +297,8 @@ async function confirmarPagamento(id) {
 // ── Animação de pagamento ─────────────────────────────────────────────────
 // ✅ desenhado + "Pago!" + confete + vibração leve; o card pago pisca verde na
 // lista. Se não sobrou nada a pagar na lista escolhida → "Tudo pago! 🎉".
-// Some sozinha em ~2,2s ou ao tocar. Respeita "reduzir movimento" do celular.
+// 💸 dinheiro voando de baixo pra cima. Fica 4s na tela (ou até tocar). Respeita "reduzir movimento" do celular.
+const EMOJI_DINHEIRO = ['💸', '💵', '💰', '💸', '🤑'];
 const CORES_CONFETE = ['#3fb950', '#8b5cf6', '#f59e0b', '#60a5fa', '#f87171', '#facc15', '#34d399'];
 function celebrarPagamento(i, valor) {
   const reduzir = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -310,8 +313,13 @@ function celebrarPagamento(i, valor) {
     const n = tudoPago ? 90 : 45;
     for (let k = 0; k < n; k++) {
       const cor = CORES_CONFETE[k % CORES_CONFETE.length];
-      const dur = (1.4 + Math.random() * 1.4).toFixed(2), atraso = (Math.random() * 0.5).toFixed(2);
+      const dur = (2.6 + Math.random() * 1.2).toFixed(2), atraso = (Math.random() * 0.8).toFixed(2);
       confete += `<i class="dm-conf" style="left:${(Math.random() * 100).toFixed(1)}%;background:${cor};--dx:${Math.round(Math.random() * 160 - 80)}px;--rot:${Math.round(Math.random() * 720 - 360)}deg;animation-duration:${dur}s;animation-delay:${atraso}s;${k % 3 === 0 ? 'border-radius:50%;width:8px;height:8px;' : ''}"></i>`;
+    }
+    const notas = tudoPago ? 22 : 12;
+    for (let k = 0; k < notas; k++) {
+      const dur = (2.8 + Math.random() * 1).toFixed(2), atraso = (Math.random() * 0.9).toFixed(2);
+      confete += `<span class="dm-din" style="left:${(Math.random() * 92).toFixed(1)}%;font-size:${26 + Math.round(Math.random() * 18)}px;--dx:${Math.round(Math.random() * 120 - 60)}px;--rot:${Math.round(Math.random() * 60 - 30)}deg;animation-duration:${dur}s;animation-delay:${atraso}s">${EMOJI_DINHEIRO[k % EMOJI_DINHEIRO.length]}</span>`;
     }
   }
   ov.innerHTML = confete + `<div class="dm-cel-box">
@@ -321,10 +329,10 @@ function celebrarPagamento(i, valor) {
       <div class="valor">${valor > 0 ? BRL(valor) : ''}</div>
       <div class="extra">${tudoPago ? 'Nenhuma conta a pagar nesta lista 🙌' : `Faltam ${faltam} conta(s) nesta lista`} · lançado no Fluxo de Caixa</div>
     </div>`;
-  const fechar = () => { if (!ov.isConnected) return; ov.classList.add('saindo'); setTimeout(() => ov.remove(), 350); };
+  const fechar = () => { if (!ov.isConnected) return; ov.classList.add('saindo'); setTimeout(() => ov.remove(), 500); };
   ov.addEventListener('click', fechar);
   document.body.appendChild(ov);
-  setTimeout(fechar, tudoPago ? 3000 : 2200);
+  setTimeout(fechar, 4000);
   const card = document.querySelector(`.dm-item[data-id="${CSS.escape(String(i.id))}"]`);
   if (card) { card.classList.add('recem-pago'); card.scrollIntoView({ block: 'nearest' }); }
 }

@@ -9,6 +9,7 @@
 // (ver staffAuth.js). Ver .claude/modules.md.
 const express = require('express');
 const supa = require('../db/supabaseFin');
+const pareto = require('../pareto');
 
 const router = express.Router();
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -456,6 +457,41 @@ router.get('/alertas-queda', async (req, res) => {
     if (!date_from || !date_to) return res.status(400).json({ error: 'date_from e date_to são obrigatórios' });
     const r = await detectarQuedasProdutos(date_from, date_to, store_id);
     res.json(r);
+  } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// GET /api/bi/vendas/pareto?date_from&date_to&store_id — aba "Princípio de
+// Pareto": anúncios (store_id + item_id) que somam ≥80% do faturamento. Cálculo
+// em server/src/pareto.js (puro, testado em test/pareto.test.js). Mesma base
+// das outras abas: sales_entries_detail sem canceladas (loadDetalhe). Carrega
+// TODAS as lojas do período pra deduplicar venda importada em 2 lojas e só
+// depois aplica o filtro de loja. `faturamento_fonte` (soma crua do filtro) e
+// `duplicadas` permitem reconciliar: fonte − duplicadas = total + não atribuído.
+router.get('/pareto', async (req, res) => {
+  try {
+    const { date_from = '', date_to = '', store_id = '' } = req.query;
+    const [todas, resumoDiario] = await Promise.all([
+      loadDetalhe(date_from, date_to, ''),
+      loadAds(date_from, date_to, ''), // sales_entries = resumo diário do Vendas & Custos
+    ]);
+    const daLoja = rows => (store_id ? rows.filter(r => String(r.store_id) === String(store_id)) : rows);
+    const { rows: dedup, removidas } = pareto.deduplicarEntreLojas(todas);
+    const fonte = daLoja(todas);
+    const remov = daLoja(removidas);
+    const base = daLoja(dedup);
+    const r = pareto.calcularPareto(base);
+    res.json({
+      ...r,
+      metrica: 'Faturamento (coluna Faturamento do Metrizap, vendas não canceladas)',
+      vendas_custos: pareto.conciliarComResumoDiario(daLoja(resumoDiario), base),
+      faturamento_fonte: round2(fonte.reduce((s, x) => s + (Number(x.faturamento) || 0), 0)),
+      linhas_fonte: fonte.length,
+      duplicadas: { linhas: remov.length, faturamento: round2(remov.reduce((s, x) => s + (Number(x.faturamento) || 0), 0)),
+        pedidos: [...new Set(remov.map(x => x.pedido))] },
+    });
   } catch (e) {
     if (e.code === 'NOT_CONFIGURED') return res.status(503).json({ error: e.message });
     res.status(e.status || 500).json({ error: e.message });

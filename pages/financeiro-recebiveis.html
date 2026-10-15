@@ -98,8 +98,28 @@ const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const DOW=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
-const EMPRESAS=['UNIFULL','TOP MIX','R SOUZA','SHOPEE'];
+// Empresas = tabela `stores` do Supabase (a MESMA lista do Fluxo de Caixa).
+// As 4 originais ficam primeiro, na ordem de sempre; as novas entram depois
+// (por data de cadastro). Se a leitura falhar, usa só as 4 originais.
+const EMPRESAS_BASE=['UNIFULL','TOP MIX','R SOUZA','SHOPEE'];
+let EMPRESAS=EMPRESAS_BASE.slice();
 const EMPCOR={'UNIFULL':'#3fb950','TOP MIX':'#f59e0b','R SOUZA':'#f97316','SHOPEE':'#ec4899'};
+const CORES_EXTRA=['#06b6d4','#a855f7','#84cc16','#eab308','#60a5fa','#f43f5e'];
+async function carregarEmpresas(){
+  const r=await DB.getFinanceiroDados('stores',1000);
+  if(!r||r.error||!(r.rows||[]).length) return;
+  const lojas=r.rows.filter(x=>x.ativa!==false&&String(x.name||'').trim())
+    .sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
+  const nomes=lojas.map(x=>String(x.name).trim());
+  const base=EMPRESAS_BASE.filter(e=>nomes.some(n=>n.toUpperCase()===e));
+  EMPRESAS=base.concat(nomes.filter(n=>!base.includes(n.toUpperCase())));
+  let k=0; lojas.forEach(x=>{ const n=String(x.name).trim(); if(!EMPCOR[n]) EMPCOR[n]=/^#[0-9a-f]{6}$/i.test(x.goal_card_color||'')?x.goal_card_color:CORES_EXTRA[k++%CORES_EXTRA.length]; });
+}
+function preencherEmpresas(){
+  const f=document.getElementById('rcEmp'), atual=f.value;
+  f.innerHTML='<option value="">Todas Empresas</option>'+EMPRESAS.map(e=>`<option>${esc(e)}</option>`).join(''); f.value=atual;
+  document.getElementById('aEmp').innerHTML=EMPRESAS.map(e=>`<option>${esc(e)}</option>`).join('');
+}
 const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
 const hojeISO=()=>new Date().toISOString().slice(0,10);
 
@@ -172,7 +192,7 @@ function atualizarAviso(){
   const box = document.getElementById('aAviso'); if (!box) return;
   const d = document.getElementById('aData').value || hojeISO();
   const doDia = RECS.filter(r => diaISO(r.date) === diaISO(d));
-  if (!doDia.length) { box.innerHTML = `Nenhuma empresa lançada em <b>${fmtBR(d)}</b> — as 4 estão liberadas.`; return; }
+  if (!doDia.length) { box.innerHTML = `Nenhuma empresa lançada em <b>${fmtBR(d)}</b> — as ${EMPRESAS.length} estão liberadas.`; return; }
   const usadas = doDia.map(r => `<b>${esc((r.empresa || '—').trim())}</b> ${BRL(+r.value || 0)}`).join(' · ');
   const livres = EMPRESAS.filter(e => !doDia.some(r => empKey(r.empresa) === empKey(e)));
   box.innerHTML = `Já lançado em ${fmtBR(d)}: ${usadas}.` + (livres.length
@@ -274,12 +294,11 @@ function init(){
   const now=new Date(), sm=document.getElementById('rcMes'), sa=document.getElementById('rcAno');
   MESES.forEach((mm,i)=>sm.insertAdjacentHTML('beforeend',`<option value="${i+1}">${mm}</option>`)); sm.value=now.getMonth()+1;
   for(let yy=now.getFullYear();yy>=now.getFullYear()-4;yy--) sa.insertAdjacentHTML('beforeend',`<option value="${yy}">${yy}</option>`); sa.value=now.getFullYear();
-  document.getElementById('rcEmp').innerHTML='<option value="">Todas Empresas</option>'+EMPRESAS.map(e=>`<option>${e}</option>`).join('');
-  document.getElementById('aEmp').innerHTML=EMPRESAS.map(e=>`<option>${e}</option>`).join('');
+  preencherEmpresas();
   document.getElementById('aData').value=now.toISOString().slice(0,10);
   [sm,sa,document.getElementById('rcEmp')].forEach(s=>s.addEventListener('change',render));
   document.getElementById('aData').addEventListener('change', atualizarAviso); // trava visível antes de gravar
-  load();
+  carregarEmpresas().then(()=>{ preencherEmpresas(); load(); });
 }
 init();
 </script>

@@ -226,7 +226,40 @@
     };
   }
 
-  const API = { calcular, textoLembrete, listarPeriodo, somaDias, textoWhatsapp, textoWhatsappLista, textoNotificacao, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
+  // Calendário do mês (aba "📆 Mês" da página de celular): por dia, quanto
+  // falta pagar / já pago; semanas de domingo a sábado (dias fora do mês ficam
+  // vazios); `peso` 0..1 = a pagar do dia ÷ o dia mais pesado do mês (base da
+  // cor verde→vermelho). mes: 'YYYY-MM'. Mesmos itens de listarPeriodo.
+  function calendarioMes({ boletos = [], parcelas = [], cartoes = [], hoje, mes }) {
+    const ini = `${mes}-01`;
+    const d0 = new Date(`${ini}T12:00:00`);
+    const fim = somaDias(`${somaDias(ini, 32).slice(0, 7)}-01`, -1);
+    const itens = listarPeriodo({ boletos, parcelas, cartoes, hoje, de: ini, ate: fim });
+    const porDia = {};
+    itens.forEach(i => {
+      const d = porDia[i.date] = porDia[i.date] || { aPagar: 0, pago: 0, n: 0, nAbr: 0 };
+      d.n++;
+      if (i.pago) d.pago += i.valor; else { d.aPagar += i.valor; d.nAbr++; }
+    });
+    const max = Math.max(0, ...Object.values(porDia).map(d => d.aPagar));
+    const semanas = [];
+    for (let dt = somaDias(ini, -d0.getDay()); dt <= fim; dt = somaDias(dt, 7)) {
+      const dias = [];
+      for (let k = 0; k < 7; k++) {
+        const date = somaDias(dt, k), noMes = date >= ini && date <= fim;
+        const x = porDia[date] || { aPagar: 0, pago: 0, n: 0, nAbr: 0 };
+        dias.push(noMes ? { date, ...x, peso: max > 0 ? x.aPagar / max : 0, atrasada: x.nAbr > 0 && date < hoje, tudoPago: x.n > 0 && !x.nAbr }
+          : { date, foraDoMes: true });
+      }
+      const dm = dias.filter(x => !x.foraDoMes);
+      semanas.push({ de: dm[0].date, ate: dm[dm.length - 1].date, aPagar: dm.reduce((t, x) => t + x.aPagar, 0), nAbr: dm.reduce((t, x) => t + x.nAbr, 0), dias });
+    }
+    const maxSem = Math.max(0, ...semanas.map(w => w.aPagar));
+    semanas.forEach(w => { w.maisPesada = maxSem > 0 && w.aPagar === maxSem; w.peso = maxSem > 0 ? w.aPagar / maxSem : 0; });
+    return { mes, ini, fim, max, semanas, itens };
+  }
+
+  const API = { calcular, calendarioMes, textoLembrete, listarPeriodo, somaDias, textoWhatsapp, textoWhatsappLista, textoNotificacao, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
   // Navegador (páginas) e Node (worker.js reusa o cálculo pro push das 07:00).
   if (typeof window !== 'undefined') window.DividasDia = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;

@@ -30,6 +30,43 @@
     .dm-sheet .bloco button { margin-top:10px; width:100%; border:0; border-radius:10px; padding:12px; font-size:14px; font-weight:800; cursor:pointer; background:#3fb950; color:#06281a; }
     .dm-sheet .bloco button.sec { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border); }
     .dm-sheet .bloco .lado2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    /* Botão fino "Calendário do mês" embaixo das 3 abas — mesmo visual da barra de progresso */
+    .dm-mesbtn { display:block; width:100%; box-sizing:border-box; text-align:left; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:8px 12px 9px; margin:0 0 12px; color:var(--text-main); font:inherit; cursor:pointer; }
+    .dm-mesbtn .t { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; margin-bottom:6px; }
+    .dm-mesbtn .t b { margin-left:auto; color:#f59e0b; white-space:nowrap; }
+    .dm-mesbtn .t i { font-style:normal; color:var(--text-muted); font-size:14px; }
+    .dm-mesbtn .trilho { height:6px; border-radius:999px; background:var(--bg-card2); overflow:hidden; }
+    .dm-mesbtn .trilho span { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#2ea043,#3fb950,#56d364); }
+    .dm-mesbtn.on { border-color:#f59e0b; box-shadow:inset 0 0 0 1px #f59e0b; }
+    .dm-mesbtn.on .t b { color:#3fb950; }
+    /* Calendário do mês (botão 📆 Calendário do mês): cor = peso do dia (verde leve → vermelho pesado) */
+    .dm-cal { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:10px; margin-bottom:12px; }
+    .dm-cal .cab { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .dm-cal .cab b { font-size:15px; }
+    .dm-cal .cab button { width:38px; height:34px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card2); color:var(--text-main); font-size:18px; cursor:pointer; }
+    .dm-cal .nomes, .dm-cal .grade { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+    .dm-cal .nomes span { text-align:center; font-size:10.5px; color:var(--text-muted); font-weight:700; padding-bottom:2px; }
+    .dm-cal .dia { position:relative; min-height:48px; border-radius:9px; border:1px solid var(--border); background:var(--bg-card2); color:var(--text-main); padding:3px 2px 4px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:space-between; font:inherit; }
+    .dm-cal .dia.vazio { visibility:hidden; }
+    .dm-cal .dia .n { font-size:11px; font-weight:700; color:var(--text-muted); }
+    .dm-cal .dia .v { font-size:11.5px; font-weight:800; white-space:nowrap; }
+    .dm-cal .dia.pesa { background:hsla(var(--h),78%,45%,var(--a)); border-color:hsl(var(--h),70%,48%); }
+    .dm-cal .dia.pesa .n { color:var(--text-main); }
+    .dm-cal .dia.ok .v { color:#3fb950; }
+    .dm-cal .dia.hoje { box-shadow:inset 0 0 0 2px #f59e0b; }
+    .dm-cal .dia.sel { box-shadow:0 0 0 2px var(--text-main); }
+    .dm-cal .dia.hoje.sel { box-shadow:inset 0 0 0 2px #f59e0b, 0 0 0 2px var(--text-main); }
+    .dm-cal .dia .flag { position:absolute; top:-5px; right:-4px; width:15px; height:15px; border-radius:50%; font-size:10px; font-weight:900; line-height:15px; text-align:center; background:#f87171; color:#1a1d23; }
+    .dm-cal .leg { display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--text-muted); margin-top:8px; flex-wrap:wrap; }
+    .dm-cal .leg i { display:inline-block; width:70px; height:8px; border-radius:99px; background:linear-gradient(90deg,hsl(120,70%,42%),hsl(60,80%,45%),hsl(0,75%,50%)); }
+    .dm-sems { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:10px 12px; margin-bottom:12px; }
+    .dm-sems .tit { font-size:12px; font-weight:800; color:var(--text-muted); margin-bottom:6px; }
+    .dm-sem { display:grid; grid-template-columns:104px 1fr auto; gap:8px; align-items:center; font-size:12px; padding:4px 0; }
+    .dm-sem > span:first-child { white-space:nowrap; }
+    .dm-sem .bar { height:9px; border-radius:99px; background:var(--bg-card2); overflow:hidden; }
+    .dm-sem .bar span { display:block; height:100%; border-radius:99px; background:hsl(var(--h),70%,48%); }
+    .dm-sem b { white-space:nowrap; }
+    .dm-sem.pesada { color:#f87171; font-weight:800; }
     .dm-emp { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; margin:10px 2px 6px; }
     .dm-item { position:relative; transition:opacity .5s; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid var(--c); border-radius:12px; padding:10px 12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; }
     .dm-item .info { flex:1; min-width:0; }
@@ -43,7 +80,7 @@
     .dm-atr { display:flex; align-items:center; gap:10px; background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.45); color:#f87171; border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:13px; font-weight:700; cursor:pointer; }
     .dm-atr b { margin-left:auto; font-size:15px; }
     .dm-atr.on { background:#f87171; color:#1a1d23; }
-    .dm-tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:5px; margin-bottom:12px; }
+    .dm-tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:5px; margin-bottom:8px; }
     .dm-tabs button { border:0; background:transparent; color:var(--text-muted); border-radius:10px; padding:11px 4px; font-size:13.5px; font-weight:800; cursor:pointer; line-height:1.15; }
     .dm-tabs button small { display:block; font-size:10.5px; font-weight:600; margin-top:2px; }
     .dm-tabs button.on { background:#f59e0b; color:#1a1d23; }
@@ -160,8 +197,10 @@
   </div>
   <div id="dmAtr"></div>
   <div class="dm-tabs" id="dmTabs"></div>
+  <div id="dmMesBtn"></div>
   <div class="dm-res" id="dmRes"></div>
   <div id="dmProg"></div>
+  <div id="dmCal"></div>
   <div id="dmLista"><div class="dm-vazio">Carregando…</div></div>
   <div class="dm-msg" id="dmMsg"></div>
 </div>
@@ -225,22 +264,46 @@ const VISOES = {
   hoje:      { rotulo: 'Hoje',          de: h => h,                  ate: h => h },
   amanha:    { rotulo: 'Amanhã',        de: h => DividasDia.somaDias(h, 1), ate: h => DividasDia.somaDias(h, 1) },
   proximos:  { rotulo: 'Próx. 3 dias',  de: h => DividasDia.somaDias(h, 1), ate: h => DividasDia.somaDias(h, 3) },
+  // Calendário: mês escolhido nas setas ‹ › (mesSel); a lista mostra o dia tocado (diaSel).
+  // Não vira aba: tem o botão fino próprio embaixo das 3 abas (ver render).
+  mes:       { rotulo: '📆 Mês', de: () => `${mesSel}-01`, ate: () => fimDoMes(mesSel), sub: () => nomeMes(mesSel, true), semAba: true },
 };
+let mesSel = null, diaSel = null;
+const fimDoMes = m => DividasDia.somaDias(`${DividasDia.somaDias(`${m}-01`, 32).slice(0, 7)}-01`, -1);
+const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const nomeMes = (m, curto) => { const [y, mm] = m.split('-'), n = MESES_PT[Number(mm) - 1]; return curto ? `${n.slice(0, 3)}/${y.slice(2)}` : `${n[0].toUpperCase()}${n.slice(1)} ${y}`; };
 let visao = 'hoje', DADOS = null, CONTAS = [], CONTAEMP = [], ITENS = {};
 const COR = { pago: '#3fb950', pend: '#f59e0b', atr: '#f87171' };
 const diaSemana = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
-const TITULO_WA = { hoje: '📅 *DÍVIDAS DE HOJE*', amanha: '⏭️ *DÍVIDAS DE AMANHÃ*', proximos: '🗓️ *DÍVIDAS DOS PRÓXIMOS 3 DIAS*', atrasadas: '🚨 *DÍVIDAS ATRASADAS*' };
-const ROTULO_WA = { hoje: 'Hoje', amanha: 'Amanhã', proximos: 'Próx. 3 dias', atrasadas: 'Atrasadas' };
+const TITULO_WA = { mes: '📆 *DÍVIDAS DO MÊS*', hoje: '📅 *DÍVIDAS DE HOJE*', amanha: '⏭️ *DÍVIDAS DE AMANHÃ*', proximos: '🗓️ *DÍVIDAS DOS PRÓXIMOS 3 DIAS*', atrasadas: '🚨 *DÍVIDAS ATRASADAS*' };
+const ROTULO_WA = { mes: 'Mês', hoje: 'Hoje', amanha: 'Amanhã', proximos: 'Próx. 3 dias', atrasadas: 'Atrasadas' };
 function cabecalhoVisao() {
   const h = R.hoje, fmt = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
   let periodo;
   if (visao === 'atrasadas') periodo = `vencidas até ${ddmm(DividasDia.somaDias(h, -1))}`;
+  else if (visao === 'mes') periodo = nomeMes(mesSel);
   else { const v = VISOES[visao], de = v.de(h), ate = v.ate(h); periodo = de === ate ? fmt(de) : `${fmt(de)} a ${fmt(ate)}`; }
   return { titulo: TITULO_WA[visao], periodo };
 }
 
-function trocarVisao(v) { visao = v; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function trocarVisao(v) {
+  // Abrir o calendário: dia de hoje já selecionado (se o mês mostrado for o atual).
+  // Sair dele: volta pro mês atual (é o que o botão fino mostra).
+  if (v === 'mes') diaSel = R.hoje.startsWith(mesSel) ? R.hoje : null;
+  else mesSel = R.hoje.slice(0, 7);
+  visao = v; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function mudarMes(delta) {
+  const [y, m] = mesSel.split('-').map(Number), d = new Date(y, m - 1 + delta, 1);
+  mesSel = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  diaSel = R.hoje.startsWith(mesSel) ? R.hoje : null;
+  render();
+}
+function escolherDia(d) {
+  diaSel = diaSel === d ? null : d; render();
+  if (diaSel) document.getElementById('dmLista').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 function itensDaVisao() {
   const h = R.hoje;
@@ -256,11 +319,19 @@ function render() {
   document.getElementById('dmAtr').innerHTML = atr.length
     ? `<div class="dm-atr${visao === 'atrasadas' ? ' on' : ''}" onclick="trocarVisao('${visao === 'atrasadas' ? 'hoje' : 'atrasadas'}')">⚠️ ${atr.length} atrasada(s) ${visao === 'atrasadas' ? '— toque pra voltar' : '— toque pra ver'}<b>${BRL(R.totais.atrasadas)}</b></div>`
     : '';
-  document.getElementById('dmTabs').innerHTML = Object.entries(VISOES).map(([k, v]) => {
+  if (!mesSel) mesSel = h.slice(0, 7);
+  document.getElementById('dmTabs').innerHTML = Object.entries(VISOES).filter(([, v]) => !v.semAba).map(([k, v]) => {
     const de = v.de(h), ate = v.ate(h);
-    const sub = de === ate ? ddmm(de) : `${ddmm(de)} a ${ddmm(ate)}`;
+    const sub = v.sub ? v.sub(h) : de === ate ? ddmm(de) : `${ddmm(de)} a ${ddmm(ate)}`;
     return `<button class="${visao === k ? 'on' : ''}" onclick="trocarVisao('${k}')">${v.rotulo}<small>${sub}</small></button>`;
   }).join('');
+  // Botão fino do calendário: mês corrente (ou o escolhido nas setas), quanto
+  // falta pagar nele e a barra de quanto já foi pago — mesmo visual de dmProg.
+  const mesBtn = DividasDia.listarPeriodo({ ...DADOS, hoje: h, de: `${mesSel}-01`, ate: fimDoMes(mesSel) });
+  const mPago = mesBtn.filter(i => i.pago).reduce((t, i) => t + i.valor, 0), mTot = mesBtn.reduce((t, i) => t + i.valor, 0);
+  document.getElementById('dmMesBtn').innerHTML = `<button class="dm-mesbtn${visao === 'mes' ? ' on' : ''}" onclick="trocarVisao('${visao === 'mes' ? 'hoje' : 'mes'}')">
+      <div class="t">📆 Calendário <span style="color:var(--text-muted);font-weight:600">· ${nomeMes(mesSel, true)}</span><b>${BRL(mTot - mPago)} a pagar</b><i>${visao === 'mes' ? '✕' : '›'}</i></div>
+      <div class="trilho"><span style="width:${mTot > 0 ? Math.round(mPago / mTot * 100) : 0}%"></span></div></button>`;
 
   document.getElementById('dmWaBtn').innerHTML = `<i class="fab fa-whatsapp"></i> Enviar "${ROTULO_WA[visao]}" no WhatsApp`;
   const itens = itensDaVisao();
@@ -275,6 +346,8 @@ function render() {
   pintarResumo(res, true);
 
   const lista = document.getElementById('dmLista');
+  document.getElementById('dmCal').innerHTML = visao === 'mes' ? htmlCalendario() : '';
+  if (visao === 'mes') { lista.innerHTML = htmlDiaEscolhido(); return; }
   if (!itens.length) { lista.innerHTML = `<div class="dm-vazio">Nenhuma dívida ${visao === 'atrasadas' ? 'atrasada' : 'neste período'} ✅</div>`; return; }
   // Dentro de cada empresa: a pagar primeiro, pagas no fim (sort estável).
   const porEmpresa = l => DividasDia.agruparPorEmpresa(l).map(([emp, g]) => `<div class="dm-emp">${esc(emp)}</div>` + g.slice().sort((a, b) => (a.pago ? 1 : 0) - (b.pago ? 1 : 0)).map(item).join('')).join('');
@@ -285,6 +358,43 @@ function render() {
   } else {
     lista.innerHTML = porEmpresa(itens);
   }
+}
+
+// ── Calendário do mês ───────────────────────────────────────────────────────
+// Cor do dia = peso (a pagar do dia ÷ dia mais pesado do mês): verde → amarelo
+// → vermelho. Cálculo em DividasDia.calendarioMes (mesmos itens das outras abas).
+const valorCurto = v => v >= 10000 ? `${Math.round(v / 1000)}k` : v >= 1000 ? `${(v / 1000).toFixed(1).replace('.', ',')}k` : `${Math.round(v)}`;
+const corPeso = p => ({ h: Math.round(120 * (1 - p)), a: (0.22 + 0.5 * p).toFixed(2) });
+function htmlCalendario() {
+  const c = DividasDia.calendarioMes({ ...DADOS, hoje: R.hoje, mes: mesSel });
+  const celula = d => {
+    if (d.foraDoMes) return '<span class="dia vazio"></span>';
+    const cls = ['dia', d.aPagar > 0 ? 'pesa' : '', d.tudoPago ? 'ok' : '', d.date === R.hoje ? 'hoje' : '', d.date === diaSel ? 'sel' : ''].filter(Boolean).join(' ');
+    const { h, a } = corPeso(d.peso);
+    const v = d.aPagar > 0 ? valorCurto(d.aPagar) : d.tudoPago ? '✓' : '';
+    return `<button class="${cls}" style="--h:${h};--a:${a}" onclick="escolherDia('${d.date}')" title="${ddmm(d.date)}: ${d.aPagar > 0 ? BRL(d.aPagar) + ' a pagar' : d.tudoPago ? 'tudo pago' : 'sem contas'}">
+      <span class="n">${Number(d.date.slice(8))}</span><span class="v">${v}</span>${d.atrasada ? '<span class="flag">!</span>' : ''}</button>`;
+  };
+  const semanas = c.semanas.map(w => {
+    const { h } = corPeso(w.peso);
+    return `<div class="dm-sem${w.maisPesada ? ' pesada' : ''}"><span>${w.maisPesada ? '🔥 ' : ''}${ddmm(w.de)}–${ddmm(w.ate)}</span>
+      <span class="bar"><span style="width:${Math.max(w.aPagar > 0 ? 4 : 0, Math.round(w.peso * 100))}%;--h:${h}"></span></span>
+      <b>${w.aPagar > 0 ? `${BRL(w.aPagar)} · ${w.nAbr}` : '✓'}</b></div>`;
+  }).join('');
+  return `<div class="dm-cal">
+      <div class="cab"><button onclick="mudarMes(-1)" aria-label="Mês anterior">‹</button><b>${nomeMes(mesSel)}</b><button onclick="mudarMes(1)" aria-label="Próximo mês">›</button></div>
+      <div class="nomes">${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(x => `<span>${x}</span>`).join('')}</div>
+      <div class="grade">${c.semanas.map(w => w.dias.map(celula).join('')).join('')}</div>
+      <div class="leg">leve <i></i> pesado · a pagar por dia (k = mil) · <b style="color:#f87171">!</b> atrasada · <b style="color:#3fb950">✓</b> tudo pago</div>
+    </div>
+    <div class="dm-sems"><div class="tit">A PAGAR POR SEMANA</div>${semanas}</div>`;
+}
+function htmlDiaEscolhido() {
+  if (!diaSel) return '<div class="dm-vazio">👆 Toque num dia do calendário para ver e pagar as contas dele.</div>';
+  const doDia = DividasDia.listarPeriodo({ ...DADOS, hoje: R.hoje, de: diaSel, ate: diaSel });
+  const cab = `<div class="dm-dia">${diaSemana(diaSel)}<span>${BRL(doDia.reduce((t, i) => t + i.valor, 0))}</span></div>`;
+  if (!doDia.length) return cab + `<div class="dm-vazio">Nenhuma conta em ${ddmm(diaSel)} ✅</div>`;
+  return cab + DividasDia.agruparPorEmpresa(doDia).map(([emp, g]) => `<div class="dm-emp">${esc(emp)}</div>` + g.slice().sort((a, b) => (a.pago ? 1 : 0) - (b.pago ? 1 : 0)).map(item).join('')).join('');
 }
 
 // Resumo/progresso da visão atual (também usado pra animar o antes → depois).
@@ -398,7 +508,7 @@ const EMOJI_DINHEIRO = ['💸', '💵', '💰', '💸', '🤑'];
 const CORES_CONFETE = ['#3fb950', '#8b5cf6', '#f59e0b', '#60a5fa', '#f87171', '#facc15', '#34d399'];
 const FRASES = ['Mandou bem! 💪', 'Menos uma! 🔥', 'Boleto vencido? Hoje não! 😎', 'Conta paga, mente tranquila 😌', 'Pagou, riscou, zerou! ✍️', 'Uma a menos pra se preocupar 🙌', 'Show! O caixa agradece 💰', 'Organização é tudo! 📈'];
 const FRASES_TUDO = ['Zerou tudo! Você é fera 🏆', 'Nenhuma pendência, que orgulho! 🥇', 'Missão cumprida! 🚀'];
-const ZERADO = { hoje: 'Dia zerado!', amanha: 'Amanhã zerado!', proximos: '3 dias zerados!', atrasadas: 'Atrasadas zeradas!' };
+const ZERADO = { mes: 'Mês zerado!', hoje: 'Dia zerado!', amanha: 'Amanhã zerado!', proximos: '3 dias zerados!', atrasadas: 'Atrasadas zeradas!' };
 const sorteia = l => l[Math.floor(Math.random() * l.length)];
 const vibrar = p => { try { if (navigator.vibrate) navigator.vibrate(p); } catch (_) {} };
 

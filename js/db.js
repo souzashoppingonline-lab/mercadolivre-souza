@@ -481,6 +481,7 @@ const DB = {
   async inscreverPush(subscription)   { return this._post('/financeiro/push/inscrever', { subscription }); },
   async cancelarPush(endpoint)        { return this._post('/financeiro/push/cancelar', { endpoint }); },
   async testarPush(endpoint)          { return this._post('/financeiro/push/teste', { endpoint }); },
+  async avisarPagamento(aviso)       { return this._post('/financeiro/aviso-pagamento', aviso); },
   async getEmailConfig()              { return this._get('/config/email'); },
   async saveEmailConfig(body)         { return this._patch('/config/email', body); },
   async testEmail()                   { return this._post('/config/email/test', {}); },

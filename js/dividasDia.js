@@ -213,7 +213,20 @@
     return { title: `⚠️ ${a.length} conta${a.length > 1 ? 's' : ''} atrasada${a.length > 1 ? 's' : ''} — ${BRL(r.totais.atrasadas)}`, body: nomes(a) };
   }
 
-  const API = { calcular, listarPeriodo, somaDias, textoWhatsapp, textoWhatsappLista, textoNotificacao, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
+  // Lembrete das 19:00 (job checkDividasLembrete): só se ainda sobrou conta
+  // que vence HOJE sem pagar. null = tudo de hoje pago → não manda nada.
+  function textoLembrete(r) {
+    const h = r.secoes.hoje, a = r.secoes.atrasadas;
+    if (!h.length) return null;
+    const n = h.length, nomes = h.map(i => i.nome || i.fornecedor || 'conta');
+    return {
+      title: `⏰ Ainda falta${n > 1 ? 'm' : ''} ${n} conta${n > 1 ? 's' : ''} de hoje — ${BRL(r.totais.hoje)}`,
+      body: [n <= 2 ? nomes.join(' e ') : `${nomes.slice(0, 2).join(', ')} e +${n - 2}`,
+        a.length ? `⚠️ + ${a.length} atrasada${a.length > 1 ? 's' : ''} (${BRL(r.totais.atrasadas)})` : ''].filter(Boolean).join('\n'),
+    };
+  }
+
+  const API = { calcular, textoLembrete, listarPeriodo, somaDias, textoWhatsapp, textoWhatsappLista, textoNotificacao, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
   // Navegador (páginas) e Node (worker.js reusa o cálculo pro push das 07:00).
   if (typeof window !== 'undefined') window.DividasDia = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;

@@ -371,12 +371,15 @@ async function confirmarPagamento(id) {
     (r.pagas || []).forEach(pid => { const p = DADOS.parcelas.find(x => String(x.id) === String(pid)); if (p) p.status = 'pago'; });
     if (r.erro) { btn.disabled = false; btn.textContent = 'Confirmar pagamento'; erroSheet('Erro: ' + r.erro); recalcular(); return; }
     msg(`✅ Fatura paga · ${BRL(r.total)} lançado no Fluxo de Caixa`);
+    avisarDono(i, { valor: r.total || i.valor });
   } else {
     const contaId = document.getElementById('dmConta').value || null;
     const r = await PagamentosFin.pagarBoleto(DB, i.ref, contaId, hoje, extra);
     if (r.erro) { btn.disabled = false; btn.textContent = 'Confirmar pagamento'; erroSheet('Erro: ' + r.erro); return; }
     Object.assign(i.ref, { status: 'pago' }, extra);
     msg(r.erroFC ? '⚠️ Pago, mas o Fluxo de Caixa não sincronizou: ' + esc(r.erroFC) : `✅ Pago · ${BRL(i.ref.value)} lançado no Fluxo de Caixa`, !!r.erroFC);
+    const conta = CONTAS.find(c => String(c.id) === String(contaId));
+    avisarDono(i, { valor: Number(i.ref.value) || 0, conta: conta ? (conta.nome || conta.banco_nome || '') : '' });
   }
   fecharSheet(); recalcular();
   celebrarPagamento(i, i.fatura ? i.valor : Number(i.ref.value) || 0, antes);
@@ -667,6 +670,23 @@ async function desfazer(id) {
   i.ref.status = 'pendente';
   msg(r.erroFC ? '⚠️ Voltou pra pendente, mas o Fluxo de Caixa não sincronizou: ' + esc(r.erroFC) : '↩️ Pagamento desfeito — voltou pra "a pagar".', !!r.erroFC);
   recalcular();
+  avisarDono(i, { valor: Number(i.ref.value) || 0, desfeito: true });
+}
+
+// 🔔 Aviso no Telegram pro dono (POST /api/financeiro/aviso-pagamento):
+// "✅ BOLETO MARTINS pago — R$ 1.219,02 · Itaú" + quanto ainda falta de hoje.
+// Fire-and-forget: o pagamento já foi gravado; falha no aviso não atrapalha.
+function avisarDono(i, extra) {
+  if (!DB.avisarPagamento) return;
+  try {
+    const hoje = DividasDia.hojeLocal();
+    const rr = DividasDia.calcular({ ...DADOS, hoje });
+    DB.avisarPagamento({
+      nome: i.nome || i.fornecedor || 'Dívida', empresa: i.fatura ? '' : i.empresa, vencimento: i.date,
+      atrasada: !!i.atrasada || i.date < hoje, fatura: !!i.fatura, parcelas: i.fatura ? i.parcelas : null,
+      faltam_hoje: { n: rr.secoes.hoje.length, valor: rr.totais.hoje }, ...extra,
+    }).catch(() => {});
+  } catch (e) { console.warn('[dividas] aviso de pagamento não enviado:', e.message); }
 }
 
 function recalcular() { R = DividasDia.calcular({ ...DADOS, hoje: DividasDia.hojeLocal() }); render(); }

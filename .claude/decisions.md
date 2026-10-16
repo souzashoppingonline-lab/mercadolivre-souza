@@ -1017,3 +1017,7 @@ Auditoria antes de implementar: no Supabase do Financeiro, `ml_orders`/`ml_items
 ## Alerta de importação Metrizap: só cobra dias depois do último importado (v116)
 
 **Decisão**: o job `checkImportacaoMetrizap` (19:00) não cobra buraco no meio do período — ver `business-rules.md`. Alternativa descartada: "loja com venda em ≥80% dos dias → cobrar todo dia vazio", porque um dia sem venda real nunca pode ser "corrigido" e o aviso ficaria eterno. A conciliação resumo × detalhe reusa `pareto.conciliarComResumoDiario` (mesma tolerância do aviso da aba Pareto). Horário 19:00 em vez de manhã: a importação de "ontem" costuma ser feita durante o dia.
+
+## Aviso de pagamento: só da página Dívidas do Dia, via `tgNotifyForce` (v116)
+
+O aviso "✅ conta paga" é disparado pela página Dívidas do Dia (`avisarDono()` → `POST /api/financeiro/aviso-pagamento`), não de dentro de `PagamentosFin.pagarBoleto` (que a página Boletos também usa): o objetivo é o dono saber o que **a responsável** pagou; pagamento feito pelo próprio dono no Boletos não precisa avisar ele mesmo. Usa `tgNotifyForce` (sem `tg_interval`/silêncio) porque é evento de ação — com throttle, 3 pagamentos seguidos virariam 1 aviso. Fire-and-forget: o pagamento já foi gravado no Supabase antes; aviso falhando só loga.

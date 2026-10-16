@@ -523,3 +523,8 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - Conteúdo = só o que **vence hoje** + **atrasadas** (mesmo critério da página: pendente com vencimento < hoje; fatura de cartão = parcelas pendentes do mês). Próximos dias não entram (a página mostra).
 - Nada vencendo hoje e nada atrasado → **nenhuma** notificação (não manda "tudo em dia").
 - Vai pra todos os aparelhos inscritos (`push_subscriptions`, tópico `dividas`) — quem ativou no sino da página.
+
+## Aviso de pagamento e lembrete da noite — Dívidas do Dia (v116)
+
+- **Aviso de pagamento** (Telegram, `tg_pagamentos`): sai a cada Pagar/desfazer feito **na página Dívidas do Dia** (a da responsável) — não na página Boletos (lá quem paga é o próprio dono). Inclui conta bancária escolhida, empresa, vencimento ("⚠️ estava atrasada" se venceu antes de hoje) e quanto ainda falta **de hoje** depois desse pagamento ("🎉 Todas as contas de hoje pagas!" quando zera). Sem throttle nem janela de silêncio: cada pagamento chega.
+- **Lembrete das 19:00** (push + Telegram `tg_dividas_lembrete`): só quando ainda há conta que **vence hoje** pendente. Atrasadas sozinhas não disparam o lembrete (já vêm no push das 07:00); quando há conta de hoje, as atrasadas entram como complemento.

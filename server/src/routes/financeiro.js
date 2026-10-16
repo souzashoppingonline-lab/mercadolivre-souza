@@ -6,6 +6,9 @@ const supa = require('../db/supabaseFin');
 const calc = require('../financeiroCalc');
 const { sendClosingEmail } = require('../fechamentoMensalEmail');
 
+const { tgNotifyForce } = require('../notify');
+const { textoAvisoPagamento } = require('../avisoPagamento');
+
 const router = express.Router();
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -13,6 +16,16 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 router.get('/status', async (req, res) => {
   try {
     res.json(await supa.ping());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Aviso no Telegram de pagamento feito/desfeito na página Dívidas do Dia
+// (pro dono). Fire-and-forget do lado da página: falha aqui nunca desfaz o
+// pagamento, que já foi gravado. Texto em avisoPagamento.js.
+router.post('/aviso-pagamento', async (req, res) => {
+  try {
+    await tgNotifyForce('tg_pagamentos', textoAvisoPagamento(req.body || {}));
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

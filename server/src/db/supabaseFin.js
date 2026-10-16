@@ -93,19 +93,45 @@ async function previewTable(nome, limit = 50) {
 
 // Busca linhas de uma tabela (READ-ONLY) com limite maior — pra telas reais
 // (fluxo de caixa, etc.). `order` opcional no formato coluna(.asc|.desc).
+// Lê até `limit` linhas PAGINANDO de 1000 em 1000: o PostgREST do Supabase
+// devolve no máximo 1000 linhas por resposta (max-rows), sem erro — antes
+// daqui uma tabela com 1001+ linhas chegava cortada nas telas (Fluxo de Caixa,
+// Boletos, Vendas Detalhadas…), ver known-bugs.md. Desempate por `id` na
+// ordenação pra a paginação não pular nem repetir linha quando várias têm a
+// mesma data; tabela sem coluna `id` (400 na 1ª página) cai pra ordenação
+// simples. Teto 20000 (o maior pedido hoje: cash_flow_entries).
+const PAGINA = 1000;
+const MAX_LINHAS = 20000;
 async function selectRows(nome, limit = 1000, order = '', filtro = '') {
   if (!/^[a-zA-Z0-9_]+$/.test(String(nome || ''))) {
     const e = new Error('nome de tabela inválido'); e.status = 400; throw e;
   }
-  const lim = Math.min(Math.max(Number(limit) || 1000, 1), 5000);
-  let path = `/${nome}?limit=${lim}`;
-  if (order && /^[a-zA-Z0-9_]+(\.(asc|desc))?$/.test(order)) path += `&order=${encodeURIComponent(order)}`;
+  const lim = Math.min(Math.max(Number(limit) || 1000, 1), MAX_LINHAS);
+  let filtroQs = '';
   // Filtro simples de igualdade: "coluna=eq.valor" (coluna sanitizada, valor codificado).
   if (filtro) {
     const m = /^([a-zA-Z0-9_]+)=eq\.(.+)$/.exec(String(filtro));
-    if (m) path += `&${m[1]}=eq.${encodeURIComponent(m[2])}`;
+    if (m) filtroQs = `&${m[1]}=eq.${encodeURIComponent(m[2])}`;
   }
-  return get(path);
+  const ordemValida = order && /^[a-zA-Z0-9_]+(\.(asc|desc))?$/.test(order) ? order : '';
+  const comDesempate = ordemValida ? (/^id(\.|$)/.test(ordemValida) ? ordemValida : `${ordemValida},id.asc`) : 'id.asc';
+  const pagina = (ordem, offset, qtd) =>
+    get(`/${nome}?limit=${qtd}&offset=${offset}${ordem ? `&order=${encodeURIComponent(ordem)}` : ''}${filtroQs}`);
+
+  let ordem = comDesempate;
+  const out = [];
+  for (let offset = 0; offset < lim; offset += PAGINA) {
+    const qtd = Math.min(PAGINA, lim - offset);
+    let rows;
+    try { rows = await pagina(ordem, offset, qtd); } catch (e) {
+      if (offset === 0 && e.status === 400 && ordem !== ordemValida) { ordem = ordemValida; rows = await pagina(ordem, offset, qtd); }
+      else throw e;
+    }
+    if (!Array.isArray(rows)) return rows;
+    out.push(...rows);
+    if (rows.length < qtd) break;
+  }
+  return out;
 }
 
 // ── ESCRITA (migração: este sistema passa a gravar no Supabase) ──────────────

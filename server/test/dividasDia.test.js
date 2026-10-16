@@ -27,3 +27,14 @@ test('só atrasadas; uma conta só no singular; nada a pagar → null', () => {
   assert.match(D.textoNotificacao(D.calcular({ hoje: '2026-10-16', boletos: [B('1', 'LUZ', '2026-10-16', 80)] })).title, /^💸 1 conta vence hoje/);
   assert.strictEqual(D.textoNotificacao(D.calcular({ hoje: '2026-10-16', boletos: [B('6', 'FUTURO', '2026-10-17', 1)] })), null);
 });
+
+test('lembrete das 19:00: só quando sobrou conta de HOJE; atrasadas entram como complemento', () => {
+  const r = D.calcular({ hoje: '2026-10-16', boletos: [B('1', 'EMPRESTIMO ML', '2026-10-16', 3600), B('2', 'BOLETO MARTINS', '2026-10-16', 1219.02), B('4', 'ALUGUEL', '2026-10-10', 2000)] });
+  const n = D.textoLembrete(r);
+  assert.match(n.title, /^⏰ Ainda faltam 2 contas de hoje — R\$\s4\.819,02$/);
+  assert.match(n.body, /EMPRESTIMO ML e BOLETO MARTINS\n⚠️ \+ 1 atrasada/);
+  assert.match(D.textoLembrete(D.calcular({ hoje: '2026-10-16', boletos: [B('1', 'LUZ', '2026-10-16', 80)] })).title, /^⏰ Ainda falta 1 conta de hoje/);
+  // só atrasada (nada de hoje) → sem lembrete; tudo de hoje pago → sem lembrete
+  assert.strictEqual(D.textoLembrete(D.calcular({ hoje: '2026-10-16', boletos: [B('4', 'ALUGUEL', '2026-10-10', 2000)] })), null);
+  assert.strictEqual(D.textoLembrete(D.calcular({ hoje: '2026-10-16', boletos: [B('1', 'LUZ', '2026-10-16', 80, 'pago')] })), null);
+});

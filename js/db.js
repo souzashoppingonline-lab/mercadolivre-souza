@@ -476,6 +476,11 @@ const DB = {
   async setFreteMotoboyConfig(ativo, valor) { return this._patch('/config/frete-motoboy', { frete_motoboy_ativo: !!ativo, frete_motoboy_valor: valor }); },
   async getWhatsappBoletosConfig()    { return this._get('/config/whatsapp-boletos'); },
   async setWhatsappBoletosConfig(numero, nome) { return this._patch('/config/whatsapp-boletos', { numero, nome }); },
+  // Push da página Dívidas do Dia (PWA) — ver routes/push.js
+  async getPushChave()                { return this._get('/financeiro/push/chave'); },
+  async inscreverPush(subscription)   { return this._post('/financeiro/push/inscrever', { subscription }); },
+  async cancelarPush(endpoint)        { return this._post('/financeiro/push/cancelar', { endpoint }); },
+  async testarPush(endpoint)          { return this._post('/financeiro/push/teste', { endpoint }); },
   async getEmailConfig()              { return this._get('/config/email'); },
   async saveEmailConfig(body)         { return this._patch('/config/email', body); },
   async testEmail()                   { return this._post('/config/email/test', {}); },

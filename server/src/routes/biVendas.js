@@ -10,6 +10,7 @@
 const express = require('express');
 const supa = require('../db/supabaseFin');
 const pareto = require('../pareto');
+const importacao = require('../importacaoMetrizap');
 
 const router = express.Router();
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -498,7 +499,24 @@ router.get('/pareto', async (req, res) => {
   }
 });
 
+// Alerta "dia sem importação" (job checkImportacaoMetrizap do worker, 19:00):
+// só CARREGA resumo + detalhe (sem canceladas, mesmo loadDetalhe das abas) +
+// lojas ativas da janela e delega o cálculo a importacaoMetrizap.js (puro).
+async function verificarImportacaoMetrizap(ontem, janelaDias = importacao.JANELA_DIAS) {
+  const de = importacao.somaDias(ontem, -(janelaDias - 1));
+  const [resumo, detalhe, lojas] = await Promise.all([
+    loadPeriodo('sales_entries', de, ontem, ''),
+    loadDetalhe(de, ontem, ''),
+    supa.get('/stores?select=id,name,ativa'),
+  ]);
+  return importacao.verificarImportacao({
+    resumo, detalhe, ontem, janelaDias,
+    lojas: (Array.isArray(lojas) ? lojas : []).filter(l => l.ativa !== false),
+  });
+}
+
 router.detectarQuedasProdutos = detectarQuedasProdutos;
+router.verificarImportacaoMetrizap = verificarImportacaoMetrizap;
 router.QUEDA_PRODUTO_ALERTA_PCT = QUEDA_PRODUTO_ALERTA_PCT;
 router.QUEDA_PRODUTO_FATURAMENTO_MIN = QUEDA_PRODUTO_FATURAMENTO_MIN;
 module.exports = router;

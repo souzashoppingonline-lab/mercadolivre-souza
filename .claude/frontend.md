@@ -64,6 +64,8 @@ Pedido explícito do usuário: uma tela pra deixar numa TV/monitor da sala, alte
 
 **Regra do `sw.js`**: NUNCA cacheia `/api`, `/webhooks`, `/auth`, `/ws`, `/print-agent`, `/extension` — são dados ao vivo (venda/estoque/margem), passam direto pela rede. Só a "casca" estática (HTML/CSS/JS/logo) é cacheada, com estratégia **rede-primeiro** (cai pro cache só se a rede falhar) — instala e abre offline sem risco de mostrar venda velha. Bump `CACHE` (`ml-shell-vN`) ao mudar o shell.
 
+**App "Dívidas do Dia" (v116)** — 2º app instalável, separado do painel: `dividas.webmanifest` na raiz (`id`/`start_url` = `/pages/financeiro-dividas-hoje.html`, `scope` `/pages/`, ícones `assets/dividas-192.png`, `-512.png`, `-maskable-512.png`, `dividas-apple-180.png`; `dividas-badge.png` = ícone monocromático da barra de status do Android). Usa o **mesmo `/sw.js`** (não existe um 2º service worker), que ganhou os handlers `push` (mostra `{title, body, url, tag}` do servidor), `notificationclick` (foca/abre a URL) e `pushsubscriptionchange` (reinscreve e avisa o servidor). Na página, o sino 🔔 do topo abre a janela "Notificações e app": ativar/testar/desativar push (`DB.getPushChave/inscreverPush/testarPush/cancelarPush`) e instalar (`beforeinstallprompt` no Android/Chrome; instrução "Compartilhar → Adicionar à Tela de Início" no iPhone). Pontinho laranja no sino = ainda não ativou; sino verde = ativado neste aparelho. **iPhone**: push só funciona com o app instalado na Tela de Início (iOS 16.4+) — `Notification.requestPermission()` é chamado primeiro, ainda dentro do toque.
+
 ## Padrão de nova página (contrato)
 
 1. Copiar a estrutura de uma página existente (ex.: `pages/pedidos.html`).

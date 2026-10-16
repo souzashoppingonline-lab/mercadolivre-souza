@@ -1,6 +1,6 @@
 // Dívidas do dia — cálculo ÚNICO usado pelo botão "Enviar dívidas no WhatsApp"
-// (pages/financeiro-boletos.html) e pela página de celular
-// (pages/financeiro-dividas-hoje.html). Mesmo critério da página Boletos:
+// (pages/financeiro-boletos.html), pela página de celular
+// (pages/financeiro-dividas-hoje.html) e pelo push das 07:00 (worker.js). Mesmo critério da página Boletos:
 // "atrasado" = pendente com vencimento < hoje; compra-mãe de cartão
 // (tipo='cartao') nunca entra — o cartão entra como FATURA (soma das parcelas
 // pendentes do mesmo cartão + fatura_mes), igual a faturasMes() da página.
@@ -193,5 +193,28 @@
   // devolve o dia seguinte (ver known-bugs.md, hojeISO da página Boletos).
   function hojeLocal() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
-  window.DividasDia = { calcular, listarPeriodo, somaDias, textoWhatsapp, textoWhatsappLista, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
+  // Notificação push das 07:00 (job checkDividasPush do worker.js): só o que
+  // vence HOJE + atrasadas, a partir do MESMO calcular() da página. null =
+  // nada a pagar → o job não manda notificação nenhuma.
+  function textoNotificacao(r) {
+    const h = r.secoes.hoje, a = r.secoes.atrasadas;
+    if (!h.length && !a.length) return null;
+    const nomes = l => {
+      const n = l.map(i => i.nome || i.fornecedor || 'conta');
+      return n.length <= 2 ? n.join(' e ') : `${n.slice(0, 2).join(', ')} e +${n.length - 2}`;
+    };
+    const atr = a.length ? `⚠️ ${a.length} atrasada${a.length > 1 ? 's' : ''} (${BRL(r.totais.atrasadas)})` : '';
+    if (h.length) {
+      return {
+        title: `💸 ${h.length} conta${h.length > 1 ? 's vencem' : ' vence'} hoje — ${BRL(r.totais.hoje)}`,
+        body: [nomes(h), atr].filter(Boolean).join('\n'),
+      };
+    }
+    return { title: `⚠️ ${a.length} conta${a.length > 1 ? 's' : ''} atrasada${a.length > 1 ? 's' : ''} — ${BRL(r.totais.atrasadas)}`, body: nomes(a) };
+  }
+
+  const API = { calcular, listarPeriodo, somaDias, textoWhatsapp, textoWhatsappLista, textoNotificacao, linkWhatsapp, agruparPorEmpresa, hojeLocal, ddmm, BRL, DIAS_PROXIMOS };
+  // Navegador (páginas) e Node (worker.js reusa o cálculo pro push das 07:00).
+  if (typeof window !== 'undefined') window.DividasDia = API;
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })();

@@ -35,3 +35,48 @@ self.addEventListener('fetch', (e) => {
     }).catch(() => caches.match(req).then((hit) => hit || caches.match('/index.html')))
   );
 });
+
+// ── Notificação push (PWA "Dívidas do Dia") ─────────────────────────────────
+// O servidor (worker.js, 07:00) manda {title, body, url, tag}; aqui só exibe.
+// Tocar na notificação abre/foca a página da URL. Ver .claude/frontend.md.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || '💸 Dívidas do Dia', {
+    body: d.body || '',
+    icon: '/assets/dividas-192.png',
+    badge: '/assets/dividas-badge.png',
+    tag: d.tag || 'dividas',
+    renotify: true,
+    vibrate: [80, 60, 80],
+    data: { url: d.url || '/pages/financeiro-dividas-hoje.html' },
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const alvo = new URL((e.notification.data && e.notification.data.url) || '/pages/financeiro-dividas-hoje.html', self.location.origin).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((abertas) => {
+    const ja = abertas.find((c) => c.url.split('#')[0] === alvo);
+    if (ja) return ja.focus().then((c) => c && c.navigate ? c.navigate(alvo) : c).catch(() => ja.focus());
+    return self.clients.openWindow(alvo);
+  }));
+});
+
+// O navegador às vezes troca a inscrição sozinho (expirou/renovou): reinscreve
+// com a mesma chave e avisa o servidor, senão o push das 07:00 para de chegar.
+self.addEventListener('pushsubscriptionchange', (e) => {
+  e.waitUntil((async () => {
+    const r = await fetch('/api/financeiro/push/chave', { credentials: 'same-origin' });
+    const { publicKey } = await r.json();
+    const pad = '='.repeat((4 - (publicKey.length % 4)) % 4);
+    const raw = atob((publicKey + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    const key = Uint8Array.from(raw, (ch) => ch.charCodeAt(0));
+    const sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    await fetch('/api/financeiro/push/inscrever', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    });
+  })().catch(() => {}));
+});
+

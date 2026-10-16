@@ -826,3 +826,8 @@ name        TEXT NOT NULL
 updated_at  TIMESTAMPTZ DEFAULT now()
 ```
 Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas SEM expiração — nome de categoria do ML praticamente não muda, então só busca de novo se ainda não tem linha (nunca rechama a API só pra confirmar o mesmo valor). Populado por `getCategoryName()` dentro do job `sync-seo-score` (`worker.js`), que já itera categoria por item todo dia — nunca por uma rota HTTP de leitura (regra de arquitetura: `mlClient.js` só é chamado do worker ou de ações pontuais, nunca de leitura de listagem). `GET /api/bi/analista-ecom` faz `COALESCE(cnc.name, pcf.category_name)` — o nome real do ML tem prioridade sobre o texto livre digitado ao cadastrar uma tarifa; sem nenhum dos dois cacheados ainda, o filtro cai no `category_id` numérico cru.
+
+### `push_subscriptions` — v116: aparelhos inscritos no push da página Dívidas do Dia (ver `workers.md`, `checkDividasPush`)
+
+`migrate-v116.sql`. Uma linha por navegador/aparelho (`PushSubscription`): `endpoint TEXT UNIQUE` (URL do serviço de push do Google/Apple/Mozilla), `p256dh`, `auth` (chaves do navegador pra criptografar), `topico` (`'dividas'`, índice), `user_agent`, `created_at`, `last_success_at`, `fail_count`, `last_error`. Gravada por `POST /api/financeiro/push/inscrever` (upsert por `endpoint`, zera `fail_count`); apagada por `/cancelar` ou quando o envio volta 404/410 (o navegador desfez a inscrição). As chaves VAPID do servidor ficam em `app_config` (`push_vapid_public`, `push_vapid_private`), geradas por `pushService.chaves()` no 1º uso — nenhum passo no `.env`.
+

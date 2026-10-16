@@ -82,6 +82,9 @@ app.use('/api/analise', require('./routes/analise'));
 // Rankeamento de anúncios novos — acompanha cada venda/alteração (ver .claude/rankeamento.md).
 app.use('/api/ranking', require('./routes/ranking'));
 // Módulo Financeiro — lê do Supabase separado, read-only (só admin — ver MODULES). Ver .claude/modules.md.
+// Push da página Dívidas do Dia (PWA) — antes de /api/financeiro pra não cair
+// nas rotas genéricas dele; mesmo gate do módulo Financeiro. Ver .claude/api.md.
+app.use('/api/financeiro/push', require('./routes/push'));
 app.use('/api/financeiro', require('./routes/financeiro'));
 app.use('/api/bi', require('./routes/bi'));
 // Agente Financeiro — relatórios sob demanda cruzando Postgres operacional +

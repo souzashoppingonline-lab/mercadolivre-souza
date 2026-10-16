@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#1a1d23">
   <title>Dívidas do Dia</title>
+  <!-- PWA: app instalável "Dívidas do Dia" + push das 07:00 (sw.js na raiz, o mesmo do painel). Ver .claude/frontend.md -->
+  <link rel="manifest" href="/dividas.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/dividas-apple-180.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Dívidas">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <link rel="stylesheet" href="../css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
@@ -15,6 +22,14 @@
     .dm-head .sub { font-size:12px; color:var(--text-muted); }
     .dm-ic { margin-left:auto; display:flex; gap:8px; }
     .dm-ic a, .dm-ic button { width:40px; height:40px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); display:flex; align-items:center; justify-content:center; font-size:15px; text-decoration:none; cursor:pointer; }
+    .dm-sino { position:relative; }
+    .dm-sino.on { color:#3fb950 !important; border-color:rgba(63,185,80,.5) !important; }
+    .dm-sino.aviso::after { content:''; position:absolute; top:7px; right:7px; width:8px; height:8px; border-radius:50%; background:#f59e0b; box-shadow:0 0 0 2px var(--bg-card); }
+    .dm-sheet .bloco { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:12px; margin-top:10px; font-size:13px; line-height:1.45; }
+    .dm-sheet .bloco b.t { display:block; font-size:14px; margin-bottom:4px; }
+    .dm-sheet .bloco button { margin-top:10px; width:100%; border:0; border-radius:10px; padding:12px; font-size:14px; font-weight:800; cursor:pointer; background:#3fb950; color:#06281a; }
+    .dm-sheet .bloco button.sec { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border); }
+    .dm-sheet .bloco .lado2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
     .dm-emp { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.4px; margin:10px 2px 6px; }
     .dm-item { position:relative; transition:opacity .5s; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid var(--c); border-radius:12px; padding:10px 12px; margin-bottom:8px; display:flex; gap:10px; align-items:center; }
     .dm-item .info { flex:1; min-width:0; }
@@ -138,6 +153,7 @@
       <div class="sub" id="dmData">Carregando…</div>
     </div>
     <div class="dm-ic">
+      <button onclick="abrirNotificacoes()" title="Notificações e instalar app" id="dmSinoBtn" class="dm-sino"><i class="fas fa-bell"></i></button>
       <button onclick="carregar()" title="Atualizar"><i class="fas fa-sync-alt" id="dmSync"></i></button>
       <a href="financeiro-boletos.html" title="Abrir Boletos completo"><i class="fas fa-table-list"></i></a>
     </div>
@@ -669,6 +685,93 @@ async function enviarWhatsapp() {
   // com todas as dívidas dela e o status de cada uma.
   window.location.href = DividasDia.linkWhatsapp(numero, DividasDia.textoWhatsappLista({ ...cabecalhoVisao(), itens: itensDaVisao(), nome: CFG.nome }));
 }
+
+// ── PWA: instalar app + notificação push das 07:00 ─────────────────────────
+// Service worker = /sw.js da raiz (o mesmo do painel, rede-primeiro, nunca
+// cacheia /api) — ganhou os handlers de push. A inscrição vai pro servidor
+// (POST /api/financeiro/push/inscrever) e o worker manda às 07:00 o que vence
+// hoje + atrasadas (mesmo cálculo desta página). iPhone: só funciona com o app
+// instalado na Tela de Início (iOS 16.4+), por isso a instrução.
+let INSTALAR = null;
+const ehIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const instalado = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const suportaPush = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const chaveU8 = b64 => { const p = '='.repeat((4 - b64.length % 4) % 4), raw = atob((b64 + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); };
+async function registroSW() { if (!('serviceWorker' in navigator)) return null; await navigator.serviceWorker.register('/sw.js'); return navigator.serviceWorker.ready; }
+async function inscricaoAtual() { try { const reg = await registroSW(); return reg && reg.pushManager ? await reg.pushManager.getSubscription() : null; } catch (_) { return null; } }
+
+async function marcarSino() {
+  const b = document.getElementById('dmSinoBtn'); if (!b) return;
+  const sub = suportaPush() ? await inscricaoAtual() : null;
+  b.classList.toggle('on', !!sub);
+  b.classList.toggle('aviso', !sub && (suportaPush() || !!INSTALAR || (ehIOS() && !instalado())));
+}
+
+async function abrirNotificacoes() {
+  const sub = suportaPush() ? await inscricaoAtual() : null;
+  let notif;
+  if (!suportaPush()) {
+    notif = ehIOS() && !instalado()
+      ? '<b class="t">🔔 Notificações</b>No iPhone, primeiro instale o app (abaixo) e abra pelo ícone da Tela de Início — aí o botão de ativar aparece aqui.'
+      : '<b class="t">🔔 Notificações</b>Este navegador não suporta notificações. Use o Chrome (Android) ou o app instalado (iPhone).';
+  } else if (Notification.permission === 'denied') {
+    notif = '<b class="t">🔕 Notificações bloqueadas</b>Você bloqueou as notificações deste site. Libere nas configurações do navegador (cadeado ao lado do endereço → Notificações → Permitir) e volte aqui.';
+  } else if (sub) {
+    notif = `<b class="t">✅ Notificações ativadas neste aparelho</b>Todo dia às <b>07:00</b> chega o que vence hoje e o que está atrasado.
+      <div class="lado2"><button class="sec" onclick="testarNotificacao()">Enviar teste</button><button class="sec" onclick="desativarNotificacao()">Desativar</button></div>`;
+  } else {
+    notif = `<b class="t">🔔 Receber aviso das contas</b>Todo dia às <b>07:00</b>: "💸 3 contas vencem hoje — R$ …", mesmo com o app fechado.
+      <button onclick="ativarNotificacao()">Ativar notificações</button>`;
+  }
+  let inst;
+  if (instalado()) inst = '<b class="t">📲 App instalado</b>Você está usando o app da Tela de Início.';
+  else if (INSTALAR) inst = '<b class="t">📲 Instalar na Tela de Início</b>Ícone próprio, abre direto nas dívidas, sem barra do navegador.<button onclick="instalarApp()">Instalar app</button>';
+  else if (ehIOS()) inst = '<b class="t">📲 Instalar no iPhone</b>No Safari, toque em <b>Compartilhar</b> (quadrado com seta ⬆️) → <b>Adicionar à Tela de Início</b> → Adicionar. Depois abra pelo ícone 💸.';
+  else inst = '<b class="t">📲 Instalar na Tela de Início</b>No menu do navegador (⋮), toque em <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.';
+  document.getElementById('dmSheet').innerHTML = `<h3>Notificações e app</h3><div class="sub">Dívidas do Dia no celular</div>
+    <div class="bloco">${notif}</div><div class="bloco">${inst}</div><div class="erro" id="dmErro"></div>
+    <div class="acoes" style="grid-template-columns:1fr"><button class="cancelar" onclick="fecharSheet()">Fechar</button></div>`;
+  document.getElementById('dmOv').style.display = 'flex';
+}
+
+async function ativarNotificacao() {
+  try {
+    // Pedir a permissão PRIMEIRO, ainda dentro do toque (iPhone exige).
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { erroSheet('Permissão não concedida — sem ela não dá pra avisar.'); return; }
+    const reg = await registroSW();
+    const k = await DB.getPushChave();
+    if (!k || k.error || !k.publicKey) { erroSheet('Servidor sem chave de notificação: ' + (k && k.error || 'erro')); return; }
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveU8(k.publicKey) });
+    const r = await DB.inscreverPush(sub.toJSON());
+    if (!r) { await sub.unsubscribe().catch(() => {}); erroSheet('Não consegui salvar no servidor: ' + esc(DB.lastError || 'erro')); return; }
+    await DB.testarPush(sub.endpoint);
+    msg('🔔 Notificações ativadas — mandei uma de teste agora.');
+    await marcarSino(); abrirNotificacoes();
+  } catch (e) { erroSheet('Erro ao ativar: ' + esc(e.message || e)); }
+}
+async function testarNotificacao() {
+  const sub = await inscricaoAtual(); if (!sub) { abrirNotificacoes(); return; }
+  const r = await DB.testarPush(sub.endpoint);
+  if (!r) erroSheet(esc(DB.lastError || 'Não consegui enviar o teste.')); else msg('📨 Teste enviado — deve chegar em segundos.');
+}
+async function desativarNotificacao() {
+  const sub = await inscricaoAtual();
+  if (sub) { await DB.cancelarPush(sub.endpoint); await sub.unsubscribe().catch(() => {}); }
+  msg('🔕 Notificações desativadas neste aparelho.');
+  await marcarSino(); abrirNotificacoes();
+}
+async function instalarApp() {
+  if (!INSTALAR) return;
+  INSTALAR.prompt();
+  const { outcome } = await INSTALAR.userChoice.catch(() => ({}));
+  INSTALAR = null;
+  if (outcome === 'accepted') msg('📲 App instalado — procure o ícone 💸 na tela inicial.');
+  marcarSino(); abrirNotificacoes();
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALAR = e; marcarSino(); });
+window.addEventListener('appinstalled', () => { INSTALAR = null; marcarSino(); });
+window.addEventListener('load', () => { registroSW().catch(() => {}); marcarSino(); });
 
 carregar();
 </script>

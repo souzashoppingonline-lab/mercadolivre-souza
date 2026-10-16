@@ -510,3 +510,16 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Reimportar planilha Metrizap não zera ADS/Outros** (v115.16): no modal de confirmação do import (Vendas & Custos), dia que já existe em `sales_entries` vem com `ads_ml`/`outros` pré-preenchidos com o valor gravado — antes vinham 0 e, como o import substitui o dia, reimportar apagava o ADS/Outros digitado à mão. Dia novo continua em 0.
 - **Recorrentes do Financeiro — valor ao gerar** (v115.18/19): a dívida gerada nasce com o valor do cadastro do recorrente; sem valor no cadastro, com o último valor > 0 já lançado dele; **Flex sempre R$0** ("valor a confirmar" — o valor do Flex só se sabe depois). Cadastro novo exige valor (exceto Flex).
 - **Princípio de Pareto (Inteligência de Vendas, v115.23)**: conjunto Pareto = menor grupo de anúncios, em ordem decrescente de faturamento, cujo acumulado **atinge ou passa** de 80% — o anúncio que cruza 80% entra (o resultado real fica acima de 80%, sem cortar). Curva ABC é outra regra (A = acumulado ≤ 80%) e continua igual. Base = faturamento Metrizap sem canceladas, por anúncio (loja + `item_id`), só anúncios com faturamento > 0; venda duplicada entre lojas conta 1x; faturamento do Vendas & Custos sem detalhe por venda não tem anúncio e fica fora (sinalizado na tela).
+
+## Alerta "importação Metrizap pendente" (v116, `importacaoMetrizap.js`, Telegram 19:00)
+
+- **Janela**: últimos 30 dias até **ontem** (data de Brasília). Hoje nunca é cobrado.
+- **Dia não importado** = dia **depois do último dia importado** daquela loja (resumo OU detalhe) até ontem. **Buraco no meio** do período (loja com dia sem nenhum lançamento entre dois dias importados) **não** é cobrado: loja pequena (ex.: SHOPEE R SOUZA, 1–5 vendas/dia) tem dia sem venda de verdade, e um alerta que nunca some vira ruído. Consequência aceita: se a loja não vendeu nos últimos dias, aparece até a próxima venda importada — a mensagem diz "se a loja não vendeu no dia, pode ignorar".
+- **Falta detalhe** = resumo diário (`sales_entries.gross_revenue`) maior que a soma do detalhe (`sales_entries_detail.faturamento`, sem canceladas) da loja no dia, diferença ≥ R$0,05. **Detalhe maior que o resumo** = o contrário (venda duplicada entre lojas ou resumo desatualizado). Só a partir do **1º dia com detalhe importado** (o detalhe por venda começou em 01/10/2026; antes disso todo dia viraria "falta detalhe").
+- Só lojas **ativas** em `stores` (Supabase). Sem pendência → nenhuma mensagem.
+
+## Push "Dívidas do Dia" (v116, 07:00)
+
+- Conteúdo = só o que **vence hoje** + **atrasadas** (mesmo critério da página: pendente com vencimento < hoje; fatura de cartão = parcelas pendentes do mês). Próximos dias não entram (a página mostra).
+- Nada vencendo hoje e nada atrasado → **nenhuma** notificação (não manda "tudo em dia").
+- Vai pra todos os aparelhos inscritos (`push_subscriptions`, tópico `dividas`) — quem ativou no sino da página.

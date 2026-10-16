@@ -211,3 +211,8 @@ Fora do escopo desta rodada, deliberadamente (spec original tinha 29 seções):
 ## Este arquivo é o ponto de entrada para retomar trabalho
 
 Ao iniciar uma sessão nova, além de ler toda a pasta `.claude` (regra em `CLAUDE.md`), verificar se há itens `[ ]` aqui antes de assumir que não há trabalho pendente conhecido.
+
+## Telegram/Push v116 — pendências pequenas
+
+- [ ] `pages/monitor.html` não tem liga/desliga para os tópicos novos `tg_importacao_metrizap` (nem para o antigo `tg_queda_produtos`) — hoje só dá pra desligar gravando `'false'` em `app_config`.
+- [ ] Testar a inscrição de push num celular real (Android/Chrome e iPhone com app instalado) depois do deploy — o ambiente de teste não tem serviço de push do Google; envio/criptografia/VAPID foram testados contra um receptor local.

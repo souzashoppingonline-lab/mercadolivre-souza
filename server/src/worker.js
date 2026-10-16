@@ -3199,6 +3199,69 @@ async function checkQuedaProdutos() {
   scheduleAt(6, 25, checkQuedaProdutos, 'queda-produtos');
 }
 
+// ── Importação Metrizap pendente — 19:00 diário ───────────────────────────
+// Últimos 30 dias até ontem (data do Brasil): dias depois do último dia
+// importado de cada loja, dias com resumo (Vendas & Custos) sem o detalhe por
+// venda, e detalhe maior que o resumo. Cálculo em importacaoMetrizap.js
+// (puro, testado), dados via biVendas.verificarImportacaoMetrizap. 19:00 e não
+// de manhã: dá o dia pra importar "ontem" antes de cobrar. Sem pendência, não
+// envia nada. Telegram `tg_importacao_metrizap` (tgNotify: on/off/silêncio).
+// `runImportacaoMetrizap` é a execução sem reagendar (disparo manual).
+const dataSP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+async function runImportacaoMetrizap() {
+  const importacao = require('./importacaoMetrizap');
+  const ontem = importacao.somaDias(dataSP(), -1);
+  const r = await biVendas.verificarImportacaoMetrizap(ontem);
+  const texto = importacao.textoTelegram(r);
+  console.log(`[importacao-metrizap] ${r.de}..${r.ate}: ${r.atrasadas.length} loja(s) atrasada(s), ${r.sem_detalhe.length} sem detalhe, ${r.so_no_detalhe.length} detalhe>resumo`);
+  if (texto) await tgNotify('tg_importacao_metrizap', texto);
+  return r;
+}
+async function checkImportacaoMetrizap() {
+  try { await runImportacaoMetrizap(); } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') console.log('[importacao-metrizap] Supabase do Financeiro não configurado — pulando.');
+    else console.error('[importacao-metrizap] erro:', e.message);
+  }
+  scheduleAt(19, 0, checkImportacaoMetrizap, 'importacao-metrizap');
+}
+
+// ── Push "Dívidas do Dia" — 07:00 diário ──────────────────────────────────
+// Notificação no celular (PWA instalado, navegador fechado) com o que vence
+// HOJE + atrasadas: "💸 3 contas vencem hoje — R$ X". MESMO cálculo da página
+// (js/dividasDia.js → calcular + textoNotificacao, carregado aqui via
+// require). Busca só o necessário no Supabase do Financeiro: boletos não pagos
+// até hoje e as parcelas das faturas que ainda têm parcela pendente (a fatura
+// usa todas as parcelas do mês pra data/valor, igual à página). Nada a pagar
+// ou nenhum aparelho inscrito → não manda nada. Envio em pushService.js.
+async function runDividasPush() {
+  const push = require('./pushService');
+  if (!(await push.contarInscritos('dividas'))) { console.log('[dividas-push] nenhum aparelho inscrito — pulando.'); return null; }
+  const DividasDia = require('../../js/dividasDia');
+  const supa = require('./db/supabaseFin');
+  const hoje = dataSP();
+  const pend = 'or=(status.neq.pago,status.is.null)';
+  const [boletos, parcPend, cartoes] = await Promise.all([
+    supa.get(`/boletos_mensais?${pend}&date=lte.${hoje}&order=date.asc&limit=1000`),
+    supa.get(`/parcelas_cartao?${pend}&select=fatura_mes&limit=1000`),
+    supa.get('/cartoes?limit=1000'),
+  ]);
+  const meses = [...new Set((parcPend || []).map(p => p.fatura_mes).filter(Boolean))];
+  const parcelas = meses.length ? await supa.get(`/parcelas_cartao?fatura_mes=in.(${meses.map(encodeURIComponent).join(',')})&limit=1000`) : [];
+  const r = DividasDia.calcular({ boletos: boletos || [], parcelas: parcelas || [], cartoes: cartoes || [], hoje });
+  const n = DividasDia.textoNotificacao(r);
+  if (!n) { console.log(`[dividas-push] ${hoje}: nada vence hoje nem está atrasado — sem notificação.`); return null; }
+  const res = await push.enviarTopico('dividas', { ...n, url: '/pages/financeiro-dividas-hoje.html', tag: `dividas-${hoje}` });
+  console.log(`[dividas-push] ${hoje}: "${n.title}" → ${res.ok}/${res.inscritos} enviada(s), ${res.removida} removida(s), ${res.falha} falha(s)`);
+  return res;
+}
+async function checkDividasPush() {
+  try { await runDividasPush(); } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') console.log('[dividas-push] Supabase do Financeiro não configurado — pulando.');
+    else console.error('[dividas-push] erro:', e.message);
+  }
+  scheduleAt(7, 0, checkDividasPush, 'dividas-push');
+}
+
 // ── Taxa de devolução alta — 06:30 diário ─────────────────────────────────
 // Mesma fórmula do card "Taxa de Devolução" de pages/devolucoes.html
 // (devoluções ÷ pedidos × 100), mas em janela fixa de últimas 24h por loja
@@ -3618,6 +3681,8 @@ scheduleAt(8,  0,  relatorioRankeamentoDiario, 'relatorio-rankeamento');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 25,  checkQuedaProdutos, 'queda-produtos');
+scheduleAt(19, 0,  checkImportacaoMetrizap, 'importacao-metrizap');
+scheduleAt(7,  0,  checkDividasPush, 'dividas-push');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');
 scheduleAt(6, 35,  checkShopeeCampanhasVencendo, 'shopee-campanhas-vencendo');
 scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
@@ -3679,6 +3744,8 @@ cmdSub.on('message', (channel, msg) => {
       'top-vendas': 'syncTopVendas', 'email-diario': 'emailDailyReports', 'email-semanal': 'emailRelatorioSemanal',
       'outlier-check': 'checkOutlierEstatistico', 'taxa-devolucao': 'checkTaxaDevolucaoAlta',
       'queda-produtos': 'checkQuedaProdutos',
+      'importacao-metrizap': 'runImportacaoMetrizap',
+      'dividas-push': 'runDividasPush',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
       'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
@@ -3805,6 +3872,14 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkQuedaProdutos') {
       console.log('[worker] checkQuedaProdutos disparado manualmente');
       checkQuedaProdutos().catch(e => console.error('[worker] checkQuedaProdutos erro:', e.message));
+    }
+    if (cmd === 'runDividasPush') {
+      console.log('[worker] dividas-push disparado manualmente');
+      runDividasPush().catch(e => console.error('[worker] dividas-push erro:', e.message));
+    }
+    if (cmd === 'runImportacaoMetrizap') {
+      console.log('[worker] importacao-metrizap disparado manualmente');
+      runImportacaoMetrizap().catch(e => console.error('[worker] importacao-metrizap erro:', e.message));
     }
     if (cmd === 'checkShopeeCampanhasVencendo') {
       console.log('[worker] checkShopeeCampanhasVencendo disparado manualmente');

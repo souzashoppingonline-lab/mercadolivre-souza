@@ -28,6 +28,8 @@ journalctl -u ml-worker-novo -f
 cd /opt/ml-dashboard-novo/server && node src/db/migrate.js
 ```
 
+**Deploy com dependência nova** (ex.: `web-push`, v116): além do `git pull`, rodar `cd server && npm install` (e `npm run migrate` se veio migration) **antes** do restart. Mudança em job agendado (`worker.js`) só vale depois de reiniciar **`ml-worker-novo`** — reiniciar só o `ml-dashboard-novo` não basta. Push no celular exige HTTPS (já é) e, no iPhone, o app instalado na Tela de Início (iOS 16.4+).
+
 ## PostgreSQL
 
 - Banco: `ml_dashboard`, dono `postgres`.

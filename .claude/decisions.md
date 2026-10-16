@@ -1001,3 +1001,19 @@ Ao automatizar `boletos_recorrentes → boletos_mensais`, a opção ingênua (a 
 ## Pareto por anúncio usa o detalhe Metrizap e concilia com o Vendas & Custos (v115.23)
 
 Auditoria antes de implementar: no Supabase do Financeiro, `ml_orders`/`ml_items` existem mas estão vazias, `ecom_sales` tem só abr–jun/2026 e só unidades. A única fonte com faturamento **por anúncio** é `sales_entries_detail` (Metrizap) — o usuário confirmou ("use os dados do Metrizap"). Decisões: (1) anúncio = `store_id`+`item_id` (o `item_id` é o anúncio; agrupar por SKU, como as outras abas, misturaria variações e separaria o mesmo anúncio); (2) somas em centavos inteiros pra fronteira de 80% não depender de ponto flutuante; (3) a mesma venda importada em 2 lojas conta 1x, na loja do marketplace predominante igual ao da venda — regra derivada dos dados, sem cadastro novo; (4) em vez de esconder a diferença pro Vendas & Custos, a rota concilia loja+dia com `sales_entries` e mostra quanto do faturamento não tem detalhe (logo, não tem anúncio) — o usuário comparou os números com o V&C, e a diferença (dias não reimportados após a correção da v115.15) precisa estar explicada na própria tela; (5) gráfico mostra o conjunto de 80% inteiro + 10 seguintes, sem barra "agrupada" (a soma do resto ficava maior que todas as barras e escondia anúncios do próprio conjunto). Cálculo isolado em `server/src/pareto.js` sem dependências, pra ter teste automatizado no `npm test`.
+
+## PWA "Dívidas do Dia": reusa o `/sw.js` do painel; push com `web-push` e VAPID em `app_config` (v116)
+
+**Contexto**: a página de celular precisava virar app instalável com notificação às 07:00 mesmo com o navegador fechado. Já existia um PWA do painel (`manifest.webmanifest` + `/sw.js`, escopo `/`).
+
+**Decisão**:
+1. **Um service worker só.** Os handlers `push`/`notificationclick`/`pushsubscriptionchange` foram acrescentados ao `/sw.js` existente, em vez de um 2º SW com escopo da página: dois SWs com escopos sobrepostos confundem qual controla a página e qual recebe o push. O app "Dívidas do Dia" é outro **manifest** (`dividas.webmanifest`, `id` próprio) apontando pro mesmo SW. A regra do SW (rede-primeiro, nunca cachear `/api`) continua valendo.
+2. **Web Push padrão (VAPID) com a lib `web-push`**, não WhatsApp/Telegram: é o único canal que mostra notificação nativa no celular sem app de terceiro e sem custo. Criptografia/assinatura feitas à mão seriam ~150 linhas de cripto sem ganho.
+3. **Chaves VAPID geradas sozinhas** no 1º uso e guardadas em `app_config` (insert das duas linhas num único comando `ON CONFLICT DO NOTHING` — server e worker podem gerar ao mesmo tempo, vale o par que gravou primeiro). Nenhum passo manual no `.env`. Trocar as chaves invalida todas as inscrições (cada aparelho precisa ativar de novo).
+4. **`require('web-push')` preguiçoso** em `pushService.js`: sem `npm install` no deploy, só as rotas de push respondem 503 com a instrução — o `server.js` não cai.
+5. **Mesmo cálculo da página no worker**: `js/dividasDia.js` passou a exportar também via `module.exports` (o worker faz `require('../../js/dividasDia')`). Nunca uma 2ª cópia de "o que vence hoje".
+6. Subject do VAPID = URL do site (`PUSH_CONTACT` troca), não e-mail pessoal — ele vai pros serviços de push do Google/Apple.
+
+## Alerta de importação Metrizap: só cobra dias depois do último importado (v116)
+
+**Decisão**: o job `checkImportacaoMetrizap` (19:00) não cobra buraco no meio do período — ver `business-rules.md`. Alternativa descartada: "loja com venda em ≥80% dos dias → cobrar todo dia vazio", porque um dia sem venda real nunca pode ser "corrigido" e o aviso ficaria eterno. A conciliação resumo × detalhe reusa `pareto.conciliarComResumoDiario` (mesma tolerância do aviso da aba Pareto). Horário 19:00 em vez de manhã: a importação de "ontem" costuma ser feita durante o dia.

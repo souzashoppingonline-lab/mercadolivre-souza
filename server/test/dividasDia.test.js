@@ -38,3 +38,26 @@ test('lembrete das 19:00: só quando sobrou conta de HOJE; atrasadas entram como
   assert.strictEqual(D.textoLembrete(D.calcular({ hoje: '2026-10-16', boletos: [B('4', 'ALUGUEL', '2026-10-10', 2000)] })), null);
   assert.strictEqual(D.textoLembrete(D.calcular({ hoje: '2026-10-16', boletos: [B('1', 'LUZ', '2026-10-16', 80, 'pago')] })), null);
 });
+
+test('calendário do mês: semanas dom→sáb, totais por dia, peso, atrasada, tudo pago, semana mais pesada', () => {
+  const c = D.calendarioMes({ hoje: '2026-10-16', mes: '2026-10', boletos: [
+    B('1', 'A', '2026-10-16', 1000), B('2', 'B', '2026-10-16', 500), B('3', 'C', '2026-10-10', 300),
+    B('4', 'D', '2026-10-05', 200, 'pago'), B('5', 'E', '2026-10-28', 750), B('6', 'FORA', '2026-11-01', 9999),
+  ] });
+  assert.strictEqual(c.fim, '2026-10-31');
+  assert.strictEqual(c.semanas.length, 5);                       // 01/10/2026 é quinta
+  assert.deepStrictEqual(c.semanas[0].dias.slice(0, 4).map(d => !!d.foraDoMes), [true, true, true, true]);
+  assert.strictEqual(c.semanas[0].de, '2026-10-01');
+  const dia = d => c.semanas.flatMap(w => w.dias).find(x => x.date === d);
+  assert.strictEqual(dia('2026-10-16').aPagar, 1500);
+  assert.strictEqual(dia('2026-10-16').peso, 1);
+  assert.strictEqual(dia('2026-10-28').peso, 0.5);
+  assert.strictEqual(dia('2026-10-10').atrasada, true);
+  assert.strictEqual(dia('2026-10-05').tudoPago, true);
+  assert.strictEqual(c.max, 1500);
+  assert.deepStrictEqual(c.semanas.filter(w => w.maisPesada).map(w => [w.de, w.ate]), [['2026-10-11', '2026-10-17']]);
+  assert.ok(!c.itens.some(i => i.nome === 'FORA'));
+  // dezembro: 31 dias, último dia certo
+  assert.strictEqual(D.calendarioMes({ hoje: '2026-10-16', mes: '2026-12' }).fim, '2026-12-31');
+  assert.strictEqual(D.calendarioMes({ hoje: '2026-10-16', mes: '2027-02' }).fim, '2027-02-28');
+});

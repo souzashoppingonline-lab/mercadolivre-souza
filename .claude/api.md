@@ -287,6 +287,7 @@ Página só **analisa/recomenda** — nenhuma destas rotas altera preço no Merc
 | `POST /api/financeiro/push/inscrever { subscription }` | grava/atualiza o aparelho em `push_subscriptions` (`topico='dividas'`, upsert por `endpoint`; `subscription` = `PushSubscription.toJSON()` — endpoint `https://` + `keys.p256dh`/`keys.auth`, senão 400). Usado pelo sino 🔔 de `financeiro-dividas-hoje.html` e pelo `pushsubscriptionchange` do `sw.js` |
 | `POST /api/financeiro/push/cancelar { endpoint }` | apaga a inscrição (`{ ok, removidas }`) |
 | `POST /api/financeiro/push/teste { endpoint }` | manda "🔔 Notificações ativadas!" só pra esse aparelho. 404 se não inscrito; 502 se o serviço de push recusou/cancelou. `web-push` não instalado → 503 com instrução (`npm install`) — o server não cai |
+| `POST /api/financeiro/aviso-pagamento { nome, valor, conta, empresa, vencimento, atrasada, fatura, parcelas, desfeito, faltam_hoje:{n,valor} }` (`routes/financeiro.js`, v116) | Telegram pro dono quando uma dívida é paga/desfeita na página Dívidas do Dia: "✅ Conta paga — BOLETO MARTINS / 💰 R$ 1.219,02 · 🏦 Itaú / 🏢 UNIFULL · vence 16/10 / 📅 Hoje ainda faltam 2 contas — R$ X". Texto em `avisoPagamento.js` (escapa HTML, corta 120 chars por campo). `tgNotifyForce('tg_pagamentos')` — sem throttle/silêncio, desliga com `app_config tg_pagamentos='false'`. A página chama sem esperar (falha no aviso não afeta o pagamento já gravado) |
 
 ## Promoções
 | Rota | Descrição |

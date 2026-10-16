@@ -3233,12 +3233,9 @@ async function checkImportacaoMetrizap() {
 // até hoje e as parcelas das faturas que ainda têm parcela pendente (a fatura
 // usa todas as parcelas do mês pra data/valor, igual à página). Nada a pagar
 // ou nenhum aparelho inscrito → não manda nada. Envio em pushService.js.
-async function runDividasPush() {
-  const push = require('./pushService');
-  if (!(await push.contarInscritos('dividas'))) { console.log('[dividas-push] nenhum aparelho inscrito — pulando.'); return null; }
+async function carregarDividas(hoje) {
   const DividasDia = require('../../js/dividasDia');
   const supa = require('./db/supabaseFin');
-  const hoje = dataSP();
   const pend = 'or=(status.neq.pago,status.is.null)';
   const [boletos, parcPend, cartoes] = await Promise.all([
     supa.get(`/boletos_mensais?${pend}&date=lte.${hoje}&order=date.asc&limit=1000`),
@@ -3247,8 +3244,13 @@ async function runDividasPush() {
   ]);
   const meses = [...new Set((parcPend || []).map(p => p.fatura_mes).filter(Boolean))];
   const parcelas = meses.length ? await supa.get(`/parcelas_cartao?fatura_mes=in.(${meses.map(encodeURIComponent).join(',')})&limit=1000`) : [];
-  const r = DividasDia.calcular({ boletos: boletos || [], parcelas: parcelas || [], cartoes: cartoes || [], hoje });
-  const n = DividasDia.textoNotificacao(r);
+  return DividasDia.calcular({ boletos: boletos || [], parcelas: parcelas || [], cartoes: cartoes || [], hoje });
+}
+async function runDividasPush() {
+  const push = require('./pushService');
+  if (!(await push.contarInscritos('dividas'))) { console.log('[dividas-push] nenhum aparelho inscrito — pulando.'); return null; }
+  const hoje = dataSP();
+  const n = require('../../js/dividasDia').textoNotificacao(await carregarDividas(hoje));
   if (!n) { console.log(`[dividas-push] ${hoje}: nada vence hoje nem está atrasado — sem notificação.`); return null; }
   const res = await push.enviarTopico('dividas', { ...n, url: '/pages/financeiro-dividas-hoje.html', tag: `dividas-${hoje}` });
   console.log(`[dividas-push] ${hoje}: "${n.title}" → ${res.ok}/${res.inscritos} enviada(s), ${res.removida} removida(s), ${res.falha} falha(s)`);
@@ -3260,6 +3262,33 @@ async function checkDividasPush() {
     else console.error('[dividas-push] erro:', e.message);
   }
   scheduleAt(7, 0, checkDividasPush, 'dividas-push');
+}
+
+// ── Lembrete da noite "Dívidas do Dia" — 19:00 diário ─────────────────────
+// Se ainda sobrou conta que vence HOJE sem pagar: "⏰ Ainda faltam 2 contas
+// de hoje — R$ X" no push (aparelhos inscritos, quem paga) E no Telegram
+// (`tg_dividas_lembrete`, pro dono). Mesma carga/cálculo do push das 07:00
+// (carregarDividas → dividasDia.calcular + textoLembrete). Tudo de hoje pago
+// → não manda nada.
+async function runDividasLembrete() {
+  const DividasDia = require('../../js/dividasDia');
+  const hoje = dataSP();
+  const n = DividasDia.textoLembrete(await carregarDividas(hoje));
+  if (!n) { console.log(`[dividas-lembrete] ${hoje}: nada de hoje pendente — sem lembrete.`); return null; }
+  const push = require('./pushService');
+  const res = (await push.contarInscritos('dividas'))
+    ? await push.enviarTopico('dividas', { ...n, url: '/pages/financeiro-dividas-hoje.html', tag: `dividas-lembrete-${hoje}` })
+    : null;
+  await tgNotify('tg_dividas_lembrete', `<b>${n.title.replace(/[&<>]/g, '')}</b>\n${n.body.replace(/[&<>]/g, '')}\n📱 Dívidas do Dia`);
+  console.log(`[dividas-lembrete] ${hoje}: "${n.title}" → push ${res ? `${res.ok}/${res.inscritos}` : 'sem inscritos'} + Telegram`);
+  return res;
+}
+async function checkDividasLembrete() {
+  try { await runDividasLembrete(); } catch (e) {
+    if (e.code === 'NOT_CONFIGURED') console.log('[dividas-lembrete] Supabase do Financeiro não configurado — pulando.');
+    else console.error('[dividas-lembrete] erro:', e.message);
+  }
+  scheduleAt(19, 0, checkDividasLembrete, 'dividas-lembrete');
 }
 
 // ── Taxa de devolução alta — 06:30 diário ─────────────────────────────────
@@ -3683,6 +3712,7 @@ scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 25,  checkQuedaProdutos, 'queda-produtos');
 scheduleAt(19, 0,  checkImportacaoMetrizap, 'importacao-metrizap');
 scheduleAt(7,  0,  checkDividasPush, 'dividas-push');
+scheduleAt(19, 0,  checkDividasLembrete, 'dividas-lembrete');
 scheduleAt(6, 30,  checkTaxaDevolucaoAlta, 'taxa-devolucao');
 scheduleAt(6, 35,  checkShopeeCampanhasVencendo, 'shopee-campanhas-vencendo');
 scheduleAt(8, 15,  checkTarefasAtrasadas, 'tarefas-atrasadas');
@@ -3746,6 +3776,7 @@ cmdSub.on('message', (channel, msg) => {
       'queda-produtos': 'checkQuedaProdutos',
       'importacao-metrizap': 'runImportacaoMetrizap',
       'dividas-push': 'runDividasPush',
+      'dividas-lembrete': 'runDividasLembrete',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
       'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
@@ -3872,6 +3903,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkQuedaProdutos') {
       console.log('[worker] checkQuedaProdutos disparado manualmente');
       checkQuedaProdutos().catch(e => console.error('[worker] checkQuedaProdutos erro:', e.message));
+    }
+    if (cmd === 'runDividasLembrete') {
+      console.log('[worker] dividas-lembrete disparado manualmente');
+      runDividasLembrete().catch(e => console.error('[worker] dividas-lembrete erro:', e.message));
     }
     if (cmd === 'runDividasPush') {
       console.log('[worker] dividas-push disparado manualmente');

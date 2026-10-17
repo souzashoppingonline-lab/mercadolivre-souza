@@ -637,6 +637,7 @@
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
+<script src="../js/videoOverlay.js"></script>
 <script>
 // Reset modal na inicialização (evita exibir modal de uma sessão anterior)
 document.addEventListener('DOMContentLoaded', () => {
@@ -715,25 +716,10 @@ function montarLinhasOverlay(orders) {
   return { pedidos, comprador, produto };
 }
 
+// Desenho da barra de texto: js/videoOverlay.js (compartilhado com a gravação
+// de devolução em pages/devolucoes.html — mesma prova visual nas duas).
 function desenharFrameOverlay(video, canvas, ctx, linhas) {
-  const w = canvas.width, h = canvas.height;
-  ctx.drawImage(video, 0, 0, w, h);
-
-  const fonte = Math.max(14, Math.round(w / 46));
-  const padV = Math.round(fonte * 0.5);
-  const textos = [
-    `${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' })}`,
-    `Pedido: ${linhas.pedidos}`,
-    `Comprador: ${linhas.comprador}`,
-    `Produto: ${linhas.produto}`,
-  ];
-  const barH = textos.length * (fonte + padV) + padV;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(0, 0, w, barH);
-  ctx.font = `700 ${fonte}px -apple-system, Arial, sans-serif`;
-  ctx.fillStyle = '#fff';
-  ctx.textBaseline = 'top';
-  textos.forEach((t, i) => ctx.fillText(t, padV, padV + i * (fonte + padV)));
+  VideoOverlay.desenhar(video, canvas, ctx, [`Pedido: ${linhas.pedidos}`, `Comprador: ${linhas.comprador}`, `Produto: ${linhas.produto}`]);
 }
 
 function iniciarOverlayGravacao(orders) {

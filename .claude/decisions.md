@@ -1021,3 +1021,11 @@ Auditoria antes de implementar: no Supabase do Financeiro, `ml_orders`/`ml_items
 ## Aviso de pagamento: só da página Dívidas do Dia, via `tgNotifyForce` (v116)
 
 O aviso "✅ conta paga" é disparado pela página Dívidas do Dia (`avisarDono()` → `POST /api/financeiro/aviso-pagamento`), não de dentro de `PagamentosFin.pagarBoleto` (que a página Boletos também usa): o objetivo é o dono saber o que **a responsável** pagou; pagamento feito pelo próprio dono no Boletos não precisa avisar ele mesmo. Usa `tgNotifyForce` (sem `tg_interval`/silêncio) porque é evento de ação — com throttle, 3 pagamentos seguidos virariam 1 aviso. Fire-and-forget: o pagamento já foi gravado no Supabase antes; aviso falhando só loga.
+
+## Vídeo de devolução: MP4 quando possível, link público por token, 90 dias, overlay compartilhado (v117)
+
+- **MP4 em vez de WebM** quando `MediaRecorder.isTypeSupported('video/mp4…')`: é o arquivo que vai pra disputa do ML/WhatsApp/celular — WebM não abre em todo lugar e o WebM do MediaRecorder sai sem duração (player não mostra o tempo). Fallback WebM (Firefox). O vídeo de embalagem continua WebM (não mexido).
+- **Bitrate limitado** (1,5 Mbps/720p) já nesta gravação nova — o disco local é o gargalo (ver sugestão de Cloudflare R2 em `todo.md`); o de embalagem continua sem limite até o usuário decidir.
+- **Link público por token aleatório** (`video_links`, `/api/publico/video/:token`) em vez de link da rota autenticada: o analista do ML/cliente não tem login no dashboard. Token de 128 bits, 1 por vídeo, morre junto com o vídeo; sem expiração própria (a retenção já limita). O caminho fica sob `/api/` porque o nginx só repassa `/api`, `/webhooks`, `/auth`, `/ws` pro Node.
+- **90 dias** (≠ 30 da embalagem): devolução chega dias depois da entrega e a mediação no ML pode levar semanas.
+- **Overlay em `js/videoOverlay.js`** compartilhado com a Embalagem (antes estava só dentro de `embalagem.html`) — mesma prova visual, uma implementação.

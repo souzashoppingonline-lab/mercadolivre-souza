@@ -216,3 +216,9 @@ Ao iniciar uma sessão nova, além de ler toda a pasta `.claude` (regra em `CLAU
 
 - [ ] `pages/monitor.html` não tem liga/desliga para os tópicos novos `tg_importacao_metrizap`, `tg_pagamentos`, `tg_dividas_lembrete` (nem para o antigo `tg_queda_produtos`) — hoje só dá pra desligar gravando `'false'` em `app_config`.
 - [ ] Testar a inscrição de push num celular real (Android/Chrome e iPhone com app instalado) depois do deploy — o ambiente de teste não tem serviço de push do Google; envio/criptografia/VAPID foram testados contra um receptor local.
+
+## Vídeo de devolução (v117) — pendências
+
+- [ ] Vídeo de **embalagem** é apagado aos 30 dias; devolução que chega depois disso fica sem ele. Opção (precisa decisão do usuário, mexe numa regra pedida por ele): `cleanupPackingVideos` não apagar vídeo de pedido que tem linha em `returns` (guardar até 90 dias).
+- [ ] Armazenamento: mover vídeos (embalagem + devolução) pra Cloudflare R2 (upload direto do navegador com URL assinada, regra de ciclo de vida apaga sozinho) — sugerido ao usuário, aguardando conta Cloudflare. E/ou limitar bitrate do vídeo de embalagem (~0,6 Mbps).
+- [ ] `client_max_body_size 300m` do nginx limita o vídeo de devolução a ~26 min a 1,5 Mbps (a rota aceita 500MB) — suficiente; aumentar no nginx se precisar.

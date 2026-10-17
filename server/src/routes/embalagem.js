@@ -1114,14 +1114,19 @@ router.get('/historico', async (req, res) => {
 
 // GET /api/embalagem/videos/:id/file — stream do arquivo. res.sendFile já
 // suporta Range requests nativamente (necessário pra dar play/scrub no
-// player HTML5 sem baixar o vídeo inteiro de uma vez).
+// player HTML5 sem baixar o vídeo inteiro de uma vez). `?download=1` baixa
+// com nome legível (embalagem_pedido_<id>_<data>.webm) — usado na página
+// Devoluções pra mandar o vídeo pro ML numa disputa.
 router.get('/videos/:id/file', async (req, res) => {
   try {
-    const { rows } = await pool.query(`SELECT file_path FROM packing_videos WHERE id=$1`, [req.params.id]);
+    const { rows } = await pool.query(`SELECT file_path, order_ids, created_at FROM packing_videos WHERE id=$1`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'vídeo não encontrado' });
-    res.sendFile(path.resolve(rows[0].file_path), (err) => {
-      if (err && !res.headersSent) res.status(404).json({ error: 'arquivo de vídeo não encontrado no disco' });
-    });
+    const fim = (err) => { if (err && !res.headersSent) res.status(404).json({ error: 'arquivo de vídeo não encontrado no disco' }); };
+    if (req.query.download === '1') {
+      const ped = String((rows[0].order_ids || [])[0] || req.params.id).replace(/[^0-9a-zA-Z_-]/g, '');
+      return res.download(path.resolve(rows[0].file_path), `embalagem_pedido_${ped}_${new Date(rows[0].created_at || Date.now()).toISOString().slice(0, 10)}.webm`, fim);
+    }
+    res.sendFile(path.resolve(rows[0].file_path), fim);
   } catch (e) {
     console.error('[api/embalagem] GET /videos/:id/file', e.message);
     res.status(500).json({ error: e.message });

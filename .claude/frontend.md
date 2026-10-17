@@ -76,6 +76,10 @@ Pedido explícito do usuário: uma tela pra deixar numa TV/monitor da sala, alte
 
 Sempre que uma página nova é criada seguindo este contrato, `frontend.md` deve ganhar uma linha na lista de páginas acima.
 
+## `js/videoOverlay.js` — texto queimado no vídeo gravado (v117)
+
+`VideoOverlay.iniciar(video, audioTracks, linhas)` desenha a câmera num `<canvas>` com data/hora ao vivo + linhas fixas numa barra preta e devolve `{ stream, parar() }` pro `MediaRecorder`; `VideoOverlay.desenhar()` é o desenho de 1 quadro. Usado por `embalagem.html` (conferência) e `devolucoes.html` (vídeo da devolução). Ver `embalagem.md`.
+
 ## `js/db.js` — camada de dados
 
 Objeto `DB` com um método por endpoint (`DB.getDashboardKPIs()`, `DB.getPedidos(params)`, etc.), todos implementados sobre três helpers genéricos: `_get`, `_patch`, `_post`. Base URL configurável via `localStorage.ml_backend_url` (padrão `/api`). Nunca lança exceção para o chamador — em erro retorna `{ error: mensagem }` ou `null`, então toda página deve checar o retorno antes de usar.

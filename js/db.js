@@ -85,6 +85,7 @@ const DB = {
       return await res.json();
     } catch (e) {
       console.error('[DB] POST(form) error', path, e);
+      this.lastError = e.name === 'AbortError' ? 'tempo esgotado no envio' : e.message;
       return null;
     } finally {
       clearTimeout(timer);
@@ -515,6 +516,13 @@ const DB = {
   videoEmbalagemUrl(id)                  { return `${this.BASE}/embalagem/videos/${id}/file`; },
   async getEmbalagemPorHora(params={})   { return this._get('/embalagem/por-hora', params); },
   async getVideosPorPedidos(orderIds)    { return this._get('/embalagem/videos-por-pedidos', { order_ids: orderIds.join(',') }); },
+  // Vídeo de devolução (gravado na página Devoluções) — ver routes/devolucaoVideos.js
+  async getVideosDevolucoes(returnIds)   { return this._get('/devolucao-videos/por-devolucoes', { return_ids: returnIds.join(',') }); },
+  async uploadVideoDevolucao(formData)   { return this._postForm('/devolucao-videos', formData, 300000); },
+  async apagarVideoDevolucao(id)         { return this._delete(`/devolucao-videos/${id}`); },
+  async linkPublicoVideo(tipo, id)       { return this._post('/devolucao-videos/link', { tipo, id }); },
+  videoDevolucaoUrl(id, download)        { return `${this.BASE}/devolucao-videos/${id}/file${download ? '?download=1' : ''}`; },
+  videoEmbalagemDownloadUrl(id)          { return `${this.BASE}/embalagem/videos/${id}/file?download=1`; },
   async getEmbalagemHistorico(params={}) { return this._get('/embalagem/historico', params); },
   async getRelatorioEmbalagem(params={}) { return this._get('/embalagem/relatorio', params); },
   // Fechamento do período (dia/semana/mês) — payload único da aba "Relatório do Dia".

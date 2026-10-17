@@ -2203,6 +2203,43 @@ async function cleanupPackingVideos() {
   }
 }
 
+// Limpeza dos vídeos de DEVOLUÇÃO (gravados na página Devoluções, prova pra
+// disputa no ML) — 90 dias, não 30 como os de embalagem: disputa/mediação no
+// ML pode levar semanas depois da devolução chegar. Apaga arquivo + linha em
+// return_videos e os links públicos (video_links) que ficaram órfãos — de
+// devolução E de embalagem (o cleanupPackingVideos acima não conhece links).
+// 03:35 diário. Ver .claude/embalagem.md.
+const RETENCAO_VIDEO_DEVOLUCAO_DIAS = 90;
+async function cleanupReturnVideos() {
+  try {
+    return await recordSync('cleanup-return-videos', '35 3 * * *', async () => {
+      const { rows } = await pool.query(
+        `SELECT id, file_path FROM return_videos WHERE created_at < now() - ($1 || ' days')::interval`,
+        [String(RETENCAO_VIDEO_DEVOLUCAO_DIAS)]
+      );
+      let deleted = 0, errors = 0;
+      for (const r of rows) {
+        try { await fsp.unlink(r.file_path); } catch (e) {
+          if (e.code !== 'ENOENT') { console.warn(`[cleanup-return-videos] erro ao apagar ${r.file_path}:`, e.message); errors++; }
+        }
+        await pool.query(`DELETE FROM return_videos WHERE id=$1`, [r.id]);
+        deleted++;
+      }
+      const links = await pool.query(
+        `DELETE FROM video_links l WHERE
+           (l.tipo = 'devolucao' AND NOT EXISTS (SELECT 1 FROM return_videos v WHERE v.id = l.video_id))
+        OR (l.tipo = 'embalagem' AND NOT EXISTS (SELECT 1 FROM packing_videos p WHERE p.id = l.video_id))`
+      );
+      console.log(`[cleanup-return-videos] ${deleted} vídeo(s) removido(s), ${errors} erro(s), ${links.rowCount} link(s) órfão(s)`);
+      return { deleted, errors, links: links.rowCount };
+    });
+  } catch (e) {
+    console.error('[cleanup-return-videos] erro:', e.message);
+  } finally {
+    scheduleAt(3, 35, cleanupReturnVideos, 'cleanup-return-videos');
+  }
+}
+
 // Limpeza de webhook_logs — a tabela cresce sem limite (1 linha por webhook
 // recebido; duplicados deduplicados pelo jobId ficam 'pending' pra sempre e
 // nunca são processados). É só log/auditoria, então poda o que passou de 14
@@ -3691,6 +3728,7 @@ scheduleAt(5, 45,  syncMonitorAnalise, 'sync-monitor-analise');
 scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');
+scheduleAt(3, 35,  cleanupReturnVideos, 'cleanup-return-videos');
 scheduleAt(3, 45,  cleanupWebhookLogs, 'cleanup-webhook-logs');
 scheduleAt(2, 30,  backupDatabase, 'backup-database');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');

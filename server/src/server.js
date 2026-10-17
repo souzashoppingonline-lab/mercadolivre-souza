@@ -85,6 +85,11 @@ app.use('/api/ranking', require('./routes/ranking'));
 // Push da página Dívidas do Dia (PWA) — antes de /api/financeiro pra não cair
 // nas rotas genéricas dele; mesmo gate do módulo Financeiro. Ver .claude/api.md.
 app.use('/api/financeiro/push', require('./routes/push'));
+// Vídeo de devolução (gravado na página Devoluções) + link público de vídeo
+// (devolução/embalagem) pra mandar pro ML sem login. Ver .claude/embalagem.md.
+const devolucaoVideos = require('./routes/devolucaoVideos');
+app.use('/api/devolucao-videos', devolucaoVideos.router);
+app.use('/api/publico/video', devolucaoVideos.publicRouter);
 app.use('/api/financeiro', require('./routes/financeiro'));
 app.use('/api/bi', require('./routes/bi'));
 // Agente Financeiro — relatórios sob demanda cruzando Postgres operacional +

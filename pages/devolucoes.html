@@ -35,6 +35,32 @@
     .dev-modal h3 .close { cursor: pointer; color: var(--text-muted); }
     .dev-modal video { width: 100%; border-radius: 10px; background: #000; max-height: 70vh; }
     .dev-modal.detail { max-width: 640px; max-height: 85vh; overflow-y: auto; }
+    /* Vídeo de devolução: gravar (câmera + texto queimado) e lista de vídeos */
+    .vid-cell { display:inline-flex; align-items:center; gap:6px; }
+    .btn-vid { border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); border-radius:8px; padding:5px 9px; font-size:11.5px; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .btn-vid.rec { border-color:rgba(239,68,68,.55); color:#ef4444; }
+    .btn-vid.tem { border-color:rgba(34,197,94,.55); color:#22c55e; }
+    .dev-modal.rec { max-width:760px; max-height:94vh; overflow-y:auto; }
+    .rec-info { font-size:12px; color:var(--text-muted); margin-bottom:10px; line-height:1.5; }
+    .rec-info b { color:var(--text-main); }
+    .rec-cam { position:relative; background:#000; border-radius:10px; overflow:hidden; }
+    .rec-cam video { display:block; width:100%; max-height:58vh; background:#000; }
+    .rec-badge { position:absolute; top:10px; right:10px; background:rgba(0,0,0,.65); color:#fff; font-weight:800; font-size:13px; padding:4px 10px; border-radius:99px; display:none; font-variant-numeric:tabular-nums; }
+    .rec-badge.on { display:block; }
+    .rec-badge.on::first-letter { color:#ef4444; }
+    .rec-ctrl { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr); gap:8px; margin-top:10px; }
+    .rec-ctrl select, .rec-ctrl input { background:var(--bg-card2, var(--bg-dark)); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:9px; font-size:13px; min-width:0; }
+    .rec-acoes { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .rec-acoes button { flex:1; min-width:160px; border:0; border-radius:10px; padding:12px; font-size:14px; font-weight:800; cursor:pointer; }
+    .rec-go { background:#ef4444; color:#fff; }
+    .rec-go.parar { background:#f59e0b; color:#1a1d23; }
+    .rec-sec { background:var(--bg-card2, var(--bg-dark)) !important; color:var(--text-main) !important; border:1px solid var(--border) !important; }
+    .rec-msg { font-size:12.5px; margin-top:8px; min-height:16px; }
+    .vids-sec { font-size:11px; font-weight:800; color:var(--text-muted); letter-spacing:.4px; margin:12px 0 6px; text-transform:uppercase; }
+    .vid-item { display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:var(--bg-card2, var(--bg-dark)); border:1px solid var(--border); border-radius:10px; padding:9px 10px; margin-bottom:6px; font-size:12.5px; }
+    .vid-item .info { flex:1; min-width:180px; }
+    .vid-item .info small { display:block; color:var(--text-muted); font-size:11px; margin-top:2px; }
+    .vid-item a, .vid-item button { font-size:11.5px; }
     /* Timeline do histórico da reclamação */
     .tl { position: relative; margin: 6px 0 4px; padding-left: 26px; }
     .tl::before { content: ''; position: absolute; left: 8px; top: 4px; bottom: 4px; width: 2px; background: var(--border); }
@@ -229,8 +255,31 @@
 
 <div class="dev-modal-backdrop" id="devVideoBackdrop">
   <div class="dev-modal">
-    <h3>Vídeo da embalagem <span class="close" onclick="closeDevVideo()"><i class="fas fa-times"></i></span></h3>
+    <h3><span id="devVideoTitulo">Vídeo da embalagem</span> <span class="close" onclick="closeDevVideo()"><i class="fas fa-times"></i></span></h3>
     <video id="devVideoPlayer" controls></video>
+  </div>
+</div>
+
+<!-- Gravar vídeo da devolução (abrindo o pacote devolvido) — prova pra disputa no ML -->
+<div class="dev-modal-backdrop" id="devRecBackdrop">
+  <div class="dev-modal rec">
+    <h3>🔴 Gravar vídeo da devolução <span class="close" onclick="fecharGravacao()"><i class="fas fa-times"></i></span></h3>
+    <div class="rec-info" id="recInfo"></div>
+    <div class="rec-cam"><video id="recPreview" autoplay muted playsinline></video><div class="rec-badge" id="recBadge">● REC 00:00</div></div>
+    <div class="rec-ctrl">
+      <select id="recCamSel" onchange="iniciarCameraGravacao(this.value)" title="Câmera"></select>
+      <input id="recObs" maxlength="500" placeholder="Observação (ex.: chegou produto diferente / quebrado / caixa vazia)">
+    </div>
+    <div class="rec-acoes"><button class="rec-go" id="recBtn" onclick="toggleGravacao()">🔴 Iniciar gravação</button></div>
+    <div class="rec-msg" id="recMsg">Mostre a etiqueta da devolução, abra o pacote na frente da câmera e mostre o produto/defeito. Data, hora, reclamação e pedido ficam gravados no vídeo.</div>
+  </div>
+</div>
+
+<!-- Vídeos de uma devolução: embalagem (se houver) + gravações da devolução -->
+<div class="dev-modal-backdrop" id="devVidsBackdrop" onclick="if(event.target===this) fecharVideosDev()">
+  <div class="dev-modal detail">
+    <h3>🎬 Vídeos da devolução <span class="close" onclick="fecharVideosDev()"><i class="fas fa-times"></i></span></h3>
+    <div id="devVidsBody"></div>
   </div>
 </div>
 
@@ -253,6 +302,7 @@
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
+<script src="../js/videoOverlay.js"></script>
 <script>
 const fmt  = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtD = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
@@ -501,7 +551,10 @@ function renderDevRows(rows) {
             <button title="Ver histórico desta reclamação" onclick="openHistorico(${r.id})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:2px"><i class="fas fa-clock-rotate-left"></i></button>
           </td>
           <td style="white-space:nowrap">${fmtD(r.date)}</td>
-          <td id="video-cell-${r.order_id}" style="white-space:nowrap" onclick="event.stopPropagation()">—</td>
+          <td style="white-space:nowrap" onclick="event.stopPropagation()"><span class="vid-cell">
+            <span id="video-cell-${r.order_id}">—</span><span id="devvid-${r.id}"></span>
+            <button class="btn-vid rec" title="Gravar vídeo abrindo esta devolução (prova pra disputa no ML)" onclick="abrirGravacao(${r.id})">🔴 Gravar</button>
+          </span></td>
           <td onclick="event.stopPropagation()">
             <div class="note-cell">
               <input class="note-input prejuizo-input" id="prejuizo-${r.id}" type="number" step="0.01" min="0" inputmode="decimal" value="${r.prejuizo ?? ''}" placeholder="0,00" style="max-width:90px">
@@ -522,6 +575,7 @@ function renderDevRows(rows) {
       }).join('')
     : '<tr><td colspan="13" class="empty-state">Nenhuma devolução encontrada</td></tr>';
   loadVideoLinks(rows.map(r => r.order_id).filter(Boolean));
+  loadVideosDevolucao(rows.map(r => r.id));
 }
 
 // Filtro local (instantâneo) da tabela — sobre os dados já carregados.
@@ -845,19 +899,224 @@ async function loadEvolucao(days) {
 // Lookup em lote (1 chamada, não N+1) de quais pedidos têm vídeo de
 // embalagem gravado — preenche a coluna "Vídeo" com um botão "Assistir"
 // só onde houver match. Ver .claude/embalagem.md.
+const VID_EMB = {}; // order_id → vídeo de embalagem mais recente ({ id, created_at })
 async function loadVideoLinks(orderIds) {
   if (!orderIds.length) return;
   const map = await DB.getVideosPorPedidos(orderIds);
   if (!map || map.error) return;
   Object.entries(map).forEach(([orderId, v]) => {
+    VID_EMB[orderId] = v;
     const cell = document.getElementById(`video-cell-${orderId}`);
-    if (cell) cell.innerHTML = `<button class="btn-save-note" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border)" onclick="playDevVideo(${v.id})"><i class="fas fa-play"></i> Assistir</button>`;
+    if (cell) cell.innerHTML = `<button class="btn-vid" title="Vídeo da embalagem" onclick="playDevVideo(${v.id})"><i class="fas fa-play"></i> Embalagem</button>`;
   });
 }
 
-function playDevVideo(id) {
-  document.getElementById('devVideoPlayer').src = DB.videoEmbalagemUrl(id);
+function playDevVideo(id, titulo, url) {
+  document.getElementById('devVideoTitulo').textContent = titulo || 'Vídeo da embalagem';
+  document.getElementById('devVideoPlayer').src = url || DB.videoEmbalagemUrl(id);
   document.getElementById('devVideoBackdrop').classList.add('open');
+}
+
+// ── Vídeo de DEVOLUÇÃO ────────────────────────────────────────────────────
+// O analista grava a abertura do pacote devolvido (prova pra disputa no ML:
+// produto diferente/quebrado/faltando). Câmera → <canvas> com data/hora,
+// reclamação, pedido, comprador e produto queimados nos pixels
+// (js/videoOverlay.js, o mesmo da Embalagem) → MediaRecorder → upload
+// (POST /api/devolucao-videos). Formato: MP4 quando o navegador grava MP4
+// (aceito em qualquer lugar: ML, WhatsApp, celular), senão WebM. Qualidade
+// limitada (~1,5 Mbps, 720p) pra não encher o disco. Upload falhou → o vídeo
+// NÃO se perde: botão pra tentar de novo ou baixar no computador.
+// Guardado 90 dias (cleanupReturnVideos). Ver .claude/embalagem.md.
+const VID_DEV = {}; // return_id → [vídeos]
+async function loadVideosDevolucao(returnIds) {
+  if (!returnIds.length) return;
+  const map = await DB.getVideosDevolucoes(returnIds);
+  if (!map || map.error) return;
+  returnIds.forEach(id => { VID_DEV[id] = map[id] || []; pintarVideosDevolucao(id); });
+}
+function pintarVideosDevolucao(id) {
+  const el = document.getElementById(`devvid-${id}`); if (!el) return;
+  const n = (VID_DEV[id] || []).length;
+  el.innerHTML = n ? `<button class="btn-vid tem" title="Vídeos gravados desta devolução" onclick="abrirVideosDev(${id})">🎬 ${n}</button>` : '';
+}
+
+const fmtDur = s => s == null ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const fmtMB = b => b ? `${(b / 1048576).toFixed(1).replace('.', ',')} MB` : '';
+const escD = v => escapeHtmlDev(v == null ? '' : String(v));
+
+function abrirVideosDev(id, aviso) {
+  const r = allDevRows.find(x => String(x.id) === String(id)) || {};
+  const emb = r.order_id && VID_EMB[r.order_id];
+  const dev = VID_DEV[id] || [];
+  const quando = d => d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const embHtml = emb
+    ? `<div class="vid-item"><div class="info">📦 Vídeo da embalagem<small>gravado em ${quando(emb.created_at)} · prova de que saiu certo</small></div>
+        <button class="btn-vid" onclick="playDevVideo(${emb.id})"><i class="fas fa-play"></i> Assistir</button>
+        <a class="btn-vid" href="${DB.videoEmbalagemDownloadUrl(emb.id)}" download><i class="fas fa-download"></i> Baixar</a>
+        <button class="btn-vid" onclick="copiarLinkVideo('embalagem', ${emb.id}, this)"><i class="fas fa-link"></i> Copiar link</button></div>`
+    : '<div class="vid-item"><div class="info">📦 Sem vídeo de embalagem pra este pedido<small>não foi bipado na Embalagem ou já passou de 30 dias</small></div></div>';
+  const devHtml = dev.length ? dev.map(v => `<div class="vid-item"><div class="info">🎬 ${quando(v.created_at)}${v.duration_seconds != null ? ` · ${fmtDur(v.duration_seconds)}` : ''}${v.file_size ? ` · ${fmtMB(v.file_size)}` : ''}
+        <small>${[v.staff_user_name ? 'por ' + escD(v.staff_user_name) : '', v.observacao ? '“' + escD(v.observacao) + '”' : '', (v.mime || '').includes('mp4') ? 'MP4' : 'WebM'].filter(Boolean).join(' · ')}</small></div>
+        <button class="btn-vid" onclick="playDevVideo(null, 'Vídeo da devolução', DB.videoDevolucaoUrl(${v.id}))"><i class="fas fa-play"></i> Assistir</button>
+        <a class="btn-vid" href="${DB.videoDevolucaoUrl(v.id, true)}" download><i class="fas fa-download"></i> Baixar</a>
+        <button class="btn-vid" onclick="copiarLinkVideo('devolucao', ${v.id}, this)"><i class="fas fa-link"></i> Copiar link</button>
+        <button class="btn-vid" style="color:var(--text-muted)" title="Apagar este vídeo" onclick="apagarVideoDev(${id}, ${v.id})"><i class="fas fa-trash"></i></button></div>`).join('')
+    : '<div class="vid-item"><div class="info">Nenhum vídeo da devolução ainda.</div></div>';
+  document.getElementById('devVidsBody').innerHTML = `
+    ${aviso ? `<div class="vid-item" style="border-color:rgba(34,197,94,.55);color:#22c55e;font-weight:700">${aviso}</div>` : ''}
+    <div class="rec-info">Pedido <b>#${escD(r.order_id || '—')}</b>${r.claim_id ? ` · Reclamação <b>${escD(r.claim_id)}</b>` : ''} · ${escD(r.buyer_nickname || '')}<br>${escD(r.item_title || r.title || '')}</div>
+    <div class="vids-sec">Embalagem</div>${embHtml}
+    <div class="vids-sec">Devolução (90 dias)</div>${devHtml}
+    <div class="rec-acoes"><button class="rec-go" onclick="fecharVideosDev(); abrirGravacao(${id})">🔴 Gravar ${dev.length ? 'outro' : 'vídeo'}</button></div>
+    <div class="rec-msg" style="color:var(--text-muted)">Pra disputa: <b>Baixar</b> e anexar no Mercado Livre, ou <b>Copiar link</b> (abre sem login, vale enquanto o vídeo existir).</div>`;
+  document.getElementById('devVidsBackdrop').classList.add('open');
+}
+function fecharVideosDev() { document.getElementById('devVidsBackdrop').classList.remove('open'); }
+
+async function copiarLinkVideo(tipo, id, btn) {
+  const r = await DB.linkPublicoVideo(tipo, id);
+  if (!r || !r.path) { alert('Não consegui gerar o link: ' + (DB.lastError || 'erro')); return; }
+  const url = location.origin + r.path;
+  try { await navigator.clipboard.writeText(url); } catch { prompt('Copie o link do vídeo:', url); return; }
+  const old = btn.innerHTML; btn.innerHTML = '<i class="fas fa-check"></i> Link copiado'; setTimeout(() => { btn.innerHTML = old; }, 1600);
+}
+async function apagarVideoDev(returnId, videoId) {
+  if (!confirm('Apagar este vídeo da devolução? Não dá pra desfazer.')) return;
+  const r = await DB.apagarVideoDevolucao(videoId);
+  if (!r) { alert('Não consegui apagar: ' + (DB.lastError || 'erro')); return; }
+  VID_DEV[returnId] = (VID_DEV[returnId] || []).filter(v => v.id !== videoId);
+  pintarVideosDevolucao(returnId); abrirVideosDev(returnId);
+}
+
+const REC = { ret: null, stream: null, overlay: null, rec: null, chunks: [], inicio: 0, timer: null, mime: '', blob: null, dur: 0, staff: undefined };
+function formatoGravacao() {
+  const op = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return (window.MediaRecorder && op.find(t => MediaRecorder.isTypeSupported(t))) || '';
+}
+function recMsg(t, cor) { const e = document.getElementById('recMsg'); e.innerHTML = t; e.style.color = cor || 'var(--text-muted)'; }
+
+async function abrirGravacao(id) {
+  const r = allDevRows.find(x => String(x.id) === String(id)); if (!r) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) { alert('Este navegador não grava vídeo. Use o Chrome.'); return; }
+  Object.assign(REC, { ret: r, chunks: [], blob: null, dur: 0 });
+  document.getElementById('recInfo').innerHTML = `Pedido <b>#${escD(r.order_id || '—')}</b>${r.claim_id ? ` · Reclamação <b>${escD(r.claim_id)}</b>` : ''} · ${escD(r.buyer_nickname || '')} · ${escD(r.reason_detail || r.reason || '')}<br>${escD(r.item_title || r.title || '')}`;
+  document.getElementById('recObs').value = '';
+  document.getElementById('recBtn').className = 'rec-go'; document.getElementById('recBtn').textContent = '🔴 Iniciar gravação'; document.getElementById('recBtn').disabled = false;
+  document.querySelectorAll('.rec-acoes .extra').forEach(b => b.remove());
+  recMsg('Mostre a etiqueta da devolução, abra o pacote na frente da câmera e mostre o produto/defeito. Data, hora, reclamação e pedido ficam gravados no vídeo.');
+  document.getElementById('devRecBackdrop').classList.add('open');
+  if (REC.staff === undefined) {
+    try { const s = await fetch('/auth/staff/me', { credentials: 'same-origin' }); REC.staff = s.ok ? ((await s.json()).username || '') : ''; } catch { REC.staff = ''; }
+  }
+  await iniciarCameraGravacao(localStorage.getItem('dev_rec_cam') || '');
+}
+
+async function iniciarCameraGravacao(deviceId) {
+  if (REC.rec && REC.rec.state === 'recording') return;
+  pararCameraGravacao();
+  const video = { width: { ideal: 1280 }, height: { ideal: 720 }, ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: 'environment' } }) };
+  try {
+    REC.stream = await navigator.mediaDevices.getUserMedia({ video, audio: true })
+      .catch(() => navigator.mediaDevices.getUserMedia({ video, audio: false }));
+  } catch (e) {
+    if (deviceId) { try { localStorage.removeItem('dev_rec_cam'); } catch {} return iniciarCameraGravacao(''); }
+    recMsg('❌ Não consegui abrir a câmera: ' + escD(e.message) + ' — libere a câmera no cadeado ao lado do endereço.', '#ef4444'); return;
+  }
+  const pv = document.getElementById('recPreview'); pv.srcObject = REC.stream;
+  try { if (deviceId) localStorage.setItem('dev_rec_cam', deviceId); } catch {}
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  const atual = REC.stream.getVideoTracks()[0]?.getSettings().deviceId;
+  document.getElementById('recCamSel').innerHTML = cams.map((c, i) => `<option value="${escD(c.deviceId)}"${c.deviceId === atual ? ' selected' : ''}>${escD(c.label || 'Câmera ' + (i + 1))}</option>`).join('');
+}
+function pararCameraGravacao() {
+  if (REC.overlay) { REC.overlay.parar(); REC.overlay = null; }
+  if (REC.stream) { REC.stream.getTracks().forEach(t => t.stop()); REC.stream = null; }
+}
+
+function toggleGravacao() {
+  if (REC.rec && REC.rec.state === 'recording') { REC.rec.stop(); return; }
+  if (!REC.stream) { recMsg('Câmera não está aberta.', '#ef4444'); return; }
+  const r = REC.ret, pv = document.getElementById('recPreview');
+  const produto = String(r.item_title || r.title || '—');
+  let recStream = REC.stream;
+  try {
+    REC.overlay = VideoOverlay.iniciar(pv, REC.stream.getAudioTracks(), [
+      `DEVOLUÇÃO${r.claim_id ? ' · Reclamação: ' + r.claim_id : ''}`,
+      `Pedido: ${r.order_id || '—'} · Comprador: ${r.buyer_nickname || '—'}`,
+      `Produto: ${produto.length > 70 ? produto.slice(0, 67) + '…' : produto}`,
+    ]);
+    recStream = REC.overlay.stream;
+  } catch (e) { console.error('[devolucao] overlay falhou, gravando sem texto:', e); }
+  REC.mime = formatoGravacao();
+  try {
+    REC.rec = new MediaRecorder(recStream, { ...(REC.mime ? { mimeType: REC.mime } : {}), videoBitsPerSecond: 1500000, audioBitsPerSecond: 64000 });
+  } catch (e) { recMsg('❌ Não consegui iniciar a gravação: ' + escD(e.message), '#ef4444'); return; }
+  REC.chunks = [];
+  REC.rec.ondataavailable = e => { if (e.data && e.data.size) REC.chunks.push(e.data); };
+  REC.rec.onstop = finalizarGravacao;
+  REC.rec.start(1000);
+  REC.inicio = Date.now();
+  const badge = document.getElementById('recBadge'); badge.classList.add('on');
+  REC.timer = setInterval(() => { const s = Math.floor((Date.now() - REC.inicio) / 1000); badge.textContent = `● REC ${fmtDur(s).padStart(5, '0')}`; }, 500);
+  const b = document.getElementById('recBtn'); b.className = 'rec-go parar'; b.textContent = '⏹ Encerrar e salvar';
+  document.getElementById('recCamSel').disabled = true;
+  recMsg('Gravando… mostre bem a etiqueta, o produto e o defeito. Toque em <b>Encerrar e salvar</b> ao terminar.', '#ef4444');
+}
+
+async function finalizarGravacao() {
+  clearInterval(REC.timer);
+  document.getElementById('recBadge').classList.remove('on');
+  document.getElementById('recCamSel').disabled = false;
+  if (REC.overlay) { REC.overlay.parar(); REC.overlay = null; }
+  REC.dur = Math.round((Date.now() - REC.inicio) / 1000);
+  REC.blob = new Blob(REC.chunks, { type: (REC.mime || 'video/webm').split(';')[0] });
+  REC.chunks = [];
+  await enviarVideoDevolucao();
+}
+
+async function enviarVideoDevolucao() {
+  const b = document.getElementById('recBtn');
+  b.disabled = true; b.className = 'rec-go rec-sec'; b.textContent = '⏳ Salvando vídeo…';
+  document.querySelectorAll('.rec-acoes .extra').forEach(x => x.remove());
+  recMsg(`Enviando ${fmtMB(REC.blob.size)}… não feche esta janela.`);
+  const ext = REC.blob.type.includes('mp4') ? 'mp4' : 'webm';
+  const fd = new FormData(); // campos ANTES do arquivo (o servidor usa return_id pra nomear)
+  fd.append('return_id', REC.ret.id);
+  fd.append('duration_seconds', REC.dur);
+  fd.append('observacao', document.getElementById('recObs').value.trim());
+  if (REC.staff) fd.append('staff_user_name', REC.staff);
+  fd.append('video', REC.blob, `devolucao.${ext}`);
+  const r = await DB.uploadVideoDevolucao(fd);
+  if (!r || !r.video) {
+    b.disabled = false; b.className = 'rec-go'; b.textContent = '🔁 Tentar enviar de novo'; b.onclick = enviarVideoDevolucao;
+    const baixar = document.createElement('button'); baixar.className = 'rec-sec extra'; baixar.textContent = '⬇ Baixar no computador';
+    baixar.onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(REC.blob); a.download = `devolucao_pedido_${REC.ret.order_id || REC.ret.id}.${ext}`; a.click(); };
+    b.parentElement.appendChild(baixar);
+    recMsg('❌ Não consegui salvar no servidor: ' + escD(DB.lastError || 'erro') + '. O vídeo não se perdeu — tente de novo ou baixe no computador.', '#ef4444');
+    return;
+  }
+  const id = REC.ret.id;
+  VID_DEV[id] = [r.video, ...(VID_DEV[id] || [])];
+  pintarVideosDevolucao(id);
+  REC.blob = null;
+  b.onclick = toggleGravacao;
+  fecharGravacao(true);
+  abrirVideosDev(id, '✅ Vídeo salvo! Baixe ou copie o link pra mandar no Mercado Livre.');
+}
+
+function fecharGravacao(semPerguntar) {
+  if (!semPerguntar) {
+    if (REC.rec && REC.rec.state === 'recording' && !confirm('Está gravando. Fechar descarta este vídeo. Fechar mesmo assim?')) return;
+    if (REC.blob && !confirm('O vídeo ainda não foi salvo no servidor. Fechar descarta. Fechar mesmo assim?')) return;
+  }
+  if (REC.rec && REC.rec.state === 'recording') { REC.rec.onstop = null; REC.rec.stop(); }
+  clearInterval(REC.timer);
+  document.getElementById('recBadge').classList.remove('on');
+  document.getElementById('recBtn').onclick = toggleGravacao;
+  REC.blob = null; REC.rec = null;
+  pararCameraGravacao();
+  document.getElementById('recPreview').srcObject = null;
+  document.getElementById('devRecBackdrop').classList.remove('open');
 }
 function closeDevVideo() {
   const player = document.getElementById('devVideoPlayer');

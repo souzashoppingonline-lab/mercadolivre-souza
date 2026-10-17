@@ -197,6 +197,18 @@ Coluna "Vídeo" na tabela de devoluções mostra um botão "Assistir" pros pedid
 
 **Como saber se um pedido teve devolução, e quando**: a tabela `returns` já grava isso — `order_id` (vínculo com o pedido), `date` (o `date_created` do claim, ou seja, o momento exato em que o comprador abriu a reclamação/devolução no ML), `status`/`reason`. Populado em tempo real pelo webhook `post_purchase` (`handlePostPurchase` em `worker.js`) + sync retroativo (`syncReturns`, botão "Importar histórico ML" na própria página).
 
+## Vídeo de DEVOLUÇÃO — gravado na página Devoluções (v117)
+
+Pedido explícito do usuário: ter **tudo gravado** pra abrir disputa no ML quando o comprador devolve algo diferente/quebrado. Em `pages/devolucoes.html`, a coluna "Vídeo" de **toda** devolução tem **🔴 Gravar** (além do "▶ Embalagem" quando existe vídeo de embalagem e do "🎬 N" quando já há gravação da devolução).
+
+- **Gravar** abre um modal com a câmera (escolha de câmera lembrada em `localStorage.dev_rec_cam`; padrão = traseira no celular), observação opcional ("chegou panela amassada") e **Iniciar gravação / Encerrar e salvar** (cronômetro ● REC). O analista grava até encerrar.
+- **Texto queimado no vídeo** (prova pro ML de que é aquela devolução e não foi editado): data/hora ao vivo + `DEVOLUÇÃO · Reclamação: <claim_id>` + `Pedido · Comprador` + `Produto` — via **`js/videoOverlay.js`**, o MESMO desenho do vídeo de embalagem (extraído de `embalagem.html` nesta versão; a Embalagem passou a usar o arquivo compartilhado, sem mudar o resultado). Prévia na tela é a câmera crua; o texto vai só no arquivo gravado (testado: faixa escura + texto nos pixels do MP4).
+- **Formato**: **MP4** quando o navegador grava MP4 (Chrome recente/Safari — aceito em qualquer lugar: ML, WhatsApp, celular, e com duração correta), senão WebM. **Qualidade limitada** (`videoBitsPerSecond` 1,5 Mbps, 720p ideal, áudio 64 kbps ≈ 11 MB/min) pra não encher o disco (armazenamento: ver `todo.md`, "Vídeo de devolução").
+- **Upload**: `POST /api/devolucao-videos` (multipart, campos antes do arquivo; timeout 5 min no `DB.uploadVideoDevolucao`). **Falhou → o vídeo não se perde**: botões "Tentar enviar de novo" e "Baixar no computador" (blob local). Fechar com gravação/vídeo não salvo pede confirmação.
+- **Depois de salvar** abre "🎬 Vídeos da devolução": o **vídeo da embalagem** (se houver — prova de que saiu certo) e os **vídeos da devolução**, cada um com **Assistir / Baixar / Copiar link** (+ apagar, só devolução). **Baixar** = nome legível (`devolucao_reclamacao_<claim>_pedido_<pedido>_<data>.mp4`, `embalagem_pedido_<pedido>_<data>.webm` — `?download=1` nas rotas de arquivo). **Copiar link** = link **público** `https://…/api/publico/video/<token>` (32 hex aleatórios, `video_links`, abre sem login — pra colar na disputa/mandar pro cliente), mesmo token se pedir de novo, para de funcionar quando o vídeo é apagado.
+- **Retenção**: vídeos de devolução **90 dias** (`cleanupReturnVideos`, worker 03:35 — disputa no ML pode demorar semanas); vídeo de embalagem continua 30 dias. Arquivos em `server/storage/devolucao-videos/YYYY-MM-DD/dev_<return_id>_<stamp>.mp4`. Tabelas `return_videos` / `video_links` em `database.md`, rotas em `api.md`.
+- **Limitação conhecida**: o vídeo de **embalagem** some aos 30 dias — se a devolução chega depois disso, não há mais o vídeo de embalagem pra mandar. Ver `todo.md`.
+
 ### Aba Histórico
 
 Complementa a Conferência do Dia (que só compara "dia selecionado vs. dia anterior") com uma visão de tendência real ao longo do tempo — período configurável (7/30/90 dias) e filtro de loja (mesmo `loadLojasSelect()` reaproveitado da Conferência, generalizado a partir de `loadLojasConferencia()` pra aceitar qualquer `<select>`).

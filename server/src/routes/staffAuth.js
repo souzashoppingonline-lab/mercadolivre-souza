@@ -103,7 +103,8 @@ function restrictedModuleForPath(p) {
 // páginas públicas exigidas pelo cadastro de apps de marketplace (TikTok
 // Shop Partner Center, Shopee Open Platform...) — um revisor externo
 // precisa abrir sem login, mesmo com o gate ligado.
-const PUBLIC_PREFIXES = ['/webhooks', '/auth', '/ml', '/health', '/ws', '/pages/login.html', '/favicon.ico', '/api/embalagem/debug', '/politica-de-privacidade', '/politica-seguranca', '/protecao_dados_pessoais'];
+// '/api/publico': link público de vídeo (token aleatório de 32 hex) — ver routes/devolucaoVideos.js.
+const PUBLIC_PREFIXES = ['/webhooks', '/auth', '/ml', '/health', '/ws', '/api/publico', '/pages/login.html', '/favicon.ico', '/api/embalagem/debug', '/politica-de-privacidade', '/politica-seguranca', '/protecao_dados_pessoais'];
 // Além de /api/embalagem/*, o papel 'embalagem' também precisa disso:
 const EMBALAGEM_EXTRA_API = ['/api/lojas']; // dropdown de loja na aba Conferência do Dia
 const EMBALAGEM_EXTRA_PAGES = ['/pages/embalagem.html', '/pages/expedicao.html'];

@@ -75,7 +75,47 @@
     .dm-item .val { font-weight:800; font-size:15px; white-space:nowrap; }
     .dm-vazio { background:var(--bg-card); border:1px dashed var(--border); border-radius:12px; padding:14px; text-align:center; color:var(--text-muted); font-size:13px; }
     .dm-bar { position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(transparent, var(--bg-dark) 30%); }
-    .dm-bar button { width:100%; max-width:560px; display:block; margin:0 auto; border:0; border-radius:14px; padding:14px; font-size:15px; font-weight:800; background:#25d366; color:#06281a; cursor:pointer; }
+    .dm-bar .botoes { max-width:560px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .dm-bar button { width:100%; display:block; border:0; border-radius:14px; padding:14px 8px; font-size:14px; font-weight:800; background:#25d366; color:#06281a; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .dm-bar button.add { background:#f59e0b; color:#1a1d23; }
+    /* ➕ Adicionar boleto/dívida: câmera lê o código (js/boletoCodigo.js) */
+    .dm-scan { position:fixed; inset:0; z-index:55; background:var(--bg-dark); display:none; flex-direction:column; overflow-y:auto; }
+    .dm-scan.on { display:flex; }
+    .dm-scan .topo { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg-dark); z-index:2; }
+    .dm-scan .topo b { font-size:16px; flex:1; }
+    .dm-scan .topo button { width:40px; height:40px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); font-size:18px; cursor:pointer; }
+    .dm-scan .corpo { width:100%; max-width:560px; margin:0 auto; padding:12px 14px 24px; box-sizing:border-box; }
+    .dm-scan .cam { position:relative; background:#000; border-radius:14px; overflow:hidden; aspect-ratio:4/3; }
+    .dm-scan .cam video { width:100%; height:100%; object-fit:cover; display:block; }
+    .dm-scan .mira { position:absolute; left:5%; right:5%; top:32%; bottom:32%; border:3px solid #f59e0b; border-radius:10px; box-shadow:0 0 0 999px rgba(0,0,0,.35); }
+    .dm-scan .mira::after { content:''; position:absolute; left:4%; right:4%; top:50%; height:2px; background:#ef4444; box-shadow:0 0 8px #ef4444; animation:dmLaser 1.6s ease-in-out infinite; }
+    @keyframes dmLaser { 0%,100% { transform:translateY(-14px); opacity:.6 } 50% { transform:translateY(14px); opacity:1 } }
+    .dm-scan .dica { position:absolute; left:0; right:0; bottom:8px; text-align:center; font-size:12px; color:#fff; text-shadow:0 1px 4px #000; padding:0 10px; }
+    .dm-scan .luz { position:absolute; top:8px; right:8px; width:40px; height:40px; border-radius:50%; border:0; background:rgba(0,0,0,.55); color:#fff; font-size:18px; display:none; }
+    .dm-scan .manual { display:flex; gap:8px; margin-top:10px; }
+    .dm-scan input, .dm-scan select { width:100%; box-sizing:border-box; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:12px; font-size:15px; min-width:0; }
+    .dm-scan .manual button, .dm-scan .acao { border:0; border-radius:10px; padding:12px 14px; font-size:14px; font-weight:800; cursor:pointer; background:#3fb950; color:#06281a; white-space:nowrap; }
+    .dm-scan .acao.sec { background:var(--bg-card); color:var(--text-main); border:1px solid var(--border); }
+    .dm-scan .acao.largo { width:100%; margin-top:10px; padding:14px; font-size:15px; }
+    .dm-scan .link { background:none; border:0; color:#f59e0b; font-weight:700; font-size:13.5px; text-decoration:underline; cursor:pointer; padding:10px 0; width:100%; }
+    .dm-scan .status { font-size:12.5px; color:var(--text-muted); margin-top:8px; min-height:16px; text-align:center; }
+    .dm-scan .leitura { background:var(--bg-card); border:1px solid rgba(63,185,80,.5); border-radius:14px; padding:12px; }
+    .dm-scan .leitura .v { font-size:24px; font-weight:900; color:#3fb950; }
+    .dm-scan .leitura .linha { font-family:monospace; font-size:11.5px; color:var(--text-muted); word-break:break-all; margin-top:6px; }
+    .dm-scan .sec-tit { font-size:11px; font-weight:800; color:var(--text-muted); letter-spacing:.4px; text-transform:uppercase; margin:14px 2px 6px; }
+    .dm-scan .op { display:flex; align-items:center; gap:10px; background:var(--bg-card); border:1px solid var(--border); border-left:4px solid #f59e0b; border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+    .dm-scan .op .info { flex:1; min-width:0; }
+    .dm-scan .op .info b { display:block; font-size:13.5px; }
+    .dm-scan .op .info small { color:var(--text-muted); font-size:11.5px; }
+    .dm-scan .op.paga { border-left-color:#3fb950; opacity:.75; }
+    .dm-scan .form label { display:block; font-size:12px; color:var(--text-muted); margin:10px 0 4px; }
+    .dm-scan .form .dupla { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .dm-scan .tipos { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+    .dm-scan .tipos button { border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); border-radius:9px; padding:8px 10px; font-size:12.5px; font-weight:700; cursor:pointer; }
+    .dm-scan .tipos button.on { background:#f59e0b; color:#1a1d23; border-color:#f59e0b; }
+    .dm-scan .falta { border-color:#f59e0b !important; box-shadow:0 0 0 1px #f59e0b; }
+    .dm-scan .erro { color:#f87171; font-size:12.5px; margin-top:8px; min-height:16px; }
+    .dm-copiar { border:1px solid var(--border); background:var(--bg-card2); color:var(--text-muted); border-radius:8px; font-size:11px; font-weight:700; padding:4px 8px; cursor:pointer; }
     .dm-msg { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(78px + env(safe-area-inset-bottom)); width:calc(100% - 28px); max-width:532px; box-sizing:border-box; background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:10px 12px; font-size:13px; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:40; display:none; }
     .dm-atr { display:flex; align-items:center; gap:10px; background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.45); color:#f87171; border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:13px; font-weight:700; cursor:pointer; }
     .dm-atr b { margin-left:auto; font-size:15px; }
@@ -205,12 +245,21 @@
   <div class="dm-msg" id="dmMsg"></div>
 </div>
 <div class="dm-ov" id="dmOv" onclick="if(event.target.id==='dmOv') fecharSheet()"><div class="dm-sheet" id="dmSheet"></div></div>
-<div class="dm-bar"><button onclick="enviarWhatsapp()" id="dmWaBtn"><i class="fab fa-whatsapp"></i> Enviar no WhatsApp</button></div>
+<div class="dm-bar"><div class="botoes">
+  <button class="add" onclick="abrirAdicionar()" id="dmAddBtn">➕ Adicionar dívida</button>
+  <button onclick="enviarWhatsapp()" id="dmWaBtn"><i class="fab fa-whatsapp"></i> WhatsApp</button>
+</div></div>
+<!-- ➕ Adicionar boleto/dívida pela câmera (ou digitando / sem código) -->
+<div class="dm-scan" id="dmScan">
+  <div class="topo"><b id="dmScanTit">📷 Ler boleto</b><button onclick="fecharAdicionar()" aria-label="Fechar">✕</button></div>
+  <div class="corpo" id="dmScanCorpo"></div>
+</div>
 
 <script src="../js/db.js"></script>
 <script src="../js/dividasDia.js"></script>
 <script src="../js/recorrentesFin.js"></script>
 <script src="../js/pagamentosFin.js"></script>
+<script src="../js/boletoCodigo.js"></script>
 <script>
 // Visão de celular das dívidas: botões Hoje / Amanhã / Próximos 3 dias com
 // TODAS as dívidas do período (pagas e a pagar) + aviso de atrasadas. Botão
@@ -232,7 +281,7 @@ function msg(t, erro) {
 async function carregar() {
   document.getElementById('dmSync').classList.add('fa-spin');
   msg('');
-  const [rB, rP, rC, cfg, rRe, rBk, rCe] = await Promise.all([
+  const [rB, rP, rC, cfg, rRe, rBk, rCe, rCt] = await Promise.all([
     DB.getFinanceiroDados('boletos_mensais', 5000, 'date.asc'),
     DB.getFinanceiroDados('parcelas_cartao', 10000, 'data_vencimento.asc'),
     DB.getFinanceiroDados('cartoes', 500),
@@ -240,6 +289,7 @@ async function carregar() {
     DB.getFinanceiroDados('boletos_recorrentes', 2000),
     DB.getFinanceiroDados('contas_bancarias', 1000),
     DB.getFinanceiroDados('conta_empresas', 3000),
+    DB.getFinanceiroDados('boleto_categories', 1000),
   ]);
   document.getElementById('dmSync').classList.remove('fa-spin');
   const erro = [rB, rP, rC].find(r => !r || r.error);
@@ -254,6 +304,7 @@ async function carregar() {
   }
   DADOS = { boletos: rB.rows || [], parcelas: rP.rows || [], cartoes: rC.rows || [] };
   CONTAS = (rBk && !rBk.error && rBk.rows) || []; CONTAEMP = (rCe && !rCe.error && rCe.rows) || [];
+  CATS_BOLETO = (rCt && !rCt.error && rCt.rows) || [];
   R = DividasDia.calcular({ ...DADOS, hoje: DividasDia.hojeLocal() });
   render();
 }
@@ -272,7 +323,7 @@ let mesSel = null, diaSel = null;
 const fimDoMes = m => DividasDia.somaDias(`${DividasDia.somaDias(`${m}-01`, 32).slice(0, 7)}-01`, -1);
 const MESES_PT = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const nomeMes = (m, curto) => { const [y, mm] = m.split('-'), n = MESES_PT[Number(mm) - 1]; return curto ? `${n.slice(0, 3)}/${y.slice(2)}` : `${n[0].toUpperCase()}${n.slice(1)} ${y}`; };
-let visao = 'hoje', DADOS = null, CONTAS = [], CONTAEMP = [], ITENS = {};
+let visao = 'hoje', DADOS = null, CONTAS = [], CONTAEMP = [], ITENS = {}, CATS_BOLETO = [];
 const COR = { pago: '#3fb950', pend: '#f59e0b', atr: '#f87171' };
 const diaSemana = iso => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
@@ -333,7 +384,7 @@ function render() {
       <div class="t">📆 Calendário <span style="color:var(--text-muted);font-weight:600">· ${nomeMes(mesSel, true)}</span><b>${BRL(mTot - mPago)} a pagar</b><i>${visao === 'mes' ? '✕' : '›'}</i></div>
       <div class="trilho"><span style="width:${mTot > 0 ? Math.round(mPago / mTot * 100) : 0}%"></span></div></button>`;
 
-  document.getElementById('dmWaBtn').innerHTML = `<i class="fab fa-whatsapp"></i> Enviar "${ROTULO_WA[visao]}" no WhatsApp`;
+  document.getElementById('dmWaBtn').innerHTML = `<i class="fab fa-whatsapp"></i> WhatsApp · ${ROTULO_WA[visao]}`;
   const itens = itensDaVisao();
   const soma = l => l.reduce((t, i) => t + i.valor, 0);
   const res = resumoVisao(itens);
@@ -432,8 +483,9 @@ function item(i) {
     : [i.fornecedor && i.nome && i.fornecedor.toLowerCase() !== i.nome.toLowerCase() ? esc(i.fornecedor) : '', TIPO[i.tipo] || esc(i.tipo), 'vence ' + ddmm(i.date)].filter(Boolean).join(' · ');
   const val = i.valor > 0 ? BRL(i.valor) : '<span style="font-size:11px;color:var(--text-muted)">valor a<br>confirmar</span>';
   ITENS[i.id] = i;
-  const acao = !i.pago ? `<button class="dm-pagar" onclick="abrirPagar('${esc(i.id)}')">Pagar</button>`
-    : (!i.fatura ? `<button class="dm-desfazer" onclick="desfazer('${esc(i.id)}')">desfazer</button>` : '');
+  const copiar = !i.fatura && i.ref && i.ref.codigo_barras ? `<button class="dm-copiar" onclick="copiarCodigo('${esc(i.id)}')" title="Copiar código pra colar no app do banco">📋 Código</button>` : '';
+  const acao = copiar + (!i.pago ? `<button class="dm-pagar" onclick="abrirPagar('${esc(i.id)}')">Pagar</button>`
+    : (!i.fatura ? `<button class="dm-desfazer" onclick="desfazer('${esc(i.id)}')">desfazer</button>` : ''));
   return `<div class="dm-item ${i.pago ? 'pago' : ''}" data-id="${esc(i.id)}" style="--c:${COR[st]}">${i.pago ? '<span class="dm-carimbo">PAGO</span>' : ''}<div class="info"><div class="desc"><span class="tx">${desc}</span></div><div class="meta">${chip}${meta}</div></div><div class="lado"><div class="val">${val}</div>${acao}</div></div>`;
 }
 
@@ -814,6 +866,273 @@ async function enviarWhatsapp() {
   // Só a lista do botão selecionado (Hoje / Amanhã / Próx. 3 dias / Atrasadas),
   // com todas as dívidas dela e o status de cada uma.
   window.location.href = DividasDia.linkWhatsapp(numero, DividasDia.textoWhatsappLista({ ...cabecalhoVisao(), itens: itensDaVisao(), nome: CFG.nome }));
+}
+
+// ── ➕ Adicionar boleto / dívida pela CÂMERA ───────────────────────────────
+// Botão "➕ Adicionar dívida" (barra de baixo) → câmera lê o código de barras
+// do boleto ou o QR PIX → js/boletoCodigo.js decodifica (valor, vencimento,
+// banco; confere os dígitos) → procura a dívida já cadastrada (código salvo,
+// senão valor + vencimento). Achou → Pagar (mesmo fluxo de sempre; o código
+// fica salvo em boletos_mensais.codigo_barras). Não achou → formulário de
+// cadastro já com valor/vencimento; o que o código não traz (nome, empresa,
+// fornecedor, categoria — e o vencimento em conta de luz/imposto) é digitado
+// aqui mesmo. Também dá pra digitar/colar a linha ou cadastrar sem código.
+// Leitor: BarcodeDetector nativo (Android/Chrome) ou ZXing por CDN (iPhone e
+// o resto), carregado só quando a câmera abre. Código de barras só é aceito
+// depois de 2 leituras iguais seguidas (o DV bancário deixa passar erro raro).
+const ZXING_URL = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+const EMPRESAS_PADRAO = ['UNIFULL', 'TOP MIX', 'R SOUZA', 'SHOPEE'];
+// Mesmos tipos/rótulos do "➕ Cadastrar Dívida" da página Boletos (sem Cartão:
+// compra parcelada no cartão continua sendo cadastrada lá, gera as parcelas).
+const TIPOS_NOVA = [['boleto', 'Boleto'], ['manual', 'Imposto'], ['pessoal', 'Pessoal'], ['fatura_ml', 'Fatura ML'], ['flex', 'Flex'], ['folha_pagamento', 'Folha de Pagamento'], ['custo_fixo', 'Custo Fixo'], ['custo_variavel', 'Custo Variável']];
+let NV_TIPO = 'boleto';
+const SCAN = { stream: null, timer: null, leitor: null, ultimo: null, iguais: 0, leitura: null, ocupado: false };
+let _zxing = null;
+const corpoScan = () => document.getElementById('dmScanCorpo');
+
+function carregarZXing() {
+  if (window.ZXing) return Promise.resolve(window.ZXing);
+  if (!_zxing) _zxing = new Promise((ok, falha) => {
+    const sc = document.createElement('script'); sc.src = ZXING_URL; sc.async = true;
+    sc.onload = () => window.ZXing ? ok(window.ZXing) : falha(new Error('leitor não carregou'));
+    sc.onerror = () => { _zxing = null; falha(new Error('sem internet para carregar o leitor')); };
+    document.head.appendChild(sc);
+  });
+  return _zxing;
+}
+
+// Monta o leitor: nativo se o aparelho lê ITF (código de barras de boleto),
+// senão ZXing. Devolve async (canvas|video) → texto ou null.
+async function criarLeitor() {
+  if ('BarcodeDetector' in window) {
+    try {
+      const sup = await BarcodeDetector.getSupportedFormats();
+      if (sup.includes('itf')) {
+        const det = new BarcodeDetector({ formats: ['itf', 'qr_code'].filter(f => sup.includes(f)) });
+        return async fonte => { const r = await det.detect(fonte); return r.length ? r[0].rawValue : null; };
+      }
+    } catch (_) { /* cai pro ZXing */ }
+  }
+  const ZX = await carregarZXing();
+  const dicas = new Map();
+  dicas.set(ZX.DecodeHintType.POSSIBLE_FORMATS, [ZX.BarcodeFormat.ITF, ZX.BarcodeFormat.QR_CODE]);
+  dicas.set(ZX.DecodeHintType.TRY_HARDER, true);
+  const leitor = new ZX.MultiFormatReader();
+  return async canvas => {
+    try { return leitor.decode(new ZX.BinaryBitmap(new ZX.HybridBinarizer(new ZX.HTMLCanvasElementLuminanceSource(canvas))), dicas).getText(); }
+    catch (_) { return null; }
+  };
+}
+
+function abrirAdicionar() {
+  prepararSom();
+  document.getElementById('dmScanTit').textContent = '📷 Ler boleto';
+  corpoScan().innerHTML = `
+    <div class="cam"><video id="dmScanVideo" playsinline muted autoplay></video><div class="mira"></div>
+      <button class="luz" id="dmScanLuz" onclick="alternarLanterna()" aria-label="Lanterna">🔦</button>
+      <div class="dica">Deite o celular e encaixe o <b>código de barras</b> na faixa — ou aponte pro <b>QR do PIX</b></div></div>
+    <div class="status" id="dmScanStatus">Abrindo a câmera…</div>
+    <div class="manual"><input id="dmScanDigitado" inputmode="numeric" placeholder="ou digite / cole a linha digitável ou PIX" onkeydown="if(event.key==='Enter') lerDigitado()"><button onclick="lerDigitado()">OK</button></div>
+    <button class="link" onclick="mostrarFormNova(null)">Não tem código? Cadastrar dívida sem código</button>`;
+  document.getElementById('dmScan').classList.add('on');
+  ligarCamera();
+}
+
+async function ligarCamera() {
+  const st = document.getElementById('dmScanStatus');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { if (st) st.textContent = 'Este navegador não abre a câmera — digite o código abaixo.'; return; }
+  try {
+    SCAN.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+  } catch (e) { if (st) st.innerHTML = '❌ Câmera bloqueada — libere no cadeado ao lado do endereço, ou digite o código abaixo.'; return; }
+  const v = document.getElementById('dmScanVideo'); if (!v) { pararCamera(); return; }
+  v.srcObject = SCAN.stream;
+  const trilha = SCAN.stream.getVideoTracks()[0];
+  try { trilha.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}); } catch (_) {}
+  try { if (trilha.getCapabilities && trilha.getCapabilities().torch) document.getElementById('dmScanLuz').style.display = 'block'; } catch (_) {}
+  try { SCAN.leitor = await criarLeitor(); } catch (e) { if (st) st.textContent = '⚠️ ' + e.message + ' — digite o código abaixo.'; return; }
+  if (st) st.textContent = 'Procurando o código…';
+  SCAN.ultimo = null; SCAN.iguais = 0;
+  const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const passo = async () => {
+    if (!SCAN.stream || SCAN.ocupado) return;
+    const vw = v.videoWidth, vh = v.videoHeight; if (!vw) return;
+    SCAN.ocupado = true;
+    try {
+      // Só a faixa do meio (onde está a mira), no máx. 1600px de largura.
+      const sy = Math.round(vh * 0.25), sh = Math.round(vh * 0.5), esc = Math.min(1, 1600 / vw);
+      canvas.width = Math.round(vw * esc); canvas.height = Math.round(sh * esc);
+      ctx.drawImage(v, 0, sy, vw, sh, 0, 0, canvas.width, canvas.height);
+      const txt = await SCAN.leitor(canvas);
+      if (txt) aoLer(txt);
+    } finally { SCAN.ocupado = false; }
+  };
+  SCAN.timer = setInterval(passo, 180);
+}
+
+function aoLer(txt) {
+  const L = BoletoCodigo.ler(txt, DividasDia.hojeLocal());
+  const st = document.getElementById('dmScanStatus');
+  if (!L.ok) { if (st) st.textContent = 'Lendo… segure firme e com luz'; SCAN.ultimo = null; return; }
+  // PIX tem CRC forte: 1 leitura basta. Código de barras: 2 iguais seguidas.
+  if (L.tipo !== 'pix') {
+    SCAN.iguais = SCAN.ultimo === L.codigo ? SCAN.iguais + 1 : 1; SCAN.ultimo = L.codigo;
+    if (SCAN.iguais < 2) { if (st) st.textContent = 'Quase… segure mais um instante'; return; }
+  }
+  vibrar([40, 40, 40]); som('moeda');
+  mostrarLeitura(L);
+}
+
+function lerDigitado() {
+  const L = BoletoCodigo.ler(document.getElementById('dmScanDigitado').value, DividasDia.hojeLocal());
+  const st = document.getElementById('dmScanStatus');
+  if (!L.ok) { st.innerHTML = '❌ ' + esc(L.erro); st.style.color = '#f87171'; return; }
+  mostrarLeitura(L);
+}
+
+function pararCamera() {
+  clearInterval(SCAN.timer); SCAN.timer = null;
+  if (SCAN.stream) { SCAN.stream.getTracks().forEach(t => t.stop()); SCAN.stream = null; }
+}
+async function alternarLanterna() {
+  const t = SCAN.stream && SCAN.stream.getVideoTracks()[0]; if (!t) return;
+  SCAN.luz = !SCAN.luz;
+  try { await t.applyConstraints({ advanced: [{ torch: SCAN.luz }] }); } catch (_) {}
+}
+function fecharAdicionar() { pararCamera(); SCAN.leitura = null; document.getElementById('dmScan').classList.remove('on'); }
+document.addEventListener('visibilitychange', () => { if (document.hidden && SCAN.stream) fecharAdicionar(); });
+
+function descLeitura(L) {
+  if (L.tipo === 'pix') return `PIX${L.recebedor ? ' · ' + esc(L.recebedor) : ''}`;
+  if (L.tipo === 'arrecadacao') return `Conta de consumo / imposto · ${esc(L.segmento)}`;
+  return `Boleto · ${esc(L.bancoNome)}`;
+}
+
+function mostrarLeitura(L) {
+  pararCamera();
+  SCAN.leitura = L;
+  document.getElementById('dmScanTit').textContent = '✅ Código lido';
+  const r = BoletoCodigo.procurar(DADOS.boletos, L);
+  const linhaOp = (o) => {
+    const b = o.boleto;
+    const motivo = o.motivo === 'codigo' ? 'mesmo código' : o.motivo === 'valor_a_confirmar' ? 'dívida sem valor, vence perto' : (o.dias ? `mesmo valor, vence ${o.dias} dia(s) de diferença` : 'mesmo valor e vencimento');
+    return `<div class="op"><div class="info"><b>${esc(b.name || b.supplier || 'Dívida')}</b><small>${esc(b.empresa || '—')} · vence ${ddmm(b.date)} · ${Number(b.value) > 0 ? BRL(Number(b.value)) : 'valor a confirmar'} · ${motivo}</small></div>
+      <button class="acao" onclick="pagarDaLeitura('${esc(b.id)}')">Pagar</button></div>`;
+  };
+  const pagas = r.jaPagas.map(b => `<div class="op paga"><div class="info"><b>✅ ${esc(b.name || 'Dívida')} — já paga</b><small>${esc(b.empresa || '—')} · venceu ${ddmm(b.date)} · ${BRL(Number(b.value) || 0)}</small></div></div>`).join('');
+  corpoScan().innerHTML = `
+    <div class="leitura"><div style="font-size:12.5px;color:var(--text-muted)">${descLeitura(L)}</div>
+      <div class="v">${L.valor > 0 ? BRL(L.valor) : 'valor não vem no código'}</div>
+      <div style="font-size:13px">${L.vencimento ? `Vencimento <b>${ddmm(L.vencimento)}/${L.vencimento.slice(0, 4)}</b>` : 'Vencimento não vem no código'}</div>
+      <div class="linha">${esc(L.linhaFormatada)}</div>
+      <button class="dm-copiar" style="margin-top:8px" onclick="copiarTexto(SCAN.leitura.linha)">📋 Copiar código</button></div>
+    ${pagas ? `<div class="sec-tit">⚠️ Atenção — já existe paga</div>${pagas}` : ''}
+    ${r.opcoes.length ? `<div class="sec-tit">Dívida encontrada${r.opcoes.length > 1 ? 's — escolha a certa' : ''}</div>${r.opcoes.map(linhaOp).join('')}
+      <button class="link" onclick="mostrarFormNova(SCAN.leitura)">Não é nenhuma dessas? ➕ Cadastrar como nova</button>`
+      : '<div class="sec-tit">Nenhuma dívida cadastrada com esse valor/vencimento</div><div id="dmScanForm"></div>'}
+    <button class="acao sec largo" onclick="abrirAdicionar()">📷 Ler outro</button>`;
+  if (!r.opcoes.length) mostrarFormNova(L, true);
+}
+
+// Formulário de cadastro: valor/vencimento vêm da leitura; o resto ela digita.
+// Campo que falta fica destacado em laranja.
+function mostrarFormNova(L, dentro) {
+  if (!dentro) pararCamera();
+  const empresas = [...new Set([...EMPRESAS_PADRAO, ...DADOS.boletos.map(b => String(b.empresa || '').trim()).filter(Boolean)])];
+  const cats = CATS_BOLETO.filter(c => String(c.type || '').toLowerCase() !== 'fornecedor').map(c => c.name).filter(Boolean);
+  const forns = [...new Set([...CATS_BOLETO.filter(c => String(c.type || '').toLowerCase() === 'fornecedor').map(c => c.name), ...DADOS.boletos.map(b => b.supplier)].filter(Boolean))].sort();
+  NV_TIPO = L && L.tipo === 'arrecadacao' ? 'manual' : 'boleto';
+  // Mesmos campos e ordem do "➕ Cadastrar Dívida" da página Boletos.
+  const html = `<div class="form">
+      <label>Tipo de dívida</label><div class="tipos" id="nvTipos">${TIPOS_NOVA.map(([k, n]) => `<button type="button" data-k="${k}" class="${k === NV_TIPO ? 'on' : ''}" onclick="escolherTipoNova('${k}')">${n}</button>`).join('')}</div>
+      <div class="dupla"><div><label>Vencimento *</label><input id="nvVenc" type="date" value="${L && L.vencimento ? L.vencimento : ''}"></div>
+        <div><label>Categoria</label><select id="nvCat"><option value="">Sem categoria</option>${cats.map(c => `<option>${esc(c)}</option>`).join('')}</select></div></div>
+      <label>Fornecedor (opcional)</label><input id="nvForn" list="nvFornLista" placeholder="Nenhum fornecedor" value="${L && L.recebedor ? esc(L.recebedor) : ''}"><datalist id="nvFornLista">${forns.map(f => `<option value="${esc(f)}">`).join('')}</datalist>
+      <label>Empresa (opcional)</label><select id="nvEmp"><option value="">— Selecione —</option>${empresas.map(e => `<option>${esc(e)}</option>`).join('')}</select>
+      <label>Número NF (opcional)</label><input id="nvNf" inputmode="numeric" placeholder="Ex: 5644560">
+      <label>Nome do boleto *</label><input id="nvNome" placeholder="Ex: Aluguel Galpão, Internet…" value="${L && L.tipo === 'pix' && L.recebedor ? esc(L.recebedor) : ''}">
+      <label>Valor (R$) *</label><input id="nvValor" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00" value="${L && L.valor > 0 ? L.valor.toFixed(2) : ''}">
+      <div class="erro" id="nvErro"></div>
+      <button class="acao largo" id="nvSalvar" onclick="salvarNova()">➕ Cadastrar dívida</button></div>`;
+  if (dentro) document.getElementById('dmScanForm').innerHTML = html;
+  else {
+    document.getElementById('dmScanTit').textContent = L ? '➕ Cadastrar como nova' : '➕ Nova dívida (sem código)';
+    corpoScan().innerHTML = (L ? `<div class="leitura" style="margin-bottom:6px"><div style="font-size:12.5px;color:var(--text-muted)">${descLeitura(L)}</div><div class="linha">${esc(L.linhaFormatada)}</div></div>` : '') + html;
+  }
+  ['nvVenc', 'nvNome', 'nvValor'].forEach(id => {
+    const el = document.getElementById(id);
+    const marca = () => el.classList.toggle('falta', !String(el.value || '').trim());
+    marca(); el.addEventListener('input', marca); el.addEventListener('change', marca);
+  });
+  const primeiro = ['nvVenc', 'nvNome', 'nvValor'].map(id => document.getElementById(id)).find(el => !el.value);
+  if (primeiro) setTimeout(() => primeiro.focus(), 50);
+}
+
+function escolherTipoNova(k) {
+  NV_TIPO = k;
+  document.querySelectorAll('#nvTipos button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+}
+
+async function salvarNova() {
+  const L = SCAN.leitura, val = id => document.getElementById(id).value.trim();
+  const nome = val('nvNome'), emp = val('nvEmp'), venc = val('nvVenc');
+  const valor = Math.round(parseFloat(val('nvValor').replace(',', '.')) * 100) / 100;
+  const erro = t => { document.getElementById('nvErro').textContent = t; };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(venc)) return erro('Informe o vencimento.');
+  if (!nome) return erro('Informe o nome do boleto.');
+  if (!(valor > 0)) return erro('Informe o valor.');
+  // Sem código (ou cadastro "como nova"): avisa se já existe uma igual.
+  const igual = DADOS.boletos.find(b => b.tipo !== 'cartao' && b.date === venc && Math.round((Number(b.value) || 0) * 100) === Math.round(valor * 100));
+  if (igual && !confirm(`Já existe "${igual.name}" de ${BRL(valor)} vencendo ${ddmm(venc)}${igual.status === 'pago' ? ' (paga)' : ''}. Cadastrar outra mesmo assim?`)) return;
+  const btn = document.getElementById('nvSalvar'); btn.disabled = true; btn.textContent = 'Salvando…'; erro('');
+  // Mesmo formato do doInsertSimples() da página Boletos (sem categoria → 'Geral').
+  const row = { name: nome, category: val('nvCat') || 'Geral', supplier: val('nvForn') || null, empresa: emp || null, date: venc, value: valor,
+    status: 'pendente', mes_referencia: venc.slice(0, 7), tipo: NV_TIPO || 'boleto', is_origem: true };
+  if (val('nvNf')) row.numero_nf = val('nvNf');
+  if (L && L.codigo) row.codigo_barras = L.codigo;
+  const r = await DB.addFinanceiroRow('boletos_mensais', row);
+  const salvo = r && Array.isArray(r.rows) ? r.rows[0] : null;
+  if (!salvo) { btn.disabled = false; btn.textContent = '➕ Cadastrar dívida'; return erro('Não consegui salvar: ' + (DB.lastError || 'erro')); }
+  DADOS.boletos.push(salvo);
+  recalcular();
+  document.getElementById('dmScanTit').textContent = '✅ Dívida cadastrada';
+  corpoScan().innerHTML = `<div class="leitura"><div class="v">✅ ${esc(salvo.name)}</div>
+      <div style="font-size:13px;margin-top:4px">${[esc(salvo.empresa || ''), esc(TIPO[salvo.tipo] || salvo.tipo), BRL(Number(salvo.value) || 0), `vence ${ddmm(salvo.date)}/${String(salvo.date).slice(0, 4)}`].filter(Boolean).join(' · ')}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">Já aparece em Boletos e nesta página${salvo.codigo_barras ? ' — com o código salvo (📋 Código no card)' : ''}.</div></div>
+    <button class="acao largo" onclick="pagarDaLeitura('${esc(salvo.id)}')">💸 Pagar agora</button>
+    <button class="acao sec largo" onclick="abrirAdicionar()">➕ Adicionar outra</button>
+    <button class="acao sec largo" onclick="fecharAdicionar()">Fechar</button>`;
+  msg(`➕ ${esc(salvo.name)} cadastrada — ${BRL(Number(salvo.value) || 0)}, vence ${ddmm(salvo.date)}`);
+}
+
+// Pagar a dívida achada/cadastrada pela leitura: salva o código nela (se
+// ainda não tinha) e abre a MESMA janela de Pagar dos cards.
+async function pagarDaLeitura(id) {
+  const b = DADOS.boletos.find(x => String(x.id) === String(id)); if (!b) return;
+  const L = SCAN.leitura;
+  if (L && L.codigo && !b.codigo_barras) {
+    const r = await DB.updateFinanceiroRow('boletos_mensais', b.id, { codigo_barras: L.codigo });
+    if (r) b.codigo_barras = L.codigo;
+  }
+  const hoje = DividasDia.hojeLocal();
+  const it = DividasDia.listarPeriodo({ ...DADOS, hoje, de: b.date, ate: b.date }).find(x => String(x.id) === String(b.id));
+  if (!it) return;
+  ITENS[it.id] = it;
+  fecharAdicionar();
+  recalcular();
+  abrirPagar(it.id);
+  const campoValor = document.getElementById('dmValor');
+  if (campoValor && L && L.valor > 0) campoValor.value = L.valor.toFixed(2);
+}
+
+async function copiarTexto(t) {
+  try { await navigator.clipboard.writeText(t); }
+  catch (_) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (_) {} ta.remove(); }
+  msg('📋 Código copiado — cole no app do banco.');
+}
+function copiarCodigo(id) {
+  const i = ITENS[id]; if (!i || !i.ref || !i.ref.codigo_barras) return;
+  const L = BoletoCodigo.ler(i.ref.codigo_barras, DividasDia.hojeLocal());
+  copiarTexto(L.ok ? L.linha : i.ref.codigo_barras);
 }
 
 // ── PWA: instalar app + notificação push das 07:00 ─────────────────────────

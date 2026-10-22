@@ -528,3 +528,10 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 
 - **Aviso de pagamento** (Telegram, `tg_pagamentos`): sai a cada Pagar/desfazer feito **na página Dívidas do Dia** (a da responsável) — não na página Boletos (lá quem paga é o próprio dono). Inclui conta bancária escolhida, empresa, vencimento ("⚠️ estava atrasada" se venceu antes de hoje) e quanto ainda falta **de hoje** depois desse pagamento ("🎉 Todas as contas de hoje pagas!" quando zera). Sem throttle nem janela de silêncio: cada pagamento chega.
 - **Lembrete das 19:00** (push + Telegram `tg_dividas_lembrete`): só quando ainda há conta que **vence hoje** pendente. Atrasadas sozinhas não disparam o lembrete (já vêm no push das 07:00); quando há conta de hoje, as atrasadas entram como complemento.
+
+## Leitura de boleto pela câmera — como a dívida é reconhecida (v117, `js/boletoCodigo.js`)
+
+- Ordem: (1) dívida com o **mesmo código** salvo em `codigo_barras` (exato); (2) a pagar, **sem código salvo**, com o **mesmo valor no centavo** e vencimento **até ±10 dias** do vencimento do código (sem vencimento no código — conta de consumo/imposto/PIX — vale qualquer data com o mesmo valor); (3) a pagar com **valor 0** ("valor a confirmar") vencendo **até ±3 dias**. Mais perto do vencimento primeiro. Compra-mãe de cartão (`tipo='cartao'`) nunca entra.
+- **Já paga** com o mesmo código (ou mesmo valor e vencimento ±3 dias) aparece como aviso — evita pagar duas vezes.
+- Vencimento do boleto bancário = fator de vencimento: base 07/10/1997; em 22/02/2025 o fator voltou a 1000 — dos dois ciclos possíveis vale a data mais perto de hoje. Fator 0 = sem vencimento.
+- Código de barras lido pela câmera só é aceito com **2 leituras iguais seguidas** (o DV bancário junta os restos 0/10/11 em "1" e deixa passar erro raro); PIX vale na 1ª leitura (CRC16).

@@ -1029,3 +1029,7 @@ O aviso "✅ conta paga" é disparado pela página Dívidas do Dia (`avisarDono(
 - **Link público por token aleatório** (`video_links`, `/api/publico/video/:token`) em vez de link da rota autenticada: o analista do ML/cliente não tem login no dashboard. Token de 128 bits, 1 por vídeo, morre junto com o vídeo; sem expiração própria (a retenção já limita). O caminho fica sob `/api/` porque o nginx só repassa `/api`, `/webhooks`, `/auth`, `/ws` pro Node.
 - **90 dias** (≠ 30 da embalagem): devolução chega dias depois da entrega e a mediação no ML pode levar semanas.
 - **Overlay em `js/videoOverlay.js`** compartilhado com a Embalagem (antes estava só dentro de `embalagem.html`) — mesma prova visual, uma implementação.
+
+## Leitor de boleto: BarcodeDetector nativo + ZXing por CDN só quando precisa (v117)
+
+`BarcodeDetector` (nativo, rápido) só existe em Chrome Android/macOS — iPhone e Chrome desktop Linux/Windows não têm, ou não leem ITF (o código de barras de boleto). Fallback: **ZXing (`@zxing/library@0.21.3`, UMD por jsdelivr)**, carregado por `<script>` só quando a câmera abre e o nativo não serve — os outros ~99% das visitas à página não baixam os 330 KB. Decodifica só a faixa do meio do quadro (onde está a mira), ≤1600 px, a cada 180 ms; o próprio ZXing tenta girado (TRY_HARDER). Testado de ponta a ponta com câmera falsa do Chromium mostrando a imagem de um boleto ITF real gerado no teste (leu em 0,8 s). A decodificação do número (DV, fator, valor, PIX) é código nosso e puro (`js/boletoCodigo.js`), não depende do leitor.

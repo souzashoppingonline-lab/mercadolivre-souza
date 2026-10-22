@@ -80,6 +80,10 @@ Sempre que uma página nova é criada seguindo este contrato, `frontend.md` deve
 
 `VideoOverlay.iniciar(video, audioTracks, linhas)` desenha a câmera num `<canvas>` com data/hora ao vivo + linhas fixas numa barra preta e devolve `{ stream, parar() }` pro `MediaRecorder`; `VideoOverlay.desenhar()` é o desenho de 1 quadro. Usado por `embalagem.html` (conferência) e `devolucoes.html` (vídeo da devolução). Ver `embalagem.md`.
 
+## `js/boletoCodigo.js` — código de boleto/PIX (v117)
+
+`BoletoCodigo.ler(texto, hoje)` → `{ ok, tipo: 'bancario'|'arrecadacao'|'pix', codigo, linha, linhaFormatada, valor, vencimento, banco/bancoNome | segmento | recebedor/chave }` ou `{ ok:false, erro }`; `BoletoCodigo.procurar(boletos, leitura)` → `{ opcoes, jaPagas }`. Navegador e Node (testes). Usado pelo ➕ Adicionar dívida de `financeiro-dividas-hoje.html`. Regras em `business-rules.md`.
+
 ## `js/db.js` — camada de dados
 
 Objeto `DB` com um método por endpoint (`DB.getDashboardKPIs()`, `DB.getPedidos(params)`, etc.), todos implementados sobre três helpers genéricos: `_get`, `_patch`, `_post`. Base URL configurável via `localStorage.ml_backend_url` (padrão `/api`). Nunca lança exceção para o chamador — em erro retorna `{ error: mensagem }` ou `null`, então toda página deve checar o retorno antes de usar.

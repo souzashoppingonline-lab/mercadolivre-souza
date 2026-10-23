@@ -85,6 +85,8 @@ app.use('/api/ranking', require('./routes/ranking'));
 // Push da página Dívidas do Dia (PWA) — antes de /api/financeiro pra não cair
 // nas rotas genéricas dele; mesmo gate do módulo Financeiro. Ver .claude/api.md.
 app.use('/api/financeiro/push', require('./routes/push'));
+// Saldo informado das contas (janela de Pagar da Dívidas do Dia) — ver routes/saldoContas.js.
+app.use('/api/financeiro/saldo-contas', require('./routes/saldoContas'));
 // Vídeo de devolução (gravado na página Devoluções) + link público de vídeo
 // (devolução/embalagem) pra mandar pro ML sem login. Ver .claude/embalagem.md.
 const devolucaoVideos = require('./routes/devolucaoVideos');

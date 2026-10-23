@@ -535,3 +535,10 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Já paga** com o mesmo código (ou mesmo valor e vencimento ±3 dias) aparece como aviso — evita pagar duas vezes.
 - Vencimento do boleto bancário = fator de vencimento: base 07/10/1997; em 22/02/2025 o fator voltou a 1000 — dos dois ciclos possíveis vale a data mais perto de hoje. Fator 0 = sem vencimento.
 - Código de barras lido pela câmera só é aceito com **2 leituras iguais seguidas** (o DV bancário junta os restos 0/10/11 em "1" e deixa passar erro raro); PIX vale na 1ª leitura (CRC16).
+
+## Saldo da conta na janela de Pagar (v118, `server/src/saldoContas.js`)
+
+- O Fluxo de Caixa **não serve** como saldo de conta: em 23/10/2026, 687 de 998 lançamentos (quase todas as entradas) estão **sem conta** — somando por conta, SICOOB daria −R$ 56 mil e SANTANDER −R$ 3,7 mil. Por isso o saldo parte do **saldo informado** por quem paga (o que aparece no app do banco).
+- **Disponível = último informe − saídas + entradas** lançadas em `cash_flow_entries` **naquela conta** com `created_at` **depois** do informe (hora do lançamento, não `date` — o Pagar grava a saída com a data do vencimento). Pagamento desfeito apaga a saída → o valor volta sozinho.
+- Aviso **"⚠️ Faltam R$ X nesta conta"** quando disponível − valor a pagar < 0. **Não bloqueia** (botão "Pagar mesmo assim") — pode haver limite/cheque especial ou entrada ainda não lançada.
+- Informe com **mais de 24h** aparece como desatualizado ("⏰ atualize antes de pagar").

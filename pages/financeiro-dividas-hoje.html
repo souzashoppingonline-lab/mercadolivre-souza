@@ -23,6 +23,19 @@
     .dm-ic { margin-left:auto; display:flex; gap:8px; }
     .dm-ic a, .dm-ic button { width:40px; height:40px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); display:flex; align-items:center; justify-content:center; font-size:15px; text-decoration:none; cursor:pointer; }
     .dm-sino { position:relative; }
+    /* Saldo da conta na janela de Pagar (saldo informado − saídas depois) */
+    .dm-saldo { margin-top:8px; background:var(--bg-card2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.45; }
+    .dm-saldo b.v { font-size:16px; }
+    .dm-saldo small { display:block; color:var(--text-muted); font-size:11.5px; margin-top:2px; }
+    .dm-saldo .alerta { margin-top:6px; font-weight:800; color:#f87171; }
+    .dm-saldo .ok { margin-top:6px; color:#3fb950; font-weight:700; }
+    .dm-saldo .velho { margin-top:6px; color:#f59e0b; font-weight:700; }
+    .dm-saldo.falta { border-color:rgba(248,113,113,.6); background:rgba(248,113,113,.08); }
+    .dm-saldo button { margin-top:8px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); border-radius:8px; padding:7px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+    .dm-saldo .edita { display:flex; gap:6px; margin-top:8px; }
+    .dm-saldo .edita input { flex:1; min-width:0; padding:9px; font-size:14px; }
+    .dm-saldo .edita button { margin-top:0; background:#3fb950; color:#06281a; border:0; }
+    .dm-sheet .conta-linha { display:flex; align-items:center; gap:8px; }
     .dm-sino.on { color:#3fb950 !important; border-color:rgba(63,185,80,.5) !important; }
     .dm-sino.aviso::after { content:''; position:absolute; top:7px; right:7px; width:8px; height:8px; border-radius:50%; background:#f59e0b; box-shadow:0 0 0 2px var(--bg-card); }
     .dm-sheet .bloco { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:12px; margin-top:10px; font-size:13px; line-height:1.45; }
@@ -230,6 +243,7 @@
       <div class="sub" id="dmData">Carregando…</div>
     </div>
     <div class="dm-ic">
+      <button onclick="abrirSaldos()" title="Saldo das contas" aria-label="Saldo das contas">🏦</button>
       <button onclick="abrirNotificacoes()" title="Notificações e instalar app" id="dmSinoBtn" class="dm-sino"><i class="fas fa-bell"></i></button>
       <button onclick="carregar()" title="Atualizar"><i class="fas fa-sync-alt" id="dmSync"></i></button>
       <a href="financeiro-boletos.html" title="Abrir Boletos completo"><i class="fas fa-table-list"></i></a>
@@ -508,11 +522,91 @@ function abrirPagar(id) {
     corpo = `<h3>Pagar ${desc}</h3>
       <div class="sub">${i.fornecedor && i.fornecedor !== i.nome ? esc(i.fornecedor) + ' · ' : ''}vence ${ddmm(i.date)}${i.ref.empresa ? ' · ' + esc(i.ref.empresa) : ''}${i.valor > 0 ? ` · <b>${BRL(i.valor)}</b>` : ''}</div>
       ${i.valor > 0 ? '' : '<label>Valor pago (R$) — esta dívida está sem valor</label><input id="dmValor" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00">'}
-      <label>De qual conta saiu o pagamento?</label><select id="dmConta">${opts}</select>`;
+      <label>De qual conta saiu o pagamento?</label><select id="dmConta" onchange="pintarSaldoPagar()">${opts}</select>
+      <div class="dm-saldo" id="dmSaldo">🏦 Carregando saldo da conta…</div>`;
   }
   document.getElementById('dmSheet').innerHTML = corpo + `<div class="erro" id="dmErro"></div>
     <div class="acoes"><button class="cancelar" onclick="fecharSheet()">Cancelar</button><button class="confirmar" id="dmConfirmar" onclick="confirmarPagamento('${esc(id)}')">Confirmar pagamento</button></div>`;
   document.getElementById('dmOv').style.display = 'flex';
+  if (!i.fatura) {
+    PAGANDO = i;
+    const v = document.getElementById('dmValor'); if (v) v.addEventListener('input', pintarSaldoPagar);
+    carregarSaldos().then(pintarSaldoPagar);
+  }
+}
+
+// ── Saldo da conta (janela de Pagar) ───────────────────────────────────────
+// O Fluxo de Caixa não sabe o saldo real das contas (quase toda entrada fica
+// sem conta), então o saldo é o INFORMADO por quem paga (🏦 no topo ou
+// "Atualizar saldo" aqui) menos as saídas lançadas naquela conta depois do
+// informe — GET/POST /api/financeiro/saldo-contas. Não bloqueia o pagamento:
+// só avisa "⚠️ faltam R$ X". Informe com mais de 24h pede atualização.
+let SALDOS = null, PAGANDO = null;
+async function carregarSaldos(forcar) {
+  if (SALDOS && !forcar) return SALDOS;
+  const r = await DB.getSaldoContas();
+  SALDOS = Array.isArray(r) ? r : [];
+  return SALDOS;
+}
+function quandoInformado(iso) {
+  const d = new Date(iso), hoje = DividasDia.hojeLocal(), dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (dia === hoje) return `hoje ${hora}`;
+  if (dia === DividasDia.somaDias(hoje, -1)) return `ontem ${hora}`;
+  return `${ddmm(dia)} ${hora}`;
+}
+function htmlSaldo(sd, valorPagar, contaId) {
+  if (!sd) return '🏦 Conta sem saldo cadastrado.';
+  const editar = `<div id="dmSaldoEdita-${esc(contaId)}"><button onclick="editarSaldo('${esc(contaId)}')">✏️ ${sd.informado == null ? 'Informar saldo' : 'Atualizar saldo'}</button></div>`;
+  if (sd.informado == null) return `🏦 Saldo do <b>${esc(sd.nome)}</b> ainda não informado.<small>Digite o saldo que aparece no app do banco — daí cada pagamento desconta sozinho.</small>${editar}`;
+  const depois = valorPagar > 0 ? sd.disponivel - valorPagar : null;
+  const mov = sd.saidas || sd.entradas ? ` · ${sd.saidas ? `−${BRL(sd.saidas)} pago` : ''}${sd.saidas && sd.entradas ? ' · ' : ''}${sd.entradas ? `+${BRL(sd.entradas)} entrou` : ''} depois` : '';
+  return `🏦 <b>${esc(sd.nome)}</b> · disponível <b class="v" style="color:${sd.disponivel >= 0 ? '#3fb950' : '#f87171'}">${BRL(sd.disponivel)}</b>
+    <small>informado ${BRL(sd.informado)} ${quandoInformado(sd.informado_em)}${sd.informado_por ? ' por ' + esc(sd.informado_por) : ''}${mov}</small>
+    ${depois == null ? '' : depois < 0 ? `<div class="alerta">⚠️ Faltam ${BRL(-depois)} nesta conta</div>` : `<div class="ok">✅ Depois deste pagamento sobra ${BRL(depois)}</div>`}
+    ${sd.desatualizado ? '<div class="velho">⏰ Saldo informado há mais de 1 dia — atualize antes de pagar</div>' : ''}${editar}`;
+}
+function pintarSaldoPagar() {
+  const box = document.getElementById('dmSaldo'), sel = document.getElementById('dmConta');
+  if (!box || !sel || !PAGANDO) return;
+  if (!sel.value) { box.innerHTML = '🏦 Sem conta cadastrada pra esta empresa.'; return; }
+  const sd = (SALDOS || []).find(x => String(x.conta_id) === String(sel.value));
+  const campo = document.getElementById('dmValor');
+  const valor = PAGANDO.valor > 0 ? PAGANDO.valor : (parseFloat(String(campo && campo.value || '').replace(',', '.')) || 0);
+  box.innerHTML = htmlSaldo(sd, valor, sel.value);
+  const falta = sd && sd.informado != null && valor > 0 && sd.disponivel - valor < 0;
+  box.classList.toggle('falta', !!falta);
+  const btn = document.getElementById('dmConfirmar');
+  if (btn && !btn.disabled) btn.textContent = falta ? 'Pagar mesmo assim' : 'Confirmar pagamento';
+}
+function editarSaldo(contaId) {
+  const sd = (SALDOS || []).find(x => String(x.conta_id) === String(contaId));
+  const box = document.getElementById(`dmSaldoEdita-${contaId}`); if (!box) return;
+  box.innerHTML = `<div class="edita"><input id="dmSaldoIn-${esc(contaId)}" type="number" inputmode="decimal" step="0.01" placeholder="Saldo no app do banco" value="${sd && sd.disponivel != null ? sd.disponivel.toFixed(2) : ''}"><button onclick="salvarSaldo('${esc(contaId)}')">Salvar</button></div>`;
+  const inp = document.getElementById(`dmSaldoIn-${contaId}`); inp.focus(); inp.select();
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') salvarSaldo(contaId); });
+}
+async function salvarSaldo(contaId) {
+  const inp = document.getElementById(`dmSaldoIn-${contaId}`); if (!inp) return;
+  const valor = parseFloat(String(inp.value).replace(',', '.'));
+  if (!Number.isFinite(valor)) { inp.focus(); return; }
+  const r = await DB.informarSaldoConta(contaId, valor);
+  if (!r || r.error) { msg('Não salvei o saldo: ' + esc((r && r.error) || DB.lastError || 'erro'), true); return; }
+  SALDOS = (SALDOS || []).filter(x => String(x.conta_id) !== String(contaId)).concat([r]);
+  msg(`🏦 Saldo do ${esc(r.nome)} atualizado: ${BRL(r.disponivel)}`);
+  if (document.getElementById('dmSaldo')) pintarSaldoPagar(); else abrirSaldos(true);
+}
+// 🏦 no topo: saldo de todas as contas (atualizar de manhã, antes de pagar).
+async function abrirSaldos(semRecarregar) {
+  PAGANDO = null;
+  document.getElementById('dmSheet').innerHTML = '<h3>🏦 Saldo das contas</h3><div class="sub">Carregando…</div>';
+  document.getElementById('dmOv').style.display = 'flex';
+  const lista = await carregarSaldos(!semRecarregar);
+  const empsDa = id => CONTAEMP.filter(e => String(e.conta_id) === String(id)).map(e => e.empresa_nome).join(', ');
+  document.getElementById('dmSheet').innerHTML = `<h3>🏦 Saldo das contas</h3>
+    <div class="sub">Digite o saldo que aparece no app do banco — cada pagamento feito aqui desconta sozinho.</div>
+    ${lista.length ? lista.map(sd => `<div class="dm-saldo">${htmlSaldo(sd, 0, sd.conta_id)}${empsDa(sd.conta_id) ? `<small>Empresas: ${esc(empsDa(sd.conta_id))}</small>` : ''}</div>`).join('') : '<div class="dm-saldo">Nenhuma conta bancária ativa (cadastre em Fluxo de Caixa → Contas).</div>'}
+    <div class="acoes" style="grid-template-columns:1fr"><button class="cancelar" onclick="fecharSheet()">Fechar</button></div>`;
 }
 
 async function confirmarPagamento(id) {
@@ -543,6 +637,7 @@ async function confirmarPagamento(id) {
     const conta = CONTAS.find(c => String(c.id) === String(contaId));
     avisarDono(i, { valor: Number(i.ref.value) || 0, conta: conta ? (conta.nome || conta.banco_nome || '') : '' });
   }
+  SALDOS = null; PAGANDO = null; // saldo mudou: recarrega na próxima abertura
   fecharSheet(); recalcular();
   celebrarPagamento(i, i.fatura ? i.valor : Number(i.ref.value) || 0, antes);
 }
@@ -830,6 +925,7 @@ async function desfazer(id) {
   const r = await PagamentosFin.desfazerPagamentoBoleto(DB, i.ref, DividasDia.hojeLocal());
   if (r.erro) { msg('Erro: ' + esc(r.erro), true); return; }
   i.ref.status = 'pendente';
+  SALDOS = null; // a saída apagada volta pro saldo da conta
   msg(r.erroFC ? '⚠️ Voltou pra pendente, mas o Fluxo de Caixa não sincronizou: ' + esc(r.erroFC) : '↩️ Pagamento desfeito — voltou pra "a pagar".', !!r.erroFC);
   recalcular();
   avisarDono(i, { valor: Number(i.ref.value) || 0, desfeito: true });

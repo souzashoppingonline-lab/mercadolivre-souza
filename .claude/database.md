@@ -834,3 +834,7 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 ### `return_videos` / `video_links` — v117: vídeo de devolução + link público de vídeo (ver `embalagem.md`)
 
 `migrate-v117.sql`. **`return_videos`**: um vídeo gravado na página Devoluções — `return_id` (= `returns.id`, sem FK de propósito), `order_id`/`claim_id` (copiados de `returns` no upload), `file_path`, `mime` (`video/mp4`|`video/webm`), `file_size`, `duration_seconds`, `staff_user_name`, `observacao`, `created_at`; índices em `return_id` e `created_at`. Apagado aos 90 dias por `cleanupReturnVideos`. **`video_links`**: `token` (PK, 32 hex aleatórios), `tipo` (`devolucao`|`embalagem`), `video_id` (`return_videos.id` ou `packing_videos.id`), `UNIQUE(tipo, video_id)` — 1 link por vídeo; órfãos (vídeo apagado) limpos pelo mesmo job.
+
+### `conta_saldos_informados` — v118: saldo REAL das contas bancárias, digitado por quem paga (ver `business-rules.md`)
+
+`migrate-v118.sql`. Uma linha por informe (histórico): `conta_id` (TEXT = `contas_bancarias.id` do Supabase), `valor` NUMERIC(14,2), `informado_em` (default now()), `informado_por`. Índice `(conta_id, informado_em DESC)` — a rota usa o mais recente por conta (`DISTINCT ON`). Fica no Postgres do sistema (não no Supabase do Financeiro) porque é dado operacional desta tela, não do ERP.

@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { section: 'Início', items: [
     { href: '../index.html', icon: 'fa-home', label: 'Dashboard' },
     { href: 'monitoramento.html', icon: 'fa-tv', label: 'Monitoramento' },
+    { href: 'tela-telegram.html', icon: 'fa-paper-plane', label: 'Tela Telegram' },
     { href: 'top-vendas-online.html', icon: 'fa-bolt', label: 'Top Vendas Online' },
     { href: 'agenda-trello.html', icon: 'fa-clipboard-list', label: 'Agenda Trello' },
   ]},

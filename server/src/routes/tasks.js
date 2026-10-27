@@ -27,11 +27,12 @@ async function tgNotifyTaskDeleted(text) {
     const chatId = cfg.telegram_chat_id || process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) return;
     if (cfg.tg_tarefas === 'false') return;
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
+    if ((await r.json().catch(() => ({}))).ok) await require('../telegramLog').registrarMensagem({ topico: 'tg_tarefas', texto: text });
   } catch (e) { console.error('[api/tasks] tgNotifyTaskDeleted erro:', e.message); }
 }
 

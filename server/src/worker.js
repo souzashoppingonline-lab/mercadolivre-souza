@@ -2291,6 +2291,16 @@ async function cleanupPackingVideos() {
   }
 }
 
+// Limpeza da cópia das mensagens do Telegram (Tela Telegram, v120) — guarda
+// 30 dias. 03:55 diário.
+async function cleanupTelegramMensagens() {
+  try {
+    const r = await pool.query(`DELETE FROM telegram_mensagens WHERE criado_em < now() - interval '30 days'`);
+    console.log(`[cleanup-telegram-mensagens] ${r.rowCount} mensagem(ns) com mais de 30 dias removida(s)`);
+  } catch (e) { console.error('[cleanup-telegram-mensagens] erro:', e.message); }
+  finally { scheduleAt(3, 55, cleanupTelegramMensagens, 'cleanup-telegram-mensagens'); }
+}
+
 // Limpeza dos vídeos de DEVOLUÇÃO (gravados na página Devoluções, prova pra
 // disputa no ML) — 90 dias, não 30 como os de embalagem: disputa/mediação no
 // ML pode levar semanas depois da devolução chegar. Apaga arquivo + linha em
@@ -3826,6 +3836,7 @@ scheduleAt(2,  0,  syncVisitas,  'sync-visitas');
 scheduleAt(3,  0,  syncVendas,   'sync-vendas');
 scheduleAt(3, 30,  cleanupPackingVideos, 'cleanup-packing-videos');
 scheduleAt(3, 35,  cleanupReturnVideos, 'cleanup-return-videos');
+scheduleAt(3, 55,  cleanupTelegramMensagens, 'cleanup-telegram-mensagens');
 scheduleAt(3, 45,  cleanupWebhookLogs, 'cleanup-webhook-logs');
 scheduleAt(2, 30,  backupDatabase, 'backup-database');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
@@ -4081,11 +4092,13 @@ const DASH_URL = process.env.DASH_URL || 'https://multimixvendas.duckdns.org';
 
 async function tgReply(chatId, text, botToken) {
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const r = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok) await require('./telegramLog').registrarMensagem({ topico: 'bot', texto: text });
   } catch (e) {
     console.error('[tg-bot] reply error:', e.message);
   }
@@ -4215,6 +4228,9 @@ async function tgBotLoop() {
       const msg = update.message;
       if (!msg?.text?.startsWith('/')) continue;
       console.log(`[tg-bot] comando: ${msg.text} de chat_id=${msg.chat.id}`);
+      // Tela Telegram: o comando aparece como balão "enviado" (lado direito).
+      await require('./telegramLog').registrarMensagem({ topico: 'bot', texto: msg.text, html: false, direcao: 'entrada',
+        autor: [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || msg.from?.username || null });
       handleTgCommand(msg.text, msg.chat.id, botToken).catch(e => console.error('[tg-bot] erro:', e.message));
     }
   } catch (e) {

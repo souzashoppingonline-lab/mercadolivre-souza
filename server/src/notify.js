@@ -6,6 +6,7 @@
 // (config em app_config); `tgNotifyForce` ignora silêncio/throttle. Config lida
 // de app_config com fallback pros envs TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID.
 const pool = require('./db/pool');
+const { registrarMensagem } = require('./telegramLog'); // cópia pra Tela Telegram (TV)
 
 const _tgLastSent = {};
 
@@ -34,11 +35,13 @@ async function tgNotifyForce(topic, text) {
     const chatId = cfg.telegram_chat_id || process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) return;
     if (cfg[topic] === 'false') return;
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
+    const j = await r.json().catch(() => ({}));
+    if (j.ok) await registrarMensagem({ topico: topic, texto: text });
   } catch (e) { console.error('[notify] tgNotifyForce error:', e.message); }
 }
 
@@ -71,6 +74,7 @@ async function tgNotify(topic, text) {
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
     const j = await r.json();
+    if (j && j.ok) await registrarMensagem({ topico: topic, texto: text });
     return j?.result?.message_id || null;
   } catch (e) {
     console.error('[notify] tgNotify error:', e.message);

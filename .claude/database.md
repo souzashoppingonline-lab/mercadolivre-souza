@@ -842,3 +842,7 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 ### `buybox_mudancas` / `buybox_alerta_estado` — v119: Buy Box no Telegram (ver `workers.md`)
 
 `migrate-v119.sql`. **`buybox_mudancas`**: uma linha por alteração detectada ao gravar `catalog_competition` (`catalogCompetition.js` → `buyboxMudancas.detectarMudancas`): `store_id`, `item_id`, `tipo` (`status`|`preco_vencedor`|`novo_vencedor`|`seu_preco`), `de`, `para` (texto), `created_at`, `enviado_em` (NULL = pendente; índice parcial nos pendentes). **`buybox_alerta_estado`**: `item_id` PK, `chave` (ganhando/perdendo/compartilhando/sem_concorrencia) e `reportado_em` do último relatório das 08:30 — base do bloco "mudou desde o último relatório".
+
+### `telegram_mensagens` — v120: cópia de TODA mensagem do Telegram pra Tela Telegram (TV)
+
+`migrate-v120.sql`. Uma linha por mensagem: `id` BIGSERIAL, `topico` (`tg_*`, `bot`, `teste`…), `texto` (até 8.000 chars, HTML do Telegram), `html` (bool — `false` = texto puro), `direcao` (`saida` = o sistema mandou | `entrada` = comando que chegou no bot), `autor` (nome de quem mandou o comando), `criado_em`. Índice `criado_em DESC`. Gravada por `telegramLog.registrarMensagem` depois de cada envio que deu certo. Apagada aos 30 dias (`cleanupTelegramMensagens`, 03:55).

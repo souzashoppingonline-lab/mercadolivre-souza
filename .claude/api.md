@@ -291,6 +291,14 @@ Página só **analisa/recomenda** — nenhuma destas rotas altera preço no Merc
 | `GET /api/financeiro/saldo-contas` (`routes/saldoContas.js`, v118) | contas bancárias ativas (Supabase `contas_bancarias`) com o saldo calculado: `[{ conta_id, nome, informado, informado_em, informado_por, saidas, entradas, movimentos, disponivel, desatualizado }]` (`informado`/`disponivel` = null se nunca informado). Movimentos = `cash_flow_entries?conta_bancaria_id=eq.X&created_at=gt.<informe>` (1 consulta por conta com informe). Montada antes de `/api/financeiro` (mesmo gate) |
 | `POST /api/financeiro/saldo-contas { conta_id, valor }` | grava novo informe em `conta_saldos_informados` (`informado_por` = usuário do login, se ligado) e devolve o saldo da conta recalculado. `valor` não numérico → 400; `conta_id` não-uuid → 400; conta inexistente → 404. Negativo é aceito (cheque especial) |
 
+## Tela Telegram (v120, `routes/telegramTela.js`)
+| Rota | Descrição |
+|---|---|
+| `GET /api/telegram-tela?limit=150` | últimas `limit` (máx 500) mensagens de `telegram_mensagens` em ordem crescente: `{ mensagens: [{ id, topico, texto, html, direcao, autor, criado_em }], hoje }` (`hoje` = quantas desde 00h de SP). Com `?depois_id=N` → só as de id > N (a tela pergunta a cada 15s e quando chega o WS `telegram_mensagem`) |
+| `GET /api/telegram-tela/link-tv` | `{ token }` do link da TV (`app_config telegram_tela_token`, 32 hex; criado no 1º uso) |
+| `POST /api/telegram-tela/link-tv/novo` | gera token novo — o link antigo da TV para de funcionar |
+| `GET /api/publico/telegram-tela?token=…` | **sem login** (prefixo `/api/publico` liberado no `staffAuth`): mesmo retorno do `GET /api/telegram-tela` (aceita `depois_id`/`limit`). Token errado/ausente → 403 (comparação `timingSafeEqual`) |
+
 ## Promoções
 | Rota | Descrição |
 |---|---|

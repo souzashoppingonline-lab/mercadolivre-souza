@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#17212b">
+  <title>Tela Telegram</title>
+  <!-- Autocontida de propósito (sem ../css nem ../js/layout): abre na TV pelo
+       link com token mesmo com o login de funcionários ligado. Ver .claude/frontend.md. -->
+  <style>
+    :root { --bg:#0e1621; --top:#17212b; --in:#182533; --out:#2b5278; --txt:#f5f5f5; --muted:#6d7f8f; --link:#6ab3f3; --code:#0d1a26; --sep:rgba(13,26,38,.7); --fs:15px; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; height:100%; background:var(--bg); color:var(--txt); font-family:-apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size:var(--fs); }
+    body { display:flex; flex-direction:column; overflow:hidden; }
+    .tg-top { flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--top); border-bottom:1px solid #0b121a; z-index:2; }
+    .av { width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#5eb5f7,#2b5278); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; flex:0 0 auto; }
+    .nome { min-width:0; flex:1; }
+    .nome b { display:block; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .nome small { color:var(--muted); font-size:13px; }
+    .nome small.on { color:var(--link); }
+    .dir { display:flex; align-items:center; gap:12px; }
+    .live { color:#e05353; font-weight:800; font-size:12px; letter-spacing:.5px; animation:pisca 2s infinite; }
+    .live.off { color:var(--muted); animation:none; }
+    @keyframes pisca { 50% { opacity:.35 } }
+    #relogio { font-weight:800; font-size:20px; font-variant-numeric:tabular-nums; }
+    .ctrls { display:flex; gap:6px; align-items:center; }
+    .ctrls button, .ctrls select { background:#22303f; color:var(--txt); border:1px solid #2a3a4b; border-radius:8px; padding:7px 10px; font-size:13px; cursor:pointer; }
+    #chat { flex:1; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; scrollbar-color:#2a3a4b transparent;
+      background-color:var(--bg);
+      background-image:radial-gradient(circle at 20% 30%, rgba(94,181,247,.04) 0 2px, transparent 3px), radial-gradient(circle at 70% 80%, rgba(94,181,247,.035) 0 2px, transparent 3px);
+      background-size:60px 60px, 90px 90px; }
+    #lista { max-width:980px; margin:0 auto; padding:16px 14px 40px; transition:opacity .5s; }
+    #lista.some { opacity:0; }
+    .dia { text-align:center; margin:14px 0 10px; }
+    .dia span { background:var(--sep); color:#fff; font-size:13px; font-weight:600; padding:4px 12px; border-radius:14px; }
+    .msg { display:flex; margin:4px 0; }
+    .msg.ent { justify-content:flex-end; }
+    .bolha { position:relative; max-width:min(78%, 760px); background:var(--in); border-radius:14px 14px 14px 4px; padding:7px 11px 6px; box-shadow:0 1px 1px rgba(0,0,0,.25); line-height:1.42; word-wrap:break-word; overflow-wrap:anywhere; }
+    .msg.ent .bolha { background:var(--out); border-radius:14px 14px 4px 14px; }
+    .bolha .tag { font-size:13px; font-weight:700; margin-bottom:2px; }
+    .bolha .txt a { color:var(--link); text-decoration:none; }
+    .bolha .txt code { background:var(--code); border-radius:4px; padding:1px 4px; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:.92em; color:#e4ecf2; }
+    .bolha .txt pre { background:var(--code); border-radius:6px; padding:6px 8px; white-space:pre-wrap; margin:4px 0; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:.9em; }
+    .bolha .txt blockquote { border-left:3px solid var(--link); margin:4px 0; padding:2px 8px; background:rgba(106,179,243,.08); border-radius:0 6px 6px 0; }
+    .bolha .txt .tg-spoiler { background:#4a5a6a; color:transparent; border-radius:3px; }
+    .bolha .meta { float:right; margin:6px 0 -2px 12px; font-size:12px; color:var(--muted); white-space:nowrap; }
+    .msg.ent .meta { color:#9fc3e6; }
+    .msg.ent .meta::after { content:' ✓✓'; color:#6ab3f3; }
+    .msg.nova .bolha { animation:entra .6s cubic-bezier(.2,1.2,.4,1), brilho 3s ease-out; }
+    @keyframes entra { from { transform:translateY(24px) scale(.96); opacity:0 } to { transform:none; opacity:1 } }
+    @keyframes brilho { 0%,40% { box-shadow:0 0 0 2px rgba(106,179,243,.85), 0 0 24px rgba(106,179,243,.35) } 100% { box-shadow:0 1px 1px rgba(0,0,0,.25) } }
+    .vazio { text-align:center; color:var(--muted); margin-top:30vh; font-size:16px; line-height:1.6; }
+    .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#22303f; border:1px solid #2a3a4b; border-radius:10px; padding:10px 14px; font-size:14px; display:none; z-index:5; max-width:90vw; }
+    .cheia { position:fixed; inset:0; background:rgba(14,22,33,.85); display:none; align-items:center; justify-content:center; z-index:6; font-size:22px; cursor:pointer; text-align:center; }
+    /* Modo TV: letra grande, sem controles, sem cursor parado */
+    body.tv { --fs:clamp(18px, 1.55vw, 34px); }
+    body.tv .ctrls { display:none; }
+    body.tv .av { width:58px; height:58px; font-size:20px; }
+    body.tv .nome b { font-size:1.25em; }
+    body.tv #relogio { font-size:1.6em; }
+    body.tv #lista { max-width:min(1400px, 92vw); }
+    body.tv .bolha { max-width:min(86%, 1200px); }
+    body.tv.parado { cursor:none; }
+    @media (max-width:640px) { .ctrls { display:none; } #relogio { font-size:16px; } .bolha { max-width:90%; } }
+  </style>
+</head>
+<body>
+<header class="tg-top">
+  <div class="av">ML</div>
+  <div class="nome"><b>ML Dashboard · Avisos</b><small id="sub">bot · conectando…</small></div>
+  <div class="dir">
+    <div class="ctrls">
+      <button id="btnPausa" title="Pausar/continuar a rolagem">⏸ Pausar</button>
+      <select id="vel" title="Velocidade da rolagem"><option value="25">Lenta</option><option value="45" selected>Média</option><option value="90">Rápida</option></select>
+      <button id="btnLink" title="Link pra abrir na TV sem login">🔗 Link da TV</button>
+      <button id="btnTv" title="Tela cheia, letra grande">📺 Modo TV</button>
+    </div>
+    <span class="live off" id="live">● AO VIVO</span>
+    <span id="relogio">--:--</span>
+  </div>
+</header>
+<main id="chat"><div id="lista"><div class="vazio">Carregando mensagens…</div></div></main>
+<div class="toast" id="toast"></div>
+<div class="cheia" id="cheia">📺 Toque para tela cheia</div>
+
+<script src="../js/telegramHtml.js"></script>
+<script>
+// Tela Telegram — cópia de TODA mensagem do Telegram (telegram_mensagens,
+// gravada por server/src/telegramLog.js), no mesmo visual, rolando sozinha
+// pra deixar numa TV. Rolagem: desce devagar pelas mensagens; no fim espera e
+// recomeça do topo. Mensagem nova: entra embaixo com brilho e a tela segura
+// nela 15s. Dados: /api/telegram-tela (login) ou /api/publico/telegram-tela
+// ?token= (link da TV). Ao vivo: WebSocket avisa só o id (`telegram_mensagem`)
+// + conferência a cada 15s. Ver .claude/frontend.md.
+const P = new URLSearchParams(location.search);
+const TOKEN = P.get('token') || '';
+const API = TOKEN ? `/api/publico/telegram-tela?token=${encodeURIComponent(TOKEN)}` : '/api/telegram-tela';
+const MAX_NA_TELA = 300;
+const TOPICOS = {
+  tg_vendas: ['🛒 Vendas', '#5eb5f7'], tg_rankeamento: ['📈 Rankeamento', '#b48cf2'], tg_topvendas: ['🔥 Top vendas', '#f2a54a'],
+  tg_outlier: ['📊 Fora do normal', '#f2a54a'], tg_servicos: ['🛠️ Serviços', '#8fa3b5'], tg_recursos: ['💻 Servidor', '#8fa3b5'],
+  tg_reposicao: ['📦 Reposição', '#f2c94c'], tg_perguntas: ['❓ Perguntas', '#5ed1a5'], tg_mensagens: ['💬 Mensagens', '#5ed1a5'],
+  tg_promocoes: ['🏷️ Promoções', '#e66fb0'], tg_devolucoes: ['↩️ Devoluções', '#e05353'], tg_anuncios: ['📝 Anúncios', '#5eb5f7'],
+  tg_tarefas: ['✅ Tarefas', '#5ed1a5'], tg_conciliacao: ['🏦 Conciliação', '#8fa3b5'], tg_shopee_campanhas: ['🟠 Shopee', '#f2784b'],
+  tg_token: ['🔑 Tokens', '#e05353'], tg_fila: ['⏳ Fila', '#8fa3b5'], tg_429: ['🚦 Limite ML', '#e05353'], tg_infra: ['🖥️ Infra', '#e05353'],
+  tg_queda_produtos: ['📉 Queda de vendas', '#e05353'], tg_importacao_metrizap: ['📥 Metrizap', '#f2c94c'], tg_pagamentos: ['💸 Pagamentos', '#5ed1a5'],
+  tg_dividas_lembrete: ['⏰ Dívidas', '#f2c94c'], tg_buybox_mudancas: ['🏆 Buy Box', '#f2a54a'], tg_buybox_relatorio: ['🏆 Buy Box', '#f2a54a'],
+  tg_email_falha: ['📧 E-mail', '#e05353'], bot: ['🤖 Bot', '#8fa3b5'], teste: ['🧪 Teste', '#8fa3b5'],
+};
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const chat = document.getElementById('chat'), lista = document.getElementById('lista');
+let ultimoId = 0, ultimoDia = '', total = 0, hoje = 0;
+
+function toast(t, ms = 3500) { const e = document.getElementById('toast'); e.innerHTML = t; e.style.display = 'block'; clearTimeout(toast._t); toast._t = setTimeout(() => { e.style.display = 'none'; }, ms); }
+const diaDe = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+function rotuloDia(d) {
+  const hojeD = diaDe(new Date()), ontem = diaDe(new Date(Date.now() - 86400000));
+  if (d === hojeD) return 'Hoje';
+  if (d === ontem) return 'Ontem';
+  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+}
+function bolha(m, nova) {
+  const d = diaDe(m.criado_em);
+  let html = '';
+  if (d !== ultimoDia) { html += `<div class="dia"><span>${rotuloDia(d)}</span></div>`; ultimoDia = d; }
+  const t = TOPICOS[m.topico] || (m.topico ? [esc(m.topico), '#8fa3b5'] : null);
+  const hora = new Date(m.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+  const ent = m.direcao === 'entrada';
+  html += `<div class="msg ${ent ? 'ent' : ''}${nova ? ' nova' : ''}" data-id="${m.id}"><div class="bolha">
+    ${!ent && t ? `<div class="tag" style="color:${t[1]}">${t[0]}</div>` : ''}${ent && m.autor ? `<div class="tag" style="color:#9fc3e6">${esc(m.autor)}</div>` : ''}
+    <div class="txt">${TelegramHtml.paraHtml(m.texto, m.html !== false)}<span class="meta">${hora}</span></div></div></div>`;
+  return html;
+}
+function poda() {
+  const msgs = lista.querySelectorAll('.msg');
+  for (let i = 0; i < msgs.length - MAX_NA_TELA; i++) msgs[i].remove();
+  lista.querySelectorAll('.dia').forEach(dv => { if (!dv.nextElementSibling || dv.nextElementSibling.classList.contains('dia')) dv.remove(); });
+}
+function cabecalho() {
+  document.getElementById('sub').textContent = `bot · ${hoje} mensagem(ns) hoje`;
+}
+
+async function buscar(novas) {
+  try {
+    const r = await fetch(novas ? `${API}${TOKEN ? '&' : '?'}depois_id=${ultimoId}` : API, { credentials: 'same-origin' });
+    if (r.status === 401 || r.status === 403) {
+      const j = await r.json().catch(() => ({}));
+      lista.innerHTML = `<div class="vazio">🔒 ${esc(j.error || 'Sem acesso')}<br><small>Abra pelo menu (com login) ou pelo <b>🔗 Link da TV</b>.</small></div>`;
+      return;
+    }
+    const j = await r.json();
+    hoje = j.hoje || 0; cabecalho();
+    const ms = j.mensagens || [];
+    if (!novas) {
+      ultimoDia = '';
+      lista.innerHTML = ms.length ? ms.map(m => bolha(m, false)).join('') : '<div class="vazio">Nenhuma mensagem ainda.<br><small>Todo aviso que o sistema mandar pro Telegram aparece aqui, na hora.</small></div>';
+      if (ms.length) ultimoId = ms[ms.length - 1].id;
+      total = ms.length;
+      chat.scrollTop = chat.scrollHeight;
+      return;
+    }
+    if (!ms.length) return;
+    if (!total) { lista.innerHTML = ''; ultimoDia = ''; }
+    lista.insertAdjacentHTML('beforeend', ms.map(m => bolha(m, true)).join(''));
+    ultimoId = ms[ms.length - 1].id; total += ms.length;
+    poda();
+    mostrarNova();
+  } catch (e) { console.warn('[tela-telegram]', e.message); }
+}
+
+// ── Rolagem automática ─────────────────────────────────────────────────────
+let pausado = false, seguraAte = 0, ultimoQuadro = 0, mexeuEm = 0, voltando = false, acumulado = 0;
+function mostrarNova() {
+  chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+  seguraAte = Date.now() + 15000;
+}
+function quadro(t) {
+  const dt = ultimoQuadro ? Math.min(100, t - ultimoQuadro) : 16; ultimoQuadro = t;
+  const agora = Date.now();
+  if (!pausado && !voltando && agora > seguraAte && agora - mexeuEm > 20000 && chat.scrollHeight > chat.clientHeight + 4) {
+    if (chat.scrollTop + chat.clientHeight >= chat.scrollHeight - 2) {
+      // Chegou no fim: segura 8s na mais nova e recomeça do topo (com fade).
+      seguraAte = agora + 8000; voltando = true;
+      setTimeout(() => { lista.classList.add('some'); setTimeout(() => { chat.scrollTop = 0; lista.classList.remove('some'); seguraAte = Date.now() + 4000; voltando = false; }, 500); }, 8000);
+    } else {
+      acumulado += Number(document.getElementById('vel').value) * dt / 1000; // px/s → px neste quadro
+      const px = Math.floor(acumulado); if (px >= 1) { chat.scrollTop += px; acumulado -= px; }
+    }
+  }
+  requestAnimationFrame(quadro);
+}
+['wheel', 'touchstart', 'keydown'].forEach(ev => chat.addEventListener(ev, () => { mexeuEm = Date.now(); }, { passive: true }));
+document.getElementById('btnPausa').onclick = e => { pausado = !pausado; e.target.textContent = pausado ? '▶ Continuar' : '⏸ Pausar'; };
+try { const v = localStorage.getItem('tela_tg_vel'); if (v) document.getElementById('vel').value = v; } catch (_) {}
+document.getElementById('vel').onchange = e => { try { localStorage.setItem('tela_tg_vel', e.target.value); } catch (_) {} };
+
+// ── Modo TV: tela cheia + não deixar a tela apagar + esconder o cursor ─────
+let wake = null;
+async function pedirTelaCheia() {
+  try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); } catch (_) {}
+  try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (_) {}
+}
+function modoTv(liga) {
+  document.body.classList.toggle('tv', liga);
+  if (liga) pedirTelaCheia();
+}
+document.getElementById('btnTv').onclick = () => modoTv(true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && document.body.classList.contains('tv')) pedirTelaCheia(); });
+let cursorT = null;
+document.addEventListener('mousemove', () => { document.body.classList.remove('parado'); clearTimeout(cursorT); cursorT = setTimeout(() => document.body.classList.add('parado'), 3000); });
+if (P.get('tv') === '1') {
+  document.body.classList.add('tv');
+  const c = document.getElementById('cheia'); c.style.display = 'flex';
+  c.onclick = () => { c.style.display = 'none'; pedirTelaCheia(); };
+  setTimeout(() => { c.style.display = 'none'; }, 15000);
+}
+
+// ── Link da TV (sem login, com token) ──────────────────────────────────────
+document.getElementById('btnLink').onclick = async () => {
+  try {
+    const r = await fetch('/api/telegram-tela/link-tv', { credentials: 'same-origin' });
+    const j = await r.json();
+    if (!j.token) throw new Error(j.error || 'sem token');
+    const url = `${location.origin}/pages/tela-telegram.html?tv=1&token=${j.token}`;
+    try { await navigator.clipboard.writeText(url); toast('🔗 Link da TV copiado! Abra na TV (Chrome) e deixe lá.<br><small>' + esc(url) + '</small>', 9000); }
+    catch (_) { prompt('Link da TV (abra no navegador da TV):', url); }
+  } catch (e) { toast('Não consegui gerar o link: ' + esc(e.message)); }
+};
+
+// ── Relógio, ao vivo (WebSocket só avisa o id) e conferência a cada 15s ────
+function relogio() { document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }); }
+setInterval(relogio, 5000); relogio();
+let ws = null, wsEspera = 2000;
+function conectar() {
+  try {
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+    ws.onopen = () => { wsEspera = 2000; document.getElementById('live').classList.remove('off'); document.getElementById('sub').classList.add('on'); };
+    ws.onmessage = ({ data }) => { try { const m = JSON.parse(data); if (m.topic === 'telegram_mensagem') buscar(true); } catch (_) {} };
+    ws.onclose = () => { document.getElementById('live').classList.add('off'); document.getElementById('sub').classList.remove('on'); setTimeout(conectar, wsEspera); wsEspera = Math.min(wsEspera * 2, 30000); };
+  } catch (_) { setTimeout(conectar, wsEspera); }
+}
+setInterval(() => buscar(true), 15000);
+// Recarrega a página 1x por dia (madrugada) — TV ligada semanas sem acumular memória.
+setInterval(() => { const h = new Date().getHours(); if (h === 4 && performance.now() > 3600e3) location.reload(); }, 600000);
+
+buscar(false).then(() => { requestAnimationFrame(quadro); conectar(); });
+</script>
+</body>
+</html>

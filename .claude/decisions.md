@@ -1045,3 +1045,11 @@ Pedido: mostrar o saldo da conta na janela de Pagar e avisar quando falta. A som
 - **Entrega**: fila (`buybox_mudancas`) + envio a cada 10 min agrupado por empresa/anúncio, em vez de 1 mensagem por gravação — um sync de 100 itens com 30 mudanças vira 1–2 mensagens. Durante o silêncio as mudanças **ficam na fila** (o `tgNotify` normal as perderia) e saem às 07:00 — inclusive as do sync das 04:50.
 - **Classificação compartilhada**: `statusBuyBox()` do `rankeamento.html` virou `js/buyboxStatus.js` (navegador + Node) — Telegram e tela usam a mesma regra.
 - **Bug corrigido de carona**: o disparo manual do `sync-catalog-competition` chamava a função que se reagenda (timer diário duplicado a cada disparo); agora chama `runSyncCatalogCompetition` (sem reagendar).
+
+## Tela Telegram: copiar no envio, WS só com id, página própria com token (v120)
+
+- **Copiar no envio**: bot do Telegram não consegue ler o histórico do chat pela API (`getUpdates` só traz o que chega ao bot, não o que ele mandou). Por isso cada envio que deu certo é gravado em `telegram_mensagens` no próprio `notify.js` (+ os poucos envios diretos). Consequência aceita: o histórico da TV começa no deploy; e envio novo que não passe por `notify.js` precisa chamar `registrarMensagem`.
+- **Todos os avisos, sem filtro**: pedido explícito do usuário ("quero todos os avisos, não tem problema"), mesmo os financeiros — a TV fica num lugar onde todos veem.
+- **WS só com id**: o `/ws` é público; mandar o texto por lá vazaria valores pra qualquer um que conecte. A tela busca o texto pela API (login ou token).
+- **Página autossuficiente + token**: TV fica ligada dias; sem `layout.js`/menu/sessão que expira. Link com token de 32 hex em `app_config` (revogável com "gerar novo"), em vez de deixar a TV logada com usuário de funcionário.
+- **Sanitizador próprio (`js/telegramHtml.js`)** em vez de `innerHTML` direto: o texto vem de nomes de produto/comprador/pergunta — sem filtro, um título com `<script>` rodaria na TV.

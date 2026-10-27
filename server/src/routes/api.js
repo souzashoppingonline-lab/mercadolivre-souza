@@ -1189,6 +1189,7 @@ router.post('/config/telegram/test', async (req, res) => {
     });
     const data = await r.json();
     if (!data.ok) return res.status(400).json({ error: data.description });
+    await require('../telegramLog').registrarMensagem({ topico: 'teste', texto: message || 'Teste ML Dashboard ✅', html: false });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

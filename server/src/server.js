@@ -92,6 +92,10 @@ app.use('/api/financeiro/saldo-contas', require('./routes/saldoContas'));
 const devolucaoVideos = require('./routes/devolucaoVideos');
 app.use('/api/devolucao-videos', devolucaoVideos.router);
 app.use('/api/publico/video', devolucaoVideos.publicRouter);
+// Tela Telegram (TV): mensagens copiadas do Telegram — com login ou link da TV (token). Ver .claude/frontend.md.
+const telegramTela = require('./routes/telegramTela');
+app.use('/api/telegram-tela', telegramTela.router);
+app.use('/api/publico/telegram-tela', telegramTela.publicRouter);
 app.use('/api/financeiro', require('./routes/financeiro'));
 app.use('/api/bi', require('./routes/bi'));
 // Agente Financeiro — relatórios sob demanda cruzando Postgres operacional +

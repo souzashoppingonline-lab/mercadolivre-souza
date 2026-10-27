@@ -86,16 +86,18 @@ router.post('/telegram', express.json(), async (req, res) => {
     const token  = c.telegram_bot_token || process.env.TELEGRAM_BOT_TOKEN;
     const chatId = c.telegram_chat_id   || process.env.TELEGRAM_CHAT_ID;
     if (token && chatId) {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const conf = `✅ Resposta enviada ao comprador!\n💬 "${text}"`;
+      const rr = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
           reply_to_message_id: msg.message_id,
-          text: `✅ Resposta enviada ao comprador!\n💬 "${text}"`,
+          text: conf,
           parse_mode: 'HTML'
         })
       });
+      if ((await rr.json().catch(() => ({}))).ok) await require('../telegramLog').registrarMensagem({ topico: 'tg_perguntas', texto: conf });
     }
 
     publish('question_received', { id: questionId, status: 'ANSWERED' });

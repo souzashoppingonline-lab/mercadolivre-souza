@@ -228,4 +228,4 @@ Ao iniciar uma sessão nova, além de ler toda a pasta `.claude` (regra em `CLAU
 - [ ] `.env`: `RESEND_API_KEY` e `RESEND_TO_EMAIL` preenchidos (`grep -c RESEND_ /opt/ml-dashboard-novo/server/.env`).
 - [ ] Remetente padrão `onboarding@resend.dev` (sem domínio verificado) **só entrega pro e-mail dono da conta Resend** — qualquer outro destinatário volta 403 "You can only send testing emails to your own email address". Com o domínio próprio do usuário: verificar o domínio no Resend (registros DNS SPF/DKIM) e trocar `RESEND_FROM_EMAIL` (ex.: `Relatórios <relatorios@dominio>`).
 - [ ] Toggles em Monitor → E-mail: cada relatório só sai se o toggle estiver ligado (`app_config email_* = 'true'`); o padrão é desligado.
-- [ ] Falha de envio só aparece no log do worker (`journalctl -u ml-worker-novo | grep '\[email'`) — avaliar aviso no Telegram quando o e-mail falhar.
+- [x] ~~Falha de envio só aparecia no log~~ — **feito (v119)**: aviso no Telegram (`tg_email_falha`), ver `workers.md`.

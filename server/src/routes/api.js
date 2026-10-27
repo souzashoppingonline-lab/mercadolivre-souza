@@ -1304,6 +1304,7 @@ router.post('/config/email/test', async (req, res) => {
     const resend = require('../resendClient');
     if (!resend.isConfigured()) return res.status(400).json({ error: 'RESEND_API_KEY ou RESEND_TO_EMAIL não configurado no .env do servidor' });
     await resend.sendEmail({
+      avisar: false, // o erro já aparece na tela do Monitor
       subject: 'Teste — ML Dashboard',
       html: '<p style="font-family:sans-serif">✅ Configuração do Resend funcionando corretamente.</p>',
     });

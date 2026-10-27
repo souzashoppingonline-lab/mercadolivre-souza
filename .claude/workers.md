@@ -168,3 +168,8 @@ Aceita `{ cmd }` ∈ `dailySync`/`syncVendas`, `syncMetricas`, `syncReturns` (bu
 | `/help`, `/start` | lista de comandos |
 
 Notificações Telegram em geral (`tgNotify`) respeitam: flag por tópico em `app_config` (`tg_*` = `'false'` desativa), janela de silêncio (`silence_start`/`silence_end`, padrão 22:00–07:00) e intervalo mínimo entre envios do mesmo tópico (`tg_interval`, minutos). `tgNotifyForce` (usado por `syncVendas`, `syncMetricas`, `resumoDiario`) ignora essas regras — sempre envia.
+
+## Aviso de e-mail que falhou (v119, `resendClient.js`)
+
+Todo envio passa por `resendClient.sendEmail` (resumo diário/top vendas 06:10, semanal 2ª 07:00, fechamento mensal, campanhas Shopee). Se o Resend recusar, a rede falhar ou faltar `RESEND_API_KEY`/`RESEND_TO_EMAIL` com o relatório ligado no Monitor, sai no Telegram **"📧❌ E-mail NÃO foi enviado"** com o assunto, o erro (`<code>`) e uma **dica do que fazer** (`explicarErroEmail()`: remetente de teste `onboarding@resend.dev`, domínio não verificado, chave inválida, endereço inválido, limite do plano, instabilidade, sem internet). Tópico `tg_email_falha`, `tgNotifyForce` (sai mesmo no silêncio — o diário é às 06:10). O botão **Enviar Teste** do Monitor não avisa no Telegram (`avisar: false`, o erro já aparece na tela). O aviso nunca lança erro (falhar ao avisar só loga).
+

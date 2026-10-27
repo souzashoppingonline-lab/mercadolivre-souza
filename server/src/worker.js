@@ -3138,6 +3138,7 @@ async function sendReportEmail(topicKey, subject, bodyHtml) {
     const resend = require('./resendClient');
     if (!resend.isConfigured()) {
       console.warn(`[email] ${topicKey} habilitado mas RESEND_API_KEY/RESEND_TO_EMAIL não configurados no .env`);
+      await resend.avisarFalha(subject, new Error('RESEND_API_KEY não configurado no .env (relatório ligado no Monitor, mas o .env está sem a chave ou o destinatário)'));
       return;
     }
     await resend.sendEmail({ subject, html: emailWrap(subject, bodyHtml) });

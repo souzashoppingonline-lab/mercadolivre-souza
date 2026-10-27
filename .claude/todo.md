@@ -222,3 +222,10 @@ Ao iniciar uma sessão nova, além de ler toda a pasta `.claude` (regra em `CLAU
 - [ ] Vídeo de **embalagem** é apagado aos 30 dias; devolução que chega depois disso fica sem ele. Opção (precisa decisão do usuário, mexe numa regra pedida por ele): `cleanupPackingVideos` não apagar vídeo de pedido que tem linha em `returns` (guardar até 90 dias).
 - [ ] Armazenamento: mover vídeos (embalagem + devolução) pra Cloudflare R2 (upload direto do navegador com URL assinada, regra de ciclo de vida apaga sozinho) — sugerido ao usuário, aguardando conta Cloudflare. E/ou limitar bitrate do vídeo de embalagem (~0,6 Mbps).
 - [ ] `client_max_body_size 300m` do nginx limita o vídeo de devolução a ~26 min a 1,5 Mbps (a rota aceita 500MB) — suficiente; aumentar no nginx se precisar.
+
+## E-mail (Resend) — conferir em produção (verificação de 27/10/2026, não há acesso ao servidor daqui)
+
+- [ ] `.env`: `RESEND_API_KEY` e `RESEND_TO_EMAIL` preenchidos (`grep -c RESEND_ /opt/ml-dashboard-novo/server/.env`).
+- [ ] Remetente padrão `onboarding@resend.dev` (sem domínio verificado) **só entrega pro e-mail dono da conta Resend** — qualquer outro destinatário volta 403 "You can only send testing emails to your own email address". Com o domínio próprio do usuário: verificar o domínio no Resend (registros DNS SPF/DKIM) e trocar `RESEND_FROM_EMAIL` (ex.: `Relatórios <relatorios@dominio>`).
+- [ ] Toggles em Monitor → E-mail: cada relatório só sai se o toggle estiver ligado (`app_config email_* = 'true'`); o padrão é desligado.
+- [ ] Falha de envio só aparece no log do worker (`journalctl -u ml-worker-novo | grep '\[email'`) — avaliar aviso no Telegram quando o e-mail falhar.

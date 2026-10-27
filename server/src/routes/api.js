@@ -2166,6 +2166,8 @@ router.get('/alertas/devolucoes', async (req, res) => {
                 r.raw_data->>'last_updated' AS last_updated,
                 o.item_id, o.quantity AS order_quantity, o.unit_price, o.total_amount AS order_amount,
                 o.shipping_type, o.date_created AS order_date,
+                -- Nome real do comprador (vídeo de devolução); o ML nem sempre manda.
+                o.raw_data->'buyer'->>'first_name' AS buyer_first, o.raw_data->'buyer'->>'last_name' AS buyer_last,
                 COALESCE(i.title, r.title) AS item_title, i.thumbnail AS item_thumbnail, i.permalink AS item_permalink
          FROM returns r
          LEFT JOIN vw_ml_stores s ON s.id = r.store_id

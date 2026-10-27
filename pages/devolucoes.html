@@ -999,7 +999,7 @@ async function abrirGravacao(id) {
   const r = allDevRows.find(x => String(x.id) === String(id)); if (!r) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) { alert('Este navegador não grava vídeo. Use o Chrome.'); return; }
   Object.assign(REC, { ret: r, chunks: [], blob: null, dur: 0 });
-  document.getElementById('recInfo').innerHTML = `Pedido <b>#${escD(r.order_id || '—')}</b>${r.claim_id ? ` · Reclamação <b>${escD(r.claim_id)}</b>` : ''} · ${escD(r.buyer_nickname || '')} · ${escD(r.reason_detail || r.reason || '')}<br>${escD(r.item_title || r.title || '')}`;
+  document.getElementById('recInfo').innerHTML = `Pedido <b>#${escD(r.order_id || '—')}</b>${r.claim_id ? ` · Reclamação <b>${escD(r.claim_id)}</b>` : ''} · ${escD(nomeComprador(r))} · ${escD(r.reason_detail || r.reason || '')}<br>${escD(r.item_title || r.title || '')}`;
   document.getElementById('recObs').value = '';
   document.getElementById('recBtn').className = 'rec-go'; document.getElementById('recBtn').textContent = '🔴 Iniciar gravação'; document.getElementById('recBtn').disabled = false;
   document.querySelectorAll('.rec-acoes .extra').forEach(b => b.remove());
@@ -1033,6 +1033,13 @@ function pararCameraGravacao() {
   if (REC.stream) { REC.stream.getTracks().forEach(t => t.stop()); REC.stream = null; }
 }
 
+// Nome real (ML manda first/last_name no pedido, nem sempre) + apelido.
+function nomeComprador(r) {
+  const nome = [r.buyer_first, r.buyer_last].filter(Boolean).join(' ').trim();
+  if (nome && r.buyer_nickname) return `${nome} (${r.buyer_nickname})`;
+  return nome || r.buyer_nickname || '—';
+}
+
 function toggleGravacao() {
   if (REC.rec && REC.rec.state === 'recording') { REC.rec.stop(); return; }
   if (!REC.stream) { recMsg('Câmera não está aberta.', '#ef4444'); return; }
@@ -1042,7 +1049,8 @@ function toggleGravacao() {
   try {
     REC.overlay = VideoOverlay.iniciar(pv, REC.stream.getAudioTracks(), [
       `DEVOLUÇÃO${r.claim_id ? ' · Reclamação: ' + r.claim_id : ''}`,
-      `Pedido: ${r.order_id || '—'} · Comprador: ${r.buyer_nickname || '—'}`,
+      `Pedido: ${r.order_id || '—'}`,
+      `Comprador: ${nomeComprador(r).slice(0, 60)}`,
       `Produto: ${produto.length > 70 ? produto.slice(0, 67) + '…' : produto}`,
     ]);
     recStream = REC.overlay.stream;

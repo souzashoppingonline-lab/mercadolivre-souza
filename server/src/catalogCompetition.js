@@ -6,10 +6,16 @@
 // nunca duas cópias do upsert. Ver .claude/rankeamento.md e
 // .claude/business-rules.md ("Monitor de Buy-Box").
 const pool = require('./db/pool');
+const { detectarMudancas } = require('./buyboxMudancas');
 
 async function fetchAndSaveCatalogCompetition(ml, itemId, storeId) {
   const ptw = await ml.getPriceToWin(itemId, storeId);
   const boostsMissing = (ptw.boosts || []).filter(b => b.status === 'opportunity').map(b => b.id);
+  // Linha anterior — pra registrar CADA alteração (buybox_mudancas → Telegram,
+  // ver buyboxMudancas.js). Como todo caminho grava por aqui, nenhum escapa.
+  const { rows: antes } = await pool.query(
+    `SELECT status, winner_item_id, winner_price, current_price, calculated_at FROM catalog_competition WHERE item_id = $1`, [itemId]
+  );
 
   await pool.query(
     `INSERT INTO catalog_competition (
@@ -33,6 +39,16 @@ async function fetchAndSaveCatalogCompetition(ml, itemId, storeId) {
     `INSERT INTO catalog_competition_history (item_id, store_id, status, current_price, price_to_win) VALUES ($1,$2,$3,$4,$5)`,
     [itemId, storeId, ptw.status || null, ptw.current_price ?? null, ptw.price_to_win ?? null]
   );
+  try {
+    const mud = detectarMudancas(antes[0] ? { ...antes[0], item_id: itemId } : null, {
+      item_id: itemId, status: ptw.status || null, winner_item_id: ptw.winner?.item_id || null,
+      winner_price: ptw.winner?.price ?? null, current_price: ptw.current_price ?? null, calculated_at: new Date(),
+    });
+    for (const m of mud) {
+      await pool.query(`INSERT INTO buybox_mudancas (store_id, item_id, tipo, de, para) VALUES ($1,$2,$3,$4,$5)`,
+        [storeId, itemId, m.tipo, m.de == null ? null : String(m.de), m.para == null ? null : String(m.para)]);
+    }
+  } catch (e) { console.warn('[catalog-competition] não registrei mudança de', itemId, '-', e.message); } // nunca derruba o sync
   return ptw;
 }
 

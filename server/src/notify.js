@@ -9,6 +9,20 @@ const pool = require('./db/pool');
 
 const _tgLastSent = {};
 
+// Janela de silêncio (app_config silence_start/silence_end, padrão 22:00–07:00).
+function dentroDoSilencio(cfg, now = new Date()) {
+  const hhmm = now.toTimeString().slice(0, 5);
+  const ss = cfg.silence_start || '22:00';
+  const se = cfg.silence_end || '07:00';
+  return ss > se ? (hhmm >= ss || hhmm < se) : (hhmm >= ss && hhmm < se);
+}
+// Pra quem prefere SEGURAR a mensagem durante o silêncio e mandar depois (ex.:
+// flushBuyboxMudancas) em vez de perder, como o tgNotify faz.
+async function estaEmSilencio() {
+  const { rows } = await pool.query(`SELECT key, value FROM app_config WHERE key IN ('silence_start', 'silence_end')`);
+  return dentroDoSilencio(Object.fromEntries(rows.map(r => [r.key, r.value])));
+}
+
 async function tgNotifyForce(topic, text) {
   try {
     const { rows } = await pool.query(
@@ -41,12 +55,7 @@ async function tgNotify(topic, text) {
     if (cfg[topic] === 'false' || cfg[topic] === false) return;
 
     // Janela de silêncio
-    const now = new Date();
-    const hhmm = now.toTimeString().slice(0, 5);
-    const ss = cfg.silence_start || '22:00';
-    const se = cfg.silence_end || '07:00';
-    const inSilence = ss > se ? (hhmm >= ss || hhmm < se) : (hhmm >= ss && hhmm < se);
-    if (inSilence) return;
+    if (dentroDoSilencio(cfg)) return;
 
     // Throttle por intervalo mínimo
     const interval = Number(cfg.tg_interval || 0) * 60 * 1000;
@@ -69,4 +78,4 @@ async function tgNotify(topic, text) {
   }
 }
 
-module.exports = { tgNotify, tgNotifyForce };
+module.exports = { tgNotify, tgNotifyForce, estaEmSilencio, dentroDoSilencio };

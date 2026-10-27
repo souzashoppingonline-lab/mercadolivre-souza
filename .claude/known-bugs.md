@@ -249,3 +249,8 @@ O PostgREST do Supabase devolve no máximo 1000 linhas por resposta; `selectRows
 ## Disparo manual de `queda-produtos` duplica o timer diário
 
 `worker.js`: o alias `'queda-produtos' → 'checkQuedaProdutos'` chama a função que **se reagenda** no fim (`scheduleAt(6, 25, checkQuedaProdutos, …)`). Cada disparo manual (botão "▶ Executar" de `schedule.html` ou `PUBLISH worker:cmd`) cria mais uma cadeia de timer → a partir do dia seguinte o alerta sai 2× (3×…). Mesmo problema que o comentário do `CMD_ALIASES` já descreve pra `resumo-diario`/`fechamento-diario`. **Correção esperada**: separar `runQuedaProdutos()` (sem reagendar) de `checkQuedaProdutos()`, como foi feito em `runImportacaoMetrizap`/`runDividasPush` (v116), e apontar o alias pra `run…`.
+
+## CORRIGIDO (v119) — E-mail: disparo manual duplicava o agendamento; lista de destinatários era recusada
+
+1. **Disparo manual** do e-mail diário/semanal (botão "▶ Executar" de `schedule.html`/Monitor, `PUBLISH worker:cmd`, e os comandos `email-diario`/`email-semanal` do bot do Telegram) chamava `emailDailyReports()`/`emailRelatorioSemanal()`, que **se reagendam** no fim — cada disparo criava mais um timer, e o e-mail passava a sair 2× (3×…) por dia/semana até reiniciar o worker. Agora o manual chama `runEmailDailyReports`/`runEmailRelatorioSemanal` (sem reagendar); só o agendado se reagenda.
+2. **`RESEND_TO_EMAIL` com vários endereços** ("a@x, b@y") ia pra API do Resend como UMA string — a API exige array pra mais de um destinatário, então o envio era recusado (o comentário de `fechamentoMensalEmail.js` já prometia "aceita lista separada por vírgula"). `resendClient.destinatarios()` agora quebra por `,`/`;` e manda array.

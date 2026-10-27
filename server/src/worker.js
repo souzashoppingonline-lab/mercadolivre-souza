@@ -3149,7 +3149,7 @@ async function sendReportEmail(topicKey, subject, bodyHtml) {
 
 // Resumo diário + Top vendas do dia — mesmo horário de resumoDiario (06:00
 // Telegram), 10 min depois, pra não competir pela mesma janela de queries.
-async function emailDailyReports() {
+async function runEmailDailyReports() {
   console.log('[email-diario] gerando relatórios do dia...');
   const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
   const ontem = new Date(Date.now() - 86400000).toLocaleDateString('pt-BR');
@@ -3203,14 +3203,19 @@ async function emailDailyReports() {
     console.error('[email-diario] erro no top vendas:', e.message);
   }
 
-  scheduleAt(6, 10, emailDailyReports, 'email-diario');
+}
+// Agendado (06:10) = executa + se reagenda. Disparo manual (botão ▶ Executar,
+// bot do Telegram) chama runEmailDailyReports, que NÃO se reagenda — antes
+// cada disparo manual criava mais um timer e o e-mail passava a sair 2×/dia.
+async function emailDailyReports() {
+  try { await runEmailDailyReports(); } finally { scheduleAt(6, 10, emailDailyReports, 'email-diario'); }
 }
 
 // Relatório semanal completo — toda 2ª-feira 07:00: vendas do período (7d)
 // vs período anterior (7d antes disso), por loja, e curva ABC (top 10 por
 // faturamento). Fórmula de margem idêntica à de GET /api/vendas/detalhado
 // (ver .claude/finance.md) — não reinventar outra fórmula aqui.
-async function emailRelatorioSemanal() {
+async function runEmailRelatorioSemanal() {
   console.log('[email-semanal] gerando relatório semanal...');
   const Rfmt = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
   const Pfmt = v => `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
@@ -3255,7 +3260,10 @@ async function emailRelatorioSemanal() {
     console.error('[email-semanal] erro:', e.message);
   }
 
-  scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal');
+}
+// Mesmo esquema do diário: só o agendamento se reagenda; manual usa o run.
+async function emailRelatorioSemanal() {
+  try { await runEmailRelatorioSemanal(); } finally { scheduleWeekly(1, 7, 0, emailRelatorioSemanal, 'email-semanal'); }
 }
 
 // ── Outlier estatístico — 06:20 diário, compara ontem com a média histórica ─
@@ -4016,11 +4024,11 @@ cmdSub.on('message', (channel, msg) => {
     }
     if (cmd === 'emailDailyReports') {
       console.log('[worker] emailDailyReports disparado manualmente');
-      emailDailyReports().catch(e => console.error('[worker] emailDailyReports erro:', e.message));
+      runEmailDailyReports().catch(e => console.error('[worker] emailDailyReports erro:', e.message));
     }
     if (cmd === 'emailRelatorioSemanal') {
       console.log('[worker] emailRelatorioSemanal disparado manualmente');
-      emailRelatorioSemanal().catch(e => console.error('[worker] emailRelatorioSemanal erro:', e.message));
+      runEmailRelatorioSemanal().catch(e => console.error('[worker] emailRelatorioSemanal erro:', e.message));
     }
     if (cmd === 'checkOutlierEstatistico') {
       console.log('[worker] checkOutlierEstatistico disparado manualmente');
@@ -4155,10 +4163,10 @@ async function handleTgCommand(text, chatId, botToken) {
       syncTopVendas().catch(e => console.error('[tg-bot] syncTopVendas erro:', e.message));
     } else if (tipo === 'email-diario') {
       await tgReply(chatId, '📧 Gerando <b>relatórios diários</b> por e-mail...', botToken);
-      emailDailyReports().catch(e => console.error('[tg-bot] emailDailyReports erro:', e.message));
+      runEmailDailyReports().catch(e => console.error('[tg-bot] emailDailyReports erro:', e.message));
     } else if (tipo === 'email-semanal') {
       await tgReply(chatId, '📧 Gerando <b>relatório semanal</b> por e-mail...', botToken);
-      emailRelatorioSemanal().catch(e => console.error('[tg-bot] emailRelatorioSemanal erro:', e.message));
+      runEmailRelatorioSemanal().catch(e => console.error('[tg-bot] emailRelatorioSemanal erro:', e.message));
     } else if (tipo === 'outlier') {
       await tgReply(chatId, '📊 Verificando <b>outliers estatísticos</b> (dia anterior vs. média histórica)...', botToken);
       checkOutlierEstatistico().catch(e => console.error('[tg-bot] checkOutlierEstatistico erro:', e.message));

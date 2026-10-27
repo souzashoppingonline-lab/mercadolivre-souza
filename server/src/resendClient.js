@@ -9,8 +9,17 @@ const API_KEY = process.env.RESEND_API_KEY;
 const FROM = process.env.RESEND_FROM_EMAIL || 'ML Dashboard <onboarding@resend.dev>';
 const TO = process.env.RESEND_TO_EMAIL;
 
+// RESEND_TO_EMAIL pode ter vários endereços separados por vírgula/ponto e
+// vírgula: a API do Resend quer ARRAY nesse caso — mandar a string inteira
+// fazia o envio ser recusado (fechamentoMensalEmail.js já prometia lista).
+function destinatarios(to) {
+  const lista = (Array.isArray(to) ? to : String(to || '').split(/[,;]/)).map(e => String(e).trim()).filter(Boolean);
+  return lista.length > 1 ? lista : lista[0];
+}
+
 async function sendEmail({ subject, html, to = TO }) {
   if (!API_KEY) throw new Error('RESEND_API_KEY não configurado no .env');
+  to = destinatarios(to);
   if (!to) throw new Error('RESEND_TO_EMAIL não configurado no .env');
   const res = await fetch(`${BASE}/emails`, {
     method: 'POST',
@@ -22,4 +31,4 @@ async function sendEmail({ subject, html, to = TO }) {
   return json;
 }
 
-module.exports = { sendEmail, isConfigured: () => !!(API_KEY && TO) };
+module.exports = { sendEmail, destinatarios, isConfigured: () => !!(API_KEY && TO) };

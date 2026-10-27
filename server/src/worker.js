@@ -1494,8 +1494,11 @@ async function syncSeoScore() {
 // catálogo inteiro não caiba numa execução só.
 let isSyncingCatalogCompetition = false;
 
-async function syncCatalogCompetition() {
-  if (isSyncingCatalogCompetition) { console.warn('[sync-catalog-competition] já em execução — ignorando'); return; }
+// Execução SEM reagendar — usada pelo agendamento diário (04:50), pelas
+// rodadas do dia (syncCatalogIntradia, v119) e pelo disparo manual (antes o
+// manual chamava a função que se reagenda → timer diário duplicado).
+async function runSyncCatalogCompetition() {
+  if (isSyncingCatalogCompetition) { console.warn('[sync-catalog-competition] já em execução — ignorando'); return null; }
   isSyncingCatalogCompetition = true;
   console.log('[sync-catalog-competition] iniciando sync de Buy-Box...');
   try {
@@ -1568,8 +1571,93 @@ async function syncCatalogCompetition() {
     });
   } finally {
     isSyncingCatalogCompetition = false;
-    scheduleAt(4, 50, syncCatalogCompetition, 'sync-catalog-competition');
   }
+}
+async function syncCatalogCompetition() {
+  try { return await runSyncCatalogCompetition(); }
+  finally { scheduleAt(4, 50, syncCatalogCompetition, 'sync-catalog-competition'); }
+}
+
+// ── Buy Box durante o dia (v119) — a cada 2h, das 08h às 20h ──────────────
+// Pedido do usuário: "cada alteração no catálogo no Telegram". Com sync só às
+// 04:50, uma mudança de tarde só aparecia no dia seguinte. Mesma execução do
+// diário (mesmos itens, mesmo throttle de 10s/item — ~20min por 100 itens),
+// só que mais vezes; cada gravação registra as mudanças (catalogCompetition.js)
+// e o flushBuyboxMudancas manda no Telegram. Fora desse horário não roda.
+async function syncCatalogIntradia() {
+  try {
+    const h = new Date().getHours();
+    if (h >= 8 && h <= 20) await runSyncCatalogCompetition();
+  } catch (e) { console.error('[sync-catalog-intradia] erro:', e.message); }
+  finally { scheduleEvery(2, syncCatalogIntradia, 'sync-catalog-intradia'); }
+}
+
+// ── Mudanças de Buy Box → Telegram — a cada 10 min (v119) ─────────────────
+// Manda as alterações pendentes (buybox_mudancas, gravadas por
+// catalogCompetition.js) agrupadas por empresa e por anúncio, com o preço do
+// vencedor. Na janela de silêncio SEGURA (não perde): sai tudo junto quando o
+// silêncio acaba. Tópico `tg_buybox_mudancas` (tgNotifyForce: sem throttle —
+// cada mudança chega; desligar = app_config tg_buybox_mudancas='false').
+// Pendência com mais de 2 dias é descartada (notícia velha).
+async function flushBuyboxMudancas() {
+  try {
+    const { estaEmSilencio } = require('./notify');
+    if (await estaEmSilencio()) return;
+    await pool.query(`UPDATE buybox_mudancas SET enviado_em = now() WHERE enviado_em IS NULL AND created_at < now() - interval '2 days'`);
+    const { rows } = await pool.query(
+      `SELECT m.id, m.store_id, m.item_id, m.tipo, m.de, m.para, s.nickname AS loja, i.title, i.permalink,
+              cc.current_price, cc.winner_price, cc.price_to_win, cc.winner_item_id, cc.boosts_missing, cc.status
+         FROM buybox_mudancas m
+         LEFT JOIN stores s ON s.id = m.store_id
+         LEFT JOIN items i ON i.ml_id = m.item_id
+         LEFT JOIN catalog_competition cc ON cc.item_id = m.item_id
+        WHERE m.enviado_em IS NULL
+        ORDER BY m.created_at LIMIT 500`
+    );
+    if (!rows.length) return;
+    const { textoMudancas } = require('./buyboxMudancas');
+    for (const loja of textoMudancas(rows)) {
+      for (const texto of loja.mensagens) { await tgNotifyForce('tg_buybox_mudancas', texto); await new Promise(r => setTimeout(r, 1200)); }
+    }
+    await pool.query(`UPDATE buybox_mudancas SET enviado_em = now() WHERE id = ANY($1::bigint[])`, [rows.map(r => r.id)]);
+    console.log(`[buybox-mudancas] ${rows.length} mudança(s) enviada(s)`);
+  } catch (e) { console.error('[buybox-mudancas] erro:', e.message); }
+  finally { scheduleEveryMinutes(10, flushBuyboxMudancas, 'buybox-mudancas'); }
+}
+
+// ── Relatório diário de Buy Box por empresa — 08:30 (v119) ───────────────
+// Resumo de TODOS os anúncios de catálogo por loja: 🔴 perdendo (com preço do
+// vencedor, diferença, preço pra ganhar e o que falta) · 🟡 empatado · 🟢
+// ganhando, + o que mudou desde o relatório anterior (buybox_alerta_estado).
+// Texto em buyboxRelatorio.js (testado). Só anúncios ativos. Tópico
+// `tg_buybox_relatorio` (tgNotify — 08:30 já está fora do silêncio).
+async function runBuyboxRelatorio() {
+  const { montarRelatorio } = require('./buyboxRelatorio');
+  const { rows } = await pool.query(
+    `SELECT cc.item_id, cc.store_id, cc.status, cc.current_price, cc.price_to_win, cc.winner_item_id, cc.winner_price,
+            cc.boosts_missing, cc.calculated_at, s.nickname AS loja, i.title, i.permalink, i.price AS item_price
+       FROM catalog_competition cc
+       JOIN stores s ON s.id = cc.store_id
+       LEFT JOIN items i ON i.ml_id = cc.item_id
+      WHERE i.status IS NULL OR i.status = 'active'`
+  );
+  if (!rows.length) { console.log('[buybox-relatorio] nenhum anúncio de catálogo monitorado'); return null; }
+  const { rows: est } = await pool.query(`SELECT item_id, chave FROM buybox_alerta_estado`);
+  const r = montarRelatorio(rows, Object.fromEntries(est.map(e => [e.item_id, e.chave])), { dashUrl: DASH_URL });
+  for (const loja of r.lojas) {
+    for (const texto of loja.mensagens) { await tgNotify('tg_buybox_relatorio', texto); await new Promise(res => setTimeout(res, 1200)); }
+  }
+  for (const e of r.novoEstado) {
+    await pool.query(
+      `INSERT INTO buybox_alerta_estado (item_id, chave, reportado_em) VALUES ($1, $2, now())
+       ON CONFLICT (item_id) DO UPDATE SET chave = EXCLUDED.chave, reportado_em = now()`, [e.item_id, e.chave]);
+  }
+  console.log(`[buybox-relatorio] ${r.lojas.map(l => `${l.loja}: ${l.contagem.ganhando}🟢 ${l.contagem.compartilhando}🟡 ${l.contagem.perdendo}🔴`).join(' | ')}`);
+  return r;
+}
+async function checkBuyboxRelatorio() {
+  try { await runBuyboxRelatorio(); } catch (e) { console.error('[buybox-relatorio] erro:', e.message); }
+  finally { scheduleAt(8, 30, checkBuyboxRelatorio, 'buybox-relatorio'); }
 }
 
 // ── Sync Preços Promocionais — 05:00 diário ───────────────────────────────────
@@ -3734,6 +3822,9 @@ scheduleAt(2, 30,  backupDatabase, 'backup-database');
 scheduleAt(4, 15,  syncMetricas, 'sync-metricas');
 scheduleAt(4, 30,  syncSeoScore, 'sync-seo-score');
 scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
+scheduleEvery(2,    syncCatalogIntradia, 'sync-catalog-intradia');
+scheduleEveryMinutes(10, flushBuyboxMudancas, 'buybox-mudancas');
+scheduleAt(8, 30,  checkBuyboxRelatorio, 'buybox-relatorio');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
@@ -3815,6 +3906,7 @@ cmdSub.on('message', (channel, msg) => {
       'importacao-metrizap': 'runImportacaoMetrizap',
       'dividas-push': 'runDividasPush',
       'dividas-lembrete': 'runDividasLembrete',
+      'buybox-relatorio': 'runBuyboxRelatorio',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
       'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
@@ -3864,7 +3956,7 @@ cmdSub.on('message', (channel, msg) => {
     }
     if (cmd === 'sync-catalog-competition' || cmd === 'syncCatalogCompetition') {
       console.log('[worker] syncCatalogCompetition disparado manualmente');
-      syncCatalogCompetition().catch(e => console.error('[worker] syncCatalogCompetition erro:', e.message));
+      runSyncCatalogCompetition().catch(e => console.error('[worker] syncCatalogCompetition erro:', e.message));
     }
     if (cmd === 'syncNotionTarefas') {
       console.log('[worker] syncNotionTarefas disparado manualmente');
@@ -3941,6 +4033,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkQuedaProdutos') {
       console.log('[worker] checkQuedaProdutos disparado manualmente');
       checkQuedaProdutos().catch(e => console.error('[worker] checkQuedaProdutos erro:', e.message));
+    }
+    if (cmd === 'runBuyboxRelatorio') {
+      console.log('[worker] buybox-relatorio disparado manualmente');
+      runBuyboxRelatorio().catch(e => console.error('[worker] buybox-relatorio erro:', e.message));
     }
     if (cmd === 'runDividasLembrete') {
       console.log('[worker] dividas-lembrete disparado manualmente');

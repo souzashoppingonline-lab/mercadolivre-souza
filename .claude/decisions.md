@@ -1037,3 +1037,11 @@ O aviso "✅ conta paga" é disparado pela página Dívidas do Dia (`avisarDono(
 ## Saldo de conta = saldo INFORMADO + movimentos depois, não a soma do Fluxo de Caixa (v118)
 
 Pedido: mostrar o saldo da conta na janela de Pagar e avisar quando falta. A soma do Fluxo de Caixa por conta dá número sem sentido (entradas quase nunca têm conta; não existe saldo inicial por conta). Opções apresentadas ao usuário: (a) saldo informado + desconto automático, (b) arrumar o Fluxo de Caixa (saldo inicial por conta + conta obrigatória nas entradas + atribuir conta às 687 entradas antigas), (c) só o total do dia por conta, sem saldo. **Escolhida (a)** pelo usuário. Informes guardados no Postgres do sistema (`conta_saldos_informados`, com histórico), movimentos lidos do Supabase pela hora de criação (`created_at`). Se um dia o Fluxo de Caixa passar a ter conta em toda entrada, dá pra trocar o "informado" por um saldo inicial fixo sem mudar a tela.
+
+## Buy Box no Telegram: detectar no único gravador, consultar mais vezes, segurar no silêncio (v119)
+
+- **Onde detectar**: em `fetchAndSaveCatalogCompetition` (`catalogCompetition.js`) — é o ÚNICO código que grava `catalog_competition` (sync, intradia, webhook, Rankeamento); lendo a linha anterior antes do upsert, nenhuma mudança escapa e não há 2ª comparação em outro lugar. Falha ao registrar mudança só loga, nunca derruba o sync.
+- **Frequência**: com consulta só às 04:50, "cada alteração" chegaria no dia seguinte. Escolhido rodar a mesma execução a cada 2h das 08 às 20h (`syncCatalogIntradia`), em vez de um job novo: mesmo throttle (10s/item), mesma lista. Custo: ~7 chamadas `price_to_win` por anúncio por dia a mais.
+- **Entrega**: fila (`buybox_mudancas`) + envio a cada 10 min agrupado por empresa/anúncio, em vez de 1 mensagem por gravação — um sync de 100 itens com 30 mudanças vira 1–2 mensagens. Durante o silêncio as mudanças **ficam na fila** (o `tgNotify` normal as perderia) e saem às 07:00 — inclusive as do sync das 04:50.
+- **Classificação compartilhada**: `statusBuyBox()` do `rankeamento.html` virou `js/buyboxStatus.js` (navegador + Node) — Telegram e tela usam a mesma regra.
+- **Bug corrigido de carona**: o disparo manual do `sync-catalog-competition` chamava a função que se reagenda (timer diário duplicado a cada disparo); agora chama `runSyncCatalogCompetition` (sem reagendar).

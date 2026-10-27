@@ -105,6 +105,8 @@ Ver `task-engine.md` para a arquitetura do `TaskEngine`. Regras de negócio das 
 
 Escopo: itens com `item_seo_score.catalog_listing = true` **ou** alocados no estágio Catálogo do Rankeamento (`ranking_ads.fase='catalogo'`, v88 — ver `rankeamento.md`). "Ganhando" é decidido comparando `catalog_competition.winner_item_id` ao próprio `item_id` — **não** pela string `catalog_competition.status` (só o valor `"competing"` foi confirmado ao vivo contra a API real; outros valores possíveis não foram documentados, então a UI/summary do módulo Qualidade de Anúncio nunca dependem do texto exato). `summary.perdendo_buybox` (rota `GET /api/qualidade-anuncio`) conta itens `catalog_listing=true` com `winner_item_id` preenchido e diferente do próprio item — itens ainda sem sync (`winner_item_id IS NULL`) não entram nem como "ganhando" nem como "perdendo".
 
+**Regra em código: `js/buyboxStatus.js` (v119)** — usada pelo card do Rankeamento e pelo Buy Box no Telegram.
+
 **Exceção (v88, card do estágio Catálogo apenas):** o usuário forneceu, nesta tarefa, o enum oficial documentado pela API (`status`: `winning`/`competing`/`sharing_first_place`/`listed`) — informação que o projeto não tinha confirmado ao vivo antes. Com base nisso, o card do estágio Catálogo (só ali, não no módulo Qualidade de Anúncio) também confia em `buybox_status === 'sharing_first_place'` pra distinguir "compartilhando o 1º lugar" de "perdendo" — a ÚNICA string além da comparação por `winner_item_id` em que se confia. Qualquer outro valor de status continua tratado como texto informativo, nunca como base de decisão.
 
 ## Devoluções — prejuízo lançado manualmente (`returns.prejuizo`)
@@ -542,3 +544,11 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Disponível = último informe − saídas + entradas** lançadas em `cash_flow_entries` **naquela conta** com `created_at` **depois** do informe (hora do lançamento, não `date` — o Pagar grava a saída com a data do vencimento). Pagamento desfeito apaga a saída → o valor volta sozinho.
 - Aviso **"⚠️ Faltam R$ X nesta conta"** quando disponível − valor a pagar < 0. **Não bloqueia** (botão "Pagar mesmo assim") — pode haver limite/cheque especial ou entrada ainda não lançada.
 - Informe com **mais de 24h** aparece como desatualizado ("⏰ atualize antes de pagar").
+
+## Buy Box no Telegram — o que conta como mudança (v119, `buyboxMudancas.js` / `buyboxRelatorio.js`)
+
+- Classificação = `js/buyboxStatus.js`, a MESMA do card do Rankeamento (regra "Monitor de Buy-Box" acima): ganhando = vencedor é o próprio anúncio; empatado = `sharing_first_place`; perdendo = há vencedor e não é você.
+- **Mudança** (gera aviso): status mudou; **ou**, continuando perdendo/empatado, o **preço do vencedor** mudou (≥ R$0,01) ou **outro vendedor** virou o vencedor; **e/ou** o **seu preço** mudou. 1º sync de um anúncio **não** avisa (não há "antes").
+- A detecção só acontece quando o Buy Box é consultado: 04:50, a cada 2h das 08 às 20h, webhook do ML (se chegar) e alocação no Rankeamento — mudança entre duas consultas aparece na consulta seguinte.
+- Toda referência de anúncio no Telegram traz **loja + código MLB** (pedido do usuário: identificar o anúncio na hora).
+- O Rankeamento continua com o próprio aviso "ganhou/perdeu o buy-box" (`tg_rankeamento`) para os anúncios alocados lá — pode duplicar com este; cada um desliga pela própria chave.

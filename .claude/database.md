@@ -838,3 +838,7 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 ### `conta_saldos_informados` — v118: saldo REAL das contas bancárias, digitado por quem paga (ver `business-rules.md`)
 
 `migrate-v118.sql`. Uma linha por informe (histórico): `conta_id` (TEXT = `contas_bancarias.id` do Supabase), `valor` NUMERIC(14,2), `informado_em` (default now()), `informado_por`. Índice `(conta_id, informado_em DESC)` — a rota usa o mais recente por conta (`DISTINCT ON`). Fica no Postgres do sistema (não no Supabase do Financeiro) porque é dado operacional desta tela, não do ERP.
+
+### `buybox_mudancas` / `buybox_alerta_estado` — v119: Buy Box no Telegram (ver `workers.md`)
+
+`migrate-v119.sql`. **`buybox_mudancas`**: uma linha por alteração detectada ao gravar `catalog_competition` (`catalogCompetition.js` → `buyboxMudancas.detectarMudancas`): `store_id`, `item_id`, `tipo` (`status`|`preco_vencedor`|`novo_vencedor`|`seu_preco`), `de`, `para` (texto), `created_at`, `enviado_em` (NULL = pendente; índice parcial nos pendentes). **`buybox_alerta_estado`**: `item_id` PK, `chave` (ganhando/perdendo/compartilhando/sem_concorrencia) e `reportado_em` do último relatório das 08:30 — base do bloco "mudou desde o último relatório".

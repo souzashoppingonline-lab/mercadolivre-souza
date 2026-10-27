@@ -386,6 +386,7 @@
 <script src="../js/websocket.js"></script>
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
+<script src="../js/buyboxStatus.js"></script>
 <script>
 const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -650,12 +651,9 @@ function intervHtml(a) {
 // só 'competing' foi confirmado ao vivo, ver business-rules.md);
 // 'sharing_first_place' é a única outra string tratada com confiança porque
 // veio documentada explicitamente pelo usuário nesta tarefa.
+// Regra em js/buyboxStatus.js (compartilhada com o relatório de Buy Box no Telegram).
 function statusBuyBox(a) {
-  if (!a.buybox_calculated_at) return { chave: 'aguardando', label: 'Aguardando 1ª sincronização', cor: '#8b949e', ico: '⏳' };
-  if (a.winner_item_id === a.ml_id) return { chave: 'ganhando', label: 'GANHANDO', cor: '#3fb950', ico: '🏆' };
-  if (a.buybox_status === 'sharing_first_place') return { chave: 'compartilhando', label: 'COMPARTILHANDO O 1º LUGAR', cor: '#f0883e', ico: '🤝' };
-  if (a.winner_item_id) return { chave: 'perdendo', label: 'PERDENDO', cor: '#f85149', ico: '📉' };
-  return { chave: 'sem_concorrencia', label: 'Sem concorrência detectada', cor: '#8b949e', ico: '—' };
+  return BuyboxStatus.classificar({ calculado_em: a.buybox_calculated_at, winner_item_id: a.winner_item_id, item_id: a.ml_id, status: a.buybox_status });
 }
 
 function cardHtml(a) {

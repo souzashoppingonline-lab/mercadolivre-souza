@@ -87,6 +87,7 @@ function buildHtml(report) {
 async function sendClosingEmail(report) {
   if (!resend.isConfigured()) {
     console.warn('[fechamento-mensal] RESEND_API_KEY/RESEND_TO_EMAIL não configurados — e-mail não enviado (o fechamento foi salvo normalmente)');
+    await resend.avisarFalha(`Fechamento Mensal — ${MESES[report.mes - 1] || report.mes}/${report.ano}`, new Error('RESEND_API_KEY não configurado no .env (o fechamento foi salvo; só o e-mail não saiu)'));
     return { sent: false, reason: 'RESEND não configurado' };
   }
   const nomeMes = MESES[report.mes - 1] || report.mes;

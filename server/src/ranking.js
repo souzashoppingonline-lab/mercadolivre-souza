@@ -14,6 +14,12 @@ const { publish } = require('./ws/hub');
 const BRL = (n) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0);
 const fmtDT = (d) => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
 const linkOf = (mlId) => `https://www.mercadolivre.com.br/anuncios/${String(mlId).replace('MLB', 'MLB-')}`;
+// Nome do estágio no Telegram — mesmos nomes das abas de pages/rankeamento.html.
+const FASE_LABEL = {
+  rankeando: '🚀 Em rankeamento', ranqueado: '🛡️ Ranqueado', monitoramento: '👁️ Monitoramento',
+  recuperacao: '❤️‍🩹 Recuperação', catalogo: '🏆 Catálogo (Buy Box)',
+};
+const faseLabel = (f) => FASE_LABEL[f || 'rankeando'] || String(f);
 
 // Anúncio em rankeamento ATIVO (ou null). Consulta barata (índice único ml_id) —
 // chamada nos handlers de venda/item; se o anúncio não está em rankeamento,
@@ -66,6 +72,9 @@ async function emit(ad, eventType, message, detail = {}, tgMode = 'normal') {
 
 // Uma venda de um anúncio em rankeamento. `valorNum` é o valor da LINHA do
 // pedido (unit_price × quantity) desse item, não o total do pedido.
+// Retorna { fase, count, title } (estágio atual + nº da venda, que é
+// cumulativo e NÃO zera ao trocar de estágio) pro aviso "Nova venda!" do
+// worker; null se o anúncio não está em rankeamento ou a venda não conta.
 async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = true }) {
   const ad = await getTracked(mlId, true); // inclui anúncios de catálogo vinculados
   if (!ad) return;
@@ -77,18 +86,18 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
   // mesmo dia da marcação conta, mas o histórico de dias anteriores (que o
   // sync-vendas de 72h reprocessa) fica de fora e não infla o contador.
   const spDate = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-  if (saleDate && ad.started_at && spDate(saleDate) < spDate(ad.started_at)) return;
+  if (saleDate && ad.started_at && spDate(saleDate) < spDate(ad.started_at)) return null;
 
   // Idempotência por order_id: se a venda deste pedido já foi registrada para
   // este anúncio, não conta de novo. É o que permite chamar onSale sem medo em
   // re-processos / sync / webhooks tardios (nenhuma venda é perdida nem dobrada).
   if (orderId) {
     const dup = await pool.query(
-      `SELECT 1 FROM ranking_events
+      `SELECT detail->>'sales_count' AS n FROM ranking_events
         WHERE ranking_ad_id = $1 AND event_type = 'venda' AND detail->>'order_id' = $2 LIMIT 1`,
       [ad.id, String(orderId)]
     );
-    if (dup.rows.length) return;
+    if (dup.rows.length) return { fase: ad.fase, count: Number(dup.rows[0].n) || null, title: ad.title };
   }
 
   // v80 — fase RECUPERAÇÃO: a 1ª venda depois da intervenção é exatamente a
@@ -128,7 +137,7 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
   const diasParado = paradoDesde ? Math.floor((now.getTime() - new Date(paradoDesde).getTime()) / 86400000) : null;
   const msgVenda = primeiraDaRecuperacao
     ? `🎉 <b>DESTRAVOU! 1ª venda desde a recuperação</b>\n📦 ${ad.title || ad.ml_id}\n${diasParado != null ? `⏳ Estava <b>${diasParado} dia(s)</b> sem vender\n` : ''}💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n✅ As alterações fizeram efeito — avalie voltar pra <b>Em rankeamento</b>.\n🔗 ${linkOf(ad.ml_id)}`
-    : `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> em rankeamento\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`;
+    : `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> · 📍 ${faseLabel(ad.fase)}\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`;
   await emit(ad, 'venda', msgVenda,
     { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count, recuperou: primeiraDaRecuperacao || undefined }, notify);
 
@@ -137,6 +146,7 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
   if (count > 0 && count % every === 0) {
     await milestone({ ...ad, sales_count: count, first_sale_at: rows[0].first_sale_at }, realtime);
   }
+  return { fase: ad.fase, count, title: ad.title };
 }
 
 // Marco (a cada N vendas): total, tempo desde a 1ª venda, ritmo/dia e faturamento
@@ -187,7 +197,7 @@ async function milestone(ad, realtime = true) {
     ? `🔄 <b>Ciclo ${de} encerrado — agora no Ciclo ${para}</b> (automático a cada ${ad.milestone_every || 5} vendas)`
     : `🔄 Ciclo ${de}`;
   await emit({ ...ad, ciclo: para }, 'marco',
-    `🎯 <b>Marco: ${ad.sales_count} vendas em rankeamento</b>\n📦 ${ad.title || ad.ml_id}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento acumulado: ${BRL(fat)}\n${linhaCiclo}\n🔗 ${linkOf(ad.ml_id)}`,
+    `🎯 <b>Marco: ${ad.sales_count} vendas</b>\n📦 ${ad.title || ad.ml_id}\n📍 Estágio: ${faseLabel(ad.fase)}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento acumulado: ${BRL(fat)}\n${linhaCiclo}\n🔗 ${linkOf(ad.ml_id)}`,
     { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat), ciclo: para, ciclo_anterior: de },
     (ad.fase === 'ranqueado' || !realtime) ? 'silent' : 'force');
 }
@@ -483,4 +493,4 @@ async function buscarFasePorItemIds(itemIds) {
   return map;
 }
 
-module.exports = { getTracked, onSale, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds, onCatalogCompetitionUpdate };
+module.exports = { getTracked, onSale, faseLabel, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds, onCatalogCompetitionUpdate };

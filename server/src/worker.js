@@ -345,6 +345,31 @@ async function handleOrder({ resource, storeId, silent = false }) {
   if (order.status === 'paid' && previousStatus !== 'paid' && !isRecentEnough) {
     console.log(`[worker] venda antiga ignorada no Telegram: order=${order.id} date_closed=${order.date_closed} idade=${Math.round(saleAgeMs/3600000)}h`);
   }
+  // Rankeamento: registra a venda de qualquer item monitorado deste pedido PAGO.
+  // Roda FORA do gate isNewSale/!silent de propósito: o onSale é idempotente por
+  // order_id (não conta 2x) e só conta vendas a partir do started_at do anúncio,
+  // então pode rodar em silent / re-sync / venda >24h sem inflar nem duplicar —
+  // é isso que garante que nenhuma venda de anúncio em rankeamento seja perdida.
+  // Telegram só quando é venda em tempo real (isNewSale && !silent). Best-effort.
+  // Roda ANTES do "Nova venda!" pra ele já sair com estágio + nº da venda.
+  const rankLinhas = [];
+  if (order.status === 'paid') {
+    const realtime = isNewSale && !silent;
+    for (const oi of (order.order_items || [])) {
+      const mlId = oi.item?.id;
+      if (!mlId) continue;
+      try {
+        const r = await ranking.onSale({
+          mlId, order,
+          valorNum: Number(oi.unit_price || 0) * Number(oi.quantity || 1),
+          comprador: order.buyer?.nickname || '—',
+          saleDate, realtime,
+        });
+        if (r && r.count) rankLinhas.push(r);
+      } catch (e) { console.error('[ranking] onSale falhou:', e.message); }
+    }
+  }
+
   if (isNewSale) {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
@@ -353,7 +378,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
     const saleDateFmt = saleDate ? fmtDataHora(saleDate) : fmtDataHora(new Date());
     const notifiedAtFmt = fmtDataHora(new Date());
     if (!silent) {
-      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}`);
+      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rankLinhas.map(r => `\n📍 <b>${ranking.faseLabel(r.fase)}</b> · Venda nº <b>${r.count}</b>${rankLinhas.length > 1 ? ` — ${String(r.title || '').slice(0, 40)}` : ''}`).join('')}`);
       // Alerta em tempo real na tela do dashboard (som + push) — consumido por
       // js/layout.js (WS.on('nova_venda')). Mesma guarda anti-pedido-antigo do
       // Telegram, então nunca dispara em importação em massa (silent) nem venda >24h.
@@ -365,28 +390,6 @@ async function handleOrder({ resource, storeId, silent = false }) {
         comprador: order.buyer?.nickname || '—',
         order_id: order.id,
       });
-    }
-  }
-
-  // Rankeamento: registra a venda de qualquer item monitorado deste pedido PAGO.
-  // Roda FORA do gate isNewSale/!silent de propósito: o onSale é idempotente por
-  // order_id (não conta 2x) e só conta vendas a partir do started_at do anúncio,
-  // então pode rodar em silent / re-sync / venda >24h sem inflar nem duplicar —
-  // é isso que garante que nenhuma venda de anúncio em rankeamento seja perdida.
-  // Telegram só quando é venda em tempo real (isNewSale && !silent). Best-effort.
-  if (order.status === 'paid') {
-    const realtime = isNewSale && !silent;
-    for (const oi of (order.order_items || [])) {
-      const mlId = oi.item?.id;
-      if (!mlId) continue;
-      try {
-        await ranking.onSale({
-          mlId, order,
-          valorNum: Number(oi.unit_price || 0) * Number(oi.quantity || 1),
-          comprador: order.buyer?.nickname || '—',
-          saleDate, realtime,
-        });
-      } catch (e) { console.error('[ranking] onSale falhou:', e.message); }
     }
   }
 }

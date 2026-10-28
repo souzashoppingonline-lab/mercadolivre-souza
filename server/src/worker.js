@@ -1663,6 +1663,80 @@ async function checkBuyboxRelatorio() {
   finally { scheduleAt(8, 30, checkBuyboxRelatorio, 'buybox-relatorio'); }
 }
 
+// ── Rankeamento: vendas por estágio no Telegram — a cada 4h + fechamento diário ──
+// Pedido do usuário. Fonte: eventos 'venda' de ranking_events (1 por venda
+// contada, mesma do contador do card); estágio = detail.fase gravado na venda
+// (eventos antigos: estágio atual do anúncio). Texto em rankingVendasResumo.js
+// (testado). Tópico `tg_rankeamento_resumo` (tgNotify — respeita silêncio;
+// desliga com app_config tg_rankeamento_resumo='false').
+async function rankingVendasPorEstagio(desde, ate) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(e.detail->>'fase', a.fase, 'rankeando') AS fase, a.ml_id, a.title,
+            COUNT(*)::int AS vendas,
+            SUM(CASE WHEN e.detail->>'valor' ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (e.detail->>'valor')::numeric ELSE 0 END) AS valor,
+            MAX(CASE WHEN e.detail->>'sales_count' ~ '^[0-9]+$' THEN (e.detail->>'sales_count')::int END) AS nro
+       FROM ranking_events e JOIN ranking_ads a ON a.id = e.ranking_ad_id
+      WHERE e.event_type = 'venda' AND e.created_at >= $1 AND e.created_at < $2
+      GROUP BY 1, 2, 3`, [desde, ate]);
+  return rows;
+}
+const hhmmSP = d => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+const ddmmSP = d => new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' });
+
+// A cada 4h: vendas DESDE O ÚLTIMO resumo enviado (app_config
+// rk_vendas_resumo_ultimo, máx. 24h atrás) — no silêncio (22–07h) não manda
+// e o das 08h cobre a madrugada inteira, sem perder venda.
+async function runRankingVendas4h() {
+  const { estaEmSilencio } = require('./notify');
+  if (await estaEmSilencio()) return null;
+  const { montarResumo } = require('./rankingVendasResumo');
+  const ate = new Date();
+  const { rows: cfg } = await pool.query(`SELECT value FROM app_config WHERE key = 'rk_vendas_resumo_ultimo'`);
+  let desde = cfg[0] ? new Date(cfg[0].value) : new Date(ate - 4 * 3600e3);
+  if (!(desde < ate) || ate - desde > 24 * 3600e3) desde = new Date(ate - (cfg[0] ? 24 : 4) * 3600e3);
+  const rows = await rankingVendasPorEstagio(desde, ate);
+  const { rows: hoje } = await pool.query(
+    `SELECT COALESCE(e.detail->>'fase', a.fase, 'rankeando') AS fase, COUNT(*)::int AS vendas
+       FROM ranking_events e JOIN ranking_ads a ON a.id = e.ranking_ad_id
+      WHERE e.event_type = 'venda'
+        AND e.created_at >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+      GROUP BY 1`);
+  const periodo = ddmmSP(desde) === ddmmSP(ate) ? `${hhmmSP(desde)} → ${hhmmSP(ate)}` : `${ddmmSP(desde)} ${hhmmSP(desde)} → ${ddmmSP(ate)} ${hhmmSP(ate)}`;
+  const r = montarResumo(rows, { titulo: 'RANKEAMENTO — VENDAS POR ESTÁGIO', periodo, hoje });
+  const enviado = await tgNotify('tg_rankeamento_resumo', r.texto);
+  if (enviado) {
+    await pool.query(
+      `INSERT INTO app_config (key, value, updated_at) VALUES ('rk_vendas_resumo_ultimo', $1, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, [ate.toISOString()]);
+  }
+  console.log(`[rk-vendas-4h] ${r.total} venda(s) ${periodo} — ${enviado ? 'enviado' : 'não enviado'}`);
+  return r;
+}
+async function checkRankingVendas4h() {
+  try { await runRankingVendas4h(); } catch (e) { console.error('[rk-vendas-4h] erro:', e.message); }
+  finally { scheduleEvery(4, checkRankingVendas4h, 'rk-vendas-4h'); }
+}
+
+// 1x por dia (07:05): fechamento do DIA ANTERIOR inteiro (00:00–24:00 SP),
+// por estágio — às 07h já saiu do silêncio e o dia está completo.
+async function runRankingVendasDia() {
+  const { montarResumo } = require('./rankingVendasResumo');
+  const { rows: lim } = await pool.query(
+    `SELECT (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') - interval '1 day') AT TIME ZONE 'America/Sao_Paulo' AS ini,
+            date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo' AS fim`);
+  const { ini, fim } = lim[0];
+  const rows = await rankingVendasPorEstagio(ini, fim);
+  const dia = new Date(ini).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit' });
+  const r = montarResumo(rows, { titulo: 'RANKEAMENTO — FECHAMENTO DO DIA', periodo: `${dia} · dia inteiro` });
+  await tgNotify('tg_rankeamento_resumo', r.texto);
+  console.log(`[rk-vendas-dia] ${r.total} venda(s) em ${dia}`);
+  return r;
+}
+async function checkRankingVendasDia() {
+  try { await runRankingVendasDia(); } catch (e) { console.error('[rk-vendas-dia] erro:', e.message); }
+  finally { scheduleAt(7, 5, checkRankingVendasDia, 'rk-vendas-dia'); }
+}
+
 // ── Sync Preços Promocionais — 05:00 diário ───────────────────────────────────
 let isSyncingPrecos = false;
 
@@ -3848,6 +3922,8 @@ scheduleAt(4, 50,  syncCatalogCompetition, 'sync-catalog-competition');
 scheduleEvery(2,    syncCatalogIntradia, 'sync-catalog-intradia');
 scheduleEveryMinutes(10, flushBuyboxMudancas, 'buybox-mudancas');
 scheduleAt(8, 30,  checkBuyboxRelatorio, 'buybox-relatorio');
+scheduleEvery(4,    checkRankingVendas4h, 'rk-vendas-4h');
+scheduleAt(7, 5,   checkRankingVendasDia, 'rk-vendas-dia');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
@@ -3930,6 +4006,8 @@ cmdSub.on('message', (channel, msg) => {
       'dividas-push': 'runDividasPush',
       'dividas-lembrete': 'runDividasLembrete',
       'buybox-relatorio': 'runBuyboxRelatorio',
+      'rk-vendas-4h': 'runRankingVendas4h',
+      'rk-vendas-dia': 'runRankingVendasDia',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
       'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
@@ -4056,6 +4134,14 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkQuedaProdutos') {
       console.log('[worker] checkQuedaProdutos disparado manualmente');
       checkQuedaProdutos().catch(e => console.error('[worker] checkQuedaProdutos erro:', e.message));
+    }
+    if (cmd === 'runRankingVendas4h') {
+      console.log('[worker] rk-vendas-4h disparado manualmente');
+      runRankingVendas4h().catch(e => console.error('[worker] rk-vendas-4h erro:', e.message));
+    }
+    if (cmd === 'runRankingVendasDia') {
+      console.log('[worker] rk-vendas-dia disparado manualmente');
+      runRankingVendasDia().catch(e => console.error('[worker] rk-vendas-dia erro:', e.message));
     }
     if (cmd === 'runBuyboxRelatorio') {
       console.log('[worker] buybox-relatorio disparado manualmente');

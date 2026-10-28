@@ -166,7 +166,7 @@
 
       <div class="fx-card">
         <div class="fx-card-h"><h3>🗓️ Resumo Semanal <span id="fxSemLbl" class="desc"></span></h3></div>
-        <div style="overflow:auto"><table class="fx-t"><thead><tr><th>Semana</th><th>Entradas</th><th>Saídas</th><th>Saldo</th></tr></thead><tbody id="fxSemanal"></tbody></table></div>
+        <div style="overflow:auto"><table class="fx-t"><thead><tr><th>Semana</th><th>Entradas</th><th>Saídas</th><th>Saldo da semana</th><th>Saldo acumulado</th></tr></thead><tbody id="fxSemanal"></tbody><tfoot id="fxSemanalFoot"></tfoot></table></div>
       </div>
     </div>
   </main>
@@ -334,9 +334,22 @@ function setPeriodo(p){ periodo=p; [...document.getElementById('fxPeriodo').chil
 function renderSemanal(m,y){
   const list=monthEntries(m,y); const weeks={};
   list.forEach(e=>{ const d=new Date(e.date+'T00:00:00'); const w=Math.ceil(d.getDate()/7); const o=(weeks[w]=weeks[w]||{ent:0,sai:0}); if(isIncome(e))o.ent+=val(e); else o.sai+=val(e); });
-  const tb=document.getElementById('fxSemanal');
+  // Saldo acumulado = tudo antes do mês (mesmo filtro de empresa/conta) + semana a semana.
+  const emp=document.getElementById('fxEmpFiltro').value, conta=document.getElementById('fxContaFiltro').value;
+  const ini=`${y}-${String(m).padStart(2,'0')}-01`, ult=new Date(y,m,0).getDate(), mm=String(m).padStart(2,'0');
+  const antes=ENTRIES.filter(e=>(e.date||'')<ini && (!emp||String(e.store_id)===emp) && (!conta||String(e.conta_bancaria_id)===conta))
+    .reduce((s,e)=>s+(isIncome(e)?val(e):-val(e)),0);
+  const cor=v=>v>=0?'#3fb950':'#f87171';
+  const tb=document.getElementById('fxSemanal'), ft=document.getElementById('fxSemanalFoot');
   const ks=Object.keys(weeks).sort((a,b)=>a-b);
-  tb.innerHTML=ks.length?ks.map(w=>{ const o=weeks[w], r=o.ent-o.sai; return `<tr><td>Semana ${w}</td><td class="up">${BRL(o.ent)}</td><td class="down">${BRL(o.sai)}</td><td style="color:${r>=0?'#3fb950':'#f87171'};font-weight:700">${BRL(r)}</td></tr>`; }).join(''):'<tr><td colspan="4" class="fx-empty">Sem lançamentos.</td></tr>';
+  let acc=antes, tE=0, tS=0;
+  const linhas=ks.map(w=>{ const o=weeks[w], r=o.ent-o.sai; acc+=r; tE+=o.ent; tS+=o.sai;
+    const d1=(w-1)*7+1, d2=Math.min(w*7,ult);
+    return `<tr><td>Semana ${w} <span style="color:var(--text-muted);font-size:11px">${String(d1).padStart(2,'0')}–${String(d2).padStart(2,'0')}/${mm}</span></td><td class="up">${BRL(o.ent)}</td><td class="down">${BRL(o.sai)}</td><td style="color:${cor(r)};font-weight:700">${BRL(r)}</td><td style="color:${cor(acc)};font-weight:800">${BRL(acc)}</td></tr>`; });
+  tb.innerHTML=ks.length
+    ? `<tr><td colspan="4" style="color:var(--text-muted)">Saldo anterior (até ${fmtDate(new Date(y,m-1,0).toISOString().slice(0,10))})</td><td style="color:${cor(antes)};font-weight:700">${BRL(antes)}</td></tr>`+linhas.join('')
+    : '<tr><td colspan="5" class="fx-empty">Sem lançamentos.</td></tr>';
+  ft.innerHTML=ks.length?`<tr style="font-weight:800"><td>TOTAL DO MÊS</td><td class="up">${BRL(tE)}</td><td class="down">${BRL(tS)}</td><td style="color:${cor(tE-tS)}">${BRL(tE-tS)}</td><td style="color:${cor(acc)}">${BRL(acc)}</td></tr>`:'';
 }
 
 // ── Form ────────────────────────────────────────────────────────────────────

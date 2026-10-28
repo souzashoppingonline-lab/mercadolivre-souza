@@ -14,12 +14,7 @@ const { publish } = require('./ws/hub');
 const BRL = (n) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0);
 const fmtDT = (d) => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
 const linkOf = (mlId) => `https://www.mercadolivre.com.br/anuncios/${String(mlId).replace('MLB', 'MLB-')}`;
-// Nome do estágio no Telegram — mesmos nomes das abas de pages/rankeamento.html.
-const FASE_LABEL = {
-  rankeando: '🚀 Em rankeamento', ranqueado: '🛡️ Ranqueado', monitoramento: '👁️ Monitoramento',
-  recuperacao: '❤️‍🩹 Recuperação', catalogo: '🏆 Catálogo (Buy Box)',
-};
-const faseLabel = (f) => FASE_LABEL[f || 'rankeando'] || String(f);
+const { faseLabel } = require('./rankingFases');
 
 // Anúncio em rankeamento ATIVO (ou null). Consulta barata (índice único ml_id) —
 // chamada nos handlers de venda/item; se o anúncio não está em rankeamento,
@@ -139,7 +134,7 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
     ? `🎉 <b>DESTRAVOU! 1ª venda desde a recuperação</b>\n📦 ${ad.title || ad.ml_id}\n${diasParado != null ? `⏳ Estava <b>${diasParado} dia(s)</b> sem vender\n` : ''}💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n✅ As alterações fizeram efeito — avalie voltar pra <b>Em rankeamento</b>.\n🔗 ${linkOf(ad.ml_id)}`
     : `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> · 📍 ${faseLabel(ad.fase)}\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`;
   await emit(ad, 'venda', msgVenda,
-    { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count, recuperou: primeiraDaRecuperacao || undefined }, notify);
+    { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count, fase: ad.fase || 'rankeando', recuperou: primeiraDaRecuperacao || undefined }, notify);
 
   // Marco a cada N vendas — resumo de ritmo (Telegram só em tempo real).
   const every = ad.milestone_every || 5;

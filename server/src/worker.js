@@ -1732,6 +1732,34 @@ async function runRankingVendasDia() {
   console.log(`[rk-vendas-dia] ${r.total} venda(s) em ${dia}`);
   return r;
 }
+// v121 — avisos do Rankeamento que caíram no silêncio (ranking.emit marca
+// tg_pendente) saem quando o silêncio acaba, agrupados em poucas mensagens
+// (≤3.800 caracteres), em ordem, com a hora em que aconteceram. Pendência
+// com mais de 2 dias é descartada. A cada 10 min.
+async function flushRankingPendentes() {
+  try {
+    const { estaEmSilencio } = require('./notify');
+    if (await estaEmSilencio()) return;
+    await pool.query(`UPDATE ranking_events SET tg_pendente = false WHERE tg_pendente AND created_at < now() - interval '2 days'`);
+    const { rows } = await pool.query(
+      `SELECT id, message, created_at FROM ranking_events WHERE tg_pendente ORDER BY created_at, id LIMIT 300`);
+    if (!rows.length) return;
+    const cab = n => `🌙 <b>RANKEAMENTO — MUDANÇAS DURANTE O SILÊNCIO</b>${n ? ' <i>(continuação)</i>' : ''}`;
+    const SEP = '\n━━━━━━━━━━━━━━━━\n';
+    const msgs = []; let atual = cab(0);
+    rows.forEach(r => {
+      const bloco = `🕐 <i>${ddmmSP(r.created_at)} ${hhmmSP(r.created_at)}</i>\n${r.message}`;
+      if ((atual + SEP + bloco).length > 3800) { msgs.push(atual); atual = cab(1); }
+      atual += SEP + bloco;
+    });
+    msgs.push(atual);
+    for (const m of msgs) { await tgNotifyForce('tg_rankeamento', m); await new Promise(r => setTimeout(r, 1200)); }
+    await pool.query(`UPDATE ranking_events SET tg_pendente = false WHERE id = ANY($1::bigint[])`, [rows.map(r => r.id)]);
+    console.log(`[rk-pendentes] ${rows.length} aviso(s) do silêncio enviados em ${msgs.length} mensagem(ns)`);
+  } catch (e) { console.error('[rk-pendentes] erro:', e.message); }
+  finally { scheduleEveryMinutes(10, flushRankingPendentes, 'rk-pendentes'); }
+}
+
 async function checkRankingVendasDia() {
   try { await runRankingVendasDia(); } catch (e) { console.error('[rk-vendas-dia] erro:', e.message); }
   finally { scheduleAt(7, 5, checkRankingVendasDia, 'rk-vendas-dia'); }
@@ -3924,6 +3952,7 @@ scheduleEveryMinutes(10, flushBuyboxMudancas, 'buybox-mudancas');
 scheduleAt(8, 30,  checkBuyboxRelatorio, 'buybox-relatorio');
 scheduleEvery(4,    checkRankingVendas4h, 'rk-vendas-4h');
 scheduleAt(7, 5,   checkRankingVendasDia, 'rk-vendas-dia');
+scheduleEveryMinutes(10, flushRankingPendentes, 'rk-pendentes');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');

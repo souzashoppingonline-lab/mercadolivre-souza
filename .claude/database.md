@@ -755,6 +755,9 @@ ranking_events:
 id SERIAL PK, ranking_ad_id INT FK ranking_ads ON DELETE CASCADE, ml_id TEXT
 event_type TEXT   -- venda|preco|estoque|status|qualidade|buybox|visitas|marco|destaque|esfriou|sem_resultado (v80)
 message TEXT, detail JSONB, created_at TIMESTAMPTZ
+tg_pendente BOOLEAN NOT NULL DEFAULT false  -- v121: aviso que caiu no silêncio, ainda não enviado (índice parcial ranking_events_tg_pendente_idx)
+-- detail.fase (venda, desde v120+): estágio no momento da venda
+-- event_type também: entrou|fase|pausa|marco_cfg|ads|ciclo|nota|link (v121, ações do card)
 -- idx_ranking_events_ad (ranking_ad_id, created_at DESC)
 
 ranking_notes:  -- v76: log de alterações/anotações por card (usado no estágio Monitoramento)

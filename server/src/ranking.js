@@ -4,11 +4,11 @@
 // A cada N vendas (milestone_every, default 5) dispara um marco com resumo de
 // ritmo. Ver .claude/rankeamento.md.
 //
-// Reaproveita notify.js (tgNotify) e ws/hub.js (publish) — as mesmas usadas
+// Reaproveita notify.js (tgNotifyForce) e ws/hub.js (publish) — as mesmas usadas
 // pelo pipeline ML — então worker.js só chama onSale/onItemChange e não duplica
 // lógica de Telegram/WS. mlClient é usado só no snapshot (visitas), nunca no bipe.
 const pool = require('./db/pool');
-const { tgNotify, tgNotifyForce } = require('./notify');
+const { tgNotifyForce, estaEmSilencio } = require('./notify');
 const { publish } = require('./ws/hub');
 
 const BRL = (n) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0);
@@ -41,16 +41,21 @@ async function getTracked(mlId, includeLinks = false) {
 }
 
 // Registra um evento (grava em ranking_events + notifica tela e Telegram).
+// Pedido do usuário (v121): TODA mudança de rankeamento vai pro Telegram.
 // tgMode controla o Telegram:
-//   'force'  → tgNotifyForce (ignora silêncio/throttle): venda/marco na fase 1.
-//   'normal' → tgNotify (respeita silêncio/throttle): alterações/regressão.
-//   'silent' → só tela, sem Telegram: venda/marco na fase 2 (ranqueado).
-// A tela (WS) SEMPRE recebe — o histórico/timeline não muda entre fases.
+//   'force'  → manda na hora, até no silêncio (venda/marco em tempo real).
+//   'normal' → manda na hora (sem o intervalo mínimo do tg_interval); na
+//              janela de silêncio fica PENDENTE (tg_pendente) e sai quando o
+//              silêncio acaba (job flushRankingPendentes do worker) — nunca se perde.
+//   'silent' → só tela: venda/marco reprocessados pelo sync (venda antiga) e a
+//              virada automática de ciclo (já vai dentro da mensagem do marco).
+// A tela (WS) SEMPRE recebe.
 async function emit(ad, eventType, message, detail = {}, tgMode = 'normal') {
+  const segurar = tgMode === 'normal' && await estaEmSilencio();
   const { rows } = await pool.query(
-    `INSERT INTO ranking_events (ranking_ad_id, ml_id, event_type, message, detail)
-     VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
-    [ad.id, ad.ml_id, eventType, message, JSON.stringify(detail)]
+    `INSERT INTO ranking_events (ranking_ad_id, ml_id, event_type, message, detail, tg_pendente)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at`,
+    [ad.id, ad.ml_id, eventType, message, JSON.stringify(detail), segurar]
   );
   const ev = rows[0];
   // Tela (dashboard) — consumido por pages/rankeamento.html e o sino do topbar.
@@ -59,9 +64,7 @@ async function emit(ad, eventType, message, detail = {}, tgMode = 'normal') {
     event_type: eventType, message, detail, id: ev.id, created_at: ev.created_at,
   });
   // Telegram — tópico dedicado tg_rankeamento.
-  if (tgMode === 'force') await tgNotifyForce('tg_rankeamento', message);
-  else if (tgMode === 'normal') await tgNotify('tg_rankeamento', message);
-  // 'silent' → não notifica no Telegram.
+  if (tgMode === 'force' || (tgMode === 'normal' && !segurar)) await tgNotifyForce('tg_rankeamento', message);
   return ev;
 }
 
@@ -123,10 +126,9 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
   );
   const count = rows[0].sales_count;
 
-  // Telegram só em tempo real e na fase 1 (rankeando). Fora disso (fase 2
-  // ranqueado, catch-up de sync ou venda >24h) a venda conta em silêncio (tela).
-  const isRanq = ad.fase === 'ranqueado';
-  const notify = (realtime && !isRanq) ? 'force' : 'silent';
+  // Telegram em tempo real em QUALQUER estágio (v121 — antes o ranqueado era
+  // silencioso). Catch-up de sync / venda >24h conta só na tela.
+  const notify = realtime ? 'force' : 'silent';
   const every0 = ad.milestone_every || 5;
   const faltam = (every0 - (count % every0)) % every0;
   const diasParado = paradoDesde ? Math.floor((now.getTime() - new Date(paradoDesde).getTime()) / 86400000) : null;
@@ -194,7 +196,7 @@ async function milestone(ad, realtime = true) {
   await emit({ ...ad, ciclo: para }, 'marco',
     `🎯 <b>Marco: ${ad.sales_count} vendas</b>\n📦 ${ad.title || ad.ml_id}\n📍 Estágio: ${faseLabel(ad.fase)}\n⏱️ ${dias.toFixed(1)} dia(s) desde a 1ª venda\n📈 Ritmo: ${ritmo} vendas/dia\n💵 Faturamento acumulado: ${BRL(fat)}\n${linhaCiclo}\n🔗 ${linkOf(ad.ml_id)}`,
     { sales_count: ad.sales_count, dias: Number(dias.toFixed(1)), ritmo: Number(ritmo), faturamento: Number(fat), ciclo: para, ciclo_anterior: de },
-    (ad.fase === 'ranqueado' || !realtime) ? 'silent' : 'force');
+    realtime ? 'force' : 'silent');
 }
 
 // Alterações do anúncio detectadas no sync do item (handleItem) — preço, estoque
@@ -276,9 +278,8 @@ async function onCatalogCompetitionUpdate(itemId, storeId) {
 // qualidade (item_seo_score) e buy-box (catalog_competition) do banco, e notifica
 // quando muda. `faseAlvo` limita quais anúncios processar:
 //   'rankeando' (a cada 6h) → notifica QUALQUER mudança (subiu/caiu), fase de empurrar.
-//   'ranqueado' (1x/dia)    → SÓ regressão (perdeu buy-box, saiu/caiu nos Mais
-//                              Vendidos, visitas caíram ≥40%, qualidade piorou) +
-//                              alerta "esfriou" (sem vender há N dias).
+//   'ranqueado' (1x/dia)    → também QUALQUER mudança (v121; antes só regressão)
+//                              + alerta "esfriou" (sem vender há N dias).
 // Só anúncios do Mercado Livre — visitas/qualidade/buy-box/highlights usam a API
 // do ML. Shopee é ignorado (recebe só venda/marco). Poucos anúncios (limite de
 // negócio), não varre o catálogo, então não pesa no rate limit.
@@ -293,6 +294,8 @@ async function snapshot(faseAlvo = 'rankeando') {
       WHERE r.active = true AND COALESCE(m.code, 'ML') = 'ML' AND r.fase = $1`,
     [faseAlvo]
   );
+  // v121: toda mudança vai pro Telegram em qualquer estágio (antes o ranqueado
+  // só avisava regressão). isRanq só muda o texto (ex.: "despencaram").
   const isRanq = faseAlvo === 'ranqueado';
   let checked = 0;
   for (const ad of ads) {
@@ -327,38 +330,37 @@ async function snapshot(faseAlvo = 'rankeando') {
         } catch (_) { /* categoria sem highlights */ }
       }
 
-      // Visitas: fase 1 alerta qualquer variação; fase 2 só QUEDA forte (≥40%).
+      // Visitas: qualquer variação (queda ≥40% no ranqueado sai como "despencaram").
       if (visits != null && ad.last_visits != null && visits !== Number(ad.last_visits)) {
         const last = Number(ad.last_visits);
         const caiu = visits < last;
         const quedaForte = caiu && visits < last * 0.6; // -40%+
-        if (!isRanq || quedaForte) {
-          const dir = caiu ? (isRanq ? '⚠️ despencaram' : '⬇️') : '⬆️';
+        {
+          const dir = caiu ? (isRanq && quedaForte ? '⚠️ despencaram' : '⬇️') : '⬆️';
           await emit(ad, 'visitas', `👁️ <b>Visitas ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n${last} → <b>${visits}</b> (últ. dia)`, { de: last, para: visits });
         }
       }
-      // Qualidade: fase 2 só quando PIORA.
+      // Qualidade: melhorou ou piorou.
       if (seo != null && ad.last_seo_score != null && seo !== Number(ad.last_seo_score)) {
         const piorou = seo < Number(ad.last_seo_score);
-        if (!isRanq || piorou) {
+        {
           await emit(ad, 'qualidade', `⭐ <b>Qualidade ${piorou ? '⬇️ piorou' : '⬆️ melhorou'}</b>\n📦 ${ad.title || ad.ml_id}\n${ad.last_seo_score} → <b>${seo}</b>`, { de: Number(ad.last_seo_score), para: seo });
         }
       }
-      // Buy-box: fase 2 só quando PERDE.
+      // Buy-box: ganhou ou perdeu.
       if (buybox != null && ad.last_buybox != null && buybox !== ad.last_buybox) {
-        if (!isRanq || !buybox) {
+        {
           await emit(ad, 'buybox', buybox
             ? `🥇 <b>GANHOU o buy-box!</b>\n📦 ${ad.title || ad.ml_id}`
             : `⚠️ <b>PERDEU o buy-box</b>\n📦 ${ad.title || ad.ml_id}`, { ganhando: buybox });
         }
       }
-      // Mais Vendidos: entrou / saiu / mudou de posição. Fase 2 só regressão (saiu/caiu).
+      // Mais Vendidos: entrou / saiu / mudou de posição.
       if (highlightPos !== (ad.last_highlight_pos != null ? Number(ad.last_highlight_pos) : null)) {
         const antes = ad.last_highlight_pos;
         const saiu = highlightPos == null && antes != null;
         const caiu = highlightPos != null && antes != null && highlightPos > antes;
-        const regressao = saiu || caiu;
-        if (!isRanq || regressao) {
+        {
           let msg;
           if (highlightPos != null && antes == null) msg = `🚀 <b>ENTROU nos Mais Vendidos!</b>\n📦 ${ad.title || ad.ml_id}\n🏅 Posição <b>#${highlightPos}</b> na categoria`;
           else if (saiu) msg = `📉 <b>SAIU dos Mais Vendidos</b>\n📦 ${ad.title || ad.ml_id}\n(estava em #${antes})`;

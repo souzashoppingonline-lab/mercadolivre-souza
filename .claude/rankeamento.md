@@ -18,6 +18,8 @@ Núcleo em **`server/src/ranking.js`** (reaproveita `notify.js`/`ws/hub.js` — 
 
 ## O que é notificado (tela + Telegram, tópico `tg_rankeamento`)
 
+> **v121 — TODA mudança de rankeamento vai pro Telegram** (pedido do usuário), em **qualquer estágio**: venda e marco também no ranqueado/monitoramento/recuperação/catálogo; snapshot do ranqueado manda qualquer mudança (não só regressão); e as **ações feitas no card** viram evento + aviso (`server/src/rankingAvisos.js`, testado): `entrou` (➕ entrou/voltou), `fase` (🔀 estágio de → para, "o nº continua"), `pausa` (⏸️/▶️), `marco_cfg` (🎯 intervalo do marco), `ads` (📣 só os campos de campanha/ADS que mudaram de fato), `ciclo` manual (🔄), `nota` (📝 anotação / 🔧 intervenção), `link` (🔗 vinculou/desvinculou), preço da campanha registrado (💲, só Telegram) e saiu do rankeamento (🗑️, só Telegram — o card e os eventos somem). **Sem o intervalo mínimo `tg_interval`**; na **janela de silêncio** o aviso fica **pendente** (`ranking_events.tg_pendente`) e sai quando o silêncio acaba, agrupado ("🌙 mudanças durante o silêncio", job `rk-pendentes`). Venda/marco em tempo real continuam saindo na hora, até no silêncio. Continuam só na tela: venda/marco **reprocessados** pelo sync (venda antiga) e a virada **automática** de ciclo (já vai dentro da mensagem do marco). As tabelas abaixo descrevem o comportamento anterior à v121 onde falam em "silêncio"/"só regressão".
+
 | Evento | Origem | Quando |
 |---|---|---|
 | `venda` | `handleOrder` (tempo real) | cada venda de um anúncio em rankeamento (valor da linha, comprador, contador) |

@@ -1053,3 +1053,12 @@ Pedido: mostrar o saldo da conta na janela de Pagar e avisar quando falta. A som
 - **WS só com id**: o `/ws` é público; mandar o texto por lá vazaria valores pra qualquer um que conecte. A tela busca o texto pela API (login ou token).
 - **Página autossuficiente + token**: TV fica ligada dias; sem `layout.js`/menu/sessão que expira. Link com token de 32 hex em `app_config` (revogável com "gerar novo"), em vez de deixar a TV logada com usuário de funcionário.
 - **Sanitizador próprio (`js/telegramHtml.js`)** em vez de `innerHTML` direto: o texto vem de nomes de produto/comprador/pergunta — sem filtro, um título com `<script>` rodaria na TV.
+
+## Rankeamento: toda mudança no Telegram, segurando no silêncio em vez de perder (v121)
+
+- Pedido do usuário: "sempre que houver alguma mudança de rankeamento enviar para o Telegram". Antes: ranqueado só regressão e venda silenciosa; ações do card (estágio, pausa, ADS, nota, vínculo) não avisavam; `tgNotify` descartava aviso no silêncio e no `tg_interval`.
+- **Silêncio**: em vez de mandar de madrugada (`tgNotifyForce` direto) ou perder (`tgNotify`), o evento fica `tg_pendente` e sai agrupado quando o silêncio acaba — mesmo padrão do Buy Box (v119). Venda/marco em tempo real seguem forçados como sempre.
+- **Throttle**: não se aplica mais ao Rankeamento — "sempre" não combina com intervalo mínimo.
+- **Ações do card** viram eventos na mesma `ranking_events` (linha do tempo do card + WS + Telegram por `ranking.emit()`), texto em `rankingAvisos.js` (puro). Excluir e preço manual vão só ao Telegram (excluir apaga os eventos; preço manual já grava o seu próprio evento).
+- **Continuam só na tela**: venda reprocessada pelo sync (é venda antiga, viraria spam) e a virada automática de ciclo (já está no texto do marco).
+- Custo aceito: mais mensagens (ex.: visitas mudam todo dia em cada anúncio ranqueado).

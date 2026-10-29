@@ -5,6 +5,15 @@
 const express = require('express');
 const pool = require('../db/pool');
 const ranking = require('../ranking');
+const avisos = require('../rankingAvisos');
+
+// v121 — toda mudança feita no card vai pro Telegram (e pra linha do tempo do
+// card) via ranking.emit(). Nunca derruba a resposta da rota: falha só loga.
+async function avisar(ad, tipo, msg, detail = {}) {
+  if (!ad || !msg) return;
+  try { await ranking.emit(ad, tipo, msg, detail, 'normal'); }
+  catch (e) { console.error(`[ranking] aviso '${tipo}' falhou (ad ${ad.id}):`, e.message); }
+}
 const redis = require('../db/redis');
 
 const router = express.Router();
@@ -231,6 +240,8 @@ router.post('/ads', async (req, res) => {
     );
     if (!it.length) return res.status(404).json({ error: 'Anúncio não encontrado no banco (ainda não sincronizado).' });
     const i = it[0];
+    const { rows: antesRows } = await pool.query(`SELECT active, fase FROM ranking_ads WHERE ml_id = $1`, [mlId]);
+    const antes = antesRows[0] || null;
     const catalogoTs = faseInicial === 'catalogo' ? ', catalogo_started_at' : '';
     const catalogoVal = faseInicial === 'catalogo' ? ', now()' : '';
     // BUG corrigido: o UPSERT reativava (active=true) um ranking_ads já
@@ -258,6 +269,8 @@ router.post('/ads', async (req, res) => {
       [i.ml_id, i.store_id, i.title, i.price, i.available_quantity, i.status, every, faseInicial]
     );
     const ad = rows[0];
+    if (!antes || !antes.active) await avisar(ad, 'entrou', avisos.entrou(ad, { reativado: !!antes }), { fase: ad.fase });
+    else if (antes.fase !== ad.fase) await avisar(ad, 'fase', avisos.fase(ad, antes.fase, ad.fase), { de: antes.fase, para: ad.fase });
     // Busca pontual, sob demanda, só pra este item — não espera a próxima
     // rodada do job diário pra mostrar algo no card assim que aloca. Nunca
     // derruba a resposta (best-effort — o job diário cobre o resto/os erros).
@@ -306,8 +319,19 @@ router.patch('/ads/:id', async (req, res) => {
     }
     if (!sets.length) return res.status(400).json({ error: 'nada para atualizar' });
     sets.push('updated_at = now()');
+    const { rows: antesRows } = await pool.query(`SELECT * FROM ranking_ads WHERE id = $1`, [req.params.id]);
+    const antes = antesRows[0];
     const { rows } = await pool.query(`UPDATE ranking_ads SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, vals);
     const ad = rows[0];
+    if (antes && ad) {
+      if (antes.fase !== ad.fase) await avisar(ad, 'fase', avisos.fase(ad, antes.fase, ad.fase), { de: antes.fase, para: ad.fase });
+      if (antes.active !== ad.active) await avisar(ad, 'pausa', avisos.pausa(ad, ad.active), { ativo: ad.active });
+      if (Number(antes.milestone_every) !== Number(ad.milestone_every)) await avisar(ad, 'marco_cfg', avisos.marco(ad, antes.milestone_every, ad.milestone_every), { de: antes.milestone_every, para: ad.milestone_every });
+      const novosAds = Object.fromEntries(['campanha_nome', 'ads_investido', 'roas', 'orcamento_diario', 'preco_anterior', 'preco_atual']
+        .filter(k => Object.prototype.hasOwnProperty.call(req.body, k)).map(k => [k, ad[k]]));
+      const msgAds = avisos.ads(ad, antes, novosAds);
+      if (msgAds) await avisar(ad, 'ads', msgAds, novosAds);
+    }
     // Mesma busca pontual sob demanda de POST /ads — pra quem já estava
     // rankeando/ranqueado/etc. e migrou pro estágio Catálogo pelo seletor.
     if (fase === 'catalogo' && ad) {
@@ -323,7 +347,13 @@ router.patch('/ads/:id', async (req, res) => {
 // Remove do rankeamento (apaga histórico de eventos via CASCADE).
 router.delete('/ads/:id', async (req, res) => {
   try {
-    await pool.query(`DELETE FROM ranking_ads WHERE id = $1`, [req.params.id]);
+    // Aviso ANTES de apagar (os eventos do card somem junto, via CASCADE) —
+    // por isso vai direto pro Telegram, sem ranking.emit().
+    const { rows } = await pool.query(`DELETE FROM ranking_ads WHERE id = $1 RETURNING *`, [req.params.id]);
+    if (rows[0]) {
+      const { tgNotifyForce } = require('../notify');
+      tgNotifyForce('tg_rankeamento', avisos.saiu(rows[0])).catch(e => console.error('[ranking] aviso saiu falhou:', e.message));
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -354,6 +384,7 @@ router.post('/ads/:id/ciclo', async (req, res) => {
     // antes do marco.
     const ad = await ranking.avancarCiclo(req.params.id);
     if (!ad) return res.status(404).json({ error: 'anúncio não encontrado' });
+    await avisar(ad, 'ciclo', avisos.ciclo(ad, (ad.ciclo || 2) - 1, ad.ciclo), { de: (ad.ciclo || 2) - 1, para: ad.ciclo, automatico: false });
     res.json({ ad });
   } catch (e) {
     console.error('[ranking] POST /ads/:id/ciclo falhou:', e.message, e.stack);
@@ -399,6 +430,8 @@ router.post('/ads/:id/notas', async (req, res) => {
        VALUES ($1, $2, $3, $4) RETURNING id, texto, tipo, baseline, created_at`,
       [req.params.id, texto.slice(0, 4000), tipo, baseline]
     );
+    const { rows: adRows } = await pool.query(`SELECT * FROM ranking_ads WHERE id = $1`, [req.params.id]);
+    await avisar(adRows[0], 'nota', avisos.nota(adRows[0], texto, tipo), { tipo, nota_id: rows[0].id });
     res.json({ nota: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -431,6 +464,8 @@ router.post('/ads/:id/links', async (req, res) => {
       `INSERT INTO ranking_ad_links (ranking_ad_id, ml_id, tipo) VALUES ($1, $2, $3) RETURNING *`,
       [req.params.id, mlId, tipo]
     );
+    const { rows: adRows } = await pool.query(`SELECT * FROM ranking_ads WHERE id = $1`, [req.params.id]);
+    await avisar(adRows[0], 'link', avisos.link(adRows[0], mlId, tipo, true), { ml_id: mlId, vinculou: true });
     res.json({ link: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -438,7 +473,11 @@ router.post('/ads/:id/links', async (req, res) => {
 // Desvincula um ml_id do card.
 router.delete('/ads/:id/links/:linkId', async (req, res) => {
   try {
-    await pool.query(`DELETE FROM ranking_ad_links WHERE id = $1 AND ranking_ad_id = $2`, [req.params.linkId, req.params.id]);
+    const { rows: del } = await pool.query(`DELETE FROM ranking_ad_links WHERE id = $1 AND ranking_ad_id = $2 RETURNING ml_id, tipo`, [req.params.linkId, req.params.id]);
+    if (del[0]) {
+      const { rows: adRows } = await pool.query(`SELECT * FROM ranking_ads WHERE id = $1`, [req.params.id]);
+      await avisar(adRows[0], 'link', avisos.link(adRows[0], del[0].ml_id, del[0].tipo, false), { ml_id: del[0].ml_id, vinculou: false });
+    }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -462,7 +501,8 @@ router.get('/ads/:id/precos', async (req, res) => {
 // preenchidos à mão). Mesma tabela/formato do evento 'preco' automático
 // (onItemChange, mudança real detectada pelo webhook de item), mas gravado
 // direto (sem `ranking.emit()`): é o usuário documentando o preço da
-// campanha, não um alerta de mudança real — não deve gerar WS/Telegram.
+// campanha, não um alerta de mudança real. v121: o Telegram recebe um aviso
+// curto ("Preço da campanha registrado") — pedido "toda mudança no Telegram".
 router.post('/ads/:id/precos', async (req, res) => {
   try {
     const { rows: adRows } = await pool.query(`SELECT id, ml_id FROM ranking_ads WHERE id = $1`, [req.params.id]);
@@ -476,6 +516,9 @@ router.post('/ads/:id/precos', async (req, res) => {
        VALUES ($1,$2,'preco',$3,$4) RETURNING id, created_at`,
       [ad.id, ad.ml_id, 'Preço registrado manualmente (campanha)', JSON.stringify({ de, para, manual: true })]
     );
+    const { rows: full } = await pool.query(`SELECT * FROM ranking_ads WHERE id = $1`, [ad.id]);
+    const { tgNotifyForce } = require('../notify');
+    tgNotifyForce('tg_rankeamento', avisos.precoManual(full[0], de, para)).catch(e => console.error('[ranking] aviso preço manual falhou:', e.message));
     res.json({ ok: true, evento: rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

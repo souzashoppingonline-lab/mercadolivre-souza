@@ -166,6 +166,66 @@ async function montarPainel() {
           AND COALESCE(ra.milestone_every, 5) - (ra.sales_count % COALESCE(ra.milestone_every, 5)) <= 2
         ORDER BY faltam, ra.last_sale_at DESC NULLS LAST LIMIT 6`),
   ]);
+  // ── v133: equipe (bipados), ticket, estados, parados, voltaram, reputação, recorrentes ──
+  const HOJE = `date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`;
+  const SEM_AMAZON = `o.marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')`;
+  const [{ rows: bipHoje }, { rows: ticket }, { rows: estados }, { rows: parados }, { rows: voltaram }, { rows: reput }, { rows: recorr }] = await Promise.all([
+    // Pedidos bipados hoje (vídeo de embalagem gravado) — total e por embalador.
+    pool.query(
+      `SELECT COALESCE(NULLIF(staff_user_name, ''), 'Sem login') AS nome, COUNT(*)::int AS envios,
+              COALESCE(SUM(cardinality(order_ids)), 0)::int AS pedidos
+         FROM packing_videos WHERE created_at >= ${HOJE}
+        GROUP BY 1 ORDER BY pedidos DESC`),
+    // Ticket médio e unidades por pedido: hoje × ontem até o mesmo horário.
+    pool.query(
+      `SELECT COUNT(*) FILTER (WHERE o.date_created >= ${HOJE})::int AS ped_h,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created >= ${HOJE}), 0) AS fat_h,
+              COALESCE(SUM(o.quantity) FILTER (WHERE o.date_created >= ${HOJE}), 0)::int AS un_h,
+              COUNT(*) FILTER (WHERE o.date_created < ${HOJE} AND o.date_created < now() - interval '1 day')::int AS ped_o,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created < ${HOJE} AND o.date_created < now() - interval '1 day'), 0) AS fat_o,
+              COALESCE(SUM(o.quantity) FILTER (WHERE o.date_created < ${HOJE} AND o.date_created < now() - interval '1 day'), 0)::int AS un_o
+         FROM orders o WHERE o.date_created >= ${HOJE} - interval '1 day' AND o.status != 'cancelled' AND ${SEM_AMAZON}`),
+    // Vendas por estado hoje (buyer_state_name — capturado do envio; pode faltar).
+    pool.query(
+      `SELECT COALESCE(NULLIF(o.buyer_state_name, ''), '') AS estado, COUNT(*)::int AS pedidos, COALESCE(SUM(o.total_amount), 0) AS fat
+         FROM orders o WHERE o.date_created >= ${HOJE} AND o.status != 'cancelled' AND ${SEM_AMAZON}
+        GROUP BY 1 ORDER BY pedidos DESC`),
+    // Anúncios parados: vendiam bem (≥ 6 vendas entre 33 e 3 dias atrás) e 0 venda nos últimos 3 dias.
+    pool.query(
+      `SELECT i.ml_id, i.title AS titulo, i.available_quantity AS estoque, s.nickname AS loja,
+              COUNT(*)::int AS vendas30, MAX(o.date_created) AS ultima
+         FROM orders o JOIN items i ON i.ml_id = o.item_id LEFT JOIN stores s ON s.id = i.store_id
+        WHERE o.status != 'cancelled' AND o.date_created >= now() - interval '33 days' AND i.status = 'active'
+        GROUP BY i.ml_id, i.title, i.available_quantity, s.nickname
+       HAVING MAX(o.date_created) < now() - interval '3 days' AND COUNT(*) >= 6
+        ORDER BY vendas30 DESC LIMIT 6`),
+    // Voltaram a vender: venderam hoje e a venda anterior foi há 7+ dias (primeiro os que ficaram
+    // mais tempo parados); depois os de 1ª venda (sem venda anterior).
+    pool.query(
+      `SELECT * FROM (
+         SELECT h.item_id, MAX(COALESCE(i.title, h.titulo)) AS titulo, MAX(s.nickname) AS loja, COUNT(*)::int AS hoje,
+                (SELECT MAX(o2.date_created) FROM orders o2 WHERE o2.item_id = h.item_id AND o2.status != 'cancelled' AND o2.date_created < ${HOJE}) AS anterior
+           FROM (SELECT o.item_id, o.title AS titulo, o.store_id FROM orders o
+                  WHERE o.date_created >= ${HOJE} AND o.status != 'cancelled' AND ${SEM_AMAZON} AND o.item_id IS NOT NULL) h
+           LEFT JOIN items i ON i.ml_id = h.item_id LEFT JOIN stores s ON s.id = h.store_id
+          GROUP BY h.item_id) x
+        WHERE x.anterior IS NULL OR x.anterior < now() - interval '7 days'
+        ORDER BY (x.anterior IS NULL), x.anterior ASC LIMIT 6`),
+    // Reputação: último snapshot de cada loja ML (sync-metricas 04:15).
+    pool.query(
+      `SELECT DISTINCT ON (m.store_id) s.nickname AS loja, m.level_id, m.power_seller_status, m.claims_pct, m.delayed_pct, m.cancellations_pct, m.collected_at
+         FROM store_metrics m JOIN stores s ON s.id = m.store_id
+        ORDER BY m.store_id, m.collected_at DESC`),
+    // Clientes recorrentes hoje: comprador (buyer_nickname) que já tinha pedido antes de hoje (365 dias).
+    pool.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE o.buyer_nickname IS NOT NULL AND EXISTS (
+                SELECT 1 FROM orders a WHERE a.buyer_nickname = o.buyer_nickname AND a.status != 'cancelled'
+                   AND a.date_created < ${HOJE} AND a.date_created >= now() - interval '365 days'))::int AS recorrentes,
+              COUNT(*) FILTER (WHERE o.buyer_nickname IS NULL)::int AS sem_comprador
+         FROM orders o WHERE o.date_created >= ${HOJE} AND o.status != 'cancelled' AND ${SEM_AMAZON}`),
+  ]);
+  const tk = ticket[0];
   // Promoções vencendo hoje ou amanhã (fim do dia de amanhã, SP).
   const limiteAmanha = (() => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })); d.setDate(d.getDate() + 1); d.setHours(23, 59, 59, 999); return Date.now() + (d - new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))); })();
   const vencendo = [
@@ -219,6 +279,14 @@ async function montarPainel() {
         recentes: promoMl.slice().sort((a, b) => Number(b.discount_pct || 0) - Number(a.discount_pct || 0)).slice(0, 4).map(p => ({ titulo: p.titulo, loja: p.loja, preco: Number(p.promo_price) || null, desconto: Number(p.discount_pct) || null })) },
       perto_marco: pertoMarco.map(r => ({ titulo: r.titulo, fase: r.fase, vendas: r.sales_count, every: r.every, faltam: Number(r.faltam), marco: r.sales_count + Number(r.faltam) })),
       frase,
+      bipados: { total_envios: bipHoje.reduce((a, b) => a + b.envios, 0), total_pedidos: bipHoje.reduce((a, b) => a + b.pedidos, 0), equipe: bipHoje.slice(0, 6) },
+      ticket: { hoje: { pedidos: tk.ped_h, ticket: tk.ped_h ? Number(tk.fat_h) / tk.ped_h : 0, unidades: tk.ped_h ? tk.un_h / tk.ped_h : 0 },
+                ontem: { pedidos: tk.ped_o, ticket: tk.ped_o ? Number(tk.fat_o) / tk.ped_o : 0, unidades: tk.ped_o ? tk.un_o / tk.ped_o : 0 } },
+      estados: estados.map(e => ({ estado: e.estado || null, pedidos: e.pedidos, fat: Number(e.fat) })),
+      parados: parados.map(p => ({ titulo: p.titulo, loja: p.loja, estoque: p.estoque, vendas30: p.vendas30, dias: Math.floor((Date.now() - new Date(p.ultima).getTime()) / 86400000) })),
+      voltaram: voltaram.map(v => ({ titulo: v.titulo, loja: v.loja, hoje: v.hoje, dias_parado: v.anterior ? Math.floor((Date.now() - new Date(v.anterior).getTime()) / 86400000) : null })),
+      reputacao: reput.map(r => ({ loja: r.loja, level_id: r.level_id, power: r.power_seller_status, reclamacoes: r.claims_pct != null ? Number(r.claims_pct) : null, atrasos: r.delayed_pct != null ? Number(r.delayed_pct) : null, cancelamentos: r.cancellations_pct != null ? Number(r.cancellations_pct) : null, em: r.collected_at })),
+      recorrentes: recorr[0],
     },
     ia,
   };

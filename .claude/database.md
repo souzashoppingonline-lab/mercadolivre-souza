@@ -405,6 +405,7 @@ status TEXT, report JSONB, error_msg TEXT
 id SERIAL PK, store_id BIGINT, level_id, power_seller_status TEXT
 transactions_completed INT
 positive/negative/neutral_ratings_pct NUMERIC
+claims_pct, delayed_pct, cancellations_pct NUMERIC  -- v125: as 3 taxas da cor da reputação (seller_reputation.metrics.*.rate × 100); null se o ML não mandou
 collected_at TIMESTAMPTZ
 ```
 

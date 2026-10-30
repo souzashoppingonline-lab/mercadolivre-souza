@@ -1254,13 +1254,17 @@ async function syncMetricas() {
             nivel = rep.level_id;
             await pool.query(
               `INSERT INTO store_metrics (store_id, level_id, power_seller_status, transactions_completed,
-                 positive_ratings_pct, negative_ratings_pct, neutral_ratings_pct, collected_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,now())`,
+                 positive_ratings_pct, negative_ratings_pct, neutral_ratings_pct, claims_pct, delayed_pct, cancellations_pct, collected_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())`,
               [store.id, rep.level_id, rep.power_seller_status,
                rep.transactions?.total || 0,
                rep.transactions?.ratings?.positive?.rate * 100 || 0,
                rep.transactions?.ratings?.negative?.rate * 100 || 0,
-               rep.transactions?.ratings?.neutral?.rate * 100 || 0]
+               rep.transactions?.ratings?.neutral?.rate * 100 || 0,
+               // v125: as 3 taxas da cor da reputação (null se o ML não mandou)
+               rep.metrics?.claims?.rate != null ? rep.metrics.claims.rate * 100 : null,
+               rep.metrics?.delayed_handling_time?.rate != null ? rep.metrics.delayed_handling_time.rate * 100 : null,
+               rep.metrics?.cancellations?.rate != null ? rep.metrics.cancellations.rate * 100 : null]
             );
             console.log(`[sync-metricas] ${store.nickname} reputação: ${rep.level_id}`);
           }

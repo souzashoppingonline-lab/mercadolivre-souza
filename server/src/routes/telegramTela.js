@@ -15,14 +15,19 @@ const { classificar: classificarBuybox } = require('../../../js/buyboxStatus');
 const router = express.Router();
 const publicRouter = express.Router();
 
+// Tópicos que NÃO aparecem na tela (pedido do usuário: contas pagas/a pagar
+// ficam só no Telegram — a TV fica num lugar onde todos veem). Continuam
+// sendo gravados em telegram_mensagens; só não saem nesta API (nem no link da TV).
+const FORA_DA_TELA = ['tg_pagamentos', 'tg_dividas_lembrete'];
+
 async function listar(req, res) {
   try {
     const depois = Number(req.query.depois_id) || 0;
     const limit = Math.min(Math.max(Number(req.query.limit) || 150, 1), 500);
     const { rows } = depois
-      ? await pool.query(`SELECT id, topico, texto, html, direcao, autor, criado_em FROM telegram_mensagens WHERE id > $1 ORDER BY id ASC LIMIT $2`, [depois, limit])
-      : await pool.query(`SELECT * FROM (SELECT id, topico, texto, html, direcao, autor, criado_em FROM telegram_mensagens ORDER BY id DESC LIMIT $1) x ORDER BY id ASC`, [limit]);
-    const { rows: h } = await pool.query(`SELECT COUNT(*)::int AS n FROM telegram_mensagens WHERE criado_em >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`);
+      ? await pool.query(`SELECT id, topico, texto, html, direcao, autor, criado_em FROM telegram_mensagens WHERE id > $1 AND COALESCE(topico, '') <> ALL($3::text[]) ORDER BY id ASC LIMIT $2`, [depois, limit, FORA_DA_TELA])
+      : await pool.query(`SELECT * FROM (SELECT id, topico, texto, html, direcao, autor, criado_em FROM telegram_mensagens WHERE COALESCE(topico, '') <> ALL($2::text[]) ORDER BY id DESC LIMIT $1) x ORDER BY id ASC`, [limit, FORA_DA_TELA]);
+    const { rows: h } = await pool.query(`SELECT COUNT(*)::int AS n FROM telegram_mensagens WHERE criado_em >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo' AND COALESCE(topico, '') <> ALL($1::text[])`, [FORA_DA_TELA]);
     res.json({ mensagens: rows, hoje: h[0].n });
   } catch (e) {
     console.error('[api/telegram-tela]', e.message);

@@ -61,6 +61,37 @@
     body.tv #lista { max-width:min(1400px, 92vw); }
     body.tv .bolha { max-width:min(86%, 1200px); }
     body.tv.parado { cursor:none; }
+    /* Painel ao lado (v124): placar de hoje, rankeamento hoje, IA Estrategista. Some em tela estreita. */
+    .corpo { flex:1; display:flex; min-height:0; }
+    .corpo #chat { min-width:0; }
+    /* Letra do painel independe do --fs do modo TV (senão estoura a altura). */
+    #painel { font-size:clamp(13px, .95vw, 23px); width:clamp(380px, 29vw, 620px); flex:none; border-left:1px solid #0b121a; background:#111c28; padding:14px 16px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
+    #painel[hidden] { display:none; }
+    .blk { background:var(--top); border:1px solid #22303f; border-radius:16px; padding:12px 14px; }
+    .blk h3 { margin:0 0 8px; font-size:.86em; letter-spacing:.4px; color:#9fb4c7; text-transform:uppercase; display:flex; align-items:center; gap:8px; }
+    .blk h3 small { margin-left:auto; text-align:right; font-size:.82em; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:500; }
+    .pl-big { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .pl-big .k { font-size:.76em; color:var(--muted); font-weight:700; }
+    .pl-big .v { font-size:1.95em; font-weight:900; margin-top:2px; font-variant-numeric:tabular-nums; }
+    .pl-big .s { font-size:.82em; font-weight:700; margin-top:2px; }
+    .pl-big .s em { color:var(--muted); font-weight:500; font-style:normal; }
+    .up { color:#3fb950; } .dn { color:#f85149; }
+    .lj { margin-top:10px; }
+    .lj .l { display:flex; gap:8px; align-items:center; padding:5px 0 2px; font-size:.86em; }
+    .lj .l .n { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .lj .l .q { color:#9fb4c7; white-space:nowrap; } .lj .l .f { font-weight:800; min-width:5.5em; text-align:right; white-space:nowrap; }
+    .lj .bar { height:5px; border-radius:4px; background:#22303f; overflow:hidden; } .lj .bar i { display:block; height:100%; background:linear-gradient(90deg,#5eb5f7,#2b5278); }
+    .est { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:7px; }
+    .est div { background:#1c2a39; border-radius:12px; padding:7px 3px; text-align:center; }
+    .est .i { font-size:1.3em; } .est .v { font-size:1.5em; font-weight:900; } .est .l { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.62em; color:var(--muted); font-weight:700; text-transform:uppercase; }
+    .bb { display:flex; gap:7px; margin-top:8px; } .bb div { flex:1; border-radius:12px; padding:6px; text-align:center; font-weight:800; font-size:.84em; }
+    .bb b { display:block; font-size:1.5em; } .bb .g { background:rgba(63,185,80,.14); color:#3fb950; } .bb .e { background:rgba(240,136,62,.14); color:#f0883e; } .bb .p { background:rgba(248,81,73,.14); color:#f85149; }
+    .bb-sub { font-size:.7em; color:var(--muted); margin-top:5px; text-align:center; }
+    .ia { display:flex; gap:10px; padding:7px 0; border-top:1px solid #22303f; } .ia:first-of-type { border-top:none; }
+    .ia .p { flex:none; width:2.4em; height:2.4em; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:900; color:#fff; }
+    .ia .t { font-size:.84em; line-height:1.35; min-width:0; } .ia .t b { display:block; font-size:1.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ia .t span { color:#9fb4c7; }
+    .pn-vazio { color:var(--muted); font-size:.82em; }
+    @media (max-width:1100px) { #painel { display:none !important; } }
     @media (max-width:640px) { .ctrls { display:none; } #relogio { font-size:16px; } .bolha { max-width:90%; } }
   </style>
 </head>
@@ -79,7 +110,14 @@
     <span id="relogio">--:--</span>
   </div>
 </header>
-<main id="chat"><div id="lista"><div class="vazio">Carregando mensagens…</div></div></main>
+<div class="corpo">
+  <main id="chat"><div id="lista"><div class="vazio">Carregando mensagens…</div></div></main>
+  <aside id="painel" hidden>
+    <div class="blk"><h3>📊 Placar de hoje <small id="pnPlacarSub"></small></h3><div id="pnPlacar"></div></div>
+    <div class="blk"><h3>🚦 Rankeamento hoje <small>vendas por estágio</small></h3><div id="pnEstagios"></div></div>
+    <div class="blk"><h3>🧠 IA Estrategista <small>3 ações mais urgentes</small></h3><div id="pnIa"></div></div>
+  </aside>
+</div>
 <div class="toast" id="toast"></div>
 <div class="cheia" id="cheia">📺 Toque para tela cheia</div>
 
@@ -165,6 +203,7 @@ async function buscar(novas) {
     ultimoId = ms[ms.length - 1].id; total += ms.length;
     poda();
     mostrarNova();
+    painelDepoisDeMensagem();
   } catch (e) { console.warn('[tela-telegram]', e.message); }
 }
 
@@ -256,6 +295,36 @@ function conectar() {
   } catch (_) { setTimeout(conectar, wsEspera); }
 }
 setInterval(() => buscar(true), 15000);
+
+// ── Painel ao lado: atualiza a cada 1 min e ~3s depois de cada mensagem nova ──
+const PAINEL_API = TOKEN ? `/api/publico/telegram-tela/painel?token=${encodeURIComponent(TOKEN)}` : '/api/telegram-tela/painel';
+const R$ = n => 'R$ ' + Math.round(Number(n) || 0).toLocaleString('pt-BR');
+const varTxt = (a, b, fmt) => { if (!b) return `<em>(ontem ${fmt(b)})</em>`; const v = ((a - b) / b) * 100; return `<span class="${v >= 0 ? 'up' : 'dn'}">${v >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(v))}%</span> <em>(ontem ${fmt(b)})</em>`; };
+const FASES_PN = [['rankeando', '🚀', 'Em rankeam.'], ['catalogo', '🏆', 'Catálogo'], ['ranqueado', '🛡️', 'Ranqueado'], ['monitoramento', '👁️', 'Monitor.'], ['recuperacao', '❤️‍🩹', 'Recuper.']];
+const corNota = n => n >= 80 ? '#f85149' : n >= 60 ? '#f0883e' : n >= 40 ? '#d29922' : '#388bfd';
+let painelT = null;
+async function carregarPainel() {
+  try {
+    const r = await fetch(PAINEL_API, { credentials: 'same-origin' });
+    if (!r.ok) return;
+    const d = await r.json();
+    const p = d.placar, max = Math.max(1, ...p.lojas.map(l => l.fat));
+    document.getElementById('pnPlacarSub').textContent = `até ${new Date(d.gerado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })} · vs ontem no mesmo horário`;
+    document.getElementById('pnPlacar').innerHTML = `<div class="pl-big">
+        <div><div class="k">🛒 PEDIDOS</div><div class="v">${p.pedidos}</div><div class="s">${varTxt(p.pedidos, p.pedidos_ontem, v => v)}</div></div>
+        <div><div class="k">💰 FATURAMENTO</div><div class="v">${R$(p.fat)}</div><div class="s">${varTxt(p.fat, p.fat_ontem, R$)}</div></div></div>
+      <div class="lj">${p.lojas.length ? p.lojas.map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;
+    const bb = d.buybox;
+    document.getElementById('pnEstagios').innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="i">${i}</div><div class="v">${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
+      <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
+      <div class="bb-sub">Placar de Buy Box dos anúncios de catálogo</div>`;
+    document.getElementById('pnIa').innerHTML = d.ia.length ? d.ia.map(x => `<div class="ia"><div class="p" style="background:${corNota(x.nota)}">${x.nota}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.ico)} ${esc(x.problema)}</span>${x.acao ? `<br>👉 ${esc(x.acao)}` : ''}</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhuma ação urgente agora.</div>';
+    document.getElementById('painel').hidden = false;
+  } catch (e) { console.warn('[tela-telegram] painel', e.message); }
+}
+function painelDepoisDeMensagem() { clearTimeout(painelT); painelT = setTimeout(carregarPainel, 3000); }
+setInterval(carregarPainel, 60000);
+carregarPainel();
 // Recarrega a página 1x por dia (madrugada) — TV ligada semanas sem acumular memória.
 setInterval(() => { const h = new Date().getHours(); if (h === 4 && performance.now() > 3600e3) location.reload(); }, 600000);
 

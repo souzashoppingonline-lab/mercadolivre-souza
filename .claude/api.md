@@ -303,6 +303,7 @@ Página só **analisa/recomenda** — nenhuma destas rotas altera preço no Merc
 | `GET /api/telegram-tela/link-tv` | `{ token }` do link da TV (`app_config telegram_tela_token`, 32 hex; criado no 1º uso) |
 | `POST /api/telegram-tela/link-tv/novo` | gera token novo — o link antigo da TV para de funcionar |
 | `GET /api/publico/telegram-tela?token=…` | **sem login** (prefixo `/api/publico` liberado no `staffAuth`): mesmo retorno do `GET /api/telegram-tela` (aceita `depois_id`/`limit`). Token errado/ausente → 403 (comparação `timingSafeEqual`) |
+| `GET /api/telegram-tela/painel` · `GET /api/publico/telegram-tela/painel?token=…` (v124) | painel ao lado das mensagens: `{gerado_em, placar:{pedidos, fat, pedidos_ontem, fat_ontem, lojas:[{loja, mkt, pedidos, fat}]}, estagios:{fase: vendas_hoje}, buybox:{ganhando, compartilhando, perdendo}, ia:[{nota, titulo, ico, problema, acao}]}`. Pedidos = mesma regra do "Vendas hoje" (`orders`, sem cancelados, ML+Shopee, sem Amazon); "ontem" = ontem de 00h até o mesmo horário de agora. Estágios = eventos `venda` de `ranking_events` de hoje (`detail.fase`). Buy Box = `catalog_competition` de anúncios ativos classificados por `js/buyboxStatus.js`. IA = top 3 (prioridade ≥ 20) da carteira da IA Estrategista (cache 10 min). Resposta em cache Redis 20s (`telegram-tela:painel`). Versão pública exige o mesmo token da TV (403 sem ele) |
 
 ## Promoções
 | Rota | Descrição |

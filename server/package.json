@@ -8,7 +8,7 @@
     "start": "node src/server.js",
     "worker": "node src/worker.js",
     "migrate": "node src/db/migrate.js",
-    "test": "node --test test/smoke.test.js test/shopeePricing.test.js test/pareto.test.js test/importacaoMetrizap.test.js test/dividasDia.test.js test/avisoPagamento.test.js test/devolucaoVideos.test.js test/boletoCodigo.test.js test/saldoContas.test.js test/buyboxRelatorio.test.js test/buyboxMudancas.test.js test/resendClient.test.js test/telegramHtml.test.js test/rankingVendasResumo.test.js test/rankingAvisos.test.js test/iaEstrategista.test.js test/iaEstrategistaAvisos.test.js"
+    "test": "node --test test/smoke.test.js test/shopeePricing.test.js test/pareto.test.js test/importacaoMetrizap.test.js test/dividasDia.test.js test/avisoPagamento.test.js test/devolucaoVideos.test.js test/boletoCodigo.test.js test/saldoContas.test.js test/buyboxRelatorio.test.js test/buyboxMudancas.test.js test/resendClient.test.js test/telegramHtml.test.js test/rankingVendasResumo.test.js test/rankingAvisos.test.js test/iaEstrategista.test.js test/iaEstrategistaAvisos.test.js test/rankingSugestao.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

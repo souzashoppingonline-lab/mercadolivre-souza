@@ -97,7 +97,7 @@ const TOKEN = P.get('token') || '';
 const API = TOKEN ? `/api/publico/telegram-tela?token=${encodeURIComponent(TOKEN)}` : '/api/telegram-tela';
 const MAX_NA_TELA = 300;
 const TOPICOS = {
-  tg_vendas: ['🛒 Vendas', '#5eb5f7'], tg_rankeamento: ['📈 Rankeamento', '#b48cf2'], tg_rankeamento_resumo: ['📊 Rankeamento', '#b48cf2'], tg_topvendas: ['🔥 Top vendas', '#f2a54a'],
+  tg_vendas: ['🛒 Vendas', '#5eb5f7'], tg_rankeamento: ['📈 Rankeamento', '#b48cf2'], tg_rankeamento_resumo: ['📊 Rankeamento', '#b48cf2'], tg_ia_estrategista: ['🧠 IA Estrategista', '#a78bfa'], tg_topvendas: ['🔥 Top vendas', '#f2a54a'],
   tg_outlier: ['📊 Fora do normal', '#f2a54a'], tg_servicos: ['🛠️ Serviços', '#8fa3b5'], tg_recursos: ['💻 Servidor', '#8fa3b5'],
   tg_reposicao: ['📦 Reposição', '#f2c94c'], tg_perguntas: ['❓ Perguntas', '#5ed1a5'], tg_mensagens: ['💬 Mensagens', '#5ed1a5'],
   tg_promocoes: ['🏷️ Promoções', '#e66fb0'], tg_devolucoes: ['↩️ Devoluções', '#e05353'], tg_anuncios: ['📝 Anúncios', '#5eb5f7'],

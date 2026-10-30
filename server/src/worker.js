@@ -1732,6 +1732,24 @@ async function runRankingVendasDia() {
   console.log(`[rk-vendas-dia] ${r.total} venda(s) em ${dia}`);
   return r;
 }
+// ── IA Estrategista no Telegram (v123) ─────────────────────────────────────
+// 08:05: 5 prioridades do dia + quem entrou em Crítico (80+) desde ontem +
+// ações paradas há 7+ dias + resultado automático das ações concluídas há
+// 14+ dias (grava em "Resultado observado"). A cada 2h (10–20h): só quem
+// entrou em Crítico. Estado anterior em ia_estrategista_estado. Textos em
+// iaEstrategistaAvisos.js (testado). Tópico tg_ia_estrategista (tgNotify).
+const iaEstrRotina = () => require('./iaEstrategistaRotina');
+const runIaEstrategistaDiario = () => iaEstrRotina().runIaEstrategistaDiario({ tg: (t) => tgNotify('tg_ia_estrategista', t), dashUrl: DASH_URL });
+const runIaEstrategistaCriticos = () => iaEstrRotina().runIaEstrategistaCriticos({ tg: (t) => tgNotify('tg_ia_estrategista', t), dashUrl: DASH_URL });
+async function checkIaEstrategistaDiario() {
+  try { await runIaEstrategistaDiario(); } catch (e) { console.error('[ia-estrategista] diário erro:', e.message); }
+  finally { scheduleAt(8, 5, checkIaEstrategistaDiario, 'ia-estrategista-diario'); }
+}
+async function checkIaEstrategistaCriticos() {
+  try { await runIaEstrategistaCriticos(); } catch (e) { console.error('[ia-estrategista] críticos erro:', e.message); }
+  finally { scheduleEvery(2, checkIaEstrategistaCriticos, 'ia-estrategista-criticos'); }
+}
+
 // v121 — avisos do Rankeamento que caíram no silêncio (ranking.emit marca
 // tg_pendente) saem quando o silêncio acaba, agrupados em poucas mensagens
 // (≤3.800 caracteres), em ordem, com a hora em que aconteceram. Pendência
@@ -3953,6 +3971,8 @@ scheduleAt(8, 30,  checkBuyboxRelatorio, 'buybox-relatorio');
 scheduleEvery(4,    checkRankingVendas4h, 'rk-vendas-4h');
 scheduleAt(7, 5,   checkRankingVendasDia, 'rk-vendas-dia');
 scheduleEveryMinutes(10, flushRankingPendentes, 'rk-pendentes');
+scheduleAt(8, 5,   checkIaEstrategistaDiario, 'ia-estrategista-diario');
+scheduleEvery(2,    checkIaEstrategistaCriticos, 'ia-estrategista-criticos');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
@@ -4037,6 +4057,8 @@ cmdSub.on('message', (channel, msg) => {
       'buybox-relatorio': 'runBuyboxRelatorio',
       'rk-vendas-4h': 'runRankingVendas4h',
       'rk-vendas-dia': 'runRankingVendasDia',
+      'ia-estrategista-diario': 'runIaEstrategistaDiario',
+      'ia-estrategista-criticos': 'runIaEstrategistaCriticos',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
       'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
@@ -4163,6 +4185,13 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkQuedaProdutos') {
       console.log('[worker] checkQuedaProdutos disparado manualmente');
       checkQuedaProdutos().catch(e => console.error('[worker] checkQuedaProdutos erro:', e.message));
+    }
+    if (cmd === 'runIaEstrategistaDiario') {
+      console.log('[worker] ia-estrategista-diario disparado manualmente');
+      runIaEstrategistaDiario().catch(e => console.error('[worker] ia-estrategista-diario erro:', e.message));
+    }
+    if (cmd === 'runIaEstrategistaCriticos') {
+      runIaEstrategistaCriticos().catch(e => console.error('[worker] ia-estrategista-criticos erro:', e.message));
     }
     if (cmd === 'runRankingVendas4h') {
       console.log('[worker] rk-vendas-4h disparado manualmente');

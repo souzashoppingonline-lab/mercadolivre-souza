@@ -356,13 +356,13 @@ async function registrar(idx, status, btn) {
 function acaoHtml(a) {
   const ad = a.antes_depois;
   const linha = (k, f, pp) => { const va = ad.antes[k], vd = ad.depois[k]; const dv = va == null || vd == null ? null : pp ? vd - va : (va ? ((vd - va) / va) * 100 : null); return `<div class="ie-fat"><span>${f}</span><span>${va == null ? '—' : (k === 'mc_pct' || k === 'conversao' ? PCT(va) : k === 'pedidos_dia' ? va : BRL(va))} → <b>${vd == null ? '—' : (k === 'mc_pct' || k === 'conversao' ? PCT(vd) : k === 'pedidos_dia' ? vd : BRL(vd))}</b> ${dv == null ? '' : VAR(+dv.toFixed(2), pp)}</span></div>`; };
-  return `<div class="ie-ad" data-id="${a.id}">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="ie-st st-${a.status}">${STATUS_UI[a.status]}</span><b style="flex:1">${esc(a.acao)}</b>
+  return `<div class="ie-ad" data-id="${a.id}" ${parada(a) ? 'style="border:1px solid #f85149;background:rgba(248,81,73,.07)"' : ''}>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="ie-st st-${a.status}">${STATUS_UI[a.status]}</span>${parada(a) ? `<span class="ie-st" style="background:#f85149;color:#fff">⏰ parada há ${diasNoStatus(a)} dias</span>` : ''}<b style="flex:1">${esc(a.acao)}</b>
       <select onchange="mudarStatus(${a.id}, this.value)" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:6px;font-size:11px;padding:3px">${Object.entries(STATUS_UI).map(([k, l]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     <div class="mut" style="margin-top:3px">${a.produto ? esc(a.produto) + ' · ' : ''}${a.categoria && CAT[a.categoria] ? CAT[a.categoria] + ' · ' : ''}analisado/registrado em ${dataBR(a.created_at)} · responsável: ${esc(a.responsavel || '—')}${a.executada_em ? ` · executada em ${dataBR(a.executada_em)}` : ''}</div>
     ${a.problema ? `<div style="margin-top:3px"><b>Problema:</b> ${esc(a.problema)}</div>` : ''}
     ${a.observacao ? `<div style="margin-top:3px"><b>O que foi feito:</b> ${esc(a.observacao)}</div>` : ''}
-    <div style="margin-top:3px"><b>Resultado observado:</b> ${a.resultado_observado ? esc(a.resultado_observado) : '<span class="mut">—</span>'} <button class="btn-mini" onclick="editarResultado(${a.id})">✏️</button></div>
+    <div style="margin-top:3px;white-space:pre-wrap"><b>Resultado observado:</b>${a.resultado_auto_em ? ' <span class="ie-st" style="background:rgba(139,92,246,.2);color:#a78bfa">🤖 lançado automaticamente</span>' : ''} ${a.resultado_observado ? esc(a.resultado_observado) : '<span class="mut">—</span>'} <button class="btn-mini" onclick="editarResultado(${a.id})">✏️</button></div>
     ${ad ? `<div style="margin-top:6px"><b>Antes × depois (por dia)</b> <span class="mut">— 14 dias antes vs ${ad.dias_depois} dia(s) depois</span>${linha('pedidos_dia', 'Pedidos/dia')}${linha('fat_dia', 'Faturamento/dia')}${linha('margem_dia', 'Margem/dia')}${linha('mc_pct', 'MC%', true)}${linha('conversao', 'Conversão', true)}<div class="mut" style="margin-top:4px">⚠️ ${esc(ad.aviso)}</div></div>` : ''}
   </div>`;
 }
@@ -370,6 +370,7 @@ async function mudarStatus(id, status) {
   const r = await DB.atualizarIaEstrategistaAcao(id, { status });
   if (!r) return alert('Não consegui atualizar: ' + (DB.lastError || ''));
   ABERTO ? abrir(ABERTO) : carregarAcoes();
+  contarParadas();
 }
 async function editarResultado(id) {
   const v = prompt('Resultado observado (o que aconteceu depois da ação):', ''); if (v === null) return;
@@ -383,10 +384,23 @@ async function carregarAcoes() {
   const d = await DB.getIaEstrategistaAcoes(status ? { status } : {});
   if (d.error) { el.textContent = d.error; return; }
   el.className = '';
+  d.acoes.sort((x, y) => parada(y) - parada(x));
   el.innerHTML = d.acoes.length ? d.acoes.map(a => `<div style="cursor:pointer" onclick="if(!event.target.closest('select,button'))abrir(${a.ranking_ad_id})">${acaoHtml(a)}</div>`).join('') : '<div class="ie-vazio">Nenhuma ação registrada ainda. Abra um anúncio e use ➕ Registrar ou ✅ Concluída no plano de ação.</div>';
 }
 
-popularLojas().then(() => carregar());
+// ?anuncio=<ranking_ad_id> (botão "🤖 Plano" do card do Rankeamento / link do Telegram) abre o painel direto.
+const ANUNCIO_URL = new URLSearchParams(location.search).get('anuncio');
+popularLojas().then(() => carregar()).then(() => { if (ANUNCIO_URL) abrir(Number(ANUNCIO_URL)); contarParadas(); });
+
+// Ações paradas (pendente/em execução há 7+ dias no mesmo status) — contador na aba.
+const DIAS_PARADA = 7;
+const diasNoStatus = a => Math.floor((Date.now() - new Date(a.status_desde || a.updated_at).getTime()) / 86400000);
+const parada = a => (a.status === 'pendente' || a.status === 'em_execucao') && diasNoStatus(a) >= DIAS_PARADA;
+async function contarParadas() {
+  const d = await DB.getIaEstrategistaAcoes(); if (d.error) return;
+  const n = d.acoes.filter(parada).length;
+  document.getElementById('tabAcoes').innerHTML = `✅ Acompanhamento de ações${n ? ` <span style="background:#f85149;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">⏰ ${n} parada(s)</span>` : ''}`;
+}
 </script>
 </body>
 </html>

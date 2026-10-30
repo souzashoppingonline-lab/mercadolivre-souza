@@ -171,9 +171,11 @@ async function buscar(novas) {
 // ── Rolagem automática ─────────────────────────────────────────────────────
 let pausado = false, seguraAte = 0, ultimoQuadro = 0, mexeuEm = 0, voltando = false, acumulado = 0;
 function mostrarNova() {
-  // No modo fixo, se alguém está lendo mais acima (mexeu há < 20s), não puxa a tela — o próprio quadro() desce depois.
-  if (modoFixo() && Date.now() - mexeuEm < 20000) return;
-  chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+  // Pedido do usuário: TODA mensagem nova rola a tela até ela, sempre (TV).
+  // Rola de novo depois da animação de entrada, pra não parar no meio da bolha.
+  mexeuEm = 0;
+  const descer = () => chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+  requestAnimationFrame(descer); setTimeout(descer, 700);
   seguraAte = Date.now() + (modoFixo() ? 1500 : 15000);
 }
 // Modo padrão (pedido do usuário): tela PARADA no fim, como o Telegram — cada

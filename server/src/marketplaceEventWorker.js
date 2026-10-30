@@ -558,6 +558,16 @@ async function syncShopeeChat() {
         await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2 AND store_id=$3`, [latestId, c.conversation_id, storeId]);
       }
     }
+    // Conversa que saiu da lista de não lidas (lida/respondida direto no app da
+    // Shopee) → zera aqui; antes ficava "não lida" pra sempre no banco. Só quando
+    // a lista veio completa (< 25 = página única); senão não dá pra saber.
+    if ((convs || []).length < 25) {
+      const ids = (convs || []).map((c) => String(c.conversation_id)).filter(Boolean);
+      const { rowCount } = await pool.query(
+        `UPDATE shopee_chat SET unread_count = 0, updated_at = now()
+          WHERE store_id = $1 AND unread_count > 0 AND NOT (conversation_id = ANY($2::text[]))`, [storeId, ids]);
+      if (rowCount) console.log(`[marketplace-worker] chat Shopee store ${storeId}: ${rowCount} conversa(s) lida(s) fora do sistema → zeradas`);
+    }
   }
 }
 

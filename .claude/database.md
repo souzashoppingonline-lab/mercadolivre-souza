@@ -849,3 +849,8 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 ### `telegram_mensagens` — v120: cópia de TODA mensagem do Telegram pra Tela Telegram (TV)
 
 `migrate-v120.sql`. Uma linha por mensagem: `id` BIGSERIAL, `topico` (`tg_*`, `bot`, `teste`…), `texto` (até 8.000 chars, HTML do Telegram), `html` (bool — `false` = texto puro), `direcao` (`saida` = o sistema mandou | `entrada` = comando que chegou no bot), `autor` (nome de quem mandou o comando), `criado_em`. Índice `criado_em DESC`. Gravada por `telegramLog.registrarMensagem` depois de cada envio que deu certo. Apagada aos 30 dias (`cleanupTelegramMensagens`, 03:55).
+
+### `ia_estrategista_analises` / `ia_estrategista_acoes` — v122: IA Estrategista (ver `modules.md`)
+
+`migrate-v122.sql`. **`ia_estrategista_analises`**: cada GERAR NOVA ANÁLISE (LLM) — `ranking_ad_id` (sem FK, histórico sobrevive à remoção do card), `ml_id`, `periodo_dias`, `input_hash` (sha1 do contexto enviado à IA — mesma entrada em 24h reaproveita), `prioridade`, `categoria` (A–G), `diagnostico` JSONB (snapshot do motor), `ia` JSONB (resposta), `modelo`, `criado_por`, `created_at`; índice `(ranking_ad_id, created_at DESC)`. **`ia_estrategista_acoes`**: recomendação registrada — `ranking_ad_id`, `ml_id`, `produto`, `analise_id`, `categoria`, `problema`, `acao`, `responsavel`, `status` (`pendente`\|`em_execucao`\|`concluida`\|`descartada`, CHECK), `observacao` (o que foi feito), `resultado_observado`, `executada_em` (carimbo da conclusão, mesma regra de `business_insights.concluida_em`), `criado_por`, `created_at`, `updated_at`; índices `(ranking_ad_id, created_at DESC)` e `status`.
+

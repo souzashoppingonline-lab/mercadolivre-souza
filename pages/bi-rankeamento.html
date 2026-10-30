@@ -11,6 +11,9 @@
   <script>window.PAGE_TITLE='Vendas por Estágio'; window.ACTIVE_NAV='bi-rankeamento.html';</script>
   <style>
     .bi-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 16px; }
+    .bi-abas { display:flex; gap:6px; margin-bottom:14px; border-bottom:1px solid var(--border); }
+    .bi-abas a { padding:9px 14px; font-size:13px; font-weight:700; color:var(--text-muted); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .bi-abas a.on { color:#8b5cf6; border-bottom-color:#8b5cf6; }
     .im-filters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
     .im-filters select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:9px 12px; font-size:13px; }
     .im-status { font-size:12px; color:var(--text-muted); margin-left:auto; }
@@ -67,6 +70,7 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
+      <div class="bi-abas"><a class="on" href="bi-rankeamento.html"><i class="fas fa-ranking-star"></i> Vendas por Estágio</a><a href="bi-ia-estrategista.html"><i class="fas fa-chess-knight"></i> IA Estrategista</a></div>
       <p class="bi-sub">Cruza o estágio atual de cada anúncio (módulo Rankeamento) com as vendas/margem do período. O estágio mostrado é sempre o ATUAL do anúncio — não existe histórico confiável de mudança de estágio (ver <code>business-rules.md</code>), então uma venda de 20 dias atrás aparece com o estágio de HOJE, não o de quando foi vendida.</p>
 
       <div class="im-filters">

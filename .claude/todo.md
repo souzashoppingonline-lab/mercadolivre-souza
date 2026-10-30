@@ -229,3 +229,11 @@ Ao iniciar uma sessão nova, além de ler toda a pasta `.claude` (regra em `CLAU
 - [ ] Remetente padrão `onboarding@resend.dev` (sem domínio verificado) **só entrega pro e-mail dono da conta Resend** — qualquer outro destinatário volta 403 "You can only send testing emails to your own email address". Com o domínio próprio do usuário: verificar o domínio no Resend (registros DNS SPF/DKIM) e trocar `RESEND_FROM_EMAIL` (ex.: `Relatórios <relatorios@dominio>`).
 - [ ] Toggles em Monitor → E-mail: cada relatório só sai se o toggle estiver ligado (`app_config email_* = 'true'`); o padrão é desligado.
 - [x] ~~Falha de envio só aparecia no log~~ — **feito (v119)**: aviso no Telegram (`tg_email_falha`), ver `workers.md`.
+
+## IA Estrategista (v122) — fora desta rodada
+- [ ] Comparação por **categoria** do ML (hoje: mesmo estágio, ou todos do Rankeamento) — precisa de grupos com ≥ 5 anúncios por categoria.
+- [ ] Custo de ADS **por período** (hoje só os campos manuais do card: investido total do ciclo, ROAS, orçamento) — integrar métricas de Product Ads do ML daria ROAS real do período e MC depois do ADS.
+- [ ] Concorrentes além do Buy Box (os "5 principais concorrentes" hoje é ação recomendada, não dado coletado) — poderia usar a coleta de concorrentes da Análise de Produtos.
+- [ ] Reputação/avaliações/perguntas sem resposta como sinal de conversão.
+- [ ] Calibrar limiares (`LIM` em `iaEstrategista.js`) depois de algumas semanas de uso real.
+

@@ -15,6 +15,7 @@ const BI_NAV_ITEMS = [
     { href: 'inteligencia-vendas.html',  icon: 'fa-chart-line',   label: 'Inteligência de Vendas' },
     { href: 'bi-vendas.html',            icon: 'fa-id-card',      label: 'Resumo por Venda' },
     { href: 'bi-rankeamento.html',       icon: 'fa-ranking-star', label: 'Vendas por Estágio' },
+    { href: 'bi-ia-estrategista.html',   icon: 'fa-chess-knight', label: 'IA Estrategista' },
     { href: 'agente-financeiro.html',    icon: 'fa-robot',        label: 'Agente Financeiro' },
     { href: 'analista-ecom.html',        icon: 'fa-tags',         label: 'Analista Ecom' },
   ]},

@@ -49,6 +49,12 @@
     .msg.nova .bolha { animation:entra .6s cubic-bezier(.2,1.2,.4,1), brilho 3s ease-out; }
     @keyframes entra { from { transform:translateY(24px) scale(.96); opacity:0 } to { transform:none; opacity:1 } }
     @keyframes brilho { 0%,40% { box-shadow:0 0 0 2px rgba(106,179,243,.85), 0 0 24px rgba(106,179,243,.35) } 100% { box-shadow:0 1px 1px rgba(0,0,0,.25) } }
+    /* Alerta de pergunta/chat de cliente (bipe + voz): borda vermelha + selo; pisca quando chega */
+    .msg.alerta .bolha { border-left:5px solid #ff5d5d; }
+    .msg.alerta .selo { display:inline-block; background:#ff5d5d; color:#fff; font-weight:800; font-size:.8em; letter-spacing:.03em; border-radius:6px; padding:2px 8px; margin-bottom:4px; }
+    .msg.nova.alerta .bolha { animation:entra .6s cubic-bezier(.2,1.2,.4,1), alertaPulsa 1.1s ease-in-out 9; }
+    @keyframes alertaPulsa { 50% { box-shadow:0 0 0 3px rgba(255,93,93,.95), 0 0 34px rgba(255,93,93,.55); } }
+    .som-aviso { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:#3a2a12; border:1px solid #f2c94c; color:#ffe7a3; border-radius:12px; padding:10px 18px; font-size:16px; font-weight:600; z-index:7; cursor:pointer; display:none; animation:pisca 2s infinite; }
     .vazio { text-align:center; color:var(--muted); margin-top:30vh; font-size:16px; line-height:1.6; }
     .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#22303f; border:1px solid #2a3a4b; border-radius:10px; padding:10px 14px; font-size:14px; display:none; z-index:5; max-width:90vw; }
     .cheia { position:fixed; inset:0; background:rgba(14,22,33,.85); display:none; align-items:center; justify-content:center; z-index:6; font-size:22px; cursor:pointer; text-align:center; }
@@ -168,6 +174,7 @@
     <div class="ctrls">
       <button id="btnPausa" title="Pausar/continuar a rolagem">⏸ Pausar</button>
       <select id="vel" title="Como a tela se comporta"><option value="0" selected>📌 Fixa nas mensagens novas</option><option value="25">Rolagem lenta</option><option value="45">Rolagem média</option><option value="90">Rolagem rápida</option></select>
+      <button id="btnSom" title="Bipe + voz quando chega pergunta ou chat de cliente">🔊 Som</button>
       <button id="btnLink" title="Link pra abrir na TV sem login">🔗 Link da TV</button>
       <button id="btnTv" title="Tela cheia, letra grande">📺 Modo TV</button>
     </div>
@@ -185,6 +192,7 @@
   </aside>
 </div>
 <div class="toast" id="toast"></div>
+<div class="som-aviso" id="somAviso">🔇 Toque na tela (ou OK no controle) para ligar o som dos alertas</div>
 <div class="cheia" id="cheia">📺 Toque para tela cheia</div>
 
 <script src="../js/telegramHtml.js"></script>
@@ -230,8 +238,9 @@ function bolha(m, nova) {
   const t = TOPICOS[m.topico] || (m.topico ? [esc(m.topico), '#8fa3b5'] : null);
   const hora = new Date(m.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
   const ent = m.direcao === 'entrada';
-  html += `<div class="msg ${ent ? 'ent' : ''}${nova ? ' nova' : ''}" data-id="${m.id}"><div class="bolha">
-    ${!ent && t ? `<div class="tag" style="color:${t[1]}">${t[0]}</div>` : ''}${ent && m.autor ? `<div class="tag" style="color:#9fc3e6">${esc(m.autor)}</div>` : ''}
+  const al = tipoAlerta(m);
+  html += `<div class="msg ${ent ? 'ent' : ''}${nova ? ' nova' : ''}${al ? ' alerta' : ''}" data-id="${m.id}"><div class="bolha">
+    ${al ? `<div class="selo">${al.selo}</div>` : ''}${!ent && t ? `<div class="tag" style="color:${t[1]}">${t[0]}</div>` : ''}${ent && m.autor ? `<div class="tag" style="color:#9fc3e6">${esc(m.autor)}</div>` : ''}
     <div class="txt">${TelegramHtml.paraHtml(m.texto, m.html !== false)}<span class="meta">${hora}</span></div></div></div>`;
   return html;
 }
@@ -269,6 +278,7 @@ async function buscar(novas) {
     ultimoId = ms[ms.length - 1].id; total += ms.length;
     poda();
     mostrarNova();
+    tocarAlerta(ms.map(tipoAlerta).filter(Boolean));
     painelDepoisDeMensagem();
   } catch (e) { console.warn('[tela-telegram]', e.message); }
 }
@@ -314,6 +324,58 @@ const ajustarPausa = () => { document.getElementById('btnPausa').style.display =
 try { const v = localStorage.getItem('tela_tg_modo'); if (v != null) document.getElementById('vel').value = v; } catch (_) {}
 document.getElementById('vel').onchange = e => { try { localStorage.setItem('tela_tg_modo', e.target.value); } catch (_) {} ajustarPausa(); if (modoFixo()) chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' }); };
 ajustarPausa();
+
+// ── Alerta sonoro (pedido do usuário): pergunta ou chat de cliente → bipe + voz ──
+// Só avisos do sistema (não a confirmação de resposta, que também usa tg_perguntas).
+// Navegador só libera som depois de um toque/tecla na página: até lá mostra o aviso.
+const ALERTAS = [
+  { tipo: 'pergunta', topico: 'tg_perguntas', re: /Nova pergunta/i, selo: '🔔 PERGUNTA DE CLIENTE — RESPONDER', voz: 'Pergunta de cliente. Por favor, responder o mais rápido possível.' },
+  { tipo: 'chat', topico: 'tg_mensagens', re: /Nova mensagem de comprador|Mensagem Shopee/i, selo: '🔔 CHAT — RESPONDER', voz: 'Chat. Por favor, responder.' },
+];
+function tipoAlerta(m) { return m.direcao === 'entrada' ? null : ALERTAS.find(a => a.topico === m.topico && a.re.test(m.texto || '')) || null; }
+let somLigado = true, audio = null;
+try { somLigado = localStorage.getItem('tela_tg_som') !== '0'; } catch (_) {}
+function ctxAudio() { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {} return audio; }
+const somTravado = () => !ctxAudio() || audio.state !== 'running';
+function avisoSom() { document.getElementById('somAviso').style.display = somLigado && somTravado() ? 'block' : 'none'; }
+function destravarSom() {
+  const c = ctxAudio(); if (!c) return;
+  c.resume().then(avisoSom, avisoSom);
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance(' ')); } catch (_) {} // libera a voz no mesmo toque
+}
+function bipe() {
+  const c = ctxAudio(); if (!c || c.state !== 'running') return;
+  [0, 0.28, 0.56].forEach((t, i) => {
+    const o = c.createOscillator(), g = c.createGain(), ini = c.currentTime + t;
+    o.type = 'square'; o.frequency.value = i === 2 ? 1320 : 880;
+    g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.35, ini + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.22);
+    o.connect(g).connect(c.destination); o.start(ini); o.stop(ini + 0.24);
+  });
+}
+function falar(txt) {
+  try {
+    const u = new SpeechSynthesisUtterance(txt);
+    u.lang = 'pt-BR'; u.rate = 0.95; u.volume = 1;
+    const v = speechSynthesis.getVoices().find(x => /^pt[-_]BR/i.test(x.lang)) || speechSynthesis.getVoices().find(x => /^pt/i.test(x.lang));
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch (_) {}
+}
+function tocarAlerta(lista) {
+  if (!somLigado || !lista.length) return;
+  const tipos = ALERTAS.filter(a => lista.includes(a)); // 1 fala por tipo, pergunta primeiro
+  bipe();
+  try { speechSynthesis.cancel(); } catch (_) {}
+  setTimeout(() => tipos.forEach(a => falar(a.voz)), 900);
+}
+function botaoSom() { document.getElementById('btnSom').textContent = somLigado ? '🔊 Som' : '🔇 Mudo'; avisoSom(); }
+document.getElementById('btnSom').onclick = () => {
+  somLigado = !somLigado; try { localStorage.setItem('tela_tg_som', somLigado ? '1' : '0'); } catch (_) {}
+  botaoSom(); if (somLigado) { destravarSom(); setTimeout(() => { bipe(); falar('Som dos alertas ligado.'); }, 150); }
+};
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, destravarSom, { passive: true }));
+try { speechSynthesis.getVoices(); } catch (_) {} // carrega a lista de vozes cedo
+botaoSom(); setTimeout(avisoSom, 1500);
 
 // ── Modo TV: tela cheia + não deixar a tela apagar + esconder o cursor ─────
 let wake = null;

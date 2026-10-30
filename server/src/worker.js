@@ -364,6 +364,8 @@ async function handleOrder({ resource, storeId, silent = false }) {
           valorNum: Number(oi.unit_price || 0) * Number(oi.quantity || 1),
           comprador: order.buyer?.nickname || '—',
           saleDate, realtime,
+          // v126: em tempo real o "Nova venda!" leva os dados do rankeamento (1 mensagem só).
+          noAvisoDeVenda: realtime,
         });
         if (r && r.count) rankLinhas.push(r);
       } catch (e) { console.error('[ranking] onSale falhou:', e.message); }
@@ -378,7 +380,13 @@ async function handleOrder({ resource, storeId, silent = false }) {
     const saleDateFmt = saleDate ? fmtDataHora(saleDate) : fmtDataHora(new Date());
     const notifiedAtFmt = fmtDataHora(new Date());
     if (!silent) {
-      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rankLinhas.map(r => `\n📍 <b>${ranking.faseLabel(r.fase)}</b> · Venda nº <b>${r.count}</b>${rankLinhas.length > 1 ? ` — ${String(r.title || '').slice(0, 40)}` : ''}`).join('')}`);
+      // v126: venda de anúncio em rankeamento = UMA mensagem só (este "Nova
+      // venda!" + bloco de rankeamento), forçada como a antiga mensagem do
+      // rankeamento era (não pode se perder no silêncio/intervalo). Venda
+      // comum continua no tgNotify normal.
+      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rankLinhas.map(r => '\n' + ranking.blocoVendaRankeamento(r, { varios: rankLinhas.length > 1 })).join('')}`;
+      if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda);
+      else await tgNotify('tg_vendas', textoVenda);
       // Alerta em tempo real na tela do dashboard (som + push) — consumido por
       // js/layout.js (WS.on('nova_venda')). Mesma guarda anti-pedido-antigo do
       // Telegram, então nunca dispara em importação em massa (silent) nem venda >24h.
@@ -391,6 +399,10 @@ async function handleOrder({ resource, storeId, silent = false }) {
         order_id: order.id,
       });
     }
+  }
+  // Marcos (a cada N vendas) saem DEPOIS do "Nova venda!" — v126.
+  for (const r of rankLinhas) {
+    if (r.marco) { try { await ranking.milestone(r.marco, true); } catch (e) { console.error('[ranking] marco falhou:', e.message); } }
   }
 }
 

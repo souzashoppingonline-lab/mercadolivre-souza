@@ -101,16 +101,16 @@
     /* Vendas por hora (v130): barras grandes lado a lado (hoje azul × ontem cinza), número em cima, ocupa o card todo */
     .hrw { display:flex; flex-direction:column; height:100%; }
     .hr-tot { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:.9em; }
-    .hr-tot b { font-size:1.6em; font-weight:900; } .hr-tot .h b { color:#5eb5f7; } .hr-tot .o b { color:#9aa7b4; }
+    .hr-tot b { font-size:1.6em; font-weight:900; } .hr-tot .h b { color:#4ea1ff; } .hr-tot .o b { color:#ff9f43; }
     .hr { flex:1; min-height:6em; display:flex; align-items:flex-end; gap:.35em; padding-top:1.4em; border-bottom:2px solid #2a3a4b; }
     .hr > div { flex:1; display:flex; align-items:flex-end; justify-content:center; gap:2px; height:100%; }
     .hr .b { position:relative; width:46%; border-radius:4px 4px 0 0; min-height:2px; }
-    .hr .b.hj { background:linear-gradient(180deg,#5eb5f7,#2b6cb0); } .hr .b.on { background:#5b6b7b; }
-    .hr .agora .b.hj { background:linear-gradient(180deg,#f2c94c,#c08a10); box-shadow:0 0 12px rgba(242,201,76,.5); }
+    .hr .b.hj { background:linear-gradient(180deg,#4ea1ff,#1f5fbf); } .hr .b.on { background:linear-gradient(180deg,#ffb066,#e0701a); opacity:.9; }
+    .hr .agora .b.hj { background:linear-gradient(180deg,#5ef08a,#1f9d4c); box-shadow:0 0 12px rgba(63,185,80,.6); }
     .hr .b.hj em { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); font-style:normal; font-weight:900; font-size:.82em; color:#e8f2fb; margin-bottom:2px; white-space:nowrap; }
-    .hr .agora .b.hj em { color:#f2c94c; }
+    .hr .agora .b.hj em { color:#5ef08a; }
     .hr-l { display:flex; gap:.35em; font-size:.8em; color:#9fb4c7; margin-top:4px; font-weight:700; } .hr-l span { flex:1; text-align:center; }
-    .hr-l .agora { color:#f2c94c; }
+    .hr-l .agora { color:#5ef08a; }
     .hr-leg { display:flex; gap:14px; font-size:.78em; color:#9fb4c7; margin-top:6px; } .hr-leg i { display:inline-block; width:.9em; height:.9em; border-radius:2px; vertical-align:-1px; margin-right:4px; }
     .ia { display:flex; gap:10px; padding:7px 0; border-top:1px solid #22303f; } .ia:first-of-type { border-top:none; }
     .tp .ia { padding:0; border:none; }
@@ -404,7 +404,7 @@ const SLIDES = [
         <div class="hr-tot"><span class="h">Hoje até agora <b>${th}</b></span><span class="o">Ontem até ${hAgora}h <b>${to}</b></span>${v == null ? '' : `<span class="${v >= 0 ? 'up' : 'dn'}" style="font-weight:900;font-size:1.15em">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}%</span>`}</div>
         <div class="hr">${vis.map(x => `<div class="${x.h === hAgora ? 'agora' : ''}"><span class="b on" style="height:${(x.ontem / max) * 100}%"></span><span class="b hj" style="height:${(x.hoje / max) * 100}%">${x.hoje && x.h <= hAgora ? `<em>${x.hoje}</em>` : ''}</span></div>`).join('')}</div>
         <div class="hr-l">${vis.map(x => `<span class="${x.h === hAgora ? 'agora' : ''}">${vis.length > 14 && x.h % 2 ? '' : x.h + 'h'}</span>`).join('')}</div>
-        <div class="hr-leg"><span><i style="background:#5eb5f7"></i>Hoje</span><span><i style="background:#5b6b7b"></i>Ontem</span><span><i style="background:#f2c94c"></i>Hora atual</span></div>
+        <div class="hr-leg"><span><i style="background:#4ea1ff"></i>Hoje</span><span><i style="background:#ff9f43"></i>Ontem</span><span><i style="background:#5ef08a"></i>Hora atual</span></div>
       </div>`; } },
   { tit: '📦 Estoque em risco', html: d => d.carrossel.estoque_risco.length ? d.carrossel.estoque_risco.map(x => `<div class="tp"><div class="pos" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${Number(x.estoque) <= 0 ? '⛔' : '⚠️'}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${x.vendas7} venda(s) em 7 dias</span></div><div class="v" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${x.estoque} un</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio vendendo com estoque baixo.</div>' },
   { tit: '🔴 Buy Box — perdendo (mais perto de ganhar)', html: d => d.carrossel.buybox_perdendo.length ? d.carrossel.buybox_perdendo.map(x => `<div class="tp"><div class="pos">🔴</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${esc(x.item_id)}</span></div><div class="v">${R$(x.vencedor)}<small>seu ${R$(x.seu)}</small></div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio perdendo o Buy Box.</div>' },

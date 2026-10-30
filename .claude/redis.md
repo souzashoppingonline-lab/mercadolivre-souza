@@ -34,3 +34,5 @@ Canal `worker:cmd` — o endpoint `POST /api/schedule/jobs/:name/trigger` (ver `
 ## BullMQ sobre Redis (nota de fronteira)
 
 As filas BullMQ (`ml-webhooks-{storeId}`) também vivem no mesmo Redis (mesma `REDIS_URL`), mas usam conexões `ioredis` próprias com `enableOfflineQueue: false` e `maxRetriesPerRequest: null` (exigido pelo BullMQ). Não reutilizar o singleton `db/redis.js` para filas — cada `Worker`/`Queue` do BullMQ precisa da sua própria conexão dedicada. Detalhes de filas, concorrência e retries: `workers.md`.
+
+- **`venda:aviso:<order_id>`** (v132, `worker.js` `handleOrder`): trava `SET NX EX 259200` — só o 1º processamento em tempo real de um pedido pago manda o "🛒 Nova venda!" e conta no rankeamento (o ML às vezes manda 2 webhooks do mesmo pedido ao mesmo tempo).

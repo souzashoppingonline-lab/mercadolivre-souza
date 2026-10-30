@@ -353,7 +353,19 @@ async function handleOrder({ resource, storeId, silent = false }) {
   // Telegram só quando é venda em tempo real (isNewSale && !silent). Best-effort.
   // Roda ANTES do "Nova venda!" pra ele já sair com estágio + nº da venda.
   const rankLinhas = [];
-  if (order.status === 'paid') {
+  // v132 — trava atômica por pedido (bug real: o ML manda mais de um webhook
+  // do mesmo pedido; processados ao mesmo tempo, os dois viam previousStatus
+  // != 'paid' e saíam DOIS "Nova venda!"). Só o 1º processamento em tempo
+  // real ganha a trava (Redis SET NX, 3 dias) e faz rankeamento + aviso; o
+  // duplicado pula os dois. Sync/silent não usa a trava (onSale é idempotente
+  // e o sync é sequencial). Redis fora do ar → segue sem trava (como antes).
+  let duplicadoTempoReal = false;
+  if (order.status === 'paid' && isNewSale && !silent) {
+    try { duplicadoTempoReal = (await redis.set(`venda:aviso:${order.id}`, '1', 'EX', 3 * 86400, 'NX')) !== 'OK'; }
+    catch (e) { console.warn('[worker] trava de venda indisponível:', e.message); }
+    if (duplicadoTempoReal) console.log(`[worker] venda ${order.id} já avisada por outro processamento — duplicado ignorado`);
+  }
+  if (order.status === 'paid' && !duplicadoTempoReal) {
     const realtime = isNewSale && !silent;
     for (const oi of (order.order_items || [])) {
       const mlId = oi.item?.id;
@@ -372,7 +384,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
     }
   }
 
-  if (isNewSale) {
+  if (isNewSale && !duplicadoTempoReal) {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
     const envioLabel = fmtLogistica(shippingType);

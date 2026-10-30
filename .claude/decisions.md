@@ -1072,10 +1072,10 @@ Pedido: mostrar o saldo da conta na janela de Pagar e avisar quando falta. A som
 - **Reuso, nenhuma fórmula nova de margem**: `VENDA_DETALHE_SELECT`/`calcularMargemLinha`, margem mínima/alvo do Analista Ecom, `js/buyboxStatus.js`, `ai/llm.js`, `cached()`, padrão `concluida_em` das Ações Recomendadas. Tabelas novas só para o que não existia: análises de IA salvas e controle de execução por anúncio (`business_insights` é por item+tipo de ação de margem, outro domínio).
 - **Período em dias fechados** (até ontem): hoje parcial distorceria todas as comparações.
 
-## Perguntas: dedup só no aviso + conferência a cada 30 min (v136)
+## Perguntas: dedup só no aviso + conferência a cada 10 min (v136)
 
 **Problema**: `handleQuestion` pulava o webhook inteiro se a pergunta tinha sido gravada há < 30 min (proteção contra webhook repetido). Quando alguém respondia (ou o comprador apagava) direto no site do ML dentro desses 30 min, o webhook de mudança era descartado e a pergunta ficava `UNANSWERED` pra sempre — inflando "perguntas pendentes" (KPI, tela Perguntas). Não havia nenhum resync periódico.
 
-**Decisão** (aprovada pelo usuário): (1) o status é sempre gravado; a deduplicação vale só para o aviso do Telegram (trava Redis `pergunta:aviso:<id>` NX, mesmo padrão de `venda:aviso:`); (2) job `sync-perguntas` a cada 30 min reconsulta só as `UNANSWERED` (até 200, mais antigas primeiro — as novas já chegam pelo webhook). 404 = apagada → `status='DELETED'`. `updated_at` passou a mudar só quando o status muda (e vira a data real da resposta quando o ML informa), porque é a base do "tempo médio de resposta"/"respondidas hoje" de `/api/perguntas` — a reconsulta não pode bagunçar isso.
+**Decisão** (aprovada pelo usuário): (1) o status é sempre gravado; a deduplicação vale só para o aviso do Telegram (trava Redis `pergunta:aviso:<id>` NX, mesmo padrão de `venda:aviso:`); (2) job `sync-perguntas` a cada 10 min (usuário pediu; era 30) reconsulta só as `UNANSWERED` (até 200, mais antigas primeiro — as novas já chegam pelo webhook). 404 = apagada → `status='DELETED'`. `updated_at` passou a mudar só quando o status muda (e vira a data real da resposta quando o ML informa), porque é a base do "tempo médio de resposta"/"respondidas hoje" de `/api/perguntas` — a reconsulta não pode bagunçar isso.
 
-**Trade-off**: webhooks repetidos agora custam 1 GET cada (antes eram pulados) e o job soma até 200 GETs a cada 30 min — pequeno perto do orçamento por-app (todas passam pelo token-bucket do `mlClient`).
+**Trade-off**: webhooks repetidos agora custam 1 GET cada (antes eram pulados) e o job soma até 200 GETs a cada 10 min — pequeno perto do orçamento por-app (todas passam pelo token-bucket do `mlClient`).

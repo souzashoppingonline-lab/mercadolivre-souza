@@ -2423,7 +2423,7 @@ async function syncRankingAlerts() {
 // rate limit apertado da API de claims do ML. Disparado manualmente pelo botão
 // "Atualizar pendentes" (worker:cmd). Mesma disciplina de 429 do syncShippingStatus.
 let isSyncingClaims = false;
-// Conferência das perguntas pendentes (a cada 30 min): reconsulta no ML as
+// Conferência das perguntas pendentes (a cada 10 min — pedido do usuário): reconsulta no ML as
 // UNANSWERED pra pegar as respondidas/apagadas direto no site cujo webhook se
 // perdeu. Mais antigas primeiro (as novas já chegam pelo webhook). Sem aviso
 // no Telegram — só corrige o status (e a contagem de "perguntas pendentes").
@@ -2461,7 +2461,7 @@ async function syncPerguntasPendentes() {
 }
 async function checkPerguntasPendentes() {
   try { await syncPerguntasPendentes(); }
-  finally { scheduleEveryMinutes(30, checkPerguntasPendentes, 'sync-perguntas'); }
+  finally { scheduleEveryMinutes(10, checkPerguntasPendentes, 'sync-perguntas'); }
 }
 
 async function syncClaimsStatus(manual = false) {
@@ -4107,7 +4107,7 @@ scheduleAt(8, 30,  checkBuyboxRelatorio, 'buybox-relatorio');
 scheduleEvery(4,    checkRankingVendas4h, 'rk-vendas-4h');
 scheduleAt(7, 5,   checkRankingVendasDia, 'rk-vendas-dia');
 scheduleEveryMinutes(10, flushRankingPendentes, 'rk-pendentes');
-scheduleEveryMinutes(30, checkPerguntasPendentes, 'sync-perguntas');
+scheduleEveryMinutes(10, checkPerguntasPendentes, 'sync-perguntas');
 scheduleAt(8, 5,   checkIaEstrategistaDiario, 'ia-estrategista-diario');
 scheduleEvery(2,    checkIaEstrategistaCriticos, 'ia-estrategista-criticos');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');

@@ -15,44 +15,74 @@ ALTER TABLE returns ADD COLUMN IF NOT EXISTS claim_id TEXT;
 ALTER TABLE returns ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
 
 -- 2. Backfill do claim_id a partir do JSON já armazenado.
-UPDATE returns SET claim_id = raw_data->>'id'
- WHERE claim_id IS NULL AND raw_data->>'id' IS NOT NULL;
+--    CORRIGIDO (v121): o UPDATE simples quebrava em TODO deploy depois da 1ª
+--    execução ("duplicate key ... returns_claim_id_uidx") quando aparecia uma
+--    linha com claim_id NULL cujo raw_data->>'id' já era o claim_id de outra
+--    linha — e, por rodar num bloco só, a migration inteira era desfeita e a
+--    devolução ficava DUPLICADA na tela. Agora:
+--    2a. preenche claim_id só em UMA linha por reclamação, e só se ninguém
+--        ainda tem esse claim_id;
+--    2b. as sobras (NULL com o mesmo id de uma reclamação que já tem linha)
+--        são juntadas na linha existente (passo 3, junto das duplicatas).
+WITH cand AS (
+  SELECT DISTINCT ON (raw_data->>'id') id, raw_data->>'id' AS cid
+    FROM returns r
+   WHERE claim_id IS NULL AND raw_data->>'id' IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM returns x WHERE x.claim_id = r.raw_data->>'id')
+   ORDER BY raw_data->>'id', COALESCE(updated_at, date) DESC NULLS LAST, id DESC
+)
+UPDATE returns r SET claim_id = c.cid FROM cand c WHERE r.id = c.id;
 
--- 3. Colapsar as duplicatas já existentes: manter UMA linha por claim_id
---    (a mais recente por updated_at/date), preservando os campos MANUAIS
---    (prejuizo, note, abertura_chamado) que possam ter sido digitados em
---    qualquer uma das cópias. Nada FK-referencia returns.id, então o DELETE
---    das cópias é seguro. Idempotente: após a 1ª execução não há mais
---    duplicatas, então vira no-op nas migrações seguintes.
-WITH grp AS (
-  SELECT claim_id,
-         (array_agg(id ORDER BY COALESCE(updated_at, date) DESC NULLS LAST, id DESC))[1] AS keep_id,
-         (array_agg(prejuizo) FILTER (WHERE prejuizo IS NOT NULL))[1]                     AS m_prejuizo,
-         (array_agg(note)     FILTER (WHERE note IS NOT NULL AND note <> ''))[1]          AS m_note,
-         bool_or(COALESCE(abertura_chamado, false))                                        AS m_abertura
-  FROM returns
-  WHERE claim_id IS NOT NULL
-  GROUP BY claim_id
-  HAVING count(*) > 1
+-- 3. Colapsar as duplicatas: manter UMA linha por reclamação e apagar as
+--    cópias, preservando os campos MANUAIS (prejuizo, note, abertura_chamado)
+--    digitados em qualquer cópia. "Cópia" = outra linha com o mesmo claim_id
+--    OU linha sem claim_id com raw_data->>'id' igual (sobra do passo 2).
+--    Fica a linha que TEM claim_id (é a que o upsertClaim mantém atualizada);
+--    entre várias, a mais recente. Vídeo de devolução (return_videos, v117,
+--    sem FK) é repontado pra linha que fica antes do DELETE. Idempotente:
+--    sem cópias, vira no-op.
+CREATE TEMP TABLE IF NOT EXISTS _v59_dup (dup_id BIGINT PRIMARY KEY, keep_id BIGINT NOT NULL);
+TRUNCATE _v59_dup;
+WITH grupo AS (
+  SELECT id, COALESCE(claim_id, raw_data->>'id') AS cid,
+         (claim_id IS NOT NULL) AS tem_cid, COALESCE(updated_at, date) AS quando
+    FROM returns
+   WHERE claim_id IS NOT NULL OR raw_data->>'id' IS NOT NULL
+), keep AS (
+  SELECT DISTINCT ON (cid) cid, id AS keep_id
+    FROM grupo
+   ORDER BY cid, tem_cid DESC, quando DESC NULLS LAST, id DESC
+)
+INSERT INTO _v59_dup (dup_id, keep_id)
+SELECT g.id, k.keep_id
+  FROM grupo g JOIN keep k ON k.cid = g.cid
+ WHERE g.id <> k.keep_id
+   AND EXISTS (SELECT 1 FROM grupo t WHERE t.cid = g.cid AND t.tem_cid);  -- só reclamação que já tem linha "oficial"
+
+WITH m AS (
+  SELECT d.keep_id,
+         (array_agg(r.prejuizo) FILTER (WHERE r.prejuizo IS NOT NULL))[1]            AS m_prejuizo,
+         (array_agg(r.note)     FILTER (WHERE r.note IS NOT NULL AND r.note <> ''))[1] AS m_note,
+         bool_or(COALESCE(r.abertura_chamado, false))                               AS m_abertura
+    FROM _v59_dup d JOIN returns r ON r.id = d.dup_id
+   GROUP BY d.keep_id
 )
 UPDATE returns r SET
-  prejuizo         = COALESCE(r.prejuizo, g.m_prejuizo),
-  note             = COALESCE(NULLIF(r.note, ''), g.m_note),
-  abertura_chamado = COALESCE(r.abertura_chamado, false) OR g.m_abertura
-FROM grp g
-WHERE r.id = g.keep_id;
+  prejuizo         = COALESCE(r.prejuizo, m.m_prejuizo),
+  note             = COALESCE(NULLIF(r.note, ''), m.m_note),
+  abertura_chamado = COALESCE(r.abertura_chamado, false) OR m.m_abertura
+FROM m
+WHERE r.id = m.keep_id;
 
-WITH grp AS (
-  SELECT claim_id,
-         (array_agg(id ORDER BY COALESCE(updated_at, date) DESC NULLS LAST, id DESC))[1] AS keep_id
-  FROM returns
-  WHERE claim_id IS NOT NULL
-  GROUP BY claim_id
-  HAVING count(*) > 1
-)
-DELETE FROM returns r
-USING grp g
-WHERE r.claim_id = g.claim_id AND r.id <> g.keep_id;
+DO $$
+BEGIN
+  IF to_regclass('public.return_videos') IS NOT NULL THEN
+    UPDATE return_videos v SET return_id = d.keep_id FROM _v59_dup d WHERE v.return_id = d.dup_id;
+  END IF;
+END $$;
+
+DELETE FROM returns r USING _v59_dup d WHERE r.id = d.dup_id;
+DROP TABLE _v59_dup;
 
 -- 4. Índice UNIQUE parcial: uma reclamação, uma linha. Parcial (WHERE claim_id
 --    IS NOT NULL) pra não bloquear devoluções antigas sem claim_id resolvido.

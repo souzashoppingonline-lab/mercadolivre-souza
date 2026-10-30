@@ -241,6 +241,51 @@ async function montarPainel() {
   for (let i = 1; i <= 30; i++) ocorr[DOW[new Date(Date.now() - i * 86400000).toLocaleDateString('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' })]]++;
   const porDia = [1, 2, 3, 4, 5, 6, 7].map(dw => { const xs = semHora.filter(r => r.dow === dw); const p = xs.reduce((a, r) => a + r.pedidos, 0), f = xs.reduce((a, r) => a + Number(r.fat), 0); return { dow: dw, pedidos_media: ocorr[dw] ? p / ocorr[dw] : 0, fat_media: ocorr[dw] ? f / ocorr[dw] : 0 }; });
   const porHora30 = Array.from({ length: 24 }, (_, h) => semHora.filter(r => r.h === h).reduce((a, r) => a + r.pedidos, 0));
+  // ── v137: hoje × mesmo dia da semana passada, Shopee atenção, anúncios com nota baixa ──
+  const [{ rows: semPassada }, { rows: chatShopee }, { rows: violShopee }, { rows: notaBaixa }] = await Promise.all([
+    // Hora a hora: hoje × o mesmo dia 7 dias atrás (dia inteiro; a tela compara até a mesma hora).
+    pool.query(
+      `SELECT EXTRACT(HOUR FROM o.date_created AT TIME ZONE 'America/Sao_Paulo')::int AS h,
+              COUNT(*) FILTER (WHERE o.date_created >= ${HOJE})::int AS hoje,
+              COUNT(*) FILTER (WHERE o.date_created < ${HOJE})::int AS sem,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created >= ${HOJE}), 0) AS fat_hoje,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created < ${HOJE}), 0) AS fat_sem
+         FROM orders o
+        WHERE (o.date_created >= ${HOJE} OR (o.date_created >= ${HOJE} - interval '7 days' AND o.date_created < ${HOJE} - interval '6 days'))
+          AND o.status != 'cancelled' AND ${SEM_AMAZON}
+        GROUP BY 1`),
+    // Chat Shopee não lido. O sync (marketplaceEventWorker, 10 min) só traz as NÃO lidas e não zera
+    // as que foram lidas no app — então só conta as que o último sync confirmou (updated_at recente).
+    pool.query(
+      `SELECT c.buyer_name, c.unread_count, c.last_message, c.last_message_time, s.nickname AS loja
+         FROM shopee_chat c LEFT JOIN stores s ON s.id = c.store_id
+        WHERE c.unread_count > 0 AND c.updated_at > now() - interval '25 minutes'
+        ORDER BY c.last_message_time ASC NULLS LAST`),
+    // Anúncios Shopee banidos por violação (sync a cada 6h; quem foi reativado sai sozinho).
+    pool.query(
+      `SELECT v.title, s.nickname AS loja, v.updated_at FROM shopee_item_violations v LEFT JOIN stores s ON s.id = v.store_id
+        ORDER BY v.updated_at DESC`),
+    // Nota de qualidade (SEO Score, 04:30) — os piores entre os anúncios ML ativos que têm visita em 30 dias.
+    pool.query(
+      `SELECT q.item_id, i.title AS titulo, st.nickname AS loja, q.score, q.pictures_count, q.has_video, q.title_length,
+              q.description_word_count, q.has_gtin, q.has_brand, q.has_model, q.required_attrs_missing, q.visits_30d, q.sales_30d,
+              (SELECT ROUND(AVG(q2.score), 1) FROM item_seo_score q2 JOIN items i2 ON i2.ml_id = q2.item_id WHERE i2.status = 'active') AS media
+         FROM item_seo_score q JOIN items i ON i.ml_id = q.item_id LEFT JOIN stores st ON st.id = q.store_id
+        WHERE i.status = 'active' AND COALESCE(q.visits_30d, 0) > 0
+        ORDER BY q.score ASC, q.visits_30d DESC LIMIT 5`),
+  ]);
+  const diaSemPassada = new Date(Date.now() - 7 * 86400000).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit' });
+  // O que falta em cada anúncio (só itens que dá pra corrigir no anúncio; limiares de seoScore.js).
+  const faltasSeo = q => [
+    q.pictures_count < 6 && `📷 ${q.pictures_count || 0} foto(s) (ideal 6+)`,
+    q.required_attrs_missing > 0 && `📋 ${q.required_attrs_missing} atributo(s) obrigatório(s) faltando`,
+    !q.has_video && '🎬 sem vídeo/clip',
+    q.title_length < 45 && `✏️ título curto (${q.title_length || 0}/60)`,
+    q.description_word_count < 100 && `📄 descrição curta (${q.description_word_count || 0} palavras)`,
+    !q.has_gtin && '🔢 sem GTIN',
+    !q.has_brand && '🏷️ sem marca',
+  ].filter(Boolean);
+
   // ── v134: estado do servidor (mesmas métricas/limites da Saúde do Sistema, health.js) ──
   let servidor = null;
   try { const hl = require('../health'); const m = hl.serverMetrics(); servidor = { cpu: m.cpu.load_pct, cores: m.cpu.cores, mem: m.mem.used_pct, mem_total: m.mem.total, disco: m.disk ? m.disk.used_pct : null, disco_livre: m.disk ? m.disk.free : null, disco_total: m.disk ? m.disk.total : null, uptime_s: m.uptime_server_s, limite_disco: hl.DISK_MAX_PCT, limite_mem: hl.MEM_MAX_PCT }; }
@@ -308,6 +353,13 @@ async function montarPainel() {
       reputacao: reput.map(r => ({ loja: r.loja, level_id: r.level_id, power: r.power_seller_status, reclamacoes: r.claims_pct != null ? Number(r.claims_pct) : null, atrasos: r.delayed_pct != null ? Number(r.delayed_pct) : null, cancelamentos: r.cancellations_pct != null ? Number(r.cancellations_pct) : null, em: r.collected_at })),
       recorrentes: recorr[0],
       melhor: { por_dia: porDia, por_hora: porHora30 },
+      semana_passada: { dia: diaSemPassada,
+        por_hora: Array.from({ length: 24 }, (_, h) => { const x = semPassada.find(r => r.h === h); return { h, hoje: x ? x.hoje : 0, sem: x ? x.sem : 0, fat_hoje: x ? Number(x.fat_hoje) : 0, fat_sem: x ? Number(x.fat_sem) : 0 }; }) },
+      shopee: { chats: chatShopee.length, mensagens: chatShopee.reduce((a, c) => a + Number(c.unread_count || 0), 0),
+        chats_lista: chatShopee.slice(0, 4).map(c => ({ comprador: c.buyer_name, loja: c.loja, nao_lidas: Number(c.unread_count || 0), texto: c.last_message, em: c.last_message_time ? new Date(Number(c.last_message_time) / 1e6).toISOString() : null })),
+        violacoes: violShopee.length, violacoes_lista: violShopee.slice(0, 3).map(v => ({ titulo: v.title, loja: v.loja })) },
+      nota_baixa: { media: notaBaixa[0] ? Number(notaBaixa[0].media) : null,
+        itens: notaBaixa.map(q => ({ item_id: q.item_id, titulo: q.titulo, loja: q.loja, nota: Number(q.score), visitas30: q.visits_30d, vendas30: q.sales_30d, faltas: faltasSeo(q).slice(0, 3) })) },
     },
     ia,
   };

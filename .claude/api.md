@@ -299,7 +299,7 @@ Página só **analisa/recomenda** — nenhuma destas rotas altera preço no Merc
 ## Tela Telegram (v120, `routes/telegramTela.js`)
 | Rota | Descrição |
 |---|---|
-| `GET /api/telegram-tela?limit=150` | últimas `limit` (máx 500) mensagens de `telegram_mensagens` em ordem crescente: `{ mensagens: [{ id, topico, texto, html, direcao, autor, criado_em }], hoje }` (`hoje` = quantas desde 00h de SP). Com `?depois_id=N` → só as de id > N (a tela pergunta a cada 15s e quando chega o WS `telegram_mensagem`) |
+| `GET /api/telegram-tela?limit=150` | últimas `limit` (máx 500) mensagens de `telegram_mensagens` em ordem crescente: `{ mensagens: [{ id, topico, texto, html, direcao, autor, criado_em }], hoje }` (`hoje` = quantas desde 00h de SP). Com `?depois_id=N` → só as de id > N (a tela pergunta a cada 15s e quando chega o WS `telegram_mensagem`) v127: não devolve os tópicos `tg_pagamentos` e `tg_dividas_lembrete` (nem na contagem `hoje`) — ficam só no Telegram. |
 | `GET /api/telegram-tela/link-tv` | `{ token }` do link da TV (`app_config telegram_tela_token`, 32 hex; criado no 1º uso) |
 | `POST /api/telegram-tela/link-tv/novo` | gera token novo — o link antigo da TV para de funcionar |
 | `GET /api/publico/telegram-tela?token=…` | **sem login** (prefixo `/api/publico` liberado no `staffAuth`): mesmo retorno do `GET /api/telegram-tela` (aceita `depois_id`/`limit`). Token errado/ausente → 403 (comparação `timingSafeEqual`) |

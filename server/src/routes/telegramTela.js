@@ -105,7 +105,7 @@ async function montarPainel() {
     redis.get('health:hb:worker').catch(() => null), // heartbeat do worker (health.js)
   ]);
   // ── Carrossel (v129): mais vendidos hoje, vendas por hora, estoque em risco ──
-  const [{ rows: topHoje }, { rows: porHora }, { rows: estoqueRisco }] = await Promise.all([
+  const [{ rows: topHoje }, { rows: porHora }, { rows: estoqueRisco }, { rows: topSemana }, { rows: promoMl }, { rows: promoShopee }, { rows: pertoMarco }] = await Promise.all([
     pool.query(
       `SELECT o.item_id, MAX(COALESCE(i.title, o.title)) AS titulo, MAX(i.thumbnail) AS thumb, MAX(COALESCE(s.nickname, '')) AS loja,
               COUNT(*)::int AS pedidos, COALESCE(SUM(o.quantity), 0)::int AS unidades, COALESCE(SUM(o.total_amount), 0) AS fat
@@ -132,7 +132,48 @@ async function montarPainel() {
         WHERE i.status = 'active' AND i.available_quantity <= 5
         GROUP BY i.ml_id, i.title, i.available_quantity, s.nickname
         ORDER BY i.available_quantity ASC, vendas7 DESC LIMIT 6`),
+    // v131 — Mais vendidos da semana (7 dias até agora) × 7 dias anteriores.
+    pool.query(
+      `SELECT o.item_id, MAX(COALESCE(i.title, o.title)) AS titulo, MAX(i.thumbnail) AS thumb, MAX(COALESCE(s.nickname, '')) AS loja,
+              COUNT(*) FILTER (WHERE o.date_created >= now() - interval '7 days')::int AS pedidos,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created >= now() - interval '7 days'), 0) AS fat,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created < now() - interval '7 days'), 0) AS fat_ant
+         FROM orders o LEFT JOIN items i ON i.ml_id = o.item_id LEFT JOIN stores s ON s.id = o.store_id
+        WHERE o.date_created >= now() - interval '14 days' AND o.status != 'cancelled'
+          AND o.marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')
+        GROUP BY o.item_id HAVING SUM(o.total_amount) FILTER (WHERE o.date_created >= now() - interval '7 days') > 0
+        ORDER BY fat DESC LIMIT 5`),
+    // v131 — Promoções ML ativas: último status de cada oferta (tabela promotions é histórico).
+    // Data de fim: só se o ML mandou no payload da oferta (vários formatos possíveis).
+    pool.query(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (p.offer_id) p.offer_id, p.item_id, COALESCE(p.item_title, i.title) AS titulo, p.status, s.nickname AS loja,
+                p.promo_price, p.discount_pct,
+                COALESCE(p.raw_data->>'end_date', p.raw_data->>'finish_date', p.raw_data->'offers'->0->>'end_date', p.raw_data->'offers'->0->>'finish_date') AS fim
+           FROM promotions p LEFT JOIN items i ON i.ml_id = p.item_id LEFT JOIN stores s ON s.id = p.store_id
+          WHERE p.changed_at >= now() - interval '90 days'
+          ORDER BY p.offer_id, p.changed_at DESC) x
+        WHERE status IN ('active', 'started')`),
+    pool.query(
+      `SELECT sp.name, sp.desconto, sp.end_time, s.nickname AS loja FROM shopee_promotions sp LEFT JOIN stores s ON s.id = sp.store_id
+        WHERE sp.status = 'ongoing' ORDER BY sp.end_time`),
+    // v131 — Rankeamento: anúncios a 1 ou 2 vendas do próximo marco.
+    pool.query(
+      `SELECT ra.id, ra.ml_id, COALESCE(i.title, ra.title) AS titulo, ra.fase, ra.sales_count, COALESCE(ra.milestone_every, 5) AS every,
+              COALESCE(ra.milestone_every, 5) - (ra.sales_count % COALESCE(ra.milestone_every, 5)) AS faltam
+         FROM ranking_ads ra LEFT JOIN items i ON i.ml_id = ra.ml_id
+        WHERE ra.active = true AND ra.sales_count > 0
+          AND COALESCE(ra.milestone_every, 5) - (ra.sales_count % COALESCE(ra.milestone_every, 5)) <= 2
+        ORDER BY faltam, ra.last_sale_at DESC NULLS LAST LIMIT 6`),
   ]);
+  // Promoções vencendo hoje ou amanhã (fim do dia de amanhã, SP).
+  const limiteAmanha = (() => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })); d.setDate(d.getDate() + 1); d.setHours(23, 59, 59, 999); return Date.now() + (d - new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))); })();
+  const vencendo = [
+    ...promoMl.filter(p => p.fim && !isNaN(Date.parse(p.fim)) && Date.parse(p.fim) <= limiteAmanha).map(p => ({ origem: 'ML', titulo: p.titulo, loja: p.loja, fim: new Date(p.fim).toISOString() })),
+    ...promoShopee.filter(p => p.end_time && Number(p.end_time) * 1000 <= limiteAmanha).map(p => ({ origem: 'Shopee', titulo: p.name, loja: p.loja, fim: new Date(Number(p.end_time) * 1000).toISOString(), desconto: p.desconto })),
+  ].sort((a, b) => a.fim.localeCompare(b.fim)).slice(0, 6);
+  let frase = null;
+  try { frase = await require('../fraseDoDia').obterFraseDoDia(); } catch (e) { console.warn('[telegram-tela/painel] frase do dia:', e.message); }
   const placarBb = { ganhando: 0, compartilhando: 0, perdendo: 0 };
   const perdendoLista = [];
   bb.forEach(c => {
@@ -173,6 +214,11 @@ async function montarPainel() {
       por_hora: Array.from({ length: 24 }, (_, h) => { const x = porHora.find(r => r.h === h); return { h, hoje: x ? x.hoje : 0, ontem: x ? x.ontem : 0 }; }),
       estoque_risco: estoqueRisco,
       buybox_perdendo: perdendoLista.slice(0, 5),
+      top_semana: topSemana.map(t => ({ item_id: t.item_id, titulo: t.titulo, thumb: t.thumb, loja: t.loja, pedidos: t.pedidos, fat: Number(t.fat), fat_ant: Number(t.fat_ant) })),
+      promocoes: { ml_ativas: promoMl.length, shopee_ativas: promoShopee.length, vencendo,
+        recentes: promoMl.slice().sort((a, b) => Number(b.discount_pct || 0) - Number(a.discount_pct || 0)).slice(0, 4).map(p => ({ titulo: p.titulo, loja: p.loja, preco: Number(p.promo_price) || null, desconto: Number(p.discount_pct) || null })) },
+      perto_marco: pertoMarco.map(r => ({ titulo: r.titulo, fase: r.fase, vendas: r.sales_count, every: r.every, faltam: Number(r.faltam), marco: r.sales_count + Number(r.faltam) })),
+      frase,
     },
     ia,
   };

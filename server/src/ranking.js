@@ -151,6 +151,19 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
   return { fase: ad.fase, count, title: ad.title, ml_id: ad.ml_id, faltam, every: every0, recuperou: primeiraDaRecuperacao, dias_parado: diasParado, marco: noAvisoDeVenda ? marco : null };
 }
 
+// Sugestão de estágio pra anúncio que vendeu e NÃO está no Rankeamento (v128,
+// pedido do usuário: "se não tiver, informa pra colocar no estágio adequado").
+// PURO (testado em test/rankingSugestao.test.js). Mesmos critérios do resto do
+// módulo: catálogo → Buy Box; ≥ 10 vendas em 30d (mesmo corte do "sugerir
+// ranqueado" do card) → Ranqueado (defender); caiu ≥ 60% vs 30d anteriores
+// (com ≥ 5 antes) → Recuperação; senão → Em rankeamento (ganhar tração).
+function sugerirEstagio({ vendas30 = 0, vendas30Ant = 0, catalogo = false }) {
+  if (catalogo) return { fase: 'catalogo', motivo: 'anúncio de catálogo — acompanhar o Buy Box' };
+  if (vendas30Ant >= 5 && vendas30 <= vendas30Ant * 0.4) return { fase: 'recuperacao', motivo: `vendas caíram de ${vendas30Ant} para ${vendas30} (30 dias vs 30 anteriores)` };
+  if (vendas30 >= 10) return { fase: 'ranqueado', motivo: `${vendas30} vendas nos últimos 30 dias — já tem tração, é defender a posição` };
+  return { fase: 'rankeando', motivo: `${vendas30} venda(s) nos últimos 30 dias — ainda ganhando tração` };
+}
+
 // Bloco de rankeamento que entra no "🛒 Nova venda!" (v126) — 1 por anúncio
 // em rankeamento do pedido. Mesmo conteúdo da antiga mensagem separada.
 function blocoVendaRankeamento(r, { varios = false } = {}) {
@@ -506,4 +519,4 @@ async function buscarFasePorItemIds(itemIds) {
   return map;
 }
 
-module.exports = { getTracked, onSale, blocoVendaRankeamento, faseLabel, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds, onCatalogCompetitionUpdate };
+module.exports = { getTracked, onSale, blocoVendaRankeamento, sugerirEstagio, faseLabel, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds, onCatalogCompetitionUpdate };

@@ -128,4 +128,27 @@ async function checkVendaForte({ itemId, title, unidades24h, storeId, storeName,
 // vencimento por Telegram/e-mail (checkShopeeCampanhasVencendo, worker.js)
 // nunca dependeu daqui e continua funcionando normal. Ver task-engine.md.
 
-module.exports = { checkStock, checkQuality, checkVendaForte, createTaskIfNotExists };
+// Regra 6 (v128, ML) — anúncio vendeu e NÃO está no Rankeamento: cartão
+// "colocar no Rankeamento" com o estágio sugerido (ranking.sugerirEstagio).
+// Pedido do usuário. Dedup padrão (rule_key+item_id): 1 cartão por anúncio —
+// vendas seguintes só atualizam metadata/updated_at; Excluído libera recriar.
+async function checkForaDoRankeamento({ itemId, title, storeId, storeName, faseNome, motivo, link }) {
+  try {
+    return await createTaskIfNotExists({
+      ruleKey: 'colocar_no_rankeamento',
+      itemId,
+      title: `Colocar no Rankeamento (${faseNome}): ${title || itemId}`,
+      description: `Anúncio vendeu e não está no Rankeamento. Estágio sugerido: ${faseNome} — ${motivo}. Adicionar em Rankeamento → "${itemId}".`,
+      priority: 'media',
+      storeId,
+      source: 'mercado_livre',
+      marketplaceCode: 'ML',
+      metadata: { sku: itemId, titulo: title, loja: storeName, marketplace: 'Mercado Livre', estagio_sugerido: faseNome, motivo, link },
+    });
+  } catch (e) {
+    console.warn(`[task-engine] checkForaDoRankeamento falhou para ${itemId}: ${e.message}`);
+    return null;
+  }
+}
+
+module.exports = { checkStock, checkQuality, checkVendaForte, checkForaDoRankeamento, createTaskIfNotExists };

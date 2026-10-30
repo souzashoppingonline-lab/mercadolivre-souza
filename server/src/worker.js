@@ -384,7 +384,46 @@ async function handleOrder({ resource, storeId, silent = false }) {
       // venda!" + bloco de rankeamento), forçada como a antiga mensagem do
       // rankeamento era (não pode se perder no silêncio/intervalo). Venda
       // comum continua no tgNotify normal.
-      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rankLinhas.map(r => '\n' + ranking.blocoVendaRankeamento(r, { varios: rankLinhas.length > 1 })).join('')}`;
+      // v128: sempre diz a situação no rankeamento — em rankeamento (bloco
+      // completo), pausado (tem card mas o acompanhamento está pausado, então
+      // a venda não conta) ou "não está no rankeamento".
+      let rodapeRank = rankLinhas.map(r => '\n' + ranking.blocoVendaRankeamento(r, { varios: rankLinhas.length > 1 })).join('');
+      if (!rankLinhas.length) {
+        let fasePausada = null;
+        try {
+          const mapa = await ranking.buscarFasePorItemIds((order.order_items || []).map(oi => oi.item?.id).filter(Boolean));
+          fasePausada = [...mapa.values()][0]?.fase || null;
+        } catch (e) { console.warn('[ranking] fase do aviso de venda:', e.message); }
+        if (fasePausada) {
+          rodapeRank = `\n\n📈 <b>RANKEAMENTO</b> · ${ranking.faseLabel(fasePausada)} <i>(acompanhamento pausado — venda não contada)</i>`;
+        } else {
+          // Não está: sugere o estágio adequado (ranking.sugerirEstagio) com base
+          // nas vendas 30d × 30d anteriores e se é anúncio de catálogo.
+          rodapeRank = '\n\n📈 Rankeamento: ➖ <i>não está no rankeamento</i>';
+          const mlId0 = item0.item?.id;
+          if (mlId0) {
+            try {
+              const { rows: sg } = await pool.query(
+                `SELECT COUNT(*) FILTER (WHERE date_created >= now() - interval '30 days')::int AS v30,
+                        COUNT(*) FILTER (WHERE date_created < now() - interval '30 days')::int AS v30ant,
+                        (EXISTS (SELECT 1 FROM catalog_competition WHERE item_id = $1)
+                          OR EXISTS (SELECT 1 FROM item_seo_score WHERE item_id = $1 AND catalog_listing = true)) AS catalogo
+                   FROM orders WHERE item_id = $1 AND status != 'cancelled' AND date_created >= now() - interval '60 days'`, [mlId0]);
+              const sug = ranking.sugerirEstagio({ vendas30: sg[0].v30, vendas30Ant: sg[0].v30ant, catalogo: sg[0].catalogo });
+              rodapeRank += `\n💡 <b>Sugestão:</b> colocar em <b>${ranking.faseLabel(sug.fase)}</b> — ${sug.motivo}`
+                + `\n👉 Rankeamento → adicionar <code>${mlId0}</code>${DASH_URL ? ` · <a href="${DASH_URL}/pages/rankeamento.html">abrir</a>` : ''}`;
+              // Cartão na Agenda Trello (1 por anúncio — dedup do TaskEngine).
+              const tarefa = await taskEngine.checkForaDoRankeamento({
+                itemId: mlId0, title: item0.item?.title, storeId, storeName: loja,
+                faseNome: ranking.faseLabel(sug.fase), motivo: sug.motivo, link: item0.item?.permalink || null,
+              });
+              if (tarefa?.created) await publish('task_created', { id: tarefa.id, rule_key: 'colocar_no_rankeamento', title: 'Colocar no Rankeamento' });
+              rodapeRank += tarefa ? `\n📋 ${tarefa.created ? 'Cartão criado' : 'Cartão já está'} na Agenda Trello` : '';
+            } catch (e) { console.warn('[ranking] sugestão de estágio:', e.message); }
+          }
+        }
+      }
+      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
       if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda);
       else await tgNotify('tg_vendas', textoVenda);
       // Alerta em tempo real na tela do dashboard (som + push) — consumido por

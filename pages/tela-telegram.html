@@ -65,7 +65,7 @@
     .corpo { flex:1; display:flex; min-height:0; }
     .corpo #chat { min-width:0; }
     /* Letra do painel independe do --fs do modo TV (senão estoura a altura). */
-    #painel { font-size:clamp(13px, .95vw, 23px); width:clamp(380px, 29vw, 620px); flex:none; border-left:1px solid #0b121a; background:#111c28; padding:14px 16px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
+    #painel { font-size:clamp(13px, min(1.05vw, 2vh), 24px); width:clamp(400px, 40vw, 860px); flex:none; border-left:1px solid #0b121a; background:#111c28; padding:14px 16px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
     #painel[hidden] { display:none; }
     .blk { background:var(--top); border:1px solid #22303f; border-radius:16px; padding:12px 14px; }
     .blk h3 { margin:0 0 8px; font-size:.86em; letter-spacing:.4px; color:#9fb4c7; text-transform:uppercase; display:flex; align-items:center; gap:8px; }
@@ -81,13 +81,32 @@
     .lj .l .n { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .lj .l .q { color:#9fb4c7; white-space:nowrap; } .lj .l .f { font-weight:800; min-width:5.5em; text-align:right; white-space:nowrap; }
     .lj .bar { height:5px; border-radius:4px; background:#22303f; overflow:hidden; } .lj .bar i { display:block; height:100%; background:linear-gradient(90deg,#5eb5f7,#2b5278); }
-    .est { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:7px; }
-    .est div { background:#1c2a39; border-radius:12px; padding:7px 3px; text-align:center; }
-    .est .i { font-size:1.3em; } .est .v { font-size:1.5em; font-weight:900; } .est .l { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.62em; color:var(--muted); font-weight:700; text-transform:uppercase; }
-    .bb { display:flex; gap:7px; margin-top:8px; } .bb div { flex:1; border-radius:12px; padding:6px; text-align:center; font-weight:800; font-size:.84em; }
-    .bb b { display:block; font-size:1.5em; } .bb .g { background:rgba(63,185,80,.14); color:#3fb950; } .bb .e { background:rgba(240,136,62,.14); color:#f0883e; } .bb .p { background:rgba(248,81,73,.14); color:#f85149; }
-    .bb-sub { font-size:.7em; color:var(--muted); margin-top:5px; text-align:center; }
+    .est { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+    .est div { background:#1c2a39; border-radius:10px; padding:4px 2px; text-align:center; }
+    .est .i { font-size:.95em; } .est .v { font-size:1.15em; font-weight:900; line-height:1.15; } .est .l { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.62em; color:var(--muted); font-weight:700; text-transform:uppercase; }
+    .bb { display:flex; gap:6px; margin-top:6px; } .bb div { flex:1; border-radius:10px; padding:4px 6px; text-align:center; font-weight:800; font-size:.78em; }
+    .bb b { font-size:1.25em; margin-right:4px; } .bb .g { background:rgba(63,185,80,.14); color:#3fb950; } .bb .e { background:rgba(240,136,62,.14); color:#f0883e; } .bb .p { background:rgba(248,81,73,.14); color:#f85149; }
+    .bb-sub { display:none; }
+    /* Carrossel (v129) — gira a cada 20s */
+    .car { flex:1; min-height:0; display:flex; flex-direction:column; }
+    #carCorpo { flex:1; min-height:0; overflow:hidden; animation:carEntra .5s ease; }
+    @keyframes carEntra { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:none; } }
+    .car-dots { display:flex; justify-content:center; gap:6px; margin-top:6px; }
+    .car-dots i { width:7px; height:7px; border-radius:50%; background:#2a3a4b; } .car-dots i.on { background:#5eb5f7; }
+    .tp { display:flex; align-items:center; gap:9px; padding:6px 0; border-top:1px solid #22303f; } .tp:first-child { border-top:none; }
+    .tp .pos { width:1.6em; text-align:center; font-weight:900; color:#9fb4c7; flex:none; }
+    .tp img { width:2.3em; height:2.3em; border-radius:8px; object-fit:cover; background:#fff; flex:none; }
+    .tp .t { flex:1; min-width:0; font-size:.86em; } .tp .t b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:700; } .tp .t span { color:#9fb4c7; font-size:.92em; }
+    .tp .v { font-weight:900; white-space:nowrap; font-size:.9em; text-align:right; } .tp .v small { display:block; color:#9fb4c7; font-weight:600; font-size:.82em; }
+    .hr { display:flex; align-items:flex-end; gap:3px; height:9em; padding-top:6px; }
+    .hr div { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; position:relative; }
+    .hr .b { width:100%; border-radius:3px 3px 0 0; background:linear-gradient(180deg,#5eb5f7,#2b5278); min-height:1px; }
+    .hr .o { position:absolute; left:15%; right:15%; border-top:2px dashed rgba(240,180,41,.75); }
+    .hr .agora .b { background:linear-gradient(180deg,#f2c94c,#b8860b); }
+    .hr-l { display:flex; gap:3px; font-size:.62em; color:var(--muted); margin-top:3px; } .hr-l span { flex:1; text-align:center; }
+    .hr-leg { font-size:.74em; color:#9fb4c7; margin-top:6px; }
     .ia { display:flex; gap:10px; padding:7px 0; border-top:1px solid #22303f; } .ia:first-of-type { border-top:none; }
+    .tp .ia { padding:0; border:none; }
     .ia .p { flex:none; width:2.4em; height:2.4em; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:900; color:#fff; }
     .ia .t { font-size:.84em; line-height:1.35; min-width:0; } .ia .t b { display:block; font-size:1.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ia .t span { color:#9fb4c7; }
     .pn-vazio { color:var(--muted); font-size:.82em; }
@@ -128,7 +147,7 @@
   <aside id="painel" hidden>
     <div class="blk"><h3>📊 Placar de hoje <small id="pnPlacarSub"></small></h3><div id="pnPlacar"></div></div>
     <div class="blk"><h3>🚦 Rankeamento hoje <small>vendas por estágio</small></h3><div id="pnEstagios"></div></div>
-    <div class="blk"><h3>🧠 IA Estrategista <small>3 ações mais urgentes</small></h3><div id="pnIa"></div></div>
+    <div class="blk car"><h3 id="carTit">🔥 Mais vendidos hoje</h3><div id="carCorpo"></div><div class="car-dots" id="carDots"></div></div>
   </aside>
 </div>
 <div class="toast" id="toast"></div>
@@ -331,10 +350,10 @@ async function carregarPainel() {
       <div class="lj">${p.lojas.length ? p.lojas.slice(0, 4).map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') + (p.lojas.length > 4 ? `<div class="pn-vazio" style="margin-top:4px">+${p.lojas.length - 4} empresa(s)</div>` : '') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;
     renderSaude(d.saude);
     const bb = d.buybox;
-    document.getElementById('pnEstagios').innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="i">${i}</div><div class="v">${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
+    document.getElementById('pnEstagios').innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="v"><span class="i">${i}</span> ${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
       <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
       <div class="bb-sub">Placar de Buy Box dos anúncios de catálogo</div>`;
-    document.getElementById('pnIa').innerHTML = d.ia.length ? d.ia.map(x => `<div class="ia"><div class="p" style="background:${corNota(x.nota)}">${x.nota}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.ico)} ${esc(x.problema)}</span>${x.acao ? `<br>👉 ${esc(x.acao)}` : ''}</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhuma ação urgente agora.</div>';
+    CAR_DADOS = d; renderCarrossel();
     document.getElementById('painel').hidden = false;
   } catch (e) { console.warn('[tela-telegram] painel', e.message); }
 }
@@ -360,6 +379,33 @@ function renderSaude(sd) {
   }
   document.getElementById('saude').innerHTML = c.join('');
 }
+// ── Carrossel (v129): gira a cada 20s entre telas importantes ──
+let CAR_DADOS = null, carIdx = 0;
+const corta = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+const SLIDES = [
+  { tit: '🔥 Mais vendidos hoje', html: d => d.carrossel.top_hoje.length ? d.carrossel.top_hoje.map((t, i) => `<div class="tp"><div class="pos">${['🥇', '🥈', '🥉'][i] || i + 1}</div>${t.thumb ? `<img src="${esc(t.thumb)}" alt="">` : ''}<div class="t"><b>${esc(t.titulo)}</b><span>${esc(t.loja || '')}</span></div><div class="v">${R$(t.fat)}<small>${t.pedidos} ped. · ${t.unidades} un</small></div></div>`).join('') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>' },
+  { tit: '🧠 IA Estrategista — ações urgentes', html: d => d.ia.length ? d.ia.map(x => `<div class="tp"><div class="ia"><div class="p" style="background:${corNota(x.nota)}">${x.nota}</div></div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.ico)} ${esc(corta(x.problema, 70))}</span>${x.acao ? `<br><span>👉 ${esc(corta(x.acao, 80))}</span>` : ''}</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhuma ação urgente agora.</div>' },
+  { tit: '⏰ Vendas por hora — hoje × ontem', html: d => {
+      const ph = d.carrossel.por_hora, hAgora = Number(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }));
+      const max = Math.max(1, ...ph.map(x => Math.max(x.hoje, x.ontem)));
+      const tot = (k, ate) => ph.filter(x => x.h <= ate).reduce((s, x) => s + x[k], 0);
+      return `<div class="hr">${ph.map(x => `<div class="${x.h === hAgora ? 'agora' : ''}" title="${x.h}h: ${x.hoje} hoje / ${x.ontem} ontem"><span class="o" style="bottom:${(x.ontem / max) * 100}%"></span><span class="b" style="height:${(x.hoje / max) * 100}%"></span></div>`).join('')}</div>
+        <div class="hr-l">${ph.map(x => `<span>${x.h % 3 === 0 ? x.h + 'h' : ''}</span>`).join('')}</div>
+        <div class="hr-leg">▮ hoje (dourado = hora atual) · ┅ ontem · até agora: <b>${tot('hoje', hAgora)}</b> hoje × <b>${tot('ontem', hAgora)}</b> ontem</div>`; } },
+  { tit: '📦 Estoque em risco', html: d => d.carrossel.estoque_risco.length ? d.carrossel.estoque_risco.map(x => `<div class="tp"><div class="pos" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${Number(x.estoque) <= 0 ? '⛔' : '⚠️'}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${x.vendas7} venda(s) em 7 dias</span></div><div class="v" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${x.estoque} un</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio vendendo com estoque baixo.</div>' },
+  { tit: '🔴 Buy Box — perdendo (mais perto de ganhar)', html: d => d.carrossel.buybox_perdendo.length ? d.carrossel.buybox_perdendo.map(x => `<div class="tp"><div class="pos">🔴</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${esc(x.item_id)}</span></div><div class="v">${R$(x.vencedor)}<small>seu ${R$(x.seu)}</small></div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio perdendo o Buy Box.</div>' },
+];
+function renderCarrossel() {
+  if (!CAR_DADOS || !CAR_DADOS.carrossel) return;
+  const sl = SLIDES[carIdx % SLIDES.length];
+  document.getElementById('carTit').innerHTML = `${sl.tit}<small>${carIdx % SLIDES.length + 1}/${SLIDES.length}</small>`;
+  const corpo = document.getElementById('carCorpo');
+  corpo.style.animation = 'none'; void corpo.offsetWidth; corpo.style.animation = '';
+  corpo.innerHTML = sl.html(CAR_DADOS);
+  document.getElementById('carDots').innerHTML = SLIDES.map((_, i) => `<i class="${i === carIdx % SLIDES.length ? 'on' : ''}"></i>`).join('');
+}
+setInterval(() => { carIdx = (carIdx + 1) % SLIDES.length; renderCarrossel(); }, 20000);
+
 function painelDepoisDeMensagem() { clearTimeout(painelT); painelT = setTimeout(carregarPainel, 3000); }
 setInterval(carregarPainel, 60000);
 carregarPainel();

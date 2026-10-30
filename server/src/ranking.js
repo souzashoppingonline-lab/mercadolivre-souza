@@ -73,7 +73,12 @@ async function emit(ad, eventType, message, detail = {}, tgMode = 'normal') {
 // Retorna { fase, count, title } (estágio atual + nº da venda, que é
 // cumulativo e NÃO zera ao trocar de estágio) pro aviso "Nova venda!" do
 // worker; null se o anúncio não está em rankeamento ou a venda não conta.
-async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = true }) {
+// `noAvisoDeVenda` (v126, pedido do usuário: "uma mensagem só com todos os
+// dados"): quem chama (handleOrder) junta estágio/nº/marco/link no próprio
+// "🛒 Nova venda!" — então o evento 'venda' aqui vai só pra tela (sem 2ª
+// mensagem no Telegram) e o MARCO é devolvido em `marco` pra ser enviado
+// DEPOIS do "Nova venda!" (ranking.milestone), mantendo a ordem.
+async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = true, noAvisoDeVenda = false }) {
   const ad = await getTracked(mlId, true); // inclui anúncios de catálogo vinculados
   if (!ad) return;
 
@@ -95,7 +100,7 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
         WHERE ranking_ad_id = $1 AND event_type = 'venda' AND detail->>'order_id' = $2 LIMIT 1`,
       [ad.id, String(orderId)]
     );
-    if (dup.rows.length) return { fase: ad.fase, count: Number(dup.rows[0].n) || null, title: ad.title };
+    if (dup.rows.length) return { fase: ad.fase, count: Number(dup.rows[0].n) || null, title: ad.title, ml_id: ad.ml_id, every: ad.milestone_every || 5, faltam: null, marco: null };
   }
 
   // v80 — fase RECUPERAÇÃO: a 1ª venda depois da intervenção é exatamente a
@@ -136,14 +141,25 @@ async function onSale({ mlId, order, valorNum, comprador, saleDate, realtime = t
     ? `🎉 <b>DESTRAVOU! 1ª venda desde a recuperação</b>\n📦 ${ad.title || ad.ml_id}\n${diasParado != null ? `⏳ Estava <b>${diasParado} dia(s)</b> sem vender\n` : ''}💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n✅ As alterações fizeram efeito — avalie voltar pra <b>Em rankeamento</b>.\n🔗 ${linkOf(ad.ml_id)}`
     : `🏆 <b>Venda de produto em rankeamento!</b>\n📦 ${ad.title || ad.ml_id}\n🔢 Venda nº <b>${count}</b> · 📍 ${faseLabel(ad.fase)}\n💰 ${BRL(valorNum)}\n👤 ${comprador || '—'}\n🕐 ${saleDate ? fmtDT(saleDate) : fmtDT(now)}\n🎯 ${faltam === 0 ? 'Marco atingido!' : `Faltam ${faltam} p/ o próximo marco (a cada ${every0})`}\n🔗 ${linkOf(ad.ml_id)}`;
   await emit(ad, 'venda', msgVenda,
-    { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count, fase: ad.fase || 'rankeando', recuperou: primeiraDaRecuperacao || undefined }, notify);
+    { order_id: orderId || '—', valor: valorNum, comprador, sales_count: count, fase: ad.fase || 'rankeando', recuperou: primeiraDaRecuperacao || undefined },
+    noAvisoDeVenda ? 'silent' : notify);
 
   // Marco a cada N vendas — resumo de ritmo (Telegram só em tempo real).
   const every = ad.milestone_every || 5;
-  if (count > 0 && count % every === 0) {
-    await milestone({ ...ad, sales_count: count, first_sale_at: rows[0].first_sale_at }, realtime);
-  }
-  return { fase: ad.fase, count, title: ad.title };
+  const marco = count > 0 && count % every === 0 ? { ...ad, sales_count: count, first_sale_at: rows[0].first_sale_at } : null;
+  if (marco && !noAvisoDeVenda) await milestone(marco, realtime);
+  return { fase: ad.fase, count, title: ad.title, ml_id: ad.ml_id, faltam, every: every0, recuperou: primeiraDaRecuperacao, dias_parado: diasParado, marco: noAvisoDeVenda ? marco : null };
+}
+
+// Bloco de rankeamento que entra no "🛒 Nova venda!" (v126) — 1 por anúncio
+// em rankeamento do pedido. Mesmo conteúdo da antiga mensagem separada.
+function blocoVendaRankeamento(r, { varios = false } = {}) {
+  const L = [''];
+  if (r.recuperou) L.push(`🎉 <b>DESTRAVOU! 1ª venda desde a recuperação</b>${r.dias_parado != null ? ` — estava <b>${r.dias_parado} dia(s)</b> sem vender` : ''}`, '✅ As alterações fizeram efeito — avalie voltar pra <b>Em rankeamento</b>.');
+  L.push(`📈 <b>RANKEAMENTO</b> · ${faseLabel(r.fase)}${varios ? ` — ${String(r.title || '').slice(0, 45)}` : ''}`);
+  L.push(`🔢 Venda nº <b>${r.count}</b>${r.faltam == null ? '' : ` · 🎯 ${r.faltam === 0 ? '<b>Marco atingido!</b>' : `faltam ${r.faltam} p/ o próximo marco (a cada ${r.every})`}`}`);
+  L.push(`🔗 ${linkOf(r.ml_id)}`);
+  return L.join('\n');
 }
 
 // Marco (a cada N vendas): total, tempo desde a 1ª venda, ritmo/dia e faturamento
@@ -490,4 +506,4 @@ async function buscarFasePorItemIds(itemIds) {
   return map;
 }
 
-module.exports = { getTracked, onSale, faseLabel, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds, onCatalogCompetitionUpdate };
+module.exports = { getTracked, onSale, blocoVendaRankeamento, faseLabel, onItemChange, milestone, emit, snapshot, avancarCiclo, BRL, linkOf, buscarFasePorItemIds, onCatalogCompetitionUpdate };

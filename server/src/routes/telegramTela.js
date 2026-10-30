@@ -48,13 +48,16 @@ async function tokenTv(novo) {
 // mensagem nova). Pedidos: mesma regra do "Vendas hoje" do painel principal
 // (kpis:summary — orders, sem cancelados, ML + Shopee, sem Amazon).
 async function montarPainel() {
-  const [{ rows: tot }, { rows: lojas }, { rows: est }, { rows: bb }] = await Promise.all([
+  const redis = require('../db/redis');
+  const [{ rows: tot }, { rows: lojas }, { rows: est }, { rows: bb }, { rows: rec }, { rows: tokens }, { rows: ult }, hbWorker] = await Promise.all([
     pool.query(
       `WITH l AS (SELECT date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo' AS ini)
        SELECT COUNT(*) FILTER (WHERE o.date_created >= l.ini)::int AS pedidos_hoje,
               COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created >= l.ini), 0) AS fat_hoje,
               COUNT(*) FILTER (WHERE o.date_created < l.ini AND o.date_created < now() - interval '1 day')::int AS pedidos_ontem,
-              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created < l.ini AND o.date_created < now() - interval '1 day'), 0) AS fat_ontem
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created < l.ini AND o.date_created < now() - interval '1 day'), 0) AS fat_ontem,
+              COUNT(*) FILTER (WHERE o.date_created < l.ini)::int AS pedidos_ontem_dia,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.date_created < l.ini), 0) AS fat_ontem_dia
          FROM orders o, l
         WHERE o.date_created >= l.ini - interval '1 day' AND o.status != 'cancelled'
           AND o.marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')`),
@@ -77,6 +80,23 @@ async function montarPainel() {
       `SELECT cc.item_id, cc.status, cc.winner_item_id, cc.calculated_at
          FROM catalog_competition cc LEFT JOIN items i ON i.ml_id = cc.item_id
         WHERE i.status IS NULL OR i.status = 'active'`),
+    // Recorde do mês: maior dia de faturamento ANTES de hoje (mesma regra de pedidos).
+    pool.query(
+      `SELECT (o.date_created AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia, SUM(o.total_amount) AS fat
+         FROM orders o
+        WHERE o.date_created >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+          AND o.date_created < date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+          AND o.status != 'cancelled'
+          AND o.marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 1`),
+    // Saúde: tokens das lojas do MERCADO LIVRE (o tokenRefreshLoop do worker renova antes de vencer —
+    // vencido aqui = refresh falhou / reconexão necessária). Shopee/TikTok renovam sob demanda: ficam de fora (alarme falso).
+    pool.query(`SELECT nickname, token_expires_at FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML') ORDER BY nickname`),
+    pool.query(
+      `SELECT MAX(date_created) AS ultima FROM orders
+        WHERE status != 'cancelled' AND date_created > now() - interval '7 days'
+          AND marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')`),
+    redis.get('health:hb:worker').catch(() => null), // heartbeat do worker (health.js)
   ]);
   const placarBb = { ganhando: 0, compartilhando: 0, perdendo: 0 };
   bb.forEach(c => { const k = classificarBuybox({ calculado_em: c.calculated_at, winner_item_id: c.winner_item_id, item_id: c.item_id, status: c.status }).chave; if (k in placarBb) placarBb[k]++; });
@@ -91,7 +111,16 @@ async function montarPainel() {
     }));
   } catch (e) { console.warn('[telegram-tela/painel] IA Estrategista:', e.message); }
   const t = tot[0];
+  const hbIdade = hbWorker ? Math.round((Date.now() - Number(hbWorker)) / 1000) : null;
+  const vencidos = tokens.filter(k => !k.token_expires_at || new Date(k.token_expires_at).getTime() < Date.now() - 5 * 60000).map(k => k.nickname);
   return {
+    saude: {
+      worker: { ok: hbIdade != null && hbIdade < 120, idade_s: hbIdade }, // mesmo limite de health.js (HB_STALE_MS)
+      tokens: { total: tokens.length, vencidos },
+      ultima_venda: ult[0]?.ultima || null,
+    },
+    recorde: rec[0] ? { dia: rec[0].dia, fat: Number(rec[0].fat) } : null,
+    ontem: { pedidos: t.pedidos_ontem_dia, fat: Number(t.fat_ontem_dia) },
     gerado_em: new Date().toISOString(),
     placar: { pedidos: t.pedidos_hoje, fat: Number(t.fat_hoje), pedidos_ontem: t.pedidos_ontem, fat_ontem: Number(t.fat_ontem),
       lojas: lojas.map(l => ({ loja: l.loja, mkt: l.mkt, pedidos: l.pedidos, fat: Number(l.fat) })) },

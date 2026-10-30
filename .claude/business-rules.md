@@ -575,3 +575,8 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Plano**: até 6 ações, ordenadas por impacto × (1 risco baixo, 0,7 médio, 0,4 alto) — maior impacto e menor risco primeiro (regra 11).
 - **Antes × depois** de ação concluída: 14 dias antes de `executada_em` × desde então, por dia — associação temporal, não causalidade (mesma regra das Ações Recomendadas).
 
+## Tela Telegram — recorde do mês e saúde (v125)
+
+- **Recorde do mês** = maior faturamento diário do mês corrente **antes de hoje** (fuso SP), mesma regra do placar (`orders`, sem cancelados, ML + Shopee, sem Amazon). Hoje passa esse valor → "NOVO RECORDE DO MÊS". No dia 1 não há com o que comparar (nada é mostrado).
+- **Saúde**: worker ok = heartbeat < 120s (`HB_STALE_MS` de `health.js`); token vencido = loja ML com `token_expires_at` nulo ou vencido há > 5 min (o `tokenRefreshLoop` renova antes de vencer — vencido indica refresh falho/reconexão); última venda: só alerta das 8h às 22h (🟡 > 2h, 🔴 > 4h).
+

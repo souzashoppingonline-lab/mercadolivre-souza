@@ -92,6 +92,18 @@
     .ia .t { font-size:.84em; line-height:1.35; min-width:0; } .ia .t b { display:block; font-size:1.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .ia .t span { color:#9fb4c7; }
     .pn-vazio { color:var(--muted); font-size:.82em; }
     @media (max-width:1100px) { #painel { display:none !important; } }
+    /* Saúde do sistema (v125) — no topo */
+    .saude { display:flex; gap:6px; }
+    .sd { font-size:.8em; font-weight:700; padding:5px 10px; border-radius:20px; background:#1c2a39; border:1px solid #22303f; white-space:nowrap; color:#8fd19e; }
+    .sd.alerta { color:#1a1a1a; background:#f0b429; border-color:#f0b429; }
+    .sd.ruim { color:#fff; background:#b62324; border-color:#f85149; animation:pisca 1.2s infinite; }
+    @media (max-width:900px) { .saude { display:none; } }
+    /* Recorde do mês e ontem (v125) — no Placar */
+    .rec { margin-top:9px; border-radius:12px; padding:7px 11px; font-size:.84em; background:#1c2a39; display:flex; justify-content:space-between; gap:8px; }
+    .rec.novo { background:linear-gradient(90deg,#b8860b,#f2c94c); color:#1a1a1a; font-weight:900; font-size:1.1em; justify-content:center; animation:recBrilho 2s infinite; }
+    @keyframes recBrilho { 50% { filter:brightness(1.25); } }
+    .ont { margin-top:8px; display:flex; justify-content:space-between; font-size:.84em; color:#9fb4c7; border-top:1px solid #22303f; padding-top:7px; }
+    .ont b { color:var(--txt); }
     @media (max-width:640px) { .ctrls { display:none; } #relogio { font-size:16px; } .bolha { max-width:90%; } }
   </style>
 </head>
@@ -106,6 +118,7 @@
       <button id="btnLink" title="Link pra abrir na TV sem login">🔗 Link da TV</button>
       <button id="btnTv" title="Tela cheia, letra grande">📺 Modo TV</button>
     </div>
+    <div class="saude" id="saude"></div>
     <span class="live off" id="live">● AO VIVO</span>
     <span id="relogio">--:--</span>
   </div>
@@ -313,7 +326,10 @@ async function carregarPainel() {
     document.getElementById('pnPlacar').innerHTML = `<div class="pl-big">
         <div><div class="k">🛒 PEDIDOS</div><div class="v">${p.pedidos}</div><div class="s">${varTxt(p.pedidos, p.pedidos_ontem, v => v)}</div></div>
         <div><div class="k">💰 FATURAMENTO</div><div class="v">${R$(p.fat)}</div><div class="s">${varTxt(p.fat, p.fat_ontem, R$)}</div></div></div>
-      <div class="lj">${p.lojas.length ? p.lojas.map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;
+      ${recordeHtml(d.recorde, p.fat)}
+      <div class="ont"><span>📅 Ontem (dia inteiro)</span><span><b>${R$(d.ontem.fat)}</b> · ${d.ontem.pedidos} pedidos</span></div>
+      <div class="lj">${p.lojas.length ? p.lojas.slice(0, 4).map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') + (p.lojas.length > 4 ? `<div class="pn-vazio" style="margin-top:4px">+${p.lojas.length - 4} empresa(s)</div>` : '') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;
+    renderSaude(d.saude);
     const bb = d.buybox;
     document.getElementById('pnEstagios').innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="i">${i}</div><div class="v">${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
       <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
@@ -321,6 +337,28 @@ async function carregarPainel() {
     document.getElementById('pnIa').innerHTML = d.ia.length ? d.ia.map(x => `<div class="ia"><div class="p" style="background:${corNota(x.nota)}">${x.nota}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.ico)} ${esc(x.problema)}</span>${x.acao ? `<br>👉 ${esc(x.acao)}` : ''}</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhuma ação urgente agora.</div>';
     document.getElementById('painel').hidden = false;
   } catch (e) { console.warn('[tela-telegram] painel', e.message); }
+}
+// Recorde do mês: maior dia ANTES de hoje (dia 1 não tem com o que comparar → não mostra).
+function recordeHtml(rec, fatHoje) {
+  if (!rec) return '';
+  if (fatHoje > rec.fat) return '<div class="rec novo">🏆 NOVO RECORDE DO MÊS! 🏆</div>';
+  return `<div class="rec"><span>🏆 Recorde do mês: <b>${R$(rec.fat)}</b> (dia ${Number(rec.dia.slice(8, 10))})</span><span>faltam <b>${R$(rec.fat - fatHoje)}</b></span></div>`;
+}
+// Saúde: worker (heartbeat < 2 min), tokens do ML, última venda (8–22h: amarelo > 2h, vermelho > 4h).
+function renderSaude(sd) {
+  if (!sd) return;
+  const chip = (cls, txt) => `<span class="sd ${cls}">${txt}</span>`;
+  const min = s => s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`;
+  const c = [];
+  c.push(sd.worker.ok ? chip('', '🟢 Sistema') : chip('ruim', sd.worker.idade_s == null ? '🔴 Worker sem sinal' : `🔴 Worker parado há ${min(sd.worker.idade_s)}`));
+  if (sd.tokens.total) c.push(sd.tokens.vencidos.length ? chip('ruim', `🔴 Token vencido: ${esc(sd.tokens.vencidos.slice(0, 2).join(', '))}${sd.tokens.vencidos.length > 2 ? ` +${sd.tokens.vencidos.length - 2}` : ''}`) : chip('', `🟢 Tokens ${sd.tokens.total}/${sd.tokens.total}`));
+  if (sd.ultima_venda) {
+    const s = Math.max(0, Math.round((Date.now() - new Date(sd.ultima_venda).getTime()) / 1000));
+    const h = Number(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }));
+    const exp = h >= 8 && h < 22;
+    c.push(chip(exp && s > 4 * 3600 ? 'ruim' : exp && s > 2 * 3600 ? 'alerta' : '', `${exp && s > 4 * 3600 ? '🔴' : exp && s > 2 * 3600 ? '🟡' : '🟢'} Última venda há ${min(s)}`));
+  }
+  document.getElementById('saude').innerHTML = c.join('');
 }
 function painelDepoisDeMensagem() { clearTimeout(painelT); painelT = setTimeout(carregarPainel, 3000); }
 setInterval(carregarPainel, 60000);

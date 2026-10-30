@@ -87,7 +87,7 @@
     .bb { display:flex; gap:6px; margin-top:6px; } .bb div { flex:1; border-radius:10px; padding:4px 6px; text-align:center; font-weight:800; font-size:.78em; }
     .bb b { font-size:1.25em; margin-right:4px; } .bb .g { background:rgba(63,185,80,.14); color:#3fb950; } .bb .e { background:rgba(240,136,62,.14); color:#f0883e; } .bb .p { background:rgba(248,81,73,.14); color:#f85149; }
     .bb-sub { display:none; }
-    /* Carrossel (v129) — gira a cada 20s */
+    /* Carrossel (v129) — gira a cada 30s (v130) */
     .car { flex:1; min-height:0; display:flex; flex-direction:column; }
     #carCorpo { flex:1; min-height:0; overflow:hidden; animation:carEntra .5s ease; }
     @keyframes carEntra { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:none; } }
@@ -98,13 +98,20 @@
     .tp img { width:2.3em; height:2.3em; border-radius:8px; object-fit:cover; background:#fff; flex:none; }
     .tp .t { flex:1; min-width:0; font-size:.86em; } .tp .t b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:700; } .tp .t span { color:#9fb4c7; font-size:.92em; }
     .tp .v { font-weight:900; white-space:nowrap; font-size:.9em; text-align:right; } .tp .v small { display:block; color:#9fb4c7; font-weight:600; font-size:.82em; }
-    .hr { display:flex; align-items:flex-end; gap:3px; height:9em; padding-top:6px; }
-    .hr div { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; position:relative; }
-    .hr .b { width:100%; border-radius:3px 3px 0 0; background:linear-gradient(180deg,#5eb5f7,#2b5278); min-height:1px; }
-    .hr .o { position:absolute; left:15%; right:15%; border-top:2px dashed rgba(240,180,41,.75); }
-    .hr .agora .b { background:linear-gradient(180deg,#f2c94c,#b8860b); }
-    .hr-l { display:flex; gap:3px; font-size:.62em; color:var(--muted); margin-top:3px; } .hr-l span { flex:1; text-align:center; }
-    .hr-leg { font-size:.74em; color:#9fb4c7; margin-top:6px; }
+    /* Vendas por hora (v130): barras grandes lado a lado (hoje azul × ontem cinza), número em cima, ocupa o card todo */
+    .hrw { display:flex; flex-direction:column; height:100%; }
+    .hr-tot { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:.9em; }
+    .hr-tot b { font-size:1.6em; font-weight:900; } .hr-tot .h b { color:#5eb5f7; } .hr-tot .o b { color:#9aa7b4; }
+    .hr { flex:1; min-height:6em; display:flex; align-items:flex-end; gap:.35em; padding-top:1.4em; border-bottom:2px solid #2a3a4b; }
+    .hr > div { flex:1; display:flex; align-items:flex-end; justify-content:center; gap:2px; height:100%; }
+    .hr .b { position:relative; width:46%; border-radius:4px 4px 0 0; min-height:2px; }
+    .hr .b.hj { background:linear-gradient(180deg,#5eb5f7,#2b6cb0); } .hr .b.on { background:#5b6b7b; }
+    .hr .agora .b.hj { background:linear-gradient(180deg,#f2c94c,#c08a10); box-shadow:0 0 12px rgba(242,201,76,.5); }
+    .hr .b.hj em { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); font-style:normal; font-weight:900; font-size:.82em; color:#e8f2fb; margin-bottom:2px; white-space:nowrap; }
+    .hr .agora .b.hj em { color:#f2c94c; }
+    .hr-l { display:flex; gap:.35em; font-size:.8em; color:#9fb4c7; margin-top:4px; font-weight:700; } .hr-l span { flex:1; text-align:center; }
+    .hr-l .agora { color:#f2c94c; }
+    .hr-leg { display:flex; gap:14px; font-size:.78em; color:#9fb4c7; margin-top:6px; } .hr-leg i { display:inline-block; width:.9em; height:.9em; border-radius:2px; vertical-align:-1px; margin-right:4px; }
     .ia { display:flex; gap:10px; padding:7px 0; border-top:1px solid #22303f; } .ia:first-of-type { border-top:none; }
     .tp .ia { padding:0; border:none; }
     .ia .p { flex:none; width:2.4em; height:2.4em; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:900; color:#fff; }
@@ -379,19 +386,26 @@ function renderSaude(sd) {
   }
   document.getElementById('saude').innerHTML = c.join('');
 }
-// ── Carrossel (v129): gira a cada 20s entre telas importantes ──
+// ── Carrossel (v129): gira a cada 30s (v130) entre telas importantes ──
 let CAR_DADOS = null, carIdx = 0;
 const corta = (t, n) => { t = String(t || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 const SLIDES = [
   { tit: '🔥 Mais vendidos hoje', html: d => d.carrossel.top_hoje.length ? d.carrossel.top_hoje.map((t, i) => `<div class="tp"><div class="pos">${['🥇', '🥈', '🥉'][i] || i + 1}</div>${t.thumb ? `<img src="${esc(t.thumb)}" alt="">` : ''}<div class="t"><b>${esc(t.titulo)}</b><span>${esc(t.loja || '')}</span></div><div class="v">${R$(t.fat)}<small>${t.pedidos} ped. · ${t.unidades} un</small></div></div>`).join('') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>' },
   { tit: '🧠 IA Estrategista — ações urgentes', html: d => d.ia.length ? d.ia.map(x => `<div class="tp"><div class="ia"><div class="p" style="background:${corNota(x.nota)}">${x.nota}</div></div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.ico)} ${esc(corta(x.problema, 70))}</span>${x.acao ? `<br><span>👉 ${esc(corta(x.acao, 80))}</span>` : ''}</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhuma ação urgente agora.</div>' },
   { tit: '⏰ Vendas por hora — hoje × ontem', html: d => {
+      // v130: só das 6h até a hora atual (+1) — barras bem mais largas; hoje × ontem lado a lado, número de pedidos em cima.
       const ph = d.carrossel.por_hora, hAgora = Number(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }));
-      const max = Math.max(1, ...ph.map(x => Math.max(x.hoje, x.ontem)));
+      const ini = Math.min(6, ...ph.filter(x => x.hoje || x.ontem).map(x => x.h)), fim = Math.max(hAgora + 1, 12);
+      const vis = ph.filter(x => x.h >= ini && x.h <= Math.min(23, fim));
+      const max = Math.max(1, ...vis.map(x => Math.max(x.hoje, x.ontem)));
       const tot = (k, ate) => ph.filter(x => x.h <= ate).reduce((s, x) => s + x[k], 0);
-      return `<div class="hr">${ph.map(x => `<div class="${x.h === hAgora ? 'agora' : ''}" title="${x.h}h: ${x.hoje} hoje / ${x.ontem} ontem"><span class="o" style="bottom:${(x.ontem / max) * 100}%"></span><span class="b" style="height:${(x.hoje / max) * 100}%"></span></div>`).join('')}</div>
-        <div class="hr-l">${ph.map(x => `<span>${x.h % 3 === 0 ? x.h + 'h' : ''}</span>`).join('')}</div>
-        <div class="hr-leg">▮ hoje (dourado = hora atual) · ┅ ontem · até agora: <b>${tot('hoje', hAgora)}</b> hoje × <b>${tot('ontem', hAgora)}</b> ontem</div>`; } },
+      const th = tot('hoje', hAgora), to = tot('ontem', hAgora), v = to ? Math.round(((th - to) / to) * 100) : null;
+      return `<div class="hrw">
+        <div class="hr-tot"><span class="h">Hoje até agora <b>${th}</b></span><span class="o">Ontem até ${hAgora}h <b>${to}</b></span>${v == null ? '' : `<span class="${v >= 0 ? 'up' : 'dn'}" style="font-weight:900;font-size:1.15em">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}%</span>`}</div>
+        <div class="hr">${vis.map(x => `<div class="${x.h === hAgora ? 'agora' : ''}"><span class="b on" style="height:${(x.ontem / max) * 100}%"></span><span class="b hj" style="height:${(x.hoje / max) * 100}%">${x.hoje && x.h <= hAgora ? `<em>${x.hoje}</em>` : ''}</span></div>`).join('')}</div>
+        <div class="hr-l">${vis.map(x => `<span class="${x.h === hAgora ? 'agora' : ''}">${vis.length > 14 && x.h % 2 ? '' : x.h + 'h'}</span>`).join('')}</div>
+        <div class="hr-leg"><span><i style="background:#5eb5f7"></i>Hoje</span><span><i style="background:#5b6b7b"></i>Ontem</span><span><i style="background:#f2c94c"></i>Hora atual</span></div>
+      </div>`; } },
   { tit: '📦 Estoque em risco', html: d => d.carrossel.estoque_risco.length ? d.carrossel.estoque_risco.map(x => `<div class="tp"><div class="pos" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${Number(x.estoque) <= 0 ? '⛔' : '⚠️'}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${x.vendas7} venda(s) em 7 dias</span></div><div class="v" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${x.estoque} un</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio vendendo com estoque baixo.</div>' },
   { tit: '🔴 Buy Box — perdendo (mais perto de ganhar)', html: d => d.carrossel.buybox_perdendo.length ? d.carrossel.buybox_perdendo.map(x => `<div class="tp"><div class="pos">🔴</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${esc(x.item_id)}</span></div><div class="v">${R$(x.vencedor)}<small>seu ${R$(x.seu)}</small></div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio perdendo o Buy Box.</div>' },
 ];
@@ -404,7 +418,7 @@ function renderCarrossel() {
   corpo.innerHTML = sl.html(CAR_DADOS);
   document.getElementById('carDots').innerHTML = SLIDES.map((_, i) => `<i class="${i === carIdx % SLIDES.length ? 'on' : ''}"></i>`).join('');
 }
-setInterval(() => { carIdx = (carIdx + 1) % SLIDES.length; renderCarrossel(); }, 20000);
+setInterval(() => { carIdx = (carIdx + 1) % SLIDES.length; renderCarrossel(); }, 30000); // v130: 30s por tela (pedido do usuário)
 
 function painelDepoisDeMensagem() { clearTimeout(painelT); painelT = setTimeout(carregarPainel, 3000); }
 setInterval(carregarPainel, 60000);

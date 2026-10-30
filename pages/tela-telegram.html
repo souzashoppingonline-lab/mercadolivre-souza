@@ -49,6 +49,9 @@
     .msg.nova .bolha { animation:entra .6s cubic-bezier(.2,1.2,.4,1), brilho 3s ease-out; }
     @keyframes entra { from { transform:translateY(24px) scale(.96); opacity:0 } to { transform:none; opacity:1 } }
     @keyframes brilho { 0%,40% { box-shadow:0 0 0 2px rgba(106,179,243,.85), 0 0 24px rgba(106,179,243,.35) } 100% { box-shadow:0 1px 1px rgba(0,0,0,.25) } }
+    /* Foto do anúncio vendido (v126) — só na tela; o Telegram recebe só texto */
+    .bolha.com-foto { display:flex; gap:12px; align-items:flex-start; } .bolha.com-foto > .corpo-b { min-width:0; flex:1; }
+    .bolha .foto { width:7.5em; height:7.5em; border-radius:10px; object-fit:contain; background:#fff; flex:none; box-shadow:0 2px 8px rgba(0,0,0,.35); }
     /* Alerta de pergunta/chat de cliente (bipe + voz): borda vermelha + selo; pisca quando chega */
     .msg.alerta .bolha { border-left:5px solid #ff5d5d; }
     .msg.alerta .selo { display:inline-block; background:#ff5d5d; color:#fff; font-weight:800; font-size:.8em; letter-spacing:.03em; border-radius:6px; padding:2px 8px; margin-bottom:4px; }
@@ -244,9 +247,10 @@ function bolha(m, nova) {
   const hora = new Date(m.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
   const ent = m.direcao === 'entrada';
   const al = tipoAlerta(m);
-  html += `<div class="msg ${ent ? 'ent' : ''}${nova ? ' nova' : ''}${al ? ' alerta' : ''}" data-id="${m.id}"><div class="bolha">
+  const foto = m.imagem && /^https?:\/\//.test(m.imagem) ? `<img class="foto" src="${esc(m.imagem)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  html += `<div class="msg ${ent ? 'ent' : ''}${nova ? ' nova' : ''}${al ? ' alerta' : ''}" data-id="${m.id}"><div class="bolha${foto ? ' com-foto' : ''}">${foto}<div class="corpo-b">
     ${al ? `<div class="selo">${al.selo}</div>` : ''}${!ent && t ? `<div class="tag" style="color:${t[1]}">${t[0]}</div>` : ''}${ent && m.autor ? `<div class="tag" style="color:#9fc3e6">${esc(m.autor)}</div>` : ''}
-    <div class="txt">${TelegramHtml.paraHtml(m.texto, m.html !== false)}<span class="meta">${hora}</span></div></div></div>`;
+    <div class="txt">${TelegramHtml.paraHtml(m.texto, m.html !== false)}<span class="meta">${hora}</span></div></div></div></div>`;
   return html;
 }
 function poda() {

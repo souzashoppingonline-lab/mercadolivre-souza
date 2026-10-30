@@ -436,8 +436,9 @@ async function handleOrder({ resource, storeId, silent = false }) {
         }
       }
       const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
-      if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda);
-      else await tgNotify('tg_vendas', textoVenda);
+      const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id) }; // só na Tela Telegram
+      if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda, fotoVenda);
+      else await tgNotify('tg_vendas', textoVenda, fotoVenda);
       // Alerta em tempo real na tela do dashboard (som + push) — consumido por
       // js/layout.js (WS.on('nova_venda')). Mesma guarda anti-pedido-antigo do
       // Telegram, então nunca dispara em importação em massa (silent) nem venda >24h.

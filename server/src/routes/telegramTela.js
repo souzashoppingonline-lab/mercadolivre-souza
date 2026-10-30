@@ -25,8 +25,8 @@ async function listar(req, res) {
     const depois = Number(req.query.depois_id) || 0;
     const limit = Math.min(Math.max(Number(req.query.limit) || 150, 1), 500);
     const { rows } = depois
-      ? await pool.query(`SELECT id, topico, texto, html, direcao, autor, criado_em FROM telegram_mensagens WHERE id > $1 AND COALESCE(topico, '') <> ALL($3::text[]) ORDER BY id ASC LIMIT $2`, [depois, limit, FORA_DA_TELA])
-      : await pool.query(`SELECT * FROM (SELECT id, topico, texto, html, direcao, autor, criado_em FROM telegram_mensagens WHERE COALESCE(topico, '') <> ALL($2::text[]) ORDER BY id DESC LIMIT $1) x ORDER BY id ASC`, [limit, FORA_DA_TELA]);
+      ? await pool.query(`SELECT id, topico, texto, html, direcao, autor, imagem, criado_em FROM telegram_mensagens WHERE id > $1 AND COALESCE(topico, '') <> ALL($3::text[]) ORDER BY id ASC LIMIT $2`, [depois, limit, FORA_DA_TELA])
+      : await pool.query(`SELECT * FROM (SELECT id, topico, texto, html, direcao, autor, imagem, criado_em FROM telegram_mensagens WHERE COALESCE(topico, '') <> ALL($2::text[]) ORDER BY id DESC LIMIT $1) x ORDER BY id ASC`, [limit, FORA_DA_TELA]);
     const { rows: h } = await pool.query(`SELECT COUNT(*)::int AS n FROM telegram_mensagens WHERE criado_em >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo' AND COALESCE(topico, '') <> ALL($1::text[])`, [FORA_DA_TELA]);
     res.json({ mensagens: rows, hoje: h[0].n });
   } catch (e) {
@@ -272,7 +272,7 @@ async function montarPainel() {
               (SELECT ROUND(AVG(q2.score), 1) FROM item_seo_score q2 JOIN items i2 ON i2.ml_id = q2.item_id WHERE i2.status = 'active') AS media
          FROM item_seo_score q JOIN items i ON i.ml_id = q.item_id LEFT JOIN stores st ON st.id = q.store_id
         WHERE i.status = 'active' AND COALESCE(q.visits_30d, 0) > 0
-        ORDER BY q.score ASC, q.visits_30d DESC LIMIT 5`),
+        ORDER BY q.score ASC, q.visits_30d DESC LIMIT 4`),
   ]);
   const diaSemPassada = new Date(Date.now() - 7 * 86400000).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit' });
   // O que falta em cada anúncio (só itens que dá pra corrigir no anúncio; limiares de seoScore.js).
@@ -359,7 +359,7 @@ async function montarPainel() {
         chats_lista: chatShopee.slice(0, 4).map(c => ({ comprador: c.buyer_name, loja: c.loja, nao_lidas: Number(c.unread_count || 0), texto: c.last_message, em: c.last_message_time ? new Date(Number(c.last_message_time) / 1e6).toISOString() : null })),
         violacoes: violShopee.length, violacoes_lista: violShopee.slice(0, 3).map(v => ({ titulo: v.title, loja: v.loja })) },
       nota_baixa: { media: notaBaixa[0] ? Number(notaBaixa[0].media) : null,
-        itens: notaBaixa.map(q => ({ item_id: q.item_id, titulo: q.titulo, loja: q.loja, nota: Number(q.score), visitas30: q.visits_30d, vendas30: q.sales_30d, faltas: faltasSeo(q).slice(0, 3) })) },
+        itens: notaBaixa.map(q => ({ item_id: q.item_id, titulo: q.titulo, loja: q.loja, nota: Number(q.score), visitas30: q.visits_30d, vendas30: q.sales_30d, faltas: faltasSeo(q).slice(0, 2) })) },
     },
     ia,
   };

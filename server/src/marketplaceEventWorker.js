@@ -252,7 +252,9 @@ async function handleShopeeOrderEvent(evt) {
       const titulo = items[0]?.item_name || o.order_sn;
       const qtdItens = items.reduce((s, it) => s + (Number(it.model_quantity_purchased) || 0), 0) || items.length;
       const val = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAmount);
-      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🛍️ <b>Shopee</b>\n🏪 ${loja}\n📦 ${titulo}${qtdItens > 1 ? ` (${qtdItens} itens)` : ''}\n💰 ${val}\n🔖 Pedido: ${o.order_sn}`);
+      const tlog = require('./telegramLog'); // foto só na Tela Telegram (v126)
+      const imagem = tlog.fotoGrande(items[0]?.image_info?.image_url) || await tlog.imagemDoItem(items[0]?.item_id);
+      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🛍️ <b>Shopee</b>\n🏪 ${loja}\n📦 ${titulo}${qtdItens > 1 ? ` (${qtdItens} itens)` : ''}\n💰 ${val}\n🔖 Pedido: ${o.order_sn}`, { imagem });
     } catch (e) {
       console.error('[marketplace-worker] tgNotify Shopee erro:', e.message);
     }

@@ -849,7 +849,7 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 
 ### `telegram_mensagens` — v120: cópia de TODA mensagem do Telegram pra Tela Telegram (TV)
 
-`migrate-v120.sql`. Uma linha por mensagem: `id` BIGSERIAL, `topico` (`tg_*`, `bot`, `teste`…), `texto` (até 8.000 chars, HTML do Telegram), `html` (bool — `false` = texto puro), `direcao` (`saida` = o sistema mandou | `entrada` = comando que chegou no bot), `autor` (nome de quem mandou o comando), `criado_em`. Índice `criado_em DESC`. Gravada por `telegramLog.registrarMensagem` depois de cada envio que deu certo. Apagada aos 30 dias (`cleanupTelegramMensagens`, 03:55).
+`migrate-v120.sql`. Uma linha por mensagem: `id` BIGSERIAL, `topico` (`tg_*`, `bot`, `teste`…), `texto` (até 8.000 chars, HTML do Telegram), `html` (bool — `false` = texto puro), `direcao` (`saida` = o sistema mandou | `entrada` = comando que chegou no bot), `autor` (nome de quem mandou o comando), `imagem` (v126, `migrate-v126.sql`: URL da foto do anúncio no "🛒 Nova venda!" ML/Shopee — só a tela mostra; o Telegram recebe só texto), `criado_em`. Índice `criado_em DESC`. Gravada por `telegramLog.registrarMensagem` depois de cada envio que deu certo. Apagada aos 30 dias (`cleanupTelegramMensagens`, 03:55).
 
 ### `ia_estrategista_analises` / `ia_estrategista_acoes` — v122: IA Estrategista (ver `modules.md`)
 

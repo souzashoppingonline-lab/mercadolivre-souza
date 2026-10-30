@@ -191,4 +191,4 @@ async function checkAndAlert() {
   }
 }
 
-module.exports = { startHeartbeat, getSnapshot, checkAndAlert, recordBoot };
+module.exports = { startHeartbeat, getSnapshot, checkAndAlert, recordBoot, serverMetrics, DISK_MAX_PCT, MEM_MAX_PCT };

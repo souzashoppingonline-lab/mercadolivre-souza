@@ -113,6 +113,16 @@
     .rc { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; gap:6px; font-size:.95em; }
     .rc .big { font-size:3.6em; font-weight:900; color:#5ef08a; line-height:1; } .rc-bar { width:80%; height:.8em; background:#22303f; border-radius:6px; overflow:hidden; } .rc-bar i { display:block; height:100%; background:linear-gradient(90deg,#5ef08a,#1f9d4c); }
     .rc-pct { font-size:.85em; color:#9fb4c7; font-weight:700; }
+    /* v134: melhor dia/horário e servidor */
+    .md-top { display:grid; grid-template-columns:1fr 1fr; gap:8px; } .md-top div { background:#1c2a39; border-radius:12px; padding:8px 10px; font-size:.8em; color:#9fb4c7; font-weight:700; }
+    .md-top b { display:block; font-size:1.7em; color:#f2c94c; margin:2px 0; } .md-top small { font-size:.92em; font-weight:500; }
+    .md-dias { display:flex; gap:6px; align-items:flex-end; height:5.2em; margin-top:8px; } .md-dias div { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+    .md-dias .b { width:70%; background:#4ea1ff; border-radius:4px 4px 0 0; min-height:2px; } .md-dias .on .b { background:#f2c94c; } .md-dias .v { font-size:.74em; font-weight:800; } .md-dias .l { font-size:.72em; color:#9fb4c7; font-weight:700; } .md-dias .on .l, .md-dias .on .v { color:#f2c94c; }
+    .md-horas { display:flex; gap:2px; align-items:flex-end; height:3.6em; margin-top:8px; border-bottom:2px solid #2a3a4b; } .md-horas span { flex:1; background:#2b6cb0; border-radius:2px 2px 0 0; } .md-horas span.on { background:#ff9f43; }
+    .sv-g { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:6px; } .sv { text-align:center; }
+    .sv-a { width:6.2em; height:6.2em; margin:0 auto; border-radius:50%; background:conic-gradient(var(--c) calc(var(--p)*1%), #22303f 0); display:flex; align-items:center; justify-content:center; position:relative; }
+    .sv-a::before { content:''; position:absolute; inset:.6em; border-radius:50%; background:var(--top); } .sv-a b { position:relative; font-size:1.35em; font-weight:900; }
+    .sv-n { margin-top:6px; font-weight:800; font-size:.9em; } .sv-s { font-size:.76em; color:#9fb4c7; }
     .frase { height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:0 6%; }
     .frase .aspas { font-size:4em; line-height:.6; color:#5eb5f7; font-family:Georgia, serif; }
     .frase .txt { font-size:1.6em; font-weight:800; line-height:1.3; margin:.4em 0; color:#e8f2fb; }
@@ -373,7 +383,7 @@ async function carregarPainel() {
       ${recordeHtml(d.recorde, p.fat)}
       <div class="ont"><span>📅 Ontem (dia inteiro)</span><span><b>${R$(d.ontem.fat)}</b> · ${d.ontem.pedidos} pedidos</span></div>
       <div class="lj">${p.lojas.length ? p.lojas.slice(0, 4).map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') + (p.lojas.length > 4 ? `<div class="pn-vazio" style="margin-top:4px">+${p.lojas.length - 4} empresa(s)</div>` : '') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;
-    renderSaude(d.saude);
+    CAR_DADOS = d; renderSaude(d.saude);
     const bb = d.buybox;
     document.getElementById('pnEstagios').innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="v"><span class="i">${i}</span> ${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
       <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
@@ -402,6 +412,9 @@ function renderSaude(sd) {
     const exp = h >= 8 && h < 22;
     c.push(chip(exp && s > 4 * 3600 ? 'ruim' : exp && s > 2 * 3600 ? 'alerta' : '', `${exp && s > 4 * 3600 ? '🔴' : exp && s > 2 * 3600 ? '🟡' : '🟢'} Última venda há ${min(s)}`));
   }
+  // v134: servidor só aparece no topo quando passa do limite (disco/memória do health.js ou CPU ≥ 90%).
+  const sv = CAR_DADOS && CAR_DADOS.servidor;
+  if (sv) { const crit = []; if (sv.disco != null && sv.disco >= sv.limite_disco) crit.push(`disco ${Math.round(sv.disco)}%`); if (sv.mem >= sv.limite_mem) crit.push(`memória ${Math.round(sv.mem)}%`); if (sv.cpu >= 90) crit.push(`CPU ${Math.round(sv.cpu)}%`); if (crit.length) c.push(chip('ruim', `🔴 Servidor: ${crit.join(' · ')}`)); }
   document.getElementById('saude').innerHTML = c.join('');
 }
 // ── Carrossel (v129): gira a cada 30s (v130) entre telas importantes ──
@@ -447,6 +460,18 @@ const SLIDES = [
       return rs.length ? rs.map(r => { const c = COR[r.level_id] || ['⚪', r.level_id || 'sem nível']; return `<div class="tp"><div class="pos" style="font-size:1.3em">${c[0]}</div><div class="t"><b>${esc(r.loja)}</b><span>${c[1]}${r.power ? ' · MercadoLíder ' + esc(r.power) : ''}</span><br><span>Reclamações ${p(r.reclamacoes)} · Atrasos ${p(r.atrasos)} · Cancelamentos ${p(r.cancelamentos)}</span></div></div>`; }).join('') : '<div class="pn-vazio">Reputação ainda não coletada (sync diário 04:15).</div>'; } },
   { tit: '🔁 Clientes recorrentes hoje', html: d => { const r = d.carrossel.recorrentes; if (!r) return ''; const base = r.total - r.sem_comprador, pct = base ? Math.round((r.recorrentes / base) * 100) : 0;
       return `<div class="rc"><div class="big">${r.recorrentes}</div><div>de <b>${base}</b> venda(s) de hoje foram de quem <b>já comprou antes</b></div><div class="rc-bar"><i style="width:${pct}%"></i></div><div class="rc-pct">${pct}% recorrentes · ${100 - pct}% clientes novos</div>${r.sem_comprador ? `<div class="pn-vazio">${r.sem_comprador} venda(s) sem comprador identificado (Shopee) ficaram de fora</div>` : ''}</div>`; } },
+  { tit: '📆 Melhor dia e horário — últimos 30 dias', html: d => { const m = d.carrossel.melhor; if (!m) return ''; const NOMES = ['', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'], NOMES_L = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+      const dias = m.por_dia, maxD = Math.max(1, ...dias.map(x => x.pedidos_media)), melhorD = dias.reduce((a, x) => x.pedidos_media > a.pedidos_media ? x : a, dias[0]);
+      const ph = m.por_hora, tot = ph.reduce((a, b) => a + b, 0) || 1; let bi = 0, bv = -1; for (let h = 0; h < 24; h++) { const v = ph[h] + ph[(h + 1) % 24] + ph[(h + 2) % 24]; if (v > bv) { bv = v; bi = h; } }
+      const pico = h => h === bi || h === (bi + 1) % 24 || h === (bi + 2) % 24, maxH = Math.max(1, ...ph);
+      return `<div class="md-top"><div>🏆 Melhor dia<b>${NOMES_L[melhorD.dow]}</b><small>média ${Math.round(melhorD.pedidos_media)} pedidos · ${R$(melhorD.fat_media)}</small></div><div>⏰ Pico de vendas<b>${bi}h–${(bi + 3) % 24}h</b><small>${Math.round((bv / tot) * 100)}% dos pedidos do dia</small></div></div>
+        <div class="md-dias">${dias.map(x => `<div class="${x.dow === melhorD.dow ? 'on' : ''}"><span class="v">${Math.round(x.pedidos_media)}</span><span class="b" style="height:${(x.pedidos_media / maxD) * 100}%"></span><span class="l">${NOMES[x.dow]}</span></div>`).join('')}</div>
+        <div class="md-horas">${ph.map((v, h) => `<span class="${pico(h) ? 'on' : ''}" style="height:${Math.max(3, (v / maxH) * 100)}%" title="${h}h: ${v}"></span>`).join('')}</div><div class="hr-l">${ph.map((_, h) => `<span>${h % 3 === 0 ? h + 'h' : ''}</span>`).join('')}</div>`; } },
+  { tit: '🖥️ Estado do servidor', html: d => { const s = d.servidor; if (!s) return '<div class="pn-vazio">Métricas do servidor indisponíveis.</div>'; const GB = b => (b / 1073741824).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' GB';
+      const cor = (v, lim) => v == null ? '#8b949e' : v >= lim ? '#f85149' : v >= lim - 20 ? '#f0b429' : '#3fb950';
+      const g = (nome, v, lim, sub) => `<div class="sv"><div class="sv-a" style="--p:${Math.min(100, v || 0)};--c:${cor(v, lim)}"><b>${v == null ? '—' : Math.round(v) + '%'}</b></div><div class="sv-n">${nome}</div><div class="sv-s">${sub}</div></div>`;
+      const up = s.uptime_s, upTxt = up >= 86400 ? `${Math.floor(up / 86400)} dia(s)` : `${Math.floor(up / 3600)}h`;
+      return `<div class="sv-g">${g('🧠 CPU', s.cpu, 90, `${s.cores} núcleo(s)`)}${g('💾 Memória', s.mem, s.limite_mem, `de ${GB(s.mem_total)}`)}${g('🗄️ Disco', s.disco, s.limite_disco, s.disco_livre != null ? `${GB(s.disco_livre)} livres` : '')}</div><div class="pn-vazio" style="text-align:center;margin-top:8px">⏱️ Servidor ligado há ${upTxt} · 🟢 normal · 🟡 atenção · 🔴 crítico</div>`; } },
   { tit: '💬 Frase do dia', html: d => d.carrossel.frase ? `<div class="frase"><div class="aspas">“</div><div class="txt">${esc(d.carrossel.frase.frase)}</div><div class="assin">${d.carrossel.frase.origem === 'ia' ? '🤖 criada pela IA para hoje · nunca se repete' : '— equipe'}</div></div>` : '<div class="pn-vazio">Frase do dia indisponível.</div>' },
 ];
 function renderCarrossel() {

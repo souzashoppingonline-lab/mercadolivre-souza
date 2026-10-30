@@ -226,6 +226,25 @@ async function montarPainel() {
          FROM orders o WHERE o.date_created >= ${HOJE} AND o.status != 'cancelled' AND ${SEM_AMAZON}`),
   ]);
   const tk = ticket[0];
+  // ── v134: melhor dia da semana e horário (últimos 30 dias fechados, fuso SP) ──
+  const { rows: semHora } = await pool.query(
+    `SELECT EXTRACT(ISODOW FROM o.date_created AT TIME ZONE 'America/Sao_Paulo')::int AS dow,
+            EXTRACT(HOUR FROM o.date_created AT TIME ZONE 'America/Sao_Paulo')::int AS h,
+            COUNT(*)::int AS pedidos, COALESCE(SUM(o.total_amount), 0) AS fat
+       FROM orders o
+      WHERE o.date_created >= ${HOJE} - interval '30 days' AND o.date_created < ${HOJE}
+        AND o.status != 'cancelled' AND ${SEM_AMAZON}
+      GROUP BY 1, 2`);
+  // Média por dia da semana = total ÷ quantas vezes aquele dia aparece nos 30 dias.
+  const ocorr = Array(8).fill(0);
+  const DOW = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  for (let i = 1; i <= 30; i++) ocorr[DOW[new Date(Date.now() - i * 86400000).toLocaleDateString('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' })]]++;
+  const porDia = [1, 2, 3, 4, 5, 6, 7].map(dw => { const xs = semHora.filter(r => r.dow === dw); const p = xs.reduce((a, r) => a + r.pedidos, 0), f = xs.reduce((a, r) => a + Number(r.fat), 0); return { dow: dw, pedidos_media: ocorr[dw] ? p / ocorr[dw] : 0, fat_media: ocorr[dw] ? f / ocorr[dw] : 0 }; });
+  const porHora30 = Array.from({ length: 24 }, (_, h) => semHora.filter(r => r.h === h).reduce((a, r) => a + r.pedidos, 0));
+  // ── v134: estado do servidor (mesmas métricas/limites da Saúde do Sistema, health.js) ──
+  let servidor = null;
+  try { const hl = require('../health'); const m = hl.serverMetrics(); servidor = { cpu: m.cpu.load_pct, cores: m.cpu.cores, mem: m.mem.used_pct, mem_total: m.mem.total, disco: m.disk ? m.disk.used_pct : null, disco_livre: m.disk ? m.disk.free : null, disco_total: m.disk ? m.disk.total : null, uptime_s: m.uptime_server_s, limite_disco: hl.DISK_MAX_PCT, limite_mem: hl.MEM_MAX_PCT }; }
+  catch (e) { console.warn('[telegram-tela/painel] servidor:', e.message); }
   // Promoções vencendo hoje ou amanhã (fim do dia de amanhã, SP).
   const limiteAmanha = (() => { const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })); d.setDate(d.getDate() + 1); d.setHours(23, 59, 59, 999); return Date.now() + (d - new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))); })();
   const vencendo = [
@@ -257,6 +276,7 @@ async function montarPainel() {
   const hbIdade = hbWorker ? Math.round((Date.now() - Number(hbWorker)) / 1000) : null;
   const vencidos = tokens.filter(k => !k.token_expires_at || new Date(k.token_expires_at).getTime() < Date.now() - 5 * 60000).map(k => k.nickname);
   return {
+    servidor,
     saude: {
       worker: { ok: hbIdade != null && hbIdade < 120, idade_s: hbIdade }, // mesmo limite de health.js (HB_STALE_MS)
       tokens: { total: tokens.length, vencidos },
@@ -287,6 +307,7 @@ async function montarPainel() {
       voltaram: voltaram.map(v => ({ titulo: v.titulo, loja: v.loja, hoje: v.hoje, dias_parado: v.anterior ? Math.floor((Date.now() - new Date(v.anterior).getTime()) / 86400000) : null })),
       reputacao: reput.map(r => ({ loja: r.loja, level_id: r.level_id, power: r.power_seller_status, reclamacoes: r.claims_pct != null ? Number(r.claims_pct) : null, atrasos: r.delayed_pct != null ? Number(r.delayed_pct) : null, cancelamentos: r.cancellations_pct != null ? Number(r.cancellations_pct) : null, em: r.collected_at })),
       recorrentes: recorr[0],
+      melhor: { por_dia: porDia, por_hora: porHora30 },
     },
     ia,
   };

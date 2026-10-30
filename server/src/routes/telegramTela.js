@@ -82,8 +82,9 @@ async function montarPainel() {
           AND e.created_at >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
         GROUP BY 1`),
     pool.query(
-      `SELECT cc.item_id, cc.status, cc.winner_item_id, cc.calculated_at
-         FROM catalog_competition cc LEFT JOIN items i ON i.ml_id = cc.item_id
+      `SELECT cc.item_id, cc.status, cc.winner_item_id, cc.calculated_at, cc.current_price, cc.winner_price,
+              COALESCE(i.title, cc.item_id) AS titulo, s.nickname AS loja
+         FROM catalog_competition cc LEFT JOIN items i ON i.ml_id = cc.item_id LEFT JOIN stores s ON s.id = cc.store_id
         WHERE i.status IS NULL OR i.status = 'active'`),
     // Recorde do mês: maior dia de faturamento ANTES de hoje (mesma regra de pedidos).
     pool.query(
@@ -103,13 +104,49 @@ async function montarPainel() {
           AND marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')`),
     redis.get('health:hb:worker').catch(() => null), // heartbeat do worker (health.js)
   ]);
+  // ── Carrossel (v129): mais vendidos hoje, vendas por hora, estoque em risco ──
+  const [{ rows: topHoje }, { rows: porHora }, { rows: estoqueRisco }] = await Promise.all([
+    pool.query(
+      `SELECT o.item_id, MAX(COALESCE(i.title, o.title)) AS titulo, MAX(i.thumbnail) AS thumb, MAX(COALESCE(s.nickname, '')) AS loja,
+              COUNT(*)::int AS pedidos, COALESCE(SUM(o.quantity), 0)::int AS unidades, COALESCE(SUM(o.total_amount), 0) AS fat
+         FROM orders o LEFT JOIN items i ON i.ml_id = o.item_id LEFT JOIN stores s ON s.id = o.store_id
+        WHERE o.date_created >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+          AND o.status != 'cancelled'
+          AND o.marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')
+        GROUP BY o.item_id ORDER BY fat DESC LIMIT 6`),
+    pool.query(
+      `WITH l AS (SELECT date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo' AS ini)
+       SELECT EXTRACT(HOUR FROM o.date_created AT TIME ZONE 'America/Sao_Paulo')::int AS h,
+              COUNT(*) FILTER (WHERE o.date_created >= l.ini)::int AS hoje,
+              COUNT(*) FILTER (WHERE o.date_created < l.ini)::int AS ontem
+         FROM orders o, l
+        WHERE o.date_created >= l.ini - interval '1 day' AND o.status != 'cancelled'
+          AND o.marketplace_id IS DISTINCT FROM (SELECT id FROM marketplaces WHERE code = 'AMAZON')
+        GROUP BY 1`),
+    // Estoque em risco: ativo, ≤ 5 un (mesmo limiar do alerta tg_reposicao) e vendeu nos últimos 7 dias.
+    pool.query(
+      `SELECT i.ml_id, i.title AS titulo, i.available_quantity AS estoque, s.nickname AS loja, COUNT(o.ml_id)::int AS vendas7
+         FROM items i
+         JOIN orders o ON o.item_id = i.ml_id AND o.status != 'cancelled' AND o.date_created >= now() - interval '7 days'
+         LEFT JOIN stores s ON s.id = i.store_id
+        WHERE i.status = 'active' AND i.available_quantity <= 5
+        GROUP BY i.ml_id, i.title, i.available_quantity, s.nickname
+        ORDER BY i.available_quantity ASC, vendas7 DESC LIMIT 6`),
+  ]);
   const placarBb = { ganhando: 0, compartilhando: 0, perdendo: 0 };
-  bb.forEach(c => { const k = classificarBuybox({ calculado_em: c.calculated_at, winner_item_id: c.winner_item_id, item_id: c.item_id, status: c.status }).chave; if (k in placarBb) placarBb[k]++; });
+  const perdendoLista = [];
+  bb.forEach(c => {
+    const k = classificarBuybox({ calculado_em: c.calculated_at, winner_item_id: c.winner_item_id, item_id: c.item_id, status: c.status }).chave;
+    if (k in placarBb) placarBb[k]++;
+    if (k === 'perdendo' && c.current_price != null && c.winner_price != null) perdendoLista.push({ titulo: c.titulo, loja: c.loja, item_id: c.item_id, seu: Number(c.current_price), vencedor: Number(c.winner_price) });
+  });
+  // Mais perto de ganhar primeiro (menor diferença pro vencedor) — mesma ordem do relatório de Buy Box.
+  perdendoLista.sort((a, b) => (a.seu - a.vencedor) - (b.seu - b.vencedor));
   // IA Estrategista: mesma carteira da tela (cache próprio de 10 min). Falha aqui não derruba o painel.
   let ia = [];
   try {
     const r = await require('../iaEstrategistaDados').carteira({ periodo: 14, storeId: '' });
-    ia = r.anuncios.filter(x => x.prioridade.nota >= 20).slice(0, 3).map(x => ({
+    ia = r.anuncios.filter(x => x.prioridade.nota >= 20).slice(0, 4).map(x => ({
       nota: x.prioridade.nota, titulo: x.titulo, ico: x.analise.principal.ico,
       problema: x.analise.problemas[0]?.texto || x.analise.oportunidades[0]?.texto || x.analise.faltando[0] || x.analise.principal.nome,
       acao: x.analise.plano[0]?.acao || null,
@@ -131,6 +168,12 @@ async function montarPainel() {
       lojas: lojas.map(l => ({ loja: l.loja, mkt: l.mkt, pedidos: l.pedidos, fat: Number(l.fat) })) },
     estagios: Object.fromEntries(est.map(e => [e.fase, e.vendas])),
     buybox: placarBb,
+    carrossel: {
+      top_hoje: topHoje.map(t => ({ item_id: t.item_id, titulo: t.titulo, thumb: t.thumb, loja: t.loja, pedidos: t.pedidos, unidades: t.unidades, fat: Number(t.fat) })),
+      por_hora: Array.from({ length: 24 }, (_, h) => { const x = porHora.find(r => r.h === h); return { h, hoje: x ? x.hoje : 0, ontem: x ? x.ontem : 0 }; }),
+      estoque_risco: estoqueRisco,
+      buybox_perdendo: perdendoLista.slice(0, 5),
+    },
     ia,
   };
 }

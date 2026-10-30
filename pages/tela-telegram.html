@@ -71,7 +71,7 @@
   <div class="dir">
     <div class="ctrls">
       <button id="btnPausa" title="Pausar/continuar a rolagem">⏸ Pausar</button>
-      <select id="vel" title="Velocidade da rolagem"><option value="25">Lenta</option><option value="45" selected>Média</option><option value="90">Rápida</option></select>
+      <select id="vel" title="Como a tela se comporta"><option value="0" selected>📌 Fixa nas mensagens novas</option><option value="25">Rolagem lenta</option><option value="45">Rolagem média</option><option value="90">Rolagem rápida</option></select>
       <button id="btnLink" title="Link pra abrir na TV sem login">🔗 Link da TV</button>
       <button id="btnTv" title="Tela cheia, letra grande">📺 Modo TV</button>
     </div>
@@ -171,17 +171,28 @@ async function buscar(novas) {
 // ── Rolagem automática ─────────────────────────────────────────────────────
 let pausado = false, seguraAte = 0, ultimoQuadro = 0, mexeuEm = 0, voltando = false, acumulado = 0;
 function mostrarNova() {
+  // No modo fixo, se alguém está lendo mais acima (mexeu há < 20s), não puxa a tela — o próprio quadro() desce depois.
+  if (modoFixo() && Date.now() - mexeuEm < 20000) return;
   chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
-  seguraAte = Date.now() + 15000;
+  seguraAte = Date.now() + (modoFixo() ? 1500 : 15000);
 }
+// Modo padrão (pedido do usuário): tela PARADA no fim, como o Telegram — cada
+// mensagem nova aparece embaixo e a tela desce até ela; nunca volta pro começo.
+// Se alguém rolar pra cima pra ler, espera 20s parado e volta pro fim.
+// "Rolagem lenta/média/rápida" mantém o modo antigo (desce e recomeça do topo).
+const modoFixo = () => Number(document.getElementById('vel').value) === 0;
 function quadro(t) {
   const dt = ultimoQuadro ? Math.min(100, t - ultimoQuadro) : 16; ultimoQuadro = t;
   const agora = Date.now();
-  if (!pausado && !voltando && agora > seguraAte && agora - mexeuEm > 20000 && chat.scrollHeight > chat.clientHeight + 4) {
+  if (modoFixo()) {
+    if (agora - mexeuEm > 20000 && agora > seguraAte && chat.scrollTop + chat.clientHeight < chat.scrollHeight - 4) {
+      chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' }); seguraAte = agora + 1500;
+    }
+  } else if (!pausado && !voltando && agora > seguraAte && agora - mexeuEm > 20000 && chat.scrollHeight > chat.clientHeight + 4) {
     if (chat.scrollTop + chat.clientHeight >= chat.scrollHeight - 2) {
       // Chegou no fim: segura 8s na mais nova e recomeça do topo (com fade).
       seguraAte = agora + 8000; voltando = true;
-      setTimeout(() => { lista.classList.add('some'); setTimeout(() => { chat.scrollTop = 0; lista.classList.remove('some'); seguraAte = Date.now() + 4000; voltando = false; }, 500); }, 8000);
+      setTimeout(() => { lista.classList.add('some'); setTimeout(() => { if (!modoFixo()) chat.scrollTop = 0; lista.classList.remove('some'); seguraAte = Date.now() + 4000; voltando = false; }, 500); }, 8000);
     } else {
       acumulado += Number(document.getElementById('vel').value) * dt / 1000; // px/s → px neste quadro
       const px = Math.floor(acumulado); if (px >= 1) { chat.scrollTop += px; acumulado -= px; }
@@ -191,8 +202,11 @@ function quadro(t) {
 }
 ['wheel', 'touchstart', 'keydown'].forEach(ev => chat.addEventListener(ev, () => { mexeuEm = Date.now(); }, { passive: true }));
 document.getElementById('btnPausa').onclick = e => { pausado = !pausado; e.target.textContent = pausado ? '▶ Continuar' : '⏸ Pausar'; };
-try { const v = localStorage.getItem('tela_tg_vel'); if (v) document.getElementById('vel').value = v; } catch (_) {}
-document.getElementById('vel').onchange = e => { try { localStorage.setItem('tela_tg_vel', e.target.value); } catch (_) {} };
+const ajustarPausa = () => { document.getElementById('btnPausa').style.display = modoFixo() ? 'none' : ''; };
+// Chave nova (tela_tg_modo): TVs que tinham a velocidade antiga salva passam a abrir no modo fixo.
+try { const v = localStorage.getItem('tela_tg_modo'); if (v != null) document.getElementById('vel').value = v; } catch (_) {}
+document.getElementById('vel').onchange = e => { try { localStorage.setItem('tela_tg_modo', e.target.value); } catch (_) {} ajustarPausa(); if (modoFixo()) chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' }); };
+ajustarPausa();
 
 // ── Modo TV: tela cheia + não deixar a tela apagar + esconder o cursor ─────
 let wake = null;

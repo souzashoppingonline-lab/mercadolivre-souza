@@ -457,26 +457,54 @@ async function handleOrder({ resource, storeId, silent = false }) {
   }
 }
 
-async function handleQuestion({ resource, storeId }) {
-  const questionId = resource.split('/').pop();
-  const recent = await pool.query(
-    `SELECT ml_id FROM questions WHERE ml_id=$1 AND updated_at > now() - interval '30 minutes'`, [questionId]
-  );
-  if (recent.rows.length) return;
-  const q = await ml.getQuestion(questionId, storeId);
-
-  await pool.query(
-    `INSERT INTO questions (ml_id, store_id, item_id, text, answer_text, status, date_created, updated_at)
+// Grava a pergunta como o ML devolveu. updated_at só muda quando o status muda
+// (vira a hora real da resposta, se o ML mandou) — é usado no "tempo médio de
+// resposta" e "respondidas hoje" de /api/perguntas. Retorna true se o status mudou.
+async function gravarPergunta(q, storeId) {
+  const { rows } = await pool.query(
+    `WITH antes AS (SELECT status FROM questions WHERE ml_id=$1)
+     INSERT INTO questions (ml_id, store_id, item_id, text, answer_text, status, date_created, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        answer_text = EXCLUDED.answer_text,
        status = EXCLUDED.status,
-       updated_at = now()`,
-    [q.id, storeId, q.item_id, q.text, q.answer?.text || null, q.status, q.date_created]
+       updated_at = CASE WHEN questions.status IS DISTINCT FROM EXCLUDED.status
+                         THEN COALESCE($8::timestamptz, now()) ELSE questions.updated_at END
+     RETURNING (SELECT status FROM antes) AS status_antes`,
+    [q.id, storeId, q.item_id, q.text, q.answer?.text || null, q.status, q.date_created, q.answer?.date_created || null]
   );
+  return rows[0].status_antes !== q.status;
+}
 
+// Pergunta apagada no ML (GET devolve 404): sai da contagem de pendentes.
+async function marcarPerguntaApagada(questionId) {
+  const { rowCount } = await pool.query(
+    `UPDATE questions SET status='DELETED', updated_at=now() WHERE ml_id=$1 AND status IS DISTINCT FROM 'DELETED'`, [questionId]
+  );
+  return rowCount > 0;
+}
+
+async function handleQuestion({ resource, storeId }) {
+  const questionId = resource.split('/').pop();
+  // Sem o antigo "pula se atualizou há < 30 min": ele descartava o webhook de
+  // RESPONDIDA/APAGADA quando chegava logo depois da pergunta, e ela ficava
+  // UNANSWERED pra sempre. O bloqueio agora vale só pro aviso (abaixo).
+  let q;
+  try { q = await ml.getQuestion(questionId, storeId); }
+  catch (e) {
+    if (!/HTTP 404/.test(e.message)) throw e;
+    if (await marcarPerguntaApagada(questionId)) { await redis.del('kpis:summary'); await publish('question_received', { id: Number(questionId), status: 'DELETED' }); }
+    return;
+  }
+
+  if (await gravarPergunta(q, storeId)) await redis.del('kpis:summary');
   await publish('question_received', { id: q.id, status: q.status, text: q.text });
   if (q.status === 'UNANSWERED') {
+    // 1 aviso por pergunta (o ML reenvia o mesmo webhook mais de uma vez).
+    let jaAvisou = false;
+    try { jaAvisou = (await redis.set(`pergunta:aviso:${q.id}`, '1', 'EX', 3 * 86400, 'NX')) !== 'OK'; }
+    catch (e) { console.warn('[pergunta] trava do aviso falhou (segue avisando):', e.message); }
+    if (jaAvisou) return;
     const loja = await getStoreName(storeId);
     const dashUrl = (process.env.DASH_URL || 'https://multimixvendas.duckdns.org') + '/pages/perguntas.html';
     const msgId = await tgNotify('tg_perguntas',
@@ -2395,6 +2423,47 @@ async function syncRankingAlerts() {
 // rate limit apertado da API de claims do ML. Disparado manualmente pelo botão
 // "Atualizar pendentes" (worker:cmd). Mesma disciplina de 429 do syncShippingStatus.
 let isSyncingClaims = false;
+// Conferência das perguntas pendentes (a cada 30 min): reconsulta no ML as
+// UNANSWERED pra pegar as respondidas/apagadas direto no site cujo webhook se
+// perdeu. Mais antigas primeiro (as novas já chegam pelo webhook). Sem aviso
+// no Telegram — só corrige o status (e a contagem de "perguntas pendentes").
+let isSyncingPerguntas = false;
+async function syncPerguntasPendentes() {
+  if (isSyncingPerguntas) { console.warn('[sync-perguntas] já em execução — ignorando'); return; }
+  isSyncingPerguntas = true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT ml_id, store_id FROM questions WHERE status='UNANSWERED' AND store_id IS NOT NULL ORDER BY date_created ASC LIMIT 200`
+    );
+    let mudou = 0, erros = 0;
+    const bloqueada = new Set();
+    for (const r of rows) {
+      if (bloqueada.has(String(r.store_id))) continue;
+      let espera = 1500;
+      try {
+        const q = await ml.getQuestion(r.ml_id, r.store_id);
+        if (await gravarPergunta(q, r.store_id)) { mudou++; await publish('question_received', { id: q.id, status: q.status }); }
+      } catch (e) {
+        if (/HTTP 404/.test(e.message)) { if (await marcarPerguntaApagada(r.ml_id)) mudou++; }
+        else {
+          erros++;
+          console.warn(`[sync-perguntas] erro pergunta=${r.ml_id}: ${e.message}`);
+          if (/429|cooldown/.test(e.message)) { bloqueada.add(String(r.store_id)); espera = 5000; }
+        }
+      }
+      await new Promise((res) => setTimeout(res, espera));
+    }
+    if (mudou) await redis.del('kpis:summary');
+    console.log(`[sync-perguntas] ${rows.length} pendente(s) conferida(s): ${mudou} mudaram de status, ${erros} erro(s)`);
+  } catch (e) {
+    console.error('[sync-perguntas] erro:', e.message);
+  } finally { isSyncingPerguntas = false; }
+}
+async function checkPerguntasPendentes() {
+  try { await syncPerguntasPendentes(); }
+  finally { scheduleEveryMinutes(30, checkPerguntasPendentes, 'sync-perguntas'); }
+}
+
 async function syncClaimsStatus(manual = false) {
   if (isSyncingClaims) { console.warn('[sync-claims-status] já em execução — ignorando'); return; }
   isSyncingClaims = true;
@@ -4038,6 +4107,7 @@ scheduleAt(8, 30,  checkBuyboxRelatorio, 'buybox-relatorio');
 scheduleEvery(4,    checkRankingVendas4h, 'rk-vendas-4h');
 scheduleAt(7, 5,   checkRankingVendasDia, 'rk-vendas-dia');
 scheduleEveryMinutes(10, flushRankingPendentes, 'rk-pendentes');
+scheduleEveryMinutes(30, checkPerguntasPendentes, 'sync-perguntas');
 scheduleAt(8, 5,   checkIaEstrategistaDiario, 'ia-estrategista-diario');
 scheduleEvery(2,    checkIaEstrategistaCriticos, 'ia-estrategista-criticos');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');
@@ -4127,6 +4197,7 @@ cmdSub.on('message', (channel, msg) => {
       'ia-estrategista-diario': 'runIaEstrategistaDiario',
       'ia-estrategista-criticos': 'runIaEstrategistaCriticos',
       'tarefas-atrasadas': 'checkTarefasAtrasadas',
+      'sync-perguntas': 'syncPerguntasPendentes',
       'shopee-campanhas-vencendo': 'checkShopeeCampanhasVencendo',
       // já dual-registrados no chain (kebab aceito direto): sync-seo-score,
       // sync-catalog-competition, sync-payment-releases, sync-shipping-status,
@@ -4259,6 +4330,10 @@ cmdSub.on('message', (channel, msg) => {
     }
     if (cmd === 'runIaEstrategistaCriticos') {
       runIaEstrategistaCriticos().catch(e => console.error('[worker] ia-estrategista-criticos erro:', e.message));
+    }
+    if (cmd === 'syncPerguntasPendentes') {
+      console.log('[worker] sync-perguntas disparado manualmente');
+      syncPerguntasPendentes().catch(e => console.error('[worker] sync-perguntas erro:', e.message));
     }
     if (cmd === 'runRankingVendas4h') {
       console.log('[worker] rk-vendas-4h disparado manualmente');

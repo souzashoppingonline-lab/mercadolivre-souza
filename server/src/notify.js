@@ -24,7 +24,7 @@ async function estaEmSilencio() {
   return dentroDoSilencio(Object.fromEntries(rows.map(r => [r.key, r.value])));
 }
 
-async function tgNotifyForce(topic, text) {
+async function tgNotifyForce(topic, text, extra = {}) {
   try {
     const { rows } = await pool.query(
       `SELECT key, value FROM app_config WHERE key = ANY($1)`,
@@ -41,11 +41,12 @@ async function tgNotifyForce(topic, text) {
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
     const j = await r.json().catch(() => ({}));
-    if (j.ok) await registrarMensagem({ topico: topic, texto: text });
+    if (j.ok) await registrarMensagem({ topico: topic, texto: text, imagem: extra.imagem });
   } catch (e) { console.error('[notify] tgNotifyForce error:', e.message); }
 }
 
-async function tgNotify(topic, text) {
+// extra.imagem: foto pra Tela Telegram (TV) — o Telegram recebe só o texto.
+async function tgNotify(topic, text, extra = {}) {
   try {
     const { rows } = await pool.query(
       `SELECT key, value FROM app_config WHERE key = ANY($1)`,
@@ -74,7 +75,7 @@ async function tgNotify(topic, text) {
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
     const j = await r.json();
-    if (j && j.ok) await registrarMensagem({ topico: topic, texto: text });
+    if (j && j.ok) await registrarMensagem({ topico: topic, texto: text, imagem: extra.imagem });
     return j?.result?.message_id || null;
   } catch (e) {
     console.error('[notify] tgNotify error:', e.message);

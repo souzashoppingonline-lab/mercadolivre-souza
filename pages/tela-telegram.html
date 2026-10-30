@@ -49,6 +49,9 @@
     .msg.nova .bolha { animation:entra .6s cubic-bezier(.2,1.2,.4,1), brilho 3s ease-out; }
     @keyframes entra { from { transform:translateY(24px) scale(.96); opacity:0 } to { transform:none; opacity:1 } }
     @keyframes brilho { 0%,40% { box-shadow:0 0 0 2px rgba(106,179,243,.85), 0 0 24px rgba(106,179,243,.35) } 100% { box-shadow:0 1px 1px rgba(0,0,0,.25) } }
+    /* Foto do anúncio vendido (v126) — só na tela; o Telegram recebe só texto */
+    .bolha.com-foto { display:flex; gap:12px; align-items:flex-start; } .bolha.com-foto > .corpo-b { min-width:0; flex:1; }
+    .bolha .foto { width:7.5em; height:7.5em; border-radius:10px; object-fit:contain; background:#fff; flex:none; box-shadow:0 2px 8px rgba(0,0,0,.35); }
     /* Alerta de pergunta/chat de cliente (bipe + voz): borda vermelha + selo; pisca quando chega */
     .msg.alerta .bolha { border-left:5px solid #ff5d5d; }
     .msg.alerta .selo { display:inline-block; background:#ff5d5d; color:#fff; font-weight:800; font-size:.8em; letter-spacing:.03em; border-radius:6px; padding:2px 8px; margin-bottom:4px; }
@@ -139,6 +142,11 @@
     .hr > div { flex:1; display:flex; align-items:flex-end; justify-content:center; gap:2px; height:100%; }
     .hr .b { position:relative; width:46%; border-radius:4px 4px 0 0; min-height:2px; }
     .hr .b.hj { background:linear-gradient(180deg,#4ea1ff,#1f5fbf); } .hr .b.on { background:linear-gradient(180deg,#ffb066,#e0701a); opacity:.9; }
+    .hr .b.sp { background:linear-gradient(180deg,#c39bff,#7b4fd6); opacity:.9; } .hr-tot .s b { color:#c39bff; }
+    .sp-fat { display:flex; justify-content:space-between; gap:8px; font-size:.8em; color:#9fb4c7; margin-top:3px; } .sp-fat b { color:#e8f2fb; }
+    .sh-k { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:6px; } .sh-k > div { background:#1b2733; border-radius:10px; padding:6px 10px; font-size:.82em; color:#9fb4c7; }
+    .sh-k b { display:block; font-size:1.9em; font-weight:900; line-height:1.1; } .sh-sub { font-size:.78em; font-weight:800; color:#9fb4c7; margin:6px 0 2px; text-transform:uppercase; letter-spacing:.03em; }
+    .nota { width:2.3em; height:2.3em; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:.9em; color:#0e1621; flex:none; }
     .hr .agora .b.hj { background:linear-gradient(180deg,#5ef08a,#1f9d4c); box-shadow:0 0 12px rgba(63,185,80,.6); }
     .hr .b.hj em { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); font-style:normal; font-weight:900; font-size:.82em; color:#e8f2fb; margin-bottom:2px; white-space:nowrap; }
     .hr .agora .b.hj em { color:#5ef08a; }
@@ -239,9 +247,10 @@ function bolha(m, nova) {
   const hora = new Date(m.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
   const ent = m.direcao === 'entrada';
   const al = tipoAlerta(m);
-  html += `<div class="msg ${ent ? 'ent' : ''}${nova ? ' nova' : ''}${al ? ' alerta' : ''}" data-id="${m.id}"><div class="bolha">
+  const foto = m.imagem && /^https?:\/\//.test(m.imagem) ? `<img class="foto" src="${esc(m.imagem)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  html += `<div class="msg ${ent ? 'ent' : ''}${nova ? ' nova' : ''}${al ? ' alerta' : ''}" data-id="${m.id}"><div class="bolha${foto ? ' com-foto' : ''}">${foto}<div class="corpo-b">
     ${al ? `<div class="selo">${al.selo}</div>` : ''}${!ent && t ? `<div class="tag" style="color:${t[1]}">${t[0]}</div>` : ''}${ent && m.autor ? `<div class="tag" style="color:#9fc3e6">${esc(m.autor)}</div>` : ''}
-    <div class="txt">${TelegramHtml.paraHtml(m.texto, m.html !== false)}<span class="meta">${hora}</span></div></div></div>`;
+    <div class="txt">${TelegramHtml.paraHtml(m.texto, m.html !== false)}<span class="meta">${hora}</span></div></div></div></div>`;
   return html;
 }
 function poda() {
@@ -500,6 +509,23 @@ const SLIDES = [
         <div class="hr-l">${vis.map(x => `<span class="${x.h === hAgora ? 'agora' : ''}">${vis.length > 14 && x.h % 2 ? '' : x.h + 'h'}</span>`).join('')}</div>
         <div class="hr-leg"><span><i style="background:#4ea1ff"></i>Hoje</span><span><i style="background:#ff9f43"></i>Ontem</span><span><i style="background:#5ef08a"></i>Hora atual</span></div>
       </div>`; } },
+  { tit: '📅 Hoje × mesmo dia da semana passada', html: d => {
+      // v137: mesmo gráfico do ⏰, comparando com o mesmo dia 7 dias atrás (roxo). Totais até a mesma hora.
+      const sp = d.carrossel.semana_passada; if (!sp) return '';
+      const ph = sp.por_hora, hAgora = Number(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }));
+      const ini = Math.min(6, ...ph.filter(x => x.hoje || x.sem).map(x => x.h)), fim = Math.max(hAgora + 1, 12);
+      const vis = ph.filter(x => x.h >= ini && x.h <= Math.min(23, fim));
+      const max = Math.max(1, ...vis.map(x => Math.max(x.hoje, x.sem)));
+      const tot = (k, ate) => ph.filter(x => x.h <= ate).reduce((a, x) => a + x[k], 0);
+      const th = tot('hoje', hAgora), ts = tot('sem', hAgora), v = ts ? Math.round(((th - ts) / ts) * 100) : null;
+      const fh = tot('fat_hoje', hAgora), fs = tot('fat_sem', hAgora), fv = fs ? Math.round(((fh - fs) / fs) * 100) : null;
+      return `<div class="hrw">
+        <div class="hr-tot"><span class="h">Hoje até agora <b>${th}</b></span><span class="s">${esc(sp.dia.split(',')[0])} até ${hAgora}h <b>${ts}</b></span>${v == null ? '' : `<span class="${v >= 0 ? 'up' : 'dn'}" style="font-weight:900;font-size:1.15em">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}%</span>`}</div>
+        <div class="sp-fat"><span>💰 Hoje <b>${R$(fh)}</b> × <b>${R$(fs)}</b>${fv == null ? '' : ` <span class="${fv >= 0 ? 'up' : 'dn'}">${fv >= 0 ? '▲' : '▼'} ${Math.abs(fv)}%</span>`}</span><span>📅 ${esc(sp.dia)} (dia inteiro): <b>${tot('sem', 23)} ped. · ${R$(tot('fat_sem', 23))}</b></span></div>
+        <div class="hr">${vis.map(x => `<div class="${x.h === hAgora ? 'agora' : ''}"><span class="b sp" style="height:${(x.sem / max) * 100}%"></span><span class="b hj" style="height:${(x.hoje / max) * 100}%">${x.hoje && x.h <= hAgora ? `<em>${x.hoje}</em>` : ''}</span></div>`).join('')}</div>
+        <div class="hr-l">${vis.map(x => `<span class="${x.h === hAgora ? 'agora' : ''}">${vis.length > 14 && x.h % 2 ? '' : x.h + 'h'}</span>`).join('')}</div>
+        <div class="hr-leg"><span><i style="background:#4ea1ff"></i>Hoje</span><span><i style="background:#c39bff"></i>Semana passada</span><span><i style="background:#5ef08a"></i>Hora atual</span></div>
+      </div>`; } },
   { tit: '📦 Estoque em risco', html: d => d.carrossel.estoque_risco.length ? d.carrossel.estoque_risco.map(x => `<div class="tp"><div class="pos" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${Number(x.estoque) <= 0 ? '⛔' : '⚠️'}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${x.vendas7} venda(s) em 7 dias</span></div><div class="v" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${x.estoque} un</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio vendendo com estoque baixo.</div>' },
   { tit: '🔴 Buy Box — perdendo (mais perto de ganhar)', html: d => d.carrossel.buybox_perdendo.length ? d.carrossel.buybox_perdendo.map(x => `<div class="tp"><div class="pos">🔴</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${esc(x.item_id)}</span></div><div class="v">${R$(x.vencedor)}<small>seu ${R$(x.seu)}</small></div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio perdendo o Buy Box.</div>' },
   { tit: '🏷️ Promoções ativas', html: d => { const p = d.carrossel.promocoes; if (!p) return ''; const fimTxt = iso => { const f = new Date(iso), h = new Date(); const dd = Math.round((new Date(f.toDateString()) - new Date(h.toDateString())) / 86400000); return dd <= 0 ? `hoje ${f.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'amanhã'; };
@@ -522,6 +548,21 @@ const SLIDES = [
       return rs.length ? rs.map(r => { const c = COR[r.level_id] || ['⚪', r.level_id || 'sem nível']; return `<div class="tp"><div class="pos" style="font-size:1.3em">${c[0]}</div><div class="t"><b>${esc(r.loja)}</b><span>${c[1]}${r.power ? ' · MercadoLíder ' + esc(r.power) : ''}</span><br><span>Reclamações ${p(r.reclamacoes)} · Atrasos ${p(r.atrasos)} · Cancelamentos ${p(r.cancelamentos)}</span></div></div>`; }).join('') : '<div class="pn-vazio">Reputação ainda não coletada (sync diário 04:15).</div>'; } },
   { tit: '🔁 Clientes recorrentes hoje', html: d => { const r = d.carrossel.recorrentes; if (!r) return ''; const base = r.total - r.sem_comprador, pct = base ? Math.round((r.recorrentes / base) * 100) : 0;
       return `<div class="rc"><div class="big">${r.recorrentes}</div><div>de <b>${base}</b> venda(s) de hoje foram de quem <b>já comprou antes</b></div><div class="rc-bar"><i style="width:${pct}%"></i></div><div class="rc-pct">${pct}% recorrentes · ${100 - pct}% clientes novos</div>${r.sem_comprador ? `<div class="pn-vazio">${r.sem_comprador} venda(s) sem comprador identificado (Shopee) ficaram de fora</div>` : ''}</div>`; } },
+  { tit: '🛍️ Shopee — atenção', html: d => {
+      // v137: chat não lido (sync a cada 10 min) + anúncios banidos por violação (sync a cada 6h).
+      const sh = d.carrossel.shopee; if (!sh) return '';
+      const ha = iso => { if (!iso) return ''; const m = Math.round((Date.now() - new Date(iso)) / 60000); return m < 60 ? `há ${m} min` : m < 1440 ? `há ${Math.floor(m / 60)}h` : `há ${Math.floor(m / 1440)} dia(s)`; };
+      const velho = iso => iso && Date.now() - new Date(iso) > 2 * 3600000;
+      return `<div class="sh-k"><div>💬 Chats sem resposta<b style="color:${sh.chats ? '#f85149' : '#3fb950'}">${sh.chats}</b>${sh.mensagens} mensagem(ns) não lida(s)</div><div>🚫 Anúncios com violação<b style="color:${sh.violacoes ? '#f85149' : '#3fb950'}">${sh.violacoes}</b>banidos pela Shopee</div></div>
+        ${sh.chats_lista.length ? `<div class="sh-sub">💬 Mais antigos primeiro</div>` + sh.chats_lista.map(c => `<div class="tp"><div class="pos">${velho(c.em) ? '🔴' : '🟡'}</div><div class="t"><b>${esc(c.comprador || 'Comprador')}</b><span>${esc(corta(c.texto || '', 70))}</span></div><div class="v" style="color:${velho(c.em) ? '#f85149' : '#f0b429'}">${ha(c.em)}<small>${esc(c.loja || '')}</small></div></div>`).join('') : ''}
+        ${sh.violacoes_lista.length ? `<div class="sh-sub">🚫 Violações</div>` + sh.violacoes_lista.map(v => `<div class="tp"><div class="pos">🚫</div><div class="t"><b>${esc(v.titulo || '—')}</b><span>${esc(v.loja || '')}</span></div></div>`).join('') : ''}
+        ${!sh.chats && !sh.violacoes ? '<div class="pn-vazio">✅ Nenhum chat pendente e nenhuma violação na Shopee.</div>' : ''}`; } },
+  { tit: '📝 Anúncios com nota baixa — qualidade', html: d => {
+      // v137: SEO Score (04:30, fórmula de seoScore.js) — piores entre os anúncios ML ativos com visita em 30 dias.
+      const nb = d.carrossel.nota_baixa; if (!nb || !nb.itens.length) return '<div class="pn-vazio">Nota de qualidade ainda não calculada.</div>';
+      const cor = n => n < 40 ? '#f85149' : n < 60 ? '#f0b429' : '#3fb950';
+      return `${nb.media != null ? `<div class="sp-fat" style="margin:0 0 4px"><span>Média da carteira: <b style="color:${cor(nb.media)}">${nb.media.toLocaleString('pt-BR')}</b>/100</span><span>atualiza 1x por dia (04:30)</span></div>` : ''}` +
+        nb.itens.map(x => `<div class="tp"><div class="nota" style="background:${cor(x.nota)}">${Math.round(x.nota)}</div><div class="t"><b>${esc(x.titulo || x.item_id)}</b><span>${x.faltas.length ? esc(x.faltas.join(' · ')) : 'ver detalhes na Qualidade de Anúncio'}</span></div><div class="v">${x.visitas30}<small>visitas/30d · ${x.vendas30 || 0} vend.</small></div></div>`).join(''); } },
   { tit: '📆 Melhor dia e horário — últimos 30 dias', html: d => { const m = d.carrossel.melhor; if (!m) return ''; const NOMES = ['', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'], NOMES_L = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
       const dias = m.por_dia, maxD = Math.max(1, ...dias.map(x => x.pedidos_media)), melhorD = dias.reduce((a, x) => x.pedidos_media > a.pedidos_media ? x : a, dias[0]);
       const ph = m.por_hora, tot = ph.reduce((a, b) => a + b, 0) || 1; let bi = 0, bv = -1; for (let h = 0; h < 24; h++) { const v = ph[h] + ph[(h + 1) % 24] + ph[(h + 2) % 24]; if (v > bv) { bv = v; bi = h; } }

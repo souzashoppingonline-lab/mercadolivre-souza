@@ -252,7 +252,9 @@ async function handleShopeeOrderEvent(evt) {
       const titulo = items[0]?.item_name || o.order_sn;
       const qtdItens = items.reduce((s, it) => s + (Number(it.model_quantity_purchased) || 0), 0) || items.length;
       const val = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAmount);
-      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🛍️ <b>Shopee</b>\n🏪 ${loja}\n📦 ${titulo}${qtdItens > 1 ? ` (${qtdItens} itens)` : ''}\n💰 ${val}\n🔖 Pedido: ${o.order_sn}`);
+      const tlog = require('./telegramLog'); // foto só na Tela Telegram (v126)
+      const imagem = tlog.fotoGrande(items[0]?.image_info?.image_url) || await tlog.imagemDoItem(items[0]?.item_id);
+      await tgNotify('tg_vendas', `🛒 <b>Nova venda!</b>\n🛍️ <b>Shopee</b>\n🏪 ${loja}\n📦 ${titulo}${qtdItens > 1 ? ` (${qtdItens} itens)` : ''}\n💰 ${val}\n🔖 Pedido: ${o.order_sn}`, { imagem });
     } catch (e) {
       console.error('[marketplace-worker] tgNotify Shopee erro:', e.message);
     }
@@ -555,6 +557,16 @@ async function syncShopeeChat() {
         // conversa antiga: marca como notificada sem mandar Telegram (evita spam retroativo)
         await pool.query(`UPDATE shopee_chat SET notified_message_id=$1 WHERE conversation_id=$2 AND store_id=$3`, [latestId, c.conversation_id, storeId]);
       }
+    }
+    // Conversa que saiu da lista de não lidas (lida/respondida direto no app da
+    // Shopee) → zera aqui; antes ficava "não lida" pra sempre no banco. Só quando
+    // a lista veio completa (< 25 = página única); senão não dá pra saber.
+    if ((convs || []).length < 25) {
+      const ids = (convs || []).map((c) => String(c.conversation_id)).filter(Boolean);
+      const { rowCount } = await pool.query(
+        `UPDATE shopee_chat SET unread_count = 0, updated_at = now()
+          WHERE store_id = $1 AND unread_count > 0 AND NOT (conversation_id = ANY($2::text[]))`, [storeId, ids]);
+      if (rowCount) console.log(`[marketplace-worker] chat Shopee store ${storeId}: ${rowCount} conversa(s) lida(s) fora do sistema → zeradas`);
     }
   }
 }

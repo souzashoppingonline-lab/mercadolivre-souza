@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IA Estrategista</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='IA Estrategista'; window.ACTIVE_NAV='bi-ia-estrategista.html';</script>
+  <style>
+    .bi-abas { display:flex; gap:6px; margin-bottom:14px; border-bottom:1px solid var(--border); }
+    .bi-abas a { padding:9px 14px; font-size:13px; font-weight:700; color:var(--text-muted); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+    .bi-abas a.on { color:#8b5cf6; border-bottom-color:#8b5cf6; }
+    .ie-sub { font-size:13px; color:var(--text-muted); margin:0 0 12px; }
+    .ie-aviso { background:rgba(139,92,246,.08); border:1px solid rgba(139,92,246,.35); border-radius:10px; padding:9px 12px; font-size:12px; color:var(--text-muted); margin-bottom:14px; }
+    .ie-filtros { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+    .ie-filtros select, .ie-filtros input { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 11px; font-size:12.5px; }
+    .ie-filtros input { min-width:180px; }
+    .ie-status { font-size:12px; color:var(--text-muted); margin-left:auto; }
+    .ie-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:14px; }
+    .ie-kpi { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:13px 15px; border-left:4px solid #8b5cf6; cursor:default; }
+    .ie-kpi.clic { cursor:pointer; } .ie-kpi.clic:hover { background:var(--bg-card2); }
+    .ie-kpi .k { font-size:10.5px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+    .ie-kpi .v { font-size:22px; font-weight:900; margin-top:5px; }
+    .ie-kpi .s { font-size:11px; color:var(--text-muted); margin-top:3px; }
+    .ie-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:15px 17px; margin-bottom:14px; }
+    .ie-card h3 { font-size:14px; font-weight:800; margin:0 0 10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .ie-card h3 .hint { font-size:11px; color:var(--text-muted); font-weight:500; margin-left:auto; }
+    .ie-resp { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px; }
+    .ie-resp .q { background:var(--bg-card2); border-radius:10px; padding:10px 12px; }
+    .ie-resp .q b { font-size:12px; display:block; margin-bottom:6px; }
+    .ie-resp .q a { display:block; font-size:12px; color:var(--text-main); text-decoration:none; padding:3px 0; border-bottom:1px dashed var(--border); cursor:pointer; }
+    .ie-resp .q a:hover { color:#8b5cf6; }
+    .ie-resp .q a small { color:var(--text-muted); display:block; }
+    .ie-resp .q .vazio { font-size:11.5px; color:var(--text-muted); }
+    .ie-tabs { display:flex; gap:6px; margin-bottom:10px; }
+    .ie-tabs button { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:20px; padding:7px 14px; font-size:12.5px; font-weight:700; cursor:pointer; }
+    .ie-tabs button.on { background:#8b5cf6; border-color:#8b5cf6; color:#fff; }
+    table.ie-t { width:100%; border-collapse:collapse; }
+    .ie-t th, .ie-t td { text-align:left; padding:8px 9px; border-bottom:1px solid var(--border); font-size:12px; vertical-align:top; }
+    .ie-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; cursor:pointer; user-select:none; }
+    .ie-t td.n, .ie-t th.n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .ie-t tbody tr { cursor:pointer; } .ie-t tbody tr:hover td { background:var(--bg-card2); }
+    .ie-prio { display:inline-block; min-width:36px; text-align:center; font-weight:900; font-size:13px; border-radius:8px; padding:4px 6px; color:#fff; }
+    .ie-fase { font-size:10px; font-weight:800; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+    .ie-prod { display:flex; gap:8px; align-items:center; min-width:200px; }
+    .ie-prod img { width:34px; height:34px; border-radius:6px; object-fit:cover; background:#fff; flex:none; }
+    .ie-prod .l { font-size:10.5px; color:var(--text-muted); }
+    .ie-cat { font-size:10.5px; font-weight:700; white-space:nowrap; }
+    .pos { color:#3fb950; font-weight:700; } .neg { color:#f87171; font-weight:700; } .mut { color:var(--text-muted); }
+    .ie-vazio { padding:24px; text-align:center; color:var(--text-muted); font-size:13px; }
+    /* Detalhe */
+    .ie-modal { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1000; display:none; justify-content:flex-end; }
+    .ie-modal.on { display:flex; }
+    .ie-painel { width:min(860px,100%); height:100%; overflow-y:auto; background:var(--bg-main,#0d1117); border-left:1px solid var(--border); padding:18px 20px 40px; }
+    .ie-painel h2 { font-size:17px; margin:0 0 4px; }
+    .ie-sec { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:13px 15px; margin-top:12px; }
+    .ie-sec h4 { margin:0 0 9px; font-size:13px; font-weight:800; }
+    .ie-sec ul { margin:0; padding-left:18px; } .ie-sec li { font-size:12.5px; margin:4px 0; }
+    .tag-c { font-size:9.5px; font-weight:800; padding:1px 6px; border-radius:4px; margin-right:4px; }
+    .tag-c.comprovado { background:rgba(63,185,80,.15); color:#3fb950; } .tag-c.hipotese { background:rgba(210,153,34,.18); color:#d29922; }
+    .ie-acao { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px solid var(--border); }
+    .ie-acao:last-child { border-bottom:none; }
+    .ie-acao .o { width:24px; height:24px; border-radius:50%; background:#8b5cf6; color:#fff; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center; flex:none; }
+    .ie-acao .t { flex:1; font-size:12.5px; } .ie-acao .t small { display:block; color:var(--text-muted); margin-top:2px; }
+    .ie-acao .b { display:flex; gap:5px; flex:none; }
+    .btn-mini { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:8px; padding:5px 9px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .btn-mini.ok { border-color:#3fb950; color:#3fb950; } .btn-mini:hover { filter:brightness(1.2); }
+    .btn-ia { background:#8b5cf6; color:#fff; border:none; border-radius:10px; padding:9px 14px; font-weight:800; font-size:12.5px; cursor:pointer; }
+    .btn-ia:disabled { opacity:.5; cursor:wait; }
+    .ie-fat { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; border-bottom:1px dashed var(--border); }
+    .ie-grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+    .ie-mini { background:var(--bg-card2); border-radius:9px; padding:8px 10px; } .ie-mini .k { font-size:10px; color:var(--text-muted); text-transform:uppercase; font-weight:700; } .ie-mini .v { font-size:15px; font-weight:800; margin-top:2px; } .ie-mini .s { font-size:10.5px; margin-top:2px; }
+    .ie-ia { white-space:pre-wrap; font-size:12.5px; line-height:1.5; }
+    .ie-ad { background:var(--bg-card2); border-radius:9px; padding:8px 10px; margin-top:8px; font-size:11.5px; }
+    .ie-st { font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:20px; }
+    .st-pendente { background:rgba(139,148,158,.2); color:#8b949e; } .st-em_execucao { background:rgba(88,166,255,.18); color:#58a6ff; } .st-concluida { background:rgba(63,185,80,.18); color:#3fb950; } .st-descartada { background:rgba(248,81,73,.15); color:#f87171; }
+    @media (max-width:700px){ .ie-painel{ padding:14px 12px 40px; } .ie-acao{ flex-wrap:wrap; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <div class="bi-abas"><a href="bi-rankeamento.html"><i class="fas fa-ranking-star"></i> Vendas por Estágio</a><a class="on" href="bi-ia-estrategista.html"><i class="fas fa-chess-knight"></i> IA Estrategista</a></div>
+      <p class="ie-sub">Gestor de marketplace por anúncio: analisa cada anúncio do <b>Rankeamento</b>, aponta problemas e oportunidades e entrega um plano de ação priorizado. A IA só <b>recomenda</b> — nada é alterado nos anúncios ou campanhas.</p>
+      <div class="ie-aviso" id="ieAviso">⚠️ Estágio = estágio ATUAL do anúncio. Não existe histórico confiável de estágio: as vendas do período não significam que o anúncio estava nesse estágio quando vendeu.</div>
+
+      <div class="ie-filtros">
+        <select id="fLoja" onchange="carregar()"><option value="">Todas as empresas</option></select>
+        <select id="fPeriodo" onchange="carregar()"><option value="7">Últimos 7 dias</option><option value="14" selected>Últimos 14 dias</option><option value="30">Últimos 30 dias</option></select>
+        <select id="fFase" onchange="render()"><option value="">Todos os estágios</option></select>
+        <select id="fPrio" onchange="render()"><option value="">Toda prioridade</option><option value="80">Crítico (80–100)</option><option value="60">Alta (60–79)</option><option value="40">Oportunidade (40–59)</option><option value="20">Monitoramento (20–39)</option><option value="0">Saudável (0–19)</option></select>
+        <select id="fProb" onchange="render()"><option value="">Todo problema</option></select>
+        <input id="fBusca" placeholder="🔎 Produto, SKU ou MLB" oninput="render()">
+        <button class="btn-primary" onclick="carregar(true)"><i class="fas fa-sync"></i> Recalcular</button>
+        <button class="btn-ia" id="btnLote" onclick="analisarLote()" title="Gera a análise da IA dos até 10 anúncios mais prioritários (prioridade ≥ 40). Anúncio que não mudou reaproveita a análise salva (sem custo)."><i class="fas fa-robot"></i> Analisar prioritários com IA</button>
+        <span class="ie-status" id="ieStatus"></span>
+      </div>
+
+      <div class="ie-kpis" id="ieKpis"></div>
+
+      <div class="ie-card">
+        <h3><i class="fas fa-bullseye"></i> Respostas objetivas <span class="hint">clique num anúncio para abrir o plano</span></h3>
+        <div class="ie-resp" id="ieResp"></div>
+      </div>
+
+      <div class="ie-tabs"><button class="on" id="tabPrio" onclick="aba('prio')">🎯 Prioridades</button><button id="tabAcoes" onclick="aba('acoes')">✅ Acompanhamento de ações</button></div>
+
+      <div class="ie-card" id="secPrio">
+        <h3><i class="fas fa-list-ol"></i> Anúncios por prioridade de intervenção <span class="hint" id="ieConta"></span></h3>
+        <div style="overflow-x:auto"><table class="ie-t">
+          <thead><tr>
+            <th class="n" onclick="ordenar('prioridade')">Prioridade</th><th onclick="ordenar('titulo')">Produto</th><th>SKU</th><th onclick="ordenar('fase')">Estágio</th>
+            <th class="n" onclick="ordenar('fat')">Faturamento</th><th class="n" onclick="ordenar('pedidos')">Pedidos</th><th class="n" onclick="ordenar('margem')">MC</th><th class="n" onclick="ordenar('mc_pct')">MC%</th><th class="n" onclick="ordenar('conversao')">Conversão</th>
+            <th>Problema</th><th>Ação</th>
+          </tr></thead>
+          <tbody id="ieLista"><tr><td colspan="11" class="ie-vazio">Carregando…</td></tr></tbody>
+        </table></div>
+      </div>
+
+      <div class="ie-card" id="secAcoes" style="display:none">
+        <h3><i class="fas fa-clipboard-check"></i> Controle de execução das recomendações
+          <select id="fStatus" onchange="carregarAcoes()" style="margin-left:auto;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px"><option value="">Todos os status</option><option value="pendente">Pendente</option><option value="em_execucao">Em execução</option><option value="concluida">Concluída</option><option value="descartada">Descartada</option></select></h3>
+        <div id="ieAcoes" class="ie-vazio">Carregando…</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="ie-modal" id="ieModal" onclick="if(event.target===this)fechar()"><div class="ie-painel" id="iePainel"></div></div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-bi.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => n == null ? '—' : new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const PCT = n => n == null ? '—' : `${Number(n).toLocaleString('pt-BR',{maximumFractionDigits:2})}%`;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dataBR = d => d ? new Date(d).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) : '—';
+const VAR = (v, pp) => v == null ? '<span class="mut">—</span>' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '▲' : '▼'} ${Math.abs(v).toLocaleString('pt-BR',{maximumFractionDigits:2})}${pp ? ' p.p.' : '%'}</span>`;
+const FASE_UI = {
+  rankeando: { label:'Em rankeamento', cor:'#ffd60a', txt:'#1a1a1a' }, ranqueado: { label:'Ranqueado', cor:'#2ea043', txt:'#fff' },
+  monitoramento: { label:'Monitoramento', cor:'#f59e0b', txt:'#1a1a1a' }, recuperacao: { label:'Recuperação', cor:'#f85149', txt:'#fff' },
+  catalogo: { label:'Catálogo (Buy Box)', cor:'#a855f7', txt:'#fff' },
+};
+const CAT = { F:'📦 Atenção ao estoque', B:'📉 Recuperar vendas', G:'✂️ Reduzir investimento', D:'💰 Melhorar rentabilidade', C:'🎯 Melhorar conversão', E:'🚀 Escalar', A:'📈 Aumentar vendas' };
+const STATUS_UI = { pendente:'Pendente', em_execucao:'Em execução', concluida:'Concluída', descartada:'Descartada' };
+const faseTag = f => { const u = FASE_UI[f] || { label:f, cor:'#6b7280', txt:'#fff' }; return `<span class="ie-fase" style="background:${u.cor};color:${u.txt}">${esc(u.label)}</span>`; };
+const corPrio = n => n >= 80 ? '#f85149' : n >= 60 ? '#f0883e' : n >= 40 ? '#d29922' : n >= 20 ? '#388bfd' : '#2ea043';
+let DADOS = null, ORD = { campo:'prioridade', dir:-1 }, ABERTO = null, PLANO = [];
+
+async function popularLojas() {
+  const d = await DB.getLojas(); const sel = document.getElementById('fLoja');
+  (d.stores || []).forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.nickname; sel.appendChild(o); });
+  const ff = document.getElementById('fFase'); Object.entries(FASE_UI).forEach(([k, u]) => ff.insertAdjacentHTML('beforeend', `<option value="${k}">${u.label}</option>`));
+  const fp = document.getElementById('fProb'); Object.entries(CAT).forEach(([k, l]) => fp.insertAdjacentHTML('beforeend', `<option value="${k}">${l}</option>`));
+  fp.insertAdjacentHTML('beforeend', '<option value="dados">❔ Dados insuficientes</option><option value="ok">✅ Saudável</option>');
+}
+const periodo = () => Number(document.getElementById('fPeriodo').value);
+const loja = () => document.getElementById('fLoja').value;
+
+async function carregar(refresh = false) {
+  const st = document.getElementById('ieStatus'); st.textContent = 'Analisando anúncios…';
+  const d = await DB.getIaEstrategista(periodo(), loja(), refresh);
+  if (d.error) { st.textContent = '❌ ' + d.error; document.getElementById('ieLista').innerHTML = `<tr><td colspan="11" class="ie-vazio">${esc(d.error)}</td></tr>`; return; }
+  DADOS = d;
+  st.textContent = `${d.periodo.dias} dias fechados (${new Date(d.periodo.de + 'T12:00').toLocaleDateString('pt-BR')} a ${new Date(d.periodo.ate + 'T12:00').toLocaleDateString('pt-BR')}) vs ${d.periodo.dias} anteriores${d.ia_configurada ? '' : ' · IA (texto) não configurada — diagnóstico do motor ativo'}`;
+  document.getElementById('btnLote').style.display = d.ia_configurada ? '' : 'none';
+  renderKpis(); renderResp(); render();
+}
+
+function renderKpis() {
+  const p = DADOS.painel;
+  const k = (t, v, s, cor, filtro) => `<div class="ie-kpi ${filtro ? 'clic' : ''}" style="border-left-color:${cor}" ${filtro ? `onclick="filtrarKpi('${filtro}')"` : ''}><div class="k">${t}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  document.getElementById('ieKpis').innerHTML = !p.analisados ? '<div class="ie-vazio" style="grid-column:1/-1">Nenhum anúncio ativo no Rankeamento para analisar.</div>' : [
+    k('Anúncios analisados', p.analisados, 'ativos no Rankeamento', '#8b5cf6'),
+    k('Precisam de intervenção', p.precisam_intervencao, 'prioridade ≥ 60', '#f85149', 'p60'),
+    k('Potencial de crescimento', p.potencial_crescimento, 'escalar / aumentar vendas', '#3fb950', 'cresc'),
+    k('Problemas de rentabilidade', p.problemas_rentabilidade, 'margem baixa / ADS sem retorno', '#f0883e', 'rent'),
+    k('Risco de ruptura', p.risco_ruptura, 'estoque insuficiente', '#d29922', 'F'),
+    k('Oportunidades prioritárias', (DADOS.respostas.priorizar_hoje || []).length, 'para agir hoje', '#388bfd', 'p60'),
+    k('Potencial de faturamento', BRL(p.potencial_faturamento_mensal), 'por mês — estimativa da IA', '#a855f7'),
+  ].join('');
+}
+function filtrarKpi(f) {
+  document.getElementById('fPrio').value = f === 'p60' ? '60' : '';
+  document.getElementById('fProb').value = f === 'cresc' ? 'cresc' : f === 'rent' ? 'rent' : f === 'F' ? 'F' : '';
+  if (f === 'cresc' || f === 'rent') { const fp = document.getElementById('fProb'); if (![...fp.options].some(o => o.value === f)) fp.insertAdjacentHTML('beforeend', f === 'cresc' ? '<option value="cresc">Escalar + Aumentar vendas</option>' : '<option value="rent">Rentabilidade + Reduzir investimento</option>'); fp.value = f; }
+  aba('prio'); render(); document.getElementById('secPrio').scrollIntoView({ behavior:'smooth' });
+}
+
+function renderResp() {
+  const r = DADOS.respostas || {};
+  const Q = [
+    ['1. Quais anúncios estão prejudicando meu resultado?', r.prejudicando_resultado],
+    ['2. Quais anúncios estou deixando de vender mais?', r.deixando_de_vender],
+    ['3. Quais anúncios devo priorizar hoje?', r.priorizar_hoje],
+    ['4. Quais anúncios merecem investimento?', r.merecem_investimento],
+    ['5. Quais precisam de melhoria de preço?', r.melhoria_preco],
+    ['6. Quais precisam de melhoria de conversão?', r.melhoria_conversao],
+    ['7. Quais vendem muito, mas deixam pouco lucro?', r.vende_muito_lucra_pouco],
+    ['8. Quais podem aumentar meu faturamento?', r.aumentar_faturamento],
+  ];
+  const lista = xs => xs && xs.length ? xs.map(x => `<a onclick="abrir(${x.ranking_ad_id})"><b style="color:${corPrio(x.prioridade)}">[${x.prioridade}]</b> ${esc(x.titulo)}<small>${esc(x.motivo)}${x.impacto ? ` · impacto ~${BRL(x.impacto)}/mês` : ''}</small></a>`).join('') : '<div class="vazio">Nenhum anúncio nesta situação.</div>';
+  const fp = r.fazer_primeiro;
+  document.getElementById('ieResp').innerHTML = Q.map(([q, xs]) => `<div class="q"><b>${q}</b>${lista(xs)}</div>`).join('') +
+    `<div class="q"><b>9. O que devo fazer primeiro?</b>${fp ? `<a onclick="abrir(${fp.ranking_ad_id})">${esc(fp.titulo)}<small>👉 ${esc(fp.acao)}<br>${esc(fp.motivo)}</small></a>` : '<div class="vazio">Nada urgente.</div>'}</div>` +
+    `<div class="q"><b>10. Qual o impacto financeiro potencial?</b><div style="font-size:20px;font-weight:900;margin:4px 0">${BRL(DADOS.painel.potencial_faturamento_mensal)}<span style="font-size:11px;color:var(--text-muted);font-weight:600">/mês</span></div><div class="vazio">Soma estimada das oportunidades (recuperar, converter, crescer, repor estoque). Estimativa da IA — não é resultado garantido. Impacto de cada ação aparece no plano do anúncio.</div></div>`;
+}
+
+function filtrados() {
+  const f = document.getElementById('fFase').value, pr = document.getElementById('fPrio').value, pb = document.getElementById('fProb').value;
+  const q = document.getElementById('fBusca').value.trim().toLowerCase();
+  return (DADOS?.anuncios || []).filter(a => {
+    if (f && a.fase !== f) return false;
+    if (pr !== '') { const mn = Number(pr), mx = mn === 80 ? 101 : mn + 20; if (a.prioridade < mn || a.prioridade >= mx) return false; }
+    if (pb) {
+      if (pb === 'dados') { if (a.principal.chave !== 'dados_insuficientes') return false; }
+      else if (pb === 'ok') { if (a.principal.chave !== 'saudavel') return false; }
+      else if (pb === 'cresc') { if (!a.categorias.some(c => c === 'A' || c === 'E')) return false; }
+      else if (pb === 'rent') { if (!a.categorias.some(c => c === 'D' || c === 'G')) return false; }
+      else if (!a.categorias.includes(pb)) return false;
+    }
+    if (q && !`${a.titulo} ${a.sku || ''} ${a.ml_id}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function ordenar(c) { ORD = { campo:c, dir: ORD.campo === c ? -ORD.dir : (c === 'titulo' || c === 'fase' ? 1 : -1) }; render(); }
+function render() {
+  if (!DADOS) return;
+  const xs = filtrados().slice().sort((a, b) => { const va = a[ORD.campo], vb = b[ORD.campo]; if (va == null) return 1; if (vb == null) return -1; return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * ORD.dir; });
+  document.getElementById('ieConta').textContent = `${xs.length} de ${DADOS.anuncios.length} anúncio(s)`;
+  document.getElementById('ieLista').innerHTML = xs.length ? xs.map(a => `<tr onclick="abrir(${a.ranking_ad_id})">
+    <td class="n"><span class="ie-prio" style="background:${corPrio(a.prioridade)}" title="${esc(a.faixa.label)}">${a.prioridade}</span></td>
+    <td><div class="ie-prod">${a.thumbnail ? `<img src="${esc(a.thumbnail)}" alt="">` : ''}<div>${esc(a.titulo)}<div class="l">${esc(a.loja || '')} · ${esc(a.ml_id)}</div></div></div></td>
+    <td>${esc(a.sku || '—')}</td><td>${faseTag(a.fase)}</td>
+    <td class="n">${BRL(a.fat)}</td><td class="n">${a.pedidos}${a.var_pedidos != null ? `<br>${VAR(a.var_pedidos)}` : ''}</td>
+    <td class="n">${a.margem == null ? '<span class="mut" title="custo não cadastrado">—</span>' : BRL(a.margem)}</td>
+    <td class="n">${a.mc_pct == null ? '<span class="mut">—</span>' : `<span class="${a.mc_pct < 10 ? 'neg' : ''}">${PCT(a.mc_pct)}</span>`}</td>
+    <td class="n">${a.conversao == null ? '<span class="mut" title="sem visitas registradas">—</span>' : PCT(a.conversao)}</td>
+    <td><div class="ie-cat">${esc(a.principal.ico)} ${esc(a.principal.nome)}</div><div style="font-size:11px;color:var(--text-muted);max-width:260px">${esc(a.problema || '')}</div></td>
+    <td style="min-width:200px;max-width:300px;font-size:11.5px">${esc(a.acao || "—")}</td></tr>`).join('') : '<tr><td colspan="11" class="ie-vazio">Nenhum anúncio com esses filtros.</td></tr>';
+}
+
+function aba(t) {
+  document.getElementById('tabPrio').classList.toggle('on', t === 'prio'); document.getElementById('tabAcoes').classList.toggle('on', t === 'acoes');
+  document.getElementById('secPrio').style.display = t === 'prio' ? '' : 'none'; document.getElementById('secAcoes').style.display = t === 'acoes' ? '' : 'none';
+  if (t === 'acoes') carregarAcoes();
+}
+
+// ── Detalhe de 1 anúncio ──────────────────────────────────────────────────
+async function abrir(id) {
+  ABERTO = id;
+  const p = document.getElementById('iePainel'); document.getElementById('ieModal').classList.add('on');
+  p.innerHTML = '<div class="ie-vazio">Carregando análise…</div>';
+  const d = await DB.getIaEstrategistaAnuncio(id, periodo(), loja());
+  if (d.error) { p.innerHTML = `<button class="btn-mini" onclick="fechar()">✕ Fechar</button><div class="ie-vazio">${esc(d.error)}</div>`; return; }
+  renderDetalhe(d);
+}
+function fechar() { document.getElementById('ieModal').classList.remove('on'); ABERTO = null; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fechar(); });
+
+function renderDetalhe(d) {
+  const x = d.anuncio, m = x.metricas, an = x.analise, pr = x.prioridade;
+  PLANO = an.plano.map(p => ({ acao: p.acao, categoria: p.cat, problema: an.problemas[0]?.texto || an.oportunidades[0]?.texto || '' }));
+  const ult = d.analises.find(a => a.ia);
+  const ia = ult?.ia;
+  const mini = (k, v, s) => `<div class="ie-mini"><div class="k">${k}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`;
+  const prob = l => l.length ? `<ul>${l.map(p => `<li><span class="tag-c ${p.tipo}">${p.tipo === 'comprovado' ? 'COMPROVADO' : 'HIPÓTESE'}</span>${esc(p.texto)}</li>`).join('')}</ul>` : '<div class="mut" style="font-size:12px">Nenhum.</div>';
+  const jan = [7, 14, 30].map(n => { const j = m.janelas[n]; return `<tr><td>Últimos ${n} dias</td><td class="n">${j.pedidos}</td><td class="n">${j.pedidos_ant}</td><td class="n">${VAR(j.var_pedidos)}</td><td class="n">${BRL(j.fat)}</td><td class="n">${BRL(j.fat_ant)}</td><td class="n">${VAR(j.var_fat)}</td></tr>`; }).join('');
+  const ref = an.referencia || {};
+  const refLinha = (nome, val, r, fmt) => r ? `<li>${nome}: <b>${fmt(val)}</b> vs mediana <b>${fmt(r.valor)}</b> de ${esc(r.grupo)}${val != null && r.valor ? ` (${VAR(((val - r.valor) / r.valor) * 100)})` : ''}</li>` : `<li>${nome}: sem grupo comparável com amostra suficiente (mínimo 5 anúncios) — comparação não feita.</li>`;
+  const planoHtml = an.plano.length ? an.plano.map(a => `<div class="ie-acao"><div class="o">${a.ordem}</div><div class="t"><b>${esc(a.acao)}</b><small>Por quê: ${esc(a.motivo)} · ${esc(a.categoria)} · risco ${a.risco}${a.impacto ? ` · impacto ~${BRL(a.impacto)}/mês (estimativa)` : ''}</small></div>
+    <div class="b"><button class="btn-mini" onclick="registrar(${a.ordem - 1}, 'pendente', this)">➕ Registrar</button><button class="btn-mini ok" onclick="registrar(${a.ordem - 1}, 'concluida', this)">✅ Concluída</button></div></div>`).join('') : '<div class="mut" style="font-size:12px">Sem ação recomendada agora.</div>';
+  const iaHtml = ia ? `<div class="ie-sec" style="border-color:rgba(139,92,246,.5)"><h4>🤖 Análise da IA <span class="mut" style="font-weight:500;font-size:11px">— ${dataBR(ult.created_at)}${ult.criado_por ? ' · ' + esc(ult.criado_por) : ''}</span></h4>
+      <div class="ie-ia"><b>${esc(ia.problema_principal || '')}</b>\n${esc(ia.diagnostico || '')}</div>
+      ${(ia.acoes || []).length ? `<div style="margin-top:8px"><b style="font-size:12px">Ações sugeridas pela IA</b><ol style="margin:4px 0 0;padding-left:18px">${ia.acoes.map(a => `<li style="font-size:12.5px">${esc(a.acao)}${a.motivo ? ` <span class="mut">— ${esc(a.motivo)}</span>` : ''}</li>`).join('')}</ol></div>` : ''}
+      ${ia.objetivo ? `<div style="font-size:12.5px;margin-top:6px"><b>Objetivo:</b> ${esc(ia.objetivo)}</div>` : ''}${ia.meta ? `<div style="font-size:12.5px"><b>Meta:</b> ${esc(ia.meta)}</div>` : ''}
+      ${(ia.dados_faltando || []).length ? `<div style="font-size:12px;margin-top:6px" class="mut">Dados faltando segundo a IA: ${ia.dados_faltando.map(esc).join('; ')}</div>` : ''}</div>` : '';
+  const acoesHtml = d.acoes.length ? d.acoes.map(acaoHtml).join('') : '<div class="mut" style="font-size:12px">Nenhuma ação registrada para este anúncio ainda. Use ➕ Registrar ou ✅ Concluída no plano acima.</div>';
+
+  document.getElementById('iePainel').innerHTML = `
+    <div style="display:flex;gap:10px;align-items:flex-start">
+      ${x.thumbnail ? `<img src="${esc(x.thumbnail)}" style="width:56px;height:56px;border-radius:8px;object-fit:cover;background:#fff">` : ''}
+      <div style="flex:1"><h2>${esc(x.titulo)}</h2><div style="font-size:12px;color:var(--text-muted)">${esc(x.loja || '')} · ${esc(x.ml_id)}${x.sku ? ' · SKU ' + esc(x.sku) : ''} · ${faseTag(x.fase)} ${x.permalink ? `· <a href="${esc(x.permalink)}" target="_blank" rel="noopener">abrir anúncio ↗</a>` : ''}</div></div>
+      <button class="btn-mini" onclick="fechar()">✕</button>
+    </div>
+    <div class="ie-grid2" style="margin-top:12px">
+      <div class="ie-mini" style="border-left:4px solid ${corPrio(pr.nota)}"><div class="k">Prioridade de intervenção</div><div class="v" style="color:${corPrio(pr.nota)}">${pr.nota}/100</div><div class="s">${esc(pr.faixa.label)}</div></div>
+      <div class="ie-mini"><div class="k">Qualidade do anúncio</div><div class="v">${x.qualidade == null ? '—' : x.qualidade + '/100'}</div><div class="s mut">separada da prioridade</div></div>
+      <div class="ie-mini"><div class="k">Diagnóstico principal</div><div class="v" style="font-size:13px">${esc(an.principal.ico)} ${esc(an.principal.nome)}</div><div class="s mut">${an.categorias.map(c => esc(c.ico + ' ' + c.nome)).join(' · ') || ''}</div></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <button class="btn-ia" id="btnGerar" onclick="gerarAnalise(false)" ${d.ia_configurada ? '' : 'disabled title="IA não configurada (ANTHROPIC_API_KEY)"'}><i class="fas fa-robot"></i> GERAR NOVA ANÁLISE</button>
+      <span class="mut" style="font-size:11.5px" id="msgGerar">${d.ia_configurada ? (ia ? 'Se nada mudou desde a última análise, a IA não é chamada de novo (sem custo).' : 'A IA interpreta o diagnóstico abaixo (não recalcula números).') : 'IA (texto) não configurada no servidor — o diagnóstico do motor abaixo continua valendo.'}</span>
+    </div>
+    ${iaHtml}
+    <div class="ie-sec"><h4>1. Diagnóstico</h4><div style="font-size:12.5px">${esc(an.problemas[0]?.texto || an.oportunidades[0]?.texto || 'Sem problema relevante identificado no período.')}</div>
+      <div style="font-size:11.5px;margin-top:6px" class="mut">Estágio atual: ${esc(x.fase_nome)} — o estágio é o de hoje; as vendas do período não significam que o anúncio estava nesse estágio quando vendeu.</div></div>
+    <div class="ie-sec"><h4>2. Indicadores (${m.periodo} dias vs ${m.periodo} anteriores)</h4><div class="ie-grid2">
+      ${mini('Faturamento', BRL(m.fat), VAR(m.var_fat))}${mini('Pedidos', m.pedidos, VAR(m.var_pedidos))}${mini('Unidades', m.unidades, '')}${mini('Ticket médio', BRL(m.ticket), VAR(m.var_ticket))}
+      ${mini('MC (R$)', m.margem == null ? '—' : BRL(m.margem), m.margem_ant != null ? `antes ${BRL(m.margem_ant)}` : 'custo não cadastrado')}${mini('MC%', PCT(m.mc_pct), VAR(m.var_mc_pp, true))}${mini('Lucro por pedido', BRL(m.lucro_pedido), '')}
+      ${mini('Visitas', m.visitas ?? '—', VAR(m.var_visitas))}${mini('Conversão', PCT(m.conversao), VAR(m.var_conversao_pp, true))}
+      ${mini('Estoque', m.estoque ?? '—', m.cobertura_dias != null ? `cobre ${m.cobertura_dias} dia(s)` : (m.venda_dia_30 ? '' : 'sem venda em 30 dias'))}${mini('Venda/dia (30d)', m.venda_dia_30, `${m.unidades_30} un em 30 dias`)}
+      ${mini('Custo · Tarifa · Frete', `${PCT(m.pct_custo)} · ${PCT(m.pct_tarifa)} · ${PCT(m.pct_frete)}`, 'do faturamento')}
+      ${mini('ROAS mínimo (equilíbrio)', an.roas_minimo ?? '—', 'ROAS abaixo disso = ADS dá prejuízo')}
+    </div></div>
+    <div class="ie-sec"><h4>3. Comparação com períodos anteriores</h4><table class="ie-t"><thead><tr><th>Janela</th><th class="n">Pedidos</th><th class="n">Anterior</th><th class="n">Var.</th><th class="n">Faturamento</th><th class="n">Anterior</th><th class="n">Var.</th></tr></thead><tbody>${jan}</tbody></table>
+      <div style="margin-top:8px"><b style="font-size:12px">Comparação com anúncios semelhantes</b><ul>${refLinha('Conversão', m.conversao, ref.conversao, PCT)}${refLinha('MC%', m.mc_pct, ref.mc_pct, PCT)}${refLinha('Pedidos no período', m.pedidos, ref.pedidos, v => v)}</ul></div></div>
+    <div class="ie-sec"><h4>4. Problemas encontrados</h4>${prob(an.problemas)}</div>
+    <div class="ie-sec"><h4>5. Oportunidades identificadas</h4>${prob(an.oportunidades)}</div>
+    <div class="ie-sec"><h4>6–7. Ações recomendadas, em ordem de execução</h4>${planoHtml}</div>
+    <div class="ie-sec"><h4>8. Meta sugerida</h4><div style="font-size:12.5px">${esc(an.meta || 'Sem meta — anúncio sem ação prioritária.')}</div></div>
+    <div class="ie-sec"><h4>9. Indicadores a acompanhar</h4><div style="font-size:12.5px">${an.acompanhar.map(esc).join(' · ')}</div></div>
+    ${an.faltando.length ? `<div class="ie-sec" style="border-color:rgba(210,153,34,.5)"><h4>⚠️ Dados faltando</h4><ul>${an.faltando.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
+    <div class="ie-sec"><h4>Por que esta prioridade? (${pr.nota}/100)</h4><ul>${pr.fatores.map(f => `<li>${esc(f.fator)}: <b class="${f.pontos < 0 ? 'neg' : ''}">${f.pontos > 0 ? '+' : ''}${f.pontos}</b>${f.detalhe ? ` <span class="mut">(${esc(f.detalhe)})</span>` : ''}</li>`).join('')}</ul></div>
+    <div class="ie-sec"><h4>Ações registradas para este anúncio</h4>${acoesHtml}</div>`;
+}
+
+async function gerarAnalise(force) {
+  const b = document.getElementById('btnGerar'), msg = document.getElementById('msgGerar');
+  b.disabled = true; msg.textContent = 'Gerando análise com IA…';
+  const r = await DB.gerarIaEstrategistaAnalise(ABERTO, periodo(), loja(), force);
+  if (!r) { b.disabled = false; msg.textContent = '❌ ' + (DB.lastError || 'falhou'); return; }
+  if (r.cache === 'hit' && !force) {
+    if (confirm('Os números deste anúncio não mudaram desde a última análise (menos de 24h) — reaproveitei a análise salva, sem custo.\n\nGerar outra mesmo assim (chama a IA de novo)?')) return gerarAnalise(true);
+  }
+  abrir(ABERTO);
+}
+async function analisarLote() {
+  const b = document.getElementById('btnLote'), st = document.getElementById('ieStatus');
+  if (!confirm('Gerar a análise da IA dos até 10 anúncios mais prioritários (prioridade ≥ 40)?\nAnúncios que não mudaram reaproveitam a análise salva (sem custo).')) return;
+  b.disabled = true; st.textContent = 'IA analisando os prioritários… (pode levar alguns minutos)';
+  const r = await DB.gerarIaEstrategistaLote(periodo(), loja(), 10);
+  b.disabled = false;
+  st.textContent = r ? `🤖 ${r.analisados} anúncio(s): ${r.geradas} análise(s) nova(s), ${r.reaproveitadas} reaproveitada(s)${r.erros.length ? `, ${r.erros.length} erro(s)` : ''}.` : '❌ ' + (DB.lastError || 'falhou');
+}
+
+async function registrar(idx, status, btn) {
+  const info = PLANO[idx]; if (!info) return;
+  let observacao = null;
+  if (status === 'concluida') { observacao = prompt('O que foi feito? (fica registrado; depois dá pra comparar os números antes × depois)', ''); if (observacao === null) return; }
+  const responsavel = status === 'pendente' ? prompt('Responsável (opcional):', '') : null;
+  if (status === 'pendente' && responsavel === null) return;
+  btn.disabled = true;
+  const r = await DB.criarIaEstrategistaAcao({ ranking_ad_id: ABERTO, ...info, status, observacao, responsavel: responsavel || undefined });
+  if (!r) { btn.disabled = false; alert('Não consegui registrar: ' + (DB.lastError || '')); return; }
+  btn.textContent = status === 'concluida' ? '✅ Registrada' : '✔ Registrada';
+  abrir(ABERTO);
+}
+
+function acaoHtml(a) {
+  const ad = a.antes_depois;
+  const linha = (k, f, pp) => { const va = ad.antes[k], vd = ad.depois[k]; const dv = va == null || vd == null ? null : pp ? vd - va : (va ? ((vd - va) / va) * 100 : null); return `<div class="ie-fat"><span>${f}</span><span>${va == null ? '—' : (k === 'mc_pct' || k === 'conversao' ? PCT(va) : k === 'pedidos_dia' ? va : BRL(va))} → <b>${vd == null ? '—' : (k === 'mc_pct' || k === 'conversao' ? PCT(vd) : k === 'pedidos_dia' ? vd : BRL(vd))}</b> ${dv == null ? '' : VAR(+dv.toFixed(2), pp)}</span></div>`; };
+  return `<div class="ie-ad" data-id="${a.id}">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="ie-st st-${a.status}">${STATUS_UI[a.status]}</span><b style="flex:1">${esc(a.acao)}</b>
+      <select onchange="mudarStatus(${a.id}, this.value)" style="background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);border-radius:6px;font-size:11px;padding:3px">${Object.entries(STATUS_UI).map(([k, l]) => `<option value="${k}" ${k === a.status ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div class="mut" style="margin-top:3px">${a.produto ? esc(a.produto) + ' · ' : ''}${a.categoria && CAT[a.categoria] ? CAT[a.categoria] + ' · ' : ''}analisado/registrado em ${dataBR(a.created_at)} · responsável: ${esc(a.responsavel || '—')}${a.executada_em ? ` · executada em ${dataBR(a.executada_em)}` : ''}</div>
+    ${a.problema ? `<div style="margin-top:3px"><b>Problema:</b> ${esc(a.problema)}</div>` : ''}
+    ${a.observacao ? `<div style="margin-top:3px"><b>O que foi feito:</b> ${esc(a.observacao)}</div>` : ''}
+    <div style="margin-top:3px"><b>Resultado observado:</b> ${a.resultado_observado ? esc(a.resultado_observado) : '<span class="mut">—</span>'} <button class="btn-mini" onclick="editarResultado(${a.id})">✏️</button></div>
+    ${ad ? `<div style="margin-top:6px"><b>Antes × depois (por dia)</b> <span class="mut">— 14 dias antes vs ${ad.dias_depois} dia(s) depois</span>${linha('pedidos_dia', 'Pedidos/dia')}${linha('fat_dia', 'Faturamento/dia')}${linha('margem_dia', 'Margem/dia')}${linha('mc_pct', 'MC%', true)}${linha('conversao', 'Conversão', true)}<div class="mut" style="margin-top:4px">⚠️ ${esc(ad.aviso)}</div></div>` : ''}
+  </div>`;
+}
+async function mudarStatus(id, status) {
+  const r = await DB.atualizarIaEstrategistaAcao(id, { status });
+  if (!r) return alert('Não consegui atualizar: ' + (DB.lastError || ''));
+  ABERTO ? abrir(ABERTO) : carregarAcoes();
+}
+async function editarResultado(id) {
+  const v = prompt('Resultado observado (o que aconteceu depois da ação):', ''); if (v === null) return;
+  const r = await DB.atualizarIaEstrategistaAcao(id, { resultado_observado: v });
+  if (!r) return alert('Não consegui salvar: ' + (DB.lastError || ''));
+  ABERTO ? abrir(ABERTO) : carregarAcoes();
+}
+async function carregarAcoes() {
+  const el = document.getElementById('ieAcoes'); el.innerHTML = 'Carregando…'; el.className = 'ie-vazio';
+  const status = document.getElementById('fStatus').value;
+  const d = await DB.getIaEstrategistaAcoes(status ? { status } : {});
+  if (d.error) { el.textContent = d.error; return; }
+  el.className = '';
+  el.innerHTML = d.acoes.length ? d.acoes.map(a => `<div style="cursor:pointer" onclick="if(!event.target.closest('select,button'))abrir(${a.ranking_ad_id})">${acaoHtml(a)}</div>`).join('') : '<div class="ie-vazio">Nenhuma ação registrada ainda. Abra um anúncio e use ➕ Registrar ou ✅ Concluída no plano de ação.</div>';
+}
+
+popularLojas().then(() => carregar());
+</script>
+</body>
+</html>

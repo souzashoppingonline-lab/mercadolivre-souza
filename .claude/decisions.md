@@ -1062,3 +1062,12 @@ Pedido: mostrar o saldo da conta na janela de Pagar e avisar quando falta. A som
 - **Ações do card** viram eventos na mesma `ranking_events` (linha do tempo do card + WS + Telegram por `ranking.emit()`), texto em `rankingAvisos.js` (puro). Excluir e preço manual vão só ao Telegram (excluir apaga os eventos; preço manual já grava o seu próprio evento).
 - **Continuam só na tela**: venda reprocessada pelo sync (é venda antiga, viraria spam) e a virada automática de ciclo (já está no texto do marco).
 - Custo aceito: mais mensagens (ex.: visitas mudam todo dia em cada anúncio ranqueado).
+
+## IA Estrategista: motor determinístico decide, IA só escreve; 1 anúncio por chamada (v122)
+
+- Pedido do usuário (spec de 13 seções) para uma "IA gestora" por anúncio do Rankeamento, como aba ao lado de Vendas por Estágio (BI). Mesmo princípio já validado na Inteligência de Margem: **números e classificações vêm de um motor determinístico testado**; o LLM só interpreta o diagnóstico de UM anúncio. Motivos: regras 1–3 e 7 da spec (nunca ADS sem margem, nunca preço sem impacto, nunca escalar sem estoque, nunca inventar dado) só são garantidas em código; e custo — analisar centenas de anúncios com LLM a cada abertura de tela seria caro e lento.
+- **Página funciona sem IA**: sem `ANTHROPIC_API_KEY` o diagnóstico, prioridade e plano continuam; só o texto "Análise da IA" fica indisponível.
+- **Controle de custo**: LLM só por clique (1 anúncio) ou lote limitado (≤ 20, prioridade ≥ 40); hash da entrada evita repetir análise com os mesmos números em 24h.
+- **Universo = anúncios ativos do Rankeamento** (não o catálogo inteiro): é o módulo pedido, já tem estágio/ADS/vínculos de catálogo; o resto do catálogo continua no Analista Ecom/Inteligência de Margem.
+- **Reuso, nenhuma fórmula nova de margem**: `VENDA_DETALHE_SELECT`/`calcularMargemLinha`, margem mínima/alvo do Analista Ecom, `js/buyboxStatus.js`, `ai/llm.js`, `cached()`, padrão `concluida_em` das Ações Recomendadas. Tabelas novas só para o que não existia: análises de IA salvas e controle de execução por anúncio (`business_insights` é por item+tipo de ação de margem, outro domínio).
+- **Período em dias fechados** (até ontem): hoje parcial distorceria todas as comparações.

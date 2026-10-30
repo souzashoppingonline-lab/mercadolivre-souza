@@ -363,6 +363,14 @@ const DB = {
   async getBiMargemProduto(itemId, days = 60, store_id = '') { return this._get(`/bi/margem/produto/${encodeURIComponent(itemId)}`, { days, store_id }); },
   // Vendas por Estágio (integração com o módulo Rankeamento) — ver rankeamento.md/business-rules.md.
   async getBiRankeamento(days = 30, store_id = '', extra = {}) { return this._get('/bi/rankeamento', { days, store_id, ...extra }); },
+  // IA Estrategista (v122) — /api/bi/ia-estrategista. _post/_patch devolvem null em erro (motivo em DB.lastError).
+  async getIaEstrategista(days = 14, store_id = '', refresh = false) { return this._get('/bi/ia-estrategista', { days, store_id, refresh: refresh ? 1 : null }); },
+  async getIaEstrategistaAnuncio(id, days = 14, store_id = '') { return this._get(`/bi/ia-estrategista/anuncio/${id}`, { days, store_id }); },
+  async gerarIaEstrategistaAnalise(id, days = 14, store_id = '', force = false) { return this._post(`/bi/ia-estrategista/anuncio/${id}/analise`, { days, store_id, force }); },
+  async gerarIaEstrategistaLote(days = 14, store_id = '', limite = 10) { return this._post('/bi/ia-estrategista/analise-lote', { days, store_id, limite }); },
+  async getIaEstrategistaAcoes(params = {}) { return this._get('/bi/ia-estrategista/acoes', params); },
+  async criarIaEstrategistaAcao(body) { return this._post('/bi/ia-estrategista/acoes', body); },
+  async atualizarIaEstrategistaAcao(id, body) { return this._patch(`/bi/ia-estrategista/acoes/${id}`, body); },
   // Relatório em PDF (botão "Gerar Relatório") — mesmo filtro da tela +
   // comparativo com o período anterior e a mesma janela do mês passado.
   async getBiRankeamentoRelatorio(days = 30, store_id = '', extra = {}) { return this._get('/bi/rankeamento/relatorio', { days, store_id, ...extra }); },

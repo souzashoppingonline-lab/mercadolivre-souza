@@ -97,6 +97,8 @@ const telegramTela = require('./routes/telegramTela');
 app.use('/api/telegram-tela', telegramTela.router);
 app.use('/api/publico/telegram-tela', telegramTela.publicRouter);
 app.use('/api/financeiro', require('./routes/financeiro'));
+// IA Estrategista (v122) — antes de /api/bi pra não cair no router geral do BI; mesmo gate (admin).
+app.use('/api/bi/ia-estrategista', require('./routes/iaEstrategista'));
 app.use('/api/bi', require('./routes/bi'));
 // Agente Financeiro — relatórios sob demanda cruzando Postgres operacional +
 // Supabase Financeiro. Fica sob /api/bi (mesmo gate de módulo do BI, não do

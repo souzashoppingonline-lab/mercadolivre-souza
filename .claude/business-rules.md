@@ -554,3 +554,24 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - A detecção só acontece quando o Buy Box é consultado: 04:50, a cada 2h das 08 às 20h, webhook do ML (se chegar) e alocação no Rankeamento — mudança entre duas consultas aparece na consulta seguinte.
 - Toda referência de anúncio no Telegram traz **loja + código MLB** (pedido do usuário: identificar o anúncio na hora).
 - O Rankeamento continua com o próprio aviso "ganhou/perdeu o buy-box" (`tg_rankeamento`) para os anúncios alocados lá — pode duplicar com este; cada um desliga pela própria chave.
+
+## IA Estrategista — regras do motor (`server/src/iaEstrategista.js`, v122)
+
+> Estágio é sempre o ATUAL (mesma regra de Vendas por Estágio, acima). Período = N dias **fechados** (até ontem) vs N dias anteriores; janelas fixas 7/14/30 vs anteriores no detalhe. Margem = fórmula única (`finance.md`); **sem custo cadastrado (`items.cost_updated_at IS NULL`) a margem é `null`, nunca 0** — e o motor não emite nenhuma recomendação que dependa de margem (D, G, E, A). Conversão = pedidos ÷ visitas (`item_visits`), `null` sem visitas. ADS = campos digitados no card do Rankeamento (`ads_investido`/`roas`/`orcamento_diario`) — a margem do motor é **antes** do ADS (o custo de ADS não está por pedido).
+
+- **Margens**: mínima/alvo do Analista Ecom (`analista_ecom_margem_minima`/`_alvo`, padrão 10%/20%; `items.margem_alvo_pct` por anúncio). "MC boa" = média das duas (15% no padrão).
+- **Comparação com semelhantes**: mediana do MESMO estágio com **≥ 5 anúncios** (conversão: só anúncios com ≥ 100 visitas; MC: ≥ 3 pedidos); sem isso, mediana de todos os anúncios do Rankeamento (o grupo usado é dito no texto); sem isso, **nenhuma** comparação.
+- **F Atenção ao estoque**: vende (venda/dia 30d > 0) e estoque 0 (crítico) ou cobertura < 15 dias (crítico < 7). Reposição sugerida = venda/dia × 30 − estoque. Cobertura < 30 dias **bloqueia** Escalar/Aumentar e gera "não aumentar ADS nem baixar preço até repor" (regra 3).
+- **B Recuperar vendas**: pedidos do período anterior ≥ 4 e queda ≤ −30%. Causa: visitas −20%+ (exposição, comprovado); conversão −0,5 p.p.+ (oferta: comprovado + hipótese "preço/entrega"); Buy Box perdendo (comprovado, com preço p/ ganhar **e** a MC que ficaria — regra 2); sem sinal → hipótese.
+- **G Reduzir investimento**: ADS ativo (investido ou orçamento > 0) e MC ≤ 0, ou ROAS informado < ROAS mínimo de equilíbrio (= 100 ÷ MC%).
+- **D Melhorar rentabilidade**: ≥ 5 pedidos e MC% < mínima. Calcula preço p/ atingir a mínima (`(preço − margem/un) ÷ (1 − mínima)`, aprox., tarifa % não recalculada) e custo máximo de aquisição; frete > 12% do faturamento → revisar frete.
+- **C Melhorar conversão**: ≥ 100 visitas e conversão < 60% da mediana comparável (comprovado) ou, sem referência, < 1% (hipótese; mesmo 1% do diagnóstico de Recuperação/Analista Ecom).
+- **E Escalar**: MC ≥ "boa", ≥ 5 pedidos, crescimento ≥ +10% (base ≥ 3), conversão ≥ 90% da referência, sem G, e cobertura ≥ 30 dias. ADS +20% sempre com o ROAS mínimo citado (regra 1).
+- **A Aumentar vendas**: MC ≥ "boa", conversão ok, sem queda, pedidos ≤ mediana comparável, estoque ok. Pouca visita vs mediana = comprovado; sem visitas = hipótese.
+- **Dados insuficientes**: sem categoria e sem custo cadastrado em anúncio que vende — nunca rotulado "saudável".
+- **Impacto** (R$/mês, sempre "estimativa"): B = perda de faturamento vs anterior; C = visitas × (conversão-alvo − atual) × ticket; D = faturamento × (mínima − MC); F = dias sem cobertura × venda/dia × preço (estoque 0 = faturamento 30d); E = 20% e A = 15% do faturamento; G = orçamento × 30 × (1 − ROAS/ROAS mín.). Normalizado pra 30 dias.
+- **Prioridade 0–100** (separada da qualidade, cada parcela listada na tela): impacto relativo à carteira (até 35, escala log) + gravidade da categoria principal (até 30) + relevância no faturamento (até 15) + faturamento em queda ≥ 20% (até 10) + ação de baixo risco disponível (5) + custo não cadastrado em anúncio que vende (15); redutores: amostra pequena (< 3 pedidos nos 2 períodos, ×0,6) e custo ausente (×0,85). Faixas: 80–100 crítico, 60–79 alta, 40–59 oportunidade, 20–39 monitoramento, 0–19 saudável.
+- **Qualidade 0–100**: média dos sub-scores disponíveis — MC (0 → alvo), tendência de pedidos (−50% → +30%), conversão vs referência (0,5× → 1,2×), cobertura de estoque (0 → 30 dias).
+- **Plano**: até 6 ações, ordenadas por impacto × (1 risco baixo, 0,7 médio, 0,4 alto) — maior impacto e menor risco primeiro (regra 11).
+- **Antes × depois** de ação concluída: 14 dias antes de `executada_em` × desde então, por dia — associação temporal, não causalidade (mesma regra das Ações Recomendadas).
+

@@ -564,9 +564,6 @@ async function handleItem({ resource, storeId }) {
   );
   if (recent.rows.length) return;
 
-  const { rows: old } = await pool.query(`SELECT price, available_quantity, status, title FROM items WHERE ml_id=$1`, [itemId]);
-  const prev = old[0];
-
   const item = await ml.getItem(itemId, storeId);
   const thumb = item.thumbnail || (item.pictures?.[0]?.url) || null;
 
@@ -574,7 +571,17 @@ async function handleItem({ resource, storeId }) {
   const origPrice = item.original_price && Number(item.original_price) > 0 ? item.original_price : null;
   // Medidas da caixa (cacheadas pra a Embalagem ler do banco, sem GET no bipe).
   const dims = packageDimsFromItem(item);
-  await pool.query(
+  // Lê o valor ANTIGO e grava o novo numa transação curta com trava por anúncio
+  // (advisory lock): o ML manda 2 webhooks do mesmo anúncio ao mesmo tempo e,
+  // lendo sem trava, os dois viam o estoque antigo e saíam DUAS "Alteração de
+  // Anúncio". Agora o 2º espera o 1º gravar e já vê o valor novo (sem aviso).
+  let prev = null;
+  const cx = await pool.connect();
+  try {
+    await cx.query('BEGIN');
+    await cx.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['item:' + item.id]);
+    prev = (await cx.query(`SELECT price, available_quantity, status, title FROM items WHERE ml_id = $1`, [item.id])).rows[0] || null;
+    await cx.query(
     `INSERT INTO items (ml_id, store_id, title, price, original_price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, parent_item_id, package_dims, updated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
      ON CONFLICT (ml_id) DO UPDATE SET
@@ -589,7 +596,12 @@ async function handleItem({ resource, storeId }) {
        package_dims = COALESCE(EXCLUDED.package_dims, items.package_dims),
        updated_at = now()`,
     [item.id, storeId, item.title, item.price, origPrice, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId, dims ? JSON.stringify(dims) : null]
-  );
+    );
+    await cx.query('COMMIT');
+  } catch (e) {
+    await cx.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally { cx.release(); }
 
   // Rankeamento: se este anúncio está em rankeamento, notifica preço/estoque/status
   // alterados (tela + Telegram). Zero custo de API — usa o item já buscado.
@@ -602,7 +614,9 @@ async function handleItem({ resource, storeId }) {
 
   const lojaNome = await getStoreName(storeId);
 
-  if (item.available_quantity <= 5) {
+  // Só quando o estoque MUDOU (ou anúncio novo): o 2º webhook concorrente não repete o aviso.
+  const estoqueMudou = !prev || Number(prev.available_quantity) !== Number(item.available_quantity);
+  if (item.available_quantity <= 5 && estoqueMudou) {
     await publish('stock_alert', { id: item.id, title: item.title, stock: item.available_quantity, loja: lojaNome });
     await tgNotify('tg_reposicao', `⚠️ <b>Estoque crítico!</b>\n🏪 Loja: <b>${lojaNome}</b>\n📦 ${item.title}\n🔢 Restam apenas ${item.available_quantity} unidades`);
   }

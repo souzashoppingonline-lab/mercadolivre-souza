@@ -267,7 +267,7 @@ async function montarPainel() {
   const porDia = [1, 2, 3, 4, 5, 6, 7].map(dw => { const xs = semHora.filter(r => r.dow === dw); const p = xs.reduce((a, r) => a + r.pedidos, 0), f = xs.reduce((a, r) => a + Number(r.fat), 0); return { dow: dw, pedidos_media: ocorr[dw] ? p / ocorr[dw] : 0, fat_media: ocorr[dw] ? f / ocorr[dw] : 0 }; });
   const porHora30 = Array.from({ length: 24 }, (_, h) => semHora.filter(r => r.h === h).reduce((a, r) => a + r.pedidos, 0));
   // ── v137: hoje × mesmo dia da semana passada, Shopee atenção, anúncios com nota baixa ──
-  const [{ rows: semPassada }, { rows: chatShopee }, { rows: violShopee }, { rows: notaBaixa }, { rows: estadosMes }, { rows: vendasRitmo }] = await Promise.all([
+  const [{ rows: semPassada }, { rows: chatShopee }, { rows: violShopee }, { rows: notaBaixa }, { rows: estadosMes }, { rows: vendasRitmo }, { rows: tiposEnvio }, { rows: sobeDesce }] = await Promise.all([
     // Hora a hora: hoje × o mesmo dia 7 dias atrás (dia inteiro; a tela compara até a mesma hora).
     pool.query(
       `SELECT EXTRACT(HOUR FROM o.date_created AT TIME ZONE 'America/Sao_Paulo')::int AS h,
@@ -310,6 +310,32 @@ async function montarPainel() {
       `SELECT o.date_created AS em FROM orders o
         WHERE o.date_created >= ${HOJE} - interval '1 day' AND o.status != 'cancelled' AND ${SEM_AMAZON}
         ORDER BY o.date_created`),
+    // v141 — Tipo de envio hoje (orders.shipping_type = logistic_type do ML; Shopee à parte).
+    // Coleta = cross_docking (ML busca); Agência = xd_drop_off/drop_off/me1/me2 (levar no ponto).
+    pool.query(
+      `SELECT CASE
+                WHEN m.code = 'SHOPEE' THEN 'shopee'
+                WHEN o.shipping_type ILIKE '%fulfillment%' THEN 'full'
+                WHEN o.shipping_type ILIKE '%self_service%' OR o.shipping_type ILIKE '%flex%' THEN 'flex'
+                WHEN o.shipping_type ILIKE '%cross_docking%' THEN 'coleta'
+                WHEN o.shipping_type ~* 'drop_off|me1|me2' THEN 'agencia'
+                ELSE 'outros' END AS tipo,
+              COUNT(*)::int AS pedidos
+         FROM orders o LEFT JOIN marketplaces m ON m.id = o.marketplace_id
+        WHERE o.date_created >= ${HOJE} AND o.status != 'cancelled' AND ${SEM_AMAZON}
+        GROUP BY 1 ORDER BY pedidos DESC`),
+    // v141 — Sobe e desce: pedidos por anúncio nos últimos 7 dias × 7 anteriores (base mínima de 3).
+    pool.query(
+      `WITH v AS (
+         SELECT o.item_id,
+                COUNT(*) FILTER (WHERE o.date_created >= now() - interval '7 days')::int AS atual,
+                COUNT(*) FILTER (WHERE o.date_created <  now() - interval '7 days')::int AS antes
+           FROM orders o
+          WHERE o.date_created >= now() - interval '14 days' AND o.status != 'cancelled' AND ${SEM_AMAZON} AND o.item_id IS NOT NULL
+          GROUP BY o.item_id)
+       SELECT v.item_id, v.atual, v.antes, i.title AS titulo, i.thumbnail AS thumb, s.nickname AS loja
+         FROM v LEFT JOIN items i ON i.ml_id = v.item_id LEFT JOIN stores s ON s.id = i.store_id
+        WHERE GREATEST(v.atual, v.antes) >= 3 AND v.atual <> v.antes`),
   ]);
   const ritmo = calcularRitmo(vendasRitmo.map(r => new Date(r.em).getTime()), Date.now());
   const diaSemPassada = new Date(Date.now() - 7 * 86400000).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit' });
@@ -392,6 +418,9 @@ async function montarPainel() {
       recorrentes: recorr[0],
       melhor: { por_dia: porDia, por_hora: porHora30 },
       ritmo,
+      tipos_envio: tiposEnvio,
+      sobe: sobeDesce.filter(x => x.atual > x.antes).sort((a, b) => (b.atual - b.antes) - (a.atual - a.antes) || b.atual - a.atual).slice(0, 3),
+      desce: sobeDesce.filter(x => x.atual < x.antes).sort((a, b) => (b.antes - b.atual) - (a.antes - a.atual) || b.antes - a.antes).slice(0, 3),
       estados_mes: estadosMes.map(e => ({ estado: e.estado || null, pedidos: e.pedidos, fat: Number(e.fat) })),
       semana_passada: { dia: diaSemPassada,
         por_hora: Array.from({ length: 24 }, (_, h) => { const x = semPassada.find(r => r.h === h); return { h, hoje: x ? x.hoje : 0, sem: x ? x.sem : 0, fat_hoje: x ? Number(x.fat_hoje) : 0, fat_sem: x ? Number(x.fat_sem) : 0 }; }) },

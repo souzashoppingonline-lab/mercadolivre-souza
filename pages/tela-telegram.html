@@ -69,6 +69,10 @@
     body.tv #relogio { font-size:1.6em; }
     body.tv #lista { max-width:min(1400px, 92vw); }
     body.tv .bolha { max-width:min(86%, 1200px); }
+    /* v139 (pedido do usuário): avisos do sistema ocupam toda a largura da coluna de mensagens —
+       sem faixa vazia entre as bolhas e o painel. Comandos que chegam no bot (.ent) continuam estreitos. */
+    .msg:not(.ent) .bolha, body.tv .msg:not(.ent) .bolha { max-width:100%; }
+    body.tv #lista { max-width:none; }
     body.tv.parado { cursor:none; }
     /* Painel ao lado (v124): placar de hoje, rankeamento hoje, IA Estrategista. Some em tela estreita. */
     .corpo { flex:1; display:flex; min-height:0; }

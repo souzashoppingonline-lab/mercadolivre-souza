@@ -530,6 +530,19 @@ const SLIDES = [
         <div class="hr-l">${vis.map(x => `<span class="${x.h === hAgora ? 'agora' : ''}">${vis.length > 14 && x.h % 2 ? '' : x.h + 'h'}</span>`).join('')}</div>
         <div class="hr-leg"><span><i style="background:#4ea1ff"></i>Hoje</span><span><i style="background:#c39bff"></i>Semana passada</span><span><i style="background:#5ef08a"></i>Hora atual</span></div>
       </div>`; } },
+  { tit: '⏱️ Ritmo de vendas — hoje × ontem', html: d => {
+      // v140: "1 venda a cada X min" (00h até agora ÷ pedidos) × ontem até a mesma hora; última hora; maior tempo sem venda (a partir das 6h).
+      const r = d.carrossel.ritmo; if (!r) return '';
+      const fmtMin = m => m == null ? '—' : m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, '0')}`;
+      const hm = iso => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+      const hAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+      // Menos minutos por venda = mais rápido (verde).
+      const cmp = (h, o) => h == null || o == null || !o ? '' : (() => { const v = Math.round(((o - h) / o) * 100); return `<span class="${v >= 0 ? 'up' : 'dn'}">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}% ${v >= 0 ? 'mais rápido' : 'mais lento'}</span>`; })();
+      const gap = (g, rot) => g ? `<div class="tp"><div class="pos">${g.aberto ? '⏳' : '😴'}</div><div class="t"><b>${rot}: ${fmtMin(g.min)} sem venda</b><span>${g.aberto ? `desde ${hm(g.ini)} — ainda sem venda` : `das ${hm(g.ini)} às ${hm(g.fim)}`}</span></div></div>` : '';
+      const ulH = r.hoje.ultima_hora, ulO = r.ontem.ultima_hora;
+      return `<div class="sh-k"><div>⚡ Hoje<b style="color:#4ea1ff">1 a cada ${fmtMin(r.hoje.min_por_venda)}</b>${r.hoje.pedidos} pedido(s) das 00h às ${hAgora}</div><div>📅 Ontem até ${hAgora}<b style="color:#ff9f43">1 a cada ${fmtMin(r.ontem.min_por_venda)}</b>${r.ontem.pedidos} pedido(s) das 00h às ${hAgora}</div></div>
+        <div class="sp-fat" style="margin:2px 0 6px;font-size:.9em"><span>${cmp(r.hoje.min_por_venda, r.ontem.min_por_venda) || 'sem base de comparação'}</span><span>🕐 Última hora: <b>${ulH}</b> venda(s) <em>(ontem ${ulO})</em></span></div>
+        <div class="sh-sub">😴 Maior tempo sem venda (a partir das 6h)</div>${gap(r.hoje.maior_gap, 'Hoje') || '<div class="pn-vazio">Sem intervalo hoje ainda.</div>'}${gap(r.ontem.maior_gap, `Ontem até ${hAgora}`)}`; } },
   { tit: '📦 Estoque em risco', html: d => d.carrossel.estoque_risco.length ? d.carrossel.estoque_risco.map(x => `<div class="tp"><div class="pos" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${Number(x.estoque) <= 0 ? '⛔' : '⚠️'}</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${x.vendas7} venda(s) em 7 dias</span></div><div class="v" style="color:${Number(x.estoque) <= 0 ? '#f85149' : '#f0b429'}">${x.estoque} un</div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio vendendo com estoque baixo.</div>' },
   { tit: '🔴 Buy Box — perdendo (mais perto de ganhar)', html: d => d.carrossel.buybox_perdendo.length ? d.carrossel.buybox_perdendo.map(x => `<div class="tp"><div class="pos">🔴</div><div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${esc(x.item_id)}</span></div><div class="v">${R$(x.vencedor)}<small>seu ${R$(x.seu)}</small></div></div>`).join('') : '<div class="pn-vazio">✅ Nenhum anúncio perdendo o Buy Box.</div>' },
   { tit: '🏷️ Promoções ativas', html: d => { const p = d.carrossel.promocoes; if (!p) return ''; const fimTxt = iso => { const f = new Date(iso), h = new Date(); const dd = Math.round((new Date(f.toDateString()) - new Date(h.toDateString())) / 86400000); return dd <= 0 ? `hoje ${f.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'amanhã'; };

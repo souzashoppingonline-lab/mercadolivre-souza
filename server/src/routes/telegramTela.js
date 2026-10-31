@@ -242,7 +242,7 @@ async function montarPainel() {
   const porDia = [1, 2, 3, 4, 5, 6, 7].map(dw => { const xs = semHora.filter(r => r.dow === dw); const p = xs.reduce((a, r) => a + r.pedidos, 0), f = xs.reduce((a, r) => a + Number(r.fat), 0); return { dow: dw, pedidos_media: ocorr[dw] ? p / ocorr[dw] : 0, fat_media: ocorr[dw] ? f / ocorr[dw] : 0 }; });
   const porHora30 = Array.from({ length: 24 }, (_, h) => semHora.filter(r => r.h === h).reduce((a, r) => a + r.pedidos, 0));
   // ── v137: hoje × mesmo dia da semana passada, Shopee atenção, anúncios com nota baixa ──
-  const [{ rows: semPassada }, { rows: chatShopee }, { rows: violShopee }, { rows: notaBaixa }] = await Promise.all([
+  const [{ rows: semPassada }, { rows: chatShopee }, { rows: violShopee }, { rows: notaBaixa }, { rows: estadosMes }] = await Promise.all([
     // Hora a hora: hoje × o mesmo dia 7 dias atrás (dia inteiro; a tela compara até a mesma hora).
     pool.query(
       `SELECT EXTRACT(HOUR FROM o.date_created AT TIME ZONE 'America/Sao_Paulo')::int AS h,
@@ -273,6 +273,13 @@ async function montarPainel() {
          FROM item_seo_score q JOIN items i ON i.ml_id = q.item_id LEFT JOIN stores st ON st.id = q.store_id
         WHERE i.status = 'active' AND COALESCE(q.visits_30d, 0) > 0
         ORDER BY q.score ASC, q.visits_30d DESC LIMIT 4`),
+    // v138 — Vendas por estado no mês (do dia 1 até agora, fuso SP), mesma regra do "hoje".
+    pool.query(
+      `SELECT COALESCE(NULLIF(o.buyer_state_name, ''), '') AS estado, COUNT(*)::int AS pedidos, COALESCE(SUM(o.total_amount), 0) AS fat
+         FROM orders o
+        WHERE o.date_created >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+          AND o.status != 'cancelled' AND ${SEM_AMAZON}
+        GROUP BY 1 ORDER BY pedidos DESC`),
   ]);
   const diaSemPassada = new Date(Date.now() - 7 * 86400000).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit' });
   // O que falta em cada anúncio (só itens que dá pra corrigir no anúncio; limiares de seoScore.js).
@@ -353,6 +360,7 @@ async function montarPainel() {
       reputacao: reput.map(r => ({ loja: r.loja, level_id: r.level_id, power: r.power_seller_status, reclamacoes: r.claims_pct != null ? Number(r.claims_pct) : null, atrasos: r.delayed_pct != null ? Number(r.delayed_pct) : null, cancelamentos: r.cancellations_pct != null ? Number(r.cancellations_pct) : null, em: r.collected_at })),
       recorrentes: recorr[0],
       melhor: { por_dia: porDia, por_hora: porHora30 },
+      estados_mes: estadosMes.map(e => ({ estado: e.estado || null, pedidos: e.pedidos, fat: Number(e.fat) })),
       semana_passada: { dia: diaSemPassada,
         por_hora: Array.from({ length: 24 }, (_, h) => { const x = semPassada.find(r => r.h === h); return { h, hoje: x ? x.hoje : 0, sem: x ? x.sem : 0, fat_hoje: x ? Number(x.fat_hoje) : 0, fat_sem: x ? Number(x.fat_sem) : 0 }; }) },
       shopee: { chats: chatShopee.length, mensagens: chatShopee.reduce((a, c) => a + Number(c.unread_count || 0), 0),

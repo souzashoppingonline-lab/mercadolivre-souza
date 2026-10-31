@@ -52,6 +52,31 @@ async function tokenTv(novo) {
 // Estrategista. Cache 20s (a tela pede a cada 1 min e logo depois de cada
 // mensagem nova). Pedidos: mesma regra do "Vendas hoje" do painel principal
 // (kpis:summary — orders, sem cancelados, ML + Shopee, sem Amazon).
+// v140 — Ritmo de vendas (puro): "1 venda a cada X min" hoje × ontem até a mesma
+// hora, última hora × mesma hora de ontem, e o maior intervalo sem venda (entre
+// vendas, ou da última venda até agora — `aberto`). Intervalo só conta a partir
+// das 6h (madrugada sem venda é normal); o trecho antes da 1ª venda não conta.
+function calcularRitmo(vendasMs, agora) {
+  const iniHoje = new Date(new Date(agora).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  iniHoje.setHours(0, 0, 0, 0);
+  const deslocamento = new Date(new Date(agora).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })).getTime() - agora;
+  const h0 = iniHoje.getTime() - deslocamento, o0 = h0 - 86400000, oAgora = agora - 86400000;
+  const lado = (ini, fim) => {
+    const xs = vendasMs.filter(t => t >= ini && t <= fim);
+    const min = (fim - ini) / 60000, ult = xs.filter(t => t > fim - 3600000).length;
+    let gap = null;
+    const seis = ini + 6 * 3600000;
+    for (let k = 1; k <= xs.length; k++) {
+      const a = Math.max(xs[k - 1], seis), b = k < xs.length ? xs[k] : fim;
+      if (b <= a) continue;
+      if (!gap || b - a > gap.fim - gap.ini) gap = { ini: a, fim: b, aberto: k === xs.length };
+    }
+    return { pedidos: xs.length, min_por_venda: xs.length ? min / xs.length : null, ultima_hora: ult,
+      maior_gap: gap ? { ini: new Date(gap.ini).toISOString(), fim: new Date(gap.fim).toISOString(), min: Math.round((gap.fim - gap.ini) / 60000), aberto: gap.aberto } : null };
+  };
+  return { hoje: lado(h0, agora), ontem: lado(o0, oAgora) };
+}
+
 async function montarPainel() {
   const redis = require('../db/redis');
   const [{ rows: tot }, { rows: lojas }, { rows: est }, { rows: bb }, { rows: rec }, { rows: tokens }, { rows: ult }, hbWorker] = await Promise.all([
@@ -242,7 +267,7 @@ async function montarPainel() {
   const porDia = [1, 2, 3, 4, 5, 6, 7].map(dw => { const xs = semHora.filter(r => r.dow === dw); const p = xs.reduce((a, r) => a + r.pedidos, 0), f = xs.reduce((a, r) => a + Number(r.fat), 0); return { dow: dw, pedidos_media: ocorr[dw] ? p / ocorr[dw] : 0, fat_media: ocorr[dw] ? f / ocorr[dw] : 0 }; });
   const porHora30 = Array.from({ length: 24 }, (_, h) => semHora.filter(r => r.h === h).reduce((a, r) => a + r.pedidos, 0));
   // ── v137: hoje × mesmo dia da semana passada, Shopee atenção, anúncios com nota baixa ──
-  const [{ rows: semPassada }, { rows: chatShopee }, { rows: violShopee }, { rows: notaBaixa }, { rows: estadosMes }] = await Promise.all([
+  const [{ rows: semPassada }, { rows: chatShopee }, { rows: violShopee }, { rows: notaBaixa }, { rows: estadosMes }, { rows: vendasRitmo }] = await Promise.all([
     // Hora a hora: hoje × o mesmo dia 7 dias atrás (dia inteiro; a tela compara até a mesma hora).
     pool.query(
       `SELECT EXTRACT(HOUR FROM o.date_created AT TIME ZONE 'America/Sao_Paulo')::int AS h,
@@ -280,7 +305,13 @@ async function montarPainel() {
         WHERE o.date_created >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
           AND o.status != 'cancelled' AND ${SEM_AMAZON}
         GROUP BY 1 ORDER BY pedidos DESC`),
+    // v140 — Ritmo: horário de cada venda de ontem 00h até agora (mesma regra de pedidos).
+    pool.query(
+      `SELECT o.date_created AS em FROM orders o
+        WHERE o.date_created >= ${HOJE} - interval '1 day' AND o.status != 'cancelled' AND ${SEM_AMAZON}
+        ORDER BY o.date_created`),
   ]);
+  const ritmo = calcularRitmo(vendasRitmo.map(r => new Date(r.em).getTime()), Date.now());
   const diaSemPassada = new Date(Date.now() - 7 * 86400000).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: '2-digit' });
   // O que falta em cada anúncio (só itens que dá pra corrigir no anúncio; limiares de seoScore.js).
   const faltasSeo = q => [
@@ -360,6 +391,7 @@ async function montarPainel() {
       reputacao: reput.map(r => ({ loja: r.loja, level_id: r.level_id, power: r.power_seller_status, reclamacoes: r.claims_pct != null ? Number(r.claims_pct) : null, atrasos: r.delayed_pct != null ? Number(r.delayed_pct) : null, cancelamentos: r.cancellations_pct != null ? Number(r.cancellations_pct) : null, em: r.collected_at })),
       recorrentes: recorr[0],
       melhor: { por_dia: porDia, por_hora: porHora30 },
+      ritmo,
       estados_mes: estadosMes.map(e => ({ estado: e.estado || null, pedidos: e.pedidos, fat: Number(e.fat) })),
       semana_passada: { dia: diaSemPassada,
         por_hora: Array.from({ length: 24 }, (_, h) => { const x = semPassada.find(r => r.h === h); return { h, hoje: x ? x.hoje : 0, sem: x ? x.sem : 0, fat_hoje: x ? Number(x.fat_hoje) : 0, fat_sem: x ? Number(x.fat_sem) : 0 }; }) },
@@ -401,4 +433,4 @@ async function exigirToken(req, res, next) {
 publicRouter.get('/', exigirToken, listar);
 publicRouter.get('/painel', exigirToken, painel);
 
-module.exports = { router, publicRouter };
+module.exports = { calcularRitmo, router, publicRouter };

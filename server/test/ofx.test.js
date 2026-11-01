@@ -127,3 +127,16 @@ test('resumo: recorrentes, comparação e fora do padrão usam os meses anterior
   assert.strictEqual(r.totais.var_entradas_pct, 25);
   assert.ok(r.alertas.some((a) => a.tipo === 'fora_padrao' && a.nome === 'PACOTE' && a.valor === 389));
 });
+
+test('mês de competência: conta paga sáb 31/10 e compensada seg 03/11 conta em outubro, saldo segue o banco', () => {
+  const pago = { ...L(9, '2026-11-03', -500, 'fornecedores', 'ALFA'), mes_competencia: '2026-10' };
+  const outubro = resumoMes({ mes: '2026-10', lancs: [L(1, '2026-10-10', 1000, 'clientes', 'C'), pago],
+    lancsPorData: [L(1, '2026-10-10', 1000, 'clientes', 'C')], saldoRef: { valor: 1000, data: '2026-10-31' } });
+  assert.strictEqual(outubro.totais.saidas, 500);                 // entra no total de outubro
+  assert.strictEqual(outubro.saldo.final, 1000);                  // mas o saldo de 31/10 do banco não muda
+  assert.strictEqual(outubro.periodo.vindos_de_outro_mes, 1);
+  const novembro = resumoMes({ mes: '2026-11', lancs: [], lancsPorData: [pago] });
+  assert.strictEqual(novembro.totais.saidas, 0);                  // sai do total de novembro
+  assert.strictEqual(novembro.saldo.dias.find((d) => d.data === '2026-11-03').saidas, 500); // gráfico do banco mantém
+  assert.strictEqual(novembro.periodo.contados_em_outro_mes, 1);
+});

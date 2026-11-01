@@ -118,6 +118,7 @@ async function migrate() {
     'migrate-v126.sql',
     'migrate-v127.sql',
     'migrate-v128.sql',
+    'migrate-v129.sql',
   ];
   // Cada arquivo roda ISOLADO: se um falhar (ex.: migration antiga não
   // idempotente), loga e CONTINUA — antes um erro abortava tudo (process.exit),

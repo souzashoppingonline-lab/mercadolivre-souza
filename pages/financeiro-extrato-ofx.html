@@ -60,6 +60,13 @@
     .ox-modal { position:fixed; inset:0; background:rgba(5,10,18,.72); z-index:10000; display:flex; align-items:flex-start; justify-content:center; padding:28px 16px; overflow:auto; }
     .ox-modal[hidden] { display:none; }
     .ox-modal .box { background:var(--bg-main, #0f1720); border:1px solid var(--border); border-radius:16px; width:min(1150px, 100%); padding:18px 20px; }
+    .ox-del { border-color:#f8717155; color:#f87171; } .ox-del:hover { background:rgba(239,68,68,.1); border-color:#f87171; }
+    .del-aviso { background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.35); color:#fca5a5; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px; }
+    .del-op { display:flex; flex-direction:column; gap:9px; font-size:13px; } .del-op select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:4px 8px; margin-left:4px; }
+    .del-op input[type=radio], .del-op input[type=checkbox] { margin-right:6px; vertical-align:-2px; } .del-regra { color:var(--text-muted); margin-top:4px; }
+    .del-previa { margin:14px 0; padding:10px 12px; border-radius:10px; background:var(--bg-card2); border:1px solid var(--border); font-size:13px; }
+    .del-conf { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; } .del-conf input { background:var(--bg-card2); color:var(--text-main); border:1px solid #f8717188; border-radius:8px; padding:6px 10px; width:120px; font-weight:800; letter-spacing:1px; }
+    .del-btn { background:#b91c1c; border-color:#dc2626; color:#fff; } .del-btn:disabled { background:var(--bg-card2); border-color:var(--border); color:var(--text-muted); }
     .ox-modal.pk { z-index:10001; align-items:center; } .ox-modal.pk .box { width:min(720px, 100%); }
     .ox-catbtn { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:999px; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
     .ox-catbtn:hover { border-color:#3fb950; } .ox-catbtn span { color:var(--text-muted); margin-left:2px; }
@@ -85,7 +92,7 @@
           <div style="flex:1;min-width:280px"><b>Arraste os arquivos OFX aqui</b> ou <button class="ox-btn pri" onclick="document.getElementById('oxFile').click()">Escolher arquivo</button>
             <input type="file" id="oxFile" accept=".ofx,.OFX,.bin,.txt" multiple style="display:none" onchange="importar(this.files)">
             <small>Santander, Itaú, Bradesco, Banco do Brasil, Sicoob, Inter, Nubank… · lançamentos repetidos (mesmo período importado 2×) são ignorados</small></div>
-          <div class="ox-filt"><select id="oxConta" onchange="trocarFiltro()"></select><select id="oxMes" onchange="trocarFiltro()"></select></div>
+          <div class="ox-filt"><select id="oxConta" onchange="trocarFiltro()"></select><select id="oxMes" onchange="trocarFiltro()"></select><button class="ox-btn ox-del" onclick="abrirApagar()" title="Apagar extratos importados para enviar de novo">🗑️ Apagar importação</button></div>
         </div>
         <div class="ox-files" id="oxFiles"></div>
       </div>
@@ -95,6 +102,19 @@
     <div class="ox-modal" id="oxModal" hidden onclick="if(event.target===this)fecharMes()"><div class="box">
       <div class="top"><h2 id="oxModalTit"></h2><button class="ox-btn" onclick="const m=document.getElementById('oxModal').dataset.mes;fecharMes();irParaMes(m)">↗ Abrir este mês na página</button><button class="ox-btn" onclick="fecharMes()">✕ Fechar</button></div>
       <div id="oxModalCorpo"></div></div></div>
+    <div class="ox-modal pk" id="oxDel" hidden onclick="if(event.target===this)fecharApagar()"><div class="box">
+      <div class="top"><h2 style="color:#f87171">🗑️ Apagar importação</h2><button class="ox-btn" onclick="fecharApagar()">✕ Fechar</button></div>
+      <div class="del-aviso">⚠️ <b>Atenção:</b> os lançamentos apagados <b>não podem ser recuperados</b> — só enviando o arquivo OFX de novo. Lançamentos que você moveu de mês ("Contar em…") voltam ao mês do banco quando reimportados.</div>
+      <div class="del-op">
+        <label><input type="radio" name="oxDelEsc" value="tudo" checked onchange="previaApagar()"> <b>Tudo</b> — todas as contas e todos os meses</label>
+        <label><input type="radio" name="oxDelEsc" value="conta" onchange="previaApagar()"> <b>Só uma conta:</b> <select id="oxDelConta" onchange="document.querySelector('[name=oxDelEsc][value=conta]').checked=true;previaApagar()"></select></label>
+        <label><input type="radio" name="oxDelEsc" value="mes" onchange="previaApagar()"> <b>Só um mês</b> (pela data do banco): <select id="oxDelMes" onchange="document.querySelector('[name=oxDelEsc][value=mes]').checked=true;previaApagar()"></select></label>
+        <label class="del-regra"><input type="checkbox" id="oxDelRegras" checked onchange="previaApagar()"> Manter as categorias e nomes que ensinei (recomendado — ao reenviar, já volta classificado)</label>
+      </div>
+      <div id="oxDelPrevia" class="del-previa">Calculando…</div>
+      <div class="del-conf">Para confirmar, digite <b>APAGAR</b>: <input id="oxDelTxt" autocomplete="off" oninput="document.getElementById('oxDelBtn').disabled = this.value.trim().toUpperCase() !== 'APAGAR' || !APAGAR_N">
+        <button class="ox-btn del-btn" id="oxDelBtn" disabled onclick="confirmarApagar()">🗑️ Apagar definitivamente</button></div>
+    </div></div>
     <div class="ox-modal pk" id="oxPick" hidden onclick="if(event.target===this)fecharPick()"><div class="box">
       <div class="top"><h2>🏷️ Escolher categoria</h2><button class="ox-btn" onclick="fecharPick()">✕ Fechar</button></div>
       <div id="oxPickCorpo"></div></div></div>
@@ -119,7 +139,7 @@ const contaSel = () => Number(document.getElementById('oxConta').value)||0;
 async function carregarContas(mesPreferido) {
   const d = await DB.ofxContas();
   if (!d || d.error) { status('⚠️ '+esc(d&&d.error||'Erro ao carregar'), true); return; }
-  CATS = d.categorias; CAT = Object.fromEntries(CATS.map(c=>[c.id,c])); CONTAS = d.contas;
+  CATS = d.categorias; CAT = Object.fromEntries(CATS.map(c=>[c.id,c])); CONTAS = d.contas; MESES_LISTA = d.meses;
   const contaAtual = contaSel();
   document.getElementById('oxConta').innerHTML = `<option value="0">Todas as contas</option>` + CONTAS.map(c=>`<option value="${c.id}" ${c.id===contaAtual?'selected':''}>${esc(c.apelido||c.banco_nome||'Banco '+c.banco_id)} ${esc(c.conta_mask)}</option>`).join('');
   const mesAtual = mesPreferido || mesSel();
@@ -235,7 +255,45 @@ async function abrirMes(mes) {
       <div class="ox-card"><div class="ox-h"><h3>💰 Maiores entradas</h3></div><div class="ox-scroll"><table class="ox-t"><tbody>${top(1,10).map(linhaL).join('') || '<tr><td class="ox-vazio">—</td></tr>'}</tbody></table></div></div></div>`;
 }
 function fecharMes() { document.getElementById('oxModal').hidden = true; document.body.style.overflow = ''; }
-document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!document.getElementById('oxPick').hidden) fecharPick(); else fecharMes(); });
+document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!document.getElementById('oxPick').hidden) fecharPick(); else if (!document.getElementById('oxDel').hidden) fecharApagar(); else fecharMes(); });
+
+// ── Apagar importação (aviso + prévia do que some + digitar APAGAR) ──
+let APAGAR_N = 0, MESES_LISTA = [];
+function paramsApagar() {
+  const esc = document.querySelector('[name=oxDelEsc]:checked').value;
+  const p = { escopo: esc, manter_regras: document.getElementById('oxDelRegras').checked ? '1' : '0' };
+  if (esc === 'conta') p.conta_id = document.getElementById('oxDelConta').value;
+  if (esc === 'mes') p.mes = document.getElementById('oxDelMes').value;
+  return p;
+}
+function abrirApagar() {
+  document.getElementById('oxDelConta').innerHTML = CONTAS.map(c => `<option value="${c.id}">${esc(c.apelido||c.banco_nome||'Banco '+c.banco_id)} ${esc(c.conta_mask)} (${c.lancamentos} lanç.)</option>`).join('') || '<option value="">—</option>';
+  document.getElementById('oxDelMes').innerHTML = MESES_LISTA.map(m => `<option value="${m.mes}" ${m.mes===mesSel()?'selected':''}>${nomeMes(m.mes)}</option>`).join('') || '<option value="">—</option>';
+  document.querySelector('[name=oxDelEsc][value=tudo]').checked = true;
+  document.getElementById('oxDelTxt').value = ''; document.getElementById('oxDelBtn').disabled = true;
+  document.getElementById('oxDel').hidden = false; previaApagar();
+}
+function fecharApagar() { document.getElementById('oxDel').hidden = true; }
+async function previaApagar() {
+  const el = document.getElementById('oxDelPrevia'); el.textContent = 'Calculando…'; APAGAR_N = 0;
+  const p = paramsApagar(); const d = await DB.ofxPreviaApagar(p);
+  if (!d || d.error) { el.innerHTML = '⚠️ ' + esc(d && d.error || 'Erro'); return; }
+  APAGAR_N = d.lancamentos + d.importacoes;
+  el.innerHTML = APAGAR_N
+    ? `Vai apagar <b style="color:#f87171">${d.lancamentos} lançamento(s)</b> e <b style="color:#f87171">${d.importacoes} arquivo(s) importado(s)</b>${d.de ? ` · de ${dm(d.de)}/${String(d.de).slice(0,4)} a ${dm(d.ate)}/${String(d.ate).slice(0,4)}` : ''}${d.meses ? ` (${d.meses} mês/meses)` : ''}.<br>${p.manter_regras === '1' ? `✅ As ${d.regras} categoria(s)/nome(s) que você ensinou ficam guardadas.` : `<b style="color:#f87171">Também apaga as ${d.regras} categoria(s)/nome(s) que você ensinou.</b>`}`
+    : 'Nada para apagar com essa escolha.';
+  const t = document.getElementById('oxDelTxt'); document.getElementById('oxDelBtn').disabled = t.value.trim().toUpperCase() !== 'APAGAR' || !APAGAR_N;
+}
+async function confirmarApagar() {
+  const b = document.getElementById('oxDelBtn'); b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Apagando…';
+  const r = await DB.ofxApagar({ ...paramsApagar(), confirmacao: 'APAGAR' });
+  b.innerHTML = '🗑️ Apagar definitivamente';
+  if (!r) { status('⚠️ ' + esc(DB.lastError || 'Não consegui apagar'), true); return; }
+  fecharApagar();
+  status(`🗑️ Apagado: ${r.lancamentos} lançamento(s) e ${r.importacoes} arquivo(s).${r.regras_mantidas ? ' Categorias aprendidas mantidas.' : ''} Pode enviar os arquivos de novo.`);
+  SEL.clear(); FILTRO = { categoria:'', sentido:'', dia:'' };
+  await carregarContas();
+}
 
 // ── Escolher categoria (clique na categoria dentro do modal do mês) ──
 const LANC_MODAL = {};

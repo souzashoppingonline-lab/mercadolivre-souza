@@ -283,6 +283,73 @@ router.patch('/competencia', async (req, res) => {
   } catch (e) { console.error('[extrato-ofx] competencia', e.message); res.status(500).json({ error: e.message }); }
 });
 
+// ── Apagar importação (botão com aviso + confirmação na tela) ──────────
+// escopo: tudo | conta (conta_id) | mes (AAAA-MM pela DATA do banco, como veio no arquivo).
+// "mes" apaga também as importações cujo período termina naquele mês (o saldo
+// delas é do fim desse mês — sem os lançamentos, o saldo calculado ficaria errado).
+function escopoApagar(q) {
+  const escopo = String(q.escopo || '');
+  if (escopo === 'tudo') return { escopo };
+  if (escopo === 'conta' && Number(q.conta_id)) return { escopo, contaId: Number(q.conta_id) };
+  if (escopo === 'mes' && MES_RE.test(String(q.mes || ''))) return { escopo, mes: String(q.mes) };
+  return null;
+}
+const WHERE_APAGAR = {
+  tudo: { l: 'TRUE', i: 'TRUE', p: () => [] },
+  conta: { l: 'conta_id = $1', i: 'conta_id = $1', p: (e) => [e.contaId] },
+  mes: { l: `to_char(data, 'YYYY-MM') = $1`, i: `to_char(dt_fim, 'YYYY-MM') = $1`, p: (e) => [e.mes] },
+};
+
+// GET /dados/previa?escopo=&conta_id=&mes= → o que seria apagado (a tela mostra antes de confirmar).
+router.get('/dados/previa', async (req, res) => {
+  try {
+    const e = escopoApagar(req.query); if (!e) return res.status(400).json({ error: 'escolha o que apagar' });
+    const w = WHERE_APAGAR[e.escopo];
+    const [{ rows: [l] }, { rows: [i] }, { rows: [r] }] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS n, COUNT(DISTINCT to_char(data, 'YYYY-MM'))::int AS meses, MIN(data) AS de, MAX(data) AS ate FROM ofx_lancamentos WHERE ${w.l}`, w.p(e)),
+      pool.query(`SELECT COUNT(*)::int AS n FROM ofx_importacoes WHERE ${w.i}`, w.p(e)),
+      pool.query('SELECT COUNT(*)::int AS n FROM ofx_regras'),
+    ]);
+    res.json({ lancamentos: l.n, meses: l.meses, de: l.de, ate: l.ate, importacoes: i.n, regras: r.n });
+  } catch (err) { console.error('[extrato-ofx] previa apagar', err.message); res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /dados?escopo=&conta_id=&mes=&manter_regras=1&confirmacao=APAGAR
+router.delete('/dados', async (req, res) => {
+  const e = escopoApagar(req.query); if (!e) return res.status(400).json({ error: 'escolha o que apagar' });
+  if (req.query.confirmacao !== 'APAGAR') return res.status(400).json({ error: 'confirmação ausente — digite APAGAR' });
+  const manterRegras = req.query.manter_regras !== '0';
+  const w = WHERE_APAGAR[e.escopo];
+  const cx = await pool.connect();
+  try {
+    await cx.query('BEGIN');
+    let lanc, imp;
+    if (e.escopo === 'tudo') {
+      lanc = (await cx.query('DELETE FROM ofx_lancamentos')).rowCount;
+      imp = (await cx.query('DELETE FROM ofx_importacoes')).rowCount;
+      await cx.query('DELETE FROM ofx_contas');
+      await cx.query('DELETE FROM ofx_analises_ia');
+    } else {
+      lanc = (await cx.query(`DELETE FROM ofx_lancamentos WHERE ${w.l}`, w.p(e))).rowCount;
+      imp = (await cx.query(`DELETE FROM ofx_importacoes WHERE ${w.i}`, w.p(e))).rowCount;
+      if (e.escopo === 'conta') {
+        await cx.query('DELETE FROM ofx_contas WHERE id = $1', [e.contaId]);
+        await cx.query('DELETE FROM ofx_analises_ia WHERE conta_id = $1', [e.contaId]);
+      } else await cx.query('DELETE FROM ofx_analises_ia WHERE mes = $1', [e.mes]);
+    }
+    if (!manterRegras) await cx.query('DELETE FROM ofx_regras');
+    // Mês a mês: apaga tudo e regrava só os meses que ainda têm lançamento.
+    await cx.query('DELETE FROM ofx_resumos_mensais');
+    await cx.query('COMMIT');
+    try { await salvarResumosMensais(); } catch (err) { console.error('[extrato-ofx] resumo mensal', err.message); }
+    console.log(`[extrato-ofx] apagado por ${quem(req) || '?'}: escopo=${e.escopo} ${e.contaId || e.mes || ''} → ${lanc} lançamentos, ${imp} importações, regras ${manterRegras ? 'mantidas' : 'apagadas'}`);
+    res.json({ ok: true, lancamentos: lanc, importacoes: imp, regras_mantidas: manterRegras });
+  } catch (err) {
+    await cx.query('ROLLBACK').catch(() => {});
+    console.error('[extrato-ofx] apagar', err.message); res.status(500).json({ error: err.message });
+  } finally { cx.release(); }
+});
+
 // Texto que vai pra IA: só números já calculados + nomes de contraparte (nunca nº de conta/agência).
 function paraIa(r) {
   const R = (n) => (n == null ? null : Math.round(n));

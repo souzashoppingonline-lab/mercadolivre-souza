@@ -1092,3 +1092,11 @@ Pedido: mostrar o saldo da conta na janela de Pagar e avisar quando falta. A som
 
 **Decisão**: campos viraram texto (`inputmode="decimal"`) com `pNumBR`: vírgula com 1–2 casas = centavos ("22.239,10"); ponto ou vírgula seguidos de grupos de 3 dígitos = milhar ("215.525", "215,525" → 215525 — dinheiro nunca tem 3 casas); valor salvo exibido como "215.525,00". `recalcSaldoLinha(m)` atualiza o Saldo Banco a cada tecla (Entrada/Saída). O salvamento em lote (botão Salvar) não mudou. Dado antigo gravado na escala errada **não** é corrigido automaticamente (precisa de UPDATE manual aprovado pelo usuário).
 **v143**: "Caixa Dia 1" do **próximo** mês fica liberado na tabela anual (pedido do usuário — o saldo do 1º dia é conhecido no fim do mês atual); Entrada/Saída Banco continuam só até o mês atual. Meses além do próximo seguem bloqueados.
+
+## Extrato Bancário (OFX): Postgres local, anti-duplicado por conteúdo, IA só interpreta (v144)
+
+- Tabelas no **Postgres do servidor**, não no Supabase do Financeiro (mesmo racional de `conta_saldos_informados`): sem mudança de schema no Supabase, migration versionada aqui, consulta rápida pra montar o resumo.
+- **Repetidos por conteúdo** (data|valor|descrição|nº da ocorrência), não por FITID — no arquivo real do Santander o FITID muda a cada exportação.
+- **Saldo do OFX = fim do período** (`DTEND`), não `DTASOF` (Santander põe a hora da exportação) — conferido com o Caixa Dia 1 de out/2026.
+- Categorias por **regra aprendida por contraparte** (o usuário classifica 1×, vale passado e futuro) antes de qualquer IA — determinístico e barato; a IA só escreve o texto a partir dos números já calculados (regra do projeto, igual ao SEO Score/IA Estrategista).
+- **Mês a mês salvo** (`ofx_resumos_mensais`, pedido do usuário) em vez de só calcular na hora: guarda a foto de cada mês e deixa a tabela de vários meses barata; regravado a cada importação/correção.

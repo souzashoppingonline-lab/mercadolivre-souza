@@ -413,6 +413,15 @@ const DB = {
   async deleteFinanceiroRow(nome, id)      { return this._delete(`/financeiro/dados/${encodeURIComponent(nome)}/${encodeURIComponent(id)}`); },
   async upsertFinanceiroRows(nome, rows, onConflict) { return this._post(`/financeiro/dados-upsert/${encodeURIComponent(nome)}`, { rows, onConflict }); },
   // Fechamento Mensal — checklist, status (open/in_progress/closed), e-mail.
+  // Extrato Bancário (OFX) — .claude/extrato-ofx.md
+  async ofxContas()                          { return this._get('/financeiro/extrato-ofx/contas'); },
+  async ofxImportar(formData)                { return this._postForm('/financeiro/extrato-ofx/importar', formData, 120000); },
+  async ofxResumo(mes, contaId)              { return this._get('/financeiro/extrato-ofx/resumo', { mes, conta_id: contaId || '' }); },
+  async ofxLancamentos(params)               { return this._get('/financeiro/extrato-ofx/lancamentos', params); },
+  async ofxCorrigir(id, body)                { return this._patch(`/financeiro/extrato-ofx/lancamentos/${id}`, body); },
+  async ofxAnaliseIa(mes, contaId)           { return this._post('/financeiro/extrato-ofx/analise-ia', { mes, conta_id: contaId || 0 }); },
+  async ofxMensal(contaId)                   { return this._get('/financeiro/extrato-ofx/mensal', { conta_id: contaId || '' }); },
+  async ofxRecalcularMensal()                { return this._post('/financeiro/extrato-ofx/mensal/recalcular', {}); },
   async getFechamentoResumo(ano)                { return this._get('/financeiro/fechamento/resumo', { ano }); },
   async getFechamentoMes(ano, mes)              { return this._get(`/financeiro/fechamento/${ano}/${mes}`); },
   async iniciarFechamento(ano, mes)             { return this._post(`/financeiro/fechamento/${ano}/${mes}/iniciar`, {}); },

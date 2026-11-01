@@ -241,6 +241,7 @@ module.exports = {
   answerQuestion:      (questionId, text, storeId) => post('/answers', storeId, { question_id: questionId, text }),
   deleteQuestion:      (questionId, storeId) => del(`/questions/${questionId}`, storeId),
   getMessage:          (msgId, storeId)  => get(`/messages/${msgId}?tag=post_sale&seller_id=${storeId}`, storeId),
+  getMessagesUnread:   (storeId)         => get(`/messages/unread?role=seller&tag=post_sale`, storeId),
   getMessagesPack:     (packId, storeId) => get(`/messages/packs/${packId}?tag=post_sale&seller_id=${storeId}`, storeId),
   getSellerReputation: (storeId)         => get(`/users/${storeId}/seller_reputation`, storeId),
   getShipment:         (shipmentId, storeId) => get(`/shipments/${shipmentId}`, storeId),

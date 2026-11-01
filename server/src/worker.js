@@ -494,11 +494,11 @@ async function handleQuestion({ resource, storeId }) {
   try { q = await ml.getQuestion(questionId, storeId); }
   catch (e) {
     if (!/HTTP 404/.test(e.message)) throw e;
-    if (await marcarPerguntaApagada(questionId)) { await redis.del('kpis:summary'); await publish('question_received', { id: Number(questionId), status: 'DELETED' }); }
+    if (await marcarPerguntaApagada(questionId)) { await redis.del('kpis:summary', 'telegram-tela:painel'); await publish('question_received', { id: Number(questionId), status: 'DELETED' }); }
     return;
   }
 
-  if (await gravarPergunta(q, storeId)) await redis.del('kpis:summary');
+  if (await gravarPergunta(q, storeId)) await redis.del('kpis:summary', 'telegram-tela:painel'); // painel: aviso fixo de "sem resposta" da Tela Telegram
   await publish('question_received', { id: q.id, status: q.status, text: q.text });
   if (q.status === 'UNANSWERED') {
     // 1 aviso por pergunta (o ML reenvia o mesmo webhook mais de uma vez).
@@ -536,21 +536,27 @@ async function handleMessage({ resource, storeId }) {
     || (msg.from?.user_id ? String(msg.from.user_id) : null);
   const text = msg.text || msg.message || msg.message_text || null;
   const msgDate = msg.message_date?.received || msg.message_date?.created || null;
+  // Mensagem enviada pela PRÓPRIA loja (resposta ao comprador): conversa respondida → zera
+  // "não lidas" e não avisa (antes contava como mensagem nova do comprador e nunca zerava).
+  // stores.id = user_id do vendedor no ML.
+  const daLoja = msg.from?.user_id != null && String(msg.from.user_id) === String(storeId);
   console.log(`[msg-debug] msgId=${msgId} keys=${Object.keys(msg||{}).join(',')} full=${JSON.stringify(msg).slice(0, 900)}`);
 
   await pool.query(
     `INSERT INTO messages (store_id, pack_id, buyer_nickname, last_message, unread, last_message_date, updated_at)
-     VALUES ($1,$2,$3,$4,1,$5, now())
+     VALUES ($1,$2,$3,$4, CASE WHEN $6 THEN 0 ELSE 1 END, $5, now())
      ON CONFLICT (pack_id) DO UPDATE SET
        last_message = EXCLUDED.last_message,
-       buyer_nickname = COALESCE(EXCLUDED.buyer_nickname, messages.buyer_nickname),
-       unread = messages.unread + 1,
+       buyer_nickname = CASE WHEN $6 THEN messages.buyer_nickname ELSE COALESCE(EXCLUDED.buyer_nickname, messages.buyer_nickname) END,
+       unread = CASE WHEN $6 THEN 0 ELSE messages.unread + 1 END,
        last_message_date = EXCLUDED.last_message_date,
        updated_at = now()`,
-    [storeId, packId, buyerNickname, text, msgDate]
+    [storeId, packId, daLoja ? null : buyerNickname, text, msgDate, daLoja]
   );
 
-  await publish('message_received', { pack_id: packId, buyer_nickname: buyerNickname });
+  await redis.del('telegram-tela:painel'); // aviso fixo de "sem resposta" da Tela Telegram
+  await publish('message_received', { pack_id: packId, buyer_nickname: buyerNickname, respondida: daLoja });
+  if (daLoja) return;
   const loja = await getStoreName(storeId);
   const dashUrl = (process.env.DASH_URL || 'https://multimixvendas.duckdns.org') + '/pages/mensagens.html';
   await tgNotify('tg_mensagens',
@@ -2468,14 +2474,39 @@ async function syncPerguntasPendentes() {
       }
       await new Promise((res) => setTimeout(res, espera));
     }
-    if (mudou) await redis.del('kpis:summary');
+    if (mudou) await redis.del('kpis:summary', 'telegram-tela:painel');
     console.log(`[sync-perguntas] ${rows.length} pendente(s) conferida(s): ${mudou} mudaram de status, ${erros} erro(s)`);
   } catch (e) {
     console.error('[sync-perguntas] erro:', e.message);
   } finally { isSyncingPerguntas = false; }
 }
+// Conferência dos chats pós-venda do ML (a cada 10 min, mesma rodada das perguntas):
+// GET /messages/unread?role=seller&tag=post_sale devolve as conversas que a loja ainda
+// não leu → grava `unread` delas e zera as outras da loja (lidas/respondidas no site).
+// Formato esperado: { results: [{ resource: '/packs/<pack_id>/sellers/<id>', count }] }.
+// Resposta em outro formato → só loga e NÃO zera nada (melhor aviso a mais que a menos).
+async function syncChatsMlPendentes() {
+  const { rows: lojas } = await pool.query(`SELECT id FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML')`);
+  let mudou = 0;
+  for (const { id: storeId } of lojas) {
+    try {
+      const r = await ml.getMessagesUnread(storeId);
+      if (!r || !Array.isArray(r.results)) { console.warn(`[sync-chats-ml] loja ${storeId}: resposta sem "results" — nada alterado`, JSON.stringify(r).slice(0, 200)); continue; }
+      const naoLidas = r.results.map((x) => ({ pack: (String(x.resource || '').match(/packs\/(\d+)/) || [])[1], n: Number(x.count) || 1 })).filter((x) => x.pack);
+      for (const x of naoLidas) {
+        const u = await pool.query(`UPDATE messages SET unread = $3, updated_at = now() WHERE store_id = $1 AND pack_id = $2 AND unread IS DISTINCT FROM $3`, [storeId, x.pack, x.n]);
+        mudou += u.rowCount;
+      }
+      const z = await pool.query(`UPDATE messages SET unread = 0, updated_at = now() WHERE store_id = $1 AND unread > 0 AND NOT (pack_id = ANY($2::text[]))`, [storeId, naoLidas.map((x) => x.pack)]);
+      mudou += z.rowCount;
+    } catch (e) { console.warn(`[sync-chats-ml] loja ${storeId}: ${e.message}`); }
+  }
+  if (mudou) { await redis.del('telegram-tela:painel'); await publish('message_received', { sync: true }); }
+  console.log(`[sync-chats-ml] ${lojas.length} loja(s) conferida(s), ${mudou} conversa(s) atualizada(s)`);
+}
+
 async function checkPerguntasPendentes() {
-  try { await syncPerguntasPendentes(); }
+  try { await syncPerguntasPendentes(); await syncChatsMlPendentes(); }
   finally { scheduleEveryMinutes(10, checkPerguntasPendentes, 'sync-perguntas'); }
 }
 
@@ -4345,6 +4376,9 @@ cmdSub.on('message', (channel, msg) => {
     }
     if (cmd === 'runIaEstrategistaCriticos') {
       runIaEstrategistaCriticos().catch(e => console.error('[worker] ia-estrategista-criticos erro:', e.message));
+    }
+    if (cmd === 'syncChatsMlPendentes' || cmd === 'sync-chats-ml') {
+      syncChatsMlPendentes().catch(e => console.error('[worker] sync-chats-ml erro:', e.message));
     }
     if (cmd === 'syncPerguntasPendentes') {
       console.log('[worker] sync-perguntas disparado manualmente');

@@ -381,10 +381,33 @@ async function montarPainel() {
       acao: x.analise.plano[0]?.acao || null,
     }));
   } catch (e) { console.warn('[telegram-tela/painel] IA Estrategista:', e.message); }
+  // v150 — aviso fixo no topo: perguntas e chats sem resposta nos marketplaces (some quando zera).
+  // Perguntas: questions UNANSWERED (conferência a cada 10 min). Chat ML: messages.unread > 0 (zera
+  // quando a loja responde + conferência /messages/unread a cada 10 min). Shopee: shopee_chat (sync 10 min).
+  let pendentes = null;
+  try {
+    // Por marketplace + loja (pedido do usuário: o aviso diz onde responder).
+    const { rows: pd } = await pool.query(
+      `SELECT mkt, loja, SUM(perguntas)::int AS perguntas, SUM(chats)::int AS chats, MIN(desde) AS desde FROM (
+         SELECT 'ML' AS mkt, COALESCE(s.nickname, 'Loja ' || q.store_id) AS loja, COUNT(*) AS perguntas, 0 AS chats, MIN(q.date_created) AS desde
+           FROM questions q LEFT JOIN stores s ON s.id = q.store_id WHERE q.status = 'UNANSWERED' GROUP BY 1, 2
+         UNION ALL
+         SELECT 'ML', COALESCE(s.nickname, 'Loja ' || m.store_id), 0, COUNT(*), MIN(COALESCE(m.last_message_date, m.updated_at))
+           FROM messages m LEFT JOIN stores s ON s.id = m.store_id WHERE COALESCE(m.unread, 0) > 0 GROUP BY 1, 2
+         UNION ALL
+         SELECT 'Shopee', COALESCE(s.nickname, 'Loja ' || c.store_id), 0, COUNT(*), to_timestamp(MIN(c.last_message_time) / 1e9)
+           FROM shopee_chat c LEFT JOIN stores s ON s.id = c.store_id WHERE c.unread_count > 0 GROUP BY 1, 2
+       ) x GROUP BY mkt, loja ORDER BY MIN(desde) NULLS LAST`);
+    const desde = pd.map((r) => r.desde && new Date(r.desde).getTime()).filter(Boolean).sort((a, b) => a - b)[0];
+    pendentes = { lojas: pd.map((r) => ({ mkt: r.mkt, loja: r.loja, perguntas: r.perguntas, chats: r.chats })),
+      perguntas: pd.reduce((a, r) => a + r.perguntas, 0), chats: pd.reduce((a, r) => a + r.chats, 0),
+      mais_antiga: desde ? new Date(desde).toISOString() : null };
+  } catch (e) { console.warn('[telegram-tela/painel] pendentes:', e.message); }
   const t = tot[0];
   const hbIdade = hbWorker ? Math.round((Date.now() - Number(hbWorker)) / 1000) : null;
   const vencidos = tokens.filter(k => !k.token_expires_at || new Date(k.token_expires_at).getTime() < Date.now() - 5 * 60000).map(k => k.nickname);
   return {
+    pendentes,
     servidor,
     saude: {
       worker: { ok: hbIdade != null && hbIdade < 120, idade_s: hbIdade }, // mesmo limite de health.js (HB_STALE_MS)

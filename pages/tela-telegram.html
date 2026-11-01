@@ -15,6 +15,17 @@
     .tg-top { flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--top); border-bottom:1px solid #0b121a; z-index:2; }
     .av { width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#5eb5f7,#2b5278); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; flex:0 0 auto; }
     .nome { min-width:0; flex:1; }
+    /* v150: aviso fixo de pergunta/chat sem resposta — no espaço livre do cabeçalho; some quando zera */
+    .pend { flex:1 1 0; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:3px; background:linear-gradient(90deg,#7f1d1d,#b91c1c); border:2px solid #f87171; color:#fff; border-radius:14px; padding:5px 12px; font-weight:800; font-size:.82em; line-height:1.25; animation:pendPulsa 1.6s ease-in-out infinite; overflow:hidden; }
+    .pend .l1 { display:flex; align-items:center; gap:8px; white-space:nowrap; overflow:hidden; } .pend .l1 b { font-size:1.2em; }
+    .pend .l2 { overflow:hidden; white-space:nowrap; font-size:.92em; } .pend .l2 .trilho { display:inline-flex; gap:6px; }
+    .pend .l2.rola .trilho { animation:pendRola var(--dur, 20s) linear infinite; padding-left:100%; }
+    @keyframes pendRola { to { transform:translateX(-100%); } }
+    .pend[hidden] { display:none; } .pend .sino { font-size:1.35em; } .pend .it { display:inline-flex; align-items:center; gap:4px; background:rgba(0,0,0,.25); border-radius:999px; padding:1px 9px; white-space:nowrap; } .pend .it b { font-size:1.15em; }
+    .pend .ha { font-weight:700; opacity:.9; font-size:.9em; }
+    @keyframes pendPulsa { 50% { box-shadow:0 0 0 4px rgba(248,113,113,.35), 0 0 24px rgba(248,113,113,.45); } }
+    body.tv .pend { font-size:.72em; }
+    .tg-top:has(.pend:not([hidden])) .nome { flex:0 0 auto; }
     .nome b { display:block; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .nome small { color:var(--muted); font-size:13px; }
     .nome small.on { color:var(--link); }
@@ -185,6 +196,7 @@
 <header class="tg-top">
   <div class="av">ML</div>
   <div class="nome"><b>ML Dashboard · Avisos</b><small id="sub">bot · conectando…</small></div>
+  <div class="pend" id="pend" hidden></div>
   <div class="dir">
     <div class="ctrls">
       <button id="btnPausa" title="Pausar/continuar a rolagem">⏸ Pausar</button>
@@ -434,7 +446,7 @@ function conectar() {
   try {
     ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
     ws.onopen = () => { wsEspera = 2000; document.getElementById('live').classList.remove('off'); document.getElementById('sub').classList.add('on'); };
-    ws.onmessage = ({ data }) => { try { const m = JSON.parse(data); if (m.topic === 'telegram_mensagem') buscar(true); } catch (_) {} };
+    ws.onmessage = ({ data }) => { try { const m = JSON.parse(data); if (m.topic === 'telegram_mensagem') buscar(true); else if (m.topic === 'question_received' || m.topic === 'message_received') painelDepoisDeMensagem(); } catch (_) {} };
     ws.onclose = () => { document.getElementById('live').classList.add('off'); document.getElementById('sub').classList.remove('on'); setTimeout(conectar, wsEspera); wsEspera = Math.min(wsEspera * 2, 30000); };
   } catch (_) { setTimeout(conectar, wsEspera); }
 }
@@ -461,7 +473,7 @@ async function carregarPainel() {
       ${recordeHtml(d.recorde, p.fat)}
       <div class="ont"><span>📅 Ontem (dia inteiro)</span><span><b>${R$(d.ontem.fat)}</b> · ${d.ontem.pedidos} pedidos</span></div>
       <div class="lj">${p.lojas.length ? p.lojas.slice(0, 4).map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') + (p.lojas.length > 4 ? `<div class="pn-vazio" style="margin-top:4px">+${p.lojas.length - 4} empresa(s)</div>` : '') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;
-    CAR_DADOS = d; renderSaude(d.saude);
+    CAR_DADOS = d; renderSaude(d.saude); renderPendentes(d.pendentes);
     const bb = d.buybox;
     document.getElementById('pnEstagios').innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="v"><span class="i">${i}</span> ${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
       <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
@@ -477,6 +489,24 @@ function recordeHtml(rec, fatHoje) {
   return `<div class="rec"><span>🏆 Recorde do mês: <b>${R$(rec.fat)}</b> (dia ${Number(rec.dia.slice(8, 10))})</span><span>faltam <b>${R$(rec.fat - fatHoje)}</b></span></div>`;
 }
 // Saúde: worker (heartbeat < 2 min), tokens do ML, última venda (8–22h: amarelo > 2h, vermelho > 4h).
+// v150 — aviso fixo: perguntas/chats sem resposta. Some quando tudo foi respondido.
+function renderPendentes(p) {
+  const el = document.getElementById('pend'); if (!el) return;
+  const tot = p ? (p.perguntas || 0) + (p.chats || 0) : 0;
+  if (!tot) { el.hidden = true; el.innerHTML = ''; return; }
+  const ha = (() => { if (!p.mais_antiga) return ''; const m = Math.max(0, Math.round((Date.now() - new Date(p.mais_antiga)) / 60000)); return m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${Math.floor(m / 1440)} dia(s)`; })();
+  // Uma etiqueta por loja (marketplace · loja: ❓perguntas 💬chats), a mais antiga primeiro; até 3 + "+N".
+  const MKT = { ML: ['🟡', 'ML'], Shopee: ['🟠', 'Shopee'] };
+  const lojas = p.lojas || [];
+  const it = l => `<span class="it">${(MKT[l.mkt] || ['🏪', l.mkt])[0]} ${(MKT[l.mkt] || ['', l.mkt])[1]} · ${esc(l.loja)}:${l.perguntas ? ` ❓<b>${l.perguntas}</b>` : ''}${l.chats ? ` 💬<b>${l.chats}</b>` : ''}</span>`;
+  // Linha 1: total; linha 2: cada marketplace · loja (rola devagar se não couber).
+  el.innerHTML = `<div class="l1"><span class="sino">🔔</span><span>SEM RESPOSTA</span>${p.perguntas ? `<span>❓<b>${p.perguntas}</b> ${p.perguntas === 1 ? 'pergunta' : 'perguntas'}</span>` : ''}${p.chats ? `<span>💬<b>${p.chats}</b> ${p.chats === 1 ? 'chat' : 'chats'}</span>` : ''}${ha ? `<span class="ha" title="a mais antiga sem resposta">⏱ ${ha}</span>` : ''}</div>
+    <div class="l2"><span class="trilho">${lojas.map(it).join('')}</span></div>`;
+  el.hidden = false;
+  const l2 = el.querySelector('.l2'), tr = l2.querySelector('.trilho');
+  if (tr.scrollWidth > l2.clientWidth) { l2.classList.add('rola'); l2.style.setProperty('--dur', Math.max(12, Math.round(tr.scrollWidth / 45)) + 's'); }
+  el.title = lojas.map(l => `${l.mkt} · ${l.loja}: ${l.perguntas} pergunta(s), ${l.chats} chat(s)`).join('\n');
+}
 function renderSaude(sd) {
   if (!sd) return;
   const chip = (cls, txt) => `<span class="sd ${cls}">${txt}</span>`;

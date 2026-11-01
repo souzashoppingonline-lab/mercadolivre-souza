@@ -146,6 +146,18 @@ const DOW=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const iso=d=>d.toISOString().slice(0,10);
 const addDays=(d,n)=>new Date(d.getTime()+n*864e5);
 const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?0:n; };
+// Valor em R$ digitado no jeito brasileiro (tabela anual): "215.525"/"215,525" = 215 mil
+// (ponto de milhar — dinheiro nunca tem 3 casas), "22.239,10" e "22239,10" =
+// 22 mil com centavos. Antes o ponto virava decimal e "288.177" era gravado
+// como R$ 288,18 (bug visto em ago/2026).
+const pNumBR=v=>{
+  let t=String(v==null?'':v).replace(/R\$|\s/g,'');
+  if(/^-?\d{1,3}(,\d{3})+$/.test(t)) t=t.replace(/,/g,'');   // "215,525" = 215 mil (3 casas não é centavo)
+  else if(t.includes(',')) t=t.replace(/\./g,'').replace(',','.');
+  else if(/^-?\d{1,3}(\.\d{3})+$/.test(t)) t=t.replace(/\./g,'');
+  const n=parseFloat(t); return isNaN(n)?0:n;
+};
+const fmtIn=n=>n?(+n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
 const rev=e=>Number(e.gross_revenue)||0;
 const custoVar=e=>(+e.marketplace_fees||0)+(+e.subsidized_shipping||0)+(+e.cogs||0)+(+e.ads_ml||0)+(+e.ads_external||0)+(+e.tax||0);
 
@@ -399,10 +411,10 @@ function renderAnual(){
     fatArr.push(fat); fluxArr.push(dia1); mcArr.push(mcPct||0);
     html+=`<tr class="${m===curM?'hoje':''}" style="${futuro?'opacity:.5':''}">
       <td>${MESHORT[m-1]}</td>
-      <td><input class="pj-in" type="number" step="0.01" value="${dia1||''}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'value',this.value)"></td>
-      <td><input class="pj-in" type="number" step="0.01" value="${bin||''}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'bank_in',this.value)"></td>
-      <td><input class="pj-in" type="number" step="0.01" value="${bout||''}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'bank_out',this.value)"></td>
-      <td style="color:${saldoB>=0?'#3fb950':'#f87171'}">${BRL(saldoB)}</td>
+      <td><input class="pj-in" type="text" inputmode="decimal" placeholder="0,00" value="${fmtIn(dia1)}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'value',this.value)"></td>
+      <td><input class="pj-in" id="pjIn-${m}-bank_in" type="text" inputmode="decimal" placeholder="0,00" value="${fmtIn(bin)}" ${futuro?'disabled':''} oninput="recalcSaldoLinha(${m})" onchange="marcarPendenteAnual(${m},${y},'bank_in',this.value)"></td>
+      <td><input class="pj-in" id="pjIn-${m}-bank_out" type="text" inputmode="decimal" placeholder="0,00" value="${fmtIn(bout)}" ${futuro?'disabled':''} oninput="recalcSaldoLinha(${m})" onchange="marcarPendenteAnual(${m},${y},'bank_out',this.value)"></td>
+      <td id="pjSaldo-${m}" style="color:${saldoB>=0?'#3fb950':'#f87171'}">${BRL(saldoB)}</td>
       <td>${fat?BRL(fat):'—'}</td>
       <td style="color:${cresc==null?'var(--text-muted)':(cresc>=0?'#3fb950':'#f87171')}">${cresc==null?'—':PCT(cresc)}</td>
       <td style="color:${mcReais==null?'var(--text-muted)':(mcReais>=0?'#3fb950':'#f87171')}">${mcReais!=null?BRL(mcReais):'—'}</td>
@@ -419,8 +431,14 @@ function renderAnual(){
     {type:'line',label:'Margem %',data:mcArr,borderColor:'#f59e0b',borderDash:[5,4],tension:.3,pointRadius:2,yAxisID:'y1',fill:false},
   ]},options:{plugins:{legend:{labels:{color:'#94a3b8',boxWidth:12}},tooltip:{callbacks:{label:c=>c.dataset.yAxisID==='y1'?` ${c.dataset.label}: ${PCT(c.raw)}`:` ${c.dataset.label}: ${BRL(c.raw)}`}}},scales:{x:{ticks:{color:'#64748b'}},y:{position:'left',ticks:{color:'#64748b',callback:v=>BRLk(v)},grid:{color:'rgba(148,163,184,.1)'}},y1:{position:'right',ticks:{color:'#f59e0b',callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
 }
+// Saldo Banco recalculado enquanto digita (antes só mudava depois de "Salvar"
+// e ficava R$ 0,00 no mês recém-digitado).
+function recalcSaldoLinha(m){
+  const saldo=pNumBR(document.getElementById(`pjIn-${m}-bank_in`).value)-pNumBR(document.getElementById(`pjIn-${m}-bank_out`).value);
+  const td=document.getElementById(`pjSaldo-${m}`); td.textContent=BRL(saldo); td.style.color=saldo>=0?'#3fb950':'#f87171';
+}
 async function salvarManual(m,y,campo,valor){
-  const v=pNum(valor); let man=manualDe(m,y);
+  const v=pNumBR(valor); let man=manualDe(m,y);
   if(man){ const r=await DB.updateFinanceiroRow('manual_cash_flow_values',man.id,{[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return false; } man[campo]=v; return true; }
   const r=await DB.addFinanceiroRow('manual_cash_flow_values',{month:m,year:y,[campo]:v}); if(r&&r.error){ showStatus('⚠️ '+esc(r.error),true); return false; }
   const saved=Array.isArray(r&&r.rows)?r.rows[0]:null; if(saved) MANUAL.push(saved);

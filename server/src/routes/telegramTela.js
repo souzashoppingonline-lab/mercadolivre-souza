@@ -382,8 +382,8 @@ async function montarPainel() {
     }));
   } catch (e) { console.warn('[telegram-tela/painel] IA Estrategista:', e.message); }
   // v150 — aviso fixo no topo: perguntas e chats sem resposta nos marketplaces (some quando zera).
-  // Perguntas: questions UNANSWERED (conferência a cada 10 min). Chat ML: messages.unread > 0 (zera
-  // quando a loja responde + conferência /messages/unread a cada 10 min). Shopee: shopee_chat (sync 10 min).
+  // Perguntas: questions UNANSWERED (conferência a cada 10 min). Chat ML: resposta da API
+  // /messages/unread guardada pelo worker (abaixo). Shopee: shopee_chat (sync 10 min).
   let pendentes = null;
   try {
     // Por marketplace + loja (pedido do usuário: o aviso diz onde responder).
@@ -391,13 +391,20 @@ async function montarPainel() {
       `SELECT mkt, loja, SUM(perguntas)::int AS perguntas, SUM(chats)::int AS chats, MIN(desde) AS desde FROM (
          SELECT 'ML' AS mkt, COALESCE(s.nickname, 'Loja ' || q.store_id) AS loja, COUNT(*) AS perguntas, 0 AS chats, MIN(q.date_created) AS desde
            FROM questions q LEFT JOIN stores s ON s.id = q.store_id WHERE q.status = 'UNANSWERED' GROUP BY 1, 2
-         UNION ALL
-         SELECT 'ML', COALESCE(s.nickname, 'Loja ' || m.store_id), 0, COUNT(*), MIN(COALESCE(m.last_message_date, m.updated_at))
-           FROM messages m LEFT JOIN stores s ON s.id = m.store_id WHERE COALESCE(m.unread, 0) > 0 GROUP BY 1, 2
+
          UNION ALL
          SELECT 'Shopee', COALESCE(s.nickname, 'Loja ' || c.store_id), 0, COUNT(*), to_timestamp(MIN(c.last_message_time) / 1e9)
            FROM shopee_chat c LEFT JOIN stores s ON s.id = c.store_id WHERE c.unread_count > 0 GROUP BY 1, 2
        ) x GROUP BY mkt, loja ORDER BY MIN(desde) NULLS LAST`);
+    // Chat ML: SÓ o que a API do ML respondeu na última conferência (worker syncChatsMlPendentes,
+    // Redis ml:chats:pendentes, TTL 1h). Sem conferência recente → chat ML fica fora do aviso.
+    try {
+      const api = JSON.parse((await redis.get(require('../mlChatsPendentes').CHAVE)) || 'null');
+      (api && api.lojas || []).filter((l) => l.chats > 0).forEach((l) => {
+        const ex = pd.find((r) => r.mkt === 'ML' && r.loja === l.loja);
+        if (ex) ex.chats += l.chats; else pd.push({ mkt: 'ML', loja: l.loja, perguntas: 0, chats: l.chats, desde: null });
+      });
+    } catch (e) { console.warn('[telegram-tela/painel] chats ML:', e.message); }
     const desde = pd.map((r) => r.desde && new Date(r.desde).getTime()).filter(Boolean).sort((a, b) => a - b)[0];
     pendentes = { lojas: pd.map((r) => ({ mkt: r.mkt, loja: r.loja, perguntas: r.perguntas, chats: r.chats })),
       perguntas: pd.reduce((a, r) => a + r.perguntas, 0), chats: pd.reduce((a, r) => a + r.chats, 0),

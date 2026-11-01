@@ -197,7 +197,7 @@ id BIGSERIAL PK
 store_id BIGINT FK stores
 pack_id TEXT              -- índice único messages_pack_id_unique (v64, com dedupe antes; exigido pelo ON CONFLICT do handleMessage. v10 original ficou fora da lista de migrate.js — era known-bugs #4)
 buyer_nickname, last_message TEXT
-unread INT DEFAULT 0      -- incrementado a cada mensagem nova do mesmo pack
+unread INT DEFAULT 0      -- +1 por mensagem do comprador; 0 quando a loja responde (v150) e acertado pela API /messages/unread a cada 10 min; zerado 1× pela migrate-v131 (contador antigo acumulava)
 marketplace_id INT FK marketplaces -- v15
 last_message_date, updated_at TIMESTAMPTZ
 ```

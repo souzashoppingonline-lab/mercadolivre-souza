@@ -41,6 +41,7 @@
     table.ox-t { width:100%; border-collapse:collapse; font-size:12.5px; } .ox-t th, .ox-t td { padding:7px 9px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; } .ox-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); } .ox-t td.r, .ox-t th.r { text-align:right; }
     .ox-t td.desc { white-space:normal; min-width:240px; } .ox-t td.desc small { display:block; color:var(--text-muted); }
     .ox-t select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:7px; padding:3px 6px; font-size:11.5px; max-width:230px; }
+    .al-acoes { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .ox-tag.comp { background:#f59e0b22; color:#f59e0b; } .ox-t tr.selo td { background:rgba(46,160,67,.08); }
     .ox-selbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:rgba(46,160,67,.08); border:1px solid #3fb95055; border-radius:10px; padding:8px 12px; margin-bottom:10px; font-size:13px; }
     .ox-selbar[hidden] { display:none; }
@@ -158,7 +159,7 @@ async function importar(files) {
   document.getElementById('oxFile').value = '';
   if (!r) { status('⚠️ '+esc(DB.lastError||'Falha ao importar'), true); return; }
   const linhas = r.arquivos.map(a => a.ok
-    ? `✅ <b>${esc(a.nome)}</b> (${esc(a.banco||'banco')}): ` + a.contas.map(c=>`${c.novos} lançamento(s) novo(s)${c.lidos-c.novos?` · ${c.lidos-c.novos} já estavam importados`:''} · ${c.dt_inicio?dm(c.dt_inicio)+' a '+dm(c.dt_fim):''}`).join('; ')
+    ? `✅ <b>${esc(a.nome)}</b> (${esc(a.banco||'banco')}): ` + a.contas.map(c=>`${c.novos} lançamento(s) novo(s)${c.lidos-c.novos?` · ${c.lidos-c.novos} já estavam importados`:''} · ${c.dt_inicio?dm(c.dt_inicio)+' a '+dm(c.dt_fim):''}${c.competencia_auto&&c.competencia_auto.qtd?` · 📆 ${c.competencia_auto.qtd} lançamento(s) de 01 a ${dm(c.dt_fim)} contam em ${nomeMes(c.competencia_auto.mes)} (o arquivo atravessa o mês)`:''}`).join('; ')
     : `⚠️ <b>${esc(a.nome)}</b>: ${esc(a.erro)}`);
   status(linhas.join('<br>'), r.arquivos.some(a=>!a.ok));
   const fimMaisRecente = r.arquivos.flatMap(a=>a.contas||[]).map(c=>c.dt_fim).filter(Boolean).sort().pop();
@@ -382,8 +383,9 @@ function render() {
   const primeiroDia = r.saldo.dias.find(d => d.entradas || d.saidas);
   const diaN = primeiroDia ? Number(primeiroDia.data.slice(8)) : 0, mAnt = outroMes(r.mes, -1);
   const avisos = [
-    diaN >= 2 && diaN <= 5 ? `<div class="ox-alert info click" onclick="filtrarDia('${primeiroDia.data}')">📆 <b>O banco só lançou movimento a partir de ${dm(primeiroDia.data)}</b> — o que caiu nesse dia pode ser conta paga no fim de ${nomeMes(mAnt).toLowerCase()} (fim de semana/feriado). <b>Ver os lançamentos do dia ${primeiroDia.data.slice(8)} e escolher o que conta em ${nomeMes(mAnt)} →</b></div>` : '',
-    r.periodo.vindos_de_outro_mes ? `<div class="ox-alert success">📆 <b>${r.periodo.vindos_de_outro_mes} lançamento(s) compensado(s) em ${nomeMes(outroMes(r.mes, 1))}</b> contam neste mês (marcados com 📆 na lista).</div>` : '',
+    diaN >= 2 && diaN <= 5 ? `<div class="ox-alert info">📆 <b>O banco só lançou movimento a partir de ${dm(primeiroDia.data)}</b> — o que caiu nesse dia pode ser conta paga no fim de ${nomeMes(mAnt).toLowerCase()} (fim de semana/feriado).
+      <div class="al-acoes"><button class="ox-btn pri" onclick="contarInicioNoAnterior('${primeiroDia.data}')">📆 Contar tudo de 01 a ${dm(primeiroDia.data)} em ${nomeMes(mAnt)}</button><button class="ox-btn" onclick="filtrarDia('${primeiroDia.data}')">Escolher um por um</button></div></div>` : '',
+    r.periodo.vindos_de_outro_mes ? `<div class="ox-alert success">📆 <b>${r.periodo.vindos_de_outro_mes} lançamento(s) compensado(s) em ${nomeMes(outroMes(r.mes, 1))}</b> contam neste mês (marcados com 📆 na lista). <button class="ox-btn" style="margin-left:8px;padding:4px 10px;font-size:12px" onclick="desfazerVindos()">↩ Desfazer</button></div>` : '',
     r.periodo.contados_em_outro_mes ? `<div class="ox-alert success">📆 <b>${r.periodo.contados_em_outro_mes} lançamento(s) deste mês no banco</b> contam em outro mês (não entram nos totais daqui).</div>` : '',
   ].join('');
   const lista = `<div class="ox-card" id="oxListaCard"><div class="ox-h"><h3>📋 Lançamentos</h3><span class="desc" id="oxListaDesc">${r.periodo.lancamentos} no período · categoria automática — corrija e o sistema aprende para os próximos · marque ☑ para mudar o mês em que contam</span>
@@ -439,8 +441,23 @@ function barraSelecao() {
     ${algumMovido ? `<button class="ox-btn" onclick="mudarCompetencia(null)">↩ Voltar pro mês do banco</button>` : ''}
     <button class="ox-btn" onclick="SEL.clear();carregarLancamentos()">Limpar</button>`;
 }
-async function mudarCompetencia(mes) {
-  const ids = LISTA_ATUAL.filter(l => SEL.has(l.id)).map(l => l.id);
+// Um clique: tudo que o banco lançou do dia 1 até `ate` (1º dia útil) conta no mês anterior.
+async function contarInicioNoAnterior(ate) {
+  const mes = mesSel();
+  const d = await DB.ofxLancamentos({ mes, conta_id: contaSel() || '' });
+  const ids = ((d && d.lancamentos) || []).filter(l => String(l.data).slice(0, 7) === mes && String(l.data).slice(0, 10) <= ate).map(l => Number(l.id));
+  if (!ids.length) { status('Nada para mover.'); return; }
+  await mudarCompetencia(outroMes(mes, -1), ids);
+}
+// Desfaz: os lançamentos de outro mês que contam neste voltam pro mês do banco.
+async function desfazerVindos() {
+  const mes = mesSel();
+  const d = await DB.ofxLancamentos({ mes, conta_id: contaSel() || '' });
+  const ids = ((d && d.lancamentos) || []).filter(l => String(l.data).slice(0, 7) !== mes).map(l => Number(l.id));
+  if (ids.length) await mudarCompetencia(null, ids);
+}
+async function mudarCompetencia(mes, idsFixos) {
+  const ids = idsFixos || LISTA_ATUAL.filter(l => SEL.has(l.id)).map(l => l.id);
   const r = await DB.ofxCompetencia(ids, mes);
   if (!r) { status('⚠️ '+esc(DB.lastError||'Não consegui salvar'), true); return; }
   status(`✅ ${r.alterados} lançamento(s) ${mes ? `agora contam em ${nomeMes(mes)}` : 'voltaram para o mês do banco'}${r.ignorados ? ` · ${r.ignorados} ignorado(s) (só dá pra mover 1 mês pra frente ou pra trás)` : ''}. Totais, cards e mês a mês atualizados.`);

@@ -26,6 +26,16 @@ async function carregarRegras(db = pool) {
   return new Map(rows.map((r) => [r.contraparte_chave, r]));
 }
 
+// Arquivo que "atravessa o mês" (pedido do usuário, v149): começa no mês M e termina até o dia 5
+// de M+1 — o banco só lançou no 1º dia útil o que foi pago no fim de semana/feriado (ex.: extrato
+// de outubro do Santander até seg 03/11). Tudo de M+1 até o fim do arquivo conta em M. Mesma regra
+// no backfill da migrate-v130. Devolve { mes: 'AAAA-MM', ate: 'AAAA-MM-DD' } ou null.
+function competenciaDoArquivo(c) {
+  if (!c.dt_inicio || !c.dt_fim) return null;
+  const mes = c.dt_inicio.slice(0, 7), fimMes = c.dt_fim.slice(0, 7);
+  return fimMes === somaMeses(mes, 1) && Number(c.dt_fim.slice(8)) <= 5 ? { mes, ate: c.dt_fim } : null;
+}
+
 // Grava uma conta do OFX numa transação; devolve { conta_id, lidos, novos }.
 async function importarConta(c, bancoNome, arquivoNome, regras, usuario) {
   const cx = await pool.connect();
@@ -42,6 +52,8 @@ async function importarConta(c, bancoNome, arquivoNome, regras, usuario) {
     // Chave anti-duplicado: data|valor|descrição|nº da ocorrência (o FITID muda a cada exportação em alguns bancos).
     const ocorr = {};
     const cols = { chave: [], fitid: [], data: [], valor: [], tipo: [], descricao: [], contraparte: [], cpk: [], categoria: [], origem: [] };
+    const compAuto = competenciaDoArquivo(c);
+    cols.comp = [];
     for (const l of c.lancamentos) {
       const descricao = [l.nome, l.memo].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' — ') || l.tipo || '—';
       const base = `${l.data}|${l.valor.toFixed(2)}|${norm(descricao)}`;
@@ -51,15 +63,21 @@ async function importarConta(c, bancoNome, arquivoNome, regras, usuario) {
       cols.fitid.push(l.fitid); cols.data.push(l.data); cols.valor.push(l.valor); cols.tipo.push(l.tipo);
       cols.descricao.push(descricao.slice(0, 300)); cols.contraparte.push(cl.contraparte); cols.cpk.push(cl.contraparte_chave);
       cols.categoria.push(cl.categoria); cols.origem.push(cl.origem);
+      cols.comp.push(compAuto && l.data.slice(0, 7) !== compAuto.mes && l.data <= compAuto.ate ? compAuto.mes : null);
     }
-    const { rowCount: novos } = await cx.query(
-      `INSERT INTO ofx_lancamentos (conta_id, chave, fitid, data, valor, tipo, descricao, contraparte, contraparte_chave, categoria, categoria_origem, importacao_id)
-       SELECT $1::int, u.*, $12::int FROM unnest($2::text[], $3::text[], $4::date[], $5::numeric[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[]) AS u
-       ON CONFLICT (conta_id, chave) DO NOTHING`,
-      [conta.id, cols.chave, cols.fitid, cols.data, cols.valor, cols.tipo, cols.descricao, cols.contraparte, cols.cpk, cols.categoria, cols.origem, imp.id]);
+    // Já importado: só ganha o mês de competência automático se ainda não tem um (nunca desfaz escolha manual).
+    const { rows: ins } = await cx.query(
+      `INSERT INTO ofx_lancamentos (conta_id, chave, fitid, data, valor, tipo, descricao, contraparte, contraparte_chave, categoria, categoria_origem, mes_competencia, importacao_id)
+       SELECT $1::int, u.*, $13::int FROM unnest($2::text[], $3::text[], $4::date[], $5::numeric[], $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[], $12::text[]) AS u
+       ON CONFLICT (conta_id, chave) DO UPDATE SET mes_competencia = EXCLUDED.mes_competencia
+         WHERE EXCLUDED.mes_competencia IS NOT NULL AND ofx_lancamentos.mes_competencia IS NULL
+       RETURNING (xmax = 0) AS inserido`,
+      [conta.id, cols.chave, cols.fitid, cols.data, cols.valor, cols.tipo, cols.descricao, cols.contraparte, cols.cpk, cols.categoria, cols.origem, cols.comp, imp.id]);
+    const novos = ins.filter((r) => r.inserido).length;
     await cx.query('UPDATE ofx_importacoes SET novos = $2 WHERE id = $1', [imp.id, novos]);
     await cx.query('COMMIT');
-    return { conta_id: conta.id, lidos: c.lancamentos.length, novos, dt_inicio: c.dt_inicio, dt_fim: c.dt_fim };
+    return { conta_id: conta.id, lidos: c.lancamentos.length, novos, dt_inicio: c.dt_inicio, dt_fim: c.dt_fim,
+      competencia_auto: compAuto ? { mes: compAuto.mes, qtd: cols.comp.filter(Boolean).length } : null };
   } catch (e) {
     await cx.query('ROLLBACK').catch(() => {});
     throw e;
@@ -156,8 +174,10 @@ async function salvarResumosMensais(meses) {
   const { rows } = await pool.query(
     `SELECT ${COMP} AS mes, array_agg(DISTINCT conta_id) AS contas FROM ofx_lancamentos
       ${meses ? `WHERE ${COMP} = ANY($1)` : ''} GROUP BY 1 ORDER BY 1`, meses ? [meses] : []);
+  const gravados = [];
   for (const { mes, contas } of rows) {
     for (const contaId of [0, ...contas]) {
+      gravados.push(`${mes}|${contaId}`);
       const r = await montarResumo(mes, contaId);
       const cats = (l) => l.map((c) => ({ categoria: c.categoria, total: c.total }));
       await pool.query(
@@ -172,16 +192,21 @@ async function salvarResumosMensais(meses) {
           r.alertas.filter((a) => a.nivel !== 'info').length]);  // só os que pedem atenção (dobro, saldo baixo, fora do padrão)
     }
   }
+  // Regravação completa: some o mês/conta que ficou sem lançamento (ex.: tudo de 03/11 passou a contar em outubro).
+  if (!meses) await pool.query(`DELETE FROM ofx_resumos_mensais WHERE NOT ((mes || '|' || conta_id) = ANY($1::text[]))`, [gravados]);
   return rows.length;
 }
 
 // GET /mensal?conta_id= → resumos salvos (até 24 meses, do mais antigo ao mais novo).
 router.get('/mensal', async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const ler = () => pool.query(
       `SELECT * FROM (SELECT mes, entradas::float, saidas::float, resultado::float, saldo_inicial::float, saldo_final::float, menor_saldo::float,
                              tarifas::float, lancamentos, sem_categoria, categorias, alertas, atualizado_em
                         FROM ofx_resumos_mensais WHERE conta_id = $1 ORDER BY mes DESC LIMIT 24) x ORDER BY mes`, [Number(req.query.conta_id) || 0]);
+    let { rows } = await ler();
+    // Resumo vazio com lançamentos no banco (ex.: a migrate-v130 limpou pra regravar) → regrava agora.
+    if (!rows.length && (await pool.query('SELECT 1 FROM ofx_lancamentos LIMIT 1')).rows.length) { await salvarResumosMensais(); ({ rows } = await ler()); }
     res.json({ meses: rows });
   } catch (e) { console.error('[extrato-ofx] mensal', e.message); res.status(500).json({ error: e.message }); }
 });
@@ -389,4 +414,4 @@ router.post('/analise-ia', async (req, res) => {
 });
 
 module.exports = router;
-module.exports._interno = { importarConta, montarResumo, paraIa, salvarResumosMensais };
+module.exports._interno = { importarConta, montarResumo, paraIa, salvarResumosMensais, competenciaDoArquivo };

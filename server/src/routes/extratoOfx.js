@@ -157,14 +157,15 @@ async function salvarResumosMensais(meses) {
       const r = await montarResumo(mes, contaId);
       const cats = (l) => l.map((c) => ({ categoria: c.categoria, total: c.total }));
       await pool.query(
-        `INSERT INTO ofx_resumos_mensais (mes, conta_id, entradas, saidas, resultado, saldo_inicial, saldo_final, menor_saldo, tarifas, lancamentos, sem_categoria, categorias, atualizado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
+        `INSERT INTO ofx_resumos_mensais (mes, conta_id, entradas, saidas, resultado, saldo_inicial, saldo_final, menor_saldo, tarifas, lancamentos, sem_categoria, categorias, alertas, atualizado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
          ON CONFLICT (mes, conta_id) DO UPDATE SET entradas = EXCLUDED.entradas, saidas = EXCLUDED.saidas, resultado = EXCLUDED.resultado,
            saldo_inicial = EXCLUDED.saldo_inicial, saldo_final = EXCLUDED.saldo_final, menor_saldo = EXCLUDED.menor_saldo, tarifas = EXCLUDED.tarifas,
-           lancamentos = EXCLUDED.lancamentos, sem_categoria = EXCLUDED.sem_categoria, categorias = EXCLUDED.categorias, atualizado_em = now()`,
+           lancamentos = EXCLUDED.lancamentos, sem_categoria = EXCLUDED.sem_categoria, categorias = EXCLUDED.categorias, alertas = EXCLUDED.alertas, atualizado_em = now()`,
         [mes, contaId, r.totais.entradas, r.totais.saidas, r.totais.resultado, r.saldo.inicial, r.saldo.final, r.saldo.menor ? r.saldo.menor.saldo : null,
           r.tarifas.total, r.periodo.lancamentos, (r.alertas.find((a) => a.tipo === 'sem_categoria') || {}).qtd || 0,
-          JSON.stringify({ entradas: cats(r.categorias.entradas), saidas: cats(r.categorias.saidas) })]);
+          JSON.stringify({ entradas: cats(r.categorias.entradas), saidas: cats(r.categorias.saidas) }),
+          r.alertas.filter((a) => a.nivel !== 'info').length]);  // só os que pedem atenção (dobro, saldo baixo, fora do padrão)
     }
   }
   return rows.length;
@@ -175,7 +176,7 @@ router.get('/mensal', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT * FROM (SELECT mes, entradas::float, saidas::float, resultado::float, saldo_inicial::float, saldo_final::float, menor_saldo::float,
-                             tarifas::float, lancamentos, sem_categoria, categorias, atualizado_em
+                             tarifas::float, lancamentos, sem_categoria, categorias, alertas, atualizado_em
                         FROM ofx_resumos_mensais WHERE conta_id = $1 ORDER BY mes DESC LIMIT 24) x ORDER BY mes`, [Number(req.query.conta_id) || 0]);
     res.json({ meses: rows });
   } catch (e) { console.error('[extrato-ofx] mensal', e.message); res.status(500).json({ error: e.message }); }

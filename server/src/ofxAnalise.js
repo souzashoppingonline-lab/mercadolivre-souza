@@ -94,10 +94,18 @@ function resumoMes({ mes, lancs, anteriores = [], saldoRef = null, lancsAposRef 
   if (baixos.length) alertas.push({ tipo: 'saldo_baixo', nivel: 'warning', limite: SALDO_BAIXO, dias: baixos.map((d) => d.data) });
   const hist = {};
   anteriores.filter((l) => l.valor < 0).forEach((l) => { (hist[l.contraparte_chave] = hist[l.contraparte_chave] || []).push(-l.valor); });
+  // 1 alerta por contraparte (o maior pagamento + quantos passaram do normal).
+  const foraPadrao = {};
   lancs.filter((l) => l.valor < 0 && !fora(l.categoria)).forEach((l) => {
     const h = hist[l.contraparte_chave];
-    if (h && h.length >= 3) { const md = mediana(h); if (md > 0 && -l.valor > md * FORA_PADRAO_X) alertas.push({ tipo: 'fora_padrao', nivel: 'warning', data: ymd(l.data), valor: r2(-l.valor), mediana: r2(md), nome: l.contraparte, id: l.id }); }
+    if (!h || h.length < 3) return;
+    const md = mediana(h);
+    if (!(md > 0 && -l.valor > md * FORA_PADRAO_X)) return;
+    const a = foraPadrao[l.contraparte_chave];
+    if (!a) foraPadrao[l.contraparte_chave] = { tipo: 'fora_padrao', nivel: 'warning', data: ymd(l.data), valor: r2(-l.valor), mediana: r2(md), nome: l.contraparte, id: l.id, qtd: 1 };
+    else { a.qtd++; if (-l.valor > a.valor) Object.assign(a, { data: ymd(l.data), valor: r2(-l.valor), id: l.id }); }
   });
+  alertas.push(...Object.values(foraPadrao));
   const autoEntre = lancs.filter((l) => l.categoria === 'entre_contas' && l.categoria_origem === 'auto');
   if (autoEntre.length) alertas.push({ tipo: 'confirmar_entre_contas', nivel: 'info', qtd: autoEntre.length, total: r2(autoEntre.reduce((a, l) => a + Math.abs(l.valor), 0)) });
   const semCat = lancs.filter((l) => !l.categoria || l.categoria === 'sem_categoria');

@@ -2480,19 +2480,23 @@ async function syncPerguntasPendentes() {
     console.error('[sync-perguntas] erro:', e.message);
   } finally { isSyncingPerguntas = false; }
 }
-// Conferência dos chats pós-venda do ML (a cada 10 min, mesma rodada das perguntas):
-// GET /messages/unread?role=seller&tag=post_sale devolve as conversas que a loja ainda
-// não leu → grava `unread` delas e zera as outras da loja (lidas/respondidas no site).
-// Formato esperado: { results: [{ resource: '/packs/<pack_id>/sellers/<id>', count }] }.
-// Resposta em outro formato → só loga e NÃO zera nada (melhor aviso a mais que a menos).
+// Conferência dos chats pós-venda do ML (a cada 10 min + 1 min depois do boot):
+// GET /messages/unread?role=seller&tag=post_sale por loja → o resultado da API é a
+// FONTE do aviso fixo "sem resposta" da Tela Telegram (Redis ml:chats:pendentes,
+// TTL 1h) — o contador local messages.unread acumulava conversa já respondida.
+// Também acerta messages.unread (grava o da API e zera o resto da loja).
+// Loja com resposta em formato desconhecido/erro → fica fora do aviso e nada é zerado.
 async function syncChatsMlPendentes() {
-  const { rows: lojas } = await pool.query(`SELECT id FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML')`);
+  const { CHAVE, TTL_S, lerNaoLidas } = require('./mlChatsPendentes');
+  const { rows: lojas } = await pool.query(`SELECT id, nickname FROM stores WHERE marketplace_id = (SELECT id FROM marketplaces WHERE code = 'ML')`);
+  const porLoja = [];
   let mudou = 0;
-  for (const { id: storeId } of lojas) {
+  for (const { id: storeId, nickname } of lojas) {
     try {
       const r = await ml.getMessagesUnread(storeId);
-      if (!r || !Array.isArray(r.results)) { console.warn(`[sync-chats-ml] loja ${storeId}: resposta sem "results" — nada alterado`, JSON.stringify(r).slice(0, 200)); continue; }
-      const naoLidas = r.results.map((x) => ({ pack: (String(x.resource || '').match(/packs\/(\d+)/) || [])[1], n: Number(x.count) || 1 })).filter((x) => x.pack);
+      const naoLidas = lerNaoLidas(r);
+      if (!naoLidas) { console.warn(`[sync-chats-ml] loja ${storeId}: formato inesperado — fora do aviso, nada zerado:`, JSON.stringify(r).slice(0, 300)); continue; }
+      porLoja.push({ store_id: storeId, loja: nickname, chats: naoLidas.length, mensagens: naoLidas.reduce((a, x) => a + x.n, 0) });
       for (const x of naoLidas) {
         const u = await pool.query(`UPDATE messages SET unread = $3, updated_at = now() WHERE store_id = $1 AND pack_id = $2 AND unread IS DISTINCT FROM $3`, [storeId, x.pack, x.n]);
         mudou += u.rowCount;
@@ -2501,8 +2505,10 @@ async function syncChatsMlPendentes() {
       mudou += z.rowCount;
     } catch (e) { console.warn(`[sync-chats-ml] loja ${storeId}: ${e.message}`); }
   }
-  if (mudou) { await redis.del('telegram-tela:painel'); await publish('message_received', { sync: true }); }
-  console.log(`[sync-chats-ml] ${lojas.length} loja(s) conferida(s), ${mudou} conversa(s) atualizada(s)`);
+  await redis.set(CHAVE, JSON.stringify({ conferido_em: new Date().toISOString(), lojas: porLoja }), 'EX', TTL_S);
+  await redis.del('telegram-tela:painel');
+  if (mudou) await publish('message_received', { sync: true });
+  console.log(`[sync-chats-ml] ${porLoja.length}/${lojas.length} loja(s) conferida(s) na API: ${porLoja.reduce((a, l) => a + l.chats, 0)} conversa(s) sem leitura · ${mudou} linha(s) de messages acertada(s)`);
 }
 
 async function checkPerguntasPendentes() {
@@ -4154,6 +4160,8 @@ scheduleEvery(4,    checkRankingVendas4h, 'rk-vendas-4h');
 scheduleAt(7, 5,   checkRankingVendasDia, 'rk-vendas-dia');
 scheduleEveryMinutes(10, flushRankingPendentes, 'rk-pendentes');
 scheduleEveryMinutes(10, checkPerguntasPendentes, 'sync-perguntas');
+// Chats ML: 1ª conferência na API 1 min depois do boot (o aviso fixo da Tela Telegram não espera 10 min).
+setTimeout(() => syncChatsMlPendentes().catch((e) => console.warn('[sync-chats-ml] boot:', e.message)), 60 * 1000);
 scheduleAt(8, 5,   checkIaEstrategistaDiario, 'ia-estrategista-diario');
 scheduleEvery(2,    checkIaEstrategistaCriticos, 'ia-estrategista-criticos');
 scheduleAt(5,  0,  syncPrecos,   'sync-precos');

@@ -422,6 +422,7 @@ const DB = {
   async ofxAnaliseIa(mes, contaId)           { return this._post('/financeiro/extrato-ofx/analise-ia', { mes, conta_id: contaId || 0 }); },
   async ofxMensal(contaId)                   { return this._get('/financeiro/extrato-ofx/mensal', { conta_id: contaId || '' }); },
   async ofxRecalcularMensal()                { return this._post('/financeiro/extrato-ofx/mensal/recalcular', {}); },
+  async ofxCompetencia(ids, mes)             { return this._patch('/financeiro/extrato-ofx/competencia', { ids, mes }); },
   async getFechamentoResumo(ano)                { return this._get('/financeiro/fechamento/resumo', { ano }); },
   async getFechamentoMes(ano, mes)              { return this._get(`/financeiro/fechamento/${ano}/${mes}`); },
   async iniciarFechamento(ano, mes)             { return this._post(`/financeiro/fechamento/${ano}/${mes}/iniciar`, {}); },

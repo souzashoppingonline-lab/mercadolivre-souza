@@ -11,6 +11,8 @@ const pct = (a, b) => (b ? r2(((a - b) / Math.abs(b)) * 100) : null);
 const fora = (c) => !!(POR_ID[c] && POR_ID[c].fora);
 const mediana = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const ymd = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+// Mês em que o lançamento conta (competência escolhida ou o mês da data do banco).
+const competencia = (l) => l.mes_competencia || ymd(l.data).slice(0, 7);
 
 function porCategoria(lancs, sentido) {
   const m = {};
@@ -39,13 +41,16 @@ function agruparContraparte(lancs, sinal) {
 // lancs: lançamentos do mês ({id, data, valor (com sinal), categoria, contraparte, contraparte_chave, descricao, categoria_origem}).
 // anteriores: lançamentos dos 3 meses anteriores (comparativo/recorrentes/fora do padrão).
 // saldoRef: { valor, data } = saldo no fim de `data` (LEDGERBAL), ou null; lancsAposRef: lançamentos depois do fim do mês até saldoRef.data.
-function resumoMes({ mes, lancs, anteriores = [], saldoRef = null, lancsAposRef = [] }) {
+// lancs = lançamentos do MÊS DE COMPETÊNCIA (totais, categorias, alertas); lancsPorData = os
+// que o banco lançou no mês (saldo dia a dia — o saldo é o real do banco). Sem lancsPorData = lancs.
+// Ex.: conta paga sáb 31/10 que o banco só compensou seg 03/11 → competência outubro, saldo em novembro.
+function resumoMes({ mes, lancs, anteriores = [], saldoRef = null, lancsAposRef = [], lancsPorData = null }) {
   const [y, m] = mes.split('-').map(Number);
   const ini = `${mes}-01`, fim = ymd(new Date(Date.UTC(y, m, 0)));
   const mesAnt = ymd(new Date(Date.UTC(y, m - 2, 1))).slice(0, 7);
   const conta = (ls, s) => r2(ls.filter((l) => (s > 0 ? l.valor > 0 : l.valor < 0) && !fora(l.categoria)).reduce((a, l) => a + Math.abs(l.valor), 0));
   const entradas = conta(lancs, 1), saidas = conta(lancs, -1);
-  const ant = anteriores.filter((l) => ymd(l.data).startsWith(mesAnt));
+  const ant = anteriores.filter((l) => competencia(l) === mesAnt);
   const entradasAnt = ant.length ? conta(ant, 1) : null, saidasAnt = ant.length ? conta(ant, -1) : null;
 
   const tarifas = lancs.filter((l) => l.categoria === 'tarifas' && l.valor < 0);
@@ -56,7 +61,7 @@ function resumoMes({ mes, lancs, anteriores = [], saldoRef = null, lancsAposRef 
   // saldo(d) = saldoRef − soma dos lançamentos depois de d até a data do saldoRef.
   const dias = [];
   const porDia = {};
-  lancs.forEach((l) => { const d = ymd(l.data); porDia[d] = porDia[d] || { e: 0, s: 0, liq: 0 }; porDia[d].liq += l.valor; if (!fora(l.categoria)) { if (l.valor > 0) porDia[d].e += l.valor; else porDia[d].s += -l.valor; } });
+  (lancsPorData || lancs).forEach((l) => { const d = ymd(l.data); porDia[d] = porDia[d] || { e: 0, s: 0, liq: 0 }; porDia[d].liq += l.valor; if (!fora(l.categoria)) { if (l.valor > 0) porDia[d].e += l.valor; else porDia[d].s += -l.valor; } });
   // Extrato que termina no meio do mês (saldoRef antes do fim): dias depois dele ficam sem saldo.
   const refD = saldoRef && saldoRef.valor != null ? ymd(saldoRef.data) : null;
   let saldo = refD && refD >= fim ? saldoRef.valor - lancsAposRef.reduce((a, l) => a + l.valor, 0) : null; // = saldo no fim do mês
@@ -80,7 +85,7 @@ function resumoMes({ mes, lancs, anteriores = [], saldoRef = null, lancsAposRef 
   // Recorrentes: mesma contraparte de saída em ≥ 3 dos 4 meses (este + 3 anteriores).
   const todos = [...anteriores, ...lancs].filter((l) => l.valor < 0 && !fora(l.categoria));
   const meses = {};
-  todos.forEach((l) => { const k = l.contraparte_chave; meses[k] = meses[k] || { nome: l.contraparte, m: {}, dias: [], valores: [] }; meses[k].m[ymd(l.data).slice(0, 7)] = 1; meses[k].dias.push(Number(ymd(l.data).slice(8))); meses[k].valores.push(-l.valor); });
+  todos.forEach((l) => { const k = l.contraparte_chave; meses[k] = meses[k] || { nome: l.contraparte, m: {}, dias: [], valores: [] }; meses[k].m[competencia(l)] = 1; meses[k].dias.push(Number(ymd(l.data).slice(8))); meses[k].valores.push(-l.valor); });
   const recorrentes = Object.entries(meses).filter(([, x]) => Object.keys(x.m).length >= 3)
     .map(([k, x]) => ({ chave: k, nome: x.nome, meses: Object.keys(x.m).length, dia: Math.round(mediana(x.dias)), valor_medio: r2(x.valores.reduce((a, v) => a + v, 0) / x.valores.length), no_mes: !!x.m[mes] }))
     .sort((a, b) => b.valor_medio - a.valor_medio).slice(0, 10);
@@ -112,7 +117,10 @@ function resumoMes({ mes, lancs, anteriores = [], saldoRef = null, lancsAposRef 
   if (semCat.length) alertas.push({ tipo: 'sem_categoria', nivel: 'info', qtd: semCat.length, total: r2(semCat.reduce((a, l) => a + Math.abs(l.valor), 0)) });
 
   return {
-    mes, periodo: { ini, fim, lancamentos: lancs.length },
+    mes, periodo: { ini, fim, lancamentos: lancs.length,
+      // Lançamentos que contam neste mês mas o banco lançou em outro (e vice-versa).
+      vindos_de_outro_mes: lancs.filter((l) => ymd(l.data).slice(0, 7) !== mes).length,
+      contados_em_outro_mes: (lancsPorData || []).filter((l) => l.mes_competencia && l.mes_competencia !== mes).length },
     totais: { entradas, saidas, resultado: r2(entradas - saidas), entradas_ant: entradasAnt, saidas_ant: saidasAnt, var_entradas_pct: entradasAnt != null ? pct(entradas, entradasAnt) : null, var_saidas_pct: saidasAnt != null ? pct(saidas, saidasAnt) : null },
     categorias: { entradas: porCategoria(lancs, 'entrada'), saidas: porCategoria(lancs, 'saida') },
     tarifas: { total: tarifasTot, qtd: tarifas.length, pct_volume: volume ? r2((tarifasTot / volume) * 100) : 0 },

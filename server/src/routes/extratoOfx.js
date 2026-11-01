@@ -18,6 +18,8 @@ const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const fimDoMes = (mes) => { const [y, m] = mes.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
 const somaMeses = (mes, n) => { const [y, m] = mes.split('-').map(Number); return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7); };
 const quem = (req) => (req.staffUser && req.staffUser.username) || null;
+// Mês em que o lançamento CONTA (competência): o escolhido pelo usuário ou o da data do banco.
+const COMP = `COALESCE(mes_competencia, to_char(data, 'YYYY-MM'))`;
 
 async function carregarRegras(db = pool) {
   const { rows } = await db.query('SELECT contraparte_chave, categoria, apelido FROM ofx_regras');
@@ -101,7 +103,7 @@ router.get('/contas', async (req, res) => {
                          (SELECT MAX(i.importado_em) FROM ofx_importacoes i WHERE i.conta_id = c.id) AS ultima_importacao
                     FROM ofx_contas c LEFT JOIN ofx_lancamentos l ON l.conta_id = c.id
                    GROUP BY c.id ORDER BY c.id`),
-      pool.query(`SELECT to_char(data, 'YYYY-MM') AS mes, COUNT(*)::int AS lancamentos FROM ofx_lancamentos GROUP BY 1 ORDER BY 1 DESC`),
+      pool.query(`SELECT ${COMP} AS mes, COUNT(*)::int AS lancamentos FROM ofx_lancamentos GROUP BY 1 ORDER BY 1 DESC`),
     ]);
     // Número da conta mascarado na tela (••1234).
     res.json({ contas: contas.map((c) => ({ ...c, conta_mask: '••' + String(c.conta).slice(-4) })), meses, categorias: CATEGORIAS });
@@ -128,18 +130,20 @@ async function montarResumo(mes, contaId) {
   const fim = fimDoMes(mes), ini3 = `${somaMeses(mes, -3)}-01`;
   const filtroConta = contaId ? 'AND conta_id = $3' : '';
   const params = (a, b) => (contaId ? [a, b, contaId] : [a, b]);
-  const sel = `SELECT id, conta_id, data, valor::float AS valor, categoria, categoria_origem, contraparte, contraparte_chave, descricao FROM ofx_lancamentos`;
-  const [{ rows: lancs }, { rows: anteriores }] = await Promise.all([
+  const sel = `SELECT id, conta_id, data, valor::float AS valor, categoria, categoria_origem, contraparte, contraparte_chave, descricao, mes_competencia FROM ofx_lancamentos`;
+  // Totais pelo mês de competência; saldo dia a dia pela data do banco.
+  const [{ rows: lancs }, { rows: anteriores }, { rows: lancsPorData }] = await Promise.all([
+    pool.query(`${sel} WHERE ${COMP} = $1 ${filtroConta.replace('$3', '$2')} ORDER BY data, id`, contaId ? [mes, contaId] : [mes]),
+    pool.query(`${sel} WHERE ${COMP} >= $1 AND ${COMP} < $2 ${filtroConta}`, params(ini3.slice(0, 7), mes)),
     pool.query(`${sel} WHERE data >= $1 AND data <= $2 ${filtroConta} ORDER BY data, id`, params(`${mes}-01`, fim)),
-    pool.query(`${sel} WHERE data >= $1 AND data < $2 ${filtroConta}`, params(ini3, `${mes}-01`)),
   ]);
   // Saldo: uma conta → direto; todas → soma das contas do mês, só se todas têm saldo no fim do mês.
   let saldoRef = null;
-  const contas = contaId ? [contaId] : [...new Set(lancs.map((l) => l.conta_id))];
+  const contas = contaId ? [contaId] : [...new Set(lancsPorData.concat(lancs).map((l) => l.conta_id))];
   const refs = await Promise.all(contas.map((c) => saldoFimDoMes(c, fim)));
   if (refs.length === 1 && refs[0]) saldoRef = refs[0];
   else if (refs.length > 1 && refs.every((r) => r && !r.parcial)) saldoRef = { valor: refs.reduce((a, r) => a + r.valor, 0), data: fim };
-  const resumo = resumoMes({ mes, lancs, anteriores, saldoRef });
+  const resumo = resumoMes({ mes, lancs, anteriores, saldoRef, lancsPorData });
   resumo.saldo.parcial = !!(saldoRef && saldoRef.parcial);
   return resumo;
 }
@@ -150,8 +154,8 @@ async function montarResumo(mes, contaId) {
 // entra um extrato mais novo, por isso a importação regrava todos.
 async function salvarResumosMensais(meses) {
   const { rows } = await pool.query(
-    `SELECT to_char(data, 'YYYY-MM') AS mes, array_agg(DISTINCT conta_id) AS contas FROM ofx_lancamentos
-      ${meses ? 'WHERE to_char(data, \'YYYY-MM\') = ANY($1)' : ''} GROUP BY 1 ORDER BY 1`, meses ? [meses] : []);
+    `SELECT ${COMP} AS mes, array_agg(DISTINCT conta_id) AS contas FROM ofx_lancamentos
+      ${meses ? `WHERE ${COMP} = ANY($1)` : ''} GROUP BY 1 ORDER BY 1`, meses ? [meses] : []);
   for (const { mes, contas } of rows) {
     for (const contaId of [0, ...contas]) {
       const r = await montarResumo(mes, contaId);
@@ -206,12 +210,12 @@ router.get('/lancamentos', async (req, res) => {
   try {
     const mes = String(req.query.mes || '');
     if (!MES_RE.test(mes)) return res.status(400).json({ error: 'mês inválido (use AAAA-MM)' });
-    const p = [`${mes}-01`, fimDoMes(mes)]; const w = ['l.data >= $1', 'l.data <= $2'];
+    const p = [mes]; const w = [`COALESCE(l.mes_competencia, to_char(l.data, 'YYYY-MM')) = $1`];
     if (Number(req.query.conta_id)) { p.push(Number(req.query.conta_id)); w.push(`l.conta_id = $${p.length}`); }
     if (req.query.categoria) { p.push(String(req.query.categoria)); w.push(`COALESCE(l.categoria, 'sem_categoria') = $${p.length}`); }
     if (req.query.sentido === 'entrada') w.push('l.valor > 0'); else if (req.query.sentido === 'saida') w.push('l.valor < 0');
     const { rows } = await pool.query(
-      `SELECT l.id, l.data, l.valor::float AS valor, l.descricao, l.contraparte, l.contraparte_chave, l.categoria, l.categoria_origem,
+      `SELECT l.id, l.data, l.valor::float AS valor, l.descricao, l.contraparte, l.contraparte_chave, l.categoria, l.categoria_origem, l.mes_competencia,
               COALESCE(c.apelido, c.banco_nome, 'Banco ' || c.banco_id) AS banco
          FROM ofx_lancamentos l JOIN ofx_contas c ON c.id = l.conta_id
         WHERE ${w.join(' AND ')} ORDER BY l.data DESC, l.id DESC LIMIT 3000`, p);
@@ -230,7 +234,7 @@ router.patch('/lancamentos/:id', async (req, res) => {
   try {
     await cx.query('BEGIN');
     const { rows: [l] } = await cx.query('SELECT id, valor::float AS valor, contraparte_chave FROM ofx_lancamentos WHERE id = $1 FOR UPDATE', [id]);
-    const mesesAfetados = l ? (await cx.query(`SELECT DISTINCT to_char(data, 'YYYY-MM') AS mes FROM ofx_lancamentos WHERE id = $1 OR contraparte_chave = $2`, [id, l.contraparte_chave])).rows.map((x) => x.mes) : [];
+    const mesesAfetados = l ? (await cx.query(`SELECT DISTINCT ${COMP} AS mes FROM ofx_lancamentos WHERE id = $1 OR contraparte_chave = $2`, [id, l.contraparte_chave])).rows.map((x) => x.mes) : [];
     if (!l) { await cx.query('ROLLBACK'); return res.status(404).json({ error: 'lançamento não encontrado' }); }
     const cat = categoria && POR_ID[categoria];
     if (cat && cat.sentido !== 'ambos' && (cat.sentido === 'entrada') !== (l.valor > 0)) { await cx.query('ROLLBACK'); return res.status(400).json({ error: `"${cat.nome}" é categoria de ${cat.sentido === 'saida' ? 'saída' : 'entrada'} — este lançamento é ${l.valor > 0 ? 'entrada' : 'saída'}.` }); }
@@ -258,6 +262,25 @@ router.patch('/lancamentos/:id', async (req, res) => {
     await cx.query('ROLLBACK').catch(() => {});
     console.error('[extrato-ofx] patch', e.message); res.status(500).json({ error: e.message });
   } finally { cx.release(); }
+});
+
+// PATCH /competencia { ids:[...], mes: 'AAAA-MM' | null } → em que mês os lançamentos CONTAM
+// (null = mês da data do banco). Ex.: contas pagas sáb 31/10 que o banco compensou seg 03/11.
+// Só vale ±1 mês da data do banco (é o caso real; evita jogar lançamento em mês errado por engano).
+router.patch('/competencia', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(Number).filter(Boolean).slice(0, 2000);
+    const mes = req.body.mes == null || req.body.mes === '' ? null : String(req.body.mes);
+    if (!ids.length) return res.status(400).json({ error: 'nenhum lançamento selecionado' });
+    if (mes && !MES_RE.test(mes)) return res.status(400).json({ error: 'mês inválido (use AAAA-MM)' });
+    const { rowCount, rows } = await pool.query(
+      `UPDATE ofx_lancamentos SET mes_competencia = CASE WHEN $2::text = to_char(data, 'YYYY-MM') THEN NULL ELSE $2::text END
+        WHERE id = ANY($1::bigint[])
+          AND ($2::text IS NULL OR abs((EXTRACT(YEAR FROM data) * 12 + EXTRACT(MONTH FROM data)) - (split_part($2::text, '-', 1)::int * 12 + split_part($2::text, '-', 2)::int)) <= 1)
+        RETURNING id`, [ids, mes]);
+    await salvarResumosMensais();
+    res.json({ ok: true, alterados: rowCount, ignorados: ids.length - rows.length });
+  } catch (e) { console.error('[extrato-ofx] competencia', e.message); res.status(500).json({ error: e.message }); }
 });
 
 // Texto que vai pra IA: só números já calculados + nomes de contraparte (nunca nº de conta/agência).

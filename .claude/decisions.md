@@ -1100,3 +1100,7 @@ Pedido: mostrar o saldo da conta na janela de Pagar e avisar quando falta. A som
 - **Saldo do OFX = fim do período** (`DTEND`), não `DTASOF` (Santander põe a hora da exportação) — conferido com o Caixa Dia 1 de out/2026.
 - Categorias por **regra aprendida por contraparte** (o usuário classifica 1×, vale passado e futuro) antes de qualquer IA — determinístico e barato; a IA só escreve o texto a partir dos números já calculados (regra do projeto, igual ao SEO Score/IA Estrategista).
 - **Mês a mês salvo** (`ofx_resumos_mensais`, pedido do usuário) em vez de só calcular na hora: guarda a foto de cada mês e deixa a tabela de vários meses barata; regravado a cada importação/correção.
+
+## Extrato OFX: mês de competência manual, saldo pela data do banco (v147)
+
+Pedido do usuário: contas pagas sáb 31/10 que o Santander só compensou seg 03/11 (dom 01/11 + feriado 02/11) caíam em novembro e o fechamento de outubro não batia. **Decisão**: coluna `mes_competencia` escolhida pelo usuário (☑ + "Contar em outubro"), não automática — no 1º dia útil caem juntas as contas do mês anterior e as do próprio dia, e o extrato não diz qual é qual; a tela só **sugere** (aviso quando o mês começa entre os dias 2 e 5). Totais/categorias/mês a mês usam a competência; o **saldo dia a dia continua pela data** (é o saldo real do banco — mexer nele faria o saldo de 31/10 divergir do extrato). Limite de ±1 mês contra engano. Não usa calendário de feriados (mesma simplificação de `ultimoDiaUtil` no fechamento).

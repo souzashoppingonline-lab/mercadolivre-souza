@@ -41,6 +41,9 @@
     table.ox-t { width:100%; border-collapse:collapse; font-size:12.5px; } .ox-t th, .ox-t td { padding:7px 9px; border-bottom:1px solid var(--border); text-align:left; white-space:nowrap; } .ox-t th { color:var(--text-muted); font-size:10px; text-transform:uppercase; position:sticky; top:0; background:var(--bg-card); } .ox-t td.r, .ox-t th.r { text-align:right; }
     .ox-t td.desc { white-space:normal; min-width:240px; } .ox-t td.desc small { display:block; color:var(--text-muted); }
     .ox-t select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:7px; padding:3px 6px; font-size:11.5px; max-width:230px; }
+    .ox-tag.comp { background:#f59e0b22; color:#f59e0b; } .ox-t tr.selo td { background:rgba(46,160,67,.08); }
+    .ox-selbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:rgba(46,160,67,.08); border:1px solid #3fb95055; border-radius:10px; padding:8px 12px; margin-bottom:10px; font-size:13px; }
+    .ox-selbar[hidden] { display:none; }
     .ox-tag { font-size:10px; border-radius:999px; padding:1px 7px; font-weight:800; } .ox-tag.auto { background:#1f6feb22; color:#58a6ff; } .ox-tag.aprendido { background:#3fb95022; color:#3fb950; } .ox-tag.manual { background:#a371f722; color:#c39bff; }
     .ox-ren { background:none; border:0; color:var(--text-muted); cursor:pointer; font-size:12px; padding:0 4px; } .ox-ren:hover { color:var(--text-main); }
     .ox-vazio { color:var(--text-muted); font-size:13px; padding:8px 0; }
@@ -106,7 +109,8 @@ const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','ag
 const nomeMes = m => { const [y,mm]=m.split('-'); return `${MESES[+mm-1][0].toUpperCase()+MESES[+mm-1].slice(1)}/${y}`; };
 const dm = d => { const s=String(d).slice(0,10); return s.slice(8,10)+'/'+s.slice(5,7); };
 const var1 = (v, inv) => v==null ? '' : `<span class="${(v>=0)!==!!inv?'up':'down'}">${v>=0?'▲':'▼'} ${PCT(Math.abs(v))}</span>`;
-let CATS = [], CAT = {}, CONTAS = [], R = null, FILTRO = { categoria:'', sentido:'' };
+let CATS = [], CAT = {}, CONTAS = [], R = null, FILTRO = { categoria:'', sentido:'', dia:'' }, SEL = new Set();
+const outroMes = (m, n) => { const [y, mm] = m.split('-').map(Number); const d = new Date(Date.UTC(y, mm - 1 + n, 1)); return d.toISOString().slice(0, 7); };
 
 function status(t, erro) { const el=document.getElementById('oxStatus'); el.style.display=t?'block':'none'; el.style.borderColor=erro?'#f8717155':'var(--border)'; el.style.color=erro?'#f87171':'var(--text-main)'; el.innerHTML=t||''; }
 const mesSel = () => document.getElementById('oxMes').value;
@@ -124,7 +128,7 @@ async function carregarContas(mesPreferido) {
   if (!d.meses.length) { document.getElementById('oxCorpo').innerHTML = '<div class="ox-card"><div class="ox-vazio">Nenhum extrato importado ainda. No internet banking, exporte o extrato em <b>OFX</b> (às vezes chamado "Money" ou "Microsoft Money") e arraste o arquivo aqui em cima.</div></div>'; return; }
   await carregarResumo();
 }
-function trocarFiltro() { FILTRO = { categoria:'', sentido:'' }; carregarResumo(); }
+function trocarFiltro() { FILTRO = { categoria:'', sentido:'', dia:'' }; SEL.clear(); carregarResumo(); }
 
 async function importar(files) {
   if (!files || !files.length) return;
@@ -315,9 +319,20 @@ function render() {
     <div class="ox-card"><div class="ox-h"><h3>🔄 Pagamentos que se repetem todo mês</h3><span class="desc">mesmo destinatário em 3 dos últimos 4 meses</span></div>${rec}</div></div>`;
 
   const opcoesCat = `<option value="">Todas as categorias</option>` + CATS.map(c=>`<option value="${c.id}" ${FILTRO.categoria===c.id?'selected':''}>${c.ico} ${esc(c.nome)}</option>`).join('');
-  const lista = `<div class="ox-card" id="oxListaCard"><div class="ox-h"><h3>📋 Lançamentos</h3><span class="desc" id="oxListaDesc">${r.periodo.lancamentos} no período · categoria automática — corrija e o sistema aprende para os próximos</span>
-      <div class="ox-filt"><select id="oxFCat" onchange="FILTRO.categoria=this.value;carregarLancamentos()">${opcoesCat}</select><select id="oxFSen" onchange="FILTRO.sentido=this.value;carregarLancamentos()"><option value="">Entradas e saídas</option><option value="entrada" ${FILTRO.sentido==='entrada'?'selected':''}>Só entradas</option><option value="saida" ${FILTRO.sentido==='saida'?'selected':''}>Só saídas</option></select></div></div>
-    <div style="overflow:auto;max-height:70vh"><table class="ox-t"><thead><tr><th>Data</th><th>Banco</th><th>Descrição (do extrato)</th><th>Categoria</th><th class="r">Valor</th></tr></thead><tbody id="oxLanc"><tr><td colspan="5" class="ox-vazio">Carregando…</td></tr></tbody></table></div></div>`;
+  // Mês de competência (v147): o banco só lança no 1º dia útil o que foi pago no fim de semana/feriado
+  // (ex.: sáb 31/10 → seg 03/11). Avisa quando o mês começa depois do dia 1 e deixa escolher o que conta no mês anterior.
+  const primeiroDia = r.saldo.dias.find(d => d.entradas || d.saidas);
+  const diaN = primeiroDia ? Number(primeiroDia.data.slice(8)) : 0, mAnt = outroMes(r.mes, -1);
+  const avisos = [
+    diaN >= 2 && diaN <= 5 ? `<div class="ox-alert info click" onclick="filtrarDia('${primeiroDia.data}')">📆 <b>O banco só lançou movimento a partir de ${dm(primeiroDia.data)}</b> — o que caiu nesse dia pode ser conta paga no fim de ${nomeMes(mAnt).toLowerCase()} (fim de semana/feriado). <b>Ver os lançamentos do dia ${primeiroDia.data.slice(8)} e escolher o que conta em ${nomeMes(mAnt)} →</b></div>` : '',
+    r.periodo.vindos_de_outro_mes ? `<div class="ox-alert success">📆 <b>${r.periodo.vindos_de_outro_mes} lançamento(s) compensado(s) em ${nomeMes(outroMes(r.mes, 1))}</b> contam neste mês (marcados com 📆 na lista).</div>` : '',
+    r.periodo.contados_em_outro_mes ? `<div class="ox-alert success">📆 <b>${r.periodo.contados_em_outro_mes} lançamento(s) deste mês no banco</b> contam em outro mês (não entram nos totais daqui).</div>` : '',
+  ].join('');
+  const lista = `<div class="ox-card" id="oxListaCard"><div class="ox-h"><h3>📋 Lançamentos</h3><span class="desc" id="oxListaDesc">${r.periodo.lancamentos} no período · categoria automática — corrija e o sistema aprende para os próximos · marque ☑ para mudar o mês em que contam</span>
+      <div class="ox-filt"><span id="oxFDia"></span><select id="oxFCat" onchange="FILTRO.categoria=this.value;carregarLancamentos()">${opcoesCat}</select><select id="oxFSen" onchange="FILTRO.sentido=this.value;carregarLancamentos()"><option value="">Entradas e saídas</option><option value="entrada" ${FILTRO.sentido==='entrada'?'selected':''}>Só entradas</option><option value="saida" ${FILTRO.sentido==='saida'?'selected':''}>Só saídas</option></select></div></div>
+    ${avisos}
+    <div class="ox-selbar" id="oxSelBar" hidden></div>
+    <div style="overflow:auto;max-height:70vh"><table class="ox-t"><thead><tr><th><input type="checkbox" title="Marcar todos" onchange="marcarTodos(this.checked)"></th><th>Data</th><th>Banco</th><th>Descrição (do extrato)</th><th>Categoria</th><th class="r">Valor</th></tr></thead><tbody id="oxLanc"><tr><td colspan="6" class="ox-vazio">Carregando…</td></tr></tbody></table></div></div>`;
 
   const mensal = `<div class="ox-card"><div class="ox-h"><h3>📅 Mês a mês</h3><span class="desc">resumo de cada mês salvo — atualiza sozinho a cada importação ou correção de categoria · clique no card para ver o detalhamento</span><button class="ox-btn" id="oxRecalc" style="margin-left:auto" onclick="recalcularMensal()">↻ Recalcular</button></div><div id="oxMensal"><div class="ox-vazio">Carregando…</div></div></div>`;
   document.getElementById('oxCorpo').innerHTML = kpis + mensal + iaHtml + cats + saldoAlertas + tabelas + lista;
@@ -332,14 +347,47 @@ async function carregarLancamentos() {
   const d = await DB.ofxLancamentos({ mes: mesSel(), conta_id: contaSel() || '', categoria: FILTRO.categoria, sentido: FILTRO.sentido });
   const tb = document.getElementById('oxLanc'); if (!tb) return;
   if (!d || d.error) { tb.innerHTML = `<tr><td colspan="5" class="ox-vazio">⚠️ ${esc(d&&d.error||'Erro')}</td></tr>`; return; }
-  const L = d.lancamentos;
+  // id vem como texto (BIGSERIAL); a seleção usa número.
+  const L = d.lancamentos.map(l => ({ ...l, id: Number(l.id) })).filter(l => !FILTRO.dia || String(l.data).slice(0, 10) === FILTRO.dia);
+  document.getElementById('oxFDia').innerHTML = FILTRO.dia ? `<button class="ox-btn" style="padding:5px 10px;font-size:12px" onclick="filtrarDia('')">📅 dia ${dm(FILTRO.dia)} ✕</button>` : '';
+  LISTA_ATUAL = L;
   tb.innerHTML = L.length ? L.map(l => {
     const entrada = l.valor > 0;
     const ops = CATS.filter(c => c.sentido==='ambos' || (c.sentido==='entrada')===entrada).map(c=>`<option value="${c.id}" ${c.id===(l.categoria||'sem_categoria')?'selected':''}>${c.ico} ${esc(c.nome)}</option>`).join('');
     const origem = l.categoria_origem==='manual'?'<span class="ox-tag manual">você</span>':l.categoria_origem==='aprendido'?'<span class="ox-tag aprendido">aprendido</span>':'<span class="ox-tag auto">auto</span>';
-    return `<tr><td>${dm(l.data)}</td><td>${esc(l.banco)}</td><td class="desc">${esc(l.contraparte||'—')} <button class="ox-ren" title="Dar um nome (vale pra todos dessa origem/destino)" onclick="renomear(${l.id}, '${esc(String(l.contraparte||'').replace(/'/g,''))}')">✏️</button><small>${esc(l.descricao)}</small></td>
+    const doBanco = String(l.data).slice(0, 7);
+    const comp = doBanco !== mesSel() ? ` <span class="ox-tag comp" title="O banco compensou em ${dm(l.data)}; conta em ${nomeMes(mesSel())}">📆 compensou em ${MESES[Number(doBanco.slice(5)) - 1].slice(0, 3)}.</span>` : '';
+    return `<tr class="${SEL.has(l.id)?'selo':''}"><td><input type="checkbox" ${SEL.has(l.id)?'checked':''} onchange="marcar(${l.id}, this.checked)"></td><td>${dm(l.data)}${comp}</td><td>${esc(l.banco)}</td><td class="desc">${esc(l.contraparte||'—')} <button class="ox-ren" title="Dar um nome (vale pra todos dessa origem/destino)" onclick="renomear(${l.id}, '${esc(String(l.contraparte||'').replace(/'/g,''))}')">✏️</button><small>${esc(l.descricao)}</small></td>
       <td><select onchange="corrigir(${l.id}, this.value)">${ops}</select> ${origem}</td><td class="r ${entrada?'up':'down'}">${entrada?'+':'−'}${BRL(Math.abs(l.valor))}</td></tr>`;
-  }).join('') : '<tr><td colspan="5" class="ox-vazio">Nenhum lançamento com esse filtro.</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="ox-vazio">Nenhum lançamento com esse filtro.</td></tr>';
+  barraSelecao();
+}
+
+// ── Seleção → mudar o mês em que os lançamentos contam (competência) ──
+let LISTA_ATUAL = [];
+function marcar(id, on) { if (on) SEL.add(id); else SEL.delete(id); barraSelecao(); }
+function marcarTodos(on) { LISTA_ATUAL.forEach(l => on ? SEL.add(l.id) : SEL.delete(l.id)); carregarLancamentos(); }
+function filtrarDia(dia) { FILTRO.dia = dia; carregarLancamentos(); if (dia) document.getElementById('oxListaCard').scrollIntoView({ behavior:'smooth', block:'start' }); }
+function barraSelecao() {
+  const b = document.getElementById('oxSelBar'); if (!b) return;
+  const sel = LISTA_ATUAL.filter(l => SEL.has(l.id));
+  if (!sel.length) { b.hidden = true; return; }
+  const mes = mesSel(), ant = outroMes(mes, -1);
+  const tot = sel.reduce((a, l) => a + l.valor, 0);
+  const algumMovido = sel.some(l => String(l.data).slice(0, 7) !== mes);
+  b.hidden = false;
+  b.innerHTML = `<b>${sel.length} selecionado(s)</b> · ${tot < 0 ? '−' : '+'}${BRL(Math.abs(tot))}
+    <button class="ox-btn pri" onclick="mudarCompetencia('${ant}')">📆 Contar em ${nomeMes(ant)}</button>
+    ${algumMovido ? `<button class="ox-btn" onclick="mudarCompetencia(null)">↩ Voltar pro mês do banco</button>` : ''}
+    <button class="ox-btn" onclick="SEL.clear();carregarLancamentos()">Limpar</button>`;
+}
+async function mudarCompetencia(mes) {
+  const ids = LISTA_ATUAL.filter(l => SEL.has(l.id)).map(l => l.id);
+  const r = await DB.ofxCompetencia(ids, mes);
+  if (!r) { status('⚠️ '+esc(DB.lastError||'Não consegui salvar'), true); return; }
+  status(`✅ ${r.alterados} lançamento(s) ${mes ? `agora contam em ${nomeMes(mes)}` : 'voltaram para o mês do banco'}${r.ignorados ? ` · ${r.ignorados} ignorado(s) (só dá pra mover 1 mês pra frente ou pra trás)` : ''}. Totais, cards e mês a mês atualizados.`);
+  SEL.clear(); FILTRO.dia = '';
+  await carregarContas(mesSel());
 }
 
 async function corrigir(id, categoria) {

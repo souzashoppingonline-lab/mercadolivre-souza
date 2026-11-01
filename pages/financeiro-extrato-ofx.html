@@ -57,6 +57,14 @@
     .ox-modal { position:fixed; inset:0; background:rgba(5,10,18,.72); z-index:10000; display:flex; align-items:flex-start; justify-content:center; padding:28px 16px; overflow:auto; }
     .ox-modal[hidden] { display:none; }
     .ox-modal .box { background:var(--bg-main, #0f1720); border:1px solid var(--border); border-radius:16px; width:min(1150px, 100%); padding:18px 20px; }
+    .ox-modal.pk { z-index:10001; align-items:center; } .ox-modal.pk .box { width:min(720px, 100%); }
+    .ox-catbtn { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:999px; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap; }
+    .ox-catbtn:hover { border-color:#3fb950; } .ox-catbtn span { color:var(--text-muted); margin-left:2px; }
+    .pk-l { font-size:13px; margin-bottom:12px; } .pk-l small { display:block; color:var(--text-muted); margin-top:2px; }
+    .pk-g { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px; }
+    .pk-o { display:flex; align-items:center; gap:8px; text-align:left; background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:10px; padding:10px 12px; font-size:13px; font-weight:700; cursor:pointer; }
+    .pk-o:hover { border-color:#3fb950; background:rgba(46,160,67,.08); } .pk-o.on { border-color:#3fb950; box-shadow:0 0 0 1px #3fb950; } .pk-o .i { font-size:17px; flex:none; } .pk-o .tx { min-width:0; } .pk-o small { display:block; color:var(--text-muted); font-weight:600; font-size:10.5px; }
+    .pk-t { display:block; margin-top:14px; font-size:12.5px; color:var(--text-muted); cursor:pointer; } .pk-t input { margin-right:6px; vertical-align:-2px; }
     .ox-modal .top { display:flex; align-items:center; gap:10px; margin-bottom:14px; } .ox-modal .top h2 { font-size:18px; font-weight:900; margin:0; flex:1; }
   </style>
 </head>
@@ -84,6 +92,9 @@
     <div class="ox-modal" id="oxModal" hidden onclick="if(event.target===this)fecharMes()"><div class="box">
       <div class="top"><h2 id="oxModalTit"></h2><button class="ox-btn" onclick="const m=document.getElementById('oxModal').dataset.mes;fecharMes();irParaMes(m)">↗ Abrir este mês na página</button><button class="ox-btn" onclick="fecharMes()">✕ Fechar</button></div>
       <div id="oxModalCorpo"></div></div></div>
+    <div class="ox-modal pk" id="oxPick" hidden onclick="if(event.target===this)fecharPick()"><div class="box">
+      <div class="top"><h2>🏷️ Escolher categoria</h2><button class="ox-btn" onclick="fecharPick()">✕ Fechar</button></div>
+      <div id="oxPickCorpo"></div></div></div>
   </main>
 </div>
 <script>
@@ -200,7 +211,8 @@ async function abrirMes(mes) {
   const t = r.totais, s = r.saldo, L = (l && l.lancamentos) || [];
   const fora = c => CAT[c] && CAT[c].fora;
   const top = (sinal, n) => L.filter(x => (sinal > 0 ? x.valor > 0 : x.valor < 0) && !fora(x.categoria)).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor)).slice(0, n);
-  const linhaL = x => `<tr><td>${dm(x.data)}</td><td class="desc">${esc(x.contraparte||'—')}<small>${esc(x.descricao)}</small></td><td>${CAT[x.categoria]?CAT[x.categoria].ico+' '+esc(CAT[x.categoria].nome):'—'}</td><td class="r ${x.valor>0?'up':'down'}">${x.valor>0?'+':'−'}${BRL(Math.abs(x.valor))}</td></tr>`;
+  L.forEach(x => { LANC_MODAL[x.id] = x; });
+  const linhaL = x => `<tr><td>${dm(x.data)}</td><td class="desc">${esc(x.contraparte||'—')}<small>${esc(x.descricao)}</small></td><td><button class="ox-catbtn" onclick="escolherCategoria(${x.id})" title="Trocar a categoria">${CAT[x.categoria]?CAT[x.categoria].ico+' '+esc(CAT[x.categoria].nome):'❔ Sem categoria'} <span>✎</span></button></td><td class="r ${x.valor>0?'up':'down'}">${x.valor>0?'+':'−'}${BRL(Math.abs(x.valor))}</td></tr>`;
   const ia = r.ia;
   corpo.innerHTML = `
     <div class="ox-kpis" style="margin-bottom:12px">
@@ -219,7 +231,32 @@ async function abrirMes(mes) {
       <div class="ox-card"><div class="ox-h"><h3>💰 Maiores entradas</h3></div><div class="ox-scroll"><table class="ox-t"><tbody>${top(1,10).map(linhaL).join('') || '<tr><td class="ox-vazio">—</td></tr>'}</tbody></table></div></div></div>`;
 }
 function fecharMes() { document.getElementById('oxModal').hidden = true; document.body.style.overflow = ''; }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharMes(); });
+document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!document.getElementById('oxPick').hidden) fecharPick(); else fecharMes(); });
+
+// ── Escolher categoria (clique na categoria dentro do modal do mês) ──
+const LANC_MODAL = {};
+function escolherCategoria(id) {
+  const x = LANC_MODAL[id]; if (!x) return;
+  const entrada = x.valor > 0;
+  const atual = x.categoria || 'sem_categoria';
+  const ops = CATS.filter(c => c.id !== 'sem_categoria' && (c.sentido === 'ambos' || (c.sentido === 'entrada') === entrada));
+  document.getElementById('oxPickCorpo').innerHTML = `
+    <div class="pk-l"><b>${esc(x.contraparte || '—')}</b> · ${dm(x.data)} · <span class="${entrada?'up':'down'}">${entrada?'+':'−'}${BRL(Math.abs(x.valor))}</span><small>${esc(x.descricao)}</small></div>
+    <div class="pk-g">${ops.map(c => `<button class="pk-o ${c.id===atual?'on':''}" onclick="aplicarCategoria(${id}, '${c.id}')"><span class="i">${c.ico}</span><span class="tx">${esc(c.nome)}${c.fora?'<small>fora do total</small>':''}</span></button>`).join('')}</div>
+    <label class="pk-t"><input type="checkbox" id="oxPickTodos" checked> Aplicar a todos os lançamentos de <b>${esc(x.contraparte || 'mesma origem/destino')}</b> (passados e futuros)</label>`;
+  document.getElementById('oxPick').hidden = false;
+}
+function fecharPick() { document.getElementById('oxPick').hidden = true; }
+async function aplicarCategoria(id, categoria) {
+  const todos = document.getElementById('oxPickTodos').checked;
+  document.querySelectorAll('#oxPick .pk-o').forEach(b => { b.disabled = true; });
+  const r = await DB.ofxCorrigir(id, { categoria, aplicar_todos: todos });
+  fecharPick();
+  if (!r) { status('⚠️ '+esc(DB.lastError||'Não consegui salvar'), true); return; }
+  status(`✅ ${CAT[categoria].ico} ${esc(CAT[categoria].nome)} — ${r.afetados} lançamento(s) atualizado(s).${todos ? ' Os próximos extratos já vêm assim.' : ''}`);
+  const mes = document.getElementById('oxModal').dataset.mes;
+  await Promise.all([abrirMes(mes), carregarResumo()]);
+}
 function irParaMes(m) { const s = document.getElementById('oxMes'); if ([...s.options].some(o=>o.value===m)) { s.value = m; trocarFiltro(); scrollTo({top:0,behavior:'smooth'}); } }
 async function recalcularMensal() {
   const b = document.getElementById('oxRecalc'); b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recalculando…';

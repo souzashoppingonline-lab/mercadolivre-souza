@@ -866,5 +866,5 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 - `ofx_importacoes` (conta_id, arquivo_nome, dt_inicio, dt_fim, saldo_final, saldo_final_em, lidos, novos, importado_por, importado_em) — 1 por conta de cada arquivo.
 - `ofx_lancamentos` (conta_id, chave, fitid, data, valor com sinal, tipo, descricao, contraparte, contraparte_chave, categoria, categoria_origem auto|aprendido|manual, importacao_id) — UNIQUE (conta_id, chave); índices em data, (conta_id, data), contraparte_chave.
 - `ofx_regras` (contraparte_chave PK, categoria, apelido, atualizado_por, atualizado_em) — o que o usuário ensinou.
-- `ofx_resumos_mensais` (mes, conta_id [0 = todas] PK; entradas, saidas, resultado, saldo_inicial, saldo_final, menor_saldo, tarifas, lancamentos, sem_categoria, categorias JSONB, atualizado_em) — visão mês a mês salva.
+- `ofx_resumos_mensais` (mes, conta_id [0 = todas] PK; entradas, saidas, resultado, saldo_inicial, saldo_final, menor_saldo, tarifas, lancamentos, sem_categoria, categorias JSONB, alertas [v128], atualizado_em) — visão mês a mês salva.
 - `ofx_analises_ia` (mes, conta_id PK; analise JSONB {pontos, recomendacoes}, modelo, gerado_em).

@@ -48,6 +48,16 @@
     .ox-mm th.mes { cursor:pointer; text-align:right; } .ox-mm th.mes:hover { color:var(--text-main); } .ox-mm th.sel, .ox-mm td.sel { background:rgba(46,160,67,.09); }
     .ox-mm td.lbl { color:var(--text-muted); } .ox-mm tr.tot td { font-weight:800; } .ox-mm tr.sep td { padding-top:12px; color:var(--text-muted); font-size:10px; text-transform:uppercase; border-bottom:0; }
     .ox-mm small { display:block; font-size:10.5px; font-weight:700; }
+    .ox-mcs { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+    .ox-mc { --c:#3fb950; background:linear-gradient(180deg, color-mix(in srgb, var(--c) 16%, transparent), var(--bg-card2) 65%); border:1px solid color-mix(in srgb, var(--c) 35%, var(--border)); border-top:4px solid var(--c); border-radius:12px; padding:14px; cursor:pointer; transition:transform .12s, box-shadow .12s; }
+    .ox-mc:hover { transform:translateY(-2px); box-shadow:0 6px 18px color-mix(in srgb, var(--c) 25%, transparent); } .ox-mc.sel { box-shadow:0 0 0 2px var(--c); }
+    .ox-mc .t { font-weight:900; font-size:15px; color:var(--c); } .ox-mc .res { font-size:22px; font-weight:900; margin-top:6px; } .ox-mc .lb { font-size:11px; color:var(--text-muted); margin-bottom:8px; }
+    .ox-mc .ln { display:flex; gap:6px; align-items:baseline; font-size:12.5px; padding:3px 0; border-top:1px solid var(--border); } .ox-mc .ln span:first-child { color:var(--text-muted); flex:1; } .ox-mc .ln span:last-child { font-size:11px; }
+    .ox-mc .bd { display:flex; gap:5px; flex-wrap:wrap; margin-top:8px; } .ox-mc .b { font-size:10.5px; font-weight:700; border-radius:999px; padding:2px 8px; background:var(--bg-card); color:var(--text-muted); } .ox-mc .b.warn { color:#f59e0b; background:rgba(245,158,11,.1); } .ox-mc .b.ok { color:#3fb950; background:rgba(46,160,67,.1); }
+    .ox-modal { position:fixed; inset:0; background:rgba(5,10,18,.72); z-index:10000; display:flex; align-items:flex-start; justify-content:center; padding:28px 16px; overflow:auto; }
+    .ox-modal[hidden] { display:none; }
+    .ox-modal .box { background:var(--bg-main, #0f1720); border:1px solid var(--border); border-radius:16px; width:min(1150px, 100%); padding:18px 20px; }
+    .ox-modal .top { display:flex; align-items:center; gap:10px; margin-bottom:14px; } .ox-modal .top h2 { font-size:18px; font-weight:900; margin:0; flex:1; }
   </style>
 </head>
 <body>
@@ -71,6 +81,9 @@
 
       <div id="oxCorpo"></div>
     </div>
+    <div class="ox-modal" id="oxModal" hidden onclick="if(event.target===this)fecharMes()"><div class="box">
+      <div class="top"><h2 id="oxModalTit"></h2><button class="ox-btn" onclick="const m=document.getElementById('oxModal').dataset.mes;fecharMes();irParaMes(m)">↗ Abrir este mês na página</button><button class="ox-btn" onclick="fecharMes()">✕ Fechar</button></div>
+      <div id="oxModalCorpo"></div></div></div>
   </main>
 </div>
 <script>
@@ -129,12 +142,32 @@ async function carregarResumo() {
 }
 
 // ── Mês a mês: resumo salvo de cada mês (regravado a cada importação/correção) ──
+// Card por mês (mais novo primeiro) → clique abre o modal com o detalhamento.
+// Cor própria por mês do ano (pedido do usuário) — outubro é sempre a mesma cor.
+const COR_MES = ['#4ea1ff', '#c39bff', '#ff9f43', '#5ef08a', '#f472b6', '#22d3ee', '#facc15', '#fb7185', '#a3e635', '#818cf8', '#2dd4bf', '#f59e0b'];
 async function carregarMensal() {
   const el = document.getElementById('oxMensal'); if (!el) return;
   const d = await DB.ofxMensal(contaSel());
   if (!d || d.error) { el.innerHTML = `<div class="ox-vazio">⚠️ ${esc(d&&d.error||'Erro ao carregar o mês a mês')}</div>`; return; }
   const M = d.meses;
   if (!M.length) { el.innerHTML = '<div class="ox-vazio">Nenhum resumo salvo ainda — clique em <b>Recalcular</b>.</div>'; return; }
+  const varp = (v, a) => (a!=null && v!=null && a!==0) ? ((v-a)/Math.abs(a))*100 : null;
+  const cards = M.map((m, i) => ({ m, ant: i ? M[i-1] : null })).reverse().map(({ m, ant }) => {
+    const ve = ant ? varp(m.entradas, ant.entradas) : null, vs = ant ? varp(m.saidas, ant.saidas) : null;
+    const c = COR_MES[Number(m.mes.slice(5)) - 1];
+    return `<div class="ox-mc ${m.mes===mesSel()?'sel':''}" style="--c:${c}" onclick="abrirMes('${m.mes}')" title="Ver o detalhamento do mês">
+      <div class="t">${nomeMes(m.mes)}</div>
+      <div class="res ${m.resultado>=0?'up':'down'}">${m.resultado>=0?'+':''}${BRL0(m.resultado)}</div><div class="lb">resultado do mês</div>
+      <div class="ln"><span>💰 Entradas</span><b>${BRL0(m.entradas)}</b>${ve!=null?var1(ve):''}</div>
+      <div class="ln"><span>💸 Saídas</span><b>${BRL0(m.saidas)}</b>${vs!=null?var1(vs,true):''}</div>
+      <div class="ln"><span>🏦 Saldo no fim</span><b>${m.saldo_final==null?'—':BRL0(m.saldo_final)}</b></div>
+      <div class="bd">${m.alertas?`<span class="b warn">⚠️ ${m.alertas} alerta(s)</span>`:'<span class="b ok">✅ sem alertas</span>'}${m.sem_categoria?`<span class="b">❔ ${m.sem_categoria} sem categoria</span>`:''}<span class="b">${m.lancamentos} lanç.</span></div>
+    </div>`; }).join('');
+  el.innerHTML = `<div class="ox-mcs">${cards}</div>
+    <button class="ox-btn" style="margin-top:12px" onclick="const t=document.getElementById('oxMmTab');t.hidden=!t.hidden;this.textContent=t.hidden?'📊 Ver comparativo em tabela':'📊 Esconder tabela'">📊 Ver comparativo em tabela</button>
+    <div id="oxMmTab" hidden style="margin-top:12px">${tabelaMensal(M)}</div>`;
+}
+function tabelaMensal(M) {
   const sel = mesSel(), cls = m => m.mes===sel ? 'sel' : '';
   const cel = (m, i, campo, inv) => { const v = m[campo], a = i ? M[i-1][campo] : null;
     const dv = (a!=null && v!=null && a!==0) ? ((v-a)/Math.abs(a))*100 : null;
@@ -142,7 +175,7 @@ async function carregarMensal() {
   // Categorias mais pesadas no período todo (6 de saída + 3 de entrada), fora "entre contas"/aplicação.
   const somaCat = (lado) => { const t = {}; M.forEach(m => ((m.categorias||{})[lado]||[]).forEach(c => { if (!CAT[c.categoria] || !CAT[c.categoria].fora) t[c.categoria] = (t[c.categoria]||0) + c.total; })); return Object.entries(t).sort((a,b)=>b[1]-a[1]).map(([k])=>k); };
   const linhaCat = (lado, k) => `<tr><td class="lbl">${CAT[k]?CAT[k].ico+' '+esc(CAT[k].nome):esc(k)}</td>${M.map(m => { const c = ((m.categorias||{})[lado]||[]).find(x=>x.categoria===k); return `<td class="r ${cls(m)}">${c?BRL0(c.total):'—'}</td>`; }).join('')}</tr>`;
-  el.innerHTML = `<div style="overflow:auto"><table class="ox-t ox-mm"><thead><tr><th></th>${M.map(m=>`<th class="mes ${cls(m)}" onclick="irParaMes('${m.mes}')" title="Abrir este mês">${nomeMes(m.mes)}</th>`).join('')}</tr></thead><tbody>
+  return `<div style="overflow:auto"><table class="ox-t ox-mm"><thead><tr><th></th>${M.map(m=>`<th class="mes ${cls(m)}" onclick="abrirMes('${m.mes}')" title="Ver o detalhamento do mês">${nomeMes(m.mes)}</th>`).join('')}</tr></thead><tbody>
     <tr class="tot"><td class="lbl">💰 Entradas</td>${M.map((m,i)=>cel(m,i,'entradas')).join('')}</tr>
     <tr class="tot"><td class="lbl">💸 Saídas</td>${M.map((m,i)=>cel(m,i,'saidas',true)).join('')}</tr>
     <tr class="tot"><td class="lbl">📊 Resultado</td>${M.map(m=>`<td class="r ${cls(m)} ${m.resultado>=0?'up':'down'}">${m.resultado>=0?'+':''}${BRL0(m.resultado)}</td>`).join('')}</tr>
@@ -154,6 +187,39 @@ async function carregarMensal() {
     <tr class="sep"><td colspan="${M.length+1}">Entradas por categoria</td></tr>${somaCat('entradas').slice(0,3).map(k=>linhaCat('entradas',k)).join('')}
   </tbody></table></div>`;
 }
+// ── Modal do mês: tudo do mês num lugar só (resumo + maiores lançamentos + IA salva) ──
+async function abrirMes(mes) {
+  const md = document.getElementById('oxModal'), corpo = document.getElementById('oxModalCorpo');
+  const tit = document.getElementById('oxModalTit');
+  tit.textContent = `📅 ${nomeMes(mes)} · ${document.getElementById('oxConta').selectedOptions[0]?.textContent || 'Todas as contas'}`;
+  tit.style.color = COR_MES[Number(mes.slice(5)) - 1];
+  corpo.innerHTML = '<div class="ox-vazio">Carregando…</div>'; md.hidden = false; document.body.style.overflow = 'hidden';
+  md.dataset.mes = mes;
+  const [r, l] = await Promise.all([DB.ofxResumo(mes, contaSel()), DB.ofxLancamentos({ mes, conta_id: contaSel() || '' })]);
+  if (!r || r.error) { corpo.innerHTML = `<div class="ox-vazio">⚠️ ${esc(r&&r.error||'Erro')}</div>`; return; }
+  const t = r.totais, s = r.saldo, L = (l && l.lancamentos) || [];
+  const fora = c => CAT[c] && CAT[c].fora;
+  const top = (sinal, n) => L.filter(x => (sinal > 0 ? x.valor > 0 : x.valor < 0) && !fora(x.categoria)).sort((a,b)=>Math.abs(b.valor)-Math.abs(a.valor)).slice(0, n);
+  const linhaL = x => `<tr><td>${dm(x.data)}</td><td class="desc">${esc(x.contraparte||'—')}<small>${esc(x.descricao)}</small></td><td>${CAT[x.categoria]?CAT[x.categoria].ico+' '+esc(CAT[x.categoria].nome):'—'}</td><td class="r ${x.valor>0?'up':'down'}">${x.valor>0?'+':'−'}${BRL(Math.abs(x.valor))}</td></tr>`;
+  const ia = r.ia;
+  corpo.innerHTML = `
+    <div class="ox-kpis" style="margin-bottom:12px">
+      <div class="ox-kpi"><div class="k">💰 Entradas</div><div class="v up">${BRL(t.entradas)}</div><div class="s">${t.var_entradas_pct!=null?var1(t.var_entradas_pct)+' vs mês anterior':'—'}</div></div>
+      <div class="ox-kpi"><div class="k">💸 Saídas</div><div class="v down">${BRL(t.saidas)}</div><div class="s">${t.var_saidas_pct!=null?var1(t.var_saidas_pct,true)+' vs mês anterior':'—'}</div></div>
+      <div class="ox-kpi"><div class="k">📊 Resultado</div><div class="v ${t.resultado>=0?'up':'down'}">${t.resultado>=0?'+':''}${BRL(t.resultado)}</div><div class="s">${r.periodo.lancamentos} lançamentos</div></div>
+      <div class="ox-kpi"><div class="k">🏦 Saldo</div><div class="v">${s.final!=null?BRL(s.final):'—'}</div><div class="s">${s.inicial!=null?'início '+BRL(s.inicial):''}${s.menor?` · menor ${BRL(s.menor.saldo)} (dia ${s.menor.data.slice(8)})`:''}</div></div>
+      <div class="ox-kpi"><div class="k">🧾 Tarifas</div><div class="v warn">${BRL(r.tarifas.total)}</div><div class="s">${r.tarifas.qtd} cobrança(s)</div></div>
+    </div>
+    ${ia ? `<div class="ox-card ox-ia" style="margin-bottom:12px"><div class="ox-h"><h3>🧠 Análise da IA</h3><span class="desc">gerada em ${new Date(ia.gerado_em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span></div><ul>${ia.pontos.map(p=>`<li>${negrito(p)}</li>`).join('')}</ul>${ia.recomendacoes.length?`<div class="rec"><b>👉 Recomendações</b><ul>${ia.recomendacoes.map(p=>`<li>${negrito(p)}</li>`).join('')}</ul></div>`:''}</div>` : ''}
+    <div class="ox-cols"><div class="ox-card"><div class="ox-h"><h3>💰 Entradas por categoria</h3></div>${barras(r.categorias.entradas,'#3fb950',false)}</div>
+      <div class="ox-card"><div class="ox-h"><h3>💸 Saídas por categoria</h3></div>${barras(r.categorias.saidas,'#f87171',false)}</div></div>
+    <div class="ox-cols"><div class="ox-card"><div class="ox-h"><h3>🔔 Alertas</h3></div>${r.alertas.length ? r.alertas.map(alertaHtml).join('').replace(/ click"| onclick="[^"]*"/g, m => m.startsWith(' click') ? '"' : '') : '<div class="ox-alert success">✅ Nada fora do normal neste mês.</div>'}</div>
+      <div class="ox-card"><div class="ox-h"><h3>🏷️ Para quem mais foi dinheiro</h3></div>${r.destinatarios.length ? `<div class="ox-scroll"><table class="ox-t"><tbody>${r.destinatarios.map(d=>`<tr><td>${esc(d.nome)}</td><td class="r">${d.vezes}×</td><td class="r">${BRL0(d.total)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="ox-vazio">—</div>'}</div></div>
+    <div class="ox-cols"><div class="ox-card"><div class="ox-h"><h3>💸 Maiores saídas</h3></div><div class="ox-scroll"><table class="ox-t"><tbody>${top(-1,10).map(linhaL).join('') || '<tr><td class="ox-vazio">—</td></tr>'}</tbody></table></div></div>
+      <div class="ox-card"><div class="ox-h"><h3>💰 Maiores entradas</h3></div><div class="ox-scroll"><table class="ox-t"><tbody>${top(1,10).map(linhaL).join('') || '<tr><td class="ox-vazio">—</td></tr>'}</tbody></table></div></div></div>`;
+}
+function fecharMes() { document.getElementById('oxModal').hidden = true; document.body.style.overflow = ''; }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharMes(); });
 function irParaMes(m) { const s = document.getElementById('oxMes'); if ([...s.options].some(o=>o.value===m)) { s.value = m; trocarFiltro(); scrollTo({top:0,behavior:'smooth'}); } }
 async function recalcularMensal() {
   const b = document.getElementById('oxRecalc'); b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recalculando…';
@@ -162,6 +228,18 @@ async function recalcularMensal() {
   if (!r) { status('⚠️ '+esc(DB.lastError||'Falha ao recalcular'), true); return; }
   status(`✅ Resumo salvo de ${r.meses} mês(es) recalculado.`); carregarMensal();
 }
+
+// Reusados no resumo da página e no modal do mês.
+const negrito = x => esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+const barras = (lista, cor, clicavel = true) => { const max = Math.max(1, ...lista.map(c=>c.total)); return lista.length ? lista.map(c=>`<div class="ox-cat ${c.fora?'fora':''}" ${clicavel?`onclick="filtrarCategoria('${c.categoria}')" title="Ver os lançamentos"`:''}><span class="n">${c.ico} ${esc(c.nome)}</span><span class="bar"><i style="width:${c.total/max*100}%;background:${c.fora?'#64748b':cor}"></i></span><span class="q">${BRL0(c.total)} <small>${c.fora?'fora do total':PCT(c.pct)}</small></span></div>`).join('') : '<div class="ox-vazio">Nada no período.</div>'; };
+const alertaHtml = a => {
+  if (a.tipo==='duplicado') return `<div class="ox-alert danger click" onclick="filtrarCategoria('')">🔁 <b>Possível pagamento em dobro</b> — ${BRL(a.valor)} para ${esc(a.nome)}, ${a.vezes}× em ${dm(a.data)}</div>`;
+  if (a.tipo==='saldo_baixo') return `<div class="ox-alert warning">📉 <b>Saldo abaixo de ${BRL0(a.limite)}</b> em ${a.dias.length} dia(s): ${a.dias.slice(0,8).map(d=>d.slice(8)).join(', ')}${a.dias.length>8?'…':''}</div>`;
+  if (a.tipo==='fora_padrao') return `<div class="ox-alert warning">⚠️ <b>Fora do padrão</b> — ${esc(a.nome)}: ${a.qtd>1?`${a.qtd} pagamentos acima do normal, o maior ${BRL(a.valor)} em ${dm(a.data)}`:`${BRL(a.valor)} em ${dm(a.data)}`} (o normal é ~${BRL(a.mediana)})</div>`;
+  if (a.tipo==='confirmar_entre_contas') return `<div class="ox-alert info click" onclick="filtrarCategoria('entre_contas')">🔁 <b>${a.qtd} lançamento(s) tratados como "entre contas suas"</b> (${BRL0(a.total)}) — PIX/TED para banco ou carteira digital. Confira se são mesmo contas da empresa →</div>`;
+  if (a.tipo==='sem_categoria') return `<div class="ox-alert info click" onclick="filtrarCategoria('sem_categoria')">❔ <b>${a.qtd} lançamento(s) sem categoria</b> (${BRL0(a.total)}) — classifique uma vez e o sistema aprende →</div>`;
+  return '';
+};
 
 function render() {
   const r = R, t = r.totais, s = r.saldo;
@@ -174,14 +252,12 @@ function render() {
   </div>`;
 
   const ia = r.ia;
-  const negrito = x => esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
   const iaHtml = `<div class="ox-card ox-ia"><div class="ox-h"><h3>🧠 Análise da IA — ${nomeMes(r.mes)}</h3>${ia?`<span class="desc">gerada em ${new Date(ia.gerado_em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>`:''}
       <button class="ox-btn" id="oxIaBtn" style="margin-left:auto" onclick="gerarIa()" ${r.ia_configurada?'':'disabled title="Defina ANTHROPIC_API_KEY no .env do servidor"'}>${ia?'↻ Gerar de novo':'🧠 Gerar análise'}</button></div>
     ${ia ? `<ul>${ia.pontos.map(p=>`<li>${negrito(p)}</li>`).join('')}</ul>${ia.recomendacoes.length?`<div class="rec"><b>👉 Recomendações</b><ul>${ia.recomendacoes.map(p=>`<li>${negrito(p)}</li>`).join('')}</ul></div>`:''}`
          : `<div class="ox-vazio">${r.ia_configurada?'Clique em <b>Gerar análise</b> — a IA lê os números deste mês e aponta o que chama atenção. Dica: classifique antes os lançamentos "Sem categoria" e "PIX recebido (identificar)" pra análise sair melhor.':'IA não configurada no servidor (falta ANTHROPIC_API_KEY no .env).'}</div>`}
     <div class="nota">Os números são calculados pelo sistema a partir do extrato; a IA só interpreta. Para a IA vão os totais por categoria e os nomes de quem pagou/recebeu — nunca número de conta/agência.</div></div>`;
 
-  const barras = (lista, cor) => { const max = Math.max(1, ...lista.map(c=>c.total)); return lista.length ? lista.map(c=>`<div class="ox-cat ${c.fora?'fora':''}" onclick="filtrarCategoria('${c.categoria}')" title="Ver os lançamentos"><span class="n">${c.ico} ${esc(c.nome)}</span><span class="bar"><i style="width:${c.total/max*100}%;background:${c.fora?'#64748b':cor}"></i></span><span class="q">${BRL0(c.total)} <small>${c.fora?'fora do total':PCT(c.pct)}</small></span></div>`).join('') : '<div class="ox-vazio">Nada no período.</div>'; };
   const cats = `<div class="ox-cols"><div class="ox-card"><div class="ox-h"><h3>💰 Entradas por categoria</h3></div>${barras(r.categorias.entradas,'#3fb950')}</div>
     <div class="ox-card"><div class="ox-h"><h3>💸 Saídas por categoria</h3></div>${barras(r.categorias.saidas,'#f87171')}</div></div>`;
 
@@ -191,14 +267,6 @@ function render() {
     : '<div class="ox-vazio">O arquivo não trouxe o saldo do banco (&lt;LEDGERBAL&gt;) — sem gráfico de saldo.</div>';
   const extremos = [r.maior_saida_dia?`📉 Dia de maior saída: <b style="color:#f87171">${dm(r.maior_saida_dia.data)} — ${BRL0(r.maior_saida_dia.saidas)}</b>`:'', r.maior_entrada_dia?`📈 maior entrada: <b style="color:#3fb950">${dm(r.maior_entrada_dia.data)} — ${BRL0(r.maior_entrada_dia.entradas)}</b>`:''].filter(Boolean).join(' · ');
 
-  const alertaHtml = a => {
-    if (a.tipo==='duplicado') return `<div class="ox-alert danger click" onclick="filtrarCategoria('')">🔁 <b>Possível pagamento em dobro</b> — ${BRL(a.valor)} para ${esc(a.nome)}, ${a.vezes}× em ${dm(a.data)}</div>`;
-    if (a.tipo==='saldo_baixo') return `<div class="ox-alert warning">📉 <b>Saldo abaixo de ${BRL0(a.limite)}</b> em ${a.dias.length} dia(s): ${a.dias.slice(0,8).map(d=>d.slice(8)).join(', ')}${a.dias.length>8?'…':''}</div>`;
-    if (a.tipo==='fora_padrao') return `<div class="ox-alert warning">⚠️ <b>Fora do padrão</b> — ${esc(a.nome)} ${BRL(a.valor)} em ${dm(a.data)} (o normal é ~${BRL(a.mediana)})</div>`;
-    if (a.tipo==='confirmar_entre_contas') return `<div class="ox-alert info click" onclick="filtrarCategoria('entre_contas')">🔁 <b>${a.qtd} lançamento(s) tratados como "entre contas suas"</b> (${BRL0(a.total)}) — PIX/TED para banco ou carteira digital. Confira se são mesmo contas da empresa →</div>`;
-    if (a.tipo==='sem_categoria') return `<div class="ox-alert info click" onclick="filtrarCategoria('sem_categoria')">❔ <b>${a.qtd} lançamento(s) sem categoria</b> (${BRL0(a.total)}) — classifique uma vez e o sistema aprende →</div>`;
-    return '';
-  };
   const alertas = r.alertas.length ? r.alertas.map(alertaHtml).join('') : '<div class="ox-alert success">✅ Nada fora do normal neste mês.</div>';
   const saldoAlertas = `<div class="ox-cols3"><div class="ox-card"><div class="ox-h"><h3>📈 Saldo no fim de cada dia</h3><span class="desc">🟢 maior · 🔴 menor</span></div>${graf}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">${extremos}</p></div>
     <div class="ox-card"><div class="ox-h"><h3>🔔 Alertas</h3></div>${alertas}</div></div>`;
@@ -214,7 +282,7 @@ function render() {
       <div class="ox-filt"><select id="oxFCat" onchange="FILTRO.categoria=this.value;carregarLancamentos()">${opcoesCat}</select><select id="oxFSen" onchange="FILTRO.sentido=this.value;carregarLancamentos()"><option value="">Entradas e saídas</option><option value="entrada" ${FILTRO.sentido==='entrada'?'selected':''}>Só entradas</option><option value="saida" ${FILTRO.sentido==='saida'?'selected':''}>Só saídas</option></select></div></div>
     <div style="overflow:auto;max-height:70vh"><table class="ox-t"><thead><tr><th>Data</th><th>Banco</th><th>Descrição (do extrato)</th><th>Categoria</th><th class="r">Valor</th></tr></thead><tbody id="oxLanc"><tr><td colspan="5" class="ox-vazio">Carregando…</td></tr></tbody></table></div></div>`;
 
-  const mensal = `<div class="ox-card"><div class="ox-h"><h3>📅 Mês a mês</h3><span class="desc">resumo de cada mês salvo — atualiza sozinho a cada importação ou correção de categoria · clique no mês para abrir</span><button class="ox-btn" id="oxRecalc" style="margin-left:auto" onclick="recalcularMensal()">↻ Recalcular</button></div><div id="oxMensal"><div class="ox-vazio">Carregando…</div></div></div>`;
+  const mensal = `<div class="ox-card"><div class="ox-h"><h3>📅 Mês a mês</h3><span class="desc">resumo de cada mês salvo — atualiza sozinho a cada importação ou correção de categoria · clique no card para ver o detalhamento</span><button class="ox-btn" id="oxRecalc" style="margin-left:auto" onclick="recalcularMensal()">↻ Recalcular</button></div><div id="oxMensal"><div class="ox-vazio">Carregando…</div></div></div>`;
   document.getElementById('oxCorpo').innerHTML = kpis + mensal + iaHtml + cats + saldoAlertas + tabelas + lista;
 }
 

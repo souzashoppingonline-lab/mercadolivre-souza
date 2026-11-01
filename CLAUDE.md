@@ -68,6 +68,7 @@ Variáveis de ambiente, dependências e configuração do processo HTTP: `.claud
 | Filas BullMQ, handlers de webhook, jobs agendados, bot Telegram | `.claude/workers.md` |
 | Agenda Trello (Kanban), TaskEngine, geração automática de cartões | `.claude/task-engine.md` |
 | Embalagem (bipagem de etiqueta, vídeo de conferência) | `.claude/embalagem.md` |
+| Extrato Bancário (OFX): importar extrato, categorias, mês a mês, IA | `.claude/extrato-ofx.md` |
 | Rankeamento de anúncio (cada venda/alteração na tela + Telegram) | `.claude/rankeamento.md` |
 | Login de acesso restrito (funcionários, papéis admin/embalagem) | `.claude/auth-staff.md` |
 | OAuth, `mlClient.js`, rate limiting do Mercado Livre | `.claude/mercadolivre.md` |

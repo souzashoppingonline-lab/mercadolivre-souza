@@ -30,6 +30,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `workers.md` | Processo BullMQ: filas por loja, handlers por tópico webhook, jobs agendados, bot Telegram |
 | `mercadolivre.md` | OAuth, `mlClient.js`, webhooks recebidos do ML, rate limiting — única integração de marketplace implementada |
 | `task-engine.md` | Agenda Trello: `TaskEngine` (geração automática de cartões), regras implementadas/futuras, escopo atual (só ML) |
+| `extrato-ofx.md` | Financeiro → Extrato Bancário (OFX): leitor OFX, categorias que aprendem, saldo dia a dia, alertas, mês a mês salvo, análise da IA. Tabelas `ofx_*`, rotas `/api/financeiro/extrato-ofx/*` |
 | `conciliacao-bancaria.md` | Módulo financeiro Pedido→Pagamento→Liberação→Transferência→Conciliação, status por fase, API de Faturamento ML, o que depende do app Mercado Pago |
 | `embalagem.md` | Bipagem de etiqueta (FLEX/Mercado Envios), gravação de vídeo de conferência, retenção de 30 dias |
 | `rankeamento.md` | Acompanhamento de anúncio na janela de ranqueamento: cada venda/alteração na tela + Telegram, marco a cada N vendas. Tabelas `ranking_ads`/`ranking_events`, `server/src/ranking.js`, rotas `/api/ranking/*` |

@@ -858,3 +858,13 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 ### `frases_do_dia` — v124: frase do dia da Tela Telegram
 
 `migrate-v124.sql`. `dia` DATE PK (fuso SP), `frase`, `origem` (`ia` | `reserva`), `created_at`. Gerada na 1ª vez que o painel é pedido no dia (`fraseDoDia.obterFraseDoDia`); o histórico inteiro é usado pra garantir que nunca repete (comparação normalizada sem acento/pontuação).
+
+### `ofx_contas` / `ofx_importacoes` / `ofx_lancamentos` / `ofx_regras` / `ofx_resumos_mensais` / `ofx_analises_ia` — v127: Extrato Bancário (OFX)
+
+`migrate-v127.sql`, Postgres do servidor (não Supabase). Detalhes e regras em `extrato-ofx.md`.
+- `ofx_contas` (id, banco_id, banco_nome, agencia, conta, tipo_conta, apelido) — UNIQUE (banco_id, agencia, conta), com `''` no lugar de NULL.
+- `ofx_importacoes` (conta_id, arquivo_nome, dt_inicio, dt_fim, saldo_final, saldo_final_em, lidos, novos, importado_por, importado_em) — 1 por conta de cada arquivo.
+- `ofx_lancamentos` (conta_id, chave, fitid, data, valor com sinal, tipo, descricao, contraparte, contraparte_chave, categoria, categoria_origem auto|aprendido|manual, importacao_id) — UNIQUE (conta_id, chave); índices em data, (conta_id, data), contraparte_chave.
+- `ofx_regras` (contraparte_chave PK, categoria, apelido, atualizado_por, atualizado_em) — o que o usuário ensinou.
+- `ofx_resumos_mensais` (mes, conta_id [0 = todas] PK; entradas, saidas, resultado, saldo_inicial, saldo_final, menor_saldo, tarifas, lancamentos, sem_categoria, categorias JSONB, atualizado_em) — visão mês a mês salva.
+- `ofx_analises_ia` (mes, conta_id PK; analise JSONB {pontos, recomendacoes}, modelo, gerado_em).

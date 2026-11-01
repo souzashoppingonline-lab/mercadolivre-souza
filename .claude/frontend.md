@@ -206,3 +206,5 @@ Objeto `WS` singleton, conecta automaticamente ao carregar o script (`WS.connect
 ## `js/api.js` — por que existe e por que não usar
 
 Cliente HTTP cru que fala direto com `api.mercadolibre.com` usando um token salvo em `localStorage`. É resquício de uma versão anterior (não-EDA) do projeto. Mantido só como referência de payloads da API do ML. Importá-lo em uma página nova viola a regra arquitetural #1 de `architecture.md`.
+
+- **`pages/financeiro-extrato-ofx.html`** (v144, prévia aprovada) — Financeiro → Extrato Bancário (OFX): importar (arrastar), resumo, 📅 mês a mês, 🧠 IA, categorias, saldo dia a dia, alertas, destinatários/recorrentes, lançamentos com categoria editável. Página e regras em `extrato-ofx.md`; item em `js/layout-financeiro.js` (`FIN_NAV_ITEMS`); métodos `DB.ofx*` em `js/db.js`.

@@ -584,3 +584,9 @@ Anúncio parado (`fase = 'recuperacao'`, ver `rankeamento.md`). Os números abai
 - **Recorde do mês** = maior faturamento diário do mês corrente **antes de hoje** (fuso SP), mesma regra do placar (`orders`, sem cancelados, ML + Shopee, sem Amazon). Hoje passa esse valor → "NOVO RECORDE DO MÊS". No dia 1 não há com o que comparar (nada é mostrado).
 - **Saúde**: worker ok = heartbeat < 120s (`HB_STALE_MS` de `health.js`); token vencido = loja ML com `token_expires_at` nulo ou vencido há > 5 min (o `tokenRefreshLoop` renova antes de vencer — vencido indica refresh falho/reconexão); última venda: só alerta das 8h às 22h (🟡 > 2h, 🔴 > 4h).
 
+
+## Extrato Bancário (OFX)
+- Saldo baixo: alerta quando o saldo no fim do dia fica < **R$ 5.000** (`SALDO_BAIXO`, `ofxAnalise.js`).
+- Fora do padrão: saída > **3×** a mediana dos 3 meses anteriores da mesma contraparte (≥ 3 ocorrências).
+- "Entre contas suas" e "Aplicação/resgate" não contam como entrada/saída. PIX/TED pra banco ou carteira digital vira "entre contas" automático e pede confirmação.
+- Recorrente: mesma contraparte de saída em ≥ 3 dos últimos 4 meses. Detalhes em `extrato-ofx.md`.

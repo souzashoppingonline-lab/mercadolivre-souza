@@ -96,6 +96,8 @@ app.use('/api/publico/video', devolucaoVideos.publicRouter);
 const telegramTela = require('./routes/telegramTela');
 app.use('/api/telegram-tela', telegramTela.router);
 app.use('/api/publico/telegram-tela', telegramTela.publicRouter);
+// Extrato Bancário (OFX) — antes de /api/financeiro (mesmo gate do módulo). Ver .claude/extrato-ofx.md.
+app.use('/api/financeiro/extrato-ofx', require('./routes/extratoOfx'));
 app.use('/api/financeiro', require('./routes/financeiro'));
 // IA Estrategista (v122) — antes de /api/bi pra não cair no router geral do BI; mesmo gate (admin).
 app.use('/api/bi/ia-estrategista', require('./routes/iaEstrategista'));

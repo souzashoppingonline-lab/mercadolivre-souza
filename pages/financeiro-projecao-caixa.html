@@ -407,11 +407,14 @@ function renderAnual(){
     const llPct = (fat && llReais != null) ? (llAproximado ? netPctFallback : (llReais / fat * 100)) : null;
     const cresc = prevFat? (fat-prevFat)/prevFat*100 : null; prevFat=fat||prevFat;
     const futuro=(y===now.getFullYear()&&m>curM);
+    // Caixa Dia 1 do PRÓXIMO mês fica liberado (pedido do usuário): o saldo do
+    // 1º dia é conhecido no fim do mês atual. Entrada/Saída seguem só até o mês atual.
+    const bloqDia1 = futuro && m !== curM + 1;
     const st= cl.status==='closed'?['Fechado','#3fb950']:(m===curM?['Em andamento','#f59e0b']:['Aberto','#94a3b8']);
     fatArr.push(fat); fluxArr.push(dia1); mcArr.push(mcPct||0);
-    html+=`<tr class="${m===curM?'hoje':''}" style="${futuro?'opacity:.5':''}">
+    html+=`<tr class="${m===curM?'hoje':''}" style="${bloqDia1?'opacity:.5':''}">
       <td>${MESHORT[m-1]}</td>
-      <td><input class="pj-in" type="text" inputmode="decimal" placeholder="0,00" value="${fmtIn(dia1)}" ${futuro?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'value',this.value)"></td>
+      <td><input class="pj-in" type="text" inputmode="decimal" placeholder="0,00" value="${fmtIn(dia1)}" ${bloqDia1?'disabled':''} onchange="marcarPendenteAnual(${m},${y},'value',this.value)"></td>
       <td><input class="pj-in" id="pjIn-${m}-bank_in" type="text" inputmode="decimal" placeholder="0,00" value="${fmtIn(bin)}" ${futuro?'disabled':''} oninput="recalcSaldoLinha(${m})" onchange="marcarPendenteAnual(${m},${y},'bank_in',this.value)"></td>
       <td><input class="pj-in" id="pjIn-${m}-bank_out" type="text" inputmode="decimal" placeholder="0,00" value="${fmtIn(bout)}" ${futuro?'disabled':''} oninput="recalcSaldoLinha(${m})" onchange="marcarPendenteAnual(${m},${y},'bank_out',this.value)"></td>
       <td id="pjSaldo-${m}" style="color:${saldoB>=0?'#3fb950':'#f87171'}">${BRL(saldoB)}</td>

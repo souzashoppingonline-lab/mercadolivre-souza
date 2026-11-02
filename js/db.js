@@ -557,6 +557,10 @@ const DB = {
   // ── Conciliação Bancária ──
   async getAgendaRecebimentos(params={}) { return this._get('/conciliacao/agenda-recebimentos', params); },
   async getProximosRecebimentosMp(dias=7) { return this._get('/conciliacao/proximos-dias', { dias }); },
+  async getMargemVendasMp(params={}) { return this._get('/conciliacao/margem-vendas', params); },
+  async getMargemRankingMp(dias=30, store_id='') { return this._get('/conciliacao/margem-ranking', { dias, store_id }); },
+  async regravarMargemItem(itemId) { return this._post(`/conciliacao/margem-memoria/item/${encodeURIComponent(itemId)}`, {}); },
+  async analisarMargemIa(dias=30, store_id='') { return this._post('/conciliacao/margem-ranking/ia', { dias, store_id }); },
   async getConciliacaoPagamentos(params={}) { return this._get('/conciliacao/pagamentos', params); },
   async getConciliacaoPagamentoDetalhe(paymentId) { return this._get(`/conciliacao/pagamentos/${paymentId}`); },
   async reprocessarPagamento(paymentId) { return this._post(`/conciliacao/pagamentos/${paymentId}/reprocessar`, {}); },

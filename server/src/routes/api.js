@@ -3512,6 +3512,70 @@ router.get('/conciliacao/proximos-dias', async (req, res) => {
   }
 });
 
+// ── Margem de cada venda × recebido (v159) — aba "Recebíveis Mercado Pago API" ──
+// Lógica em margemVendas.js (margem = fórmula única de vendaMargem.js). Ver modules.md.
+const margemVendas = require('../margemVendas');
+const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Modal do valor clicado: cada venda (por pedido) com recebido + margem + alertas.
+router.get('/conciliacao/margem-vendas', async (req, res) => {
+  try {
+    const { store_id = '', de = '', ate = '' } = req.query;
+    if (!DATA_RE.test(de) || !DATA_RE.test(ate)) return res.status(400).json({ error: 'de/ate obrigatórios (AAAA-MM-DD)' });
+    const vendas = await margemVendas.vendasAReceber({ storeId: store_id, de, ate });
+    res.json({ vendas });
+  } catch (e) {
+    console.error('[conciliacao/margem-vendas] erro:', e.message);
+    res.status(500).json({ error: e.message, vendas: [] });
+  }
+});
+
+// "Onde ganho e onde perco" — agrega a memória (margem_vendas_memoria) por anúncio.
+router.get('/conciliacao/margem-ranking', async (req, res) => {
+  try {
+    res.json(await margemVendas.ranking({ dias: req.query.dias, storeId: req.query.store_id }));
+  } catch (e) {
+    console.error('[conciliacao/margem-ranking] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Depois de cadastrar o custo de um anúncio no modal: regrava na hora as vendas dele.
+router.post('/conciliacao/margem-memoria/item/:itemId', async (req, res) => {
+  try {
+    res.json({ ok: true, ...(await margemVendas.gravarMemoria({ itemId: String(req.params.itemId) })) });
+  } catch (e) {
+    console.error('[conciliacao/margem-memoria/item] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// IA sob demanda: só INTERPRETA o ranking já calculado (nunca recalcula margem).
+// Cache 30 min por (dias, loja) — mesmo padrão de /bi/margem/narrativa.
+router.post('/conciliacao/margem-ranking/ia', async (req, res) => {
+  try {
+    const llm = require('../ai/llm');
+    if (!llm.isConfigured()) return res.status(400).json({ error: 'IA não configurada — defina ANTHROPIC_API_KEY no .env do servidor.' });
+    const dias = Math.min(Math.max(Number(req.body.dias) || 30, 1), 365), storeId = String(req.body.store_id || '');
+    const out = await cached(`margem-ranking-ia:${dias}:${storeId}`, 1800, async () => {
+      const r = await margemVendas.ranking({ dias, storeId, top: 10 });
+      if (!r.totais.vendas) throw new Error('Sem vendas na memória neste período — aguarde a 1ª gravação (05:35 ou 2 min após reiniciar o worker).');
+      const enxuto = l => l.map(i => ({ anuncio: i.title, item_id: i.item_id, loja: i.nickname, vendas: i.vendas, faturamento: i.faturamento, recebido: i.recebido, custo: i.custo, margem: i.margem, mc_pct: i.mc_pct, vendas_prejuizo: i.vendas_prejuizo }));
+      const dados = { periodo_dias: r.dias, totais: r.totais, por_empresa: r.por_empresa, ganhos: enxuto(r.ganhos), perdas: enxuto(r.perdas), margem_baixa: enxuto(r.margem_baixa), sem_custo: r.sem_custo.map(i => ({ anuncio: i.title, vendas: i.vendas, faturamento: i.faturamento })) };
+      const resp = await llm.completeJson({
+        feature: 'margem_recebiveis', maxTokens: 1800,
+        system: 'Você é o analista financeiro de um vendedor do Mercado Livre. Fala direto com o dono, em português do Brasil, frases curtas e práticas. Use SOMENTE os números do JSON — nunca invente nem recalcule. "recebido" = o que o Mercado Pago pagou (já sem tarifa/frete do ML); "margem" = venda − custo − imposto − tarifa − frete (margem de contribuição). Anúncios em "sem_custo" estão sem custo cadastrado: a margem deles não é confiável — peça para cadastrar. Valores no formato R$ 12.345.',
+        user: `Resultado por anúncio (JSON):\n${JSON.stringify(dados)}\n\nResponda SÓ com JSON: {"ganhando": ["até 4 frases: onde estou ganhando dinheiro e por quê"], "perdendo": ["até 4 frases: onde estou perdendo e por quê"], "acoes": ["até 5 ações concretas, a mais importante primeiro (ex.: subir preço, rever frete, pausar, cadastrar custo)"]}`,
+      });
+      return { ganhando: (resp.ganhando || []).slice(0, 4).map(String), perdendo: (resp.perdendo || []).slice(0, 4).map(String), acoes: (resp.acoes || []).slice(0, 5).map(String), gerado_em: new Date().toISOString() };
+    });
+    res.json(out);
+  } catch (e) {
+    console.error('[conciliacao/margem-ranking/ia] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Grid principal — listagem paginada de pagamentos individuais. `orders`/`stores`
 // direto (não `vw_ml_*`) porque `ml_payments` só é populada pelo pipeline ML
 // hoje (handlePayment), então o JOIN já é implicitamente ML-only — mas os

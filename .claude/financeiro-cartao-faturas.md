@@ -78,7 +78,7 @@ Detalhe parcela a parcela → aba "Relatório de Cartão".
 
 ## Efeito nos totais/KPIs
 
-Como a compra-mãe (`value = total`) e as `parcelas_cartao` coexistem, **somar os dois dobraria o valor**. Por isso, KPIs / contador / total da tabela **excluem `tipo='cartao'`** de `boletos_mensais` e somam as **faturas virtuais** (parcelas do mês). Regra: o valor de cartão que entra no mês é sempre o das **parcelas daquele `fatura_mes`**, nunca o `value` da compra-mãe.
+Como a compra-mãe (`value = total`) e as `parcelas_cartao` coexistem, **somar os dois dobraria o valor**. Por isso, KPIs / contador / total da tabela **excluem `tipo='cartao'`** de `boletos_mensais` e somam as **faturas virtuais** (parcelas do mês). Regra: o valor de cartão que entra no mês é sempre o das **parcelas daquele `fatura_mes`**, nunca o `value` da compra-mãe. Vale também para os **cards da seção Cartões** ("Fatura do mês", `renderCartoes`): somam `parcelas_cartao` do `fatura_mes` (+ "✓ paga" / "a pagar R$ X" se parte foi paga). Bug corrigido em nov/2026: os cards somavam a compra-mãe pelo `mes_referencia` → cartão com parcelas no mês aparecia R$ 0,00 e compra parcelada aparecia com o total (ex.: 7× de R$ 1.380 mostrava R$ 9.660).
 
 ## Pendências conhecidas (v1)
 

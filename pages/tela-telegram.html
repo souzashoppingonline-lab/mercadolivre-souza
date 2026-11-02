@@ -98,6 +98,21 @@
     .cacador .fala { position:absolute; right:30%; bottom:104%; background:#fff; color:#111827; border-radius:14px; padding:8px 14px; font-weight:800; font-size:22px; white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.45); opacity:0; transition:opacity .25s; }
     .cacador .fala::after { content:''; position:absolute; right:30px; top:100%; border:10px solid transparent; border-top-color:#fff; }
     .cacador.falando .fala { opacity:1; }
+    /* Super-herói (v155): chega voando, segura o tiro e leva o pato */
+    .heroi { position:absolute; left:0; bottom:0; width:150px; transform:translate(-300px,-800px); }
+    body.tv .heroi { width:180px; }
+    .heroi svg { width:100%; display:block; overflow:visible; transition:transform .25s; }
+    .heroi.voa svg { transform:rotate(18deg); }
+    .heroi.volta svg { transform:scaleX(-1) rotate(22deg); }
+    .heroi .capa { transform-box:fill-box; transform-origin:100% 0; animation:capa .25s ease-in-out infinite alternate; }
+    .heroi .plim { position:absolute; left:84%; top:30%; font-size:46px; opacity:0; }
+    .heroi.bloqueia .plim { animation:clarao .5s ease-out forwards; }
+    .heroi .fala { position:absolute; left:40%; bottom:104%; background:#fff; color:#111827; border-radius:14px; padding:8px 14px; font-weight:800; font-size:22px; white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.45); opacity:0; transition:opacity .2s; }
+    .heroi .fala::after { content:''; position:absolute; left:24px; top:100%; border:10px solid transparent; border-top-color:#fff; }
+    .heroi.falando .fala { opacity:1; }
+    .pato.voando .pato-svg { transform:scaleX(-1) rotate(-12deg); }
+    .pato.voando .p1, .pato.voando .p2 { animation-duration:.09s; }
+    @keyframes capa { from { transform:skewY(-6deg); } to { transform:skewY(8deg); } }
     @keyframes patoBamboleia { from { transform:rotate(-5deg) translateY(0); } to { transform:rotate(5deg) translateY(-4px); } }
     @keyframes patoPerna { from { transform:rotate(-22deg); } to { transform:rotate(22deg); } }
     @keyframes patoBico { 50% { transform:rotate(-12deg); } }
@@ -442,8 +457,8 @@ function tocarAlerta(lista) {
   else setTimeout(() => tipos.forEach(a => falar(a.voz)), 900);
 }
 
-// ── Pato mensageiro (v153) + caçador (v154, pedidos do usuário): o pato entra com a placa,
-//    o caçador atira, erra, o pato dá um pulo, vira e foge correndo ──
+// ── Pato mensageiro (v153) + caçador (v154) + super-herói (v155), pedidos do usuário: o pato entra
+//    com a placa, o caçador atira, o herói segura o tiro e sai voando com o pato ──
 // Pato próprio (SVG desenhado aqui — não é personagem de ninguém). Botão 🦆 liga/desliga.
 let patoLigado = true;
 try { patoLigado = localStorage.getItem('tela_tg_pato') !== '0'; } catch (_) {}
@@ -477,28 +492,82 @@ const CACADOR_SVG = `<svg viewBox="0 0 170 200" aria-hidden="true">
   <path d="M88 94 h30 q14 2 16 20 h-14 q-4 -10 -32 -10z" fill="#92400e" stroke="#78350f" stroke-width="2"/>
   <path d="M72 100 q-8 0 -14 0" stroke="#f97316" stroke-width="12" stroke-linecap="round"/>
   <circle cx="56" cy="101" r="7" fill="#f1c27d"/><circle cx="104" cy="108" r="7" fill="#f1c27d"/>
-</svg><div class="clarao">💥</div><div class="pa">PÁ!</div><div class="fala">Ah, escapou! 😤</div>`;
+</svg><div class="clarao">💥</div><div class="pa">PÁ!</div><div class="fala">Ué?! Levaram o pato! 😳</div>`;
+// Super-herói próprio (SVG desenhado aqui — não é personagem de ninguém): roupa roxa, capa amarela,
+// máscara verde e um ✓ no peito. Virado pra direita, punho estendido em (128,84).
+const HEROI_SVG = `<svg viewBox="0 0 140 200" aria-hidden="true">
+  <path class="capa" d="M50 70 q-38 50 -40 118 q28 -10 52 2 q-8 -60 6 -116z" fill="#facc15" stroke="#ca8a04" stroke-width="3"/>
+  <rect x="55" y="135" width="13" height="46" rx="5" fill="#7c3aed"/><rect x="73" y="135" width="13" height="46" rx="5" fill="#6d28d9"/>
+  <path d="M52 176 h18 v12 h-22 q0 -8 4 -12z M71 176 h18 q4 4 4 12 h-22z" fill="#16a34a" stroke="#14532d" stroke-width="2"/>
+  <rect x="48" y="70" width="44" height="72" rx="15" fill="#7c3aed" stroke="#5b21b6" stroke-width="3"/>
+  <rect x="48" y="124" width="44" height="8" fill="#facc15"/>
+  <circle cx="70" cy="96" r="14" fill="#facc15" stroke="#ca8a04" stroke-width="2"/>
+  <path d="M62 96 l6 7 l11 -13" stroke="#5b21b6" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M50 82 q-14 18 -2 34" stroke="#7c3aed" stroke-width="11" fill="none" stroke-linecap="round"/>
+  <rect x="86" y="78" width="38" height="12" rx="6" fill="#7c3aed"/>
+  <circle cx="128" cy="84" r="9" fill="#16a34a" stroke="#14532d" stroke-width="2"/>
+  <circle cx="70" cy="48" r="20" fill="#f1c27d" stroke="#c99a5b" stroke-width="2.5"/>
+  <path d="M50 44 q2 -22 22 -22 q18 0 18 18 q-8 -8 -20 -6 q-10 1 -20 10z" fill="#1f2937"/>
+  <rect x="54" y="39" width="36" height="10" rx="5" fill="#16a34a"/>
+  <circle cx="66" cy="44" r="3.3" fill="#fff"/><circle cx="80" cy="44" r="3.3" fill="#fff"/>
+  <circle cx="67.3" cy="44" r="1.6" fill="#111"/><circle cx="81.3" cy="44" r="1.6" fill="#111"/>
+  <path d="M64 56 q7 6 14 0" stroke="#7c2d12" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+</svg><div class="plim">✨</div><div class="fala">Deixa comigo! 💪</div>`;
 const PENAS = [[-70,-90,-160],[50,-110,140],[-30,-140,220],[80,-60,-120]];
 function passarPato(tipos) {
   const velha = document.getElementById('pato'); if (velha) velha.remove();
   const cena = document.createElement('div'); cena.id = 'pato'; cena.className = 'pato-cena';
-  cena.innerHTML = `<div class="cacador">${CACADOR_SVG}</div>
+  cena.innerHTML = `<div class="cacador">${CACADOR_SVG}</div><div class="heroi">${HEROI_SVG}</div>
     <div class="pato"><div class="pulo"><div class="placa">${tipos.map(a => `<div>${esc(a.placa)}</div>`).join('')}</div>${PATO_SVG}
-      ${PENAS.map(([x, y, r]) => `<i class="pena" style="--dx:${x}px;--dy:${y}px;--r:${r}deg"></i>`).join('')}</div><div class="fumaca"></div></div>`;
+      ${PENAS.map(([x, y, r]) => `<i class="pena" style="--dx:${x}px;--dy:${y}px;--r:${r}deg"></i>`).join('')}</div></div>`;
   document.body.appendChild(cena);
-  const pato = cena.querySelector('.pato'), cac = cena.querySelector('.cacador');
-  const meio = Math.round(innerWidth * 0.38);
+  const pato = cena.querySelector('.pato'), cac = cena.querySelector('.cacador'), heroi = cena.querySelector('.heroi');
+  const meio = Math.round(innerWidth * 0.33), xh = meio + 290;          // herói para entre o pato e o caçador
+  const dx = -(meio + 700), dy = -620;                                  // voo de saída: pra cima e pra esquerda
   const t = (ms, f) => setTimeout(() => { if (cena.isConnected) f(); }, ms);
-  pato.animate([{ transform: 'translateX(-300px)' }, { transform: `translateX(${meio}px)` }], { duration: 3200, fill: 'forwards' });
+  const som = f => { if (somLigado) f(); };
+  pato.animate([{ transform: 'translateX(-300px)' }, { transform: `translateX(${meio}px)` }], { duration: 3000, fill: 'forwards' });
   cac.animate([{ transform: 'translateX(320px)' }, { transform: 'translateX(0)' }], { duration: 700, delay: 900, fill: 'forwards', easing: 'ease-out' });
-  t(3400, () => { cac.classList.add('atira'); pato.classList.add('susto'); if (somLigado) { estouro(); setTimeout(quaQua, 180); } });   // PÁ! — errou
-  t(3950, () => {                                                                                                                       // vira e foge
-    pato.classList.add('corre');
-    pato.animate([{ transform: `translateX(${meio}px)` }, { transform: 'translateX(-340px)' }], { duration: 1500, fill: 'forwards', easing: 'ease-in' });
+  t(2700, () => {                                                                                     // herói chega voando
+    heroi.classList.add('voa'); som(zum);
+    heroi.animate([{ transform: 'translate(-300px,-800px)' }, { transform: `translate(${xh}px,-20px)` }, { transform: `translate(${xh}px,0)` }],
+      { duration: 700, fill: 'forwards', easing: 'ease-out' });
   });
-  t(5100, () => cac.classList.add('falando'));
-  t(6800, () => { cac.classList.remove('falando'); cac.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(320px)' }], { duration: 700, fill: 'forwards', easing: 'ease-in' }); });
-  t(7600, () => cena.remove());
+  t(3400, () => { heroi.classList.remove('voa'); heroi.classList.add('falando'); });
+  t(3900, () => {                                                                                     // PÁ! — o herói segura
+    cac.classList.add('atira'); som(estouro);
+    setTimeout(() => { heroi.classList.add('bloqueia'); pato.classList.add('susto'); som(plim); som(() => setTimeout(quaQua, 200)); }, 120);
+  });
+  t(4700, () => {                                                                                     // pega o pato…
+    heroi.classList.remove('falando');
+    heroi.animate([{ transform: `translate(${xh}px,0)` }, { transform: `translate(${meio + 40}px,-185px)` }], { duration: 300, fill: 'forwards', easing: 'ease-in-out' });
+  });
+  t(5000, () => {                                                                                     // …e sai voando com ele
+    heroi.classList.add('volta'); pato.classList.add('voando'); som(zum);
+    const voo = { duration: 1500, fill: 'forwards', easing: 'ease-in' };
+    heroi.animate([{ transform: `translate(${meio + 40}px,-185px)` }, { transform: `translate(${meio + 40 + dx}px,${dy - 185}px)` }], voo);
+    pato.animate([{ transform: `translate(${meio}px,-20px)` }, { transform: `translate(${meio + dx}px,${dy - 20}px)` }], voo);
+  });
+  t(5700, () => cac.classList.add('falando'));
+  t(7500, () => { cac.classList.remove('falando'); cac.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(320px)' }], { duration: 700, fill: 'forwards', easing: 'ease-in' }); });
+  t(8300, () => cena.remove());
+}
+// "Plim": o tiro batendo no punho do herói.
+function plim() {
+  const c = ctxAudio(); if (!c || c.state !== 'running') return;
+  const o = c.createOscillator(), g = c.createGain(), ini = c.currentTime;
+  o.type = 'triangle'; o.frequency.setValueAtTime(1700, ini); o.frequency.exponentialRampToValueAtTime(2600, ini + 0.08);
+  g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.45, ini + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.4);
+  o.connect(g).connect(c.destination); o.start(ini); o.stop(ini + 0.42);
+}
+// "Zum": ruído com filtro subindo (voo).
+function zum() {
+  const c = ctxAudio(); if (!c || c.state !== 'running') return;
+  const n = Math.floor(c.sampleRate * 0.6), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / n);
+  const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(), ini = c.currentTime;
+  src.buffer = buf; f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(400, ini); f.frequency.exponentialRampToValueAtTime(2500, ini + 0.6); g.gain.value = 0.5;
+  src.connect(f).connect(g).connect(c.destination); src.start();
 }
 // Tiro de desenho: rajada de ruído curta, abafada.
 function estouro() {

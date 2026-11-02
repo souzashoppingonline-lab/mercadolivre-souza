@@ -3549,7 +3549,7 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
   try {
     const {
       store_id = '', released = '', date_from = '', date_to = '', q = '', entrega = '', logistica = '',
-      release_from = '', release_to = '',
+      release_from = '', release_to = '', status = '',
       sort = 'data', dir = 'desc', page = '1', limit = '50',
     } = req.query;
 
@@ -3564,7 +3564,9 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
     // release_from/release_to filtram por money_release_date no fuso São Paulo
     // (mesmo cast da Agenda de Recebimentos) — usado pelo drill-down dos cards
     // "Recebo Hoje/Amanhã/..." pra listar as vendas que caem naquele dia.
-    const params = [store_id, released, date_from || null, date_to || null, q, entregaStatuses, logisticaPatterns, release_from || null, release_to || null];
+    // status (v157): 'approved' no drill-down da aba "Recebíveis Mercado Pago API", pra soma do
+    // modal bater com /conciliacao/proximos-dias (que só conta aprovados).
+    const params = [store_id, released, date_from || null, date_to || null, q, entregaStatuses, logisticaPatterns, release_from || null, release_to || null, String(status)];
     const where = `
       WHERE ($1 = '' OR p.store_id = $1::bigint)
         AND ($2 = '' OR p.released = $2)
@@ -3574,7 +3576,8 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
         AND ($6::text[] IS NULL OR o.shipping_status = ANY($6::text[]))
         AND ($7::text[] IS NULL OR o.shipping_type ILIKE ANY($7::text[]))
         AND ($8::date IS NULL OR (p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date >= $8::date)
-        AND ($9::date IS NULL OR (p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date <= $9::date)`;
+        AND ($9::date IS NULL OR (p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date <= $9::date)
+        AND ($10 = '' OR p.status = $10)`;
 
     const { rows } = await pool.query(
       `SELECT
@@ -3593,7 +3596,7 @@ router.get('/conciliacao/pagamentos', async (req, res) => {
        LEFT JOIN stores s ON s.id = p.store_id
        ${where}
        ORDER BY ${sortCol} ${sortDir}
-       LIMIT $10 OFFSET $11`,
+       LIMIT $11 OFFSET $12`,
       [...params, limitNum, offset]
     );
 

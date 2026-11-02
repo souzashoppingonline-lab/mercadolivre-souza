@@ -57,6 +57,9 @@
     .mp-card .s { font-size:11.5px; color:var(--text-muted); margin-top:2px; }
     .mp-card.tot { background:linear-gradient(135deg,rgba(63,185,80,.14),var(--bg-card)); }
     .mp-card.tot .v { font-size:28px; color:#3fb950; }
+    .mp-card.div { --c:#f87171; background:linear-gradient(135deg,rgba(248,113,113,.12),var(--bg-card)); }
+    .mp-card.div .v { font-size:28px; color:#f87171; }
+    .mp-card .sobra { margin-top:6px; font-size:12.5px; font-weight:800; }
     .mp-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow-x:auto; }
     .mp-tab { width:100%; border-collapse:collapse; font-size:13px; }
     .mp-tab th, .mp-tab td { padding:10px 14px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
@@ -151,6 +154,7 @@
 </div>
 
 <script src="../js/db.js"></script>
+<script src="../js/dividasDia.js"></script>
 <script src="../js/layout-financeiro.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
@@ -186,7 +190,7 @@ const hojeISO=()=>new Date().toISOString().slice(0,10);
 let RECS=[], tab='todos', editId=null;
 
 // ── Abas da página (v156) ──────────────────────────────────────────────────
-let aba='manual', MP=null;
+let aba='manual', MP=null, DIV=null;
 function setAba(a){
   aba=a; try{ localStorage.setItem('rc_aba',a); }catch(_){}
   document.getElementById('abaManual').classList.toggle('on',a==='manual');
@@ -205,7 +209,12 @@ const fmtDiaMp=(iso,hoje)=>{
 };
 async function carregarMp(){
   document.getElementById('mpCards').innerHTML='<div class="rc-empty">Carregando…</div>';
-  const r=await DB.getProximosRecebimentosMp(7);
+  const [r,rB,rP,rC]=await Promise.all([ DB.getProximosRecebimentosMp(7),
+    DB.getFinanceiroDados('boletos_mensais',5000,'date.asc'), DB.getFinanceiroDados('parcelas_cartao',10000,'data_vencimento.asc'), DB.getFinanceiroDados('cartoes',500) ]);
+  // Dívidas (v158): mesmo cálculo da página Boletos / Dívidas do Dia (js/dividasDia.js) —
+  // boletos pendentes + faturas de cartão (parcelas pendentes), nunca a compra-mãe.
+  const erroDiv=[rB,rP,rC].find(x=>!x||x.error);
+  DIV=erroDiv?{erro:(erroDiv&&erroDiv.error)||'sem resposta'}:{ boletos:rB.rows||[], parcelas:rP.rows||[], cartoes:rC.rows||[] };
   if(!r||r.error){ MP=null; document.getElementById('mpCards').innerHTML=`<div class="rc-empty">⚠️ Não consegui ler a API: ${esc((r&&r.error)||'sem resposta')}</div>`; document.getElementById('mpTab').innerHTML=''; return; }
   MP=r; renderMp();
 }
@@ -223,6 +232,7 @@ function renderMp(){
   // Cards: total + 1 por empresa
   document.getElementById('mpCards').innerHTML=
     `<div class="mp-card tot" ${clk(dIni,dFim,'','Todas as empresas · próximos 7 dias')}><div class="l">💰 Total — próximos 7 dias</div><div class="v">${BRL(tot)}</div><div class="s">${qtd} venda(s) · ${lojas.length} empresa(s)</div></div>`+
+    cardDividas(hoje,dFim,tot)+
     (lojas.length?lojas.map((l,i)=>`<div class="mp-card" style="--c:${cor(i)}" ${clk(dIni,dFim,l.store_id,l.nickname+' · próximos 7 dias')}><div class="l">${esc(l.nickname)}</div><div class="v">${BRL(totLoja[l.store_id])}</div><div class="s">${qtdLoja[l.store_id]} venda(s) · ${tot?Math.round(totLoja[l.store_id]/tot*100):0}% do total</div></div>`).join('')
       :'<div class="mp-card"><div class="l">Empresas</div><div class="v">—</div><div class="s">Nada a liberar nos próximos 7 dias.</div></div>');
   // Tabela: 7 linhas (todos os dias, mesmo vazios) × empresas + total
@@ -242,6 +252,42 @@ function renderMp(){
   document.getElementById('mpFonte').innerHTML=`Fonte: API do Mercado Livre / Mercado Pago (data de liberação e valor líquido de cada venda, atualizados a cada venda e reconferidos todo dia às 05:15). Só <b>vendas do Mercado Livre aprovadas</b> — Pix, link de pagamento e Shopee não entram; devoluções/cancelamentos saem sozinhos.${desde?` Dados registrados desde <b>${desde}</b>.`:''}`;
 }
 function showStatus(t,err){ const el=document.getElementById('rcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
+
+// ── Card "Dívidas — próximos 7 dias" (v158) ─────────────────────────────────
+// Para comparar com o que cai: o que falta PAGAR de hoje até hoje+6 (página Boletos).
+// Atrasadas ficam na linha de baixo (não somam no card). Clique → modal com cada conta.
+// Mesmos rótulos de tipo da página Boletos (FORM_TIPOS).
+const TIPO_DIV={boleto:'Boleto',cartao:'Cartão',manual:'Imposto',pessoal:'Pessoal',fatura_ml:'Fatura ML',flex:'Flex',folha_pagamento:'Folha de Pagamento',custo_fixo:'Custo Fixo',custo_variavel:'Custo Variável'};
+function dividasPeriodo(hoje,ate){
+  if(!DIV||DIV.erro) return null;
+  const todas=DividasDia.listarPeriodo({ ...DIV, hoje, de:'0000-01-01', ate });
+  const prox=todas.filter(i=>!i.pago && !i.atrasada && i.date>=hoje), atr=todas.filter(i=>!i.pago && (i.atrasada||i.date<hoje));
+  const soma=l=>l.reduce((t,i)=>t+i.valor,0);
+  return { prox, atr, tot:soma(prox), totAtr:soma(atr) };
+}
+function cardDividas(hoje,ate,receber){
+  if(DIV&&DIV.erro) return `<div class="mp-card div"><div class="l">🧾 Dívidas — próximos 7 dias</div><div class="v">—</div><div class="s">⚠️ Não consegui ler os Boletos: ${esc(DIV.erro)}</div></div>`;
+  const d=dividasPeriodo(hoje,ate); if(!d) return '';
+  const sobra=receber-d.tot;
+  return `<div class="mp-card div" data-div="1" data-ate="${ate}" data-hoje="${hoje}" title="Clique para ver cada conta" style="cursor:pointer">
+    <div class="l">🧾 Dívidas — próximos 7 dias</div><div class="v">${BRL(d.tot)}</div>
+    <div class="s">${d.prox.length} conta(s) a pagar (Boletos)${d.atr.length?` · <span style="color:#f87171">+ ${BRL(d.totAtr)} atrasada(s)</span>`:''}</div>
+    <div class="sobra" style="color:${sobra>=0?'#3fb950':'#f87171'}">${sobra>=0?'✅ Sobra':'⚠️ Falta'} ${BRL(Math.abs(sobra))} <span style="font-weight:500;color:var(--text-muted)">(recebe − paga)</span></div></div>`;
+}
+document.addEventListener('click',e=>{ const el=e.target.closest('#vMp [data-div]'); if(el) abrirDividasMp(el.dataset.hoje,el.dataset.ate); });
+function abrirDividasMp(hoje,ate){
+  const d=dividasPeriodo(hoje,ate); if(!d) return;
+  fecharVendasMp();
+  const linha=i=>{ const desc=i.fatura?`${i.nome} (${i.parcelas} parcela${i.parcelas>1?'s':''})`:(i.fornecedor&&i.nome&&i.fornecedor.toLowerCase()!==i.nome.toLowerCase()?`${i.fornecedor} — ${i.nome}`:(i.nome||i.fornecedor||'(sem descrição)'));
+    return `<tr><td>${DividasDia.ddmm(i.date)}</td><td>${esc(i.empresa)}</td><td class="tt" title="${esc(desc)}">${esc(desc)}</td><td>${esc(TIPO_DIV[i.tipo]||i.tipo||'')}</td><td class="n" style="font-weight:800;color:${i.atrasada?'#f87171':'inherit'}">${BRL(i.valor)}</td></tr>`; };
+  const tabela=(l,t)=>`<table><thead><tr><th>Vence</th><th>Empresa</th><th>Descrição</th><th>Tipo</th><th class="n">Valor</th></tr></thead><tbody>${l.map(linha).join('')}</tbody><tfoot><tr><td colspan="4">Total</td><td class="n">${BRL(t)}</td></tr></tfoot></table>`;
+  const f=document.createElement('div'); f.className='mpm-fundo'; f.id='mpm';
+  f.innerHTML=`<div class="mpm" role="dialog"><div class="mpm-h"><div><h3>🧾 Dívidas — próximos 7 dias (até ${DividasDia.ddmm(ate)})</h3><div class="s"><b>${d.prox.length}</b> conta(s) a pagar · <b style="color:#f87171">${BRL(d.tot)}</b>${d.atr.length?` · + ${d.atr.length} atrasada(s) ${BRL(d.totAtr)}`:''} · fonte: página Boletos</div></div><button class="x" onclick="fecharVendasMp()" title="Fechar (Esc)">✕</button></div>
+    <div class="mpm-b">${d.prox.length?tabela(d.prox,d.tot):'<div class="rc-empty">Nenhuma conta a pagar nos próximos 7 dias. ✅</div>'}
+    ${d.atr.length?`<h4 style="color:#f87171;margin:16px 0 6px">⚠️ Atrasadas (não entram no card)</h4>${tabela(d.atr,d.totAtr)}`:''}</div></div>`;
+  f.addEventListener('click',e=>{ if(e.target===f) fecharVendasMp(); });
+  document.body.appendChild(f);
+}
 
 // ── Modal "cada venda" (v157) ─────────────────────────────────────────────
 // Mesma lista da Conciliação (GET /api/conciliacao/pagamentos) com os mesmos

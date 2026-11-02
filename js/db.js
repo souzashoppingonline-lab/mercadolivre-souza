@@ -425,6 +425,8 @@ const DB = {
   async ofxCompetencia(ids, mes)             { return this._patch('/financeiro/extrato-ofx/competencia', { ids, mes }); },
   async ofxPreviaApagar(params)              { return this._get('/financeiro/extrato-ofx/dados/previa', params); },
   async ofxApagar(params)                    { return this._delete('/financeiro/extrato-ofx/dados?' + new URLSearchParams(params)); },
+  async ofxNovaCategoria(body)               { return this._post('/financeiro/extrato-ofx/categorias', body); },
+  async ofxApagarCategoria(id)               { return this._delete(`/financeiro/extrato-ofx/categorias/${encodeURIComponent(id)}`); },
   async getFechamentoResumo(ano)                { return this._get('/financeiro/fechamento/resumo', { ano }); },
   async getFechamentoMes(ano, mes)              { return this._get(`/financeiro/fechamento/${ano}/${mes}`); },
   async iniciarFechamento(ano, mes)             { return this._post(`/financeiro/fechamento/${ano}/${mes}/iniciar`, {}); },

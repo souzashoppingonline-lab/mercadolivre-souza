@@ -8,11 +8,21 @@ const crypto = require('crypto');
 const multer = require('multer');
 const pool = require('../db/pool');
 const { lerOfx } = require('../ofx');
-const { CATEGORIAS, POR_ID, classificar, norm } = require('../ofxCategorias');
+const { POR_ID, definirCustom, listarCategorias, classificar, norm } = require('../ofxCategorias');
 const { resumoMes } = require('../ofxAnalise');
 const llm = require('../ai/llm');
 
 const router = express.Router();
+
+// Categorias criadas pelo usuário (v133) — recarregadas a cada request pra que
+// classificar/resumo/validação enxerguem as novas (tabela pequena, 1 SELECT).
+router.use(async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT id, nome, ico, sentido FROM ofx_categorias_custom ORDER BY criado_em');
+    definirCustom(rows);
+  } catch (e) { console.warn('[extrato-ofx] categorias personalizadas:', e.message); }
+  next();
+});
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 12 } });
 const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const fimDoMes = (mes) => { const [y, m] = mes.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
@@ -124,7 +134,7 @@ router.get('/contas', async (req, res) => {
       pool.query(`SELECT ${COMP} AS mes, COUNT(*)::int AS lancamentos FROM ofx_lancamentos GROUP BY 1 ORDER BY 1 DESC`),
     ]);
     // Número da conta mascarado na tela (••1234).
-    res.json({ contas: contas.map((c) => ({ ...c, conta_mask: '••' + String(c.conta).slice(-4) })), meses, categorias: CATEGORIAS });
+    res.json({ contas: contas.map((c) => ({ ...c, conta_mask: '••' + String(c.conta).slice(-4) })), meses, categorias: listarCategorias() });
   } catch (e) { console.error('[extrato-ofx] contas', e.message); res.status(500).json({ error: e.message }); }
 });
 
@@ -411,6 +421,41 @@ router.post('/analise-ia', async (req, res) => {
        RETURNING gerado_em`, [mes, contaId, JSON.stringify(analise), llm.DEFAULT_MODEL]);
     res.json({ ...analise, gerado_em: s.gerado_em });
   } catch (e) { console.error('[extrato-ofx] analise-ia', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── Categorias personalizadas (v133, botão "➕ Nova categoria") ──────────────
+const ICO_RE = /^\S{1,8}$/u;
+router.post('/categorias', async (req, res) => {
+  try {
+    const nome = String(req.body.nome || '').trim().replace(/\s+/g, ' ');
+    const sentido = String(req.body.sentido || '');
+    const ico = String(req.body.ico || '🏷️').trim();
+    if (nome.length < 2 || nome.length > 60) return res.status(400).json({ error: 'Nome precisa ter de 2 a 60 letras.' });
+    if (!['entrada', 'saida'].includes(sentido)) return res.status(400).json({ error: 'Escolha se é entrada ou saída.' });
+    if (!ICO_RE.test(ico)) return res.status(400).json({ error: 'Ícone inválido.' });
+    const repetida = listarCategorias().find((c) => norm(c.nome) === norm(nome) && (c.sentido === sentido || c.sentido === 'ambos'));
+    if (repetida) return res.status(409).json({ error: `Já existe a categoria "${repetida.nome}".`, categoria: repetida });
+    const id = 'u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    await pool.query('INSERT INTO ofx_categorias_custom (id, nome, ico, sentido, criado_por) VALUES ($1,$2,$3,$4,$5)',
+      [id, nome, ico, sentido, req.staffUser?.username || null]);
+    definirCustom([...listarCategorias().filter((c) => c.custom), { id, nome, ico, sentido }]);
+    res.json({ ok: true, categoria: POR_ID[id], categorias: listarCategorias() });
+  } catch (e) { console.error('[extrato-ofx] nova categoria', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// Só apaga categoria SUA que não está em uso (lançamento ou regra aprendida) —
+// senão os lançamentos ficariam com uma categoria que não existe mais.
+router.delete('/categorias/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    if (!POR_ID[id]?.custom) return res.status(400).json({ error: 'Só dá para apagar categorias criadas por você.' });
+    const { rows: [u] } = await pool.query(
+      `SELECT (SELECT COUNT(*) FROM ofx_lancamentos WHERE categoria = $1)::int AS lanc, (SELECT COUNT(*) FROM ofx_regras WHERE categoria = $1)::int AS regras`, [id]);
+    if (u.lanc || u.regras) return res.status(409).json({ error: `Em uso por ${u.lanc} lançamento(s)${u.regras ? ` e ${u.regras} regra(s) aprendida(s)` : ''} — troque a categoria deles antes de apagar.` });
+    await pool.query('DELETE FROM ofx_categorias_custom WHERE id = $1', [id]);
+    definirCustom(listarCategorias().filter((c) => c.custom && c.id !== id));
+    res.json({ ok: true, categorias: listarCategorias() });
+  } catch (e) { console.error('[extrato-ofx] apagar categoria', e.message); res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

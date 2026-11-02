@@ -35,6 +35,22 @@ const CATEGORIAS = [
 ];
 const POR_ID = Object.fromEntries(CATEGORIAS.map((c) => [c.id, c]));
 
+// Categorias criadas pelo usuário (botão "➕ Nova categoria", tabela
+// ofx_categorias_custom — v133). Entram no MESMO POR_ID das fixas (classificar,
+// resumo, IA, validação do PATCH usam POR_ID), então nenhum outro código muda.
+// A rota recarrega por request (tabela pequena) via definirCustom().
+let CUSTOM = [];
+function definirCustom(rows) {
+  CUSTOM.forEach((c) => { delete POR_ID[c.id]; });
+  CUSTOM = (rows || []).map((r) => ({ id: r.id, sentido: r.sentido, ico: r.ico || '🏷️', nome: r.nome, custom: true }));
+  CUSTOM.forEach((c) => { POR_ID[c.id] = c; });
+}
+// Lista completa na ordem da tela: entradas (fixas + suas), saídas (fixas + suas), ambos.
+function listarCategorias() {
+  const de = (sentido) => [...CATEGORIAS.filter((c) => c.sentido === sentido), ...CUSTOM.filter((c) => c.sentido === sentido)];
+  return [...de('entrada'), ...de('saida'), ...CATEGORIAS.filter((c) => c.sentido === 'ambos')];
+}
+
 const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 const norm = (s) => semAcento(s).toUpperCase().replace(/\s+/g, ' ').trim();
 
@@ -113,4 +129,4 @@ function classificar(descricao, valor, regras = {}) {
   return { categoria: categoriaPorPalavra(descricao, valor), origem: 'auto', contraparte: (r && r.apelido) || cp.nome, contraparte_chave: cp.chave };
 }
 
-module.exports = { CATEGORIAS, POR_ID, contraparte, categoriaPorPalavra, classificar, norm };
+module.exports = { CATEGORIAS, POR_ID, definirCustom, listarCategorias, contraparte, categoriaPorPalavra, classificar, norm };

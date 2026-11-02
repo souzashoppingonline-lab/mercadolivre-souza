@@ -77,7 +77,7 @@
     .mp-tab td[data-de]:hover { text-decoration:underline; }
     .mp-card[data-de]:hover { border-color:#3fb950; }
     .mpm-fundo { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:10000; display:flex; align-items:center; justify-content:center; padding:16px; }
-    .mpm { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:min(1100px,100%); max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+    .mpm { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:min(1440px,100%); max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.5); }
     .mpm-h { display:flex; align-items:flex-start; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border); }
     .mpm-h h3 { margin:0; font-size:16px; } .mpm-h .s { font-size:12px; color:var(--text-muted); margin-top:3px; }
     .mpm-h .x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:22px; cursor:pointer; line-height:1; }
@@ -90,6 +90,35 @@
     .mpm-b td.tt { max-width:330px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .mpm-b tfoot td { font-weight:900; background:var(--bg-card2); }
     .mpm-b a { color:#60a5fa; text-decoration:none; }
+    /* v159: margem no modal + ranking */
+    .mpm-kpis { display:flex; gap:10px; flex-wrap:wrap; padding:12px 18px 0; }
+    .mpm-kpis > div { background:var(--bg-card2); border:1px solid var(--border); border-radius:10px; padding:8px 12px; display:flex; flex-direction:column; min-width:150px; }
+    .mpm-kpis span { font-size:10.5px; text-transform:uppercase; color:var(--text-muted); font-weight:800; }
+    .mpm-kpis b { font-size:16px; margin-top:2px; }
+    .mpm-kpis .alerta { border-color:rgba(245,158,11,.5); background:rgba(245,158,11,.08); } .mpm-kpis .alerta b { color:#fbbf24; } .mpm-kpis i { font-size:11px; color:var(--text-muted); font-style:normal; }
+    .mpm-ctrl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:10px 18px 0; }
+    .mpm-ctrl .mpm-busca { margin:0; flex:1; min-width:220px; }
+    .mpm-fil { display:flex; gap:6px; flex-wrap:wrap; }
+    .mpm-fil button { background:var(--bg-card2); border:1px solid var(--border); color:var(--text-muted); border-radius:999px; padding:5px 11px; font-size:12px; font-weight:700; cursor:pointer; }
+    .mpm-fil button.on { background:#1f2937; color:#fff; border-color:#4b5563; }
+    .mpm-b tr.neg td { background:rgba(248,113,113,.06); }
+    .mpm-b th, .mpm-b td { padding:7px 6px; } .mpm-b td:first-child { white-space:nowrap; font-size:11.5px; }
+    .mpm-al { display:inline-block; border-radius:999px; padding:2px 8px; font-size:10.5px; font-weight:800; white-space:nowrap; background:rgba(148,163,184,.15); color:var(--text-muted); }
+    .mpm-al.prejuizo { background:rgba(248,113,113,.15); color:#f87171; } .mpm-al.sem_custo { background:rgba(245,158,11,.15); color:#fbbf24; } .mpm-al.recebido_baixo { background:rgba(168,85,247,.15); color:#c084fc; }
+    .mpm-custo { display:inline-flex; gap:4px; align-items:center; }
+    .mpm-custo input { width:88px; background:var(--bg-card2); color:var(--text-main); border:1px solid #f59e0b; border-radius:6px; padding:4px 6px; font-size:12px; text-align:right; }
+    .mpm-custo button { background:#f59e0b; border:none; border-radius:6px; padding:3px 7px; cursor:pointer; }
+    .rk-sec { margin-top:26px; border-top:1px solid var(--border); padding-top:18px; }
+    .rk-sec select { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:13px; }
+    .rk-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; }
+    .rk-col { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:12px 14px; min-width:0; }
+    .rk-col h4 { margin:0 0 8px; font-size:14px; }
+    .rk-item { padding:8px 0; border-top:1px solid var(--border); }
+    .rk-item .t { font-weight:700; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .rk-item .m { display:flex; justify-content:space-between; gap:8px; align-items:center; font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+    .rk-item .m b { font-size:13px; white-space:nowrap; }
+    .rk-ia { background:linear-gradient(135deg,rgba(96,165,250,.10),var(--bg-card)); border:1px solid rgba(96,165,250,.35); border-radius:12px; padding:12px 16px; margin-bottom:14px; font-size:13px; line-height:1.5; }
+    .rk-ia h4 { margin:8px 0 4px; } .rk-ia ul { margin:0; padding-left:20px; }
     .mp-fonte { font-size:11.5px; color:var(--text-muted); margin-top:10px; line-height:1.5; }
   </style>
 </head>
@@ -148,6 +177,18 @@
         <div class="mp-cards" id="mpCards"><div class="rc-empty">Carregando…</div></div>
         <div class="mp-wrap"><table class="mp-tab" id="mpTab"></table></div>
         <div class="mp-fonte" id="mpFonte"></div>
+
+        <!-- v159: Onde ganho e onde perco (memória da margem de cada venda) -->
+        <div class="rk-sec">
+          <div class="rc-top" style="margin-bottom:10px">
+            <h3 style="margin:0;font-size:17px">📈 Onde estou ganhando e onde estou perdendo</h3>
+            <div class="rc-tabs" id="rkDias"></div>
+            <select id="rkLoja" onchange="setRankLoja(this.value)"><option value="">Todas as empresas</option></select>
+            <button class="rc-btn" id="rkIaBtn" style="margin-left:auto" onclick="analisarIaRank()">🤖 Analisar com IA</button>
+          </div>
+          <div class="rk-ia" id="rkIa" style="display:none"></div>
+          <div id="rkBody"><div class="rc-empty">Carregando…</div></div>
+        </div>
       </div>
     </div>
   </main>
@@ -216,7 +257,7 @@ async function carregarMp(){
   const erroDiv=[rB,rP,rC].find(x=>!x||x.error);
   DIV=erroDiv?{erro:(erroDiv&&erroDiv.error)||'sem resposta'}:{ boletos:rB.rows||[], parcelas:rP.rows||[], cartoes:rC.rows||[] };
   if(!r||r.error){ MP=null; document.getElementById('mpCards').innerHTML=`<div class="rc-empty">⚠️ Não consegui ler a API: ${esc((r&&r.error)||'sem resposta')}</div>`; document.getElementById('mpTab').innerHTML=''; return; }
-  MP=r; renderMp();
+  MP=r; renderMp(); carregarRanking();
 }
 function renderMp(){
   const r=MP, hoje=r.hoje||hojeISO();
@@ -289,43 +330,132 @@ function abrirDividasMp(hoje,ate){
   document.body.appendChild(f);
 }
 
-// ── Modal "cada venda" (v157) ─────────────────────────────────────────────
-// Mesma lista da Conciliação (GET /api/conciliacao/pagamentos) com os mesmos
-// filtros do número clicado: released=no + status=approved + loja + dia(s) de
-// liberação → a soma do modal bate com a célula. Pagina de 200 em 200 (até 3000).
+// ── Modal "cada venda" (v157 + margem v159) ───────────────────────────────
+// GET /api/conciliacao/margem-vendas: mesmos filtros do número clicado
+// (released≠yes + aprovado + loja + dia(s) de liberação), 1 linha por PEDIDO com o
+// recebido do Mercado Pago + a margem da fórmula única (custo da página "Resumo por
+// venda" = items.cost). Soma do "Recebido" bate com a célula. Sem custo → campo pra
+// cadastrar ali mesmo (mesma rota da "Resumo por venda": PATCH /items/:id/custo).
 document.addEventListener('click',e=>{ const el=e.target.closest('#vMp [data-de]'); if(el) abrirVendasMp(el.dataset); });
-let MPM=[];
+let MPM=[], MPM_D=null, mpmFiltro='todas';
+const ALERTA_TXT={prejuizo:'🔻 Prejuízo',sem_custo:'📝 Sem custo',recebido_baixo:'💸 Recebido baixo',sem_pedido:'❔ Pedido não sincronizado'};
 async function abrirVendasMp(d){
-  fecharVendasMp();
+  fecharVendasMp(); MPM_D=d; mpmFiltro='todas';
   const f=document.createElement('div'); f.className='mpm-fundo'; f.id='mpm';
-  f.innerHTML=`<div class="mpm" role="dialog"><div class="mpm-h"><div><h3>💳 ${esc(d.tit)}</h3><div class="s" id="mpmSub">Carregando vendas…</div></div><button class="x" onclick="fecharVendasMp()" title="Fechar (Esc)">✕</button></div>
-    <input class="mpm-busca" id="mpmBusca" placeholder="Buscar pedido, produto ou comprador…" oninput="renderVendasMp()"><div class="mpm-b" id="mpmB"></div></div>`;
+  f.innerHTML=`<div class="mpm" role="dialog"><div class="mpm-h"><div><h3>💳 ${esc(d.tit)}</h3><div class="s" id="mpmSub">Carregando vendas e margens…</div></div><button class="x" onclick="fecharVendasMp()" title="Fechar (Esc)">✕</button></div>
+    <div class="mpm-kpis" id="mpmKpis"></div>
+    <div class="mpm-ctrl"><input class="mpm-busca" id="mpmBusca" placeholder="Buscar pedido, produto ou comprador…" oninput="renderVendasMp()"><div id="mpmFiltros" class="mpm-fil"></div></div>
+    <div class="mpm-b" id="mpmB"></div></div>`;
   f.addEventListener('click',e=>{ if(e.target===f) fecharVendasMp(); });
   document.body.appendChild(f);
-  MPM=[]; let pg=1, total=0;
-  try{
-    do{
-      const r=await DB.getConciliacaoPagamentos({ store_id:d.loja||'', released:'no', status:'approved', release_from:d.de, release_to:d.ate, sort:'liberacao', dir:'asc', page:pg, limit:200 });
-      if(!r||r.error) throw new Error((r&&r.error)||'sem resposta');
-      MPM=MPM.concat(r.payments||[]); total=r.total||0; pg++;
-      if(!document.getElementById('mpm')) return;
-    } while(MPM.length<total && pg<=15);
-  }catch(err){ document.getElementById('mpmSub').innerHTML=`⚠️ Falha ao ler: ${esc(err.message)}`; return; }
-  renderVendasMp();
+  await recarregarVendasMp();
+}
+async function recarregarVendasMp(){
+  const d=MPM_D, r=await DB.getMargemVendasMp({ store_id:d.loja||'', de:d.de, ate:d.ate });
+  if(!document.getElementById('mpm')) return;
+  if(!r||r.error){ document.getElementById('mpmSub').innerHTML=`⚠️ Falha ao ler: ${esc((r&&r.error)||'sem resposta')}`; return; }
+  MPM=r.vendas||[]; renderVendasMp();
 }
 function fecharVendasMp(){ const m=document.getElementById('mpm'); if(m) m.remove(); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') fecharVendasMp(); });
+function setFiltroMpm(f){ mpmFiltro=f; renderVendasMp(); }
+const corMc=v=>v==null?'var(--text-muted)':v<0?'#f87171':v<10?'#f59e0b':'#3fb950';
 function renderVendasMp(){
   const q=(document.getElementById('mpmBusca').value||'').toLowerCase().trim();
-  const lista=MPM.filter(p=>!q||[p.order_id,p.payment_id,p.title,p.buyer_nickname,p.store_nickname].some(v=>String(v||'').toLowerCase().includes(q)));
-  const soma=k=>lista.reduce((s,p)=>s+(+p[k]||0),0);
-  const varias=new Set(MPM.map(p=>p.store_id)).size>1;
+  const cont={todas:MPM.length}; MPM.forEach(v=>v.alertas.forEach(a=>cont[a]=(cont[a]||0)+1));
+  const lista=MPM.filter(v=>(mpmFiltro==='todas'||v.alertas.includes(mpmFiltro)) && (!q||[v.order_id,v.title,v.buyer_nickname,v.nickname,v.sku].some(x=>String(x||'').toLowerCase().includes(q))));
+  const soma=(l,k)=>l.reduce((s,v)=>s+(+v[k]||0),0);
+  const varias=new Set(MPM.map(v=>v.store_id)).size>1;
   const hora=t=>{ if(!t) return '—'; const d=new Date(t); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Sao_Paulo'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}); };
-  document.getElementById('mpmSub').innerHTML=`<b>${lista.length}</b> venda(s)${q?` (de ${MPM.length})`:''} · líquido <b style="color:#3fb950">${BRL(soma('net_received_amount'))}</b> · bruto ${BRL(soma('transaction_amount'))}`;
+  // KPIs do conjunto inteiro (não do filtro) — o recebido bate com o número clicado.
+  const fat=soma(MPM,'faturamento'), mg=soma(MPM,'margem'), semCusto=new Set(MPM.filter(v=>v.custo_ausente&&v.item_id).map(v=>v.item_id)).size;
+  document.getElementById('mpmSub').innerHTML=`<b>${MPM.length}</b> venda(s) · fonte do custo: página <b>Resumo por venda</b> (Inteligência de Negócio)`;
+  document.getElementById('mpmKpis').innerHTML=`
+    <div><span>Recebido (Mercado Pago)</span><b style="color:#3fb950">${BRL(soma(MPM,'recebido'))}</b></div>
+    <div><span>Venda</span><b>${BRL(fat)}</b></div>
+    <div><span>Custo dos produtos</span><b>${BRL(soma(MPM,'custo'))}</b></div>
+    <div><span>Margem de contribuição</span><b style="color:${corMc(mg)}">${BRL(mg)} · ${fat?(mg/fat*100).toFixed(1):'0'}%</b></div>
+    ${semCusto?`<div class="alerta"><span>📝 Precisa do seu custo</span><b>${semCusto} anúncio(s)</b><i>preencha abaixo — a margem deles está sem o custo</i></div>`:''}`;
+  document.getElementById('mpmFiltros').innerHTML=['todas','prejuizo','sem_custo','recebido_baixo','sem_pedido'].filter(k=>k==='todas'||cont[k])
+    .map(k=>`<button class="${mpmFiltro===k?'on':''}" onclick="setFiltroMpm('${k}')">${k==='todas'?'Todas':ALERTA_TXT[k]} <b>${cont[k]||0}</b></button>`).join('');
+  const custoCel=v=>{
+    if(!v.custo_ausente) return BRL(v.custo);
+    if(!v.item_id) return '<span style="color:var(--text-muted)">—</span>';
+    return `<span class="mpm-custo"><input type="number" step="0.01" min="0" placeholder="custo un." id="cu_${esc(v.order_id)}" onkeydown="if(event.key==='Enter')salvarCustoMp('${esc(v.item_id)}','${esc(v.order_id)}')"><button onclick="salvarCustoMp('${esc(v.item_id)}','${esc(v.order_id)}')" title="Salvar o custo deste anúncio (vale pra todas as vendas dele)">💾</button></span>`;
+  };
   document.getElementById('mpmB').innerHTML=!lista.length?'<div class="rc-empty">Nenhuma venda.</div>':
-   `<table><thead><tr><th>Libera em</th>${varias?'<th>Empresa</th>':''}<th>Pedido</th><th>Produto</th><th>Comprador</th><th class="n">Venda</th><th class="n">Taxas</th><th class="n">Líquido</th></tr></thead><tbody>${
-    lista.map(p=>`<tr><td>${hora(p.money_release_date)}</td>${varias?`<td>${esc(p.store_nickname||'')}</td>`:''}<td><a href="https://www.mercadolivre.com.br/vendas/${esc(p.order_id)}/detalhe" target="_blank" rel="noopener">${esc(p.order_id||p.payment_id)}</a></td><td class="tt" title="${esc(p.title||'')}">${esc(p.title||'—')}</td><td>${esc(p.buyer_nickname||'—')}</td><td class="n">${BRL(p.transaction_amount)}</td><td class="n" style="color:#f87171">${BRL(p.diferenca)}</td><td class="n" style="font-weight:800">${BRL(p.net_received_amount)}</td></tr>`).join('')
-   }</tbody><tfoot><tr><td colspan="${varias?5:4}">Total</td><td class="n">${BRL(soma('transaction_amount'))}</td><td class="n">${BRL(soma('diferenca'))}</td><td class="n" style="color:#3fb950">${BRL(soma('net_received_amount'))}</td></tr></tfoot></table>`;
+   `<table><thead><tr><th>Libera em</th>${varias?'<th>Empresa</th>':''}<th>Pedido</th><th>Produto</th><th class="n">Venda</th><th class="n">Recebido</th><th class="n">Custo</th><th class="n">Imposto</th><th class="n">Margem</th><th class="n">MC%</th><th>Conferência</th></tr></thead><tbody>${
+    lista.map(v=>`<tr class="${v.alertas.includes('prejuizo')?'neg':''}"><td>${hora(v.liberacao)}</td>${varias?`<td>${esc(v.nickname||'')}</td>`:''}<td><a href="https://www.mercadolivre.com.br/vendas/${esc(v.order_id)}/detalhe" target="_blank" rel="noopener">${esc(v.order_id)}</a></td>
+      <td class="tt" title="${esc((v.title||'')+(v.qtd>1?` · ${v.qtd} un.`:''))}">${esc(v.title||'—')}${v.qtd>1?` <small>×${v.qtd}</small>`:''}</td>
+      <td class="n">${v.faturamento==null?'—':BRL(v.faturamento)}</td><td class="n" style="font-weight:800">${BRL(v.recebido)}</td>
+      <td class="n">${custoCel(v)}</td><td class="n">${v.imposto==null?'—':BRL(v.imposto)}</td>
+      <td class="n" style="font-weight:800;color:${corMc(v.margem)}">${v.margem==null?'—':BRL(v.margem)}</td><td class="n" style="color:${corMc(v.mc_pct)}">${v.mc_pct==null?'—':v.mc_pct.toFixed(1)+'%'}</td>
+      <td>${v.alertas.length?v.alertas.map(a=>`<span class="mpm-al ${a}">${ALERTA_TXT[a]}</span>`).join(' '):'<span style="color:#3fb950">✓ ok</span>'}</td></tr>`).join('')
+   }</tbody><tfoot><tr><td colspan="${varias?4:3}">Total${lista.length<MPM.length?` (filtro: ${lista.length})`:''}</td><td class="n">${BRL(soma(lista,'faturamento'))}</td><td class="n" style="color:#3fb950">${BRL(soma(lista,'recebido'))}</td><td class="n">${BRL(soma(lista,'custo'))}</td><td class="n">${BRL(soma(lista,'imposto'))}</td><td class="n" style="color:${corMc(soma(lista,'margem'))}">${BRL(soma(lista,'margem'))}</td><td class="n"></td><td></td></tr></tfoot></table>`;
+}
+// Cadastro manual do custo (pedido do usuário: "o que não tiver, pergunte"): grava no
+// anúncio (mesma rota da página Resumo por venda) e regrava a memória dele na hora.
+async function salvarCustoMp(itemId, orderId){
+  const el=document.getElementById('cu_'+orderId), v=parseFloat(String(el&&el.value||'').replace(',','.'));
+  if(!(v>=0) || el.value===''){ el&&el.focus(); return; }
+  el.disabled=true;
+  const r=await DB.updateItemCusto(itemId, v);
+  if(!r||r.error){ el.disabled=false; alert('Não consegui salvar o custo: '+((r&&r.error)||'sem resposta')); return; }
+  await DB.regravarMargemItem(itemId);
+  await recarregarVendasMp(); if(RANK) carregarRanking();
+}
+
+// ── Onde ganho e onde perco (v159) — memória margem_vendas_memoria ─────────
+let RANK=null, rankDias=30, rankLoja='';
+async function carregarRanking(){
+  const el=document.getElementById('rkBody'); if(!el) return;
+  el.innerHTML='<div class="rc-empty">Carregando…</div>';
+  const r=await DB.getMargemRankingMp(rankDias, rankLoja);
+  if(!r||r.error){ el.innerHTML=`<div class="rc-empty">⚠️ ${esc((r&&r.error)||'sem resposta')}</div>`; return; }
+  RANK=r; renderRanking();
+}
+function setRankDias(d){ rankDias=d; carregarRanking(); }
+function setRankLoja(l){ rankLoja=l; carregarRanking(); }
+function renderRanking(){
+  const r=RANK, t=r.totais;
+  document.getElementById('rkDias').innerHTML=[7,30,90].map(d=>`<button class="rc-tab ${rankDias===d?'on':''}" onclick="setRankDias(${d})">${d} dias</button>`).join('');
+  const lojasSel=document.getElementById('rkLoja'); if(lojasSel && !lojasSel.dataset.ok && r.por_empresa.length){ lojasSel.innerHTML='<option value="">Todas as empresas</option>'+r.por_empresa.map(l=>`<option value="${esc(l.store_id)}">${esc(l.nickname)}</option>`).join(''); lojasSel.dataset.ok='1'; }
+  if(!t.vendas){ document.getElementById('rkBody').innerHTML='<div class="rc-empty">A memória ainda está vazia. Ela é gravada todo dia às 05:35 (e 2 min depois de reiniciar o worker).</div>'; return; }
+  const item=(i,modo)=>`<div class="rk-item"><div class="t" title="${esc(i.title||'')}">${esc(i.title||i.item_id)}</div>
+      <div class="m"><span>${esc(i.nickname||'')} · ${i.vendas} venda(s) · venda ${BRL(i.faturamento)} · recebido ${BRL(i.recebido)}${i.custo?` · custo ${BRL(i.custo)}`:''}</span>
+      ${modo==='custo'?`<span class="mpm-custo"><input type="number" step="0.01" min="0" placeholder="custo un." id="rc_${esc(i.item_id)}"><button onclick="salvarCustoRank('${esc(i.item_id)}')">💾</button></span>`
+        :`<b style="color:${corMc(i.margem)}">${BRL(i.margem)} · ${i.mc_pct}%</b>`}</div></div>`;
+  const bloco=(tit,cor,l,modo,vazio)=>`<div class="rk-col"><h4 style="color:${cor}">${tit}</h4>${l.length?l.map(i=>item(i,modo)).join(''):`<div class="rc-empty" style="padding:10px">${vazio}</div>`}</div>`;
+  document.getElementById('rkBody').innerHTML=`
+    <div class="mp-cards">
+      <div class="mp-card tot"><div class="l">Margem de contribuição · ${r.dias} dias</div><div class="v" style="color:${corMc(t.margem)}">${BRL(t.margem)}</div><div class="s">${t.mc_pct}% de ${BRL(t.faturamento)} vendidos · recebido ${BRL(t.recebido)} · ${t.vendas} venda(s)</div></div>
+      ${r.por_empresa.map(l=>`<div class="mp-card" style="--c:${corMc(l.margem)}"><div class="l">${esc(l.nickname)}</div><div class="v" style="color:${corMc(l.margem)}">${BRL(l.margem)}</div><div class="s">${l.mc_pct}% · venda ${BRL(l.faturamento)} · ${l.vendas} venda(s)</div></div>`).join('')}
+    </div>
+    ${t.sem_custo?`<div class="mp-atr" style="background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.35);color:#fbbf24">📝 <b>${t.sem_custo}</b> venda(s) sem custo cadastrado — a margem delas está inflada. Preencha na coluna "📝 Precisa do seu custo".</div>`:''}
+    <div class="rk-grid">
+      ${bloco('🟢 Onde estou ganhando','#3fb950',r.ganhos,'','Nenhum anúncio com margem positiva.')}
+      ${bloco('🔴 Onde estou perdendo','#f87171',r.perdas,'','Nenhum anúncio no prejuízo. ✅')}
+      ${bloco('🟡 Margem baixa (< 5%)','#f59e0b',r.margem_baixa,'','Nenhum anúncio com margem abaixo de 5%.')}
+      ${bloco('📝 Precisa do seu custo','#fbbf24',r.sem_custo,'custo','Todos os anúncios têm custo. ✅')}
+    </div>
+    <div class="mp-fonte">Memória desde ${t.desde?new Date(t.desde).toLocaleDateString('pt-BR'):'—'} · atualizada ${t.atualizado?new Date(t.atualizado).toLocaleString('pt-BR'):'—'}. Período pela data da venda. Venda já liberada fica congelada com o custo/imposto daquele dia (as gravadas no 1º dia usam o custo de hoje).</div>`;
+}
+async function salvarCustoRank(itemId){
+  const el=document.getElementById('rc_'+itemId), v=parseFloat(String(el&&el.value||'').replace(',','.'));
+  if(!(v>=0) || el.value===''){ el&&el.focus(); return; }
+  el.disabled=true;
+  const r=await DB.updateItemCusto(itemId, v);
+  if(!r||r.error){ el.disabled=false; alert('Não consegui salvar o custo: '+((r&&r.error)||'sem resposta')); return; }
+  await DB.regravarMargemItem(itemId); carregarRanking();
+}
+async function analisarIaRank(){
+  const box=document.getElementById('rkIa'), bt=document.getElementById('rkIaBtn');
+  bt.disabled=true; box.style.display='block'; box.innerHTML='🤖 Analisando cada anúncio…';
+  const r=await DB.analisarMargemIa(rankDias, rankLoja); bt.disabled=false;
+  if(!r||r.error){ box.innerHTML=`⚠️ ${esc((r&&r.error)||'sem resposta')}`; return; }
+  const md=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+  const l=(tit,arr)=>arr&&arr.length?`<h4>${tit}</h4><ul>${arr.map(x=>`<li>${md(x)}</li>`).join('')}</ul>`:'';
+  box.innerHTML=l('🟢 Onde estou ganhando',r.ganhando)+l('🔴 Onde estou perdendo',r.perdendo)+l('✅ O que fazer',r.acoes)+`<div class="mp-fonte">Gerado ${new Date(r.gerado_em).toLocaleString('pt-BR')} · a IA só interpreta os números acima.</div>`;
 }
 try{ const a=localStorage.getItem('rc_aba'); if(a==='mp') setTimeout(()=>setAba('mp'),0); }catch(_){}
 async function load(){

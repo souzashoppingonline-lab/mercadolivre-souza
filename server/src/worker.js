@@ -3904,7 +3904,8 @@ async function checkShopeeCampanhasVencendo() {
 // passou da money_release_date esperada (+ margem de folga) e continua
 // released='no' — sinal de que a liberação não aconteceu como previsto.
 // Dedup via alert_notified_at (v32) — notifica 1x por pagamento, nunca repete.
-const CONCILIACAO_DIFERENCA_ALERTA_PCT = 50;   // diferença > 50% do valor bruto
+// Limiar compartilhado com o alerta "recebido baixo" do modal de margem (margemVendas.js).
+const CONCILIACAO_DIFERENCA_ALERTA_PCT = require('./margemVendas').DIFERENCA_ALERTA_PCT;   // diferença > 50% do valor bruto
 const CONCILIACAO_LIBERACAO_ATRASO_DIAS = 2;   // dias de folga após money_release_date
 
 async function checkConciliacaoDivergencias() {
@@ -3952,6 +3953,26 @@ async function checkConciliacaoDivergencias() {
     console.error('[conciliacao-divergencias] erro:', e.message);
   }
   scheduleAt(5, 25, checkConciliacaoDivergencias, 'conciliacao-divergencias');
+}
+
+// ── Memória da margem de cada venda (v159) — 05:35 diário + 2 min após o boot ──
+// Depois do sync-payment-releases (05:15): grava/atualiza margem_vendas_memoria
+// (margemVendas.gravarMemoria — congela o que já foi liberado). 1º run após o
+// deploy grava o histórico inteiro de ml_payments (retroativo, custo de hoje).
+let isGravandoMargem = false;
+async function gravarMemoriaMargem() {
+  if (isGravandoMargem) { console.warn('[margem-memoria] já em execução — ignorando'); return; }
+  isGravandoMargem = true;
+  try {
+    await require('./margemVendas').gravarMemoria();
+  } catch (e) {
+    console.error('[margem-memoria] erro:', e.message);
+  } finally {
+    isGravandoMargem = false;
+  }
+}
+function agendarMemoriaMargem() {
+  scheduleAt(5, 35, () => gravarMemoriaMargem().finally(agendarMemoriaMargem), 'margem-memoria');
 }
 
 // ── Tarefas atrasadas (Agenda Trello) — 08:15 diário ──────────────────────
@@ -4173,6 +4194,8 @@ scheduleAt(5,  0,  syncPrecos,   'sync-precos');
 scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
 scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
+agendarMemoriaMargem();
+setTimeout(() => gravarMemoriaMargem(), 2 * 60 * 1000);
 scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
 scheduleEvery(4,   syncInvoiceStatus, 'sync-invoice-status');
@@ -4330,6 +4353,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'finance-reconciliation' || cmd === 'financeReconciliationJob') {
       console.log('[worker] financeReconciliationJob disparado manualmente');
       financeReconciliationJob().catch(e => console.error('[worker] financeReconciliationJob erro:', e.message));
+    }
+    if (cmd === 'margem-memoria' || cmd === 'gravarMemoriaMargem') {
+      console.log('[worker] gravarMemoriaMargem disparado manualmente');
+      gravarMemoriaMargem();
     }
     if (cmd === 'conciliacao-divergencias' || cmd === 'checkConciliacaoDivergencias') {
       console.log('[worker] checkConciliacaoDivergencias disparado manualmente');

@@ -568,6 +568,17 @@ created_at, updated_at TIMESTAMPTZ
 ```
 Gravada por `handlePayment` (`worker.js`) a cada webhook `payments` — antes esse handler só usava `/collections/:id` pra achar o `order_id` e descartava o resto. **Só dados novos a partir do deploy da v29, sem backfill de pagamentos antigos** (pedido explícito do usuário). **Os campos de liberação/taxa (v30) foram adicionados depois de confirmar ao vivo que `/collections/:id` já retorna `money_release_date`/`net_received_amount`/`released` — sem precisar de credencial Mercado Pago separada**, correção de uma suposição inicial errada (ver `decisions.md`). Job diário `sync-payment-releases` (`workers.md`) reconsulta pagamentos com `released != 'yes'`, já que essa transição não necessariamente gera um novo webhook do ML. Ver `conciliacao-bancaria.md`.
 
+### `margem_vendas_memoria` — v132: memória da margem de cada venda (Recebíveis Mercado Pago API)
+```
+order_id TEXT PK, store_id BIGINT, item_id, title, sku TEXT
+data_venda, data_liberacao TIMESTAMPTZ, liberado BOOLEAN (todos os pagamentos aprovados do pedido released='yes')
+qtd INT, faturamento, bruto, recebido (Σ net_received_amount), custo, imposto, tarifa, frete, margem, mc_pct NUMERIC
+custo_ausente BOOLEAN, fonte_taxa TEXT, alertas TEXT[] ('prejuizo'|'sem_custo'|'recebido_baixo'|'sem_pedido')
+retroativo BOOLEAN (1ª foto tirada > 2 dias depois da liberação → custo de hoje, não da época)
+gravado_em, atualizado_em TIMESTAMPTZ   -- índices: data_venda, item_id
+```
+1 foto por pedido, gravada por `margemVendas.gravarMemoria()` (worker 05:35 + 2 min após o boot; cmd `margem-memoria`; por anúncio logo após cadastrar custo). Margem vem da fórmula única (`vendaMargem.js`) — a tabela só **congela** o resultado: depois de liberado não é reescrito (custo/imposto da época), **exceto** se `custo_ausente` (refeito quando o custo é preenchido). Ver `decisions.md` (v159) e `modules.md`.
+
 ### `ml_billing_charges` — v29: cobrança oficial de tarifa ML/MP (Conciliação Bancária, Fase 1)
 ```
 id BIGSERIAL PK

@@ -494,13 +494,18 @@ function renderCartoes(){
   document.getElementById('boCartLbl').innerHTML=`<button class="bo-btn" onclick="novoCartao()"><i class="fas fa-plus"></i> Novo cartão</button>`;
   if(!CARTOES.length){ wrap.innerHTML='<div class="bo-empty">Nenhum cartão cadastrado.</div>'; return; }
   wrap.innerHTML=CARTOES.map(c=>{
-    const fatura=BOLETOS.filter(b=>(b.mes_referencia||'')===mr && b.tipo==='cartao' && (String(b.cartao_credito||'').trim()===String(c.nome||'').trim() || b.cartao_id===c.id)).reduce((s,b)=>s+(+b.value||0),0);
+    // Fatura = parcelas_cartao desta fatura_mes (mesma regra de faturasMes()); nunca o value da
+    // compra-mãe em boletos_mensais, que é o total da compra e fica no mês da 1ª parcela.
+    const ps=PARCELAS.filter(p=>String(p.cartao_id)===String(c.id) && (p.fatura_mes||'')===mr);
+    const fatura=ps.reduce((s,p)=>s+(+p.valor||0),0);
+    const aPagar=ps.filter(p=>p.status!=='pago').reduce((s,p)=>s+(+p.valor||0),0);
+    const sit=!ps.length?'':aPagar<=0.005?'<span style="color:#3fb950">✓ paga</span>':aPagar<fatura-0.005?`a pagar ${BRL(aPagar)}`:'';
     const cor=c.cor||'#64748b';
     return `<div class="bo-cc" style="border-left:4px solid ${cor}">
       <div style="display:flex;justify-content:space-between;align-items:center"><b>${esc(c.nome||'—')}</b><span style="font-size:11px;color:var(--text-muted)">${esc(c.bandeira||'')}</span></div>
       <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Fecha dia ${c.dia_fechamento||'—'} · Vence dia ${c.dia_vencimento||'—'}</div>
       <div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Fatura do mês</div>
-      <div style="font-weight:800;font-size:18px">${BRL(fatura)}</div>
+      <div style="font-weight:800;font-size:18px">${BRL(fatura)}${sit?` <span style="font-size:11px;font-weight:600;color:var(--text-muted)">${sit}</span>`:''}</div>
       ${c.limite?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Limite ${BRL(c.limite)}</div>`:''}
     </div>`;
   }).join('');

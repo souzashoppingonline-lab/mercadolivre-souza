@@ -3470,6 +3470,48 @@ router.get('/conciliacao/agenda-recebimentos', async (req, res) => {
   }
 });
 
+// Próximos N dias (Financeiro → Recebíveis → aba "Recebíveis Mercado Pago API"):
+// o que o Mercado Pago ainda vai liberar, por DIA × LOJA, numa consulta só (a
+// agenda acima é só por dia). Só `status='approved'` — devolvido/cancelado com
+// released='no' nunca vai cair. `atrasados` = data de liberação já passou e a API
+// ainda diz released≠'yes' (o job 05:15 reconfere). `desde` = 1º pagamento
+// gravado: antes disso não há dado (sem backfill — ver conciliacao-bancaria.md).
+router.get('/conciliacao/proximos-dias', async (req, res) => {
+  try {
+    const dias = Math.min(Math.max(parseInt(req.query.dias, 10) || 7, 1), 60);
+    const [{ rows }, { rows: atr }, { rows: [ini] }] = await Promise.all([
+      pool.query(
+        `SELECT ((p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date)::text AS data,
+                p.store_id, s.nickname,
+                COUNT(*) AS qtd, COALESCE(SUM(p.net_received_amount), 0) AS valor_liquido,
+                COALESCE(SUM(p.transaction_amount), 0) AS valor_bruto
+           FROM ml_payments p LEFT JOIN stores s ON s.id = p.store_id
+          WHERE p.released IS DISTINCT FROM 'yes' AND p.status = 'approved'
+            AND (p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date
+                BETWEEN (now() AT TIME ZONE 'America/Sao_Paulo')::date
+                    AND (now() AT TIME ZONE 'America/Sao_Paulo')::date + ($1::int - 1)
+          GROUP BY 1, 2, 3 ORDER BY 1, valor_liquido DESC`, [dias]),
+      pool.query(
+        `SELECT p.store_id, s.nickname, COUNT(*) AS qtd, COALESCE(SUM(p.net_received_amount), 0) AS valor_liquido,
+                MIN((p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date)::text AS mais_antiga
+           FROM ml_payments p LEFT JOIN stores s ON s.id = p.store_id
+          WHERE p.released IS DISTINCT FROM 'yes' AND p.status = 'approved'
+            AND (p.money_release_date AT TIME ZONE 'America/Sao_Paulo')::date < (now() AT TIME ZONE 'America/Sao_Paulo')::date
+          GROUP BY 1, 2 ORDER BY valor_liquido DESC`),
+      pool.query(`SELECT MIN(created_at) AS desde, ((now() AT TIME ZONE 'America/Sao_Paulo')::date)::text AS hoje FROM ml_payments`),
+    ]);
+    const n = r => ({ store_id: r.store_id, nickname: r.nickname || `Loja ${r.store_id}`, qtd: Number(r.qtd), valor_liquido: Number(r.valor_liquido) });
+    res.json({
+      dias, hoje: ini.hoje, desde: ini.desde,
+      linhas: rows.map(r => ({ data: r.data, ...n(r), valor_bruto: Number(r.valor_bruto) })),
+      atrasados: atr.map(r => ({ ...n(r), mais_antiga: r.mais_antiga })),
+    });
+  } catch (e) {
+    console.error('[conciliacao/proximos-dias] erro:', e.message);
+    res.status(500).json({ error: e.message, linhas: [], atrasados: [] });
+  }
+});
+
 // Grid principal — listagem paginada de pagamentos individuais. `orders`/`stores`
 // direto (não `vw_ml_*`) porque `ml_payments` só é populada pelo pipeline ML
 // hoje (handlePayment), então o JOIN já é implicitamente ML-only — mas os

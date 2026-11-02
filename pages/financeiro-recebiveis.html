@@ -46,6 +46,29 @@
     .rc-empty { color:var(--text-muted); font-size:13px; padding:24px; text-align:center; }
     .rc-status { display:none; padding:10px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card); margin-bottom:14px; font-size:13px; }
     .up{ color:#3fb950;} .down{ color:#f87171;}
+    /* Abas da página (v156): Recebíveis (manual) | Recebíveis Mercado Pago API */
+    .rc-abas { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+    .rc-aba { background:none; border:none; border-bottom:3px solid transparent; color:var(--text-muted); padding:10px 14px; font-size:14px; font-weight:800; cursor:pointer; margin-bottom:-1px; }
+    .rc-aba.on { color:var(--text-main); border-bottom-color:#3fb950; }
+    .mp-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:14px; }
+    .mp-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; border-left:4px solid var(--c,#3fb950); }
+    .mp-card .l { font-size:11px; color:var(--text-muted); text-transform:uppercase; font-weight:800; letter-spacing:.3px; }
+    .mp-card .v { font-size:22px; font-weight:900; margin-top:4px; }
+    .mp-card .s { font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+    .mp-card.tot { background:linear-gradient(135deg,rgba(63,185,80,.14),var(--bg-card)); }
+    .mp-card.tot .v { font-size:28px; color:#3fb950; }
+    .mp-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow-x:auto; }
+    .mp-tab { width:100%; border-collapse:collapse; font-size:13px; }
+    .mp-tab th, .mp-tab td { padding:10px 14px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .mp-tab th { font-size:11px; text-transform:uppercase; color:var(--text-muted); background:var(--bg-card2); }
+    .mp-tab th:first-child, .mp-tab td:first-child { text-align:left; }
+    .mp-tab td.z { color:var(--text-muted); }
+    .mp-tab td .q { display:block; font-size:10.5px; color:var(--text-muted); font-weight:500; }
+    .mp-tab td.t { font-weight:900; color:#3fb950; }
+    .mp-tab tr.hoje td:first-child { color:#3fb950; font-weight:800; }
+    .mp-tab tfoot td { font-weight:900; background:var(--bg-card2); border-bottom:none; }
+    .mp-atr { background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.35); color:#fca5a5; border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:14px; }
+    .mp-fonte { font-size:11.5px; color:var(--text-muted); margin-top:10px; line-height:1.5; }
   </style>
 </head>
 <body>
@@ -54,6 +77,11 @@
   <main class="main-content">
     <div id="app-topbar"></div>
     <div class="content-area">
+      <div class="rc-abas">
+        <button class="rc-aba on" id="abaManual" onclick="setAba('manual')">📋 Recebíveis</button>
+        <button class="rc-aba" id="abaMp" onclick="setAba('mp')">💳 Recebíveis Mercado Pago API</button>
+      </div>
+      <div id="vManual">
       <p class="rc-sub">Gerencie entradas previstas e confirmadas — só os recebíveis <b>pendentes</b> entram nos indicadores; recebidos ficam no histórico.</p>
       <div id="rcStatus" class="rc-status"></div>
 
@@ -86,6 +114,19 @@
 
       <div id="rcList"></div>
       <div class="rc-foot" id="rcFoot"></div>
+      </div>
+
+      <!-- Aba Mercado Pago API (v156): o que vai cair nos próximos 7 dias, total e por empresa -->
+      <div id="vMp" style="display:none">
+        <div class="rc-top">
+          <p class="rc-sub" style="margin:0">O que o <b>Mercado Pago</b> vai liberar nos <b>próximos 7 dias</b> (hoje + 6) — valor <b>líquido</b> das vendas do Mercado Livre, direto da API.</p>
+          <button class="rc-btn" style="margin-left:auto" onclick="carregarMp()"><i class="fas fa-sync-alt"></i> Atualizar</button>
+        </div>
+        <div id="mpAtr"></div>
+        <div class="mp-cards" id="mpCards"><div class="rc-empty">Carregando…</div></div>
+        <div class="mp-wrap"><table class="mp-tab" id="mpTab"></table></div>
+        <div class="mp-fonte" id="mpFonte"></div>
+      </div>
     </div>
   </main>
 </div>
@@ -124,8 +165,63 @@ const pNum=v=>{ const n=parseFloat(String(v==null?'':v).replace(',','.')); retur
 const hojeISO=()=>new Date().toISOString().slice(0,10);
 
 let RECS=[], tab='todos', editId=null;
+
+// ── Abas da página (v156) ──────────────────────────────────────────────────
+let aba='manual', MP=null;
+function setAba(a){
+  aba=a; try{ localStorage.setItem('rc_aba',a); }catch(_){}
+  document.getElementById('abaManual').classList.toggle('on',a==='manual');
+  document.getElementById('abaMp').classList.toggle('on',a==='mp');
+  document.getElementById('vManual').style.display=a==='manual'?'':'none';
+  document.getElementById('vMp').style.display=a==='mp'?'':'none';
+  if(a==='mp' && !MP) carregarMp();
+}
+// Recebíveis Mercado Pago API: GET /api/conciliacao/proximos-dias (ml_payments,
+// released≠'yes', status approved) — dia × loja. Empresa = loja do Mercado Livre.
+const MP_CORES=['#3fb950','#f59e0b','#f97316','#06b6d4','#a855f7','#ec4899','#84cc16'];
+const fmtDiaMp=(iso,hoje)=>{
+  const d=new Date(iso+'T12:00:00'), h=new Date(hoje+'T12:00:00'), dif=Math.round((d-h)/864e5);
+  const dm=`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  return dif===0?`Hoje · ${dm}`:dif===1?`Amanhã · ${dm}`:`${DOW[d.getDay()]} · ${dm}`;
+};
+async function carregarMp(){
+  document.getElementById('mpCards').innerHTML='<div class="rc-empty">Carregando…</div>';
+  const r=await DB.getProximosRecebimentosMp(7);
+  if(!r||r.error){ MP=null; document.getElementById('mpCards').innerHTML=`<div class="rc-empty">⚠️ Não consegui ler a API: ${esc((r&&r.error)||'sem resposta')}</div>`; document.getElementById('mpTab').innerHTML=''; return; }
+  MP=r; renderMp();
+}
+function renderMp(){
+  const r=MP, hoje=r.hoje||hojeISO();
+  const lojas=[]; (r.linhas||[]).forEach(l=>{ if(!lojas.some(x=>x.store_id===l.store_id)) lojas.push({store_id:l.store_id,nickname:l.nickname}); });
+  const totLoja={}, qtdLoja={}; let tot=0, qtd=0;
+  (r.linhas||[]).forEach(l=>{ totLoja[l.store_id]=(totLoja[l.store_id]||0)+l.valor_liquido; qtdLoja[l.store_id]=(qtdLoja[l.store_id]||0)+l.qtd; tot+=l.valor_liquido; qtd+=l.qtd; });
+  lojas.sort((a,b)=>(totLoja[b.store_id]||0)-(totLoja[a.store_id]||0));
+  const cor=i=>MP_CORES[i%MP_CORES.length];
+  // Cards: total + 1 por empresa
+  document.getElementById('mpCards').innerHTML=
+    `<div class="mp-card tot"><div class="l">💰 Total — próximos 7 dias</div><div class="v">${BRL(tot)}</div><div class="s">${qtd} venda(s) · ${lojas.length} empresa(s)</div></div>`+
+    (lojas.length?lojas.map((l,i)=>`<div class="mp-card" style="--c:${cor(i)}"><div class="l">${esc(l.nickname)}</div><div class="v">${BRL(totLoja[l.store_id])}</div><div class="s">${qtdLoja[l.store_id]} venda(s) · ${tot?Math.round(totLoja[l.store_id]/tot*100):0}% do total</div></div>`).join('')
+      :'<div class="mp-card"><div class="l">Empresas</div><div class="v">—</div><div class="s">Nada a liberar nos próximos 7 dias.</div></div>');
+  // Tabela: 7 linhas (todos os dias, mesmo vazios) × empresas + total
+  const dias=[]; for(let i=0;i<(r.dias||7);i++){ const d=new Date(hoje+'T12:00:00'); d.setDate(d.getDate()+i); dias.push(d.toISOString().slice(0,10)); }
+  const cel={}; (r.linhas||[]).forEach(l=>{ cel[l.data+'|'+l.store_id]=l; });
+  const head=`<thead><tr><th>Dia</th>${lojas.map((l,i)=>`<th style="color:${cor(i)}">${esc(l.nickname)}</th>`).join('')}<th>Total do dia</th></tr></thead>`;
+  const body=dias.map(d=>{
+    let td=0, tq=0;
+    const cs=lojas.map(l=>{ const c=cel[d+'|'+l.store_id]; if(!c) return '<td class="z">—</td>'; td+=c.valor_liquido; tq+=c.qtd; return `<td>${BRL(c.valor_liquido)}<span class="q">${c.qtd} venda(s)</span></td>`; }).join('');
+    return `<tr class="${d===hoje?'hoje':''}"><td>${fmtDiaMp(d,hoje)}</td>${cs}<td class="${td?'t':'z'}">${td?BRL(td):'—'}${td?`<span class="q">${tq} venda(s)</span>`:''}</td></tr>`;
+  }).join('');
+  const foot=`<tfoot><tr><td>Total 7 dias</td>${lojas.map(l=>`<td>${BRL(totLoja[l.store_id])}</td>`).join('')}<td style="color:#3fb950">${BRL(tot)}</td></tr></tfoot>`;
+  document.getElementById('mpTab').innerHTML=head+`<tbody>${body}</tbody>`+foot;
+  // Atrasados: data de liberação já passou e a API ainda não marcou como liberado
+  const atr=r.atrasados||[], atrTot=atr.reduce((s,a)=>s+a.valor_liquido,0);
+  document.getElementById('mpAtr').innerHTML=atr.length?`<div class="mp-atr">⚠️ <b>${BRL(atrTot)}</b> com data de liberação <b>já vencida</b> e ainda não liberados pela API (${atr.map(a=>`${esc(a.nickname)}: ${BRL(a.valor_liquido)} · ${a.qtd} venda(s)`).join(' · ')}). Não entram no total acima — confira em Conciliação Bancária.</div>`:'';
+  const desde=r.desde?new Date(r.desde).toLocaleDateString('pt-BR'):null;
+  document.getElementById('mpFonte').innerHTML=`Fonte: API do Mercado Livre / Mercado Pago (data de liberação e valor líquido de cada venda, atualizados a cada venda e reconferidos todo dia às 05:15). Só <b>vendas do Mercado Livre aprovadas</b> — Pix, link de pagamento e Shopee não entram; devoluções/cancelamentos saem sozinhos.${desde?` Dados registrados desde <b>${desde}</b>.`:''}`;
+}
 function showStatus(t,err){ const el=document.getElementById('rcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
+try{ const a=localStorage.getItem('rc_aba'); if(a==='mp') setTimeout(()=>setAba('mp'),0); }catch(_){}
 async function load(){
   const r=await DB.getFinanceiroDados('receivables',5000,'date.asc'); RECS=r.rows||[];
   if(r&&r.error) showStatus('⚠️ <b>Falha ao ler o banco.</b> '+esc(r.error),true);

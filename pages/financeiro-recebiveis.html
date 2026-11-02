@@ -68,6 +68,25 @@
     .mp-tab tr.hoje td:first-child { color:#3fb950; font-weight:800; }
     .mp-tab tfoot td { font-weight:900; background:var(--bg-card2); border-bottom:none; }
     .mp-atr { background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.35); color:#fca5a5; border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:14px; }
+    /* v157: valores clicáveis → modal com cada venda */
+    [data-de] { cursor:pointer; }
+    .mp-tab td[data-de]:hover, .mp-card[data-de]:hover { background:rgba(63,185,80,.08); }
+    .mp-tab td[data-de]:hover { text-decoration:underline; }
+    .mp-card[data-de]:hover { border-color:#3fb950; }
+    .mpm-fundo { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:10000; display:flex; align-items:center; justify-content:center; padding:16px; }
+    .mpm { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; width:min(1100px,100%); max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+    .mpm-h { display:flex; align-items:flex-start; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border); }
+    .mpm-h h3 { margin:0; font-size:16px; } .mpm-h .s { font-size:12px; color:var(--text-muted); margin-top:3px; }
+    .mpm-h .x { margin-left:auto; background:none; border:none; color:var(--text-muted); font-size:22px; cursor:pointer; line-height:1; }
+    .mpm-busca { margin:10px 18px 0; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; }
+    .mpm-b { overflow:auto; padding:8px 18px 14px; }
+    .mpm-b table { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .mpm-b th, .mpm-b td { padding:7px 8px; border-bottom:1px solid var(--border); text-align:left; }
+    .mpm-b th { position:sticky; top:0; background:var(--bg-card2); font-size:10.5px; text-transform:uppercase; color:var(--text-muted); }
+    .mpm-b td.n, .mpm-b th.n { text-align:right; white-space:nowrap; }
+    .mpm-b td.tt { max-width:330px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mpm-b tfoot td { font-weight:900; background:var(--bg-card2); }
+    .mpm-b a { color:#60a5fa; text-decoration:none; }
     .mp-fonte { font-size:11.5px; color:var(--text-muted); margin-top:10px; line-height:1.5; }
   </style>
 </head>
@@ -197,21 +216,24 @@ function renderMp(){
   (r.linhas||[]).forEach(l=>{ totLoja[l.store_id]=(totLoja[l.store_id]||0)+l.valor_liquido; qtdLoja[l.store_id]=(qtdLoja[l.store_id]||0)+l.qtd; tot+=l.valor_liquido; qtd+=l.qtd; });
   lojas.sort((a,b)=>(totLoja[b.store_id]||0)-(totLoja[a.store_id]||0));
   const cor=i=>MP_CORES[i%MP_CORES.length];
+  const dias=[]; for(let i=0;i<(r.dias||7);i++){ const d=new Date(hoje+'T12:00:00'); d.setDate(d.getDate()+i); dias.push(d.toISOString().slice(0,10)); }
+  const dIni=dias[0], dFim=dias[dias.length-1];
+  // Atributos do clique → modal com as vendas (abrirVendasMp)
+  const clk=(de,ate,loja,titulo)=>`data-de="${de}" data-ate="${ate}" data-loja="${esc(loja)}" data-tit="${esc(titulo)}" title="Clique para ver cada venda"`;
   // Cards: total + 1 por empresa
   document.getElementById('mpCards').innerHTML=
-    `<div class="mp-card tot"><div class="l">💰 Total — próximos 7 dias</div><div class="v">${BRL(tot)}</div><div class="s">${qtd} venda(s) · ${lojas.length} empresa(s)</div></div>`+
-    (lojas.length?lojas.map((l,i)=>`<div class="mp-card" style="--c:${cor(i)}"><div class="l">${esc(l.nickname)}</div><div class="v">${BRL(totLoja[l.store_id])}</div><div class="s">${qtdLoja[l.store_id]} venda(s) · ${tot?Math.round(totLoja[l.store_id]/tot*100):0}% do total</div></div>`).join('')
+    `<div class="mp-card tot" ${clk(dIni,dFim,'','Todas as empresas · próximos 7 dias')}><div class="l">💰 Total — próximos 7 dias</div><div class="v">${BRL(tot)}</div><div class="s">${qtd} venda(s) · ${lojas.length} empresa(s)</div></div>`+
+    (lojas.length?lojas.map((l,i)=>`<div class="mp-card" style="--c:${cor(i)}" ${clk(dIni,dFim,l.store_id,l.nickname+' · próximos 7 dias')}><div class="l">${esc(l.nickname)}</div><div class="v">${BRL(totLoja[l.store_id])}</div><div class="s">${qtdLoja[l.store_id]} venda(s) · ${tot?Math.round(totLoja[l.store_id]/tot*100):0}% do total</div></div>`).join('')
       :'<div class="mp-card"><div class="l">Empresas</div><div class="v">—</div><div class="s">Nada a liberar nos próximos 7 dias.</div></div>');
   // Tabela: 7 linhas (todos os dias, mesmo vazios) × empresas + total
-  const dias=[]; for(let i=0;i<(r.dias||7);i++){ const d=new Date(hoje+'T12:00:00'); d.setDate(d.getDate()+i); dias.push(d.toISOString().slice(0,10)); }
   const cel={}; (r.linhas||[]).forEach(l=>{ cel[l.data+'|'+l.store_id]=l; });
   const head=`<thead><tr><th>Dia</th>${lojas.map((l,i)=>`<th style="color:${cor(i)}">${esc(l.nickname)}</th>`).join('')}<th>Total do dia</th></tr></thead>`;
   const body=dias.map(d=>{
     let td=0, tq=0;
-    const cs=lojas.map(l=>{ const c=cel[d+'|'+l.store_id]; if(!c) return '<td class="z">—</td>'; td+=c.valor_liquido; tq+=c.qtd; return `<td>${BRL(c.valor_liquido)}<span class="q">${c.qtd} venda(s)</span></td>`; }).join('');
-    return `<tr class="${d===hoje?'hoje':''}"><td>${fmtDiaMp(d,hoje)}</td>${cs}<td class="${td?'t':'z'}">${td?BRL(td):'—'}${td?`<span class="q">${tq} venda(s)</span>`:''}</td></tr>`;
+    const cs=lojas.map(l=>{ const c=cel[d+'|'+l.store_id]; if(!c) return '<td class="z">—</td>'; td+=c.valor_liquido; tq+=c.qtd; return `<td ${clk(d,d,l.store_id,l.nickname+' · '+fmtDiaMp(d,hoje))}>${BRL(c.valor_liquido)}<span class="q">${c.qtd} venda(s)</span></td>`; }).join('');
+    return `<tr class="${d===hoje?'hoje':''}"><td>${fmtDiaMp(d,hoje)}</td>${cs}<td class="${td?'t':'z'}" ${td?clk(d,d,'','Todas as empresas · '+fmtDiaMp(d,hoje)):''}>${td?BRL(td):'—'}${td?`<span class="q">${tq} venda(s)</span>`:''}</td></tr>`;
   }).join('');
-  const foot=`<tfoot><tr><td>Total 7 dias</td>${lojas.map(l=>`<td>${BRL(totLoja[l.store_id])}</td>`).join('')}<td style="color:#3fb950">${BRL(tot)}</td></tr></tfoot>`;
+  const foot=`<tfoot><tr><td>Total 7 dias</td>${lojas.map(l=>`<td ${clk(dIni,dFim,l.store_id,l.nickname+' · próximos 7 dias')}>${BRL(totLoja[l.store_id])}</td>`).join('')}<td style="color:#3fb950" ${tot?clk(dIni,dFim,'','Todas as empresas · próximos 7 dias'):''}>${BRL(tot)}</td></tr></tfoot>`;
   document.getElementById('mpTab').innerHTML=head+`<tbody>${body}</tbody>`+foot;
   // Atrasados: data de liberação já passou e a API ainda não marcou como liberado
   const atr=r.atrasados||[], atrTot=atr.reduce((s,a)=>s+a.valor_liquido,0);
@@ -221,6 +243,44 @@ function renderMp(){
 }
 function showStatus(t,err){ const el=document.getElementById('rcStatus'); el.style.display='block'; el.style.borderColor=err?'var(--red)':'var(--border)'; el.innerHTML=t; }
 
+// ── Modal "cada venda" (v157) ─────────────────────────────────────────────
+// Mesma lista da Conciliação (GET /api/conciliacao/pagamentos) com os mesmos
+// filtros do número clicado: released=no + status=approved + loja + dia(s) de
+// liberação → a soma do modal bate com a célula. Pagina de 200 em 200 (até 3000).
+document.addEventListener('click',e=>{ const el=e.target.closest('#vMp [data-de]'); if(el) abrirVendasMp(el.dataset); });
+let MPM=[];
+async function abrirVendasMp(d){
+  fecharVendasMp();
+  const f=document.createElement('div'); f.className='mpm-fundo'; f.id='mpm';
+  f.innerHTML=`<div class="mpm" role="dialog"><div class="mpm-h"><div><h3>💳 ${esc(d.tit)}</h3><div class="s" id="mpmSub">Carregando vendas…</div></div><button class="x" onclick="fecharVendasMp()" title="Fechar (Esc)">✕</button></div>
+    <input class="mpm-busca" id="mpmBusca" placeholder="Buscar pedido, produto ou comprador…" oninput="renderVendasMp()"><div class="mpm-b" id="mpmB"></div></div>`;
+  f.addEventListener('click',e=>{ if(e.target===f) fecharVendasMp(); });
+  document.body.appendChild(f);
+  MPM=[]; let pg=1, total=0;
+  try{
+    do{
+      const r=await DB.getConciliacaoPagamentos({ store_id:d.loja||'', released:'no', status:'approved', release_from:d.de, release_to:d.ate, sort:'liberacao', dir:'asc', page:pg, limit:200 });
+      if(!r||r.error) throw new Error((r&&r.error)||'sem resposta');
+      MPM=MPM.concat(r.payments||[]); total=r.total||0; pg++;
+      if(!document.getElementById('mpm')) return;
+    } while(MPM.length<total && pg<=15);
+  }catch(err){ document.getElementById('mpmSub').innerHTML=`⚠️ Falha ao ler: ${esc(err.message)}`; return; }
+  renderVendasMp();
+}
+function fecharVendasMp(){ const m=document.getElementById('mpm'); if(m) m.remove(); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') fecharVendasMp(); });
+function renderVendasMp(){
+  const q=(document.getElementById('mpmBusca').value||'').toLowerCase().trim();
+  const lista=MPM.filter(p=>!q||[p.order_id,p.payment_id,p.title,p.buyer_nickname,p.store_nickname].some(v=>String(v||'').toLowerCase().includes(q)));
+  const soma=k=>lista.reduce((s,p)=>s+(+p[k]||0),0);
+  const varias=new Set(MPM.map(p=>p.store_id)).size>1;
+  const hora=t=>{ if(!t) return '—'; const d=new Date(t); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',timeZone:'America/Sao_Paulo'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}); };
+  document.getElementById('mpmSub').innerHTML=`<b>${lista.length}</b> venda(s)${q?` (de ${MPM.length})`:''} · líquido <b style="color:#3fb950">${BRL(soma('net_received_amount'))}</b> · bruto ${BRL(soma('transaction_amount'))}`;
+  document.getElementById('mpmB').innerHTML=!lista.length?'<div class="rc-empty">Nenhuma venda.</div>':
+   `<table><thead><tr><th>Libera em</th>${varias?'<th>Empresa</th>':''}<th>Pedido</th><th>Produto</th><th>Comprador</th><th class="n">Venda</th><th class="n">Taxas</th><th class="n">Líquido</th></tr></thead><tbody>${
+    lista.map(p=>`<tr><td>${hora(p.money_release_date)}</td>${varias?`<td>${esc(p.store_nickname||'')}</td>`:''}<td><a href="https://www.mercadolivre.com.br/vendas/${esc(p.order_id)}/detalhe" target="_blank" rel="noopener">${esc(p.order_id||p.payment_id)}</a></td><td class="tt" title="${esc(p.title||'')}">${esc(p.title||'—')}</td><td>${esc(p.buyer_nickname||'—')}</td><td class="n">${BRL(p.transaction_amount)}</td><td class="n" style="color:#f87171">${BRL(p.diferenca)}</td><td class="n" style="font-weight:800">${BRL(p.net_received_amount)}</td></tr>`).join('')
+   }</tbody><tfoot><tr><td colspan="${varias?5:4}">Total</td><td class="n">${BRL(soma('transaction_amount'))}</td><td class="n">${BRL(soma('diferenca'))}</td><td class="n" style="color:#3fb950">${BRL(soma('net_received_amount'))}</td></tr></tfoot></table>`;
+}
 try{ const a=localStorage.getItem('rc_aba'); if(a==='mp') setTimeout(()=>setAba('mp'),0); }catch(_){}
 async function load(){
   const r=await DB.getFinanceiroDados('receivables',5000,'date.asc'); RECS=r.rows||[];

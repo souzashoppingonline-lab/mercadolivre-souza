@@ -879,3 +879,4 @@ Mesmo padrão de cache-por-categoria de `category_attributes_cache` (v25), mas S
 - `ofx_regras` (contraparte_chave PK, categoria, apelido, atualizado_por, atualizado_em) — o que o usuário ensinou.
 - `ofx_resumos_mensais` (mes, conta_id [0 = todas] PK; entradas, saidas, resultado, saldo_inicial, saldo_final, menor_saldo, tarifas, lancamentos, sem_categoria, categorias JSONB, alertas [v128], atualizado_em) — visão mês a mês salva.
 - `ofx_analises_ia` (mes, conta_id PK; analise JSONB {pontos, recomendacoes}, modelo, gerado_em).
+- `ofx_categorias_custom` (v133): id TEXT PK (`u_…`), nome, ico, sentido (`entrada`\|`saida`), criado_por, criado_em — categorias criadas pelo usuário, somadas às fixas de `ofxCategorias.js` (ver `extrato-ofx.md`).

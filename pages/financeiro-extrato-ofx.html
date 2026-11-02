@@ -76,6 +76,18 @@
     .pk-o { display:flex; align-items:center; gap:8px; text-align:left; background:var(--bg-card2); border:1px solid var(--border); color:var(--text-main); border-radius:10px; padding:10px 12px; font-size:13px; font-weight:700; cursor:pointer; }
     .pk-o:hover { border-color:#3fb950; background:rgba(46,160,67,.08); } .pk-o.on { border-color:#3fb950; box-shadow:0 0 0 1px #3fb950; } .pk-o .i { font-size:17px; flex:none; } .pk-o .tx { min-width:0; } .pk-o small { display:block; color:var(--text-muted); font-weight:600; font-size:10.5px; }
     .pk-t { display:block; margin-top:14px; font-size:12.5px; color:var(--text-muted); cursor:pointer; } .pk-t input { margin-right:6px; vertical-align:-2px; }
+    /* v160: nova categoria */
+    .nc-f { display:grid; gap:12px; } .nc-f label.t { font-size:12px; font-weight:800; color:var(--text-muted); text-transform:uppercase; display:block; margin-bottom:5px; }
+    .nc-f input[type=text] { width:100%; box-sizing:border-box; background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:14px; }
+    .nc-ico { display:flex; flex-wrap:wrap; gap:6px; } .nc-ico button { width:38px; height:38px; font-size:19px; border-radius:9px; border:1px solid var(--border); background:var(--bg-card2); cursor:pointer; }
+    .nc-ico button.on { border-color:#3fb950; box-shadow:0 0 0 2px #3fb950; }
+    .nc-sen { display:flex; gap:8px; } .nc-sen button { flex:1; padding:10px; border-radius:10px; border:1px solid var(--border); background:var(--bg-card2); color:var(--text-main); font-weight:800; cursor:pointer; }
+    .nc-sen button.on.e { border-color:#3fb950; background:rgba(46,160,67,.15); color:#3fb950; } .nc-sen button.on.s { border-color:#f87171; background:rgba(248,113,113,.12); color:#f87171; } .nc-sen button:disabled { opacity:.45; cursor:not-allowed; }
+    .nc-acoes { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; } .nc-acoes .ok { background:#3fb950; color:#03210d; border:none; border-radius:10px; padding:10px 18px; font-weight:900; cursor:pointer; }
+    .nc-suas { margin-top:16px; border-top:1px solid var(--border); padding-top:12px; font-size:13px; } .nc-suas h4 { margin:0 0 8px; font-size:13px; color:var(--text-muted); }
+    .nc-suas .it { display:flex; align-items:center; gap:8px; padding:5px 0; } .nc-suas .it span.s { font-size:11px; color:var(--text-muted); } .nc-suas .it button { margin-left:auto; background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); cursor:pointer; padding:3px 8px; }
+    .nc-suas .it button:hover { color:#f87171; border-color:#f87171; }
+    .pk-o.nova { border-style:dashed; color:#3fb950; }
     .ox-modal .top { display:flex; align-items:center; gap:10px; margin-bottom:14px; } .ox-modal .top h2 { font-size:18px; font-weight:900; margin:0; flex:1; }
   </style>
 </head>
@@ -119,6 +131,9 @@
     <div class="ox-modal pk" id="oxPick" hidden onclick="if(event.target===this)fecharPick()"><div class="box">
       <div class="top"><h2>🏷️ Escolher categoria</h2><button class="ox-btn" onclick="fecharPick()">✕ Fechar</button></div>
       <div id="oxPickCorpo"></div></div></div>
+    <div class="ox-modal pk" id="oxNova" hidden onclick="if(event.target===this)fecharNovaCat()" style="z-index:10002"><div class="box" style="width:min(560px,100%)">
+      <div class="top"><h2>➕ Nova categoria</h2><button class="ox-btn" onclick="fecharNovaCat()">✕ Fechar</button></div>
+      <div id="oxNovaCorpo"></div></div></div>
   </main>
 </div>
 <script>
@@ -256,7 +271,7 @@ async function abrirMes(mes) {
       <div class="ox-card"><div class="ox-h"><h3>💰 Maiores entradas</h3></div><div class="ox-scroll"><table class="ox-t"><tbody>${top(1,10).map(linhaL).join('') || '<tr><td class="ox-vazio">—</td></tr>'}</tbody></table></div></div></div>`;
 }
 function fecharMes() { document.getElementById('oxModal').hidden = true; document.body.style.overflow = ''; }
-document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!document.getElementById('oxPick').hidden) fecharPick(); else if (!document.getElementById('oxDel').hidden) fecharApagar(); else fecharMes(); });
+document.addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!document.getElementById('oxNova').hidden) fecharNovaCat(); else if (!document.getElementById('oxPick').hidden) fecharPick(); else if (!document.getElementById('oxDel').hidden) fecharApagar(); else fecharMes(); });
 
 // ── Apagar importação (aviso + prévia do que some + digitar APAGAR) ──
 let APAGAR_N = 0, MESES_LISTA = [];
@@ -305,11 +320,62 @@ function escolherCategoria(id) {
   const ops = CATS.filter(c => c.id !== 'sem_categoria' && (c.sentido === 'ambos' || (c.sentido === 'entrada') === entrada));
   document.getElementById('oxPickCorpo').innerHTML = `
     <div class="pk-l"><b>${esc(x.contraparte || '—')}</b> · ${dm(x.data)} · <span class="${entrada?'up':'down'}">${entrada?'+':'−'}${BRL(Math.abs(x.valor))}</span><small>${esc(x.descricao)}</small></div>
-    <div class="pk-g">${ops.map(c => `<button class="pk-o ${c.id===atual?'on':''}" onclick="aplicarCategoria(${id}, '${c.id}')"><span class="i">${c.ico}</span><span class="tx">${esc(c.nome)}${c.fora?'<small>fora do total</small>':''}</span></button>`).join('')}</div>
+    <div class="pk-g">${ops.map(c => `<button class="pk-o ${c.id===atual?'on':''}" onclick="aplicarCategoria(${id}, '${c.id}')"><span class="i">${c.ico}</span><span class="tx">${esc(c.nome)}${c.fora?'<small>fora do total</small>':c.custom?'<small>sua</small>':''}</span></button>`).join('')}
+      <button class="pk-o nova" onclick="abrirNovaCat({ sentido:'${entrada?'entrada':'saida'}', pickId:${id} })"><span class="i">➕</span><span class="tx">Nova categoria</span></button></div>
     <label class="pk-t"><input type="checkbox" id="oxPickTodos" checked> Aplicar a todos os lançamentos de <b>${esc(x.contraparte || 'mesma origem/destino')}</b> (passados e futuros)</label>`;
   document.getElementById('oxPick').hidden = false;
 }
 function fecharPick() { document.getElementById('oxPick').hidden = true; }
+
+// ── ➕ Nova categoria (v160) — POST /categorias; aparece junto das fixas ──────
+// De um lançamento (lista ou janela "Escolher categoria"): o tipo vem do sinal do
+// valor e, ao criar, já aplica nele (e em todos da mesma origem/destino, se marcado).
+const NC_ICONES = ['🏷️','📦','🛒','🧾','💡','📱','🚗','⛽','🍽️','🏭','📣','🎓','🧰','🖨️','🐶','🎁','💵','🤝','🏪','🧪'];
+let NC = {};
+function abrirNovaCat(ctx) {
+  NC = { sentido: ctx.sentido || 'saida', fixo: !!ctx.sentido, ico: '🏷️', lancId: ctx.lancId || null, pickId: ctx.pickId || null, contraparte: ctx.contraparte || (ctx.pickId && LANC_MODAL[ctx.pickId] && LANC_MODAL[ctx.pickId].contraparte) || '' };
+  const velho = document.getElementById('ncNome'); if (velho) velho.value = '';
+  renderNovaCat(); document.getElementById('oxNova').hidden = false;
+  setTimeout(() => { const i = document.getElementById('ncNome'); if (i) i.focus(); }, 30);
+}
+function fecharNovaCat() { document.getElementById('oxNova').hidden = true; }
+function renderNovaCat(msg) {
+  const nome = (document.getElementById('ncNome') || {}).value || '';
+  const aplicar = NC.lancId || NC.pickId;
+  const suas = CATS.filter(c => c.custom);
+  document.getElementById('oxNovaCorpo').innerHTML = `<div class="nc-f">
+    <div><label class="t">Nome</label><input type="text" id="ncNome" maxlength="60" placeholder="Ex.: Marketing / anúncios" value="${esc(nome)}" onkeydown="if(event.key==='Enter')criarNovaCat()"></div>
+    <div><label class="t">É de</label><div class="nc-sen">
+      <button class="e ${NC.sentido==='entrada'?'on':''}" ${NC.fixo&&NC.sentido!=='entrada'?'disabled':''} onclick="NC.sentido='entrada';renderNovaCat()">💰 Entrada</button>
+      <button class="s ${NC.sentido==='saida'?'on':''}" ${NC.fixo&&NC.sentido!=='saida'?'disabled':''} onclick="NC.sentido='saida';renderNovaCat()">💸 Saída</button></div></div>
+    <div><label class="t">Ícone</label><div class="nc-ico">${NC_ICONES.map(i => `<button class="${NC.ico===i?'on':''}" onclick="NC.ico='${i}';renderNovaCat()">${i}</button>`).join('')}</div></div>
+    ${aplicar ? `<label class="pk-t" style="margin-top:0"><input type="checkbox" id="ncAplicar" checked> Já colocar este lançamento nela${NC.contraparte ? ` — e todos de <b>${esc(NC.contraparte)}</b>` : ''}</label>` : ''}
+    ${msg ? `<div style="color:#f87171;font-size:13px">${msg}</div>` : ''}
+  </div>
+  <div class="nc-acoes"><button class="ox-btn" onclick="fecharNovaCat()">Cancelar</button><button class="ok" id="ncOk" onclick="criarNovaCat()">Criar categoria</button></div>
+  ${suas.length ? `<div class="nc-suas"><h4>Suas categorias</h4>${suas.map(c => `<div class="it">${c.ico} <b>${esc(c.nome)}</b> <span class="s">${c.sentido==='entrada'?'entrada':'saída'}</span><button onclick="apagarCategoria('${c.id}')" title="Apagar (só se não estiver em uso)">🗑️</button></div>`).join('')}</div>` : ''}`;
+}
+function aplicarCats(lista) { CATS = lista; CAT = Object.fromEntries(CATS.map(c => [c.id, c])); }
+async function criarNovaCat() {
+  const nome = document.getElementById('ncNome').value.trim();
+  if (nome.length < 2) { renderNovaCat('Digite o nome da categoria.'); return; }
+  const aplicar = (document.getElementById('ncAplicar') || {}).checked;
+  document.getElementById('ncOk').disabled = true;
+  const r = await DB.ofxNovaCategoria({ nome, sentido: NC.sentido, ico: NC.ico });
+  if (!r || !r.ok) { renderNovaCat(esc(DB.lastError || 'Não consegui criar.')); return; }
+  aplicarCats(r.categorias); fecharNovaCat();
+  const c = r.categoria;
+  if (aplicar && NC.pickId) { fecharPick(); escolherCategoria(NC.pickId); document.getElementById('oxPickTodos').checked = true; await aplicarCategoria(NC.pickId, c.id); return; }
+  if (aplicar && NC.lancId) { await corrigir(NC.lancId, c.id); }
+  status(`✅ Categoria ${c.ico} ${esc(c.nome)} criada.${aplicar ? '' : ' Já aparece na lista de categorias.'}`);
+  carregarLancamentos();
+}
+async function apagarCategoria(id) {
+  const c = CAT[id]; if (!c || !confirm(`Apagar a categoria "${c.nome}"?`)) return;
+  const r = await DB.ofxApagarCategoria(id);
+  if (!r || !r.ok) { renderNovaCat(esc(DB.lastError || 'Não consegui apagar.')); return; }
+  aplicarCats(r.categorias); renderNovaCat(); carregarLancamentos();
+}
 async function aplicarCategoria(id, categoria) {
   const todos = document.getElementById('oxPickTodos').checked;
   document.querySelectorAll('#oxPick .pk-o').forEach(b => { b.disabled = true; });
@@ -389,7 +455,7 @@ function render() {
     r.periodo.contados_em_outro_mes ? `<div class="ox-alert success">📆 <b>${r.periodo.contados_em_outro_mes} lançamento(s) deste mês no banco</b> contam em outro mês (não entram nos totais daqui).</div>` : '',
   ].join('');
   const lista = `<div class="ox-card" id="oxListaCard"><div class="ox-h"><h3>📋 Lançamentos</h3><span class="desc" id="oxListaDesc">${r.periodo.lancamentos} no período · categoria automática — corrija e o sistema aprende para os próximos · marque ☑ para mudar o mês em que contam</span>
-      <div class="ox-filt"><span id="oxFDia"></span><select id="oxFCat" onchange="FILTRO.categoria=this.value;carregarLancamentos()">${opcoesCat}</select><select id="oxFSen" onchange="FILTRO.sentido=this.value;carregarLancamentos()"><option value="">Entradas e saídas</option><option value="entrada" ${FILTRO.sentido==='entrada'?'selected':''}>Só entradas</option><option value="saida" ${FILTRO.sentido==='saida'?'selected':''}>Só saídas</option></select></div></div>
+      <div class="ox-filt"><span id="oxFDia"></span><button class="ox-btn" style="padding:6px 11px;font-size:12px" onclick="abrirNovaCat({})" title="Criar uma categoria sua">➕ Nova categoria</button><select id="oxFCat" onchange="FILTRO.categoria=this.value;carregarLancamentos()">${opcoesCat}</select><select id="oxFSen" onchange="FILTRO.sentido=this.value;carregarLancamentos()"><option value="">Entradas e saídas</option><option value="entrada" ${FILTRO.sentido==='entrada'?'selected':''}>Só entradas</option><option value="saida" ${FILTRO.sentido==='saida'?'selected':''}>Só saídas</option></select></div></div>
     ${avisos}
     <div class="ox-selbar" id="oxSelBar" hidden></div>
     <div style="overflow:auto;max-height:70vh"><table class="ox-t"><thead><tr><th><input type="checkbox" title="Marcar todos" onchange="marcarTodos(this.checked)"></th><th>Data</th><th>Banco</th><th>Descrição (do extrato)</th><th>Categoria</th><th class="r">Valor</th></tr></thead><tbody id="oxLanc"><tr><td colspan="6" class="ox-vazio">Carregando…</td></tr></tbody></table></div></div>`;
@@ -413,12 +479,13 @@ async function carregarLancamentos() {
   LISTA_ATUAL = L;
   tb.innerHTML = L.length ? L.map(l => {
     const entrada = l.valor > 0;
-    const ops = CATS.filter(c => c.sentido==='ambos' || (c.sentido==='entrada')===entrada).map(c=>`<option value="${c.id}" ${c.id===(l.categoria||'sem_categoria')?'selected':''}>${c.ico} ${esc(c.nome)}</option>`).join('');
+    const ops = CATS.filter(c => c.sentido==='ambos' || (c.sentido==='entrada')===entrada).map(c=>`<option value="${c.id}" ${c.id===(l.categoria||'sem_categoria')?'selected':''}>${c.ico} ${esc(c.nome)}</option>`).join('')
+      + `<option value="__nova">➕ Nova categoria…</option>`;
     const origem = l.categoria_origem==='manual'?'<span class="ox-tag manual">você</span>':l.categoria_origem==='aprendido'?'<span class="ox-tag aprendido">aprendido</span>':'<span class="ox-tag auto">auto</span>';
     const doBanco = String(l.data).slice(0, 7);
     const comp = doBanco !== mesSel() ? ` <span class="ox-tag comp" title="O banco compensou em ${dm(l.data)}; conta em ${nomeMes(mesSel())}">📆 compensou em ${MESES[Number(doBanco.slice(5)) - 1].slice(0, 3)}.</span>` : '';
     return `<tr class="${SEL.has(l.id)?'selo':''}"><td><input type="checkbox" ${SEL.has(l.id)?'checked':''} onchange="marcar(${l.id}, this.checked)"></td><td>${dm(l.data)}${comp}</td><td>${esc(l.banco)}</td><td class="desc">${esc(l.contraparte||'—')} <button class="ox-ren" title="Dar um nome (vale pra todos dessa origem/destino)" onclick="renomear(${l.id}, '${esc(String(l.contraparte||'').replace(/'/g,''))}')">✏️</button><small>${esc(l.descricao)}</small></td>
-      <td><select onchange="corrigir(${l.id}, this.value)">${ops}</select> ${origem}</td><td class="r ${entrada?'up':'down'}">${entrada?'+':'−'}${BRL(Math.abs(l.valor))}</td></tr>`;
+      <td><select data-atual="${esc(l.categoria||'sem_categoria')}" onchange="if(this.value==='__nova'){ const a=this.dataset.atual; this.value=a; abrirNovaCat({ sentido:'${entrada?'entrada':'saida'}', lancId:${l.id}, contraparte:'${esc(String(l.contraparte||'').replace(/'/g,''))}' }); } else { this.dataset.atual=this.value; corrigir(${l.id}, this.value); }">${ops}</select> ${origem}</td><td class="r ${entrada?'up':'down'}">${entrada?'+':'−'}${BRL(Math.abs(l.valor))}</td></tr>`;
   }).join('') : '<tr><td colspan="6" class="ox-vazio">Nenhum lançamento com esse filtro.</td></tr>';
   barraSelecao();
 }

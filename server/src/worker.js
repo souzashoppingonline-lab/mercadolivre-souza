@@ -435,7 +435,12 @@ async function handleOrder({ resource, storeId, silent = false }) {
           }
         }
       }
-      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
+      // Quantidade comprada (pedido do usuário, v152): soma das unidades + preço unitário quando > 1.
+      const itensPed = order.order_items || [];
+      const unidades = itensPed.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 1;
+      const precoUn = Number(item0.unit_price) || 0;
+      const linhaQtd = `🔢 <b>${unidades} ${unidades === 1 ? 'unidade' : 'unidades'}</b>${unidades > 1 && precoUn && itensPed.length === 1 ? ` · ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(precoUn)} cada` : ''}${itensPed.length > 1 ? ` · ${itensPed.length} produtos` : ''}`;
+      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${linhaQtd}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
       const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id) }; // só na Tela Telegram
       if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda, fotoVenda);
       else await tgNotify('tg_vendas', textoVenda, fotoVenda);

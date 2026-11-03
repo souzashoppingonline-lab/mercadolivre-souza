@@ -284,7 +284,9 @@ async function handleOrder({ resource, storeId, silent = false }) {
   if (!shippingType && order.shipping?.id) {
     try {
       const ship = await ml.getShipment(order.shipping.id, storeId);
-      shippingType = ship?.logistic_type || ship?.shipping_option?.logistic_type || '';
+      // v161: o formato novo de /shipments traz o tipo em `logistic.type` (sem
+      // `logistic_type` na raiz) — a mensagem saía "🚚 —". Mesma ordem de embalagem.js.
+      shippingType = ship?.logistic_type || ship?.logistic?.type || ship?.shipping_option?.logistic_type || '';
       shipState = ship?.receiver_address?.state || null;
     } catch (e) { /* ignora — próximo webhook/reconciliação tenta de novo */ }
   }
@@ -387,7 +389,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
   if (isNewSale && !duplicadoTempoReal) {
     const val = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(order.total_amount)||0);
     const loja = await getStoreName(storeId);
-    const envioLabel = fmtLogistica(shippingType);
+    let envioLabel = fmtLogistica(shippingType);
     const fmtDataHora = d => new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'medium' });
     const saleDateFmt = saleDate ? fmtDataHora(saleDate) : fmtDataHora(new Date());
     const notifiedAtFmt = fmtDataHora(new Date());
@@ -444,11 +446,11 @@ async function handleOrder({ resource, storeId, silent = false }) {
       // o webhook `items` pode chegar depois do pedido e items.available_quantity ainda
       // estaria com o valor de antes da venda. Variação comprada → estoque da variação.
       // Falhou a API → último valor salvo, marcado "(último conhecido)". Só p/ pedido de 1 produto.
-      let linhaEstoque = '';
+      let linhaEstoque = '', itemApi = null;
       if (itensPed.length === 1 && item0.item?.id) {
         let est = null, daVariacao = false, conhecido = false;
         try {
-          const it = await ml.getItem(item0.item.id, storeId);
+          const it = itemApi = await ml.getItem(item0.item.id, storeId);
           const vid = item0.item.variation_id;
           const vari = vid ? (it.variations || []).find(x => String(x.id) === String(vid)) : null;
           est = vari ? Number(vari.available_quantity) : Number(it.available_quantity);
@@ -463,6 +465,9 @@ async function handleOrder({ resource, storeId, silent = false }) {
           linhaEstoque = `\n📊 Estoque restante: <b>${est} ${est === 1 ? 'unidade' : 'unidades'}</b>${daVariacao ? ' (desta variação)' : ''}${alerta}${conhecido ? ' <i>(último conhecido)</i>' : ''}`;
         }
       }
+      // Envio ainda desconhecido (pacote ainda não criado no ML na hora da venda):
+      // usa o tipo de envio do ANÚNCIO, já lido acima pro estoque — sem chamada extra.
+      if (envioLabel === '—' && itemApi?.shipping?.logistic_type) envioLabel = fmtLogistica(itemApi.shipping.logistic_type);
       const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${linhaQtd}${linhaEstoque}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
       const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id) }; // só na Tela Telegram
       if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda, fotoVenda);

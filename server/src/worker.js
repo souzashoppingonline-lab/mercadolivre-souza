@@ -440,7 +440,30 @@ async function handleOrder({ resource, storeId, silent = false }) {
       const unidades = itensPed.reduce((s, it) => s + (Number(it.quantity) || 0), 0) || 1;
       const precoUn = Number(item0.unit_price) || 0;
       const linhaQtd = `🔢 <b>${unidades} ${unidades === 1 ? 'unidade' : 'unidades'}</b>${unidades > 1 && precoUn && itensPed.length === 1 ? ` · ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(precoUn)} cada` : ''}${itensPed.length > 1 ? ` · ${itensPed.length} produtos` : ''}`;
-      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${linhaQtd}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
+      // Estoque restante (pedido do usuário, v161): consulta o anúncio na API na hora —
+      // o webhook `items` pode chegar depois do pedido e items.available_quantity ainda
+      // estaria com o valor de antes da venda. Variação comprada → estoque da variação.
+      // Falhou a API → último valor salvo, marcado "(último conhecido)". Só p/ pedido de 1 produto.
+      let linhaEstoque = '';
+      if (itensPed.length === 1 && item0.item?.id) {
+        let est = null, daVariacao = false, conhecido = false;
+        try {
+          const it = await ml.getItem(item0.item.id, storeId);
+          const vid = item0.item.variation_id;
+          const vari = vid ? (it.variations || []).find(x => String(x.id) === String(vid)) : null;
+          est = vari ? Number(vari.available_quantity) : Number(it.available_quantity);
+          daVariacao = !!vari;
+        } catch (e) {
+          console.warn('[venda] estoque na API:', e.message);
+          const { rows: ei } = await pool.query('SELECT available_quantity FROM items WHERE ml_id = $1', [item0.item.id]).catch(() => ({ rows: [] }));
+          est = ei[0]?.available_quantity != null ? Number(ei[0].available_quantity) : null; conhecido = true;
+        }
+        if (est != null && !Number.isNaN(est)) {
+          const alerta = est <= 0 ? ' ⛔ <b>esgotado</b>' : est <= 5 ? ' ⚠️ <b>baixo</b>' : '';   // ≤ 5 = mesmo limiar do "Estoque crítico"
+          linhaEstoque = `\n📊 Estoque restante: <b>${est} ${est === 1 ? 'unidade' : 'unidades'}</b>${daVariacao ? ' (desta variação)' : ''}${alerta}${conhecido ? ' <i>(último conhecido)</i>' : ''}`;
+        }
+      }
+      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${linhaQtd}${linhaEstoque}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
       const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id) }; // só na Tela Telegram
       if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda, fotoVenda);
       else await tgNotify('tg_vendas', textoVenda, fotoVenda);

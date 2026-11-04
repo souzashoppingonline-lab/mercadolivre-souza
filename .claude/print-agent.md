@@ -98,6 +98,7 @@ como padrão.
 ## Estado
 
 - Backend (migration v49 + rotas `/api/print/*` e `/print-agent/*` + WS) implementado.
+- **v162 (pedido do usuário): DESLIGADO na Embalagem** — o 2º bipe não imprime mais etiqueta ("não é mais necessária após bipar o pedido"); `printThermalLabel`/`confirmAndSendPrint` saíram de `pages/embalagem.html`. Backend (`/api/print/*`, `/print-agent/*`, `/api/embalagem/print-label`, `pdfLabel.js`) e o agente continuam no código, sem chamador — religar = voltar a chamar a impressão no `finalizeCurrent()`. Histórico abaixo.
 - Frontend ligado e **automático**: o **2º bipe** (que encerra a gravação) dispara
   `printThermalLabel` → `confirmAndSendPrint` **direto, sem modal de confirmação** —
   bipou 2x, sai a etiqueta. A etiqueta leva só os campos já existentes (produto, SKU,

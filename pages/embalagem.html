@@ -1358,9 +1358,9 @@ async function finalizeCurrent() {
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);
 
-  // Mostra modal de confirmação ANTES de fazer upload
-  // (não depende de vídeo — funciona mesmo sem câmera)
-  printThermalLabel(session);
+  // v162: o 2º bipe NÃO imprime mais etiqueta própria (pedido do usuário — não é
+  // mais necessária). printThermalLabel/confirmAndSendPrint foram removidos daqui;
+  // backend (/api/print/*, /api/embalagem/print-label, Print Agent) segue intacto.
 
   // Upload roda em segundo plano (sem await) — não trava o operador esperando
   // a rede pra poder bipar a próxima etiqueta. Ver .claude/embalagem.md.
@@ -1404,97 +1404,6 @@ async function uploadPackingVideo(session, blob, durationSeconds) {
   } catch (e) {
     showScanMsg(`⚠️ Falha ao salvar vídeo do pedido ${session.shippingId}: ${e.message}. Veja a aba "Erros".`, 'error');
     loadErros();
-  }
-}
-
-// Prepara dados de impressão e mostra modal de confirmação
-function printThermalLabel(session) {
-  console.log('[thermal] iniciando fluxo de impressão para:', session.shippingId);
-  const order = session.orders[0];
-  if (!order) {
-    console.warn('[thermal] nenhum pedido encontrado na sessão');
-    return;
-  }
-
-  const variationType = order.variation_attributes
-    ? order.variation_attributes.map(v => v.value_name).join(' / ')
-    : null;
-
-  const payload = {
-    shipping_id: session.shippingId,
-    store_id: order.store_id,               // roteia a estação de impressão (Print Agent)
-    product_name: order.title || '(sem título)',
-    variation_type: variationType,
-    sku: order.seller_sku,
-    store_name: order.store_nickname || '(sem loja)',
-    company_name: 'EMPRESA XYZ',
-  };
-
-  // Impressão automática: sem modal — o 2º bipe já dispara a etiqueta.
-  // A etiqueta leva exatamente estes campos (produto, SKU, loja, variação, QR).
-  confirmAndSendPrint(payload);
-}
-
-async function confirmAndSendPrint(payload) {
-  try {
-    console.log('[thermal] ✓ confirmado, payload:', payload);
-
-    // 1) Impressão automática (Print Agent): enfileira o job pra estação da loja.
-    // Se houver estação configurada, o agente da expedição imprime sozinho — sem
-    // download no navegador. Ver .claude/print-agent.md.
-    try {
-      // station_id do PC (se este PC escolheu uma estação); senão o backend cai
-      // na estação da loja ou na global.
-      const stationId = localStorage.getItem('print_station_id') || undefined;
-      const enq = await fetch('/api/print/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shipping_id: payload.shipping_id, station_id: stationId, store_id: payload.store_id, label: payload }),
-      });
-      if (enq.ok) {
-        console.log('[thermal] ✓ enfileirado pro agente de impressão');
-        showBigSuccessMsg('🖨️ Etiqueta enviada', 'Impressão automática na estação da loja');
-        document.getElementById('scanInput').focus();
-        return;
-      }
-      // 409 = nenhuma estação cadastrada pra loja → cai no PDF no navegador (fallback)
-      console.warn(`[thermal] sem estação (HTTP ${enq.status}) — fallback pro PDF no navegador`);
-    } catch (e) {
-      console.warn('[thermal] falha ao enfileirar, fallback pro PDF:', e.message);
-    }
-
-    // 2) Fallback: gera o PDF e baixa no navegador (comportamento anterior).
-    console.log('[thermal] gerando PDF...');
-    const res = await fetch('/api/embalagem/print-label', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.warn(`[thermal] erro HTTP ${res.status}:`, errText);
-      showScanMsg(`⚠️ Erro ao gerar etiqueta (HTTP ${res.status})`, 'error');
-      return;
-    }
-
-    // Faz download automático do PDF
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `etiqueta-${payload.shipping_id}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-
-    console.log('[thermal] ✓ PDF baixado:', payload.shipping_id);
-    showScanMsg(`✓ Etiqueta PDF pronta para impressão`, 'success');
-    document.getElementById('scanInput').focus();
-  } catch (e) {
-    console.error('[thermal] exceção:', e.message, e.stack);
-    showScanMsg(`⚠️ Erro ao gerar etiqueta: ${e.message}`, 'error');
   }
 }
 

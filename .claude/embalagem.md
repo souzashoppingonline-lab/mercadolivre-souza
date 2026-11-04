@@ -309,6 +309,8 @@ Chamado só quando `refreshShopeeTrackingOnDemand` (1º nível, iterando candida
 - **Data/Hora** de embalagem (timestamp em formato brasileiro)
 - **Rodapé**: "PRODUTO EMBALADO PELA [EMPRESA]" (configurável, padrão "EMPRESA XYZ")
 
+> **v162: desativado** — o 2º bipe não gera/imprime mais etiqueta (pedido do usuário). Ver `print-agent.md` (Estado). O texto abaixo é histórico.
+
 Ao confirmar, o navegador dispara um download automático (`etiqueta-{shipping_id}.pdf`). O usuário pode então:
 - Imprimir em impressora térmica local (10x15cm é o tamanho padrão, basta configurar o papel)
 - Imprimir em impressora comum A4 (o PDF se adapta)

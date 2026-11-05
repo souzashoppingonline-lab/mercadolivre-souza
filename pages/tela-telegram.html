@@ -539,12 +539,22 @@ function proximaCarinha() {
   const el = document.createElement('div'); el.className = 'cara-v';
   el.innerHTML = `<div class="placa-v"><div class="t">🛒 Nova venda</div><div class="l">${esc(v.loja.replace(/_+/g, ' '))}</div><div class="m">${esc(v.mkt)}</div></div><div class="pau"></div>${svgCarinha(caraIdx++)}`;
   document.body.appendChild(el);
+  if (somLigado) bipeVenda();
   setTimeout(() => { el.remove(); proximaCarinha(); }, 3000);
+}
+// Bipe da venda (pedido do usuário: "rápido, não muito alto"): 1 toque curto e
+// suave (~0,12 s, volume baixo) — bem mais discreto que o bipe da pergunta/chat.
+function bipeVenda() {
+  const c = ctxAudio(); if (!c || c.state !== 'running') return;
+  const o = c.createOscillator(), g = c.createGain(), ini = c.currentTime;
+  o.type = 'sine'; o.frequency.setValueAtTime(1320, ini);
+  g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.12, ini + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.12);
+  o.connect(g).connect(c.destination); o.start(ini); o.stop(ini + 0.13);
 }
 function botaoCara() { document.getElementById('btnCara').textContent = caraLigada ? '😀 Carinha' : '😀 Carinha (desl.)'; }
 document.getElementById('btnCara').onclick = () => {
   caraLigada = !caraLigada; try { localStorage.setItem('tela_tg_carinha', caraLigada ? '1' : '0'); } catch (_) {}
-  botaoCara(); if (caraLigada) filaCarinha({ topico: 'tg_vendas', texto: 'Nova venda!\n🏪 TESTE' });
+  botaoCara(); if (caraLigada) { if (somLigado) destravarSom(); } if (caraLigada) filaCarinha({ topico: 'tg_vendas', texto: 'Nova venda!\n🏪 TESTE' });
 };
 botaoCara();
 

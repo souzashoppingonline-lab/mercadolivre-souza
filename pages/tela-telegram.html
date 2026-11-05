@@ -594,7 +594,9 @@ function htmlVenda(v) {
 }
 const filaCaras = []; let caraRodando = false;
 function filaCarinha(m) {
-  if (!caraLigada) return;
+  // Bipe curto em TODA venda (pedido do usuário): com a animação desligada toca na hora;
+  // ligada, toca quando a animação da venda aparece (proximaCarinha). Só com 🔊 Som ligado.
+  if (!caraLigada) { if (somLigado) bipeVenda(); return; }
   if (filaCaras.length < 6) filaCaras.push(m.tipo ? m : lojaDaVenda(m));
   if (!caraRodando) proximaCarinha();
 }

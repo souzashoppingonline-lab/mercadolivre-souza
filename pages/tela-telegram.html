@@ -602,12 +602,15 @@ function proximaCarinha() {
   const v = filaCaras.shift();
   if (!v) { caraRodando = false; return; }
   caraRodando = true;
-  const { cls, html } = htmlVenda(v);
-  const el = document.createElement('div'); el.className = 'vv ' + cls; el.innerHTML = html;
-  if (cls.includes('vv-sobe')) el.style.left = (15 + Math.random() * 55) + 'vw';   // balão sobe num ponto diferente a cada vez
-  document.body.appendChild(el);
-  if (somLigado) bipeVenda();
-  setTimeout(() => { el.remove(); proximaCarinha(); }, 5000);   // 5 s (pedido do usuário)
+  let el = null;
+  try {   // erro numa animação nunca trava a fila (senão as próximas vendas não apareceriam mais)
+    const { cls, html } = htmlVenda(v);
+    el = document.createElement('div'); el.className = 'vv ' + cls; el.innerHTML = html;
+    if (cls.includes('vv-sobe')) el.style.left = (15 + Math.random() * 55) + 'vw';   // balão sobe num ponto diferente a cada vez
+    document.body.appendChild(el);
+    if (somLigado) bipeVenda();
+  } catch (e) { console.warn('[tela-telegram] animação da venda:', e.message); }
+  setTimeout(() => { if (el) el.remove(); proximaCarinha(); }, 5000);   // 5 s (pedido do usuário)
 }
 // Bipe da venda (pedido do usuário: "rápido, não muito alto"): 1 toque curto e
 // suave (~0,12 s, volume baixo) — bem mais discreto que o bipe da pergunta/chat.

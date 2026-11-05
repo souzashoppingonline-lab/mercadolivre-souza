@@ -77,6 +77,8 @@ function calcularRitmo(vendasMs, agora) {
   return { hoje: lado(h0, agora), ontem: lado(o0, oAgora) };
 }
 
+const { calcularMeta } = require('../metaMes'); // v164 — slide 🎯 Meta do mês (puro, testado)
+
 async function montarPainel() {
   const redis = require('../db/redis');
   const [{ rows: tot }, { rows: lojas }, { rows: est }, { rows: bb }, { rows: rec }, { rows: tokens }, { rows: ult }, hbWorker] = await Promise.all([
@@ -410,6 +412,62 @@ async function montarPainel() {
       perguntas: pd.reduce((a, r) => a + r.perguntas, 0), chats: pd.reduce((a, r) => a + r.chats, 0),
       mais_antiga: desde ? new Date(desde).toISOString() : null };
   } catch (e) { console.warn('[telegram-tela/painel] pendentes:', e.message); }
+  // ── v164: 4 telas novas (sem custo, tempo de resposta, reclamações, meta do mês) ──
+  const HOJE_SP = `date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`;
+  const AMAZON = `(SELECT id FROM marketplaces WHERE code = 'AMAZON')`;
+  const [semCusto, respostas, reclam, fatMes, goals] = await Promise.all([
+    // Anúncios que vendem SEM custo cadastrado (cost_updated_at nulo = nenhum humano confirmou —
+    // mesma regra de custo_ausente em vendaMargem.js), 30 dias, por faturamento.
+    pool.query(
+      `SELECT o.item_id, MAX(COALESCE(i.title, o.title)) AS titulo, MAX(i.thumbnail) AS thumb, MAX(s.nickname) AS loja,
+              COUNT(*)::int AS vendas, COALESCE(SUM(o.total_amount), 0) AS fat, COUNT(*) OVER ()::int AS total_itens
+         FROM orders o JOIN items i ON i.ml_id = o.item_id LEFT JOIN stores s ON s.id = o.store_id
+        WHERE o.date_created >= now() - interval '30 days' AND o.status != 'cancelled' AND i.cost_updated_at IS NULL
+        GROUP BY o.item_id ORDER BY fat DESC LIMIT 6`).then((r) => r.rows).catch((e) => { console.warn('[telegram-tela/painel] sem custo:', e.message); return null; }),
+    // Tempo de resposta: perguntas RESPONDIDAS hoje/ontem (updated_at = data da resposta, ver handleQuestion).
+    pool.query(
+      `WITH r AS (
+         SELECT q.ml_id, COALESCE(q.item_title, i.title) AS titulo, s.nickname AS loja, q.date_created, q.updated_at,
+                EXTRACT(EPOCH FROM (q.updated_at - q.date_created)) AS seg,
+                CASE WHEN q.updated_at >= ${HOJE_SP} THEN 'hoje' ELSE 'ontem' END AS dia
+           FROM questions q LEFT JOIN items i ON i.ml_id = q.item_id LEFT JOIN stores s ON s.id = q.store_id
+          WHERE q.status = 'ANSWERED' AND q.updated_at >= ${HOJE_SP} - interval '1 day' AND q.updated_at > q.date_created)
+       SELECT dia, COUNT(*)::int AS qtd, AVG(seg) AS media, percentile_cont(0.5) WITHIN GROUP (ORDER BY seg) AS mediana,
+              (ARRAY_AGG(json_build_object('titulo', titulo, 'loja', loja, 'seg', seg) ORDER BY seg DESC))[1] AS pior,
+              COUNT(*) FILTER (WHERE seg <= 3600)::int AS ate_1h
+         FROM r GROUP BY dia`).then((r) => r.rows).catch((e) => { console.warn('[telegram-tela/painel] respostas:', e.message); return null; }),
+    // Reclamações/devoluções ABERTAS do ML (mesmo critério do card "Em análise" de Devoluções).
+    pool.query(
+      `SELECT r.id, COALESCE(s.nickname, 'Loja ' || r.store_id) AS loja, COALESCE(i.title, r.title) AS titulo,
+              r.raw_data->>'type' AS tipo, r.status, r.date, COALESCE(r.amount, 0) AS valor,
+              FLOOR(EXTRACT(EPOCH FROM (now() - r.date)) / 86400)::int AS dias
+         FROM returns r LEFT JOIN stores s ON s.id = r.store_id
+         LEFT JOIN orders o ON o.ml_id = r.order_id LEFT JOIN items i ON i.ml_id = o.item_id
+        WHERE r.status IN ('opened', 'analysis')
+        ORDER BY r.date ASC NULLS LAST`).then((r) => r.rows).catch((e) => { console.warn('[telegram-tela/painel] reclamações:', e.message); return null; }),
+    pool.query(
+      `SELECT COALESCE(SUM(total_amount), 0) AS fat FROM orders
+        WHERE date_created >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+          AND status != 'cancelled' AND marketplace_id IS DISTINCT FROM ${AMAZON}`).then((r) => Number(r.rows[0].fat)).catch(() => null),
+    (async () => {
+      const supa = require('../db/supabaseFin');
+      if (!supa.isConfigured()) return null;
+      return supa.selectRows('monthly_goals', 500);
+    })().catch((e) => { console.warn('[telegram-tela/painel] metas:', e.message); return null; }),
+  ]);
+  const hojeSp = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const respDia = (d) => { const r = (respostas || []).find((x) => x.dia === d); return r ? { qtd: r.qtd, media_s: Math.round(Number(r.media)), mediana_s: Math.round(Number(r.mediana)), ate_1h: r.ate_1h, pior: r.pior ? { titulo: r.pior.titulo, loja: r.pior.loja, seg: Math.round(Number(r.pior.seg)) } : null } : { qtd: 0 }; };
+  const extrasV164 = {
+    sem_custo: semCusto ? { total: semCusto[0]?.total_itens || 0, itens: semCusto.map((x) => ({ item_id: x.item_id, titulo: x.titulo, thumb: x.thumb, loja: x.loja, vendas: x.vendas, fat: Number(x.fat) })) } : null,
+    respostas: respostas ? { hoje: respDia('hoje'), ontem: respDia('ontem'), pendentes: pendentes ? pendentes.perguntas : null } : null,
+    reclamacoes: reclam ? {
+      total: reclam.length,
+      valor: reclam.reduce((a, r) => a + Number(r.valor), 0),
+      por_loja: Object.values(reclam.reduce((acc, r) => { (acc[r.loja] = acc[r.loja] || { loja: r.loja, qtd: 0 }).qtd++; return acc; }, {})).sort((a, b) => b.qtd - a.qtd),
+      itens: reclam.slice(0, 5).map((r) => ({ loja: r.loja, titulo: r.titulo, tipo: /return/i.test(r.tipo || '') ? 'Devolução' : 'Reclamação', dias: r.dias, valor: Number(r.valor) })),
+    } : null,
+    meta: goals == null ? { configurado: false } : (calcularMeta(goals, fatMes || 0, hojeSp) || { sem_meta: true, faturado: fatMes || 0 }),
+  };
   const t = tot[0];
   const hbIdade = hbWorker ? Math.round((Date.now() - Number(hbWorker)) / 1000) : null;
   const vencidos = tokens.filter(k => !k.token_expires_at || new Date(k.token_expires_at).getTime() < Date.now() - 5 * 60000).map(k => k.nickname);
@@ -459,6 +517,7 @@ async function montarPainel() {
         violacoes: violShopee.length, violacoes_lista: violShopee.slice(0, 3).map(v => ({ titulo: v.title, loja: v.loja })) },
       nota_baixa: { media: notaBaixa[0] ? Number(notaBaixa[0].media) : null,
         itens: notaBaixa.map(q => ({ item_id: q.item_id, titulo: q.titulo, loja: q.loja, nota: Number(q.score), visitas30: q.visits_30d, vendas30: q.sales_30d, faltas: faltasSeo(q).slice(0, 2) })) },
+      ...extrasV164,
     },
     ia,
   };

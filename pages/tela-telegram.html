@@ -68,8 +68,8 @@
     .msg.alerta .selo { display:inline-block; background:#ff5d5d; color:#fff; font-weight:800; font-size:.8em; letter-spacing:.03em; border-radius:6px; padding:2px 8px; margin-bottom:4px; }
     .msg.nova.alerta .bolha { animation:entra .6s cubic-bezier(.2,1.2,.4,1), alertaPulsa 1.1s ease-in-out 9; }
     @keyframes alertaPulsa { 50% { box-shadow:0 0 0 3px rgba(255,93,93,.95), 0 0 34px rgba(255,93,93,.55); } }
-    /* Carinha da venda (v163): atravessa a tela toda em 3 s (igual ao pato), cara nova a cada venda */
-    .cara-v { position:fixed; left:0; bottom:26px; z-index:8990; width:250px; pointer-events:none; text-align:center; animation:caraAtravessa 3s linear forwards; }
+    /* Carinha da venda (v163): atravessa a tela toda em 5 s (igual ao pato), cara nova a cada venda */
+    .cara-v { position:fixed; left:0; bottom:26px; z-index:8990; width:250px; pointer-events:none; text-align:center; animation:caraAtravessa 5s linear forwards; }
     body.tv .cara-v { width:300px; }
     .cara-v .placa-v { position:relative; display:inline-block; background:#fff; color:#15803d; border:4px solid #16a34a; border-radius:14px; padding:8px 14px 9px; box-shadow:0 8px 22px rgba(0,0,0,.5); max-width:100%; box-sizing:border-box; animation:placaBalanca .5s ease-in-out infinite alternate; }
     .cara-v .placa-v .t { font-size:15px; font-weight:900; text-transform:uppercase; letter-spacing:.3px; }
@@ -264,6 +264,31 @@
     .ont { margin-top:8px; display:flex; justify-content:space-between; font-size:.84em; color:#9fb4c7; border-top:1px solid #22303f; padding-top:7px; }
     .ont b { color:var(--txt); }
     @media (max-width:640px) { .ctrls { display:none; } #relogio { font-size:16px; } .bolha { max-width:90%; } }
+    /* ── Versão celular (v165): mesma página, abas embaixo (Avisos · Painel · Ajustes) ── */
+    .m-nav, .m-setas, .m-aj-tit { display:none; }
+    @media (max-width:760px) {
+      .tg-top { flex-wrap:wrap; padding:8px 12px; gap:6px 10px; }
+      .tg-top .av { width:36px; height:36px; font-size:14px; }
+      .tg-top .nome small { font-size:11px; }
+      #pend { order:9; flex:1 1 100%; font-size:.74em; }
+      .corpo { padding-bottom:calc(60px + env(safe-area-inset-bottom)); }
+      .m-nav { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:9500; background:var(--top); border-top:1px solid #0b121a; padding-bottom:env(safe-area-inset-bottom); }
+      .m-nav button { position:relative; flex:1; background:none; border:none; color:var(--muted); padding:7px 4px 8px; font-size:12px; font-weight:800; display:flex; flex-direction:column; align-items:center; gap:1px; }
+      .m-nav button b { font-size:21px; line-height:1.1; } .m-nav button.on { color:#5eb5f7; }
+      .m-nav .bdg { position:absolute; top:3px; left:calc(50% + 8px); background:#e5484d; color:#fff; border-radius:999px; font-size:10.5px; min-width:17px; padding:1px 5px; box-sizing:border-box; }
+      .m-nav .bdg:empty { display:none; }
+      body.m-painel #chat, body.m-ajustes #chat { display:none; }
+      body.m-painel #painel { display:flex !important; width:100%; border-left:none; overflow-y:auto; font-size:15px; padding:12px; gap:10px; }
+      body.m-painel .m-setas { display:flex; gap:6px; margin-left:6px; } .m-setas button { background:#22303f; color:#e6edf3; border:none; border-radius:9px; width:34px; height:30px; font-size:18px; font-weight:900; }
+      body.m-ajustes .ctrls { display:flex !important; position:fixed; left:0; right:0; top:var(--m-top, 64px); bottom:calc(60px + env(safe-area-inset-bottom)); z-index:9400; flex-direction:column; gap:10px; padding:16px; background:var(--bg); overflow-y:auto; }
+      body.m-ajustes .ctrls > * { width:100%; font-size:16px !important; padding:13px 14px !important; border-radius:12px !important; text-align:left; }
+      body.m-ajustes .m-aj-tit { display:block; font-size:13px; color:var(--muted); font-weight:800; text-transform:uppercase; padding:0 2px !important; background:none !important; border:none !important; }
+      body.m-ajustes #btnTv, body.m-ajustes #btnLink { display:none; }
+      .pato { width:130px; } .pato .placa { font-size:15px; padding:6px 10px; }
+      .cara-v { width:180px; } .cara-v .placa-v .l { font-size:17px; } .cara-v svg { width:100px; margin-top:-36px; }
+      .heroi, .cacador { width:110px; }
+      .som-aviso { bottom:calc(70px + env(safe-area-inset-bottom)); font-size:13px; }
+    }
   </style>
 </head>
 <body>
@@ -273,6 +298,7 @@
   <div class="pend" id="pend" hidden></div>
   <div class="dir">
     <div class="ctrls">
+      <div class="m-aj-tit">⚙️ Ajustes desta tela</div>
       <button id="btnPausa" title="Pausar/continuar a rolagem">⏸ Pausar</button>
       <select id="vel" title="Como a tela se comporta"><option value="0" selected>📌 Fixa nas mensagens novas</option><option value="25">Rolagem lenta</option><option value="45">Rolagem média</option><option value="90">Rolagem rápida</option></select>
       <button id="btnSom" title="Bipe + voz quando chega pergunta ou chat de cliente">🔊 Som</button>
@@ -291,9 +317,14 @@
   <aside id="painel" hidden>
     <div class="blk"><h3>📊 Placar de hoje <small id="pnPlacarSub"></small></h3><div id="pnPlacar"></div></div>
     <div class="blk"><h3>🚦 Rankeamento hoje <small>vendas por estágio</small></h3><div id="pnEstagios"></div></div>
-    <div class="blk car"><h3 id="carTit">🔥 Mais vendidos hoje</h3><div id="carCorpo"></div><div class="car-dots" id="carDots"></div></div>
+    <div class="blk car"><div style="display:flex;align-items:flex-start"><h3 id="carTit" style="flex:1">🔥 Mais vendidos hoje</h3><div class="m-setas"><button onclick="carPasso(-1)" aria-label="Tela anterior">‹</button><button onclick="carPasso(1)" aria-label="Próxima tela">›</button></div></div><div id="carCorpo"></div><div class="car-dots" id="carDots"></div></div>
   </aside>
 </div>
+<nav class="m-nav" id="mNav">
+  <button data-aba="chat" class="on"><b>💬</b>Avisos<span class="bdg" id="mBdg"></span></button>
+  <button data-aba="painel"><b>📊</b>Painel</button>
+  <button data-aba="ajustes"><b>⚙️</b>Ajustes</button>
+</nav>
 <div class="toast" id="toast"></div>
 <div class="som-aviso" id="somAviso">🔇 Toque na tela (ou OK no controle) para ligar o som dos alertas</div>
 <div class="cheia" id="cheia">📺 Toque para tela cheia</div>
@@ -384,6 +415,7 @@ async function buscar(novas) {
     mostrarNova();
     tocarAlerta(ms.map(tipoAlerta).filter(Boolean));
     ms.filter(ehVendaNova).forEach(m => filaCarinha(m));
+    avisarNovasM(ms.length);
     painelDepoisDeMensagem();
   } catch (e) { console.warn('[tela-telegram]', e.message); }
 }
@@ -481,7 +513,7 @@ function tocarAlerta(lista) {
 // ── Carinha da venda (v163, pedido do usuário) ─────────────────────────────
 // Cada "Nova venda!" → uma carinha (desenho próprio, SVG, de camisa verde-amarela) com uma placa
 // "🛒 Nova venda" + nome da loja (pedido do usuário: "nova venda (loja)"), atravessando a
-// tela toda em 3 s pulando (igual ao pato da pergunta). Cara diferente a cada
+// tela toda em 5 s pulando (igual ao pato da pergunta). Cara diferente a cada
 // venda (rodízio de cor/olhos/boca/acessório). Várias vendas juntas → fila
 // (até 6). Botão 😀 liga/desliga (localStorage tela_tg_carinha).
 let caraLigada = true;
@@ -545,7 +577,7 @@ function proximaCarinha() {
   el.innerHTML = `<div class="placa-v"><div class="t">🛒 Nova venda</div><div class="l">${esc(v.loja.replace(/_+/g, ' '))}</div><div class="m">${esc(v.mkt)}</div></div><div class="pau"></div>${svgCarinha(caraIdx++)}`;
   document.body.appendChild(el);
   if (somLigado) bipeVenda();
-  setTimeout(() => { el.remove(); proximaCarinha(); }, 3000);
+  setTimeout(() => { el.remove(); proximaCarinha(); }, 5000);   // 5 s (pedido do usuário — 3 s era rápido demais)
 }
 // Bipe da venda (pedido do usuário: "rápido, não muito alto"): 1 toque curto e
 // suave (~0,12 s, volume baixo) — bem mais discreto que o bipe da pergunta/chat.
@@ -986,6 +1018,30 @@ function renderCarrossel() {
   document.getElementById('carDots').innerHTML = SLIDES.map((_, i) => `<i class="${i === carIdx % SLIDES.length ? 'on' : ''}"></i>`).join('');
 }
 setInterval(() => { carIdx = (carIdx + 1) % SLIDES.length; renderCarrossel(); }, 30000); // v130: 30s por tela (pedido do usuário)
+
+// ── Versão celular (v165) — mesma página; abaixo de 760 px vira 3 abas ───────
+// 💬 Avisos (a conversa) · 📊 Painel (placar + estágios + carrossel, passa com o
+// dedo ou ‹ ›) · ⚙️ Ajustes (os botões do topo: Som, Pato, Carinha, rolagem).
+// Mensagem nova com outra aba aberta → contador vermelho no 💬. Aba lembrada.
+let abaM = 'chat', novasFora = 0;
+function setAbaM(a) {
+  abaM = a; try { localStorage.setItem('tela_tg_aba_m', a); } catch (_) {}
+  document.body.classList.toggle('m-painel', a === 'painel');
+  document.body.classList.toggle('m-ajustes', a === 'ajustes');
+  document.querySelectorAll('#mNav button').forEach(b => b.classList.toggle('on', b.dataset.aba === a));
+  document.documentElement.style.setProperty('--m-top', document.querySelector('.tg-top').offsetHeight + 'px');
+  if (a === 'chat') { novasFora = 0; document.getElementById('mBdg').textContent = ''; chat.scrollTop = chat.scrollHeight; }
+  if (a === 'painel') renderCarrossel();
+}
+document.querySelectorAll('#mNav button').forEach(b => b.onclick = () => setAbaM(b.dataset.aba));
+function avisarNovasM(n) { if (abaM === 'chat' || !n) return; novasFora += n; document.getElementById('mBdg').textContent = novasFora > 99 ? '99+' : novasFora; }
+function carPasso(d) { carIdx = (carIdx + d + SLIDES.length) % SLIDES.length; renderCarrossel(); }
+(function () {   // passar o carrossel com o dedo
+  let x0 = null, y0 = 0; const car = document.querySelector('#painel .car');
+  car.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  car.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null; if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) carPasso(dx < 0 ? 1 : -1); });
+})();
+try { const a = localStorage.getItem('tela_tg_aba_m'); if (a && a !== 'chat' && matchMedia('(max-width:760px)').matches) setTimeout(() => setAbaM(a), 0); } catch (_) {}
 
 function painelDepoisDeMensagem() { clearTimeout(painelT); painelT = setTimeout(carregarPainel, 3000); }
 setInterval(carregarPainel, 60000);

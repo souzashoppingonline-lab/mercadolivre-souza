@@ -1,5 +1,9 @@
 # Roadmap
 
+## FinanceEcom — "o melhor ERP/CRM do mundo" (visão do usuário, 05/11/2026)
+
+Palavras do usuário: "financeecom tem que ser o melhor erp ou crm do mundo e você vai me ajudar a tornar isso". Primeiros passos em conversa: WMS dentro do Financeiro (custo automático pela NF, boletos da NF, estoque valorizado, giro/cobertura, sugestão de compra, recebimento conferido, inventário) e os 2 gargalos operacionais (bipagem de kit, saídas Full). Detalhe completo e próximos passos em `wms.md`.
+
 > Escopo: direção futura do produto/arquitetura — o que está planejado, não o que está quebrado agora (`known-bugs.md`) nem uma lista de tarefas granulares acionáveis (`todo.md`). **Ao concluir um item aqui, mova o resultado para `decisions.md` (se envolveu escolha de design) e remova daqui.**
 
 ## Multi-marketplace: Shopee, Amazon e TikTok Shop

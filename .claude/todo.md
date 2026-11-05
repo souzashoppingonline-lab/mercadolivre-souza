@@ -1,5 +1,12 @@
 # TODO
 
+## WMS / FinanceEcom — retomar a conversa (ver `wms.md`, "Para retomar amanhã")
+
+- [ ] Saídas Full: perguntar onde trava (a/b/c/d) e como é o processo hoje.
+- [ ] Bipagem de kit (Proposta A): aprovação + decidir se produto de 1 unidade também exige bipe do produto → prévia.
+- [ ] Escolher os primeiros dos 8 itens de WMS no FinanceEcom (sugestão: custo automático pela NF + boletos da NF).
+- [ ] Plano por fases do FinanceEcom como ERP/CRM completo.
+
 > Lista viva de itens acionáveis e concretos — granularidade de tarefa, não de direção estratégica (`roadmap.md`) nem de defeito documentado sem plano de ação definido (`known-bugs.md`, embora todo item de `known-bugs.md` com "Correção esperada" definida vire candidato natural a entrar aqui). Marque `[x]` ao concluir e mova o resultado relevante para `decisions.md`/`database.md`/etc. conforme o caso. Adicione itens novos sempre que uma tarefa ficar pendente ao final de uma sessão.
 
 ## Simulação de Ponto de Equilíbrio (v109, `financeiro-despesas.html`) — deixado fora do V1 por escolha explícita do usuário

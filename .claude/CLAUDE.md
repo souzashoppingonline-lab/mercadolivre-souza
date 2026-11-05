@@ -33,6 +33,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `extrato-ofx.md` | Financeiro → Extrato Bancário (OFX): leitor OFX, categorias que aprendem, saldo dia a dia, alertas, mês a mês salvo, análise da IA. Tabelas `ofx_*`, rotas `/api/financeiro/extrato-ofx/*` |
 | `conciliacao-bancaria.md` | Módulo financeiro Pedido→Pagamento→Liberação→Transferência→Conciliação, status por fase, API de Faturamento ML, o que depende do app Mercado Pago |
 | `embalagem.md` | Bipagem de etiqueta (FLEX/Mercado Envios), gravação de vídeo de conferência, retenção de 30 dias |
+| `wms.md` | WMS / FinanceEcom — conversa em andamento (nada implementado): visão "melhor ERP/CRM do mundo", 8 ideias de WMS no Financeiro, gargalos bipagem de kit e saídas Full, propostas aguardando decisão |
 | `rankeamento.md` | Acompanhamento de anúncio na janela de ranqueamento: cada venda/alteração na tela + Telegram, marco a cada N vendas. Tabelas `ranking_ads`/`ranking_events`, `server/src/ranking.js`, rotas `/api/ranking/*` |
 | `print-agent.md` | Impressão automática de etiquetas (10×15 térmica) via agente local: `print_stations`/`print_jobs`, rotas `/api/print/*` (gestão) e `/print-agent/*` (agente com token), pasta `print-agent/` |
 | `analise-produtos.md` | Módulo de decisão de compra: cadastro de produto+custos, coleta de concorrentes via extensão (fila de "produto ativo"), fases 2/3 (inteligência + IA). Tabelas `analise_products`/`analise_product_ads`/`analise_active_collection`, rotas `/api/analise/*` |

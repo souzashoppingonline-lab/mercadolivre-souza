@@ -200,6 +200,11 @@
     /* v133 */
     .tk { display:grid; grid-template-columns:1fr 1fr; gap:10px; } .tk div { background:#1c2a39; border-radius:12px; padding:12px; }
     .tk span { display:block; font-size:.8em; color:#9fb4c7; font-weight:700; } .tk b { display:block; font-size:2em; font-weight:900; margin:4px 0; } .tk small { font-size:.8em; color:#9fb4c7; }
+    /* v164: meta do mês */
+    .mt-barra { position:relative; height:1.5em; background:#1c2a39; border-radius:999px; overflow:hidden; margin:6px 0 10px; }
+    .mt-barra i { position:absolute; inset:0 auto 0 0; background:linear-gradient(90deg,#16a34a,#5ef08a); border-radius:999px; }
+    .mt-barra em { position:absolute; top:-3px; bottom:-3px; width:3px; background:#f0b429; }
+    .mt-barra span { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:.85em; text-shadow:0 1px 2px #000; }
     .tk-dica { margin-top:10px; font-size:.86em; background:rgba(94,181,247,.08); border-radius:10px; padding:8px 10px; }
     .uf { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:.9em; } .uf .n { width:9.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:700; }
     .uf .bar { flex:1; height:.9em; background:#22303f; border-radius:6px; overflow:hidden; } .uf .bar i { display:block; height:100%; background:linear-gradient(90deg,#4ea1ff,#a371f7); border-radius:6px; } .uf .q { width:2.5em; text-align:right; font-weight:900; }
@@ -932,6 +937,31 @@ const SLIDES = [
       const cor = n => n < 40 ? '#f85149' : n < 60 ? '#f0b429' : '#3fb950';
       return `${nb.media != null ? `<div class="sp-fat" style="margin:0 0 4px"><span>Média da carteira: <b style="color:${cor(nb.media)}">${nb.media.toLocaleString('pt-BR')}</b>/100</span><span>atualiza 1x por dia (04:30)</span></div>` : ''}` +
         nb.itens.map(x => `<div class="tp"><div class="nota" style="background:${cor(x.nota)}">${Math.round(x.nota)}</div><div class="t"><b>${esc(x.titulo || x.item_id)}</b><span>${x.faltas.length ? esc(x.faltas.join(' · ')) : 'ver detalhes na Qualidade de Anúncio'}</span></div><div class="v">${x.visitas30}<small>visitas/30d · ${x.vendas30 || 0} vend.</small></div></div>`).join(''); } },
+  // ── v164 (pedido do usuário): sem custo · tempo de resposta · reclamações · meta do mês ──
+  { tit: '📝 Produtos vendendo sem custo cadastrado', html: d => { const c = d.carrossel.sem_custo; if (!c) return '';
+      if (!c.itens.length) return '<div class="pn-vazio">✅ Todo produto que vendeu nos últimos 30 dias tem custo cadastrado.</div>';
+      return c.itens.map(x => `<div class="tp"><div class="pos">📝</div>${x.thumb ? `<img src="${esc(x.thumb)}" alt="">` : ''}<div class="t"><b>${esc(x.titulo)}</b><span>${esc(x.loja || '')} · ${x.vendas} venda(s) em 30 dias</span></div><div class="v" style="color:#f0b429">${R$(x.fat)}<small>vendido</small></div></div>`).join('')
+        + `<div class="tk-dica">💡 ${c.total > c.itens.length ? `<b>${c.total}</b> produtos vendendo sem custo — mostrando os ${c.itens.length} que mais vendem. ` : ''}Sem custo, a margem fica errada. Cadastre em <b>Resumo por venda</b> ou nos <b>Recebíveis Mercado Pago</b>.</div>`; } },
+  { tit: '⏱️ Tempo de resposta às perguntas — hoje × ontem', html: d => { const r = d.carrossel.respostas; if (!r) return '';
+      const tempo = s => s == null ? '—' : s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}` : `${Math.round(s / 86400)} dia(s)`;
+      const h = r.hoje, o = r.ontem, v = h.qtd && o.qtd ? Math.round(((h.media_s - o.media_s) / o.media_s) * 100) : null;
+      const seta = v == null ? '' : `<span class="${v <= 0 ? 'up' : 'dn'}">${v <= 0 ? '▼' : '▲'} ${Math.abs(v)}%</span>`;   // tempo menor = melhor (verde)
+      return `<div class="tk"><div><span>⏱️ Média hoje</span><b>${h.qtd ? tempo(h.media_s) : '—'}</b><small>ontem ${o.qtd ? tempo(o.media_s) : '—'} ${seta}</small></div>
+        <div><span>💬 Respondidas hoje</span><b>${h.qtd}</b><small>${h.qtd ? `${Math.round((h.ate_1h / h.qtd) * 100)}% em até 1 hora` : 'nenhuma ainda'}${r.pendentes ? ` · <span style="color:#f85149">${r.pendentes} esperando</span>` : ''}</small></div></div>
+        ${h.pior ? `<div class="tk-dica">🐢 Mais demorada hoje: <b>${tempo(h.pior.seg)}</b> — ${esc(corta(h.pior.titulo || 'pergunta', 60))}${h.pior.loja ? ` <span style="color:#9fb4c7">(${esc(h.pior.loja)})</span>` : ''}</div>` : `<div class="tk-dica">Quanto mais rápido responder, mais chance de vender. Meta: até 1 hora.</div>`}`; } },
+  { tit: '↩️ Devoluções e reclamações abertas', html: d => { const r = d.carrossel.reclamacoes; if (!r) return '';
+      if (!r.total) return '<div class="pn-vazio">✅ Nenhuma devolução ou reclamação aberta.</div>';
+      const cor = n => n >= 7 ? '#f85149' : n >= 3 ? '#f0b429' : '#5ef08a';
+      return `<div class="pr-cont"><div><b>${r.total}</b><span>aberta(s) · ${R$(r.valor)}</span></div><div><span style="display:block;margin-bottom:2px">por loja</span>${r.por_loja.slice(0, 3).map(l => `<span style="display:block;color:#e6edf3">${esc(l.loja)}: <b style="display:inline;font-size:1em">${l.qtd}</b></span>`).join('')}</div></div>`
+        + r.itens.map(x => `<div class="tp"><div class="pos">${x.tipo === 'Devolução' ? '📦' : '⚠️'}</div><div class="t"><b>${esc(x.titulo || '—')}</b><span>${esc(x.loja)} · ${x.tipo}</span></div><div class="v" style="color:${cor(x.dias)}">${x.dias} dia${x.dias === 1 ? '' : 's'}<small>aberta</small></div></div>`).join(''); } },
+  { tit: '🎯 Meta do mês', html: d => { const m = d.carrossel.meta; if (!m) return '';
+      if (m.configurado === false) return '<div class="pn-vazio">Módulo Financeiro não configurado — a meta fica em Financeiro → Vendas & Custos.</div>';
+      if (m.sem_meta) return `<div class="pn-vazio">Nenhuma meta lançada para este mês. Faturado até agora: <b>${R$(m.faturado)}</b>.<br>Lance a meta em <b>Financeiro → Vendas & Custos → Lançar meta</b>.</div>`;
+      const pct = Math.min(100, m.pct), ideal = Math.min(100, (m.ritmo_ideal_ate_hoje / m.meta) * 100), adiantado = m.faturado >= m.ritmo_ideal_ate_hoje;
+      return `<div class="mt-barra"><i style="width:${pct}%"></i><em style="left:${ideal}%" title="onde deveria estar hoje"></em><span>${m.pct.toLocaleString('pt-BR')}% de ${R$(m.meta)}</span></div>
+        <div class="tk"><div><span>💰 Faturado no mês</span><b>${R$(m.faturado)}</b><small>${adiantado ? '<span class="up">✅ à frente do ritmo</span>' : `<span class="dn">${R$(m.ritmo_ideal_ate_hoje - m.faturado)} atrás do ritmo</span>`}</small></div>
+        <div><span>${m.falta ? '🎯 Falta' : '🏆 Meta batida!'}</span><b>${m.falta ? R$(m.falta) : R$(m.faturado - m.meta) + ' a mais'}</b><small>${m.falta ? `<b style="color:#f0b429">${R$(m.por_dia)}/dia</b> nos ${m.dias_restantes} dia(s) que faltam` : 'parabéns, equipe! 🎉'}</small></div></div>
+        ${m.projecao ? `<div class="tk-dica">📈 No ritmo atual o mês fecha em <b>${R$(m.projecao)}</b> (${Math.round((m.projecao / m.meta) * 100)}% da meta).</div>` : ''}`; } },
   { tit: '📆 Melhor dia e horário — últimos 30 dias', html: d => { const m = d.carrossel.melhor; if (!m) return ''; const NOMES = ['', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'], NOMES_L = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
       const dias = m.por_dia, maxD = Math.max(1, ...dias.map(x => x.pedidos_media)), melhorD = dias.reduce((a, x) => x.pedidos_media > a.pedidos_media ? x : a, dias[0]);
       const ph = m.por_hora, tot = ph.reduce((a, b) => a + b, 0) || 1; let bi = 0, bv = -1; for (let h = 0; h < 24; h++) { const v = ph[h] + ph[(h + 1) % 24] + ph[(h + 2) % 24]; if (v > bv) { bv = v; bi = h; } }

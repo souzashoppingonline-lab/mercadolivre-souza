@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Responda curto e direto. Sem recapitular o que já foi dito, sem repetir instruções de deploy em todo commit (diga uma vez), sem seções longas de "o que esperar". Só o essencial: o que foi feito + o passo que o usuário precisa dar. Leia da `.claude/` **só os arquivos da área que a tarefa toca** — não a pasta inteira em tarefas pequenas. O usuário pode pedir mais detalhe quando quiser.
 
+## Palavra de retomada — "voltamos fds"
+
+Quando o usuário escrever **"voltamos fds"**, é o sinal combinado (05/11/2026) para retomar a conversa de **WMS / FinanceEcom** exatamente de onde parou: ler `.claude/wms.md` inteiro (seção "Para retomar amanhã") e começar pelos pontos pendentes — letra do gargalo das saídas Full (a/b/c/d), aprovação da bipagem de kit, primeiros itens de WMS no FinanceEcom e o plano "FinanceEcom melhor ERP/CRM do mundo".
+
 ## Convenção de branch
 
 **O branch principal (padrão/default) deste repositório no GitHub é `claude/archive-files-git-8vn8pv`** — não existe `main` nem `master` neste repositório. Qualquer alteração que precise "estar no branch principal" deve ser mesclada/enviada para `claude/archive-files-git-8vn8pv`, não para um branch chamado `main`. Detalhes de fluxo de branches em `.claude/deployment.md`.

@@ -48,7 +48,10 @@ Ainda não existe nada de envio ao Full no sistema (busca por inbound/envio full
 - **d)** outra coisa.
 - Ideia já levantada: separar do estoque local as unidades que vão pro Full sem bagunçar o que vende por Flex/Mercado Envios.
 
-## Para retomar amanhã
+## Para retomar amanhã — palavra de start: **"voltamos fds"**
+
+Combinado com o usuário: quando ele escrever **"voltamos fds"**, retomar daqui (registrado também no `CLAUDE.md` da raiz, que toda sessão carrega).
+
 
 1. Perguntar a letra do Full (a/b/c/d) e o detalhe do processo de hoje.
 2. Confirmar a Proposta A (bipagem de kit) + a decisão do produto de 1 unidade → fazer prévia.

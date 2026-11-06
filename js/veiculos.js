@@ -56,7 +56,7 @@
       .veic-passa svg { display:block; width:100%; overflow:visible; }
       .veic-passa .roda { transform-box:fill-box; transform-origin:center; animation:veicRoda .45s linear infinite; }
       .veic-passa .carro { animation:veicTreme .3s ease-in-out infinite; }
-      @keyframes veicAnda { from { transform:translateX(-360px); } to { transform:translateX(calc(100vw + 40px)); } }
+      @keyframes veicAnda { from { transform:translateX(-100%); } to { transform:translateX(calc(100vw + 40px)); } }
       @keyframes veicRoda { to { transform:rotate(360deg); } }
       @keyframes veicTreme { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
       @media (prefers-reduced-motion: reduce) { .veic-passa { display:none; } }`;
@@ -64,13 +64,15 @@
   }
 
   // Passa 1 veículo pela tela (não bloqueia clique nem foco — pointer-events:none).
+  // `largura`: px (número) ou qualquer medida CSS (ex.: '70vw').
   function passar(tipo, { duracao = 4000, largura } = {}) {
     css();
     const svg = tipo === 'moto' ? svgMoto('FLEX') : tipo === 'picape' ? SVG_PICAPE : '';
     if (!svg) return null;
     const el = document.createElement('div');
     el.className = 'veic-passa veic-' + tipo;
-    el.style.width = (largura || (tipo === 'moto' ? 240 : 320)) + 'px';
+    const w = largura || (tipo === 'moto' ? 240 : 320);
+    el.style.width = typeof w === 'number' ? w + 'px' : w;
     el.style.setProperty('--dur', duracao + 'ms');
     el.innerHTML = svg;
     document.body.appendChild(el);

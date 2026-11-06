@@ -957,6 +957,13 @@ const SLIDES = [
       const up = s.uptime_s, upTxt = up >= 86400 ? `${Math.floor(up / 86400)} dia(s)` : `${Math.floor(up / 3600)}h`;
       return `<div class="sv-g">${g('🧠 CPU', s.cpu, 90, `${s.cores} núcleo(s)`)}${g('💾 Memória', s.mem, s.limite_mem, `de ${GB(s.mem_total)}`)}${g('🗄️ Disco', s.disco, s.limite_disco, s.disco_livre != null ? `${GB(s.disco_livre)} livres` : '')}</div><div class="pn-vazio" style="text-align:center;margin-top:8px">⏱️ Servidor ligado há ${upTxt} · 🟢 normal · 🟡 atenção · 🔴 crítico</div>`; } },
   { tit: '💬 Frase do dia', html: d => d.carrossel.frase ? `<div class="frase"><div class="aspas">“</div><div class="txt">${esc(d.carrossel.frase.frase)}</div><div class="assin">${d.carrossel.frase.origem === 'ia' ? '🤖 criada pela IA para hoje · nunca se repete' : '— equipe'}</div></div>` : '<div class="pn-vazio">Frase do dia indisponível.</div>' },
+  { tit: '🚫 Pedidos cancelados hoje', html: d => { const c = d.carrossel.cancelados; if (!c) return '';
+      if (!c.total) return '<div class="pn-vazio">✅ Nenhum pedido cancelado hoje.</div>';
+      const hora = t => new Date(t).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+      return `<div class="pr-cont"><div><b style="color:#f85149">${c.total}</b><span>pedido(s) cancelado(s) · ${R$(c.valor)}</span></div><div><span style="display:block;margin-bottom:2px">por loja</span>${c.por_loja.slice(0, 4).map(l => `<span style="display:block;color:#e6edf3">${l.mkt === 'SHOPEE' ? '🛍️' : '🟡'} ${esc(l.loja)}: <b style="display:inline;font-size:1em">${l.qtd}</b></span>`).join('')}</div></div>`
+        + (c.bipados ? `<div class="tk-dica" style="color:#f85149">⚠️ <b>${c.bipados} já bipado(s)</b> — tirar o pacote do envio!</div>` : '')
+        + c.itens.map(x => `<div class="tp"><div class="pos">${x.bipado ? '⚠️' : '🚫'}</div><div class="t"><b>${esc(x.titulo || '—')}</b><span>${x.mkt === 'SHOPEE' ? 'Shopee' : 'ML'} · ${esc(x.loja)} · ${hora(x.em)}${x.de_hoje ? '' : ' (venda de outro dia)'}${x.motivo ? ' · ' + esc(corta(x.motivo, 40)) : ''}</span></div><div class="v" style="color:#f85149">${R$(x.valor)}<small>${x.qtd} un</small></div></div>`).join('')
+        + `<div class="tk-dica">💰 ${R$(c.valor_fat_hoje)} já descontado do faturamento de hoje.</div>`; } },
 ];
 function renderCarrossel() {
   if (!CAR_DADOS || !CAR_DADOS.carrossel) return;

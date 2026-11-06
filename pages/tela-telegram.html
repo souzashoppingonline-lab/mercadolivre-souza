@@ -508,7 +508,7 @@ function tocarAlerta(lista) {
   bipe();
   try { speechSynthesis.cancel(); } catch (_) {}
   // Guitarrista: riff + "Pergunta da loja X! Responde rápido!". Desligado: a frase de sempre (com a loja).
-  if (alertaModo === 'guitarra') setTimeout(() => itens.forEach(i => falar(i.a.vozCena(i.de), { rate: 1.05 })), 2600);
+  if (alertaModo === 'guitarra') setTimeout(() => itens.forEach(i => falar(i.a.vozCena(i.de), { rate: 1.05 })), SOLO_FIM_MS);
   else setTimeout(() => itens.forEach(i => falar(i.a.voz(i.de))), 900);
 }
 
@@ -632,27 +632,41 @@ function passarGuitarrista(itens) {
   rock.animate([{ transform: 'translateX(-320px)' }, { transform: `translateX(${meio}px)` }], { duration: 1000, fill: 'forwards', easing: 'cubic-bezier(.2,.8,.3,1)' });   // entra deslizando de joelhos
   t(1000, () => rock.classList.remove('desliza'));
   if (somLigado) t(200, riffGuitarra);
-  t(6000, () => rock.animate([{ transform: `translateX(${meio}px)` }, { transform: `translateX(${innerWidth + 60}px)` }], { duration: 900, fill: 'forwards', easing: 'ease-in' }));
-  t(7000, () => cena.remove());
+  t(8200, () => rock.animate([{ transform: `translateX(${meio}px)` }, { transform: `translateX(${innerWidth + 60}px)` }], { duration: 900, fill: 'forwards', easing: 'ease-in' }));   // fica até a voz terminar
+  t(9200, () => cena.remove());
 }
-// Riff de guitarra distorcida (power chords + nota longa com vibrato), ~2,3 s, volume moderado.
+// Solo de guitarra distorcida em SOL MAIOR (pedido do usuário: "solo maior"), ~4,8 s:
+// power chords G-C-D, frase rápida na pentatônica de Sol, subida e final em acorde de
+// Sol maior (G-B-D) com vibrato. Volume moderado-alto (0,22).
+const SOLO_FIM_MS = 5000;   // a voz entra depois do solo (tocarAlerta)
 function riffGuitarra() {
   const c = ctxAudio(); if (!c || c.state !== 'running') return;
   const dist = c.createWaveShaper(), curva = new Float32Array(1024);
   for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; curva[i] = Math.tanh(x * 6); }
   dist.curve = curva;
-  const mestre = c.createGain(); mestre.gain.value = 0.16;
-  const filtro = c.createBiquadFilter(); filtro.type = 'lowpass'; filtro.frequency.value = 2600;
+  const mestre = c.createGain(); mestre.gain.value = 0.22;
+  const filtro = c.createBiquadFilter(); filtro.type = 'lowpass'; filtro.frequency.value = 3000;
   dist.connect(filtro).connect(mestre).connect(c.destination);
-  const nota = (f, ini, dur, vib) => [1, 1.5].forEach(m => {
+  // f = frequência, ini/dur em s, mult = [1] nota solo | [1,1.5] power chord | acorde, vib = vibrato
+  const toca = (f, ini, dur, mult = [1], vib = false) => mult.forEach(m => {
     const o = c.createOscillator(), g = c.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * m, ini);
-    if (vib) { const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 6; lg.gain.value = f * m * 0.03; l.connect(lg).connect(o.frequency); l.start(ini); l.stop(ini + dur); }
-    g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.5, ini + 0.01); g.gain.setValueAtTime(0.5, ini + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, ini + dur);
+    if (vib) { const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 6; lg.gain.value = f * m * 0.025; l.connect(lg).connect(o.frequency); l.start(ini); l.stop(ini + dur); }
+    g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.5 / mult.length + 0.15, ini + 0.01);
+    g.gain.setValueAtTime(0.5 / mult.length + 0.15, ini + dur * 0.75); g.gain.exponentialRampToValueAtTime(0.0001, ini + dur);
     o.connect(g).connect(dist); o.start(ini); o.stop(ini + dur + 0.02);
   });
-  const t0 = c.currentTime + 0.02;
-  [82.41, 98, 110, 82.41, 98, 116.54, 110].forEach((f, i) => nota(f, t0 + i * 0.17, 0.16));
-  nota(164.81, t0 + 7 * 0.17, 1.0, true);
+  const PC = [1, 1.5, 2];                         // power chord (tônica, quinta, oitava)
+  let t = c.currentTime + 0.02;
+  // 1) base: G – G – C – D (power chords)
+  [[98, .3], [98, .15], [130.81, .3], [146.83, .45]].forEach(([f, d]) => { toca(f, t, d * 0.95, PC); t += d; });
+  // 2) frase rápida na pentatônica de Sol (G A B D E G)
+  [392, 440, 493.88, 587.33, 659.25, 587.33, 493.88, 440, 392, 440, 493.88, 587.33].forEach(f => { toca(f, t, 0.12); t += 0.11; });
+  // 3) subida até o Sol agudo com "bend" (D5 → E5)
+  toca(587.33, t, 0.35); const o = t; t += 0.3;
+  [659.25, 783.99, 880, 987.77].forEach(f => { toca(f, t, 0.14); t += 0.13; });
+  toca(1174.66, t, 0.5, [1], true); t += 0.45;
+  // 4) final: acorde de Sol maior (G – B – D) longo, com vibrato
+  toca(196, t, 1.2, [1, 1.26, 1.5, 2], true);
 }
 
 // v170 (pedido do usuário): a cena do pato/caçador/herói (v153–v155) foi REMOVIDA —

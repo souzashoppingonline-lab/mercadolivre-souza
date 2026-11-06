@@ -1279,7 +1279,7 @@ function falarQuantidades(orders) {
 function passarVeiculoLogistica(orders) {
   try {
     const lg = logLabel(orders?.[0]?.shipping_type);
-    if (lg === 'Flex') Veiculos.passar('moto');
+    if (lg === 'Flex') Veiculos.passar('moto', { largura: '70vw', duracao: 8000 });   // 70% da tela, mais devagar (pedido do usuário)
     else if (lg === 'Mercado Envios') Veiculos.passar('picape');
   } catch (e) { console.warn('[embalagem] veículo:', e.message); }
 }

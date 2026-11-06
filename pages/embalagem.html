@@ -1218,6 +1218,13 @@ function falarQuantidades(orders) {
   const titulosTexto = orders.length > 1
     ? orders.map((o, i) => `Pedido ${i + 1}: ${o.title || 'sem título'}.`).join(' ')
     : (orders[0].title || '');
+  // Logística falada LOGO APÓS o título (pedido do usuário, v167): "Envio Flex." /
+  // "Envio Mercado Envios." etc. — mesma classificação do selo da tela (logLabel).
+  // Logística desconhecida → não fala nada (o selo amarelo já avisa na tela).
+  const lg = logLabel(orders[0].shipping_type);
+  const logisticaTexto = lg === 'Desconhecido' ? '' : `Envio ${lg}.`;
+  // Ponto no fim do título → a voz faz a pausa antes da logística (senão emenda as palavras).
+  const tituloFala = logisticaTexto && titulosTexto && !/[.!?]$/.test(titulosTexto.trim()) ? `${titulosTexto.trim()}.` : titulosTexto;
   // Sequência de voz de sempre: quantidade+título, lembrete de bipar de novo
   // e, pra 2+ produtos, o reforço de atenção. Extraída numa função pra poder
   // rodar na hora (pedido único) ou só depois do bipe triplo (2+, ver abaixo).
@@ -1227,7 +1234,7 @@ function falarQuantidades(orders) {
       // do usuário: "sempre o título deve ser lido primeiro"). Lê quantidade+
       // título igual todo o resto, DEPOIS entra com a frase de atenção — de
       // preferência numa voz feminina, só pra diferenciar da fala padrão.
-      falarTexto(`Pedido com 1 unidade. ${titulosTexto}`.trim(), { cancelarAnterior: true, vozFeminina: true });
+      falarTexto(`Pedido com 1 unidade. ${tituloFala} ${logisticaTexto}`.trim(), { cancelarAnterior: true, vozFeminina: true });
       // Frase cadastrada por anúncio (v114) — pedido explícito do usuário:
       // logo após a leitura do título, antes do resto da sequência de sempre.
       falarObservacoesEmbalagem(orders);
@@ -1235,7 +1242,7 @@ function falarQuantidades(orders) {
     } else {
       // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
       // de falar a quantidade+título.
-      falarTexto(`${qtdTexto} ${titulosTexto}`.trim(), { cancelarAnterior: true });
+      falarTexto(`${qtdTexto} ${tituloFala} ${logisticaTexto}`.trim(), { cancelarAnterior: true });
       // Frase cadastrada por anúncio (v114) — logo após o título, mesma posição do outro ramo acima.
       falarObservacoesEmbalagem(orders);
     }

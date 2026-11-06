@@ -3983,6 +3983,58 @@ async function checkConciliacaoDivergencias() {
   scheduleAt(5, 25, checkConciliacaoDivergencias, 'conciliacao-divergencias');
 }
 
+// ── Revisão de pedidos cancelados do dia — a cada 3 h (v171, pedido do usuário) ──
+// ML + Shopee (tabela orders): cancelados criados OU atualizados hoje (fuso SP).
+// Manda no Telegram (tg_vendas — aparece também na Tela Telegram) SÓ quando há
+// cancelamento NOVO desde a última revisão do dia (Redis cancelados:avisados:<dia>),
+// listando todos os do dia e marcando 🆕 os novos. Pedido que JÁ FOI BIPADO
+// (packing_videos) ganha alerta: tirar o pacote do envio.
+async function checkCanceladosDia() {
+  try {
+    const { listarCanceladosHoje, resumir } = require('./canceladosDia');
+    const rows = await listarCanceladosHoje(pool);
+    if (!rows.length) return;
+    const dia = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const chave = `cancelados:avisados:${dia}`;
+    const jaAvisados = new Set(await redis.smembers(chave));
+    const novos = rows.filter(r => !jaAvisados.has(String(r.ml_id)));
+    if (!novos.length) return;   // nada novo desde a última revisão → silêncio
+    const BRL = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+    const hora = d => new Date(d).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+    const esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const res = resumir(rows);
+    // Faturamento de hoje já SEM os cancelados (mesma regra do placar: status != 'cancelled', sem Amazon).
+    const fatHoje = await pool.query(
+      `SELECT COALESCE(SUM(o.total_amount), 0) AS fat FROM orders o LEFT JOIN marketplaces m ON m.id = o.marketplace_id
+        WHERE o.date_created >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+          AND o.status != 'cancelled' AND COALESCE(m.code, 'ML') != 'AMAZON'`).then(r => Number(r.rows[0].fat)).catch(() => null);
+    let msg = `🚫 <b>Pedidos cancelados hoje</b> — revisão das ${hora(new Date())}\n`
+      + `<b>${res.total}</b> pedido(s) · ${BRL(res.valor)}${novos.length < rows.length ? ` · 🆕 ${novos.length} novo(s)` : ''}\n`
+      + `🏪 ${res.por_loja.map(l => `${esc(l.loja)}: ${l.qtd}`).join(' · ')}\n`
+      + (fatHoje != null ? `💰 Faturamento de hoje: <b>${BRL(fatHoje)}</b> (já descontado −${BRL(res.valor_fat_hoje)})\n` : '');
+    if (res.bipados) msg += `\n⚠️ <b>${res.bipados} JÁ FOI(RAM) BIPADO(S)</b> — tirar o pacote do envio!\n`;
+    rows.forEach((r, i) => {
+      const novo = !jaAvisados.has(String(r.ml_id));
+      msg += `\n${i + 1}. ${novo ? '🆕 ' : ''}${r.mkt === 'SHOPEE' ? '🛍️ Shopee' : '🟡 ML'} · <b>${esc(r.loja)}</b> · ${hora(r.date_created)}`
+        + `\n📦 ${esc((r.title || '—').slice(0, 70))} · ${Number(r.quantity) || 1} un · ${BRL(r.total_amount)}`
+        + (r.motivo ? `\n💬 ${esc(String(r.motivo).slice(0, 90))}` : '')
+        + (r.bipado ? `\n⚠️ <b>Já bipado/embalado — NÃO ENVIAR</b>` : '')
+        + (r.de_hoje ? '' : `\n📅 Venda de ${new Date(r.date_created).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — sai do faturamento daquele dia`)
+        + `\n🔖 ${r.ml_id}`;
+    });
+    // Só marca como avisado se o Telegram aceitou (silêncio/intervalo → tenta de novo na próxima revisão).
+    if (!(await tgNotify('tg_vendas', msg))) return;
+    await redis.sadd(chave, ...novos.map(r => String(r.ml_id)));
+    await redis.expire(chave, 2 * 86400);
+    console.log(`[cancelados-dia] ${rows.length} cancelado(s) hoje, ${novos.length} novo(s) avisado(s)`);
+  } catch (e) {
+    console.error('[cancelados-dia] erro:', e.message);
+  }
+}
+function agendarCanceladosDia() {
+  scheduleEvery(3, () => checkCanceladosDia().finally(agendarCanceladosDia), 'cancelados-dia');
+}
+
 // ── Memória da margem de cada venda (v159) — 05:35 diário + 2 min após o boot ──
 // Depois do sync-payment-releases (05:15): grava/atualiza margem_vendas_memoria
 // (margemVendas.gravarMemoria — congela o que já foi liberado). 1º run após o
@@ -4223,6 +4275,7 @@ scheduleAt(5, 15,  syncPaymentReleases, 'sync-payment-releases');
 scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
 scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
 agendarMemoriaMargem();
+agendarCanceladosDia();
 setTimeout(() => gravarMemoriaMargem(), 2 * 60 * 1000);
 scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
@@ -4381,6 +4434,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'finance-reconciliation' || cmd === 'financeReconciliationJob') {
       console.log('[worker] financeReconciliationJob disparado manualmente');
       financeReconciliationJob().catch(e => console.error('[worker] financeReconciliationJob erro:', e.message));
+    }
+    if (cmd === 'cancelados-dia' || cmd === 'checkCanceladosDia') {
+      console.log('[worker] checkCanceladosDia disparado manualmente');
+      checkCanceladosDia();
     }
     if (cmd === 'margem-memoria' || cmd === 'gravarMemoriaMargem') {
       console.log('[worker] gravarMemoriaMargem disparado manualmente');

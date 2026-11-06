@@ -78,6 +78,7 @@ function calcularRitmo(vendasMs, agora) {
 }
 
 const { calcularMeta } = require('../metaMes'); // v164 — slide 🎯 Meta do mês (puro, testado)
+const canceladosDia = require('../canceladosDia'); // v171 — slide 🚫 Cancelados hoje (mesma consulta do aviso de 3 em 3 h)
 
 async function montarPainel() {
   const redis = require('../db/redis');
@@ -415,7 +416,7 @@ async function montarPainel() {
   // ── v164: 4 telas novas (sem custo, tempo de resposta, reclamações, meta do mês) ──
   const HOJE_SP = `date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`;
   const AMAZON = `(SELECT id FROM marketplaces WHERE code = 'AMAZON')`;
-  const [semCusto, respostas, reclam, fatMes, goals] = await Promise.all([
+  const [semCusto, respostas, reclam, fatMes, goals, cancelados] = await Promise.all([
     // Anúncios que vendem SEM custo cadastrado (cost_updated_at nulo = nenhum humano confirmou —
     // mesma regra de custo_ausente em vendaMargem.js), 30 dias, por faturamento.
     pool.query(
@@ -454,6 +455,7 @@ async function montarPainel() {
       if (!supa.isConfigured()) return null;
       return supa.selectRows('monthly_goals', 500);
     })().catch((e) => { console.warn('[telegram-tela/painel] metas:', e.message); return null; }),
+    canceladosDia.listarCanceladosHoje(pool).catch((e) => { console.warn('[telegram-tela/painel] cancelados:', e.message); return null; }),
   ]);
   const hojeSp = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   const respDia = (d) => { const r = (respostas || []).find((x) => x.dia === d); return r ? { qtd: r.qtd, media_s: Math.round(Number(r.media)), mediana_s: Math.round(Number(r.mediana)), ate_1h: r.ate_1h, pior: r.pior ? { titulo: r.pior.titulo, loja: r.pior.loja, seg: Math.round(Number(r.pior.seg)) } : null } : { qtd: 0 }; };
@@ -466,6 +468,8 @@ async function montarPainel() {
       por_loja: Object.values(reclam.reduce((acc, r) => { (acc[r.loja] = acc[r.loja] || { loja: r.loja, qtd: 0 }).qtd++; return acc; }, {})).sort((a, b) => b.qtd - a.qtd),
       itens: reclam.slice(0, 5).map((r) => ({ loja: r.loja, titulo: r.titulo, tipo: /return/i.test(r.tipo || '') ? 'Devolução' : 'Reclamação', dias: r.dias, valor: Number(r.valor) })),
     } : null,
+    cancelados: cancelados ? { ...canceladosDia.resumir(cancelados),
+      itens: cancelados.slice(-6).reverse().map((r) => ({ loja: r.loja, mkt: r.mkt, titulo: r.title, qtd: Number(r.quantity) || 1, valor: r.total_amount, em: r.date_created, motivo: r.motivo, bipado: r.bipado, de_hoje: r.de_hoje })) } : null,
     meta: goals == null ? { configurado: false } : (calcularMeta(goals, fatMes || 0, hojeSp) || { sem_meta: true, faturado: fatMes || 0 }),
   };
   const t = tot[0];

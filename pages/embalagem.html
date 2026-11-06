@@ -638,6 +638,7 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script src="../js/videoOverlay.js"></script>
+<script src="../js/veiculos.js"></script>
 <script>
 // Reset modal na inicialização (evita exibir modal de uma sessão anterior)
 document.addEventListener('DOMContentLoaded', () => {
@@ -1271,6 +1272,18 @@ function falarQuantidades(orders) {
   }
 }
 
+// Veículo na tela na hora da bipagem (pedido do usuário, v168): Flex → moto com
+// baú; Mercado Envios → picape branca (estilo Chevrolet Montana 2017) com caixa na
+// caçamba. Mesma classificação do selo/voz (logLabel). Full/Coleta/Shopee/
+// desconhecida → nada. Desenhos em js/veiculos.js (compartilhado com a Tela Telegram).
+function passarVeiculoLogistica(orders) {
+  try {
+    const lg = logLabel(orders?.[0]?.shipping_type);
+    if (lg === 'Flex') Veiculos.passar('moto');
+    else if (lg === 'Mercado Envios') Veiculos.passar('picape');
+  } catch (e) { console.warn('[embalagem] veículo:', e.message); }
+}
+
 // Lê o estado de destino do pedido pro embalador saber pra onde vai — pedido
 // explícito do usuário ("processo novo", não deve sobrescrever nada: nunca
 // usa cancelarAnterior, só entra na fila depois do que já estiver tocando).
@@ -1316,6 +1329,7 @@ async function startNew(shippingId) {
   currentSession = { shippingId, orders: data.orders, startedAt: Date.now() };
   renderOrders(data.orders, data.already_packed);
   falarQuantidades(data.orders);
+  passarVeiculoLogistica(data.orders);
   startRecording(data.orders);
   setScanState('recording');
   startDurationWatcher();

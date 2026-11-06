@@ -107,61 +107,25 @@
     .vv-balao .dentro .txt-t { font-size:13px; } .vv-balao .dentro .txt-l { font-size:18px; }
     .vv-balao .dentro .ico { font-size:34px; line-height:1; }
     .vv-balao.shopee .dentro .txt-t, .vv-balao.shopee .dentro .txt-l { color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.4); }
-    /* Pato mensageiro (v153) + caçador (v154): pato entra, caçador atira, erra, pato foge */
-    .pato-cena { position:fixed; left:0; right:0; bottom:22px; height:0; z-index:9000; pointer-events:none; }
-    .pato { position:absolute; left:0; bottom:0; width:190px; transform:translateX(-300px); }
-    body.tv .pato { width:240px; }
-    .pato .pulo { position:relative; }
-    .pato.susto .pulo { animation:patoPulo .55s ease-out; }
-    .pato .pato-svg { width:100%; display:block; overflow:visible; }
-    .pato.corre .pato-svg { transform:scaleX(-1) rotate(10deg); }
-    .pato .corpo { transform-origin:58px 80px; animation:patoBamboleia .32s ease-in-out infinite alternate; }
-    .pato .perna { transform-box:fill-box; transform-origin:50% 0; } .pato .p1 { animation:patoPerna .32s ease-in-out infinite alternate; } .pato .p2 { animation:patoPerna .32s ease-in-out infinite alternate-reverse; }
-    .pato.corre .corpo, .pato.corre .p1, .pato.corre .p2 { animation-duration:.11s; }
-    .pato .bico { transform-box:fill-box; transform-origin:0 50%; animation:patoBico .2s steps(2) infinite; }
-    .pato .placa { position:absolute; bottom:88%; left:8%; background:#fff; color:#b91c1c; border:4px solid #b91c1c; border-radius:12px; padding:8px 14px; font-weight:900; font-size:22px; line-height:1.25; white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.45); animation:patoPlaca .32s ease-in-out infinite alternate; }
-    body.tv .pato .placa { font-size:28px; }
-    .pato .placa::after { content:''; position:absolute; left:46px; top:100%; width:7px; height:46px; background:#8b5a2b; border-radius:3px; }
-    .pato .pena { position:absolute; left:45%; top:55%; width:18px; height:8px; background:#ffd43b; border:2px solid #e0a800; border-radius:50%; opacity:0; }
-    .pato.susto .pena { animation:penaVoa 1.3s ease-out forwards; }
-    .pato .fumaca { position:absolute; left:-30px; bottom:-6px; width:60px; height:40px; border-radius:50%; background:radial-gradient(circle,#cbd5e1 0 40%,transparent 70%); opacity:0; }
-    .pato.susto .fumaca { animation:fumaca .8s ease-out forwards; }
-    .cacador { position:absolute; right:16px; bottom:0; width:170px; transform:translateX(320px); }
-    body.tv .cacador { width:210px; }
-    .cacador svg { width:100%; display:block; overflow:visible; }
-    .cacador.atira svg { animation:coice .35s ease-out; }
-    .cacador .clarao { position:absolute; left:-46px; top:calc(50% - 30px); font-size:52px; opacity:0; }
-    .cacador.atira .clarao { animation:clarao .45s ease-out forwards; }
-    .cacador .pa { position:absolute; left:-150px; top:-10px; font-size:54px; font-weight:900; color:#ffd43b; -webkit-text-stroke:3px #7c2d12; opacity:0; transform:rotate(-12deg); }
-    .cacador.atira .pa { animation:paPop .9s ease-out forwards; }
-    .cacador .fala { position:absolute; right:30%; bottom:104%; background:#fff; color:#111827; border-radius:14px; padding:8px 14px; font-weight:800; font-size:22px; white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.45); opacity:0; transition:opacity .25s; }
-    .cacador .fala::after { content:''; position:absolute; right:30px; top:100%; border:10px solid transparent; border-top-color:#fff; }
-    .cacador.falando .fala { opacity:1; }
-    /* Super-herói (v155): chega voando, segura o tiro e leva o pato */
-    .heroi { position:absolute; left:0; bottom:0; width:150px; transform:translate(-300px,-800px); }
-    body.tv .heroi { width:180px; }
-    .heroi svg { width:100%; display:block; overflow:visible; transition:transform .25s; }
-    .heroi.voa svg { transform:rotate(18deg); }
-    .heroi.volta svg { transform:scaleX(-1) rotate(22deg); }
-    .heroi .capa { transform-box:fill-box; transform-origin:100% 0; animation:capa .25s ease-in-out infinite alternate; }
-    .heroi .plim { position:absolute; left:84%; top:30%; font-size:46px; opacity:0; }
-    .heroi.bloqueia .plim { animation:clarao .5s ease-out forwards; }
-    .heroi .fala { position:absolute; left:40%; bottom:104%; background:#fff; color:#111827; border-radius:14px; padding:8px 14px; font-weight:800; font-size:22px; white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.45); opacity:0; transition:opacity .2s; }
-    .heroi .fala::after { content:''; position:absolute; left:24px; top:100%; border:10px solid transparent; border-top-color:#fff; }
-    .heroi.falando .fala { opacity:1; }
-    .pato.voando .pato-svg { transform:scaleX(-1) rotate(-12deg); }
-    .pato.voando .p1, .pato.voando .p2 { animation-duration:.09s; }
-    @keyframes capa { from { transform:skewY(-6deg); } to { transform:skewY(8deg); } }
-    @keyframes patoBamboleia { from { transform:rotate(-5deg) translateY(0); } to { transform:rotate(5deg) translateY(-4px); } }
-    @keyframes patoPerna { from { transform:rotate(-22deg); } to { transform:rotate(22deg); } }
-    @keyframes patoBico { 50% { transform:rotate(-12deg); } }
-    @keyframes patoPlaca { from { transform:rotate(-3deg); } to { transform:rotate(3deg) translateY(-3px); } }
-    @keyframes patoPulo { 0% { transform:translateY(0); } 45% { transform:translateY(-80px) rotate(-8deg); } 100% { transform:translateY(0); } }
-    @keyframes penaVoa { 0% { opacity:1; transform:translate(0,0) rotate(0); } 100% { opacity:0; transform:translate(var(--dx),var(--dy)) rotate(var(--r)); } }
-    @keyframes fumaca { 0% { opacity:.9; transform:scale(.4); } 100% { opacity:0; transform:scale(1.8) translateY(-20px); } }
-    @keyframes coice { 30% { transform:translateX(14px) rotate(4deg); } }
-    @keyframes clarao { 0% { opacity:1; transform:scale(.6); } 100% { opacity:0; transform:scale(1.6); } }
-    @keyframes paPop { 0% { opacity:0; transform:rotate(-12deg) scale(.4); } 20% { opacity:1; transform:rotate(-12deg) scale(1.15); } 70% { opacity:1; } 100% { opacity:0; transform:rotate(-12deg) scale(1); } }
+    /* Guitarrista (v170): gordinho cabeludo fazendo solo — cena de pergunta/chat (padrão) */
+    .rock-cena { position:fixed; left:0; right:0; bottom:18px; height:0; z-index:9000; pointer-events:none; }
+    .rock { position:absolute; left:0; bottom:0; width:230px; transform:translateX(-320px); }
+    body.tv .rock { width:280px; }
+    .rock svg { display:block; width:100%; overflow:visible; position:relative; }
+    .rock .luz { position:absolute; left:50%; bottom:-20px; width:520px; height:520px; transform:translateX(-50%); background:radial-gradient(ellipse at 50% 100%, rgba(250,204,21,.38), rgba(250,204,21,.08) 45%, transparent 65%); animation:rockLuz .45s ease-in-out infinite alternate; }
+    .rock .placa-r { position:absolute; bottom:100%; left:50%; transform:translateX(-50%); margin-bottom:10px; background:#fff; color:#b91c1c; border:4px solid #b91c1c; border-radius:12px; padding:8px 14px; font-weight:900; font-size:22px; line-height:1.25; white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.45); text-align:center; animation:patoPlaca .32s ease-in-out infinite alternate; }
+    body.tv .rock .placa-r { font-size:28px; }
+    .rock .corpo-r { transform-box:fill-box; transform-origin:50% 100%; animation:rockBalanca .64s ease-in-out infinite alternate; }
+    .rock .cabeca { transform-box:fill-box; transform-origin:50% 95%; animation:rockHeadbang .3s ease-in-out infinite alternate; }
+    .rock .palheta { transform-box:fill-box; transform-origin:0 0; animation:rockPalheta .11s linear infinite alternate; }
+    .rock.desliza svg { transform:rotate(-8deg); }
+    .rock .nota { position:absolute; font-size:30px; font-weight:900; opacity:0; animation:rockNota 1.5s ease-out infinite; text-shadow:0 2px 6px rgba(0,0,0,.5); }
+    @keyframes rockLuz { from { opacity:.6; } to { opacity:1; } }
+    @keyframes rockBalanca { from { transform:rotate(-3deg); } to { transform:rotate(3deg); } }
+    @keyframes rockHeadbang { from { transform:rotate(-14deg) translateY(0); } to { transform:rotate(16deg) translateY(4px); } }
+    @keyframes rockPalheta { from { transform:rotate(-10deg); } to { transform:rotate(12deg); } }
+    @keyframes rockNota { 0% { opacity:0; transform:translate(0,0) scale(.6); } 15% { opacity:1; } 100% { opacity:0; transform:translate(var(--nx,30px),-150px) scale(1.2) rotate(var(--nr,15deg)); } }
+    @keyframes patoPlaca { from { transform:rotate(-3deg); } to { transform:rotate(3deg) translateY(-3px); } }   /* balanço da placa do guitarrista */
     .som-aviso { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:#3a2a12; border:1px solid #f2c94c; color:#ffe7a3; border-radius:12px; padding:10px 18px; font-size:16px; font-weight:600; z-index:7; cursor:pointer; display:none; animation:pisca 2s infinite; }
     .vazio { text-align:center; color:var(--muted); margin-top:30vh; font-size:16px; line-height:1.6; }
     .toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#22303f; border:1px solid #2a3a4b; border-radius:10px; padding:10px 14px; font-size:14px; display:none; z-index:5; max-width:90vw; }
@@ -309,12 +273,11 @@
       body.m-ajustes .ctrls > * { width:100%; font-size:16px !important; padding:13px 14px !important; border-radius:12px !important; text-align:left; }
       body.m-ajustes .m-aj-tit { display:block; font-size:13px; color:var(--muted); font-weight:800; text-transform:uppercase; padding:0 2px !important; background:none !important; border:none !important; }
       body.m-ajustes #btnTv, body.m-ajustes #btnLink { display:none; }
-      .pato { width:130px; } .pato .placa { font-size:15px; padding:6px 10px; }
       .vv-van { width:210px; } .vv-van .mastro { height:66px; } .vv-van .bandeira { bottom:calc(84% + 20px); min-width:90px; padding:4px 9px 5px 7px; } .vv-van .bandeira .txt-l { font-size:15px; }
       .vv-moto { width:180px; } .vv-moto .placa-bau .txt-l { font-size:13px; }
       .vv-full { width:230px; } .vv-full svg { width:80px; } .vv-full .placa-full { margin-bottom:46px; } .vv-full .placa-full .txt-l { font-size:15px; }
       .vv-balao { width:125px; } .vv-balao .dentro .txt-l { font-size:13px; } .vv-balao .dentro .txt-t { font-size:10px; } .vv-balao .dentro .ico { font-size:24px; }
-      .heroi, .cacador { width:110px; }
+      .rock { width:150px; } .rock .placa-r { font-size:14px; padding:5px 9px; } .rock .luz { width:300px; height:300px; }
       .som-aviso { bottom:calc(70px + env(safe-area-inset-bottom)); font-size:13px; }
     }
   </style>
@@ -330,7 +293,7 @@
       <button id="btnPausa" title="Pausar/continuar a rolagem">⏸ Pausar</button>
       <select id="vel" title="Como a tela se comporta"><option value="0" selected>📌 Fixa nas mensagens novas</option><option value="25">Rolagem lenta</option><option value="45">Rolagem média</option><option value="90">Rolagem rápida</option></select>
       <button id="btnSom" title="Bipe + voz quando chega pergunta ou chat de cliente">🔊 Som</button>
-      <button id="btnPato" title="Pato atravessa a tela com uma placa quando chega pergunta ou mensagem">🦆 Pato</button>
+      <button id="btnPato" title="Guitarrista na tela quando chega pergunta ou chat (com a loja)">🎸 Guitarrista</button>
       <button id="btnCara" title="Animação a cada venda nova: van (Mercado Envios), moto (Flex), raio (Full), balão (Shopee / sem logística)">🎉 Venda</button>
       <button id="btnLink" title="Link pra abrir na TV sem login">🔗 Link da TV</button>
       <button id="btnTv" title="Tela cheia, letra grande">📺 Modo TV</button>
@@ -442,7 +405,7 @@ async function buscar(novas) {
     ultimoId = ms[ms.length - 1].id; total += ms.length;
     poda();
     mostrarNova();
-    tocarAlerta(ms.map(tipoAlerta).filter(Boolean));
+    tocarAlerta(ms.map(m => { const a = tipoAlerta(m); return a ? { a, loja: lojaDaVenda(m).loja } : null; }).filter(Boolean));
     ms.filter(ehVendaNova).forEach(m => filaCarinha(m));
     avisarNovasM(ms.length);
     painelDepoisDeMensagem();
@@ -495,8 +458,11 @@ ajustarPausa();
 // Só avisos do sistema (não a confirmação de resposta, que também usa tg_perguntas).
 // Navegador só libera som depois de um toque/tecla na página: até lá mostra o aviso.
 const ALERTAS = [
-  { tipo: 'pergunta', topico: 'tg_perguntas', re: /Nova pergunta/i, selo: '🔔 PERGUNTA DE CLIENTE — RESPONDER', voz: 'Pergunta de cliente. Por favor, responder o mais rápido possível.', placa: '❓ Chegou uma pergunta!', patoVoz: 'Chegou uma pergunta! Responde rápido!' },
-  { tipo: 'chat', topico: 'tg_mensagens', re: /Nova mensagem de comprador|Mensagem Shopee/i, selo: '🔔 CHAT — RESPONDER', voz: 'Chat. Por favor, responder.', placa: '💬 Chegou uma mensagem!', patoVoz: 'Chegou uma mensagem! Responde aí!' },
+  // v170: placa e voz dizem a LOJA e se é pergunta ou chat (pedido do usuário). `de(lojas)` = " da loja X".
+  { tipo: 'pergunta', topico: 'tg_perguntas', re: /Nova pergunta/i, selo: '🔔 PERGUNTA DE CLIENTE — RESPONDER', rotulo: '❓ Pergunta',
+    voz: de => `Pergunta de cliente${de}. Por favor, responder o mais rápido possível.`, vozCena: de => `Pergunta${de}! Responde rápido!` },
+  { tipo: 'chat', topico: 'tg_mensagens', re: /Nova mensagem de comprador|Mensagem Shopee/i, selo: '🔔 CHAT — RESPONDER', rotulo: '💬 Chat',
+    voz: de => `Mensagem de chat${de}. Por favor, responder.`, vozCena: de => `Mensagem de chat${de}! Responde aí!` },
 ];
 function tipoAlerta(m) { return m.direcao === 'entrada' ? null : ALERTAS.find(a => a.topico === m.topico && a.re.test(m.texto || '')) || null; }
 let somLigado = true, audio = null;
@@ -527,16 +493,23 @@ function falar(txt, { pitch = 1, rate = 0.95 } = {}) {
     speechSynthesis.speak(u);
   } catch (_) {}
 }
+// lista = [{ a: item de ALERTAS, loja }] (1 por mensagem nova). Agrupa por tipo (pergunta
+// primeiro) juntando as lojas: placa "❓ Pergunta · UNIFULL MULTIMERCADO" e voz "… da loja X".
 function tocarAlerta(lista) {
   if (!lista.length) return;
-  const tipos = ALERTAS.filter(a => lista.includes(a)); // 1 fala por tipo, pergunta primeiro
-  if (patoLigado) passarPato(tipos);                     // o pato passa mesmo com o som desligado
+  const itens = ALERTAS.map(a => {
+    const lojas = [...new Set(lista.filter(x => x.a === a).map(x => x.loja).filter(l => l && l !== 'Loja'))];
+    if (!lista.some(x => x.a === a)) return null;
+    const de = lojas.length ? ` da loja ${lojas.join(' e ')}` : '';
+    return { a, de, placa: `${a.rotulo}${lojas.length ? ' · ' + lojas.join(' · ') : ''}` };
+  }).filter(Boolean);
+  if (alertaModo === 'guitarra') passarGuitarrista(itens);   // a cena passa mesmo com o som desligado
   if (!somLigado) return;
   bipe();
   try { speechSynthesis.cancel(); } catch (_) {}
-  // Com o pato: "quá-quá" + voz fininha de desenho (tom alto e rápido). Sem: a voz normal.
-  if (patoLigado) setTimeout(() => tipos.forEach(a => falar(a.patoVoz, { pitch: 2, rate: 1.3 })), 900);
-  else setTimeout(() => tipos.forEach(a => falar(a.voz)), 900);
+  // Guitarrista: riff + "Pergunta da loja X! Responde rápido!". Desligado: a frase de sempre (com a loja).
+  if (alertaModo === 'guitarra') setTimeout(() => itens.forEach(i => falar(i.a.vozCena(i.de), { rate: 1.05 })), 2600);
+  else setTimeout(() => itens.forEach(i => falar(i.a.voz(i.de))), 900);
 }
 
 // ── Venda nova na tela (v166 — substitui a carinha da v163, pedido do usuário) ──
@@ -622,142 +595,78 @@ document.getElementById('btnCara').onclick = () => {
 };
 botaoCara();
 
-// ── Pato mensageiro (v153) + caçador (v154) + super-herói (v155), pedidos do usuário: o pato entra
-//    com a placa, o caçador atira, o herói segura o tiro e sai voando com o pato ──
-// Pato próprio (SVG desenhado aqui — não é personagem de ninguém). Botão 🦆 liga/desliga.
-let patoLigado = true;
-try { patoLigado = localStorage.getItem('tela_tg_pato') !== '0'; } catch (_) {}
-const PATO_SVG = `<svg viewBox="0 0 130 120" class="pato-svg" aria-hidden="true">
-  <g class="perna p1"><path d="M52 92 v14 h-10" stroke="#ff8c1a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>
-  <g class="perna p2"><path d="M70 92 v14 h-10" stroke="#ff8c1a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>
-  <g class="corpo">
-    <path d="M24 64 q-16 -10 -12 8 q6 6 18 0z" fill="#ffd43b" stroke="#e0a800" stroke-width="3"/>
-    <ellipse cx="58" cy="72" rx="36" ry="25" fill="#ffd43b" stroke="#e0a800" stroke-width="3"/>
-    <path d="M46 70 q14 -16 30 -3 q-12 12 -30 3z" fill="#ffc107" stroke="#e0a800" stroke-width="2.5"/>
-    <circle cx="88" cy="40" r="20" fill="#ffd43b" stroke="#e0a800" stroke-width="3"/>
-    <circle cx="94" cy="35" r="4.5" fill="#1f2937"/><circle cx="95.6" cy="33.4" r="1.5" fill="#fff"/>
-    <ellipse cx="86" cy="47" rx="5" ry="3" fill="#ff9aa2" opacity=".7"/>
-    <g class="bico"><path d="M104 40 q16 -2 19 4 q-7 3 -19 2z" fill="#ff8c1a" stroke="#d96b00" stroke-width="2"/>
-      <path d="M104 46 q14 1 17 2 q-6 5 -17 1z" fill="#ff8c1a" stroke="#d96b00" stroke-width="2"/></g>
-  </g></svg>`;
-// Caçador próprio (SVG desenhado aqui), virado pra esquerda, cano da arma em x=0,y=100 (meio da altura).
-const CACADOR_SVG = `<svg viewBox="0 0 170 200" aria-hidden="true">
-  <rect x="78" y="140" width="15" height="48" rx="5" fill="#7c4a1e"/><rect x="98" y="140" width="15" height="48" rx="5" fill="#6b3f19"/>
-  <ellipse cx="80" cy="190" rx="14" ry="7" fill="#1f2937"/><ellipse cx="102" cy="190" rx="14" ry="7" fill="#1f2937"/>
-  <rect x="68" y="84" width="54" height="64" rx="16" fill="#f97316" stroke="#c2410c" stroke-width="3"/>
-  <path d="M84 86 v60 M106 86 v60" stroke="#c2410c" stroke-width="2" opacity=".5"/>
-  <circle cx="95" cy="60" r="22" fill="#f1c27d" stroke="#c99a5b" stroke-width="2.5"/>
-  <circle cx="73" cy="63" r="6" fill="#e8a87c"/>
-  <circle cx="84" cy="56" r="3.2" fill="#1f2937"/>
-  <path d="M74 70 q8 6 18 0 q-9 3 -18 0z" fill="#5b3a1a" stroke="#5b3a1a" stroke-width="3" stroke-linejoin="round"/>
-  <ellipse cx="95" cy="42" rx="34" ry="6" fill="#166534"/>
-  <path d="M76 42 q0 -24 19 -24 q19 0 19 24z" fill="#15803d" stroke="#14532d" stroke-width="2"/>
-  <rect x="78" y="34" width="34" height="5" fill="#a16207"/>
-  <rect x="0" y="96" width="92" height="8" rx="3" fill="#6b7280" stroke="#374151" stroke-width="2"/>
-  <path d="M88 94 h30 q14 2 16 20 h-14 q-4 -10 -32 -10z" fill="#92400e" stroke="#78350f" stroke-width="2"/>
-  <path d="M72 100 q-8 0 -14 0" stroke="#f97316" stroke-width="12" stroke-linecap="round"/>
-  <circle cx="56" cy="101" r="7" fill="#f1c27d"/><circle cx="104" cy="108" r="7" fill="#f1c27d"/>
-</svg><div class="clarao">💥</div><div class="pa">PÁ!</div><div class="fala">Ué?! Levaram o pato! 😳</div>`;
-// Super-herói próprio (SVG desenhado aqui — não é personagem de ninguém): roupa roxa, capa amarela,
-// máscara verde e um ✓ no peito. Virado pra direita, punho estendido em (128,84).
-const HEROI_SVG = `<svg viewBox="0 0 140 200" aria-hidden="true">
-  <path class="capa" d="M50 70 q-38 50 -40 118 q28 -10 52 2 q-8 -60 6 -116z" fill="#facc15" stroke="#ca8a04" stroke-width="3"/>
-  <rect x="55" y="135" width="13" height="46" rx="5" fill="#7c3aed"/><rect x="73" y="135" width="13" height="46" rx="5" fill="#6d28d9"/>
-  <path d="M52 176 h18 v12 h-22 q0 -8 4 -12z M71 176 h18 q4 4 4 12 h-22z" fill="#16a34a" stroke="#14532d" stroke-width="2"/>
-  <rect x="48" y="70" width="44" height="72" rx="15" fill="#7c3aed" stroke="#5b21b6" stroke-width="3"/>
-  <rect x="48" y="124" width="44" height="8" fill="#facc15"/>
-  <circle cx="70" cy="96" r="14" fill="#facc15" stroke="#ca8a04" stroke-width="2"/>
-  <path d="M62 96 l6 7 l11 -13" stroke="#5b21b6" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M50 82 q-14 18 -2 34" stroke="#7c3aed" stroke-width="11" fill="none" stroke-linecap="round"/>
-  <rect x="86" y="78" width="38" height="12" rx="6" fill="#7c3aed"/>
-  <circle cx="128" cy="84" r="9" fill="#16a34a" stroke="#14532d" stroke-width="2"/>
-  <circle cx="70" cy="48" r="20" fill="#f1c27d" stroke="#c99a5b" stroke-width="2.5"/>
-  <path d="M50 44 q2 -22 22 -22 q18 0 18 18 q-8 -8 -20 -6 q-10 1 -20 10z" fill="#1f2937"/>
-  <rect x="54" y="39" width="36" height="10" rx="5" fill="#16a34a"/>
-  <circle cx="66" cy="44" r="3.3" fill="#fff"/><circle cx="80" cy="44" r="3.3" fill="#fff"/>
-  <circle cx="67.3" cy="44" r="1.6" fill="#111"/><circle cx="81.3" cy="44" r="1.6" fill="#111"/>
-  <path d="M64 56 q7 6 14 0" stroke="#7c2d12" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-</svg><div class="plim">✨</div><div class="fala">Deixa comigo! 💪</div>`;
-const PENAS = [[-70,-90,-160],[50,-110,140],[-30,-140,220],[80,-60,-120]];
-function passarPato(tipos) {
-  const velha = document.getElementById('pato'); if (velha) velha.remove();
-  const cena = document.createElement('div'); cena.id = 'pato'; cena.className = 'pato-cena';
-  cena.innerHTML = `<div class="cacador">${CACADOR_SVG}</div><div class="heroi">${HEROI_SVG}</div>
-    <div class="pato"><div class="pulo"><div class="placa">${tipos.map(a => `<div>${esc(a.placa)}</div>`).join('')}</div>${PATO_SVG}
-      ${PENAS.map(([x, y, r]) => `<i class="pena" style="--dx:${x}px;--dy:${y}px;--r:${r}deg"></i>`).join('')}</div></div>`;
+// ── Guitarrista (v170, pedido do usuário) — cena padrão de pergunta/chat ─────
+// Gordinho cabeludo (desenho próprio) entra deslizando de joelhos, toca um solo
+// de guitarra balançando a cabeça (notas saindo, luz de palco) e vai embora — ~7 s.
+// Placa: "❓ Pergunta · LOJA" / "💬 Chat · LOJA". Riff curto (WebAudio) só com 🔊 ligado.
+const ROCK_SVG = `<svg viewBox="0 0 200 250" aria-hidden="true"><g class="corpo-r">
+  <path d="M72 188 L58 236 h24 L94 194z" fill="#1e3a8a"/><path d="M128 188 L142 236 h-24 L106 194z" fill="#1e40af"/>
+  <ellipse cx="68" cy="239" rx="17" ry="7" fill="#111"/><ellipse cx="132" cy="239" rx="17" ry="7" fill="#111"/>
+  <ellipse cx="100" cy="140" rx="60" ry="63" fill="#1f2937" stroke="#0b1220" stroke-width="3"/>
+  <path d="M106 108 L90 138 h13 L95 166 L118 130 h-13 L114 108z" fill="#facc15"/>
+  <path d="M50 112 q-22 4 -28 -12" stroke="#f1c27d" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <path d="M112 152 L18 94" stroke="#7c2d12" stroke-width="8" stroke-linecap="round"/>
+  <rect x="2" y="80" width="22" height="13" rx="3" fill="#111" transform="rotate(32 13 86)"/>
+  <path d="M96 140 q18 -18 40 -6 q10 8 4 20 q12 10 2 24 q-16 14 -38 2 q-14 -10 -8 -40z" fill="#dc2626" stroke="#7f1d1d" stroke-width="3"/>
+  <rect x="110" y="150" width="16" height="5" fill="#111" transform="rotate(32 118 152)"/>
+  <path d="M130 170 L18 94" stroke="#e5e7eb" stroke-width="1.2" opacity=".6"/>
+  <circle cx="22" cy="99" r="7.5" fill="#f1c27d"/>
+  <g class="palheta"><path d="M152 116 q16 22 -12 44" stroke="#f1c27d" stroke-width="13" fill="none" stroke-linecap="round"/><circle cx="139" cy="160" r="7.5" fill="#f1c27d"/></g>
+  <g class="cabeca">
+    <path d="M64 52 q0 -44 36 -44 q36 0 36 44 q4 42 12 60 q-16 -4 -22 -18 h-52 q-6 14 -22 18 q8 -18 12 -60z" fill="#5b3a1a"/>
+    <circle cx="100" cy="58" r="27" fill="#f1c27d"/>
+    <path d="M75 64 q25 36 50 0 q-3 24 -25 26 q-22 -2 -25 -26z" fill="#5b3a1a"/>
+    <rect x="80" y="47" width="17" height="10" rx="4" fill="#111"/><rect x="103" y="47" width="17" height="10" rx="4" fill="#111"/><path d="M97 51 h6" stroke="#111" stroke-width="3"/>
+    <ellipse cx="100" cy="74" rx="6.5" ry="5.5" fill="#7f1d1d"/>
+    <path d="M70 46 q30 -28 60 0 q-12 -9 -30 -9 q-18 0 -30 9z" fill="#5b3a1a"/>
+  </g></g></svg>`;
+const NOTAS_ROCK = [['♪', 60, 35, '#facc15', 0, 40, 12], ['♫', 30, 55, '#f472b6', .35, -20, -15], ['♬', 75, 50, '#60a5fa', .7, 50, 20], ['♪', 45, 70, '#4ade80', 1.05, -40, -10]];
+function passarGuitarrista(itens) {
+  const velha = document.getElementById('rock'); if (velha) velha.remove();
+  const cena = document.createElement('div'); cena.id = 'rock'; cena.className = 'rock-cena';
+  cena.innerHTML = `<div class="rock desliza"><div class="luz"></div><div class="placa-r">${itens.map(i => `<div>${esc(i.placa)}</div>`).join('')}</div>${ROCK_SVG}
+    ${NOTAS_ROCK.map(([n, x, y, c, d, nx, nr]) => `<span class="nota" style="left:${x}%;bottom:${y}%;color:${c};animation-delay:${d}s;--nx:${nx}px;--nr:${nr}deg">${n}</span>`).join('')}</div>`;
   document.body.appendChild(cena);
-  const pato = cena.querySelector('.pato'), cac = cena.querySelector('.cacador'), heroi = cena.querySelector('.heroi');
-  const meio = Math.round(innerWidth * 0.33), xh = meio + 290;          // herói para entre o pato e o caçador
-  const dx = -(meio + 700), dy = -620;                                  // voo de saída: pra cima e pra esquerda
+  const rock = cena.querySelector('.rock'), meio = Math.round(innerWidth * 0.4);
   const t = (ms, f) => setTimeout(() => { if (cena.isConnected) f(); }, ms);
-  const som = f => { if (somLigado) f(); };
-  pato.animate([{ transform: 'translateX(-300px)' }, { transform: `translateX(${meio}px)` }], { duration: 3000, fill: 'forwards' });
-  cac.animate([{ transform: 'translateX(320px)' }, { transform: 'translateX(0)' }], { duration: 700, delay: 900, fill: 'forwards', easing: 'ease-out' });
-  t(2700, () => {                                                                                     // herói chega voando
-    heroi.classList.add('voa'); som(zum);
-    heroi.animate([{ transform: 'translate(-300px,-800px)' }, { transform: `translate(${xh}px,-20px)` }, { transform: `translate(${xh}px,0)` }],
-      { duration: 700, fill: 'forwards', easing: 'ease-out' });
-  });
-  t(3400, () => { heroi.classList.remove('voa'); heroi.classList.add('falando'); });
-  t(3900, () => {                                                                                     // PÁ! — o herói segura
-    cac.classList.add('atira'); som(estouro);
-    setTimeout(() => { heroi.classList.add('bloqueia'); pato.classList.add('susto'); som(plim); som(() => setTimeout(quaQua, 200)); }, 120);
-  });
-  t(4700, () => {                                                                                     // pega o pato…
-    heroi.classList.remove('falando');
-    heroi.animate([{ transform: `translate(${xh}px,0)` }, { transform: `translate(${meio + 40}px,-185px)` }], { duration: 300, fill: 'forwards', easing: 'ease-in-out' });
-  });
-  t(5000, () => {                                                                                     // …e sai voando com ele
-    heroi.classList.add('volta'); pato.classList.add('voando'); som(zum);
-    const voo = { duration: 1500, fill: 'forwards', easing: 'ease-in' };
-    heroi.animate([{ transform: `translate(${meio + 40}px,-185px)` }, { transform: `translate(${meio + 40 + dx}px,${dy - 185}px)` }], voo);
-    pato.animate([{ transform: `translate(${meio}px,-20px)` }, { transform: `translate(${meio + dx}px,${dy - 20}px)` }], voo);
-  });
-  t(5700, () => cac.classList.add('falando'));
-  t(7500, () => { cac.classList.remove('falando'); cac.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(320px)' }], { duration: 700, fill: 'forwards', easing: 'ease-in' }); });
-  t(8300, () => cena.remove());
+  rock.animate([{ transform: 'translateX(-320px)' }, { transform: `translateX(${meio}px)` }], { duration: 1000, fill: 'forwards', easing: 'cubic-bezier(.2,.8,.3,1)' });   // entra deslizando de joelhos
+  t(1000, () => rock.classList.remove('desliza'));
+  if (somLigado) t(200, riffGuitarra);
+  t(6000, () => rock.animate([{ transform: `translateX(${meio}px)` }, { transform: `translateX(${innerWidth + 60}px)` }], { duration: 900, fill: 'forwards', easing: 'ease-in' }));
+  t(7000, () => cena.remove());
 }
-// "Plim": o tiro batendo no punho do herói.
-function plim() {
+// Riff de guitarra distorcida (power chords + nota longa com vibrato), ~2,3 s, volume moderado.
+function riffGuitarra() {
   const c = ctxAudio(); if (!c || c.state !== 'running') return;
-  const o = c.createOscillator(), g = c.createGain(), ini = c.currentTime;
-  o.type = 'triangle'; o.frequency.setValueAtTime(1700, ini); o.frequency.exponentialRampToValueAtTime(2600, ini + 0.08);
-  g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.45, ini + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.4);
-  o.connect(g).connect(c.destination); o.start(ini); o.stop(ini + 0.42);
-}
-// "Zum": ruído com filtro subindo (voo).
-function zum() {
-  const c = ctxAudio(); if (!c || c.state !== 'running') return;
-  const n = Math.floor(c.sampleRate * 0.6), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / n);
-  const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(), ini = c.currentTime;
-  src.buffer = buf; f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(400, ini); f.frequency.exponentialRampToValueAtTime(2500, ini + 0.6); g.gain.value = 0.5;
-  src.connect(f).connect(g).connect(c.destination); src.start();
-}
-// Tiro de desenho: rajada de ruído curta, abafada.
-function estouro() {
-  const c = ctxAudio(); if (!c || c.state !== 'running') return;
-  const n = Math.floor(c.sampleRate * 0.35), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
-  const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
-  src.buffer = buf; f.type = 'lowpass'; f.frequency.value = 1800; g.gain.value = 0.9;
-  src.connect(f).connect(g).connect(c.destination); src.start();
-}
-// "Quá-quá": 2 grasnados curtos (serra com o tom caindo, filtrada).
-function quaQua() {
-  const c = ctxAudio(); if (!c || c.state !== 'running') return;
-  [0, 0.26].forEach(t => {
-    const ini = c.currentTime + t, o = c.createOscillator(), f = c.createBiquadFilter(), g = c.createGain();
-    o.type = 'sawtooth'; o.frequency.setValueAtTime(720, ini); o.frequency.exponentialRampToValueAtTime(380, ini + 0.16);
-    f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 2.5;
-    g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.5, ini + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.18);
-    o.connect(f).connect(g).connect(c.destination); o.start(ini); o.stop(ini + 0.2);
+  const dist = c.createWaveShaper(), curva = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; curva[i] = Math.tanh(x * 6); }
+  dist.curve = curva;
+  const mestre = c.createGain(); mestre.gain.value = 0.16;
+  const filtro = c.createBiquadFilter(); filtro.type = 'lowpass'; filtro.frequency.value = 2600;
+  dist.connect(filtro).connect(mestre).connect(c.destination);
+  const nota = (f, ini, dur, vib) => [1, 1.5].forEach(m => {
+    const o = c.createOscillator(), g = c.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * m, ini);
+    if (vib) { const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = 6; lg.gain.value = f * m * 0.03; l.connect(lg).connect(o.frequency); l.start(ini); l.stop(ini + dur); }
+    g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.5, ini + 0.01); g.gain.setValueAtTime(0.5, ini + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, ini + dur);
+    o.connect(g).connect(dist); o.start(ini); o.stop(ini + dur + 0.02);
   });
+  const t0 = c.currentTime + 0.02;
+  [82.41, 98, 110, 82.41, 98, 116.54, 110].forEach((f, i) => nota(f, t0 + i * 0.17, 0.16));
+  nota(164.81, t0 + 7 * 0.17, 1.0, true);
 }
-function botaoPato() { document.getElementById('btnPato').textContent = patoLigado ? '🦆 Pato' : '🦆 Pato (desl.)'; }
+
+// v170 (pedido do usuário): a cena do pato/caçador/herói (v153–v155) foi REMOVIDA —
+// pergunta/chat agora só tem o guitarrista. Botão 🎸 liga/desliga (tela_tg_alerta_modo);
+// quem tinha desligado o pato (tela_tg_pato=0) continua desligado.
+let alertaModo = 'guitarra';
+try { alertaModo = localStorage.getItem('tela_tg_alerta_modo') || (localStorage.getItem('tela_tg_pato') === '0' ? 'off' : 'guitarra'); } catch (_) {}
+if (alertaModo !== 'off') alertaModo = 'guitarra';
+function botaoPato() { document.getElementById('btnPato').textContent = alertaModo === 'guitarra' ? '🎸 Guitarrista' : '🎸 Guitarrista (desl.)'; }
 document.getElementById('btnPato').onclick = () => {
-  patoLigado = !patoLigado; try { localStorage.setItem('tela_tg_pato', patoLigado ? '1' : '0'); } catch (_) {}
-  botaoPato(); if (patoLigado) { if (somLigado) destravarSom(); passarPato([ALERTAS[0]]); }
+  alertaModo = alertaModo === 'guitarra' ? 'off' : 'guitarra';
+  try { localStorage.setItem('tela_tg_alerta_modo', alertaModo); } catch (_) {}
+  botaoPato();
+  if (alertaModo === 'guitarra') { if (somLigado) destravarSom(); passarGuitarrista([{ a: ALERTAS[0], de: ' da loja TESTE', placa: '❓ Pergunta · TESTE' }]); }
 };
 botaoPato();
 function botaoSom() { document.getElementById('btnSom').textContent = somLigado ? '🔊 Som' : '🔇 Mudo'; avisoSom(); }

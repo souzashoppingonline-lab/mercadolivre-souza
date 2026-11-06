@@ -358,6 +358,7 @@
 <div class="cheia" id="cheia">📺 Toque para tela cheia</div>
 
 <script src="../js/telegramHtml.js"></script>
+<script src="../js/veiculos.js"></script>
 <script>
 // Tela Telegram — cópia de TODA mensagem do Telegram (telegram_mensagens,
 // gravada por server/src/telegramLog.js), no mesmo visual, rolando sozinha
@@ -561,7 +562,7 @@ function lojaDaVenda(m) {
     : /mercado envios|coleta/i.test(envio) ? 'envios' : 'nada';
   return { loja: loja.replace(/_+/g, ' '), tipo };
 }
-const RODA = (cx, cy, r) => `<g class="roda"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#1f2937"/><circle cx="${cx}" cy="${cy}" r="${r * .45}" fill="#9ca3af"/><path d="M${cx} ${cy - r * .8} v${r * 1.6} M${cx - r * .8} ${cy} h${r * 1.6}" stroke="#4b5563" stroke-width="2.5"/></g>`;
+const { RODA } = window.Veiculos;   // js/veiculos.js — fonte única (também usada na Embalagem)
 const SVG_VAN = `<svg viewBox="0 0 240 122" aria-hidden="true"><ellipse cx="120" cy="114" rx="108" ry="6" fill="rgba(0,0,0,.35)"/>
   <g class="carro"><path d="M8 30 q0 -12 12 -12 h130 q10 0 16 6 l34 30 q6 4 14 6 l12 4 q8 3 8 12 v22 q0 8 -8 8 h-210 q-8 0 -8 -8z" fill="#ffe600" stroke="#c9a400" stroke-width="3"/>
   <path d="M158 26 h6 q6 0 10 4 l28 26 h-44z" fill="#9fd3f5" stroke="#2b5d7d" stroke-width="2"/>
@@ -570,18 +571,7 @@ const SVG_VAN = `<svg viewBox="0 0 240 122" aria-hidden="true"><ellipse cx="120"
   <text x="86" y="51" font-size="13" font-weight="900" fill="#2d3277" font-family="Arial,sans-serif">ENTREGA</text>
   <rect x="228" y="72" width="8" height="8" rx="2" fill="#fff7c2"/></g>
   ${RODA(56, 98, 16)}${RODA(192, 98, 16)}</svg>`;
-const SVG_MOTO = `<svg viewBox="0 0 220 140" aria-hidden="true"><ellipse cx="110" cy="134" rx="98" ry="5" fill="rgba(0,0,0,.35)"/>
-  <g class="carro"><rect x="6" y="36" width="58" height="44" rx="6" fill="#f97316" stroke="#9a3412" stroke-width="3"/><path d="M6 50 h58" stroke="#9a3412" stroke-width="2" opacity=".6"/>
-  <path d="M44 80 L66 84" stroke="#374151" stroke-width="5"/>
-  <path d="M45 112 L90 82 L150 82 L175 112" stroke="#374151" stroke-width="6" fill="none" stroke-linejoin="round"/>
-  <path d="M86 72 q22 -14 54 -6 l14 14 h-72z" fill="#dc2626" stroke="#7f1d1d" stroke-width="2"/>
-  <rect x="68" y="64" width="42" height="9" rx="4" fill="#111827"/>
-  <path d="M160 54 L175 112" stroke="#6b7280" stroke-width="6"/><path d="M150 52 h20" stroke="#111827" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="172" cy="64" r="5" fill="#fde68a"/>
-  <path d="M104 66 L128 78 L130 100" stroke="#1e3a8a" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M98 64 q4 -26 26 -30 l10 4 q-8 14 -10 28z" fill="#2563eb"/><path d="M128 42 L154 52" stroke="#2563eb" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="130" cy="25" r="12" fill="#facc15" stroke="#a16207" stroke-width="2"/><path d="M134 21 h8 v8 h-6z" fill="#1f2937"/></g>
-  ${RODA(45, 112, 20)}${RODA(175, 112, 20)}</svg>`;
+const SVG_MOTO = window.Veiculos.svgMoto();
 const SVG_RAIO = `<svg viewBox="0 0 120 200" aria-hidden="true"><path d="M72 4 L12 112 h44 L34 196 L112 78 h-48 L96 4z" fill="#22c55e" stroke="#14532d" stroke-width="5" stroke-linejoin="round"/><path d="M74 14 L28 100" stroke="#bbf7d0" stroke-width="5" stroke-linecap="round" opacity=".7"/></svg>`;
 const svgBalao = (cor, borda) => `<svg viewBox="0 0 160 260" aria-hidden="true"><path d="M80 6 C30 6 8 46 8 84 C8 132 52 166 76 176 L70 186 h20 L84 176 C108 166 152 132 152 84 C152 46 130 6 80 6z" fill="${cor}" stroke="${borda}" stroke-width="3"/><ellipse cx="48" cy="58" rx="13" ry="24" fill="#fff" opacity=".35" transform="rotate(-20 48 58)"/><path d="M80 186 q-14 20 0 38 q14 18 0 34" stroke="#cbd5e1" stroke-width="2.5" fill="none"/></svg>`;
 function htmlVenda(v) {

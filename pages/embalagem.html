@@ -1368,6 +1368,11 @@ async function finalizeCurrent() {
     if (totalProdutosSessao >= 2) {
       falarTexto('Confirmar se embalou o pedido com duas ou mais pedidos ou unidades?');
     }
+    // Para onde separar o pacote (pedido do usuário, v169) — frases exatas dele.
+    // Mesma classificação do selo/voz/veículo da 1ª bipagem (logLabel).
+    const lg = logLabel(session.orders?.[0]?.shipping_type);
+    if (lg === 'Flex') falarTexto('Envio Flex, por favor separar.');
+    else if (lg === 'Mercado Envios') falarTexto('Envio Mercado Envios, separar para enviar na Montana.');
   };
   if (totalProdutosSessao >= 2) {
     playBipTriplo();

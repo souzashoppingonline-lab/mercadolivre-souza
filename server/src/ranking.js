@@ -326,6 +326,11 @@ async function snapshot(faseAlvo = 'rankeando') {
   // v121: toda mudança vai pro Telegram em qualquer estágio (antes o ranqueado
   // só avisava regressão). isRanq só muda o texto (ex.: "despencaram").
   const isRanq = faseAlvo === 'ranqueado';
+  // v177: visitas de todos os anúncios da rodada → 1 mensagem só no Telegram
+  // (o evento de cada anúncio continua indo pro card/tela). Em silêncio, os
+  // eventos ficam pendentes e o flushRankingPendentes já os junta numa mensagem.
+  const silencio = await estaEmSilencio();
+  const visitasMud = [];
   let checked = 0;
   for (const ad of ads) {
     try {
@@ -366,7 +371,9 @@ async function snapshot(faseAlvo = 'rankeando') {
         const quedaForte = caiu && visits < last * 0.6; // -40%+
         {
           const dir = caiu ? (isRanq && quedaForte ? '⚠️ despencaram' : '⬇️') : '⬆️';
-          await emit(ad, 'visitas', `👁️ <b>Visitas ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n${last} → <b>${visits}</b> (últ. dia)`, { de: last, para: visits });
+          await emit(ad, 'visitas', `👁️ <b>Visitas ${dir}</b>\n📦 ${ad.title || ad.ml_id}\n${last} → <b>${visits}</b> (últ. dia)`, { de: last, para: visits },
+            silencio ? 'normal' : 'tela');
+          visitasMud.push({ ml_id: ad.ml_id, title: ad.title, de: last, para: visits, despencou: isRanq && quedaForte });
         }
       }
       // Qualidade: melhorou ou piorou.
@@ -446,7 +453,12 @@ async function snapshot(faseAlvo = 'rankeando') {
       checked++;
     } catch (e) { console.error(`[ranking] snapshot ${ad.ml_id}:`, e.message); }
   }
-  return { checked, total: ads.length };
+  if (!silencio && visitasMud.length) {
+    for (const m of require('./rankingAvisos').visitasResumo(visitasMud, faseAlvo)) {
+      await tgNotifyForce('tg_rankeamento', m);
+    }
+  }
+  return { checked, total: ads.length, visitas: visitasMud.length };
 }
 
 // Encerra o ciclo atual e abre o próximo. Usado nos dois caminhos: automático

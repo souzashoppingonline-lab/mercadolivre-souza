@@ -525,7 +525,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
       // Envio ainda desconhecido (pacote ainda não criado no ML na hora da venda):
       // usa o tipo de envio do ANÚNCIO, já lido acima pro estoque — sem chamada extra.
       if (envioLabel === '—' && itemApi?.shipping?.logistic_type) envioLabel = fmtLogistica(itemApi.shipping.logistic_type);
-      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${linhaQtd}${linhaEstoque}\n💰 ${val}${linhaPromo ? `\n${linhaPromo}` : ''}${linhasAnuncio}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
+      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${vendaInfo.linhaEnvio(envioLabel)}\n${linhaQtd}${linhaEstoque}\n💰 ${val}${linhaPromo ? `\n${linhaPromo}` : ''}${linhasAnuncio}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
       const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id) }; // só na Tela Telegram
       if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda, fotoVenda);
       else await tgNotify('tg_vendas', textoVenda, fotoVenda);

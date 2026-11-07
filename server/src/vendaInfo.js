@@ -131,5 +131,20 @@ function linhaSugestaoPreco({ linha, buybox, cobertura, unidadesDia, promo }) {
   return '';
 }
 
-module.exports = { chaveBuybox, linhaRitmo, textoCobertura, diasCobertura, linhaConversao, linhaPromocao, linhaBuybox,
+// ── Linha de envio em destaque (v176, pedido do usuário) ─────────────────────
+// Recebe o rótulo de fmtLogistica (worker.js) e devolve a linha 🚚 com mais
+// emojis e em MAIÚSCULAS. Continua começando com 🚚 e contendo FLEX/FULL/
+// MERCADO ENVIOS/COLETA — a Tela Telegram lê essa linha (lojaDaVenda) pra
+// escolher a animação (moto/picape/raio). Só no aviso de venda; o resto do
+// sistema (e-mail, relatórios) continua com fmtLogistica.
+function linhaEnvio(label) {
+  const l = String(label || '').toLowerCase();
+  if (l.includes('flex'))           return '🚚 🏍️💨⚡ <b>ENVIO FLEX</b> ⚡💨🏍️ — separar já!';
+  if (l.includes('mercado envios')) return '🚚 🛻📦📮 <b>MERCADO ENVIOS</b> 📮📦🛻 — separar para a Montana';
+  if (l.includes('full'))           return '🚚 🏭⚡📦 <b>FULL</b> 📦⚡🏭 — sai do estoque do ML, não separar';
+  if (l.includes('coleta'))         return '🚚 🏠📦🙋 <b>COLETA</b> 🙋📦🏠';
+  return `🚚 ${label || '—'}`;
+}
+
+module.exports = { linhaEnvio, chaveBuybox, linhaRitmo, textoCobertura, diasCobertura, linhaConversao, linhaPromocao, linhaBuybox,
   simularPreco, linhaSugestaoPreco, SUBIR_PCT, COBERTURA_MAX_DIAS, VELOCIDADE_MIN };

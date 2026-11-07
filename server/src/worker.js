@@ -496,6 +496,29 @@ async function handleOrder({ resource, storeId, silent = false }) {
           linhasAnuncio = (r ? `\n${r}` : '') + (c ? `\n${c}` : '');
         }
         if (linhaBb) linhasAnuncio += `\n${linhaBb}`;
+        // v175 — sugestão de preço (margem × Buy Box / ritmo × estoque). A margem
+        // (fórmula única, vendaMargem.js) só é buscada quando há o que sugerir.
+        const bbChave = vendaInfo.chaveBuybox(cc);
+        const cobDias = (vi && est != null) ? vendaInfo.diasCobertura({ estoque: est, unidades: vi.un30, diasJanela: vi.dias }) : null;
+        const unDia = vi && Number(vi.un30) > 0 ? Number(vi.un30) / Math.min(30, Math.max(1, Number(vi.dias) || 30)) : 0;
+        const podeSugerir = (bbChave === 'perdendo' && Number(cc?.price_to_win) > 0)
+          || (bbChave !== 'perdendo' && cobDias != null && cobDias <= vendaInfo.COBERTURA_MAX_DIAS && unDia >= vendaInfo.VELOCIDADE_MIN);
+        if (podeSugerir) {
+          try {
+            const vm = require('./vendaMargem');
+            const { rows: mr } = await pool.query(`${vm.VENDA_DETALHE_SELECT} WHERE o.ml_id = $1 LIMIT 1`, [String(order.id)]);
+            if (mr[0]) {
+              const [impFlex, motoboy] = await Promise.all([vm.buscarImpostoFlexAtivo(), vm.buscarFreteMotoboy()]);
+              const sug = vendaInfo.linhaSugestaoPreco({
+                linha: vm.calcularMargemLinha(mr[0], impFlex, motoboy),
+                buybox: { chave: bbChave, price_to_win: cc?.price_to_win },
+                cobertura: cobDias, unidadesDia: unDia,
+                promo: !!vendaInfo.linhaPromocao({ unitPrice: item0.unit_price, fullPrice: item0.full_unit_price }),
+              });
+              if (sug) linhasAnuncio += `\n${sug}`;
+            }
+          } catch (e) { console.warn('[venda] sugestão de preço:', e.message); }
+        }
       }
       // v173 — promoção: preço cheio (full_unit_price) > preço pago, direto do pedido.
       const linhaPromo = itensPed.length === 1 ? vendaInfo.linhaPromocao({ unitPrice: item0.unit_price, fullPrice: item0.full_unit_price }) : '';

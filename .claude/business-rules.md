@@ -161,6 +161,11 @@ Fórmulas das linhas extras do aviso (código em `server/src/vendaInfo.js`, cons
 - **Conversão** = pedidos do anúncio em 30 dias ÷ `item_seo_score.visits_30d` (visitas atualizadas pelo sync diário do SEO Score — pode estar até 1 dia atrás). Mesma ideia de `conversion_rate` do SEO Score, mas com os pedidos na hora.
 - **Promoção** = `full_unit_price` > `unit_price` no item do pedido; desconto arredondado, < 1% não mostra.
 - **Buy Box (v174)**: mesma regra do "Monitor de Buy-Box" (`js/buyboxStatus.js`). Perdendo mostra preço do vencedor (`winner_price`), o seu (`current_price`) e o preço pra ganhar (`price_to_win`). Mostra a idade do dado quando a última conferência tem mais de 1 h (o sync de Buy Box não roda a cada venda).
+- **Sugestão de preço (v175)** — constantes em `server/src/vendaInfo.js`:
+  - **Perdendo o Buy Box** e `price_to_win` > 0 e menor que o preço pago: simula a margem da venda no preço pra ganhar. Margem < 0 → "daria prejuízo — não compensa".
+  - **Subir o preço**: só quando **não** está perdendo o Buy Box, cobertura ≤ `COBERTURA_MAX_DIAS` (7) **e** velocidade ≥ `VELOCIDADE_MIN` (1 unidade/dia, média da janela de 30 dias). Sugere +`SUBIR_PCT` (5%). Em promoção → "encerrar a promoção ou subir o preço".
+  - **Simulação**: custo e fretes fixos; tarifa e imposto escalam na proporção do faturamento — aproximação (não recalcula a tarifa fixa do ML abaixo de R$ 79 nem a faixa de frete grátis), por isso "~". Na hora da venda o frete do vendedor quase sempre ainda não foi confirmado (`financeReconciliationJob`), então a margem é estimativa. Margem = da venda inteira (todas as unidades do pedido).
+  - Sem custo cadastrado (`custo_ausente`) → mostra só o preço e pede pra cadastrar o custo (margem com custo 0 enganaria).
 - Só ML por enquanto (Shopee/TikTok têm handler próprio).
 
 ## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)

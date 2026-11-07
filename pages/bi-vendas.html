@@ -119,7 +119,7 @@
 
       <div id="syncInfoBox" style="display:none;margin:0 0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card2);font-size:12.5px;color:var(--text-muted);line-height:1.6">
         <b style="color:var(--text-main)">Frete do vendedor e tarifa são atualizados de duas formas:</b><br>
-        <b>Automática:</b> a cada 10 minutos, um job busca na API do Mercado Livre até 50 vendas ainda pendentes (nunca confirmadas), priorizando as das últimas 24h — não é "todas as vendas de 10 em 10 min", só as que faltam.<br>
+        <b>Automática:</b> a cada 10 minutos, um job busca na API do Mercado Livre até 50 vendas ainda pendentes (nunca confirmadas), priorizando as das últimas 24h — não é "todas as vendas de 10 em 10 min", só as que faltam. <b>Vendas de hoje</b> são conferidas em toda rodada até confirmar (as mais antigas esperam cada vez mais entre uma tentativa e outra). Com o filtro <b>Hoje</b>, esta tela se atualiza sozinha a cada 2 minutos.<br>
         <b>Manual:</b> clique no botão <i class="fas fa-sync-alt"></i> do card pra forçar a atualização na hora.<br>
         <span class="vc-sync ok" style="vertical-align:middle"><i class="fas fa-check"></i> Sincronizado</span> = frete/tarifa já confirmados pela API. "Últ. sinc." = tentou mas ainda sem confirmação completa.
       </div>
@@ -546,24 +546,48 @@ function renderKpis(s){
     <div class="bi-kpi"><div class="k">MC %</div><div class="v" style="color:rgb(${tierKpi.rgb})">${Number(s.mc_pct).toFixed(1)}%</div></div>`;
 }
 
-async function carregar(){
-  document.getElementById('biStatus').textContent = 'Carregando…';
-  document.getElementById('vcGrid').innerHTML = '<div class="bi-empty"><div class="spinner" style="margin:auto"></div></div>';
+// v172 (pedido do usuário) — com o filtro "Hoje" a página se atualiza sozinha
+// a cada 2 min (tarifa/frete que o job do worker confirmou nesse meio-tempo
+// aparecem sem clicar em nada). Recarga silenciosa: sem spinner, mantém
+// quantos cards estavam abertos; pula se há edição aberta, aba escondida ou
+// filtro que não é "Hoje". O botão 🔄 de cada card continua pra forçar na hora.
+const AUTO_MS = 120000;
+let ultimaCarga = null;
+function statusTexto(){
+  const n = `${INT(ROWS.length)} venda(s) encontrada(s).`;
+  if (document.getElementById('fDays').value !== '0' || !ultimaCarga) return n;
+  const hh = ultimaCarga.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+  return `${n} <span style="color:var(--text-muted);margin-left:8px" title="Tarifa e frete das vendas de hoje são conferidos no Mercado Livre a cada 10 min e esta tela se atualiza sozinha a cada 2 min"><i class="fas fa-rotate"></i> atualiza sozinho · última ${hh}</span>`;
+}
+setInterval(() => {
+  if (document.hidden || document.getElementById('fDays').value !== '0') return;
+  if (editandoCusto.size || editandoTarifa.size || editandoFrete.size) return;
+  carregar({ silencioso: true });
+}, AUTO_MS);
+
+async function carregar(opts = {}){
+  const silencioso = !!opts.silencioso;
+  if (!silencioso) {
+    document.getElementById('biStatus').textContent = 'Carregando…';
+    document.getElementById('vcGrid').innerHTML = '<div class="bi-empty"><div class="spinner" style="margin:auto"></div></div>';
+  }
   const d = await DB.getVendasDetalhado({
     store_id: document.getElementById('fLoja').value,
     status:   document.getElementById('fStatus').value,
     days:     document.getElementById('fDays').value,
     search:   document.getElementById('fBusca').value,
   });
-  if(!d || d.error){ document.getElementById('biStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
+  if(!d || d.error){ if (silencioso) return; document.getElementById('biStatus').innerHTML = `<span style="color:var(--red)">Erro: ${esc(d&&d.error||'sem resposta')}</span>`; return; }
+  if (silencioso && (editandoCusto.size || editandoTarifa.size || editandoFrete.size)) return;   // abriu edição enquanto carregava
   SUMMARY = d.summary || {};
   renderKpis(SUMMARY);
   editandoCusto = new Set();   // filtro novo: fecha qualquer edição pendente da busca anterior
   editandoTarifa = new Set();
   editandoFrete = new Set();
   ROWS = d.rows || [];
-  MOSTRADOS = Math.min(PASSO, ROWS.length);
-  document.getElementById('biStatus').textContent = `${INT(ROWS.length)} venda(s) encontrada(s).`;
+  MOSTRADOS = silencioso ? Math.min(Math.max(MOSTRADOS, PASSO), ROWS.length) : Math.min(PASSO, ROWS.length);
+  ultimaCarga = new Date();
+  document.getElementById('biStatus').innerHTML = statusTexto();
   renderGrid();
   carregarFases(); // em paralelo — re-renderiza só quando chegar, não atrasa o card
 }

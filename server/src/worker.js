@@ -2082,10 +2082,17 @@ async function financeReconciliationJob() {
            AND status <> 'cancelled'
            AND (
              last_finance_sync_at IS NULL
+             -- v172 (pedido do usuário): venda de HOJE (fuso SP) não entra no
+             -- backoff — tenta de novo a cada rodada (10 min) até confirmar.
+             -- Antes, 2^tentativas fazia a venda de hoje ficar horas sem
+             -- atualizar e o usuário tinha que clicar no botão de cada card.
+             OR (date_created >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+                 AND last_finance_sync_at < now() - interval '9 minutes')
              OR last_finance_sync_at < now() - (LEAST(POWER(2, finance_sync_attempts)::int, 1440) || ' minutes')::interval
            )
          ORDER BY
            CASE WHEN date_created >= now() - interval '24 hours' THEN 0 ELSE 1 END,
+           last_finance_sync_at ASC NULLS FIRST,   -- v172: rodízio — nunca tentada / mais tempo sem tentar primeiro
            date_created ASC
          LIMIT 50`
       );

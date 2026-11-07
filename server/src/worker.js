@@ -56,6 +56,7 @@ function fmtLogistica(raw) {
 // marketplaceEventWorker (vendas Amazon/Shopee) — mesma lógica de
 // token/chat/silêncio/throttle, sem duplicar.
 const { tgNotify, tgNotifyForce } = require('./notify');
+const vendaInfo = require('./vendaInfo'); // v173 — linhas extras do "Nova venda!" (ritmo, cobertura, conversão, promoção)
 const { upsertClaim } = require('./claims');
 const biVendas = require('./routes/biVendas'); // só pra reusar detectarQuedasProdutos (Alerta de Queda) — ver checkQuedaProdutos
 
@@ -446,7 +447,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
       // o webhook `items` pode chegar depois do pedido e items.available_quantity ainda
       // estaria com o valor de antes da venda. Variação comprada → estoque da variação.
       // Falhou a API → último valor salvo, marcado "(último conhecido)". Só p/ pedido de 1 produto.
-      let linhaEstoque = '', itemApi = null;
+      let linhaEstoque = '', itemApi = null, linhasAnuncio = '';
       if (itensPed.length === 1 && item0.item?.id) {
         let est = null, daVariacao = false, conhecido = false;
         try {
@@ -460,15 +461,42 @@ async function handleOrder({ resource, storeId, silent = false }) {
           const { rows: ei } = await pool.query('SELECT available_quantity FROM items WHERE ml_id = $1', [item0.item.id]).catch(() => ({ rows: [] }));
           est = ei[0]?.available_quantity != null ? Number(ei[0].available_quantity) : null; conhecido = true;
         }
+        // v173 — ritmo do anúncio, cobertura do estoque em dias e conversão (1 consulta
+        // ao banco, sem API). Esta venda já foi gravada acima, então já entra na contagem.
+        // Cobertura por variação quando a compra é de variação (orders não tem
+        // coluna de variação → lê do raw_data do pedido).
+        let vi = null;
+        try {
+          const vid = daVariacao ? String(item0.item.variation_id) : null;
+          const { rows: rv } = await pool.query(
+            `SELECT COUNT(*) FILTER (WHERE o.date_created >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')::int AS hoje,
+                    COUNT(*) FILTER (WHERE o.date_created >= now() - interval '7 days')::int AS d7,
+                    COUNT(*)::int AS d30,
+                    COALESCE(SUM(o.quantity) FILTER (WHERE $2::text IS NULL OR o.raw_data->'order_items'->0->'item'->>'variation_id' = $2), 0)::int AS un30,
+                    CEIL(EXTRACT(EPOCH FROM (now() - MIN(o.date_created) FILTER (WHERE $2::text IS NULL OR o.raw_data->'order_items'->0->'item'->>'variation_id' = $2))) / 86400)::int AS dias,
+                    (SELECT visits_30d FROM item_seo_score WHERE item_id = $1) AS visitas
+               FROM orders o
+              WHERE o.item_id = $1 AND o.status != 'cancelled' AND o.date_created >= now() - interval '30 days'`,
+            [item0.item.id, vid]);
+          vi = rv[0];
+        } catch (e) { console.warn('[venda] ritmo/cobertura:', e.message); }
         if (est != null && !Number.isNaN(est)) {
           const alerta = est <= 0 ? ' ⛔ <b>esgotado</b>' : est <= 5 ? ' ⚠️ <b>baixo</b>' : '';   // ≤ 5 = mesmo limiar do "Estoque crítico"
-          linhaEstoque = `\n📊 Estoque restante: <b>${est} ${est === 1 ? 'unidade' : 'unidades'}</b>${daVariacao ? ' (desta variação)' : ''}${alerta}${conhecido ? ' <i>(último conhecido)</i>' : ''}`;
+          const cobertura = vi ? vendaInfo.textoCobertura({ estoque: est, unidades: vi.un30, diasJanela: vi.dias }) : '';
+          linhaEstoque = `\n📊 Estoque restante: <b>${est} ${est === 1 ? 'unidade' : 'unidades'}</b>${daVariacao ? ' (desta variação)' : ''}${alerta}${cobertura}${conhecido ? ' <i>(último conhecido)</i>' : ''}`;
+        }
+        if (vi) {
+          const r = vendaInfo.linhaRitmo({ hoje: vi.hoje, d7: vi.d7 });
+          const c = vendaInfo.linhaConversao({ visitas: vi.visitas, pedidos30: vi.d30 });
+          linhasAnuncio = (r ? `\n${r}` : '') + (c ? `\n${c}` : '');
         }
       }
+      // v173 — promoção: preço cheio (full_unit_price) > preço pago, direto do pedido.
+      const linhaPromo = itensPed.length === 1 ? vendaInfo.linhaPromocao({ unitPrice: item0.unit_price, fullPrice: item0.full_unit_price }) : '';
       // Envio ainda desconhecido (pacote ainda não criado no ML na hora da venda):
       // usa o tipo de envio do ANÚNCIO, já lido acima pro estoque — sem chamada extra.
       if (envioLabel === '—' && itemApi?.shipping?.logistic_type) envioLabel = fmtLogistica(itemApi.shipping.logistic_type);
-      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${linhaQtd}${linhaEstoque}\n💰 ${val}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
+      const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${linhaQtd}${linhaEstoque}\n💰 ${val}${linhaPromo ? `\n${linhaPromo}` : ''}${linhasAnuncio}\n🚚 ${envioLabel}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
       const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id) }; // só na Tela Telegram
       if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda, fotoVenda);
       else await tgNotify('tg_vendas', textoVenda, fotoVenda);

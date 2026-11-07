@@ -153,6 +153,15 @@ Uma notificação Telegram de nova venda só dispara na **transição real** de 
 - **Notifica só cancelamento novo** desde a última revisão (sem repetição; dia sem cancelado novo = silêncio). Respeita on/off de `tg_vendas`, silêncio e intervalo.
 - **Já bipado** (está num vídeo de embalagem) → alerta pra tirar o pacote do envio.
 
+## "Nova venda!" — ritmo, cobertura, conversão e promoção (v173)
+
+Fórmulas das linhas extras do aviso (código em `server/src/vendaInfo.js`, consulta em `handleOrder`):
+- **Ritmo do anúncio**: pedidos não cancelados do `item_id` hoje (fuso SP, já contando esta venda) e nos últimos 7 dias.
+- **Cobertura do estoque** = estoque restante ÷ (unidades vendidas nos últimos 30 dias ÷ dias da janela). Janela = dias desde a 1ª venda dentro dos 30 dias (mín. 1, máx. 30) — anúncio novo não fica com velocidade diluída. Compra de variação → estoque **e** unidades da variação (`raw_data.order_items[0].item.variation_id`). < 1 dia → "acaba hoje no ritmo atual"; > 90 → "mais de 90 dias"; sem venda/estoque 0 → não mostra.
+- **Conversão** = pedidos do anúncio em 30 dias ÷ `item_seo_score.visits_30d` (visitas atualizadas pelo sync diário do SEO Score — pode estar até 1 dia atrás). Mesma ideia de `conversion_rate` do SEO Score, mas com os pedidos na hora.
+- **Promoção** = `full_unit_price` > `unit_price` no item do pedido; desconto arredondado, < 1% não mostra.
+- Só ML por enquanto (Shopee/TikTok têm handler próprio).
+
 ## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)
 
 Diferente do alerta de estoque fixo (`≤5`/`≤15`): mede **quando** o item acaba, não só quanto tem. `dias_restantes = available_quantity ÷ (unidades vendidas na janela ÷ dias da janela)`, com a **velocidade real** de `vw_ml_orders` (não `sold_quantity` histórico). Entra na lista só quem **vende bem** (`venda_dia ≥ min_venda_dia`, default 0.2 = ≥1 venda a cada 5 dias) **e** tem `dias_restantes < dias` (default 7, janela 30d). `sugestao_compra = ceil(venda_dia × janela) − estoque` (repor pra cobrir 1 janela). Job `checkRupturaEstoque` (07:30) manda os 12 mais urgentes no Telegram (`tg_reposicao`, respeita silêncio). Objetivo: reagir antes de perder venda por ruptura — complementa a página Reposição (que olha estoque baixo em geral) com "vende bem E vai acabar".

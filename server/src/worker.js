@@ -480,6 +480,11 @@ async function handleOrder({ resource, storeId, silent = false }) {
             [item0.item.id, vid]);
           vi = rv[0];
         } catch (e) { console.warn('[venda] ritmo/cobertura:', e.message); }
+        // v174 — Buy Box do anúncio (só anúncio de catálogo monitorado; sem linha → nada).
+        const cc = await pool.query(
+          `SELECT item_id, status, winner_item_id, winner_price, current_price, price_to_win, calculated_at
+             FROM catalog_competition WHERE item_id = $1`, [item0.item.id]).then(r => r.rows[0]).catch(() => null);
+        const linhaBb = vendaInfo.linhaBuybox(cc);
         if (est != null && !Number.isNaN(est)) {
           const alerta = est <= 0 ? ' ⛔ <b>esgotado</b>' : est <= 5 ? ' ⚠️ <b>baixo</b>' : '';   // ≤ 5 = mesmo limiar do "Estoque crítico"
           const cobertura = vi ? vendaInfo.textoCobertura({ estoque: est, unidades: vi.un30, diasJanela: vi.dias }) : '';
@@ -490,6 +495,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
           const c = vendaInfo.linhaConversao({ visitas: vi.visitas, pedidos30: vi.d30 });
           linhasAnuncio = (r ? `\n${r}` : '') + (c ? `\n${c}` : '');
         }
+        if (linhaBb) linhasAnuncio += `\n${linhaBb}`;
       }
       // v173 — promoção: preço cheio (full_unit_price) > preço pago, direto do pedido.
       const linhaPromo = itensPed.length === 1 ? vendaInfo.linhaPromocao({ unitPrice: item0.unit_price, fullPrice: item0.full_unit_price }) : '';

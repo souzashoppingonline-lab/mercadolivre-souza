@@ -160,6 +160,7 @@ Fórmulas das linhas extras do aviso (código em `server/src/vendaInfo.js`, cons
 - **Cobertura do estoque** = estoque restante ÷ (unidades vendidas nos últimos 30 dias ÷ dias da janela). Janela = dias desde a 1ª venda dentro dos 30 dias (mín. 1, máx. 30) — anúncio novo não fica com velocidade diluída. Compra de variação → estoque **e** unidades da variação (`raw_data.order_items[0].item.variation_id`). < 1 dia → "acaba hoje no ritmo atual"; > 90 → "mais de 90 dias"; sem venda/estoque 0 → não mostra.
 - **Conversão** = pedidos do anúncio em 30 dias ÷ `item_seo_score.visits_30d` (visitas atualizadas pelo sync diário do SEO Score — pode estar até 1 dia atrás). Mesma ideia de `conversion_rate` do SEO Score, mas com os pedidos na hora.
 - **Promoção** = `full_unit_price` > `unit_price` no item do pedido; desconto arredondado, < 1% não mostra.
+- **Buy Box (v174)**: mesma regra do "Monitor de Buy-Box" (`js/buyboxStatus.js`). Perdendo mostra preço do vencedor (`winner_price`), o seu (`current_price`) e o preço pra ganhar (`price_to_win`). Mostra a idade do dado quando a última conferência tem mais de 1 h (o sync de Buy Box não roda a cada venda).
 - Só ML por enquanto (Shopee/TikTok têm handler próprio).
 
 ## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)

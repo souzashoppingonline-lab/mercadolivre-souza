@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { linhaRitmo, textoCobertura, linhaConversao, linhaPromocao } = require('../src/vendaInfo');
+const { linhaRitmo, textoCobertura, linhaConversao, linhaPromocao, linhaBuybox } = require('../src/vendaInfo');
 
 test('ritmo do anúncio', () => {
   assert.match(linhaRitmo({ hoje: 3, d7: 21 }), /3ª venda<\/b> deste anúncio hoje · 21 nos últimos 7 dias/);
@@ -28,4 +28,20 @@ test('promoção', () => {
   assert.match(linhaPromocao({ unitPrice: 78.99, fullPrice: 92.9 }), /−15%<\/b> \(de R\$\s92,90\)/);
   assert.strictEqual(linhaPromocao({ unitPrice: 50, fullPrice: 50 }), '');
   assert.strictEqual(linhaPromocao({ unitPrice: 50, fullPrice: null }), '');
+});
+
+test('buy box', () => {
+  const agora = Date.parse('2026-11-07T15:00:00Z');
+  const base = { item_id: 'MLB1', calculated_at: '2026-11-07T14:50:00Z' };
+  assert.match(linhaBuybox({ ...base, winner_item_id: 'MLB1' }, agora), /ganhando/);
+  assert.match(linhaBuybox({ ...base, winner_item_id: 'MLB9', status: 'sharing_first_place' }, agora), /dividindo o 1º lugar/);
+  const p = linhaBuybox({ ...base, winner_item_id: 'MLB9', winner_price: 74.9, current_price: 78.99, price_to_win: 74.8 }, agora);
+  assert.match(p, /PERDENDO<\/b> para concorrente a <b>R\$\s74,90/);
+  assert.match(p, /seu preço R\$\s78,99 · para ganhar: <b>R\$\s74,80/);
+  assert.doesNotMatch(p, /conferido/);
+  assert.match(linhaBuybox({ ...base, calculated_at: '2026-11-07T10:00:00Z', winner_item_id: 'MLB1' }, agora), /conferido há 5h/);
+  assert.match(linhaBuybox({ ...base, calculated_at: '2026-11-04T10:00:00Z', winner_item_id: 'MLB1' }, agora), /conferido há 3 dias/);
+  assert.strictEqual(linhaBuybox(null), '');
+  assert.strictEqual(linhaBuybox({ item_id: 'MLB1', calculated_at: null }), '');
+  assert.strictEqual(linhaBuybox({ ...base, winner_item_id: null }, agora), '');
 });

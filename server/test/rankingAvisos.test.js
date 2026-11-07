@@ -33,3 +33,27 @@ test('entrou / reativado / pausa / saiu / nota / link', () => {
   assert.match(av.nota(ad, 'obs', null), /📝 <b>Anotação no card/);
   assert.match(av.link(ad, 'MLB999', 'catalogo', true), /➕ <code>MLB999<\/code> \(catalogo\)/);
 });
+
+test('visitas: rodada inteira vira UMA mensagem (maior variação primeiro)', () => {
+  const avisos = require('../src/rankingAvisos');
+  const lista = [
+    { ml_id: 'MLB1', title: 'Anti Mofo Secar 180g Kit C/ 5un', de: 0, para: 2 },
+    { ml_id: 'MLB2', title: 'Conjunto 6 Xícaras Com Pires', de: 68, para: 74 },
+    { ml_id: 'MLB3', title: 'Kit 3 Potes Vidro Hermeticos', de: 27, para: 36 },
+    { ml_id: 'MLB4', title: 'Pedigree Combo 6 Latas', de: 10, para: 4, despencou: true },
+  ];
+  const msgs = avisos.visitasResumo(lista, 'rankeando');
+  assert.strictEqual(msgs.length, 1);
+  const m = msgs[0];
+  assert.match(m, /Visitas — 4 anúncio\(s\)/);
+  assert.match(m, /⬆️ 3 subiram · ⬇️ 1 caíram/);
+  assert.ok(m.indexOf('27 → <b>36</b> (+9)') < m.indexOf('68 → <b>74</b> (+6)'));   // +9 antes de +6
+  assert.match(m, /⚠️ 10 → <b>4<\/b> \(-6\) <b>despencaram<\/b>/);
+  assert.deepStrictEqual(avisos.visitasResumo([], 'rankeando'), []);
+  // muitos anúncios → quebra em mais de uma mensagem, cada uma < 3800+linha
+  const muitos = Array.from({ length: 120 }, (_, i) => ({ ml_id: 'MLB' + i, title: 'Produto com um título bem comprido número ' + i, de: i, para: i + 1 }));
+  const partes = avisos.visitasResumo(muitos, 'ranqueado');
+  assert.ok(partes.length > 1);
+  assert.ok(partes.every(p => p.length <= 3900));
+  assert.match(partes[1], /continuação/);
+});

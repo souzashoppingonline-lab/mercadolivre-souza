@@ -27,7 +27,7 @@ Núcleo em **`server/src/ranking.js`** (reaproveita `notify.js`/`ws/hub.js` — 
 | `preco` | `handleItem` (tempo real) | preço mudou (de→para) |
 | `estoque` | `handleItem` | estoque mudou; alerta extra se zerou (risco de pausar e perder rankeamento) |
 | `status` | `handleItem` | status do anúncio mudou (active/paused/closed) |
-| `visitas` | `snapshot` (6/6h) | visitas do último dia mudaram |
+| `visitas` | `snapshot` (6/6h) | visitas do último dia mudaram. **v177 (pedido do usuário: "muitos repetidos")**: no Telegram, as mudanças de visitas de **uma rodada do snapshot viram 1 mensagem só** (`rankingAvisos.visitasResumo`: "👁️ Visitas — N anúncio(s) em <estágio>", subiram/caíram, uma linha por anúncio com de → para (±N) e título inteiro, maior variação primeiro; quebra em várias se passar de ~3800 caracteres). O evento de cada anúncio continua no card/tela (`emit` com modo `'tela'`). Em silêncio, os eventos ficam pendentes e o `flushRankingPendentes` já os junta. |
 | `qualidade` | `snapshot` | `item_seo_score.score` mudou |
 | `buybox` | `snapshot` | ganhou/perdeu o buy-box de catálogo (`catalog_competition.winner_item_id == ml_id`) |
 | `esfriou` | `snapshot` fase 2 (v71) | sem vender há 3 dias (só ranqueado) |

@@ -28,6 +28,27 @@ const igual = (a, b) => (a == null || a === '' ? null : String(a)) === (b == nul
   || (a != null && b != null && a !== '' && b !== '' && !isNaN(a) && !isNaN(b) && Number(a) === Number(b));
 
 module.exports = {
+  // v177 (pedido do usuário: "tem muitos repetidos") — as mudanças de visitas de
+  // UMA rodada do snapshot viram UMA mensagem (antes: 1 mensagem por anúncio).
+  // lista: [{ ml_id, title, de, para, despencou }]; maior variação primeiro.
+  // Devolve um array de mensagens (quebra em ~3800 caracteres, limite do Telegram).
+  visitasResumo(lista, fase) {
+    if (!lista || !lista.length) return [];
+    const subiram = lista.filter(x => x.para > x.de).length, caíram = lista.length - subiram;
+    const ord = [...lista].sort((a, b) => Math.abs(b.para - b.de) - Math.abs(a.para - a.de) || b.para - a.para);
+    const cabeca = n => `👁️ <b>Visitas — ${lista.length} anúncio(s) em ${faseLabel(fase)}</b>${n ? ' <i>(continuação)</i>' : ''}\n`
+      + `⬆️ ${subiram} subiram · ⬇️ ${caíram} caíram <i>(últ. dia)</i>\n`;
+    const msgs = []; let atual = cabeca(0);
+    for (const x of ord) {
+      const d = x.para - x.de;
+      const ico = d > 0 ? '⬆️' : x.despencou ? '⚠️' : '⬇️';
+      const linha = `\n${ico} ${x.de} → <b>${x.para}</b> (${d > 0 ? '+' : ''}${d})${x.despencou ? ' <b>despencaram</b>' : ''} · ${esc(curto(x.title || x.ml_id, 80))}`;
+      if ((atual + linha).length > 3800) { msgs.push(atual); atual = cabeca(1); }
+      atual += linha;
+    }
+    msgs.push(atual);
+    return msgs;
+  },
   entrou(ad, { reativado = false } = {}) {
     return [...cab('➕', reativado ? 'Voltou pro Rankeamento' : 'Entrou no Rankeamento', ad),
       `📍 Estágio: <b>${faseLabel(ad.fase)}</b>`,

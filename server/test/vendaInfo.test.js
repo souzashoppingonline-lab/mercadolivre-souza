@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { linhaRitmo, textoCobertura, linhaConversao, linhaPromocao, linhaBuybox, simularPreco, linhaSugestaoPreco, diasCobertura } = require('../src/vendaInfo');
+const { linhaEnvio, linhaRitmo, textoCobertura, linhaConversao, linhaPromocao, linhaBuybox, simularPreco, linhaSugestaoPreco, diasCobertura } = require('../src/vendaInfo');
 
 test('ritmo do anúncio', () => {
   assert.match(linhaRitmo({ hoje: 3, d7: 21 }), /3ª venda<\/b> deste anúncio hoje · 21 nos últimos 7 dias/);
@@ -81,4 +81,17 @@ test('sugestão: vende rápido com estoque acabando → subir o preço', () => {
   assert.strictEqual(linhaSugestaoPreco({ linha: LINHA, cobertura: 4, unidadesDia: 0.5 }), '');
   assert.strictEqual(linhaSugestaoPreco({ linha: LINHA, buybox: { chave: 'perdendo', price_to_win: 0 }, cobertura: 4, unidadesDia: 3 }), '');
   assert.strictEqual(diasCobertura({ estoque: 14, unidades: 84, diasJanela: 30 }), 5);
+});
+
+test('linha de envio em destaque (Tela Telegram continua reconhecendo o tipo)', () => {
+  // mesma regra de pages/tela-telegram.html (lojaDaVenda)
+  const tipo = (l) => /full/i.test(l) ? 'full' : /flex/i.test(l) ? 'flex' : /mercado envios|coleta/i.test(l) ? 'envios' : 'nada';
+  const f = linhaEnvio('🏃 Flex'), me = linhaEnvio('📮 Mercado Envios'), fu = linhaEnvio('📦 Full'), co = linhaEnvio('🏠 Coleta');
+  for (const l of [f, me, fu, co]) assert.ok(l.startsWith('🚚'));
+  assert.match(f, /<b>ENVIO FLEX<\/b>/); assert.strictEqual(tipo(f), 'flex');
+  assert.match(me, /<b>MERCADO ENVIOS<\/b>/); assert.strictEqual(tipo(me), 'envios');
+  assert.match(fu, /<b>FULL<\/b>/); assert.strictEqual(tipo(fu), 'full');
+  assert.strictEqual(tipo(co), 'envios');
+  assert.strictEqual(linhaEnvio('—'), '🚚 —');
+  assert.strictEqual(linhaEnvio(''), '🚚 —');
 });

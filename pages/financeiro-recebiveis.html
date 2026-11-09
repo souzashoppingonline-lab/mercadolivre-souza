@@ -461,7 +461,7 @@ function renderRanking(){
       ${bloco('🟡 Margem baixa (< 5%)','#f59e0b',r.margem_baixa,'','Nenhum anúncio com margem abaixo de 5%.')}
       ${bloco('📝 Precisa do seu custo','#fbbf24',r.sem_custo,'custo','Todos os anúncios têm custo. ✅')}
     </div>
-    <div class="mp-fonte">Memória desde ${t.desde?new Date(t.desde).toLocaleDateString('pt-BR'):'—'} · atualizada ${t.atualizado?new Date(t.atualizado).toLocaleString('pt-BR'):'—'}. Período pela data da venda. Venda já liberada fica congelada com o custo/imposto daquele dia (as gravadas no 1º dia usam o custo de hoje).</div>`;
+    <div class="mp-fonte">Memória desde ${t.desde?new Date(t.desde).toLocaleDateString('pt-BR'):'—'} · atualizada ${t.atualizado?new Date(t.atualizado).toLocaleString('pt-BR'):'—'}. Período pela data da venda. Venda já liberada fica congelada com o custo/imposto daquele dia (as gravadas no 1º dia usam o custo de hoje).${t.canceladas?` · <b>${t.canceladas}</b> venda(s) cancelada(s)/reembolsada(s) no período (${BRL(t.canceladas_faturamento)}) ficam fora da conta.`:''}</div>`;
 }
 async function salvarCustoRank(itemId){
   if(!await salvarCustoItem(itemId, document.getElementById('rc_'+itemId))) return;

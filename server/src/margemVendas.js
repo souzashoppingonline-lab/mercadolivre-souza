@@ -167,9 +167,16 @@ async function gravarMemoria({ itemId = null, log = console.log } = {}) {
 // "Onde ganho e onde perco": agrega a memória por anúncio no período (data da venda).
 async function ranking({ dias = 30, storeId = '', top = 15 } = {}) {
   const params = [Math.min(Math.max(Number(dias) || 30, 1), 365), String(storeId || '')];
-  const filtro = `m.data_venda >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - ($1::int - 1)
+  const periodo = `m.data_venda >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - ($1::int - 1)
                   AND ($2 = '' OR m.store_id = $2::bigint) AND m.margem IS NOT NULL`;
-  const [{ rows: itens }, { rows: lojas }, { rows: [tot] }] = await Promise.all([
+  // v179 — venda que foi cancelada ou reembolsada DEPOIS de entrar na memória não
+  // conta (a memória só grava pagamento 'approved', mas nunca apagava a linha
+  // quando ele mudava). Filtro na hora (índices ml_payments.order_id e orders.ml_id),
+  // sem coluna nova: sempre reflete o status atual.
+  const valida = `EXISTS (SELECT 1 FROM ml_payments p WHERE p.order_id = m.order_id AND p.status = 'approved')
+                  AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.ml_id = m.order_id AND o.status = 'cancelled')`;
+  const filtro = `${periodo} AND ${valida}`;
+  const [{ rows: itens }, { rows: lojas }, { rows: [tot] }, { rows: [fora] }] = await Promise.all([
     pool.query(
       `SELECT m.item_id, MAX(m.title) AS title, MAX(s.nickname) AS nickname, COUNT(*) AS vendas, SUM(m.qtd) AS qtd,
               SUM(m.faturamento) AS faturamento, SUM(m.recebido) AS recebido, SUM(m.custo) AS custo,
@@ -187,6 +194,9 @@ async function ranking({ dias = 30, storeId = '', top = 15 } = {}) {
               COALESCE(SUM(m.margem),0) AS margem, COUNT(*) FILTER (WHERE m.custo_ausente) AS sem_custo,
               MIN(m.gravado_em) AS desde, MAX(m.atualizado_em) AS atualizado
          FROM margem_vendas_memoria m WHERE ${filtro}`, params),
+    pool.query(
+      `SELECT COUNT(*) AS vendas, COALESCE(SUM(m.faturamento),0) AS faturamento
+         FROM margem_vendas_memoria m WHERE ${periodo} AND NOT (${valida})`, params),
   ]);
   const pct = (a, b) => (Number(b) > 0 ? Number((Number(a) / Number(b) * 100).toFixed(1)) : 0);
   const norm = r => ({
@@ -203,7 +213,8 @@ async function ranking({ dias = 30, storeId = '', top = 15 } = {}) {
     dias: params[0],
     totais: { vendas: Number(tot.vendas), faturamento: r2(tot.faturamento), recebido: r2(tot.recebido),
       margem: r2(tot.margem), mc_pct: pct(tot.margem, tot.faturamento), sem_custo: Number(tot.sem_custo),
-      anuncios: todos.length, desde: tot.desde, atualizado: tot.atualizado },
+      anuncios: todos.length, desde: tot.desde, atualizado: tot.atualizado,
+      canceladas: Number(fora.vendas), canceladas_faturamento: r2(fora.faturamento) },
     por_empresa: lojas.map(l => ({ store_id: l.store_id, nickname: l.nickname, vendas: Number(l.vendas),
       faturamento: r2(l.faturamento), recebido: r2(l.recebido), margem: r2(l.margem), mc_pct: pct(l.margem, l.faturamento) })),
     ganhos: confiaveis.filter(i => i.margem > 0).sort((a, b) => b.margem - a.margem).slice(0, top),

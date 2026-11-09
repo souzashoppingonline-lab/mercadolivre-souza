@@ -381,7 +381,7 @@ function renderVendasMp(){
   const custoCel=v=>{
     if(!v.custo_ausente) return BRL(v.custo);
     if(!v.item_id) return '<span style="color:var(--text-muted)">—</span>';
-    return `<span class="mpm-custo"><input type="number" step="0.01" min="0" placeholder="custo un." id="cu_${esc(v.order_id)}" onkeydown="if(event.key==='Enter')salvarCustoMp('${esc(v.item_id)}','${esc(v.order_id)}')"><button onclick="salvarCustoMp('${esc(v.item_id)}','${esc(v.order_id)}')" title="Salvar o custo deste anúncio (vale pra todas as vendas dele)">💾</button></span>`;
+    return `<span class="mpm-custo"><input type="text" inputmode="decimal" autocomplete="off" placeholder="custo un." id="cu_${esc(v.order_id)}" onkeydown="if(event.key==='Enter')salvarCustoMp('${esc(v.item_id)}','${esc(v.order_id)}')"><button onclick="salvarCustoMp('${esc(v.item_id)}','${esc(v.order_id)}')" title="Salvar o custo deste anúncio (vale pra todas as vendas dele)">💾</button></span>`;
   };
   document.getElementById('mpmB').innerHTML=!lista.length?'<div class="rc-empty">Nenhuma venda.</div>':
    `<table><thead><tr><th>Libera em</th>${varias?'<th>Empresa</th>':''}<th>Pedido</th><th>Produto</th><th class="n">Venda</th><th class="n">Recebido</th><th class="n">Custo</th><th class="n">Imposto</th><th class="n">Margem</th><th class="n">MC%</th><th>Conferência</th></tr></thead><tbody>${
@@ -395,13 +395,36 @@ function renderVendasMp(){
 }
 // Cadastro manual do custo (pedido do usuário: "o que não tiver, pergunte"): grava no
 // anúncio (mesma rota da página Resumo por venda) e regrava a memória dele na hora.
-async function salvarCustoMp(itemId, orderId){
-  const el=document.getElementById('cu_'+orderId), v=parseFloat(String(el&&el.value||'').replace(',','.'));
-  if(!(v>=0) || el.value===''){ el&&el.focus(); return; }
+// v178 (bug: "coloco o custo e clico salvar, não salva"): campo de texto aceita
+// "36,50", "36.50" e "1.234,56" (o type=number descartava a vírgula em alguns
+// navegadores e o botão não fazia nada, sem aviso); valor inválido avisa; ao
+// salvar mostra a confirmação na tela.
+function lerCusto(el){
+  let t=String(el&&el.value||'').trim().replace(/[R$\s]/g,'');
+  if(t.includes(',')) t=t.replace(/\./g,'').replace(',','.');
+  const v=Number(t);
+  return t!=='' && Number.isFinite(v) && v>=0 ? Math.round(v*100)/100 : null;
+}
+function avisoCusto(msg, erro){
+  let el=document.getElementById('custoToast');
+  if(!el){ el=document.createElement('div'); el.id='custoToast'; el.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;padding:10px 16px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:90vw'; document.body.appendChild(el); }
+  el.style.background=erro?'#7f1d1d':'#14532d'; el.style.color='#fff'; el.style.border='1px solid '+(erro?'#f87171':'#3fb950');
+  el.textContent=msg; el.style.display='block';
+  clearTimeout(avisoCusto._t); avisoCusto._t=setTimeout(()=>{ el.style.display='none'; }, 4000);
+}
+async function salvarCustoItem(itemId, el){
+  const v=lerCusto(el);
+  if(v==null){ el&&el.focus(); avisoCusto('Digite o custo unitário, ex.: 36,50', true); return false; }
   el.disabled=true;
   const r=await DB.updateItemCusto(itemId, v);
-  if(!r||r.error){ el.disabled=false; alert('Não consegui salvar o custo: '+((r&&r.error)||'sem resposta')); return; }
-  await DB.regravarMargemItem(itemId);
+  if(!r||r.error){ el.disabled=false; avisoCusto('Não consegui salvar o custo: '+((r&&r.error)||DB.lastError||'sem resposta'), true); return false; }
+  const g=await DB.regravarMargemItem(itemId);
+  if(!g||g.error){ avisoCusto('Custo salvo, mas a margem não foi recalculada agora: '+((g&&g.error)||'sem resposta')+' — ela atualiza na próxima gravação (05:35).', true); return true; }
+  avisoCusto(`✅ Custo de ${BRL(v)} salvo — margem recalculada em ${(g.gravados||0)+(g.restantes||0)} venda(s)`);
+  return true;
+}
+async function salvarCustoMp(itemId, orderId){
+  if(!await salvarCustoItem(itemId, document.getElementById('cu_'+orderId))) return;
   await recarregarVendasMp(); if(RANK) carregarRanking();
 }
 
@@ -423,7 +446,7 @@ function renderRanking(){
   if(!t.vendas){ document.getElementById('rkBody').innerHTML='<div class="rc-empty">A memória ainda está vazia. Ela é gravada todo dia às 05:35 (e 2 min depois de reiniciar o worker).</div>'; return; }
   const item=(i,modo)=>`<div class="rk-item"><div class="t" title="${esc(i.title||'')}">${esc(i.title||i.item_id)}</div>
       <div class="m"><span>${esc(i.nickname||'')} · ${i.vendas} venda(s) · venda ${BRL(i.faturamento)} · recebido ${BRL(i.recebido)}${i.custo?` · custo ${BRL(i.custo)}`:''}</span>
-      ${modo==='custo'?`<span class="mpm-custo"><input type="number" step="0.01" min="0" placeholder="custo un." id="rc_${esc(i.item_id)}"><button onclick="salvarCustoRank('${esc(i.item_id)}')">💾</button></span>`
+      ${modo==='custo'?`<span class="mpm-custo"><input type="text" inputmode="decimal" autocomplete="off" placeholder="custo un." id="rc_${esc(i.item_id)}" onkeydown="if(event.key==='Enter')salvarCustoRank('${esc(i.item_id)}')"><button onclick="salvarCustoRank('${esc(i.item_id)}')">💾</button></span>`
         :`<b style="color:${corMc(i.margem)}">${BRL(i.margem)} · ${i.mc_pct}%</b>`}</div></div>`;
   const bloco=(tit,cor,l,modo,vazio)=>`<div class="rk-col"><h4 style="color:${cor}">${tit}</h4>${l.length?l.map(i=>item(i,modo)).join(''):`<div class="rc-empty" style="padding:10px">${vazio}</div>`}</div>`;
   document.getElementById('rkBody').innerHTML=`
@@ -441,12 +464,8 @@ function renderRanking(){
     <div class="mp-fonte">Memória desde ${t.desde?new Date(t.desde).toLocaleDateString('pt-BR'):'—'} · atualizada ${t.atualizado?new Date(t.atualizado).toLocaleString('pt-BR'):'—'}. Período pela data da venda. Venda já liberada fica congelada com o custo/imposto daquele dia (as gravadas no 1º dia usam o custo de hoje).</div>`;
 }
 async function salvarCustoRank(itemId){
-  const el=document.getElementById('rc_'+itemId), v=parseFloat(String(el&&el.value||'').replace(',','.'));
-  if(!(v>=0) || el.value===''){ el&&el.focus(); return; }
-  el.disabled=true;
-  const r=await DB.updateItemCusto(itemId, v);
-  if(!r||r.error){ el.disabled=false; alert('Não consegui salvar o custo: '+((r&&r.error)||'sem resposta')); return; }
-  await DB.regravarMargemItem(itemId); carregarRanking();
+  if(!await salvarCustoItem(itemId, document.getElementById('rc_'+itemId))) return;
+  carregarRanking();
 }
 async function analisarIaRank(){
   const box=document.getElementById('rkIa'), bt=document.getElementById('rkIaBtn');

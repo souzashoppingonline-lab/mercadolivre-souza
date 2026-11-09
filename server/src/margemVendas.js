@@ -133,8 +133,35 @@ async function gravarMemoria({ itemId = null, log = console.log } = {}) {
     gravados += vendas.length; lotes++;
     if (rows.length < LOTE || lotes >= 200) break;   // trava de segurança (100 mil pedidos por rodada)
   }
-  log(`[margem-memoria]${itemId ? ` item ${itemId}:` : ''} ${gravados} pedido(s) gravado(s)/atualizado(s) em ${lotes} lote(s)`);
-  return { gravados, lotes };
+  // v178 (bug: "coloco o custo e clico salvar, não salva") — no modo por anúncio,
+  // regrava também as vendas do anúncio que JÁ estão na memória sem custo mas
+  // que a consulta acima não pega mais porque o pagamento deixou de ser
+  // 'approved' (reembolsado/cancelado depois). Sem isso o anúncio continuava em
+  // "Precisa do seu custo" mesmo com o custo salvo. Só recalcula custo/margem
+  // (recebido/bruto/liberação ficam como estão na memória).
+  let restantes = 0;
+  if (itemId) {
+    const { rows: rest } = await pool.query(
+      `SELECT order_id, store_id, recebido, bruto, data_liberacao AS liberacao, liberado
+         FROM margem_vendas_memoria WHERE item_id = $1 AND custo_ausente AND NOT (order_id = ANY($2::text[]))`,
+      [itemId, [...vistos]]);
+    if (rest.length) {
+      const mapa = await margemDosPedidos(rest.map(r => String(r.order_id)));
+      const vendas = rest.map(r => ({ r, m: mapa.get(String(r.order_id)) })).filter(x => x.m).map(({ r, m }) => montarVenda(r, m));
+      if (vendas.length) {
+        await pool.query(
+          `UPDATE margem_vendas_memoria mm SET custo = x.custo, imposto = x.imposto, tarifa = x.tarifa, frete = x.frete,
+                  margem = x.margem, mc_pct = x.mc_pct, custo_ausente = x.custo_ausente, alertas = x.alertas, atualizado_em = now()
+             FROM jsonb_to_recordset($1::jsonb) AS x(order_id text, custo numeric, imposto numeric, tarifa numeric, frete numeric,
+                  margem numeric, mc_pct numeric, custo_ausente boolean, alertas text[])
+            WHERE mm.order_id = x.order_id AND mm.custo_ausente`,
+          [JSON.stringify(vendas)]);
+        restantes = vendas.length;
+      }
+    }
+  }
+  log(`[margem-memoria]${itemId ? ` item ${itemId}:` : ''} ${gravados} pedido(s) gravado(s)/atualizado(s) em ${lotes} lote(s)${restantes ? ` + ${restantes} sem pagamento aprovado` : ''}`);
+  return { gravados, lotes, restantes };
 }
 
 // "Onde ganho e onde perco": agrega a memória por anúncio no período (data da venda).

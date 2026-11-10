@@ -1,0 +1,17 @@
+{
+  "id": "/pages/financeiro-despesa-celular.html",
+  "name": "Nova Despesa",
+  "short_name": "Despesa",
+  "description": "Lançar despesa na hora da compra: foto da nota (a IA lê) ou digitando — entra em Despesas & DRE",
+  "start_url": "/pages/financeiro-despesa-celular.html",
+  "scope": "/pages/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1d23",
+  "theme_color": "#1a1d23",
+  "icons": [
+    { "src": "/assets/despesa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/despesa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/despesa-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

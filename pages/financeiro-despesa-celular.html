@@ -7,6 +7,13 @@
   <title>Nova Despesa</title>
   <!-- v180 — Despesa pelo celular: foto da nota → IA preenche → confere → grava em `expenses`
        (mesma tabela de Despesas & DRE). A foto NÃO é guardada. Ver .claude/modules.md. -->
+  <!-- PWA "Nova Despesa" (ícone próprio na tela inicial; mesmo /sw.js do painel, que nunca cacheia /api). Ver .claude/frontend.md -->
+  <link rel="manifest" href="/despesa.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/despesa-apple-180.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Despesa">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <link rel="stylesheet" href="../css/style.css">
   <style>
     body { margin:0; background:var(--bg-dark); color:var(--text-main); font-size:15px; -webkit-text-size-adjust:100%; }
@@ -63,6 +70,11 @@
     .dc-rec .l .t span { font-size:11.5px; color:var(--text-muted); }
     .dc-rec .l .v { font-weight:800; color:#f87171; white-space:nowrap; }
     .dc-vazio { font-size:13px; color:var(--text-muted); }
+    .dc-inst { display:flex; gap:10px; align-items:center; background:var(--bg-card); border:1px solid rgba(63,185,80,.45); border-radius:14px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; line-height:1.4; }
+    .dc-inst img { width:40px; height:40px; border-radius:10px; flex:none; }
+    .dc-inst b { display:block; font-size:13.5px; }
+    .dc-inst .bt { margin-left:auto; flex:none; border:0; border-radius:10px; padding:9px 12px; font-weight:800; font-size:13px; background:#3fb950; color:#06281a; cursor:pointer; font-family:inherit; }
+    .dc-inst .x { flex:none; border:0; background:none; color:var(--text-muted); font-size:18px; cursor:pointer; padding:0 2px; }
   </style>
 </head>
 <body>
@@ -71,6 +83,8 @@
     <div><h1>📸 Nova despesa</h1><div class="sub">Entra direto em Despesas &amp; DRE</div></div>
     <a href="financeiro-despesas.html">📊 Despesas &amp; DRE</a>
   </div>
+
+  <div id="dcInst" class="dc-inst" style="display:none"></div>
 
   <div id="dcAcoes" class="dc-acoes">
     <label class="big"><span class="ico">📷</span>Fotografar a nota<small>a IA lê valor, data e fornecedor</small>
@@ -232,6 +246,32 @@ async function salvar(){
 }
 function novaOutra(){ document.getElementById('dcOk').style.display = 'none'; window.scrollTo({ top:0, behavior:'smooth' }); }
 
+// ── PWA: ícone "Despesa" na tela inicial (mesmo esquema do app Dívidas do Dia) ──
+let INSTALAR = null;
+const ehIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const instalado = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const instFechado = () => { try { return localStorage.getItem('despesa_inst_fechado') === '1'; } catch (_) { return false; } };
+function renderInstalar(){
+  const el = document.getElementById('dcInst');
+  const celular = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || ehIOS();
+  if (instalado() || instFechado() || !celular) { el.style.display = 'none'; return; }
+  const ic = '<img src="/assets/despesa-192.png" alt="">';
+  const fechar = '<button class="x" onclick="fecharInstalar()" title="Não mostrar mais">✕</button>';
+  if (INSTALAR) el.innerHTML = `${ic}<div><b>Ícone na tela inicial</b>abre direto aqui, sem navegador</div><button class="bt" onclick="instalarApp()">Instalar</button>${fechar}`;
+  else if (ehIOS()) el.innerHTML = `${ic}<div><b>Ícone na tela inicial</b>No Safari: <b style="display:inline">Compartilhar ⬆️</b> → <b style="display:inline">Adicionar à Tela de Início</b></div>${fechar}`;
+  else el.innerHTML = `${ic}<div><b>Ícone na tela inicial</b>Menu do navegador (⋮) → <b style="display:inline">Instalar app</b> / <b style="display:inline">Adicionar à tela inicial</b></div>${fechar}`;
+  el.style.display = 'flex';
+}
+function fecharInstalar(){ try { localStorage.setItem('despesa_inst_fechado', '1'); } catch (_) {} renderInstalar(); }
+async function instalarApp(){
+  if (!INSTALAR) return;
+  INSTALAR.prompt(); await INSTALAR.userChoice.catch(() => ({})); INSTALAR = null; renderInstalar();
+}
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALAR = e; renderInstalar(); });
+window.addEventListener('appinstalled', () => { INSTALAR = null; renderInstalar(); });
+window.addEventListener('load', () => { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+
+renderInstalar();
 (async () => { await carregarCategorias(); carregarRecentes(); })();
 </script>
 </body>

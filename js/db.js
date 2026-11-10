@@ -407,6 +407,8 @@ const DB = {
   // Comprovante fiscal: sobe o arquivo pro Storage do Supabase (via servidor) e
   // devolve o caminho, que é gravado em compras_cmv.xml_url.
   async uploadFinanceiroArquivo(formData) { return this._postForm('/financeiro/arquivo', formData); },
+  // v180 — Despesa pelo celular: foto da nota → IA devolve {leitura:{valor,data,fornecedor,cnpj,descricao,categoria_id,tipo,legivel,observacao}} (não grava nada).
+  async lerNotaDespesa(formData)          { return this._postForm('/financeiro/despesa/ler-nota', formData, 120000); },
   financeiroArquivoUrl(path)              { return `${this.BASE}/financeiro/arquivo/${String(path||'').split('/').map(encodeURIComponent).join('/')}`; },
   async addFinanceiroRow(nome, obj)        { return this._post(`/financeiro/dados/${encodeURIComponent(nome)}`, obj); },
   async updateFinanceiroRow(nome, id, obj) { return this._patch(`/financeiro/dados/${encodeURIComponent(nome)}/${encodeURIComponent(id)}`, obj); },

@@ -121,6 +121,31 @@ router.post('/arquivo', (req, res) => {
   });
 });
 
+// Despesa pelo celular (v180): foto da nota/cupom/recibo → a IA lê valor, data,
+// fornecedor, CNPJ e sugere descrição/categoria/tipo. NÃO grava nada nem guarda
+// a foto (decisão do usuário): devolve os campos pra página
+// financeiro-despesa-celular.html, que o usuário confere e grava em `expenses`.
+const uploadNota = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+router.post('/despesa/ler-nota', (req, res) => {
+  uploadNota.single('foto')(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Foto maior que 8 MB.' : err.message });
+    try {
+      if (!req.file) return res.status(400).json({ error: 'nenhuma foto enviada' });
+      const nota = require('../notaFiscalIa');
+      const llm = require('../ai/llm');
+      if (!llm.isConfigured()) return res.status(400).json({ error: 'IA não configurada — defina ANTHROPIC_API_KEY no .env do servidor.' });
+      const categorias = supa.isConfigured()
+        ? await supa.selectRows('expense_categories', 500).then((r) => (r || []).map((c) => ({ id: c.id, name: c.name }))).catch(() => [])
+        : [];
+      const leitura = await nota.lerNota({ imagemBase64: req.file.buffer.toString('base64'), mediaType: req.file.mimetype, categorias });
+      res.json({ ok: true, leitura });
+    } catch (e) {
+      console.error('[financeiro/despesa/ler-nota]', e.message);
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+});
+
 // Download do comprovante. O bucket é privado — quem serve é o servidor, com a
 // chave dele, atrás do gate de admin do módulo (ver MODULES em staffAuth).
 router.get('/arquivo/:caminho(*)', async (req, res) => {

@@ -19,8 +19,16 @@ function isConfigured() {
   return !!env.anthropicApiKey;
 }
 
-function costUsd(inTok, outTok) {
-  return (Number(inTok || 0) / 1e6) * PRICE_IN + (Number(outTok || 0) / 1e6) * PRICE_OUT;
+// v180: preço por modelo quando a chamada usa um modelo diferente do padrão
+// (ex.: leitura de nota fiscal com Claude Opus 5.5). Sem entrada → PRICE_IN/OUT.
+const PRECO_MODELO = {
+  'claude-opus-5-5': [4, 20],
+  'claude-sonnet-5-5': [2, 10],
+  'claude-haiku-5-5': [0.1, 0.5],
+};
+function costUsd(inTok, outTok, model) {
+  const [pin, pout] = PRECO_MODELO[model] || [PRICE_IN, PRICE_OUT];
+  return (Number(inTok || 0) / 1e6) * pin + (Number(outTok || 0) / 1e6) * pout;
 }
 
 // Registra o custo da chamada (best-effort — nunca quebra a análise se falhar).
@@ -31,13 +39,16 @@ async function logUsage({ model, feature, productId, usage }) {
     await pool.query(
       `INSERT INTO ai_usage_log (model, feature, product_id, input_tokens, output_tokens, cost_usd)
        VALUES ($1,$2,$3,$4,$5,$6)`,
-      [model, feature || null, productId || null, inTok, outTok, costUsd(inTok, outTok)]);
+      [model, feature || null, productId || null, inTok, outTok, costUsd(inTok, outTok, model)]);
   } catch (e) { console.error('[ai] logUsage', e.message); }
 }
 
 // Faz uma chamada de completude e devolve o texto puro da resposta.
 // `feature`/`productId` são opcionais e servem só pra registrar o gasto.
-async function complete({ system, user, maxTokens = 1500, model = DEFAULT_MODEL, feature, productId }) {
+// `user` pode ser texto ou uma lista de blocos de conteúdo (ex.: imagem base64 +
+// texto — leitura de nota fiscal, v180). `extra` (opcional) vai junto no corpo
+// da requisição (ex.: output_config: { effort: 'low' }).
+async function complete({ system, user, maxTokens = 1500, model = DEFAULT_MODEL, feature, productId, extra = null }) {
   if (!isConfigured()) {
     const err = new Error('IA não configurada — defina ANTHROPIC_API_KEY no .env do servidor e reinicie.');
     err.code = 'AI_NOT_CONFIGURED';
@@ -55,7 +66,7 @@ async function complete({ system, user, maxTokens = 1500, model = DEFAULT_MODEL,
     res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }], ...(extra || {}) }),
       signal: controller.signal,
     });
     data = await res.json();
@@ -67,7 +78,10 @@ async function complete({ system, user, maxTokens = 1500, model = DEFAULT_MODEL,
   }
   if (!res.ok) throw new Error(data?.error?.message || `Anthropic API ${res.status}`);
   await logUsage({ model, feature, productId, usage: data.usage });
-  return data.content?.[0]?.text || '';
+  if (data.stop_reason === 'refusal') throw new Error('A IA recusou este pedido.');
+  // Modelos com raciocínio (ex.: Claude Opus 5.5) devolvem blocos `thinking`
+  // antes do texto — pega o 1º bloco de texto, não o 1º bloco.
+  return (data.content || []).find((b) => b.type === 'text')?.text || '';
 }
 
 // Igual a complete(), mas exige JSON de volta: extrai o 1º bloco {...} e parseia.

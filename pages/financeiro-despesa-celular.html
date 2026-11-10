@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1d23">
+  <title>Nova Despesa</title>
+  <!-- v180 — Despesa pelo celular: foto da nota → IA preenche → confere → grava em `expenses`
+       (mesma tabela de Despesas & DRE). A foto NÃO é guardada. Ver .claude/modules.md. -->
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    body { margin:0; background:var(--bg-dark); color:var(--text-main); font-size:15px; -webkit-text-size-adjust:100%; }
+    .dc-wrap { max-width:560px; margin:0 auto; padding:14px 14px 40px; }
+    .dc-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+    .dc-head h1 { font-size:20px; margin:0; font-weight:800; }
+    .dc-head .sub { font-size:12px; color:var(--text-muted); }
+    .dc-head a { margin-left:auto; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); border-radius:12px; padding:9px 11px; font-size:12px; font-weight:700; text-decoration:none; white-space:nowrap; }
+    .dc-acoes { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+    .dc-acoes label, .dc-acoes button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; border-radius:16px; padding:16px 8px; font-size:14px; font-weight:800; cursor:pointer; border:1px solid var(--border); background:var(--bg-card); color:var(--text-main); text-align:center; font-family:inherit; }
+    .dc-acoes .big { grid-column:1 / -1; background:linear-gradient(135deg,#2ea043,#3fb950); color:#06281a; border:0; font-size:17px; padding:22px 8px; }
+    .dc-acoes .ico { font-size:28px; line-height:1; }
+    .dc-acoes small { font-weight:600; font-size:11.5px; opacity:.8; }
+    .dc-acoes input { display:none; }
+    .dc-card { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; padding:14px; margin-bottom:14px; }
+    .dc-lendo { display:flex; gap:12px; align-items:center; }
+    .dc-lendo img { width:64px; height:84px; object-fit:cover; border-radius:10px; border:1px solid var(--border); }
+    .dc-lendo b { display:block; font-size:15px; }
+    .dc-lendo span { font-size:12.5px; color:var(--text-muted); }
+    .dc-spin { width:22px; height:22px; border:3px solid var(--border); border-top-color:#3fb950; border-radius:50%; animation:dcGira .8s linear infinite; flex:none; }
+    @keyframes dcGira { to { transform:rotate(360deg); } }
+    .dc-campo { margin-bottom:12px; }
+    .dc-campo > span { display:block; font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:5px; }
+    .dc-campo input, .dc-campo select { width:100%; box-sizing:border-box; padding:12px; font-size:16px; border-radius:12px; border:1px solid var(--border); background:var(--bg-card2); color:var(--text-main); font-family:inherit; }
+    .dc-valor { position:relative; }
+    .dc-valor i { position:absolute; left:14px; top:50%; transform:translateY(-50%); font-style:normal; font-weight:800; color:var(--text-muted); font-size:18px; }
+    .dc-valor input { padding-left:46px !important; font-size:26px !important; font-weight:800; }
+    .dc-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .dc-seg { display:grid; grid-template-columns:1fr 1fr; gap:6px; background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:4px; }
+    .dc-seg button { border:0; border-radius:9px; padding:10px 6px; font-size:13.5px; font-weight:700; cursor:pointer; background:transparent; color:var(--text-muted); font-family:inherit; }
+    .dc-seg button.on { background:var(--bg-card); color:var(--text-main); box-shadow:0 0 0 1px var(--border); }
+    .dc-ia { display:inline-block; font-size:10.5px; font-weight:800; color:#a78bfa; background:rgba(167,139,250,.12); border:1px solid rgba(167,139,250,.4); border-radius:999px; padding:1px 7px; margin-left:6px; vertical-align:1px; }
+    .dc-forn { font-size:12.5px; color:var(--text-muted); background:var(--bg-card2); border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px; line-height:1.45; }
+    .dc-forn b { color:var(--text-main); }
+    .dc-alerta { font-size:12.5px; border-radius:10px; padding:9px 11px; margin-bottom:12px; line-height:1.45; background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.45); color:#fbbf24; }
+    .dc-alerta.erro { background:rgba(248,113,113,.1); border-color:rgba(248,113,113,.5); color:#fca5a5; }
+    .dc-comp { font-size:12.5px; color:var(--text-muted); margin:-4px 0 12px; }
+    .dc-comp b { color:var(--text-main); }
+    .dc-comp button { border:0; background:none; color:#58a6ff; font-weight:700; font-size:12.5px; cursor:pointer; padding:0 0 0 4px; font-family:inherit; }
+    .dc-salvar { width:100%; border:0; border-radius:14px; padding:16px; font-size:17px; font-weight:800; cursor:pointer; background:#3fb950; color:#06281a; font-family:inherit; }
+    .dc-salvar:disabled { opacity:.6; }
+    .dc-cancelar { width:100%; border:1px solid var(--border); border-radius:12px; padding:11px; margin-top:8px; font-size:14px; font-weight:700; cursor:pointer; background:transparent; color:var(--text-muted); font-family:inherit; }
+    .dc-ok { text-align:center; padding:22px 14px; }
+    .dc-ok .ico { font-size:44px; }
+    .dc-ok .vl { display:block; font-size:24px; font-weight:800; margin:6px 0 2px; color:#f87171; }
+    .dc-ok span b { color:var(--text-main); }
+    .dc-ok span { font-size:13px; color:var(--text-muted); }
+    .dc-ok button { margin-top:14px; }
+    .dc-rec h3 { font-size:13px; margin:0 0 8px; color:var(--text-muted); font-weight:800; text-transform:uppercase; letter-spacing:.03em; }
+    .dc-rec .l { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--border); font-size:13.5px; }
+    .dc-rec .l:first-of-type { border-top:0; }
+    .dc-rec .l .t { flex:1; min-width:0; }
+    .dc-rec .l .t b { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:700; }
+    .dc-rec .l .t span { font-size:11.5px; color:var(--text-muted); }
+    .dc-rec .l .v { font-weight:800; color:#f87171; white-space:nowrap; }
+    .dc-vazio { font-size:13px; color:var(--text-muted); }
+  </style>
+</head>
+<body>
+<div class="dc-wrap">
+  <div class="dc-head">
+    <div><h1>📸 Nova despesa</h1><div class="sub">Entra direto em Despesas &amp; DRE</div></div>
+    <a href="financeiro-despesas.html">📊 Despesas &amp; DRE</a>
+  </div>
+
+  <div id="dcAcoes" class="dc-acoes">
+    <label class="big"><span class="ico">📷</span>Fotografar a nota<small>a IA lê valor, data e fornecedor</small>
+      <input type="file" accept="image/*" capture="environment" onchange="fotoEscolhida(this)"></label>
+    <label><span class="ico">🖼️</span>Da galeria<small>foto já tirada</small>
+      <input type="file" accept="image/*" onchange="fotoEscolhida(this)"></label>
+    <button type="button" onclick="abrirForm(null)"><span class="ico">✍️</span>Digitar<small>sem foto</small></button>
+  </div>
+
+  <div id="dcLendo" class="dc-card" style="display:none"></div>
+  <div id="dcForm" class="dc-card" style="display:none"></div>
+  <div id="dcOk" class="dc-card dc-ok" style="display:none"></div>
+
+  <div class="dc-card dc-rec"><h3>Lançadas por último</h3><div id="dcRec"><div class="dc-vazio">Carregando…</div></div></div>
+</div>
+
+<script src="../js/db.js"></script>
+<script>
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hojeISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+let CATS = [], TIPO = 'operational', LEITURA = null, COMP = null; // COMP = {m, y} quando o usuário muda a competência
+
+// "36,50" / "1.234,56" / "36.5" → número (mesma regra de lerCusto em Recebíveis).
+function lerValor(txt){
+  let t = String(txt||'').trim().replace(/[R$\s]/g,'');
+  if (t.includes(',')) t = t.replace(/\./g,'').replace(',','.');
+  const v = Number(t); return t !== '' && Number.isFinite(v) && v > 0 ? Math.round(v*100)/100 : null;
+}
+
+async function carregarCategorias(){
+  const r = await DB.getFinanceiroDados('expense_categories', 1000);
+  CATS = (r && r.rows || []).slice().sort((a,b) => String(a.name).localeCompare(String(b.name),'pt-BR'));
+}
+async function carregarRecentes(){
+  const el = document.getElementById('dcRec');
+  const r = await DB.getFinanceiroDados('expenses', 6, 'id.desc');
+  if (!r || r.error) { el.innerHTML = `<div class="dc-vazio">⚠️ ${esc((r&&r.error)||'sem resposta')}</div>`; return; }
+  const rows = r.rows || [];
+  if (!rows.length) { el.innerHTML = '<div class="dc-vazio">Nenhuma despesa ainda.</div>'; return; }
+  const nomeCat = id => (CATS.find(c => String(c.id) === String(id)) || {}).name || 'Sem categoria';
+  el.innerHTML = rows.map(e => `<div class="l"><div class="t"><b>${esc(e.description||'—')}</b>
+    <span>${e.date ? new Date(e.date+'T12:00:00').toLocaleDateString('pt-BR') : '—'} · ${esc(nomeCat(e.category_id))} · ${e.type==='fixed'?'Fixo':'Operacional'}</span></div>
+    <div class="v">-${BRL(e.value)}</div></div>`).join('');
+}
+
+// Reduz a foto no próprio celular (≤ 1600 px, JPEG) — envio rápido no 4G e a IA lê igual.
+async function reduzir(file){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, err) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => err(new Error('não consegui abrir a foto')); i.src = url; });
+    const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85));
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function fotoEscolhida(input){
+  const file = input.files && input.files[0]; input.value = '';
+  if (!file) return;
+  document.getElementById('dcOk').style.display = 'none';
+  document.getElementById('dcForm').style.display = 'none';
+  const lendo = document.getElementById('dcLendo');
+  const thumb = URL.createObjectURL(file);
+  lendo.style.display = 'block';
+  lendo.innerHTML = `<div class="dc-lendo"><img src="${thumb}" alt=""><div style="flex:1"><b>🤖 Lendo a nota…</b><span>valor, data, fornecedor e categoria</span></div><div class="dc-spin"></div></div>`;
+  let leitura = null, erro = null;
+  try {
+    const blob = await reduzir(file);
+    const fd = new FormData(); fd.append('foto', blob, 'nota.jpg');
+    const r = await DB.lerNotaDespesa(fd);
+    if (!r || r.error) erro = (r && r.error) || DB.lastError || 'sem resposta do servidor';
+    else leitura = r.leitura;
+  } catch (e) { erro = e.message; }
+  URL.revokeObjectURL(thumb);
+  lendo.style.display = 'none';
+  abrirForm(leitura, erro);
+}
+
+function abrirForm(leitura, erro){
+  LEITURA = leitura; COMP = null;
+  TIPO = leitura && leitura.tipo === 'fixed' ? 'fixed' : 'operational';
+  document.getElementById('dcOk').style.display = 'none';
+  const f = document.getElementById('dcForm');
+  const ia = leitura ? '<span class="dc-ia">🤖 IA</span>' : '';
+  const desc = leitura ? [leitura.fornecedor, leitura.descricao].filter(Boolean).join(' — ') : '';
+  const cat = leitura && leitura.categoria_id != null ? String(leitura.categoria_id) : '';
+  const avisos = [];
+  if (erro) avisos.push(`<div class="dc-alerta erro">Não consegui ler a nota: ${esc(erro)}<br>Preencha abaixo ou tire outra foto.</div>`);
+  else if (leitura && !leitura.legivel) avisos.push('<div class="dc-alerta">📷 Não deu pra ler o valor com segurança. Confira/preencha os campos ou tire outra foto mais de perto, com luz.</div>');
+  if (leitura && leitura.observacao) avisos.push(`<div class="dc-alerta">🤖 ${esc(leitura.observacao)}</div>`);
+  f.innerHTML = `${avisos.join('')}
+    ${leitura && (leitura.fornecedor || leitura.cnpj) ? `<div class="dc-forn">🏪 <b>${esc(leitura.fornecedor||'—')}</b>${leitura.cnpj?`<br>CNPJ/CPF ${esc(leitura.cnpj)}`:''}</div>` : ''}
+    <label class="dc-campo"><span>Valor ${leitura&&leitura.valor!=null?ia:''}</span>
+      <div class="dc-valor"><i>R$</i><input id="fValor" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${leitura&&leitura.valor!=null?String(leitura.valor.toFixed(2)).replace('.',','):''}"></div></label>
+    <div class="dc-2">
+      <label class="dc-campo"><span>Data ${leitura&&leitura.data?ia:''}</span><input id="fData" type="date" value="${(leitura&&leitura.data)||hojeISO()}" onchange="COMP=null;renderComp()"></label>
+      <div class="dc-campo"><span>Tipo ${leitura?ia:''}</span><div class="dc-seg" id="fTipo">
+        <button type="button" data-t="operational" onclick="setTipo('operational')">Operacional</button>
+        <button type="button" data-t="fixed" onclick="setTipo('fixed')">Fixo</button></div></div>
+    </div>
+    <div class="dc-comp" id="fComp"></div>
+    <label class="dc-campo"><span>Descrição ${desc?ia:''}</span><input id="fDesc" maxlength="120" placeholder="ex.: Combustível, fita adesiva…" value="${esc(desc)}"></label>
+    <label class="dc-campo"><span>Categoria ${cat?ia:''}</span><select id="fCat"><option value="">Sem categoria</option>${CATS.map(c=>`<option value="${esc(c.id)}"${String(c.id)===cat?' selected':''}>${esc(c.name)}</option>`).join('')}</select></label>
+    <div id="fMsg"></div>
+    <button class="dc-salvar" id="fSalvar" onclick="salvar()">💾 Salvar despesa</button>
+    <button class="dc-cancelar" onclick="cancelar()">Cancelar</button>`;
+  f.style.display = 'block';
+  setTipo(TIPO); renderComp();
+  f.scrollIntoView({ behavior:'smooth', block:'start' });
+  if (!leitura || leitura.valor == null) setTimeout(() => document.getElementById('fValor').focus(), 250);
+}
+function setTipo(t){ TIPO = t; document.querySelectorAll('#fTipo button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); }
+
+// Competência = mês da data da nota. Dá pra mudar (ex.: compra no cartão que entra na fatura seguinte) — mesma ideia do modal de Despesas & DRE.
+function compAtual(){
+  if (COMP) return COMP;
+  const d = document.getElementById('fData').value || hojeISO();
+  return { m: +d.slice(5,7), y: +d.slice(0,4) };
+}
+function renderComp(){
+  const c = compAtual(), el = document.getElementById('fComp');
+  el.innerHTML = `Entra em <b>${MESES[c.m-1]}/${c.y}</b> no DRE <button type="button" onclick="mudarComp()">mudar</button>`;
+}
+function mudarComp(){
+  const c = compAtual(), el = document.getElementById('fComp');
+  el.innerHTML = `Entra em <select id="cM" style="padding:6px;border-radius:8px;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border)">${MESES.map((n,i)=>`<option value="${i+1}"${i+1===c.m?' selected':''}>${n}</option>`).join('')}</select>
+    <select id="cY" style="padding:6px;border-radius:8px;background:var(--bg-card2);color:var(--text-main);border:1px solid var(--border)">${[c.y-1,c.y,c.y+1].map(a=>`<option${a===c.y?' selected':''}>${a}</option>`).join('')}</select>`;
+  const upd = () => { COMP = { m:+document.getElementById('cM').value, y:+document.getElementById('cY').value }; };
+  document.getElementById('cM').onchange = upd; document.getElementById('cY').onchange = upd; upd();
+}
+function cancelar(){ document.getElementById('dcForm').style.display = 'none'; LEITURA = null; window.scrollTo({ top:0, behavior:'smooth' }); }
+function msg(t, erro){ document.getElementById('fMsg').innerHTML = `<div class="dc-alerta${erro?' erro':''}">${t}</div>`; }
+
+async function salvar(){
+  const valor = lerValor(document.getElementById('fValor').value);
+  const desc = document.getElementById('fDesc').value.trim();
+  const data = document.getElementById('fData').value;
+  if (valor == null) { msg('Informe o valor, ex.: 36,50', true); document.getElementById('fValor').focus(); return; }
+  if (!desc) { msg('Informe a descrição.', true); document.getElementById('fDesc').focus(); return; }
+  if (!data) { msg('Informe a data.', true); return; }
+  const c = compAtual(), catId = document.getElementById('fCat').value;
+  // A data gravada fica dentro da competência (igual Despesas & DRE): se a competência mudou de mês, usa o dia 1 dela.
+  const dentro = +data.slice(5,7) === c.m && +data.slice(0,4) === c.y;
+  const row = { type: TIPO, category_id: catId || null, description: desc, value: valor,
+    date: dentro ? data : `${c.y}-${String(c.m).padStart(2,'0')}-01`, month: c.m, year: c.y,
+    is_recurring: false, recorrencia_vezes_mes: 1, gasto_fixo_mensal: false };
+  const bt = document.getElementById('fSalvar'); bt.disabled = true; bt.textContent = 'Salvando…';
+  const r = await DB.addFinanceiroRow('expenses', row);
+  if (!r || r.error) { bt.disabled = false; bt.textContent = '💾 Salvar despesa'; msg('Não consegui salvar: ' + esc((r&&r.error)||DB.lastError||'sem resposta'), true); return; }
+  document.getElementById('dcForm').style.display = 'none';
+  const ok = document.getElementById('dcOk');
+  ok.innerHTML = `<div class="ico">✅</div><span class="vl">-${BRL(valor)}</span><span>${esc(desc)}<br>salva em <b>${MESES[c.m-1]}/${c.y}</b> · ${TIPO==='fixed'?'Fixo':'Operacional'} — já aparece em Despesas &amp; DRE</span>
+    <button class="dc-salvar" onclick="novaOutra()">📷 Lançar outra</button>`;
+  ok.style.display = 'block'; window.scrollTo({ top:0, behavior:'smooth' });
+  carregarRecentes();
+}
+function novaOutra(){ document.getElementById('dcOk').style.display = 'none'; window.scrollTo({ top:0, behavior:'smooth' }); }
+
+(async () => { await carregarCategorias(); carregarRecentes(); })();
+</script>
+</body>
+</html>

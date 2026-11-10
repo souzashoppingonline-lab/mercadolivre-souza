@@ -161,6 +161,7 @@
 
       <!-- ══════════ ABA DRE & DESPESAS ══════════ -->
       <div id="paneDre">
+        <div id="dpRecBanner" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(245,158,11,.5);background:rgba(245,158,11,.08);color:#fbbf24;font-size:13px"></div>
         <div class="dp-kpis" id="dpKpis"></div>
 
         <div class="dp-cols">
@@ -408,6 +409,7 @@ function render(){
   renderCusto(m,y);
   renderTrend(m,y);
   renderComp(m,y);
+  renderRecBanner(m,y);
   renderRank(m,y);
   renderSim(m,y);
 }
@@ -921,6 +923,98 @@ async function doAddCat(){
   if(saved){ CATS.push(saved); CATMAP[saved.id]=saved.name; }
   const sel=document.getElementById('fCat'); sel.innerHTML='<option value="">Sem categoria</option>'+CATS.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   fecharModal(); render();
+}
+
+// ── Recorrentes que faltam no mês (v182) ─────────────────────────────────────
+// Bug relatado pelo usuário ("as recorrentes não estão aparecendo"): a despesa
+// marcada "Recorrente" com 1 mês (aluguel, salário, prolabore, contador…) existe
+// só no mês em que foi lançada — nada copiava pro mês seguinte. Agora: se o mês
+// selecionado não tem uma recorrente mensal do mês anterior, aparece a faixa
+// amarela; "Revisar e lançar" abre a lista com caixinha + valor editável e grava
+// só o que ficar marcado (nada é gravado sem o usuário confirmar).
+// Mensal = is_recurring e 1 mês, sem "(n/N)" na descrição (parcelas já foram
+// criadas mês a mês no lançamento). Já existe = mesma descrição + categoria no mês.
+const mesAnterior=(m,y)=>m===1?[12,y-1]:[m-1,y];   // addMonths() não aceita k negativo (janeiro viraria mês 0)
+const normDesc=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,' ');
+const chaveRec=e=>normDesc(e.description)+'|'+(e.category_id??'');
+const pularKey=(m,y)=>`dp_rec_pular_${y}_${m}`;
+function pulados(m,y){ try{ return new Set(JSON.parse(localStorage.getItem(pularKey(m,y))||'[]')); }catch(_){ return new Set(); } }
+function salvarPulados(m,y,set){ try{ localStorage.setItem(pularKey(m,y), JSON.stringify([...set])); }catch(_){} }
+function recorrentesFaltando(m,y,{comPulados=false}={}){
+  const [pm,py]=mesAnterior(m,y);
+  const pul=comPulados?new Set():pulados(m,y);
+  const atuais=new Set(expMonth(m,y).map(e=>normDesc(e.description)+'|'+(e.category_id??'')));
+  const vistos=new Set();
+  return expMonth(pm,py).filter(e=>{
+    if(!e.is_recurring || (+e.recorrencia_vezes_mes||1)>1 || /\(\d+\/\d+\)\s*$/.test(e.description||'')) return false;
+    const k=chaveRec(e);
+    if(atuais.has(k) || vistos.has(k) || pul.has(k)) return false;
+    vistos.add(k); return true;
+  }).sort((a,b)=>(+b.value||0)-(+a.value||0));
+}
+function renderRecBanner(m,y){
+  const el=document.getElementById('dpRecBanner'); if(!el) return;
+  const falta=recorrentesFaltando(m,y);
+  if(!falta.length){ el.style.display='none'; return; }
+  const [pm,py]=mesAnterior(m,y);
+  const tot=falta.reduce((s,e)=>s+(+e.value||0),0);
+  el.innerHTML=`<span style="font-size:20px">🔁</span><div style="flex:1;min-width:220px"><b style="color:#fde68a">${falta.length} despesa(s) recorrente(s) de ${MESES[pm-1]} ainda não estão em ${MESES[m-1]}</b> — ${BRL(tot)}. O DRE de ${MESES[m-1]} está sem elas.</div>
+    <button class="dp-btn" style="background:#f59e0b;color:#1a1d23;border:0;font-weight:800" onclick="abrirTrazerRecorrentes()">Revisar e lançar</button>`;
+  el.style.display='flex';
+}
+function abrirTrazerRecorrentes(){
+  const m=selM(), y=selY(), [pm,py]=mesAnterior(m,y);
+  const falta=recorrentesFaltando(m,y);
+  if(!falta.length){ abrirModalInfo('🔁 Recorrentes', `<p>Todas as recorrentes de ${MESES[pm-1]} já estão em ${MESES[m-1]}.</p>`); return; }
+  const body=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Confira cada uma: ajuste o valor do que mudou e marque o que <b>acabou</b> (ex.: parcela que terminou). Entram em <b>${MESES[m-1]}/${y}</b>.</div>
+    <table class="dp-sum" id="trRecTab">${falta.map((e,i)=>`<tr>
+      <td>${esc(e.description||'—')}<br><span style="font-size:11px;color:var(--text-muted)">${esc(CATMAP[e.category_id]||'Sem categoria')} · ${e.type==='fixed'?'Fixo':'Operacional'}</span></td>
+      <td style="text-align:right;white-space:nowrap"><select class="dp-in" data-a="${i}" onchange="somaTrazer()" style="width:auto;display:inline-block;padding:5px 6px;font-size:12px">
+          <option value="lancar">✅ Lançar</option><option value="pular">⏭️ Pular este mês</option><option value="acabou">🛑 Acabou</option></select>
+        <input class="dp-in" data-v="${i}" inputmode="decimal" value="${(+e.value||0).toFixed(2).replace('.',',')}" oninput="somaTrazer()" style="width:105px;text-align:right;display:inline-block;padding:5px 8px"></td></tr>`).join('')}</table>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px">⏭️ <b>Pular este mês</b>: não lança agora e some da faixa só em ${MESES[m-1]}. 🛑 <b>Acabou</b>: tira a marca de recorrente do lançamento de ${MESES[pm-1]} — não aparece mais nos próximos meses.</div>
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-weight:800"><span>Total a lançar</span><span id="trRecTot" class="down"></span></div>
+    <div id="eMsg" style="font-size:12px;margin-top:6px;color:var(--text-muted)"></div>`;
+  window._trRec=falta;
+  abrirModal(`🔁 Trazer recorrentes de ${MESES[pm-1]}`, body, 'Lançar marcadas', ()=>gravarTrazerRecorrentes(m,y), false);
+  somaTrazer();
+}
+function lerValorBR(t){ t=String(t||'').trim().replace(/[R$\s]/g,''); if(t.includes(',')) t=t.replace(/\./g,'').replace(',','.'); const v=Number(t); return t!==''&&Number.isFinite(v)&&v>=0?Math.round(v*100)/100:null; }
+function linhasTrazer(){
+  return (window._trRec||[]).map((e,i)=>{ const a=document.querySelector(`#trRecTab select[data-a="${i}"]`)?.value||'lancar';
+    const inp=document.querySelector(`#trRecTab input[data-v="${i}"]`); if(inp) inp.style.opacity=a==='lancar'?'1':'.35';
+    return { e, a, on:a==='lancar', v:lerValorBR(inp?.value) }; });
+}
+function somaTrazer(){
+  const todas=linhasTrazer(), l=todas.filter(x=>x.on), tot=l.reduce((s,x)=>s+(x.v||0),0), outras=todas.length-l.length;
+  const t=document.getElementById('trRecTot'); if(t) t.textContent=`-${BRL(tot)} (${l.length})`;
+  const ok=document.getElementById('dpModalOk'); if(ok){ ok.textContent=l.length?`Lançar ${l.length} em ${MESES[selM()-1]}`:(outras?'Salvar escolhas':'Nada a fazer'); ok.dataset.prev=ok.textContent; ok.disabled=!todas.length; }
+}
+async function gravarTrazerRecorrentes(m,y){
+  const todas=linhasTrazer(), l=todas.filter(x=>x.on);
+  if(l.some(x=>x.v==null)){ eMsgErr('Tem valor inválido — use, ex.: 1.234,56'); return; }
+  modalBusy(true,'Gravando…');
+  // ⏭️ pular só este mês (fica neste navegador) · 🛑 acabou = tira is_recurring do lançamento do mês anterior
+  const pul=pulados(m,y); todas.filter(x=>x.a==='pular').forEach(x=>pul.add(chaveRec(x.e))); salvarPulados(m,y,pul);
+  for(const x of todas.filter(x=>x.a==='acabou')){
+    const r=await DB.updateFinanceiroRow('expenses', x.e.id, { is_recurring:false });
+    if(r&&r.error){ modalBusy(false); eMsgErr('Não consegui marcar "acabou" em '+esc(x.e.description)+': '+esc(r.error)); return; }
+    x.e.is_recurring=false;
+  }
+  const ultimo=new Date(y,m,0).getDate();
+  let ok=0, err=null;
+  for(const {e,v} of l){
+    const dia=Math.min(+(String(e.date||'').slice(8,10))||1, ultimo);
+    const row={ type:e.type, category_id:e.category_id??null, description:e.description, value:v,
+      date:`${y}-${String(m).padStart(2,'0')}-${String(dia).padStart(2,'0')}`, month:m, year:y,
+      is_recurring:true, recorrencia_vezes_mes:1, gasto_fixo_mensal:!!e.gasto_fixo_mensal };
+    const r=await DB.addFinanceiroRow('expenses',row);
+    if(r&&r.error){ err=r.error; break; }
+    EXPENSES.unshift(Array.isArray(r&&r.rows)?r.rows[0]:row); ok++;
+  }
+  document.getElementById('dpRecCnt').textContent=EXPENSES.filter(e=>e.is_recurring).length;
+  if(err){ modalBusy(false); eMsgErr(`Gravou ${ok} de ${l.length}. Erro: `+esc(err)); render(); return; }
+  fecharModal(); render(); fMsg(`✅ ${ok} recorrente(s) lançada(s) em ${MESES[m-1]}.`,false);
 }
 
 function abrirRecorrentes(){

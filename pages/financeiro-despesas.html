@@ -891,7 +891,9 @@ async function doUpdate(id){
     }
   }
   document.getElementById('dpRecCnt').textContent=EXPENSES.filter(e=>e.is_recurring).length;
+  const voltar=!!window._voltarRecorrentes;   // v183: veio da lista de recorrentes → volta pra ela (fecharModal limpa a marca)
   fecharModal(); render();
+  if(voltar) abrirRecorrentes();
 }
 function excluirDespesa(id){
   const e=EXPENSES.find(x=>String(x.id)===String(id)); if(!e) return;
@@ -1017,11 +1019,52 @@ async function gravarTrazerRecorrentes(m,y){
   fecharModal(); render(); fMsg(`✅ ${ok} recorrente(s) lançada(s) em ${MESES[m-1]}.`,false);
 }
 
+// Lista de recorrentes (botão 🔁 Recorrentes). v183 (pedido do usuário: "quero
+// poder editar os valores e ter opção de mudar mesmo depois de ter alterado"):
+// cada linha tem o valor editável + 💾 (salva quantas vezes quiser) e ✏️ (edição
+// completa — ao salvar volta pra lista). Parcela "(n/N)": oferece aplicar o novo
+// valor às próximas parcelas da mesma compra. Busca por nome no topo.
+let recBusca='';
 function abrirRecorrentes(){
   const recs=EXPENSES.filter(e=>e.is_recurring);
-  const body= recs.length? `<table class="dp-sum">${recs.map(e=>`<tr><td>${esc(e.description||'—')} <span style="color:var(--text-muted)">(${MESHORT[(+e.month||1)-1]}/${e.year})</span></td><td class="down">-${BRL(+e.value||0)}</td></tr>`).join('')}</table>` : '<div class="dp-empty">Nenhuma despesa recorrente marcada.</div>';
+  const body= recs.length? `<input class="dp-in" id="recBusca" placeholder="🔎 Buscar (ex.: aluguel, impressora)" value="${esc(recBusca)}" oninput="recBusca=this.value;filtrarRecorrentes()" style="margin-bottom:8px">
+    <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px">Altere o valor e toque em 💾 — dá pra mudar de novo quando quiser. ✏️ abre a edição completa.</div>
+    <table class="dp-sum" id="recLista">${recs.map(e=>`<tr data-busca="${esc(normDesc(e.description))}">
+      <td>${esc(e.description||'—')} <span style="color:var(--text-muted)">(${MESHORT[(+e.month||1)-1]}/${e.year})</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <input class="dp-in" id="recV_${esc(e.id)}" inputmode="decimal" value="${(+e.value||0).toFixed(2).replace('.',',')}" onkeydown="if(event.key==='Enter')salvarValorRec('${esc(e.id)}')" style="width:100px;text-align:right;display:inline-block;padding:4px 7px">
+        <button class="dp-btn" title="Salvar valor" onclick="salvarValorRec('${esc(e.id)}')" style="padding:4px 8px">💾</button>
+        <button class="dp-btn" title="Editar tudo" onclick="editarDaLista('${esc(e.id)}')" style="padding:4px 8px">✏️</button>
+        <span id="recOk_${esc(e.id)}" style="font-size:11px;color:#3fb950;display:inline-block;width:14px"></span></td></tr>`).join('')}</table>`
+    : '<div class="dp-empty">Nenhuma despesa recorrente marcada.</div>';
   abrirModalInfo('🔁 Despesas Recorrentes', body);
+  filtrarRecorrentes();
 }
+function filtrarRecorrentes(){
+  const q=normDesc(recBusca);
+  document.querySelectorAll('#recLista tr').forEach(tr=>{ tr.style.display=!q||tr.dataset.busca.includes(q)?'':'none'; });
+}
+const parcelaInfo=d=>{ const m=/^(.*)\((\d+)\/(\d+)\)\s*$/.exec(String(d||'')); return m?{base:normDesc(m[1]),n:+m[2],N:+m[3]}:null; };
+async function salvarValorRec(id){
+  const e=EXPENSES.find(x=>String(x.id)===String(id)); if(!e) return;
+  const inp=document.getElementById('recV_'+id), ok=document.getElementById('recOk_'+id), v=lerValorBR(inp.value);
+  if(v==null){ inp.style.borderColor='var(--red)'; inp.focus(); return; }
+  inp.style.borderColor=''; inp.disabled=true; ok.textContent='…';
+  const r=await DB.updateFinanceiroRow('expenses',id,{ value:v });
+  inp.disabled=false;
+  if(r&&r.error){ ok.textContent='⚠️'; ok.title=r.error; alert('Não consegui salvar: '+r.error); return; }
+  e.value=v; ok.textContent='✓'; ok.title='salvo';
+  // Parcela (n/N): as próximas parcelas da mesma compra (mesma descrição-base + categoria, n maior) com valor diferente.
+  const pi=parcelaInfo(e.description);
+  if(pi){
+    const prox=EXPENSES.filter(x=>{ const q=parcelaInfo(x.description); return q&&q.base===pi.base&&q.N===pi.N&&q.n>pi.n&&(x.category_id??'')===(e.category_id??'')&&Math.abs((+x.value||0)-v)>0.004; });
+    if(prox.length && confirm(`Aplicar ${BRL(v)} também às ${prox.length} próxima(s) parcela(s) de "${e.description.replace(/\(\d+\/\d+\)\s*$/,'').trim()}"?`)){
+      for(const x of prox){ const rr=await DB.updateFinanceiroRow('expenses',x.id,{ value:v }); if(!(rr&&rr.error)){ x.value=v; const i2=document.getElementById('recV_'+x.id); if(i2) i2.value=v.toFixed(2).replace('.',','); const o2=document.getElementById('recOk_'+x.id); if(o2) o2.textContent='✓'; } }
+    }
+  }
+  render();
+}
+function editarDaLista(id){ window._voltarRecorrentes=true; editarDespesa(id); }
 
 function limparRegistros(){
   const m=selM(), y=selY(), list=expMonth(m,y);
@@ -1092,7 +1135,7 @@ function abrirModalInfo(title,bodyHtml){
   document.getElementById('dpModalOk').style.display='none';
   modalAction=null; document.getElementById('dpModal').style.display='flex';
 }
-function fecharModal(){ document.getElementById('dpModal').style.display='none'; modalAction=null; }
+function fecharModal(){ document.getElementById('dpModal').style.display='none'; modalAction=null; window._voltarRecorrentes=false; }
 function modalBusy(on,label){ const ok=document.getElementById('dpModalOk'); ok.disabled=on; ok.textContent=on&&label?label:(ok.dataset.prev||'Confirmar'); }
 function eMsgErr(t){ const m=document.getElementById('eMsg'); if(m) m.innerHTML='<span style="color:var(--red)">'+t+'</span>'; }
 

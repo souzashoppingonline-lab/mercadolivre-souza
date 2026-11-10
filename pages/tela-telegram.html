@@ -153,6 +153,8 @@
     .blk h3 { margin:0 0 8px; font-size:.86em; letter-spacing:.4px; color:#9fb4c7; text-transform:uppercase; display:flex; align-items:center; gap:8px; }
     .blk h3 small { margin-left:auto; text-align:right; font-size:.82em; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:500; }
     .pl-big { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .pl-tk { font-size:.78em; color:var(--muted); margin-top:6px; }   /* v184: 🎫 ticket médio, linha pequena (pedido do usuário) */
+    .pl-tk b { color:var(--text, #e6edf3); font-weight:800; }
     .pl-big .k { font-size:.76em; color:var(--muted); font-weight:700; }
     .pl-big .v { font-size:1.95em; font-weight:900; margin-top:2px; font-variant-numeric:tabular-nums; }
     .pl-big .s { font-size:.82em; font-weight:700; margin-top:2px; }
@@ -757,6 +759,7 @@ async function carregarPainel() {
     document.getElementById('pnPlacar').innerHTML = `<div class="pl-big">
         <div><div class="k">🛒 PEDIDOS</div><div class="v">${p.pedidos}</div><div class="s">${varTxt(p.pedidos, p.pedidos_ontem, v => v)}</div></div>
         <div><div class="k">💰 FATURAMENTO</div><div class="v">${R$(p.fat)}</div><div class="s">${varTxt(p.fat, p.fat_ontem, R$)}</div></div></div>
+      ${p.pedidos ? `<div class="pl-tk">🎫 Ticket médio <b>${R$2(p.fat / p.pedidos)}</b> ${varTxt(p.fat / p.pedidos, p.pedidos_ontem ? p.fat_ontem / p.pedidos_ontem : 0, R$2)}</div>` : ''}
       ${recordeHtml(d.recorde, p.fat)}
       <div class="ont"><span>📅 Ontem (dia inteiro)</span><span><b>${R$(d.ontem.fat)}</b> · ${d.ontem.pedidos} pedidos</span></div>
       <div class="lj">${p.lojas.length ? p.lojas.slice(0, 4).map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') + (p.lojas.length > 4 ? `<div class="pn-vazio" style="margin-top:4px">+${p.lojas.length - 4} empresa(s)</div>` : '') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;

@@ -240,7 +240,7 @@
         <div class="dp-card">
           <div class="dp-card-h"><h3>📈 Tendência de Gastos vs Faturamento</h3><span class="desc">comparativo mensal</span>
             <div class="dp-seg2" style="margin-left:auto" id="segTrend">
-              <button class="on" onclick="setRTrend(3)">3M</button><button onclick="setRTrend(6)">6M</button><button onclick="setRTrend(12)">12M</button>
+              <button onclick="setRTrend(3)">3M</button><button class="on" onclick="setRTrend(6)">6M</button><button onclick="setRTrend(12)">12M</button>
             </div>
           </div>
           <canvas id="dpChTrend" height="110"></canvas>
@@ -251,7 +251,7 @@
         <div class="dp-card">
           <div class="dp-card-h"><h3>📋 Comparativo Mês a Mês por Categoria</h3><span class="desc">variação em % e valor absoluto</span>
             <div class="dp-seg2" style="margin-left:auto" id="segComp">
-              <button class="on" onclick="setRComp(3)">3M</button><button onclick="setRComp(6)">6M</button><button onclick="setRComp(12)">12M</button>
+              <button onclick="setRComp(3)">3M</button><button class="on" onclick="setRComp(6)">6M</button><button onclick="setRComp(12)">12M</button>
             </div>
           </div>
           <div style="overflow:auto">
@@ -570,17 +570,24 @@ function renderComp(m,y){
   const valOf=(name,mm,yy)=>expMonth(mm,yy).filter(e=>(CATMAP[e.category_id]||'Sem categoria')===name).reduce((s,e)=>s+(+e.value||0),0);
   const rows=cats.map(name=>{ const vals=months.map(({m,y})=>valOf(name,m,y)); return {name,vals,total:vals.reduce((s,v)=>s+v,0)}; }).sort((a,b)=>b.total-a.total);
   const head=`<thead><tr><th>Categoria</th>${months.map(({m,y})=>`<th>${MESHORT[m-1]}/${String(y).slice(2)}</th>`).join('')}<th>Total Período</th></tr></thead>`;
-  const body=rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td>${r.vals.map((v,i)=>{
-      if(i===0) return `<td>${v?BRL(v):'—'}</td>`;
-      const prev=r.vals[i-1], delta=v-prev;
-      let tag='';
-      if(prev===0&&v>0) tag='<span class="up" style="font-size:10px">▲ novo</span>';
-      else if(prev>0){ const pv=delta/prev*100; tag=`<span class="${delta<=0?'up':'down'}" style="font-size:10px">${delta<=0?'▼':'▲'} ${PCT(Math.abs(pv))}</span>`; }
-      const dl= delta!==0?`<div style="font-size:10px;color:${delta<=0?'#3fb950':'#f87171'}">${delta<=0?'−':'+'}${BRL(Math.abs(delta))}</div>`:'';
-      return `<td>${v?BRL(v):'—'}<div>${tag}</div>${dl}</td>`;
-    }).join('')}<td style="font-weight:800">${BRL(r.total)}</td></tr>`).join('')
+  // Célula de um mês: valor + variação vs mês anterior (% e R$). Mesma regra pra
+  // cada categoria e pra linha TOTAL (v181, pedido do usuário: "colocar o total no final").
+  const celula=(vals,i)=>{
+    const v=vals[i];
+    if(i===0) return `<td>${v?BRL(v):'—'}</td>`;
+    const prev=vals[i-1], delta=v-prev;
+    let tag='';
+    if(prev===0&&v>0) tag='<span class="up" style="font-size:10px">▲ novo</span>';
+    else if(prev>0){ const pv=delta/prev*100; tag=`<span class="${delta<=0?'up':'down'}" style="font-size:10px">${delta<=0?'▼':'▲'} ${PCT(Math.abs(pv))}</span>`; }
+    const dl= delta!==0?`<div style="font-size:10px;color:${delta<=0?'#3fb950':'#f87171'}">${delta<=0?'−':'+'}${BRL(Math.abs(delta))}</div>`:'';
+    return `<td>${v?BRL(v):'—'}<div>${tag}</div>${dl}</td>`;
+  };
+  const body=rows.length?rows.map(r=>`<tr><td>${esc(r.name)}</td>${r.vals.map((_,i)=>celula(r.vals,i)).join('')}<td style="font-weight:800">${BRL(r.total)}</td></tr>`).join('')
     :`<tr><td colspan="${months.length+2}" class="dp-empty">Sem despesas no período.</td></tr>`;
-  document.getElementById('dpCompTable').innerHTML=head+`<tbody>${body}</tbody>`;
+  // Linha TOTAL no final: soma de todas as categorias por mês, com a variação mês a mês.
+  const totMes=months.map((_,i)=>rows.reduce((s,r)=>s+r.vals[i],0));
+  const foot=rows.length?`<tfoot><tr><td>TOTAL</td>${totMes.map((_,i)=>celula(totMes,i)).join('')}<td>${BRL(totMes.reduce((s,v)=>s+v,0))}</td></tr></tfoot>`:'';
+  document.getElementById('dpCompTable').innerHTML=head+`<tbody>${body}</tbody>`+foot;
 }
 
 function renderRank(m,y){

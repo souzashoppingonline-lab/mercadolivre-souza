@@ -74,6 +74,7 @@ Variáveis de ambiente, dependências e configuração do processo HTTP: `.claud
 | Embalagem (bipagem de etiqueta, vídeo de conferência) | `.claude/embalagem.md` |
 | WMS / FinanceEcom (visão, bipagem de kit, saídas Full — em conversa) | `.claude/wms.md` |
 | Extrato Bancário (OFX): importar extrato, categorias, mês a mês, IA | `.claude/extrato-ofx.md` |
+| Análise Tributária: Simples por empresa, vendas por estado, crédito de ICMS por fornecedor, fases planejadas | `.claude/analise-tributaria.md` |
 | Rankeamento de anúncio (cada venda/alteração na tela + Telegram) | `.claude/rankeamento.md` |
 | Login de acesso restrito (funcionários, papéis admin/embalagem) | `.claude/auth-staff.md` |
 | OAuth, `mlClient.js`, rate limiting do Mercado Livre | `.claude/mercadolivre.md` |

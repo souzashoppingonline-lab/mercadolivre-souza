@@ -42,3 +42,7 @@ Fase 1 (v19) implementou só 2 regras automáticas (estoque crítico, score baix
 ## KPIs por loja com cache dedicado
 
 `redis.md`/`known-bugs.md` apontam que a chave `kpis:{storeId}` é invalidada pelo worker mas nunca lida por nenhuma rota — sugere uma feature de "resumo de KPIs por loja individual" que foi cogitada e não implementada. Se houver demanda por essa tela, o cache já está parcialmente preparado do lado da invalidação.
+
+## Análise Tributária — "contador sênior" (v186 em diante)
+
+Fase 1 (Simples por empresa, vendas por estado, créditos por fornecedor) implementada; fases 2–4 (XML de venda, simulador Simples × Presumido × Real, parecer da IA) planejadas em `analise-tributaria.md`. Objetivo do usuário: decidir com números se alguma empresa deve sair do Simples Nacional.

@@ -18,6 +18,7 @@ const FIN_NAV_ITEMS = [
   { href: 'financeiro-projecao-caixa.html', icon: 'fa-chart-line', label: 'Projeção de Caixa' },
   { href: 'financeiro-extrato-ofx.html', icon: 'fa-building-columns', label: 'Extrato Bancário (OFX)' },
   { href: 'financeiro-compras.html', icon: 'fa-cart-flatbed', label: 'Compras & CMV' },
+  { href: 'financeiro-analise-tributaria.html', icon: 'fa-scale-balanced', label: 'Análise Tributária' },
   { href: 'financeiro-pedidos.html', icon: 'fa-file-signature', label: 'Gerador de Pedido' },
   { href: 'financeiro.html', icon: 'fa-database', label: 'Dados (Supabase)' },
 ];

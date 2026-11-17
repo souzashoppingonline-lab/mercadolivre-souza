@@ -31,6 +31,7 @@ Só depois de entender processo + arquitetura + regras de negócio + histórico 
 | `mercadolivre.md` | OAuth, `mlClient.js`, webhooks recebidos do ML, rate limiting — única integração de marketplace implementada |
 | `task-engine.md` | Agenda Trello: `TaskEngine` (geração automática de cartões), regras implementadas/futuras, escopo atual (só ML) |
 | `extrato-ofx.md` | Financeiro → Extrato Bancário (OFX): leitor OFX, categorias que aprendem, saldo dia a dia, alertas, mês a mês salvo, análise da IA. Tabelas `ofx_*`, rotas `/api/financeiro/extrato-ofx/*` |
+| `analise-tributaria.md` | Financeiro → Análise Tributária ("contador sênior"): Simples por empresa (RBT12/faixa), vendas por estado, créditos de ICMS/PIS-COFINS por fornecedor (relê os XMLs de compra), lojas × empresas; regras tributárias usadas e fases 2–4 planejadas (XML de venda, simulador de regimes, IA). `server/src/tributario.js`, rotas `/api/financeiro/tributario/*` |
 | `conciliacao-bancaria.md` | Módulo financeiro Pedido→Pagamento→Liberação→Transferência→Conciliação, status por fase, API de Faturamento ML, o que depende do app Mercado Pago |
 | `embalagem.md` | Bipagem de etiqueta (FLEX/Mercado Envios), gravação de vídeo de conferência, retenção de 30 dias |
 | `wms.md` | WMS / FinanceEcom — conversa em andamento (nada implementado): visão "melhor ERP/CRM do mundo", 8 ideias de WMS no Financeiro, gargalos bipagem de kit e saídas Full, propostas aguardando decisão |

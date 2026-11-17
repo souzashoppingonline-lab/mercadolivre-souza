@@ -221,6 +221,22 @@ async function downloadObject(caminho) {
   return { buffer: Buffer.from(await r.arrayBuffer()), contentType: r.headers.get('content-type') || 'application/octet-stream' };
 }
 
+// v186 (Análise Tributária): alguns registros de compras_xml.xml_original guardam
+// o LINK do arquivo no Storage (bucket xml-notas) em vez do conteúdo. Baixa SÓ
+// links do próprio projeto Supabase do Financeiro (nunca URL arbitrária — evita
+// o servidor buscar endereço de fora), com a chave do servidor.
+async function baixarDoProprioStorage(url) {
+  if (!isConfigured()) { const e = new Error('Módulo Financeiro não configurado.'); e.code = 'NOT_CONFIGURED'; throw e; }
+  const base = `${BASE()}/storage/v1/object/`;
+  const u = String(url || '').trim();
+  if (!u.startsWith(base) || /\.\.|[\s<>"']/.test(u.slice(base.length))) { const e = new Error('link de arquivo fora do Storage do Financeiro'); e.status = 400; throw e; }
+  // .../object/public/<bucket>/<caminho> → .../object/<bucket>/<caminho> (autenticado; funciona com bucket público ou privado)
+  const autenticado = base + u.slice(base.length).replace(/^public\//, '');
+  const r = await fetch(autenticado, { headers: headers() });
+  if (!r.ok) { const e = new Error(`Supabase Storage ${r.status} ao baixar o XML`); e.status = r.status; throw e; }
+  return await r.text();
+}
+
 // Teste de conexão leve (usado pela tela de status do módulo).
 async function ping() {
   if (!isConfigured()) return { configured: false, key_hint: keyHint(), url: BASE() || null };
@@ -232,4 +248,4 @@ async function ping() {
   }
 }
 
-module.exports = { isConfigured, get, listTables, previewTable, selectRows, insertRow, updateRow, deleteRow, upsertRow, ping, keyHint, uploadObject, downloadObject, BUCKET };
+module.exports = { isConfigured, get, listTables, previewTable, selectRows, insertRow, updateRow, deleteRow, upsertRow, ping, keyHint, uploadObject, downloadObject, baixarDoProprioStorage, BUCKET };

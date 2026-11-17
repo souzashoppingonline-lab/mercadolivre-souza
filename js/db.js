@@ -409,6 +409,11 @@ const DB = {
   async uploadFinanceiroArquivo(formData) { return this._postForm('/financeiro/arquivo', formData); },
   // v180 — Despesa pelo celular: foto da nota → IA devolve {leitura:{valor,data,fornecedor,cnpj,descricao,categoria_id,tipo,legivel,observacao}} (não grava nada).
   async lerNotaDespesa(formData)          { return this._postForm('/financeiro/despesa/ler-nota', formData, 120000); },
+  // v186 — Análise Tributária (.claude/analise-tributaria.md)
+  async tributarioResumo()                    { return this._get('/financeiro/tributario/resumo'); },
+  async tributarioEstados(dias, empresa)      { return this._get('/financeiro/tributario/estados', { dias, empresa: empresa || '' }); },
+  async tributarioFornecedores(empresa)       { return this._get('/financeiro/tributario/fornecedores', { empresa: empresa || '' }); },
+  async tributarioSalvarLojas(mapa)           { return this._patch('/financeiro/tributario/lojas', { mapa }); },
   financeiroArquivoUrl(path)              { return `${this.BASE}/financeiro/arquivo/${String(path||'').split('/').map(encodeURIComponent).join('/')}`; },
   async addFinanceiroRow(nome, obj)        { return this._post(`/financeiro/dados/${encodeURIComponent(nome)}`, obj); },
   async updateFinanceiroRow(nome, id, obj) { return this._patch(`/financeiro/dados/${encodeURIComponent(nome)}/${encodeURIComponent(id)}`, obj); },

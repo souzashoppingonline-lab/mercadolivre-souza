@@ -244,3 +244,9 @@ Ao iniciar uma sessão nova, além de ler toda a pasta `.claude` (regra em `CLAU
 - [ ] Reputação/avaliações/perguntas sem resposta como sinal de conversão.
 - [ ] Calibrar limiares (`LIM` em `iaEstrategista.js`) depois de algumas semanas de uso real.
 
+
+## Análise Tributária (ver `analise-tributaria.md`)
+- [ ] Fase 2 — XML de venda: upload (XML/ZIP) + busca das NF-e do emissor do Mercado Livre pela API; UpSeller por exportação. CFOP dentro/fora de SP, ICMS por UF, DIFAL.
+- [ ] Fase 3 — Simulador Simples × Presumido × Real por empresa (12 meses reais, folha = valores transferidos — informal × formalizado, sublimite/teto, reforma tributária).
+- [ ] Fase 4 — Parecer do contador IA sobre os números calculados + perguntas livres + checklist pro contador.
+- [ ] Confirmar com o contador se os sócios são os mesmos nas empresas (soma do faturamento pros limites do Simples) e cadastrar o CNPJ da TOP MIX no Supabase `stores`.

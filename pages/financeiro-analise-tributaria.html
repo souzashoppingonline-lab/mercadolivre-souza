@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Análise Tributária</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/sidebar.css">
+  <link rel="stylesheet" href="../css/cards.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>window.PAGE_TITLE='Análise Tributária'; window.ACTIVE_NAV='financeiro-analise-tributaria.html';</script>
+  <!-- v186 — "seu contador sênior": Simples por empresa, vendas por estado, créditos por fornecedor.
+       Regras: server/src/tributario.js · Doc: .claude/analise-tributaria.md -->
+  <style>
+    .at-sub { font-size:13px; color:var(--text-muted); margin:-8px 0 14px; line-height:1.5; }
+    .at-aviso { font-size:12.5px; color:#fbbf24; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.4); border-radius:10px; padding:9px 12px; margin-bottom:16px; line-height:1.5; }
+    .at-card { background:var(--bg-card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+    .at-card-h { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+    .at-card-h h3 { font-size:15px; font-weight:800; margin:0; }
+    .at-card-h .desc { font-size:12px; color:var(--text-muted); font-weight:500; }
+    .at-card-h .dir { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .at-sel, .at-btn { background:var(--bg-card2); color:var(--text-main); border:1px solid var(--border); border-radius:10px; padding:7px 11px; font-size:13px; font-family:inherit; }
+    .at-btn { cursor:pointer; font-weight:700; } .at-btn.on { border-color:#3fb950; color:#3fb950; }
+    .at-emp { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+    .at-e { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+    .at-e .nm { font-weight:800; font-size:14px; } .at-e .cnpj { font-size:11px; color:var(--text-muted); margin-top:1px; }
+    .at-e .lj { font-size:11px; color:var(--text-muted); margin-top:4px; }
+    .at-e .rb { font-size:22px; font-weight:900; margin-top:8px; font-variant-numeric:tabular-nums; }
+    .at-e .rb small { font-size:11px; color:var(--text-muted); font-weight:600; margin-left:4px; }
+    .at-e .fx { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+    .at-tag { font-size:11px; font-weight:800; border-radius:999px; padding:2px 9px; background:var(--bg-card); border:1px solid var(--border); }
+    .at-tag.f1,.at-tag.f2 { color:#3fb950; border-color:rgba(63,185,80,.45); } .at-tag.f3,.at-tag.f4 { color:#fbbf24; border-color:rgba(245,158,11,.45); }
+    .at-tag.f5,.at-tag.f6 { color:#f87171; border-color:rgba(248,113,113,.5); }
+    .at-trilho { height:7px; border-radius:999px; background:var(--bg-card); overflow:hidden; margin-top:10px; position:relative; }
+    .at-trilho i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#3fb950,#fbbf24 60%,#f87171); }
+    .at-e .ob { font-size:11.5px; color:var(--text-muted); margin-top:6px; line-height:1.45; }
+    .at-grupo { margin-top:12px; border-radius:12px; padding:11px 14px; font-size:13px; line-height:1.5; border:1px solid var(--border); background:var(--bg-card2); }
+    .at-grupo.alerta { border-color:rgba(248,113,113,.55); background:rgba(248,113,113,.08); }
+    .at-grupo.atencao { border-color:rgba(245,158,11,.5); background:rgba(245,158,11,.07); }
+    table.at-t { width:100%; border-collapse:collapse; font-size:12.5px; }
+    .at-t th, .at-t td { padding:8px 9px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; }
+    .at-t th { color:var(--text-muted); font-size:10.5px; text-transform:uppercase; font-weight:800; }
+    .at-t th:first-child, .at-t td:first-child { text-align:left; }
+    .at-t td.l { text-align:left; white-space:normal; }
+    .at-t tfoot td { font-weight:800; border-top:2px solid var(--border); }
+    .at-bar { display:inline-block; height:7px; border-radius:999px; background:#3b82f6; vertical-align:middle; }
+    .at-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-bottom:12px; }
+    .at-k { background:var(--bg-card2); border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
+    .at-k .k { font-size:11px; color:var(--text-muted); font-weight:700; } .at-k .v { font-size:18px; font-weight:900; margin-top:2px; } .at-k .s { font-size:11px; color:var(--text-muted); }
+    .sem { font-size:15px; } .at-vazio { font-size:13px; color:var(--text-muted); padding:10px 0; }
+    .at-ex { font-size:12px; color:var(--text-muted); line-height:1.55; margin-top:10px; }
+    .at-ex b { color:var(--text-main); }
+    .at-fases { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+    .at-fase { background:var(--bg-card2); border:1px dashed var(--border); border-radius:12px; padding:10px 12px; font-size:12.5px; line-height:1.45; color:var(--text-muted); }
+    .at-fase b { display:block; color:var(--text-main); margin-bottom:3px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+  <div id="app-sidebar"></div>
+  <main class="main-content">
+    <div id="app-topbar"></div>
+    <div class="content-area">
+      <p class="at-sub">🧮 <b>Seu contador sênior.</b> Onde cada empresa está no Simples Nacional, para quais estados você vende e quanto crédito de imposto as suas compras gerariam se a empresa saísse do Simples.</p>
+      <div class="at-aviso">⚠️ São <b>estimativas</b> com as regras e os números que estão no sistema — servem para preparar a decisão, não substituem o seu contador. A opção pelo Simples é feita em janeiro e vale o ano inteiro.</div>
+
+      <!-- 1. Simples por empresa -->
+      <div class="at-card">
+        <div class="at-card-h"><h3>📊 Simples Nacional — onde cada empresa está</h3><span class="desc">receita dos últimos 12 meses pelos pedidos (Anexo I — comércio)</span></div>
+        <div id="atEmp"><div class="at-vazio">Carregando…</div></div>
+      </div>
+
+      <!-- 2. Vendas por estado -->
+      <div class="at-card">
+        <div class="at-card-h"><h3>🗺️ Vendas por estado</h3><span class="desc">pedidos e faturamento, em número e %</span>
+          <div class="dir"><select class="at-sel" id="atEstEmp" onchange="carregarEstados()"><option value="">Todas as empresas</option></select>
+            <span id="atEstDias"><button class="at-btn" data-d="30" onclick="setDias(30)">30 dias</button><button class="at-btn" data-d="90" onclick="setDias(90)">90 dias</button><button class="at-btn on" data-d="365" onclick="setDias(365)">12 meses</button></span></div></div>
+        <div id="atEst"><div class="at-vazio">Carregando…</div></div>
+      </div>
+
+      <!-- 3. Fornecedores e créditos -->
+      <div class="at-card">
+        <div class="at-card-h"><h3>🏭 Fornecedores e créditos</h3><span class="desc">das notas de compra importadas em Compras &amp; CMV</span>
+          <div class="dir"><select class="at-sel" id="atFornEmp" onchange="carregarFornecedores()"><option value="">Todas as empresas</option></select></div></div>
+        <div id="atForn"><div class="at-vazio">Carregando…</div></div>
+        <div class="at-ex">
+          <b>Como ler:</b> no Simples você <b>não aproveita</b> crédito de ICMS — esta tabela mostra o crédito que a empresa <b>teria</b> se estivesse no regime normal (Lucro Presumido ou Real).
+          Fornecedor do <b>regime normal</b> → crédito = ICMS destacado na nota. Fornecedor do <b>Simples</b> → só o crédito que ele informa na nota (muitas vezes zero).
+          Item com <b>ICMS-ST</b> → o imposto já foi pago antes: sem crédito. <b>PIS/COFINS</b> → crédito de 9,25% só no <b>Lucro Real</b> (menos itens monofásicos/alíquota zero).
+          🟢 crédito de ICMS ≥ 7% da compra · 🟡 algum crédito · 🔴 nenhum.
+        </div>
+      </div>
+
+      <!-- 4. Lojas × empresas -->
+      <div class="at-card">
+        <div class="at-card-h"><h3>🔗 Lojas × empresas (CNPJ)</h3><span class="desc">de qual empresa é cada loja — usado nos números acima</span>
+          <div class="dir"><button class="at-btn" onclick="salvarLojas()"><i class="fas fa-save"></i> Salvar</button></div></div>
+        <div id="atLojas"><div class="at-vazio">Carregando…</div></div>
+        <div id="atLojasMsg" style="font-size:12px;margin-top:6px"></div>
+      </div>
+
+      <!-- Próximas fases -->
+      <div class="at-card">
+        <div class="at-card-h"><h3>🧭 Próximas etapas</h3><span class="desc">planejadas — ver .claude/analise-tributaria.md</span></div>
+        <div class="at-fases">
+          <div class="at-fase"><b>📄 XML de venda</b>Enviar XMLs (soltos ou ZIP) + busca automática das notas do emissor do Mercado Livre. ICMS por estado, dentro × fora de SP, DIFAL.</div>
+          <div class="at-fase"><b>⚖️ Simples × Presumido × Real</b>Imposto estimado em cada regime com os seus 12 meses, diferença por ano e ponto de virada — com a folha informal × formalizada e a reforma tributária.</div>
+          <div class="at-fase"><b>🤖 Parecer do contador IA</b>Texto explicando os números, perguntas livres e a lista do que levar ao seu contador.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="../js/db.js"></script>
+<script src="../js/layout-financeiro.js"></script>
+<script src="../js/sidebar.js"></script>
+<script>
+const BRL = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+const BRL0 = n => 'R$ ' + Math.round(Number(n)||0).toLocaleString('pt-BR');
+const PCT = n => (Number(n)||0).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtCnpj = c => { const d=String(c||'').replace(/\D/g,''); return d.length===14 ? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5') : (c||''); };
+let RESUMO = null, DIAS = 365;
+
+function preencherEmpresas(lista){
+  for (const id of ['atEstEmp','atFornEmp']) {
+    const sel = document.getElementById(id), atual = sel.value;
+    sel.innerHTML = '<option value="">Todas as empresas</option>' + lista.map(e=>`<option${e===atual?' selected':''}>${esc(e)}</option>`).join('');
+  }
+}
+
+async function carregarResumo(){
+  const el = document.getElementById('atEmp');
+  const r = await DB.tributarioResumo();
+  if (!r || r.error) { el.innerHTML = `<div class="at-vazio">⚠️ ${esc((r&&r.error)||'sem resposta')}</div>`; return; }
+  RESUMO = r; preencherEmpresas(r.empresas_disponiveis||[]);
+  const cards = r.empresas.map(e=>{
+    const s = e.simples, f = s.faixa;
+    const pctTeto = Math.min(100, (e.rbt12 / r.grupo.teto) * 100);
+    const obs = s.acima_teto ? '⛔ Acima do teto do Simples (R$ 4,8 mi) — fica fora do Simples.'
+      : f===6 ? `Última faixa. Faltam ${BRL0(s.falta_proxima)} para o teto de R$ 4,8 mi.`
+      : `Faltam <b>${BRL0(s.falta_proxima)}</b> para a ${f+1}ª faixa.`;
+    return `<div class="at-e"><div class="nm">${esc(e.empresa)}</div><div class="cnpj">${e.cnpj?`CNPJ ${fmtCnpj(e.cnpj)}`:'CNPJ não cadastrado'}${e.razao_social?` · ${esc(e.razao_social)}`:''}</div>
+      <div class="lj">Lojas: ${e.lojas.length?esc(e.lojas.join(', ')):'nenhuma ligada'}</div>
+      <div class="rb">${BRL0(e.rbt12)}<small>${e.projetada?`projeção de 12 meses (${e.dias_historico} dias de histórico: ${BRL0(e.receita_12m)})`:'últimos 12 meses'}</small></div>
+      <div class="fx">${s.acima_teto?'<span class="at-tag f6">fora do Simples</span>':`<span class="at-tag f${f}">${f}ª faixa</span><span class="at-tag">nominal ${PCT(s.nominal)}</span><span class="at-tag">efetiva ≈ ${PCT(s.efetiva)}</span>`}</div>
+      <div class="at-trilho" title="até o teto de R$ 4,8 mi"><i style="width:${pctTeto}%"></i></div>
+      <div class="ob">${obs} ${e.pedidos_12m} pedido(s).</div></div>`;
+  }).join('');
+  const g = r.grupo;
+  const cls = g.acima_teto||g.acima_sublimite ? 'alerta' : g.pct_sublimite>=80 ? 'atencao' : '';
+  const grupo = `<div class="at-grupo ${cls}">👥 <b>Grupo (todas as empresas somadas): ${BRL0(g.rbt12)}</b> — ${PCT(g.pct_sublimite)} do sublimite de R$ 3,6 mi${g.acima_teto?' · ⛔ acima do teto de R$ 4,8 mi':g.acima_sublimite?' · ⚠️ acima do sublimite':''}.
+    <br><span style="color:var(--text-muted)">Se os <b>mesmos sócios</b> participam de mais de uma empresa, a lei do Simples (LC 123, art. 3º §4º) pode somar o faturamento delas para os limites — confirme com o contador.</span></div>`;
+  const sem = (r.sem_empresa||[]).filter(l=>l.receita_12m>0);
+  const aviso = sem.length ? `<div class="at-grupo atencao" style="margin-top:10px">🔗 ${sem.length} loja(s) com vendas sem empresa ligada (${esc(sem.map(l=>l.nickname).join(', '))}) — ligue em <b>Lojas × empresas</b> abaixo para entrarem nas contas.</div>` : '';
+  el.innerHTML = (cards ? `<div class="at-emp">${cards}</div>` : '<div class="at-vazio">Nenhuma empresa com vendas nos últimos 12 meses.</div>') + grupo + aviso;
+  renderLojas();
+}
+
+function setDias(d){ DIAS = d; document.querySelectorAll('#atEstDias .at-btn').forEach(b=>b.classList.toggle('on', +b.dataset.d===d)); carregarEstados(); }
+async function carregarEstados(){
+  const el = document.getElementById('atEst');
+  el.innerHTML = '<div class="at-vazio">Carregando…</div>';
+  const r = await DB.tributarioEstados(DIAS, document.getElementById('atEstEmp').value);
+  if (!r || r.error) { el.innerHTML = `<div class="at-vazio">⚠️ ${esc((r&&r.error)||'sem resposta')}</div>`; return; }
+  if (!r.estados.length) { el.innerHTML = '<div class="at-vazio">Nenhum pedido com estado no período.</div>'; return; }
+  const max = Math.max(...r.estados.map(x=>x.pct_fat), 1);
+  el.innerHTML = `<div class="at-kpis">
+      <div class="at-k"><div class="k">🛒 Pedidos com estado</div><div class="v">${r.total_pedidos.toLocaleString('pt-BR')}</div><div class="s">${BRL0(r.total_fat)}</div></div>
+      <div class="at-k"><div class="k">🏠 Dentro de SP</div><div class="v">${PCT(r.dentro_sp.pct_fat)}</div><div class="s">${r.dentro_sp.pedidos.toLocaleString('pt-BR')} pedidos · ${BRL0(r.dentro_sp.fat)}</div></div>
+      <div class="at-k"><div class="k">🚚 Fora de SP</div><div class="v">${PCT(r.fora_sp.pct_fat)}</div><div class="s">${r.fora_sp.pedidos.toLocaleString('pt-BR')} pedidos · ${r.fora_sp.ufs} estado(s)</div></div>
+      <div class="at-k"><div class="k">❔ Sem estado</div><div class="v">${PCT(r.sem_estado.pct_pedidos)}</div><div class="s">${r.sem_estado.pedidos.toLocaleString('pt-BR')} pedidos (estado vem do envio)</div></div></div>
+    <div style="overflow:auto"><table class="at-t"><thead><tr><th>Estado</th><th>Pedidos</th><th>% pedidos</th><th>Faturamento</th><th>% faturamento</th><th></th><th title="Alíquota de ICMS interestadual saindo de SP">ICMS interest.</th></tr></thead><tbody>
+    ${r.estados.map(x=>`<tr><td><b>${x.uf}</b> <span style="color:var(--text-muted)">${esc(x.nome)}</span></td><td>${x.pedidos.toLocaleString('pt-BR')}</td><td>${PCT(x.pct_pedidos)}</td><td>${BRL(x.fat)}</td><td><b>${PCT(x.pct_fat)}</b></td>
+      <td style="width:22%"><span class="at-bar" style="width:${Math.max(2,(x.pct_fat/max)*100)}%;${x.uf==='SP'?'background:#3fb950':''}"></span></td><td>${x.aliquota_interestadual?x.aliquota_interestadual+'%':'interna'}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td>Total</td><td>${r.total_pedidos.toLocaleString('pt-BR')}</td><td>100%</td><td>${BRL(r.total_fat)}</td><td>100%</td><td></td><td></td></tr></tfoot></table></div>`;
+}
+
+async function carregarFornecedores(){
+  const el = document.getElementById('atForn');
+  el.innerHTML = '<div class="at-vazio">Lendo as notas de compra…</div>';
+  const r = await DB.tributarioFornecedores(document.getElementById('atFornEmp').value);
+  if (!r || r.error) { el.innerHTML = `<div class="at-vazio">⚠️ ${esc((r&&r.error)||'sem resposta')}</div>`; return; }
+  if (r.configurado === false) { el.innerHTML = '<div class="at-vazio">Módulo Financeiro (Supabase) não configurado.</div>'; return; }
+  if (!r.fornecedores.length) { el.innerHTML = `<div class="at-vazio">Nenhuma nota de compra importada${r.empresa?' para esta empresa':''}. Importe os XMLs em <b>Compras &amp; CMV</b>.</div>`; return; }
+  const t = r.totais, SEM = { verde:'🟢', amarelo:'🟡', vermelho:'🔴' };
+  const pct = (a,b) => b>0 ? PCT(a/b*100) : '—';
+  el.innerHTML = `<div class="at-kpis">
+      <div class="at-k"><div class="k">🧾 Compras analisadas</div><div class="v">${BRL0(t.total_compras)}</div><div class="s">${r.notas} nota(s) · ${r.fornecedores.length} fornecedor(es)</div></div>
+      <div class="at-k"><div class="k">💚 Crédito de ICMS possível</div><div class="v" style="color:#3fb950">${BRL0(t.credito_icms)}</div><div class="s">${pct(t.credito_icms,t.total_compras)} das compras — no regime normal</div></div>
+      <div class="at-k"><div class="k">💙 Crédito de PIS/COFINS possível</div><div class="v" style="color:#58a6ff">${BRL0(t.credito_pis_cofins)}</div><div class="s">só no Lucro Real (9,25%)</div></div>
+      <div class="at-k"><div class="k">🔒 ICMS-ST nas notas</div><div class="v">${BRL0(t.v_st)}</div><div class="s">já pago antes — sem crédito</div></div></div>
+    <div style="overflow:auto"><table class="at-t"><thead><tr><th>Fornecedor</th><th>Regime</th><th>Notas</th><th>Compras</th><th>ICMS destacado</th><th>Crédito ICMS</th><th>% da compra</th><th>Itens c/ ST</th><th>Crédito PIS/COFINS (Real)</th></tr></thead><tbody>
+    ${r.fornecedores.map(f=>`<tr><td class="l"><span class="sem">${SEM[f.semaforo]}</span> <b>${esc(f.nome)}</b><br><span style="color:var(--text-muted);font-size:11px">${fmtCnpj(f.cnpj)}${f.uf?` · ${esc(f.uf)}`:''} · última ${f.ultima?f.ultima.split('-').reverse().join('/'):'—'}</span></td>
+      <td class="l" style="font-size:12px">${esc(f.regime)}</td><td>${f.notas}</td><td>${BRL(f.total_compras)}</td><td>${BRL(f.icms_destacado)}</td>
+      <td style="color:${f.credito_icms>0?'#3fb950':'var(--text-muted)'};font-weight:800">${BRL(f.credito_icms)}</td><td>${PCT(f.pct_credito_icms)}</td><td>${f.pct_itens_st}%</td><td>${BRL(f.credito_pis_cofins)}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td>Total</td><td></td><td>${r.notas}</td><td>${BRL(t.total_compras)}</td><td>${BRL(t.icms_destacado)}</td><td style="color:#3fb950">${BRL(t.credito_icms)}</td><td>${pct(t.credito_icms,t.total_compras)}</td><td></td><td>${BRL(t.credito_pis_cofins)}</td></tr></tfoot></table></div>
+    ${r.erros.length?`<div class="at-grupo atencao" style="margin-top:10px">⚠️ ${r.erros.length} nota(s) não puderam ser lidas: ${esc(r.erros.slice(0,4).map(e=>`${e.fornecedor||''} nº ${e.nota||'?'} (${e.erro})`).join('; '))}${r.erros.length>4?'…':''}</div>`:''}`;
+}
+
+function renderLojas(){
+  const el = document.getElementById('atLojas'); if (!RESUMO) return;
+  const ops = RESUMO.empresas_disponiveis||[];
+  el.innerHTML = `<table class="at-t"><thead><tr><th>Loja</th><th>Canal</th><th>Empresa (CNPJ)</th></tr></thead><tbody>
+    ${RESUMO.lojas.map(l=>`<tr><td><b>${esc(l.nickname)}</b></td><td style="text-align:left">${esc(l.mkt)}</td><td style="text-align:left">
+      <select class="at-sel" data-loja="${l.store_id}"><option value="">— sem empresa —</option>${ops.map(o=>`<option${o===l.empresa?' selected':''}>${esc(o)}</option>`).join('')}</select>
+      ${l.sugerida&&l.empresa?'<span style="font-size:11px;color:var(--text-muted)"> sugestão pelo nome</span>':''}</td></tr>`).join('')}</tbody></table>`;
+}
+async function salvarLojas(){
+  const mapa = {}; document.querySelectorAll('#atLojas select[data-loja]').forEach(s=>{ mapa[s.dataset.loja] = s.value; });
+  const msg = document.getElementById('atLojasMsg'); msg.textContent = 'Salvando…'; msg.style.color = 'var(--text-muted)';
+  const r = await DB.tributarioSalvarLojas(mapa);
+  if (!r || r.error) { msg.textContent = '⚠️ Não salvou: ' + ((r&&r.error)||DB.lastError||'sem resposta'); msg.style.color = '#f87171'; return; }
+  msg.textContent = '✅ Salvo — números atualizados.'; msg.style.color = '#3fb950';
+  carregarResumo(); carregarEstados(); carregarFornecedores();
+}
+
+(async () => { await carregarResumo(); carregarEstados(); carregarFornecedores(); })();
+</script>
+</body>
+</html>

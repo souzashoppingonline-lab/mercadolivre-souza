@@ -92,16 +92,16 @@
       @keyframes veicAnda { from { transform:translateX(-100%); } to { transform:translateX(calc(100vw + 40px)); } }
       @keyframes veicRoda { to { transform:rotate(360deg); } }
       @keyframes veicTreme { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
-      .veic-coleta { position:fixed; left:0; right:0; bottom:18px; height:0; z-index:99990; pointer-events:none; --w:min(460px,60vw); }
+      .veic-coleta { position:fixed; left:0; right:0; bottom:18px; height:0; z-index:99990; pointer-events:none; --w:min(900px,80vw); }
       .veic-coleta > div { position:absolute; bottom:0; }
       .veic-coleta svg { display:block; width:100%; overflow:visible; }
       .veic-coleta .col-truck { left:calc(50vw - var(--w) / 2); width:var(--w); animation:colTruck var(--dur,7s) ease-in-out forwards; }
       .veic-coleta .col-truck .roda { transform-box:fill-box; transform-origin:center; animation:veicRoda .45s linear infinite; }
-      .veic-coleta .col-pessoa { left:calc(50vw - var(--w) / 2 - 92px); bottom:calc(var(--w) * .07); width:84px; opacity:0; animation:colPessoa var(--dur,7s) linear forwards; }
-      .veic-coleta .col-caixa { left:calc(50vw - var(--w) / 2 - 34px); bottom:calc(var(--w) * .07 + 50px); width:44px; opacity:0; animation:colCaixa var(--dur,7s) ease-in-out forwards; }
+      .veic-coleta .col-pessoa { left:calc(50vw - var(--w) * .7); bottom:calc(var(--w) * .07); width:calc(var(--w) * .183); opacity:0; animation:colPessoa var(--dur,7s) linear forwards; }
+      .veic-coleta .col-caixa { left:calc(50vw - var(--w) * .574); bottom:calc(var(--w) * .178); width:calc(var(--w) * .096); opacity:0; animation:colCaixa var(--dur,7s) ease-in-out forwards; }
       @keyframes colTruck { 0% { transform:translateX(calc(-50vw - var(--w))); } 30%,70% { transform:translateX(0); } 100% { transform:translateX(calc(50vw + var(--w))); } }
-      @keyframes colPessoa { 0%,30% { opacity:0; transform:translateX(-50px); } 38% { opacity:1; transform:translateX(0); } 64% { opacity:1; transform:translateX(0); } 70%,100% { opacity:0; transform:translateX(-50px); } }
-      @keyframes colCaixa { 0%,30% { opacity:0; transform:translate(-50px,0); } 38%,44% { opacity:1; transform:translate(0,0); } 54% { opacity:1; transform:translate(36px,-12px) scale(.9); } 59%,100% { opacity:0; transform:translate(48px,-14px) scale(.7); } }
+      @keyframes colPessoa { 0%,30% { opacity:0; transform:translateX(-60%); } 38% { opacity:1; transform:translateX(0); } 64% { opacity:1; transform:translateX(0); } 70%,100% { opacity:0; transform:translateX(-60%); } }
+      @keyframes colCaixa { 0%,30% { opacity:0; transform:translate(-114%,0); } 38%,44% { opacity:1; transform:translate(0,0); } 54% { opacity:1; transform:translate(82%,-34%) scale(.9); } 59%,100% { opacity:0; transform:translate(109%,-40%) scale(.7); } }
       @media (prefers-reduced-motion: reduce) { .veic-passa, .veic-coleta { display:none; } }`;
     document.head.appendChild(st);
   }

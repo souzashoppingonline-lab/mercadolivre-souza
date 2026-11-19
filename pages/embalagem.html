@@ -1153,7 +1153,21 @@ function vozFemininaPtBr() {
     return vozes.find(v => /pt(-|_)br/i.test(v.lang) && nomeFeminino.test(v.name)) || null;
   } catch (_) { return null; }
 }
-function falarTexto(texto, { cancelarAnterior, vozFeminina } = {}) {
+// 3ª voz (v187, pedido do usuário — "pra diferenciar" o aviso da coleta UNIFULL
+// das outras falas): prefere uma voz pt-BR masculina pelo nome (Daniel, Antonio...
+// — mesma heurística por nome da feminina), senão qualquer pt-BR que não seja a
+// padrão nem a feminina. Além disso fala SEMPRE com tom mais grave e um pouco mais
+// devagar, então soa diferente mesmo se o computador só tiver 1 voz instalada.
+function vozTerceiraPtBr() {
+  try {
+    const pt = window.speechSynthesis.getVoices().filter(v => /pt(-|_)br/i.test(v.lang));
+    const masc = /male|masc|daniel|ant[oô]nio|ricardo|felipe|paulo|fabio|f[aá]bio|donato|julio|j[uú]lio|humberto|valerio/i;
+    const fem = vozFemininaPtBr();
+    return pt.find(v => masc.test(v.name) && !/female/i.test(v.name))
+      || pt.find(v => !v.default && v !== fem) || null;
+  } catch (_) { return null; }
+}
+function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira } = {}) {
   if (!vozAtiva() || !('speechSynthesis' in window) || !texto) return;
   try {
     if (cancelarAnterior) window.speechSynthesis.cancel();
@@ -1164,6 +1178,9 @@ function falarTexto(texto, { cancelarAnterior, vozFeminina } = {}) {
       // (voz inválida, navegador estrito), a fala não pode ser perdida —
       // só cai no voice default, sem travar a mensagem principal.
       try { const v = vozFemininaPtBr(); if (v) u.voice = v; } catch (_) {}
+    } else if (vozTerceira) {
+      u.pitch = 0.7; u.rate = 0.95; // tom grave + mais devagar: diferente mesmo sem 2ª voz instalada
+      try { const v = vozTerceiraPtBr(); if (v) u.voice = v; } catch (_) {}
     }
     window.speechSynthesis.speak(u);
   } catch (_) { /* nunca deve travar a bipagem por causa da fala */ }
@@ -1386,7 +1403,7 @@ async function finalizeCurrent() {
     // Mesma classificação do selo/voz/veículo da 1ª bipagem (logLabel).
     const lg = logLabel(session.orders?.[0]?.shipping_type);
     if (lg === 'Flex') falarTexto('Envio Flex, por favor separar.');
-    else if (ehColetaUnifull(session.orders)) falarTexto('Envio da empresa Unifull, será coletado pelo caminhão. Deixar separado para enviar no caminhão do Mercado Livre.');
+    else if (ehColetaUnifull(session.orders)) falarTexto('Envio da empresa Unifull, será coletado pelo caminhão. Deixar separado para enviar no caminhão do Mercado Livre.', { vozTerceira: true });
     else if (lg === 'Mercado Envios') falarTexto('Envio Mercado Envios, separar para enviar na Montana.');
   };
   if (totalProdutosSessao >= 2) {

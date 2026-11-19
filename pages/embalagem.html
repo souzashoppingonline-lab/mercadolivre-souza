@@ -879,6 +879,7 @@ function stopDurationWatcher() {
   document.getElementById('durationWarn').innerHTML = '';
   resetCronoVisual();
   stopLembreteConferenciaInterval();
+  stopColetaLembrete();
 }
 
 // Lembrete repetido a cada 1 minuto, só pra pedido com 2+ produtos — pedido
@@ -907,6 +908,24 @@ function startLembreteConferenciaInterval(orders) {
 function stopLembreteConferenciaInterval() {
   clearInterval(lembreteConferenciaIntervalId);
   lembreteConferenciaIntervalId = null;
+}
+
+// Coleta UNIFULL (v187, pedido do usuário): enquanto grava um pedido da coleta,
+// a cada 30 s a cena do caminhão passa de novo e uma voz feminina DIFERENTE
+// da usada no resto da página fala "Coleta Mercado Livre.". Mesmo ciclo de vida
+// do cronômetro (para sozinho em stopDurationWatcher, ao finalizar).
+let coletaLembreteId = null;
+function startColetaLembrete(orders) {
+  stopColetaLembrete();
+  if (!ehColetaUnifull(orders)) return;
+  coletaLembreteId = setInterval(() => {
+    try { Veiculos.coleta(); } catch (_) {}
+    falarTexto('Coleta Mercado Livre.', { vozFemininaAlt: true });
+  }, 30000);
+}
+function stopColetaLembrete() {
+  clearInterval(coletaLembreteId);
+  coletaLembreteId = null;
 }
 
 function setScanState(s) {
@@ -1170,7 +1189,19 @@ function vozTerceiraPtBr() {
 // `aoTerminar` (v187): chamado quando a fala acaba — ou na hora, se a voz estiver
 // desligada/sem suporte; com rede de segurança de 15 s (o Chrome às vezes não
 // dispara `onend`). Chamado no máximo 1 vez.
-function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira, aoTerminar } = {}) {
+// Voz feminina DIFERENTE da usada no resto da página (v187, lembrete da coleta —
+// pedido do usuário): outra pt-BR feminina pelo nome (ex.: Windows tem Maria,
+// Francisca, Thalita; Chrome tem "Google português"), nunca a de vozFemininaPtBr().
+// Sem 2ª feminina instalada → cai na mesma, mas com tom bem mais agudo (pitch).
+function vozFemininaAltPtBr() {
+  try {
+    const usada = vozFemininaPtBr();
+    const pt = window.speechSynthesis.getVoices().filter(v => /pt(-|_)br/i.test(v.lang) && v !== usada);
+    const fem = /female|fem|maria|luciana|helena|joana|camila|ana|vit[oó]ria|francisca|thalita|leticia|let[ií]cia|google/i;
+    return pt.find(v => fem.test(v.name) && !/\bmale\b/i.test(v.name)) || null;
+  } catch (_) { return null; }
+}
+function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira, vozFemininaAlt, aoTerminar } = {}) {
   let feito = false;
   const fim = () => { if (feito || !aoTerminar) return; feito = true; try { aoTerminar(); } catch (_) {} };
   if (!vozAtiva() || !('speechSynthesis' in window) || !texto) { fim(); return; }
@@ -1185,6 +1216,10 @@ function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira, aoTermi
       // (voz inválida, navegador estrito), a fala não pode ser perdida —
       // só cai no voice default, sem travar a mensagem principal.
       try { const v = vozFemininaPtBr(); if (v) u.voice = v; } catch (_) {}
+    } else if (vozFemininaAlt) {
+      let v = null;
+      try { v = vozFemininaAltPtBr(); if (v) u.voice = v; } catch (_) {}
+      if (!v) { u.pitch = 1.4; try { const f = vozFemininaPtBr(); if (f) u.voice = f; } catch (_) {} }
     } else if (vozTerceira) {
       u.pitch = 0.7; u.rate = 0.95; // tom grave + mais devagar: diferente mesmo sem 2ª voz instalada
       try { const v = vozTerceiraPtBr(); if (v) u.voice = v; } catch (_) {}
@@ -1337,7 +1372,7 @@ function passarVeiculoLogistica(orders) {
   try {
     const lg = logLabel(orders?.[0]?.shipping_type);
     if (lg === 'Flex') Veiculos.passar('moto', { largura: '70vw', duracao: 8000 });   // 70% da tela, mais devagar (pedido do usuário)
-    else if (ehColetaUnifull(orders)) Veiculos.passar('caminhao', { largura: '70vw', duracao: 8000 }); // coleta UNIFULL: caminhão amarelo grande
+    else if (ehColetaUnifull(orders)) Veiculos.coleta(); // coleta UNIFULL: caminhão para e a pessoa põe o pacote (repete a cada 30 s, ver startColetaLembrete)
     else if (lg === 'Mercado Envios') Veiculos.passar('picape');
   } catch (e) { console.warn('[embalagem] veículo:', e.message); }
 }
@@ -1392,6 +1427,7 @@ async function startNew(shippingId) {
   setScanState('recording');
   startDurationWatcher();
   startLembreteConferenciaInterval(data.orders);
+  startColetaLembrete(data.orders); // coleta UNIFULL: caminhão + voz a cada 30 s (v187)
 }
 
 // Devolve true se de fato finalizou (upload disparado), false se o operador

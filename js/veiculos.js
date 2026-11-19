@@ -8,6 +8,8 @@
 //                                   pedido do usuário — sem o símbolo da montadora)
 //   Veiculos.SVG_CAMINHAO         → caminhão-baú amarelo "COLETA · MERCADO ENVIOS"
 //                                   (coleta no local, v187 — sem logo de marca)
+//   Veiculos.coleta(opts)         → cena da coleta (v187): caminhão amarelo entra, PARA
+//                                   no meio, uma pessoa põe o pacote no baú e ele sai
 //   Veiculos.passar(tipo, opts)   → atravessa a tela da esquerda pra direita
 //                                   (tipo 'moto' | 'picape' | 'caminhao'); some sozinho no fim.
 // Ver .claude/frontend.md (Tela Telegram) e .claude/embalagem.md.
@@ -66,6 +68,18 @@
   </g>
   ${RODA(48, 110, 17)}${RODA(150, 110, 17)}${RODA(256, 110, 17)}</svg>`;
 
+  // Pessoa (desenho próprio) segurando os braços à frente, virada pra direita.
+  const SVG_PESSOA = `<svg viewBox="0 0 80 150" aria-hidden="true">
+    <rect x="26" y="92" width="11" height="52" rx="4" fill="#1f2937"/><rect x="41" y="92" width="11" height="52" rx="4" fill="#1f2937"/>
+    <rect x="22" y="140" width="17" height="8" rx="3" fill="#111827"/><rect x="39" y="140" width="17" height="8" rx="3" fill="#111827"/>
+    <rect x="22" y="44" width="34" height="54" rx="10" fill="#2563eb"/>
+    <path d="M50 54 L72 66 M30 56 L66 72" stroke="#2563eb" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="72" cy="66" r="5" fill="#f1c27d"/><circle cx="66" cy="72" r="5" fill="#f1c27d"/>
+    <rect x="35" y="36" width="9" height="10" fill="#f1c27d"/>
+    <circle cx="40" cy="24" r="14" fill="#f1c27d"/><path d="M26 20 q14 -18 28 0 v-4 h8 v4 z" fill="#facc15"/>
+    <circle cx="46" cy="24" r="1.8" fill="#111827"/></svg>`;
+  const SVG_CAIXA = `<svg viewBox="0 0 40 32" aria-hidden="true"><rect x="1" y="1" width="38" height="30" rx="2" fill="#c98a3d" stroke="#8a5a20" stroke-width="2"/><path d="M1 10 h38 M20 1 v9" stroke="#8a5a20" stroke-width="2"/><rect x="8" y="16" width="16" height="8" fill="#fff" opacity=".85"/></svg>`;
+
   let cssPronto = false;
   function css() {
     if (cssPronto) return; cssPronto = true;
@@ -78,7 +92,17 @@
       @keyframes veicAnda { from { transform:translateX(-100%); } to { transform:translateX(calc(100vw + 40px)); } }
       @keyframes veicRoda { to { transform:rotate(360deg); } }
       @keyframes veicTreme { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
-      @media (prefers-reduced-motion: reduce) { .veic-passa { display:none; } }`;
+      .veic-coleta { position:fixed; left:0; right:0; bottom:18px; height:0; z-index:99990; pointer-events:none; --w:min(460px,60vw); }
+      .veic-coleta > div { position:absolute; bottom:0; }
+      .veic-coleta svg { display:block; width:100%; overflow:visible; }
+      .veic-coleta .col-truck { left:calc(50vw - var(--w) / 2); width:var(--w); animation:colTruck var(--dur,7s) ease-in-out forwards; }
+      .veic-coleta .col-truck .roda { transform-box:fill-box; transform-origin:center; animation:veicRoda .45s linear infinite; }
+      .veic-coleta .col-pessoa { left:calc(50vw - var(--w) / 2 - 92px); bottom:calc(var(--w) * .07); width:84px; opacity:0; animation:colPessoa var(--dur,7s) linear forwards; }
+      .veic-coleta .col-caixa { left:calc(50vw - var(--w) / 2 - 34px); bottom:calc(var(--w) * .07 + 50px); width:44px; opacity:0; animation:colCaixa var(--dur,7s) ease-in-out forwards; }
+      @keyframes colTruck { 0% { transform:translateX(calc(-50vw - var(--w))); } 30%,70% { transform:translateX(0); } 100% { transform:translateX(calc(50vw + var(--w))); } }
+      @keyframes colPessoa { 0%,30% { opacity:0; transform:translateX(-50px); } 38% { opacity:1; transform:translateX(0); } 64% { opacity:1; transform:translateX(0); } 70%,100% { opacity:0; transform:translateX(-50px); } }
+      @keyframes colCaixa { 0%,30% { opacity:0; transform:translate(-50px,0); } 38%,44% { opacity:1; transform:translate(0,0); } 54% { opacity:1; transform:translate(36px,-12px) scale(.9); } 59%,100% { opacity:0; transform:translate(48px,-14px) scale(.7); } }
+      @media (prefers-reduced-motion: reduce) { .veic-passa, .veic-coleta { display:none; } }`;
     document.head.appendChild(st);
   }
 
@@ -99,5 +123,18 @@
     return el;
   }
 
-  window.Veiculos = { RODA, svgMoto, SVG_PICAPE, SVG_CAMINHAO, passar };
+  // Cena da coleta (v187, pedido do usuário): caminhão entra, para no meio da tela,
+  // uma pessoa aparece na traseira e põe o pacote no baú, o caminhão segue.
+  function coleta({ duracao = 7000 } = {}) {
+    css();
+    const el = document.createElement('div');
+    el.className = 'veic-coleta';
+    el.style.setProperty('--dur', duracao + 'ms');
+    el.innerHTML = `<div class="col-truck">${SVG_CAMINHAO}</div><div class="col-pessoa">${SVG_PESSOA}</div><div class="col-caixa">${SVG_CAIXA}</div>`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), duracao + 100);
+    return el;
+  }
+
+  window.Veiculos = { RODA, svgMoto, SVG_PICAPE, SVG_CAMINHAO, passar, coleta };
 })();

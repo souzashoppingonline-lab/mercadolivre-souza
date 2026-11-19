@@ -170,7 +170,7 @@ Fórmulas das linhas extras do aviso (código em `server/src/vendaInfo.js`, cons
 
 ## Expedição — Mercado Envios da UNIFULL é coleta no local (v187)
 
-A partir de **24/11/2026**, os pedidos **Mercado Envios** das lojas da empresa **UNIFULL** são **coletados todo dia no galpão** pelo caminhão do Mercado Livre — não vão mais na Montana pra agência. As outras empresas seguem levando na Montana. Na Embalagem isso muda o veículo que passa na tela, o selo de logística e a frase de "pra onde separar" (detalhes em `embalagem.md`, "v187").
+A partir de **24/11/2026**, os pedidos **Mercado Envios** das lojas da empresa **UNIFULL** são **coletados todo dia no galpão** pelo caminhão do Mercado Livre — não vão mais na Montana pra agência. As outras empresas seguem levando na Montana. Na Embalagem isso muda o veículo que passa na tela, o selo de logística e a frase de "pra onde separar" (detalhes em `embalagem.md`, "v187"). O aviso na Embalagem foi ligado já em 19/11, a pedido do usuário, pra equipe se acostumar antes da coleta começar.
 
 ## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)
 

@@ -1309,7 +1309,7 @@ function falarQuantidades(orders) {
 // (não vai mais na Montana). Regra: logística Mercado Envios + loja com
 // "UNIFULL" no apelido + data de hoje ≥ COLETA_UNIFULL_DESDE. Demais lojas
 // seguem na Montana. Ver .claude/embalagem.md e business-rules.md.
-const COLETA_UNIFULL_DESDE = '2026-11-24';
+const COLETA_UNIFULL_DESDE = '2026-11-19'; // coleta real começa 24/11; ligado antes a pedido do usuário pra equipe se acostumar
 function ehColetaUnifull(orders) {
   const o = orders?.[0];
   if (!o || logLabel(o.shipping_type) !== 'Mercado Envios') return false;

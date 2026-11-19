@@ -1224,6 +1224,21 @@ function playBipTriplo() {
   setTimeout(() => playBip(), 180);
   setTimeout(() => playBip(), 360);
 }
+// 3 bipes ALTOS e mais longos da coleta UNIFULL (v187, pedido do usuário) —
+// volume máximo, tom mais agudo e 300ms cada (o triplo normal é 120ms a meio
+// volume), pra não confundir com o de 2+ produtos. Toca nos dois bipes (abre e
+// finaliza), antes de qualquer outro som/fala. Independente do toggle de voz.
+const BIP_COLETA_MS = 1300;
+function playBipColeta() {
+  [0, 420, 840].forEach(t => setTimeout(() => playBip(1500, 0.3, 1), t));
+}
+// Encadeia: bipes da coleta (se for) → bipe triplo de 2+ produtos (se for) → fala.
+function bipesAntesDaFala(orders, totalProdutos, falar) {
+  let atraso = 0;
+  if (ehColetaUnifull(orders)) { playBipColeta(); atraso = BIP_COLETA_MS; }
+  if (totalProdutos >= 2) { setTimeout(playBipTriplo, atraso); atraso += BIP_TRIPLO_MS; }
+  if (atraso) setTimeout(falar, atraso); else falar();
+}
 
 function falarQuantidades(orders) {
   if (!orders || !orders.length) return;
@@ -1281,12 +1296,8 @@ function falarQuantidades(orders) {
   // 2+ produtos — bipe triplo ANTES de qualquer fala (pedido explícito do
   // usuário), pra chamar atenção antes de começar a falar. Toca mesmo com a
   // voz desligada (é alerta sonoro, não fala). Depois do bipe, segue normal.
-  if (totalProdutos >= 2) {
-    playBipTriplo();
-    setTimeout(falarSequencia, BIP_TRIPLO_MS);
-  } else {
-    falarSequencia();
-  }
+  // Coleta UNIFULL (v187) → 3 bipes altos antes de tudo.
+  bipesAntesDaFala(orders, totalProdutos, falarSequencia);
 }
 
 // Veículo na tela na hora da bipagem (pedido do usuário, v168): Flex → moto com
@@ -1406,12 +1417,7 @@ async function finalizeCurrent() {
     else if (ehColetaUnifull(session.orders)) falarTexto('Envio da empresa Unifull, será coletado pelo caminhão. Deixar separado para enviar no caminhão do Mercado Livre.', { vozTerceira: true });
     else if (lg === 'Mercado Envios') falarTexto('Envio Mercado Envios, separar para enviar na Montana.');
   };
-  if (totalProdutosSessao >= 2) {
-    playBipTriplo();
-    setTimeout(falarFinalizacao, BIP_TRIPLO_MS);
-  } else {
-    falarFinalizacao();
-  }
+  bipesAntesDaFala(session.orders, totalProdutosSessao, falarFinalizacao); // coleta UNIFULL → 3 bipes altos (v187)
   setScanState('saving');
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);

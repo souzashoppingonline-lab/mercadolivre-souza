@@ -1167,11 +1167,18 @@ function vozTerceiraPtBr() {
       || pt.find(v => !v.default && v !== fem) || null;
   } catch (_) { return null; }
 }
-function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira } = {}) {
-  if (!vozAtiva() || !('speechSynthesis' in window) || !texto) return;
+// `aoTerminar` (v187): chamado quando a fala acaba — ou na hora, se a voz estiver
+// desligada/sem suporte; com rede de segurança de 15 s (o Chrome às vezes não
+// dispara `onend`). Chamado no máximo 1 vez.
+function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira, aoTerminar } = {}) {
+  let feito = false;
+  const fim = () => { if (feito || !aoTerminar) return; feito = true; try { aoTerminar(); } catch (_) {} };
+  if (!vozAtiva() || !('speechSynthesis' in window) || !texto) { fim(); return; }
+  if (aoTerminar) setTimeout(fim, 15000);
   try {
     if (cancelarAnterior) window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(texto);
+    u.onend = fim; u.onerror = fim;
     u.lang = 'pt-BR'; u.rate = 1.05;
     if (vozFeminina) {
       // Try/catch PRÓPRIO: se a troca de voz falhar por qualquer motivo
@@ -1183,7 +1190,7 @@ function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira } = {}) 
       try { const v = vozTerceiraPtBr(); if (v) u.voice = v; } catch (_) {}
     }
     window.speechSynthesis.speak(u);
-  } catch (_) { /* nunca deve travar a bipagem por causa da fala */ }
+  } catch (_) { fim(); /* nunca deve travar a bipagem por causa da fala */ }
 }
 
 // Bipe sonoro — independente da voz (toca mesmo se o toggle "Falar quantidade"
@@ -1229,13 +1236,13 @@ function playBipTriplo() {
 // volume), pra não confundir com o de 2+ produtos. Toca nos dois bipes (abre e
 // finaliza), antes de qualquer outro som/fala. Independente do toggle de voz.
 const BIP_COLETA_MS = 1300;
-function playBipColeta() {
-  [0, 420, 840].forEach(t => setTimeout(() => playBip(1500, 0.3, 1), t));
+function playBipColeta(vezes = 3) {
+  for (let i = 0; i < vezes; i++) setTimeout(() => playBip(1500, 0.3, 1), i * 420);
 }
-// Encadeia: bipes da coleta (se for) → bipe triplo de 2+ produtos (se for) → fala.
-function bipesAntesDaFala(orders, totalProdutos, falar) {
+// Encadeia: bipes da coleta (se for, `comColeta`) → bipe triplo de 2+ produtos (se for) → fala.
+function bipesAntesDaFala(orders, totalProdutos, falar, comColeta = true) {
   let atraso = 0;
-  if (ehColetaUnifull(orders)) { playBipColeta(); atraso = BIP_COLETA_MS; }
+  if (comColeta && ehColetaUnifull(orders)) { playBipColeta(3); atraso = BIP_COLETA_MS; }
   if (totalProdutos >= 2) { setTimeout(playBipTriplo, atraso); atraso += BIP_TRIPLO_MS; }
   if (atraso) setTimeout(falar, atraso); else falar();
 }
@@ -1313,7 +1320,9 @@ const COLETA_UNIFULL_DESDE = '2026-11-19'; // coleta real começa 24/11; ligado 
 function ehColetaUnifull(orders) {
   const o = orders?.[0];
   if (!o || logLabel(o.shipping_type) !== 'Mercado Envios') return false;
-  if (!/UNIFULL/i.test(o.store_nickname || '')) return false;
+  // Apelido com "UNIFULL" OU o id da conta UNIFULL_MULTIMERCADO (1662123376) —
+  // o id garante mesmo se o apelido vier vazio/diferente.
+  if (!/UNIFULL/i.test(o.store_nickname || '') && String(o.store_id) !== '1662123376') return false;
   return new Date().toLocaleDateString('sv-SE') >= COLETA_UNIFULL_DESDE; // AAAA-MM-DD local
 }
 
@@ -1414,10 +1423,11 @@ async function finalizeCurrent() {
     // Mesma classificação do selo/voz/veículo da 1ª bipagem (logLabel).
     const lg = logLabel(session.orders?.[0]?.shipping_type);
     if (lg === 'Flex') falarTexto('Envio Flex, por favor separar.');
-    else if (ehColetaUnifull(session.orders)) falarTexto('Envio da empresa Unifull, será coletado pelo caminhão. Deixar separado para enviar no caminhão do Mercado Livre.', { vozTerceira: true });
+    // Coleta UNIFULL: frase do usuário na 3ª voz e, quando ela termina, 4 bipes altos.
+    else if (ehColetaUnifull(session.orders)) falarTexto('Pedido coleta Mercado Livre. Deixar separado para coleta do caminhão Mercado Livre.', { vozTerceira: true, aoTerminar: () => playBipColeta(4) });
     else if (lg === 'Mercado Envios') falarTexto('Envio Mercado Envios, separar para enviar na Montana.');
   };
-  bipesAntesDaFala(session.orders, totalProdutosSessao, falarFinalizacao); // coleta UNIFULL → 3 bipes altos (v187)
+  bipesAntesDaFala(session.orders, totalProdutosSessao, falarFinalizacao, false); // coleta UNIFULL: os 4 bipes altos vão no FIM da frase (v187)
   setScanState('saving');
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);

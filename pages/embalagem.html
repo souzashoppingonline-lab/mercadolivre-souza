@@ -1086,7 +1086,7 @@ function renderOrders(orders, alreadyPacked) {
             const lg = logLabel(o.shipping_type);
             const desc = lg === 'Desconhecido';
             return `<div class="emb-order-detail logistica"><span class="k">Logística</span>
-              <span class="emb-logistica-badge ${desc ? 'desconhecida' : ''}"><i class="fas ${desc ? 'fa-triangle-exclamation' : 'fa-truck-fast'}"></i>${escapeHtml(desc ? 'Logística indisponível' : lg)}</span></div>`;
+              <span class="emb-logistica-badge ${desc ? 'desconhecida' : ''}"><i class="fas ${desc ? 'fa-triangle-exclamation' : 'fa-truck-fast'}"></i>${escapeHtml(desc ? 'Logística indisponível' : lg)}${!desc && ehColetaUnifull([o]) ? ' · COLETA NO LOCAL (caminhão)' : ''}</span></div>`;
           })()}
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
           <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
@@ -1274,12 +1274,26 @@ function falarQuantidades(orders) {
 
 // Veículo na tela na hora da bipagem (pedido do usuário, v168): Flex → moto com
 // baú; Mercado Envios → picape branca (estilo Chevrolet Montana 2017) com caixa na
-// caçamba. Mesma classificação do selo/voz (logLabel). Full/Coleta/Shopee/
+// caçamba (UNIFULL a partir de 24/11 → caminhão amarelo da coleta, v187). Mesma classificação do selo/voz (logLabel). Full/Coleta/Shopee/
 // desconhecida → nada. Desenhos em js/veiculos.js (compartilhado com a Tela Telegram).
+// Coleta no local (v187, pedido do usuário): a partir de 24/11/2026 o Mercado
+// Envios da empresa UNIFULL é coletado TODO DIA no galpão pelo caminhão do ML
+// (não vai mais na Montana). Regra: logística Mercado Envios + loja com
+// "UNIFULL" no apelido + data de hoje ≥ COLETA_UNIFULL_DESDE. Demais lojas
+// seguem na Montana. Ver .claude/embalagem.md e business-rules.md.
+const COLETA_UNIFULL_DESDE = '2026-11-24';
+function ehColetaUnifull(orders) {
+  const o = orders?.[0];
+  if (!o || logLabel(o.shipping_type) !== 'Mercado Envios') return false;
+  if (!/UNIFULL/i.test(o.store_nickname || '')) return false;
+  return new Date().toLocaleDateString('sv-SE') >= COLETA_UNIFULL_DESDE; // AAAA-MM-DD local
+}
+
 function passarVeiculoLogistica(orders) {
   try {
     const lg = logLabel(orders?.[0]?.shipping_type);
     if (lg === 'Flex') Veiculos.passar('moto', { largura: '70vw', duracao: 8000 });   // 70% da tela, mais devagar (pedido do usuário)
+    else if (ehColetaUnifull(orders)) Veiculos.passar('caminhao', { largura: '70vw', duracao: 8000 }); // coleta UNIFULL: caminhão amarelo grande
     else if (lg === 'Mercado Envios') Veiculos.passar('picape');
   } catch (e) { console.warn('[embalagem] veículo:', e.message); }
 }
@@ -1372,6 +1386,7 @@ async function finalizeCurrent() {
     // Mesma classificação do selo/voz/veículo da 1ª bipagem (logLabel).
     const lg = logLabel(session.orders?.[0]?.shipping_type);
     if (lg === 'Flex') falarTexto('Envio Flex, por favor separar.');
+    else if (ehColetaUnifull(session.orders)) falarTexto('Envio da empresa Unifull, será coletado pelo caminhão. Deixar separado para enviar no caminhão do Mercado Livre.');
     else if (lg === 'Mercado Envios') falarTexto('Envio Mercado Envios, separar para enviar na Montana.');
   };
   if (totalProdutosSessao >= 2) {

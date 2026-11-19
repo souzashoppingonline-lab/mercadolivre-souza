@@ -168,6 +168,10 @@ Fórmulas das linhas extras do aviso (código em `server/src/vendaInfo.js`, cons
   - Sem custo cadastrado (`custo_ausente`) → mostra só o preço e pede pra cadastrar o custo (margem com custo 0 enganaria).
 - Só ML por enquanto (Shopee/TikTok têm handler próprio).
 
+## Expedição — Mercado Envios da UNIFULL é coleta no local (v187)
+
+A partir de **24/11/2026**, os pedidos **Mercado Envios** das lojas da empresa **UNIFULL** são **coletados todo dia no galpão** pelo caminhão do Mercado Livre — não vão mais na Montana pra agência. As outras empresas seguem levando na Montana. Na Embalagem isso muda o veículo que passa na tela, o selo de logística e a frase de "pra onde separar" (detalhes em `embalagem.md`, "v187").
+
 ## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)
 
 Diferente do alerta de estoque fixo (`≤5`/`≤15`): mede **quando** o item acaba, não só quanto tem. `dias_restantes = available_quantity ÷ (unidades vendidas na janela ÷ dias da janela)`, com a **velocidade real** de `vw_ml_orders` (não `sold_quantity` histórico). Entra na lista só quem **vende bem** (`venda_dia ≥ min_venda_dia`, default 0.2 = ≥1 venda a cada 5 dias) **e** tem `dias_restantes < dias` (default 7, janela 30d). `sugestao_compra = ceil(venda_dia × janela) − estoque` (repor pra cobrir 1 janela). Job `checkRupturaEstoque` (07:30) manda os 12 mais urgentes no Telegram (`tg_reposicao`, respeita silêncio). Objetivo: reagir antes de perder venda por ruptura — complementa a página Reposição (que olha estoque baixo em geral) com "vende bem E vai acabar".

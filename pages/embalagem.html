@@ -1086,7 +1086,7 @@ function renderOrders(orders, alreadyPacked) {
             const lg = logLabel(o.shipping_type);
             const desc = lg === 'Desconhecido';
             return `<div class="emb-order-detail logistica"><span class="k">Logística</span>
-              <span class="emb-logistica-badge ${desc ? 'desconhecida' : ''}"><i class="fas ${desc ? 'fa-triangle-exclamation' : 'fa-truck-fast'}"></i>${escapeHtml(desc ? 'Logística indisponível' : lg)}</span></div>`;
+              <span class="emb-logistica-badge ${desc ? 'desconhecida' : ''}"><i class="fas ${desc ? 'fa-triangle-exclamation' : 'fa-truck-fast'}"></i>${escapeHtml(desc ? 'Logística indisponível' : lg)}${!desc && ehColetaUnifull([o]) ? ' · COLETA NO LOCAL (caminhão)' : ''}</span></div>`;
           })()}
           <div class="emb-order-detail"><span class="k">Status</span><span class="v">${escapeHtml(STATUS_LABEL[o.status] || o.status || '—')}</span></div>
           <div class="emb-order-detail"><span class="k">Venda em</span><span class="v">${o.date_created ? new Date(o.date_created).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</span></div>
@@ -1153,7 +1153,21 @@ function vozFemininaPtBr() {
     return vozes.find(v => /pt(-|_)br/i.test(v.lang) && nomeFeminino.test(v.name)) || null;
   } catch (_) { return null; }
 }
-function falarTexto(texto, { cancelarAnterior, vozFeminina } = {}) {
+// 3ª voz (v187, pedido do usuário — "pra diferenciar" o aviso da coleta UNIFULL
+// das outras falas): prefere uma voz pt-BR masculina pelo nome (Daniel, Antonio...
+// — mesma heurística por nome da feminina), senão qualquer pt-BR que não seja a
+// padrão nem a feminina. Além disso fala SEMPRE com tom mais grave e um pouco mais
+// devagar, então soa diferente mesmo se o computador só tiver 1 voz instalada.
+function vozTerceiraPtBr() {
+  try {
+    const pt = window.speechSynthesis.getVoices().filter(v => /pt(-|_)br/i.test(v.lang));
+    const masc = /male|masc|daniel|ant[oô]nio|ricardo|felipe|paulo|fabio|f[aá]bio|donato|julio|j[uú]lio|humberto|valerio/i;
+    const fem = vozFemininaPtBr();
+    return pt.find(v => masc.test(v.name) && !/female/i.test(v.name))
+      || pt.find(v => !v.default && v !== fem) || null;
+  } catch (_) { return null; }
+}
+function falarTexto(texto, { cancelarAnterior, vozFeminina, vozTerceira } = {}) {
   if (!vozAtiva() || !('speechSynthesis' in window) || !texto) return;
   try {
     if (cancelarAnterior) window.speechSynthesis.cancel();
@@ -1164,6 +1178,9 @@ function falarTexto(texto, { cancelarAnterior, vozFeminina } = {}) {
       // (voz inválida, navegador estrito), a fala não pode ser perdida —
       // só cai no voice default, sem travar a mensagem principal.
       try { const v = vozFemininaPtBr(); if (v) u.voice = v; } catch (_) {}
+    } else if (vozTerceira) {
+      u.pitch = 0.7; u.rate = 0.95; // tom grave + mais devagar: diferente mesmo sem 2ª voz instalada
+      try { const v = vozTerceiraPtBr(); if (v) u.voice = v; } catch (_) {}
     }
     window.speechSynthesis.speak(u);
   } catch (_) { /* nunca deve travar a bipagem por causa da fala */ }
@@ -1206,6 +1223,21 @@ function playBipTriplo() {
   playBip();
   setTimeout(() => playBip(), 180);
   setTimeout(() => playBip(), 360);
+}
+// 3 bipes ALTOS e mais longos da coleta UNIFULL (v187, pedido do usuário) —
+// volume máximo, tom mais agudo e 300ms cada (o triplo normal é 120ms a meio
+// volume), pra não confundir com o de 2+ produtos. Toca nos dois bipes (abre e
+// finaliza), antes de qualquer outro som/fala. Independente do toggle de voz.
+const BIP_COLETA_MS = 1300;
+function playBipColeta() {
+  [0, 420, 840].forEach(t => setTimeout(() => playBip(1500, 0.3, 1), t));
+}
+// Encadeia: bipes da coleta (se for) → bipe triplo de 2+ produtos (se for) → fala.
+function bipesAntesDaFala(orders, totalProdutos, falar) {
+  let atraso = 0;
+  if (ehColetaUnifull(orders)) { playBipColeta(); atraso = BIP_COLETA_MS; }
+  if (totalProdutos >= 2) { setTimeout(playBipTriplo, atraso); atraso += BIP_TRIPLO_MS; }
+  if (atraso) setTimeout(falar, atraso); else falar();
 }
 
 function falarQuantidades(orders) {
@@ -1264,22 +1296,32 @@ function falarQuantidades(orders) {
   // 2+ produtos — bipe triplo ANTES de qualquer fala (pedido explícito do
   // usuário), pra chamar atenção antes de começar a falar. Toca mesmo com a
   // voz desligada (é alerta sonoro, não fala). Depois do bipe, segue normal.
-  if (totalProdutos >= 2) {
-    playBipTriplo();
-    setTimeout(falarSequencia, BIP_TRIPLO_MS);
-  } else {
-    falarSequencia();
-  }
+  // Coleta UNIFULL (v187) → 3 bipes altos antes de tudo.
+  bipesAntesDaFala(orders, totalProdutos, falarSequencia);
 }
 
 // Veículo na tela na hora da bipagem (pedido do usuário, v168): Flex → moto com
 // baú; Mercado Envios → picape branca (estilo Chevrolet Montana 2017) com caixa na
-// caçamba. Mesma classificação do selo/voz (logLabel). Full/Coleta/Shopee/
+// caçamba (UNIFULL a partir de 24/11 → caminhão amarelo da coleta, v187). Mesma classificação do selo/voz (logLabel). Full/Coleta/Shopee/
 // desconhecida → nada. Desenhos em js/veiculos.js (compartilhado com a Tela Telegram).
+// Coleta no local (v187, pedido do usuário): a partir de 24/11/2026 o Mercado
+// Envios da empresa UNIFULL é coletado TODO DIA no galpão pelo caminhão do ML
+// (não vai mais na Montana). Regra: logística Mercado Envios + loja com
+// "UNIFULL" no apelido + data de hoje ≥ COLETA_UNIFULL_DESDE. Demais lojas
+// seguem na Montana. Ver .claude/embalagem.md e business-rules.md.
+const COLETA_UNIFULL_DESDE = '2026-11-19'; // coleta real começa 24/11; ligado antes a pedido do usuário pra equipe se acostumar
+function ehColetaUnifull(orders) {
+  const o = orders?.[0];
+  if (!o || logLabel(o.shipping_type) !== 'Mercado Envios') return false;
+  if (!/UNIFULL/i.test(o.store_nickname || '')) return false;
+  return new Date().toLocaleDateString('sv-SE') >= COLETA_UNIFULL_DESDE; // AAAA-MM-DD local
+}
+
 function passarVeiculoLogistica(orders) {
   try {
     const lg = logLabel(orders?.[0]?.shipping_type);
     if (lg === 'Flex') Veiculos.passar('moto', { largura: '70vw', duracao: 8000 });   // 70% da tela, mais devagar (pedido do usuário)
+    else if (ehColetaUnifull(orders)) Veiculos.passar('caminhao', { largura: '70vw', duracao: 8000 }); // coleta UNIFULL: caminhão amarelo grande
     else if (lg === 'Mercado Envios') Veiculos.passar('picape');
   } catch (e) { console.warn('[embalagem] veículo:', e.message); }
 }
@@ -1372,14 +1414,10 @@ async function finalizeCurrent() {
     // Mesma classificação do selo/voz/veículo da 1ª bipagem (logLabel).
     const lg = logLabel(session.orders?.[0]?.shipping_type);
     if (lg === 'Flex') falarTexto('Envio Flex, por favor separar.');
+    else if (ehColetaUnifull(session.orders)) falarTexto('Envio da empresa Unifull, será coletado pelo caminhão. Deixar separado para enviar no caminhão do Mercado Livre.', { vozTerceira: true });
     else if (lg === 'Mercado Envios') falarTexto('Envio Mercado Envios, separar para enviar na Montana.');
   };
-  if (totalProdutosSessao >= 2) {
-    playBipTriplo();
-    setTimeout(falarFinalizacao, BIP_TRIPLO_MS);
-  } else {
-    falarFinalizacao();
-  }
+  bipesAntesDaFala(session.orders, totalProdutosSessao, falarFinalizacao); // coleta UNIFULL → 3 bipes altos (v187)
   setScanState('saving');
   const blob = await stopRecordingAndGetBlob(); // rápido — não depende de rede
   const durationSeconds = Math.round((Date.now() - session.startedAt) / 1000);

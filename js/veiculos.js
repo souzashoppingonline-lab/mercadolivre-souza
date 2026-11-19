@@ -6,8 +6,10 @@
 //   Veiculos.SVG_PICAPE           → picape compacta branca, cabine simples, caixa
 //                                   "MERCADO ENVIOS" na caçamba (estilo Montana 2017,
 //                                   pedido do usuário — sem o símbolo da montadora)
+//   Veiculos.SVG_CAMINHAO         → caminhão-baú amarelo "COLETA · MERCADO ENVIOS"
+//                                   (coleta no local, v187 — sem logo de marca)
 //   Veiculos.passar(tipo, opts)   → atravessa a tela da esquerda pra direita
-//                                   (tipo 'moto' | 'picape'); some sozinho no fim.
+//                                   (tipo 'moto' | 'picape' | 'caminhao'); some sozinho no fim.
 // Ver .claude/frontend.md (Tela Telegram) e .claude/embalagem.md.
 (function () {
   const RODA = (cx, cy, r) => `<g class="roda"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#1f2937"/><circle cx="${cx}" cy="${cy}" r="${r * .45}" fill="#9ca3af"/><path d="M${cx} ${cy - r * .8} v${r * 1.6} M${cx - r * .8} ${cy} h${r * 1.6}" stroke="#4b5563" stroke-width="2.5"/></g>`;
@@ -47,6 +49,23 @@
   </g>
   ${RODA(64, 98, 17)}${RODA(202, 98, 17)}</svg>`;
 
+  // Caminhão-baú amarelo da coleta no local (v187, pedido do usuário). Desenho
+  // próprio, sem o logo do Mercado Livre — só o texto. Virado pra direita.
+  const SVG_CAMINHAO = `<svg viewBox="0 0 300 140" aria-hidden="true"><ellipse cx="150" cy="130" rx="140" ry="6" fill="rgba(0,0,0,.35)"/>
+  <g class="carro">
+    <rect x="6" y="8" width="192" height="88" rx="5" fill="#ffe14d" stroke="#a16207" stroke-width="3"/>
+    <path d="M6 22 h192" stroke="#ca8a04" stroke-width="2" opacity=".7"/>
+    <text x="102" y="60" text-anchor="middle" font-size="30" font-weight="900" fill="#1e3a8a" font-family="Arial,sans-serif" textLength="160" lengthAdjust="spacingAndGlyphs">COLETA</text>
+    <text x="102" y="82" text-anchor="middle" font-size="13" font-weight="900" fill="#1e3a8a" font-family="Arial,sans-serif" textLength="150" lengthAdjust="spacingAndGlyphs">MERCADO ENVIOS</text>
+    <path d="M204 96 v-52 q0 -8 8 -8 h34 q8 0 13 6 l24 30 q5 6 5 13 v11z" fill="#ffd60a" stroke="#a16207" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M232 44 h14 q5 0 8 4 l18 24 h-40z" fill="#9fd3f5" stroke="#475569" stroke-width="2" stroke-linejoin="round"/>
+    <rect x="214" y="70" width="10" height="3" rx="1.5" fill="#92400e"/>
+    <path d="M280 80 h8 v8 h-8z" fill="#fff7d6" stroke="#ca8a04" stroke-width="1.5"/>
+    <rect x="2" y="96" width="290" height="8" rx="3" fill="#374151"/>
+    <rect x="2" y="80" width="6" height="12" rx="1" fill="#ef4444"/>
+  </g>
+  ${RODA(48, 110, 17)}${RODA(150, 110, 17)}${RODA(256, 110, 17)}</svg>`;
+
   let cssPronto = false;
   function css() {
     if (cssPronto) return; cssPronto = true;
@@ -67,11 +86,11 @@
   // `largura`: px (número) ou qualquer medida CSS (ex.: '70vw').
   function passar(tipo, { duracao = 4000, largura } = {}) {
     css();
-    const svg = tipo === 'moto' ? svgMoto('FLEX') : tipo === 'picape' ? SVG_PICAPE : '';
+    const svg = tipo === 'moto' ? svgMoto('FLEX') : tipo === 'picape' ? SVG_PICAPE : tipo === 'caminhao' ? SVG_CAMINHAO : '';
     if (!svg) return null;
     const el = document.createElement('div');
     el.className = 'veic-passa veic-' + tipo;
-    const w = largura || (tipo === 'moto' ? 240 : 320);
+    const w = largura || (tipo === 'moto' ? 240 : tipo === 'caminhao' ? 420 : 320);
     el.style.width = typeof w === 'number' ? w + 'px' : w;
     el.style.setProperty('--dur', duracao + 'ms');
     el.innerHTML = svg;
@@ -80,5 +99,5 @@
     return el;
   }
 
-  window.Veiculos = { RODA, svgMoto, SVG_PICAPE, passar };
+  window.Veiculos = { RODA, svgMoto, SVG_PICAPE, SVG_CAMINHAO, passar };
 })();

@@ -1262,19 +1262,25 @@ function falarQuantidades(orders) {
   // "Envio Mercado Envios." etc. — mesma classificação do selo da tela (logLabel).
   // Logística desconhecida → não fala nada (o selo amarelo já avisa na tela).
   const lg = logLabel(orders[0].shipping_type);
-  const logisticaTexto = lg === 'Desconhecido' ? '' : `Envio ${lg}.`;
+  // Coleta UNIFULL (v187): a frase da coleta abre a fala (antes do título), então
+  // o "Envio Mercado Envios." do fim fica de fora pra não repetir.
+  const coleta = ehColetaUnifull(orders);
+  const logisticaTexto = lg === 'Desconhecido' || coleta ? '' : `Envio ${lg}.`;
   // Ponto no fim do título → a voz faz a pausa antes da logística (senão emenda as palavras).
   const tituloFala = logisticaTexto && titulosTexto && !/[.!?]$/.test(titulosTexto.trim()) ? `${titulosTexto.trim()}.` : titulosTexto;
   // Sequência de voz de sempre: quantidade+título, lembrete de bipar de novo
   // e, pra 2+ produtos, o reforço de atenção. Extraída numa função pra poder
   // rodar na hora (pedido único) ou só depois do bipe triplo (2+, ver abaixo).
   const falarSequencia = () => {
+    // Coleta UNIFULL (v187, pedido do usuário): frase da coleta LOGO NO COMEÇO,
+    // na 3ª voz; a leitura do título entra depois (sem cancelar a frase).
+    if (coleta) falarTexto(FRASE_COLETA_UNIFULL, { cancelarAnterior: true, vozTerceira: true });
     if (totalProdutos === 1) {
       // Pedido de 1 unidade só (v113.9, ajustado na v113.10 — pedido explícito
       // do usuário: "sempre o título deve ser lido primeiro"). Lê quantidade+
       // título igual todo o resto, DEPOIS entra com a frase de atenção — de
       // preferência numa voz feminina, só pra diferenciar da fala padrão.
-      falarTexto(`Pedido com 1 unidade. ${tituloFala} ${logisticaTexto}`.trim(), { cancelarAnterior: true, vozFeminina: true });
+      falarTexto(`Pedido com 1 unidade. ${tituloFala} ${logisticaTexto}`.trim(), { cancelarAnterior: !coleta, vozFeminina: true });
       // Frase cadastrada por anúncio (v114) — pedido explícito do usuário:
       // logo após a leitura do título, antes do resto da sequência de sempre.
       falarObservacoesEmbalagem(orders);
@@ -1282,7 +1288,7 @@ function falarQuantidades(orders) {
     } else {
       // cancela fala anterior ainda tocando (bipagem rápida em sequência) antes
       // de falar a quantidade+título.
-      falarTexto(`${qtdTexto} ${tituloFala} ${logisticaTexto}`.trim(), { cancelarAnterior: true });
+      falarTexto(`${qtdTexto} ${tituloFala} ${logisticaTexto}`.trim(), { cancelarAnterior: !coleta });
       // Frase cadastrada por anúncio (v114) — logo após o título, mesma posição do outro ramo acima.
       falarObservacoesEmbalagem(orders);
     }
@@ -1316,6 +1322,7 @@ function falarQuantidades(orders) {
 // (não vai mais na Montana). Regra: logística Mercado Envios + loja com
 // "UNIFULL" no apelido + data de hoje ≥ COLETA_UNIFULL_DESDE. Demais lojas
 // seguem na Montana. Ver .claude/embalagem.md e business-rules.md.
+const FRASE_COLETA_UNIFULL = 'Pedido coleta Mercado Livre. Deixar separado para coleta do caminhão Mercado Livre.'; // frase do usuário
 const COLETA_UNIFULL_DESDE = '2026-11-19'; // coleta real começa 24/11; ligado antes a pedido do usuário pra equipe se acostumar
 function ehColetaUnifull(orders) {
   const o = orders?.[0];
@@ -1424,7 +1431,7 @@ async function finalizeCurrent() {
     const lg = logLabel(session.orders?.[0]?.shipping_type);
     if (lg === 'Flex') falarTexto('Envio Flex, por favor separar.');
     // Coleta UNIFULL: frase do usuário na 3ª voz e, quando ela termina, 4 bipes altos.
-    else if (ehColetaUnifull(session.orders)) falarTexto('Pedido coleta Mercado Livre. Deixar separado para coleta do caminhão Mercado Livre.', { vozTerceira: true, aoTerminar: () => playBipColeta(4) });
+    else if (ehColetaUnifull(session.orders)) falarTexto(FRASE_COLETA_UNIFULL, { vozTerceira: true, aoTerminar: () => playBipColeta(4) });
     else if (lg === 'Mercado Envios') falarTexto('Envio Mercado Envios, separar para enviar na Montana.');
   };
   bipesAntesDaFala(session.orders, totalProdutosSessao, falarFinalizacao, false); // coleta UNIFULL: os 4 bipes altos vão no FIM da frase (v187)

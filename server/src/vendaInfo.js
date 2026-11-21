@@ -137,14 +137,28 @@ function linhaSugestaoPreco({ linha, buybox, cobertura, unidadesDia, promo }) {
 // MERCADO ENVIOS/COLETA — a Tela Telegram lê essa linha (lojaDaVenda) pra
 // escolher a animação (moto/picape/raio). Só no aviso de venda; o resto do
 // sistema (e-mail, relatórios) continua com fmtLogistica.
-function linhaEnvio(label) {
+// Coleta no local da UNIFULL (v187, pedido do usuário): o Mercado Envios da
+// UNIFULL é coletado todo dia no galpão pelo caminhão do ML — não vai na Montana.
+// Mesma regra da Embalagem (pages/embalagem.html, ehColetaUnifull): loja UNIFULL
+// (apelido ou conta 1662123376) + Mercado Envios + data (SP) ≥ COLETA_UNIFULL_DESDE.
+// A coleta começa 24/11; ligado desde 19/11 a pedido do usuário (equipe se acostumar).
+const COLETA_UNIFULL_DESDE = '2026-11-19';
+const UNIFULL_STORE_ID = '1662123376';
+function ehColetaUnifull({ label, loja, storeId, agora = new Date() } = {}) {
+  if (!String(label || '').toLowerCase().includes('mercado envios')) return false;
+  if (!/UNIFULL/i.test(String(loja || '')) && String(storeId) !== UNIFULL_STORE_ID) return false;
+  return agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) >= COLETA_UNIFULL_DESDE;
+}
+
+function linhaEnvio(label, { coletaCaminhao = false } = {}) {
   const l = String(label || '').toLowerCase();
   if (l.includes('flex'))           return '🚚 🏍️💨⚡ <b>ENVIO FLEX</b> ⚡💨🏍️ — separar já!';
+  if (l.includes('mercado envios') && coletaCaminhao) return '🚚 🚛📦📮 <b>COLETA MERCADO LIVRE</b> 📮📦🚛 — caminhão irá coletar, deixar separado';
   if (l.includes('mercado envios')) return '🚚 🛻📦📮 <b>MERCADO ENVIOS</b> 📮📦🛻 — separar para a Montana';
   if (l.includes('full'))           return '🚚 🏭⚡📦 <b>FULL</b> 📦⚡🏭 — sai do estoque do ML, não separar';
   if (l.includes('coleta'))         return '🚚 🏠📦🙋 <b>COLETA</b> 🙋📦🏠';
   return `🚚 ${label || '—'}`;
 }
 
-module.exports = { linhaEnvio, chaveBuybox, linhaRitmo, textoCobertura, diasCobertura, linhaConversao, linhaPromocao, linhaBuybox,
+module.exports = { linhaEnvio, ehColetaUnifull, COLETA_UNIFULL_DESDE, chaveBuybox, linhaRitmo, textoCobertura, diasCobertura, linhaConversao, linhaPromocao, linhaBuybox,
   simularPreco, linhaSugestaoPreco, SUBIR_PCT, COBERTURA_MAX_DIAS, VELOCIDADE_MIN };

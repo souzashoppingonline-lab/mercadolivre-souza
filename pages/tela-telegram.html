@@ -88,6 +88,7 @@
     .vv .txt-t { font-weight:900; text-transform:uppercase; letter-spacing:.3px; }
     /* van + bandeira */
     .vv-van { width:300px; } body.tv .vv-van { width:360px; }
+    .vv-caminhao { width:380px; } body.tv .vv-caminhao { width:450px; } /* coleta UNIFULL (v187) */
     .vv-van .mastro { position:absolute; left:16%; bottom:84%; width:5px; height:92px; background:linear-gradient(#e5e7eb,#9ca3af); border-radius:3px; }
     .vv-van .bandeira { position:absolute; left:calc(16% + 5px); bottom:calc(84% + 30px); background:#fff; border:3px solid #2d3277; border-left-width:6px; border-radius:2px 10px 10px 2px; padding:6px 14px 7px 10px; min-width:120px; max-width:230px; transform-origin:left center; animation:vvTremula .6s ease-in-out infinite; box-shadow:0 6px 16px rgba(0,0,0,.45); }
     .vv-van .bandeira .txt-l { font-size:20px; } .vv-van .bandeira .txt-t { font-size:12px; color:#2d3277; }
@@ -275,7 +276,7 @@
       body.m-ajustes .ctrls > * { width:100%; font-size:16px !important; padding:13px 14px !important; border-radius:12px !important; text-align:left; }
       body.m-ajustes .m-aj-tit { display:block; font-size:13px; color:var(--muted); font-weight:800; text-transform:uppercase; padding:0 2px !important; background:none !important; border:none !important; }
       body.m-ajustes #btnTv, body.m-ajustes #btnLink { display:none; }
-      .vv-van { width:210px; } .vv-van .mastro { height:66px; } .vv-van .bandeira { bottom:calc(84% + 20px); min-width:90px; padding:4px 9px 5px 7px; } .vv-van .bandeira .txt-l { font-size:15px; }
+      .vv-van { width:210px; } .vv-caminhao { width:260px; } .vv-van .mastro { height:66px; } .vv-van .bandeira { bottom:calc(84% + 20px); min-width:90px; padding:4px 9px 5px 7px; } .vv-van .bandeira .txt-l { font-size:15px; }
       .vv-moto { width:180px; } .vv-moto .placa-bau .txt-l { font-size:13px; }
       .vv-full { width:230px; } .vv-full svg { width:80px; } .vv-full .placa-full { margin-bottom:46px; } .vv-full .placa-full .txt-l { font-size:15px; }
       .vv-balao { width:125px; } .vv-balao .dentro .txt-l { font-size:13px; } .vv-balao .dentro .txt-t { font-size:10px; } .vv-balao .dentro .ico { font-size:24px; }
@@ -534,6 +535,7 @@ function lojaDaVenda(m) {
   const envio = linhas.find(x => x.trim().startsWith('🚚')) || '';
   const tipo = /Shopee/i.test(m.texto || '') ? 'shopee'
     : /full/i.test(envio) ? 'full' : /flex/i.test(envio) ? 'flex'
+    : /coleta mercado livre/i.test(envio) ? 'coleta'   // coleta no local UNIFULL (v187): caminhão amarelo
     : /mercado envios|coleta/i.test(envio) ? 'envios' : 'nada';
   return { loja: loja.replace(/_+/g, ' '), tipo };
 }
@@ -551,6 +553,7 @@ const SVG_RAIO = `<svg viewBox="0 0 120 200" aria-hidden="true"><path d="M72 4 L
 const svgBalao = (cor, borda) => `<svg viewBox="0 0 160 260" aria-hidden="true"><path d="M80 6 C30 6 8 46 8 84 C8 132 52 166 76 176 L70 186 h20 L84 176 C108 166 152 132 152 84 C152 46 130 6 80 6z" fill="${cor}" stroke="${borda}" stroke-width="3"/><ellipse cx="48" cy="58" rx="13" ry="24" fill="#fff" opacity=".35" transform="rotate(-20 48 58)"/><path d="M80 186 q-14 20 0 38 q14 18 0 34" stroke="#cbd5e1" stroke-width="2.5" fill="none"/></svg>`;
 function htmlVenda(v) {
   const loja = esc(v.loja);
+  if (v.tipo === 'coleta') return { cls: 'vv-anda vv-van vv-caminhao', html: `<div class="mastro"></div><div class="bandeira"><div class="txt-t">🚛 Coleta Mercado Livre</div><div class="txt-l">${loja}</div></div>${window.Veiculos.SVG_CAMINHAO}` };
   if (v.tipo === 'envios') return { cls: 'vv-anda vv-van', html: `<div class="mastro"></div><div class="bandeira"><div class="txt-t">📦 Mercado Envios</div><div class="txt-l">${loja}</div></div>${SVG_VAN}` };
   if (v.tipo === 'flex') return { cls: 'vv-anda vv-moto', html: `<div class="placa-bau"><div class="txt-t">🏍️ Flex</div><div class="txt-l">${loja}</div></div>${SVG_MOTO}` };
   if (v.tipo === 'full') return { cls: 'vv-anda vv-full', html: `${SVG_RAIO}<div class="placa-full"><div class="txt-t">⚡ Full</div><div class="txt-l">${loja}</div></div>` };
@@ -588,7 +591,7 @@ function bipeVenda() {
   g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.12, ini + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.12);
   o.connect(g).connect(c.destination); o.start(ini); o.stop(ini + 0.13);
 }
-const TIPOS_DEMO = ['envios', 'flex', 'full', 'nada', 'shopee']; let demoIdx = 0;
+const TIPOS_DEMO = ['envios', 'coleta', 'flex', 'full', 'nada', 'shopee']; let demoIdx = 0;
 function botaoCara() { document.getElementById('btnCara').textContent = caraLigada ? '🎉 Venda' : '🎉 Venda (desl.)'; }
 document.getElementById('btnCara').onclick = () => {
   caraLigada = !caraLigada; try { localStorage.setItem('tela_tg_carinha', caraLigada ? '1' : '0'); } catch (_) {}

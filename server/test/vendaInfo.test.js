@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { linhaEnvio, linhaRitmo, textoCobertura, linhaConversao, linhaPromocao, linhaBuybox, simularPreco, linhaSugestaoPreco, diasCobertura } = require('../src/vendaInfo');
+const { linhaEnvio, ehColetaUnifull, linhaRitmo, textoCobertura, linhaConversao, linhaPromocao, linhaBuybox, simularPreco, linhaSugestaoPreco, diasCobertura } = require('../src/vendaInfo');
 
 test('ritmo do anúncio', () => {
   assert.match(linhaRitmo({ hoje: 3, d7: 21 }), /3ª venda<\/b> deste anúncio hoje · 21 nos últimos 7 dias/);
@@ -94,4 +94,17 @@ test('linha de envio em destaque (Tela Telegram continua reconhecendo o tipo)', 
   assert.strictEqual(tipo(co), 'envios');
   assert.strictEqual(linhaEnvio('—'), '🚚 —');
   assert.strictEqual(linhaEnvio(''), '🚚 —');
+});
+
+test('coleta UNIFULL: Mercado Envios da UNIFULL vai pro caminhão, não pra Montana', () => {
+  const d = new Date('2026-11-21T15:00:00Z');
+  assert.strictEqual(ehColetaUnifull({ label: '📮 Mercado Envios', loja: 'UNIFULL_MULTIMERCADO', agora: d }), true);
+  assert.strictEqual(ehColetaUnifull({ label: '📮 Mercado Envios', loja: '', storeId: 1662123376, agora: d }), true);
+  assert.strictEqual(ehColetaUnifull({ label: '📮 Mercado Envios', loja: 'R SOUZA', agora: d }), false);
+  assert.strictEqual(ehColetaUnifull({ label: '🏃 Flex', loja: 'UNIFULL_MULTIMERCADO', agora: d }), false);
+  assert.strictEqual(ehColetaUnifull({ label: '📮 Mercado Envios', loja: 'UNIFULL_MULTIMERCADO', agora: new Date('2026-11-18T15:00:00Z') }), false);
+  const c = linhaEnvio('📮 Mercado Envios', { coletaCaminhao: true });
+  assert.match(c, /<b>COLETA MERCADO LIVRE<\/b>/); assert.match(c, /caminhão irá coletar/); assert.doesNotMatch(c, /Montana/);
+  assert.ok(c.startsWith('🚚'));
+  assert.match(linhaEnvio('📮 Mercado Envios'), /Montana/);
 });

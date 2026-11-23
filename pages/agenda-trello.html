@@ -29,13 +29,19 @@
     .at-btn.danger { border-color: var(--red); color: var(--red); margin-right: auto; }
     .at-btn.danger:hover { background: rgba(231,76,60,.12); }
 
-    .at-board { display: grid; grid-template-columns: repeat(4, minmax(260px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 8px; }
-    @media (max-width: 1100px) { .at-board { grid-template-columns: repeat(4, 300px); } }
+    .at-board { display: grid; grid-template-columns: repeat(5, minmax(240px, 1fr)); gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+    @media (max-width: 1300px) { .at-board { grid-template-columns: repeat(5, 280px); } }
     .at-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; min-height: 200px; max-height: calc(100vh - 340px); }
     .at-col-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
     .at-col-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: center; gap: 8px; }
     .at-col-count { background: var(--bg-card2); border-radius: 20px; font-size: 11px; font-weight: 700; padding: 2px 9px; color: var(--text-muted); }
-    .at-col[data-col="a_fazer"] .at-col-title i { color: var(--blue); }
+    .at-col[data-col="a_fazer_manual"] .at-col-title i { color: var(--primary); }
+    .at-col[data-col="a_fazer_auto"] .at-col-title i { color: var(--blue); }
+    /* Manual = mais importante (v188): borda amarela + cabeçalho destacado */
+    .at-col-manual { border: 2px solid var(--primary); box-shadow: 0 0 0 3px rgba(255,230,0,.08); }
+    .at-col-manual .at-col-head { background: rgba(255,230,0,.08); border-radius: 12px 12px 0 0; }
+    .at-col-flag { align-self: flex-start; font-size: 9px; font-weight: 900; background: var(--primary); color: #111; border-radius: 10px; padding: 2px 7px; letter-spacing: .3px; }
+    .at-col-auto { opacity: .92; }
     .at-col[data-col="em_andamento"] .at-col-title i { color: var(--orange); }
     .at-col[data-col="finalizado"] .at-col-title i { color: var(--green); }
     .at-col[data-col="excluido"] .at-col-title i { color: var(--red); }
@@ -163,15 +169,28 @@
 
       <!-- ═══ QUADRO KANBAN ═══ -->
       <div class="at-board" id="atBoard">
-        <div class="at-col" data-col="a_fazer">
+        <!-- A Fazer dividido em 2 (v188, pedido do usuário): MANUAL (mais importante,
+             destacado, primeiro) e AUTOMÁTICO (TaskEngine). As duas são a mesma
+             board_column 'a_fazer' no banco — a divisão é só visual, pela origem (source). -->
+        <div class="at-col at-col-manual" data-col="a_fazer_manual">
           <div class="at-col-head">
-            <div class="at-col-title"><i class="fas fa-inbox"></i> A Fazer</div>
+            <div class="at-col-title"><i class="fas fa-star"></i><span style="display:flex;flex-direction:column;gap:3px">A Fazer — Manual<span class="at-col-flag">⭐ Prioridade</span></span></div>
             <div style="display:flex;align-items:center;gap:8px">
-              <span class="at-col-count" id="cnt_a_fazer">0</span>
-              <button class="at-col-clear-btn" id="btnExcluir_a_fazer" onclick="excluirColuna('a_fazer')" title="Mover todos os cartões desta coluna para Excluído" style="display:none"><i class="fas fa-trash"></i></button>
+              <span class="at-col-count" id="cnt_a_fazer_manual">0</span>
+              <button class="at-col-clear-btn" id="btnExcluir_a_fazer_manual" onclick="excluirColuna('a_fazer_manual')" title="Mover todos os cartões desta coluna para Excluído" style="display:none"><i class="fas fa-trash"></i></button>
             </div>
           </div>
-          <div class="at-col-body" id="body_a_fazer"></div>
+          <div class="at-col-body" id="body_a_fazer_manual"></div>
+        </div>
+        <div class="at-col at-col-auto" data-col="a_fazer_auto">
+          <div class="at-col-head">
+            <div class="at-col-title"><i class="fas fa-robot"></i> A Fazer — Automático</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="at-col-count" id="cnt_a_fazer_auto">0</span>
+              <button class="at-col-clear-btn" id="btnExcluir_a_fazer_auto" onclick="excluirColuna('a_fazer_auto')" title="Mover todos os cartões desta coluna para Excluído" style="display:none"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+          <div class="at-col-body" id="body_a_fazer_auto"></div>
         </div>
         <div class="at-col" data-col="em_andamento">
           <div class="at-col-head">
@@ -279,7 +298,12 @@
 <script src="../js/layout.js"></script>
 <script src="../js/sidebar.js"></script>
 <script>
-const COLS = ['a_fazer', 'em_andamento', 'finalizado', 'excluido'];
+// Colunas VISUAIS do quadro. 'a_fazer_manual'/'a_fazer_auto' (v188) são a mesma
+// board_column 'a_fazer' no banco, separadas pela origem: source='manual' (criada
+// à mão, mais importante) × qualquer outra (TaskEngine/sistema).
+const COLS = ['a_fazer_manual', 'a_fazer_auto', 'em_andamento', 'finalizado', 'excluido'];
+const colVisual = t => t.board_column === 'a_fazer' ? (t.source === 'manual' ? 'a_fazer_manual' : 'a_fazer_auto') : t.board_column;
+const colBanco = col => col.startsWith('a_fazer') ? 'a_fazer' : col;
 const PRIO_LABEL = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
 const ORIGEM_LABEL = { mercado_livre: 'Mercado Livre', amazon: 'Amazon', shopee: 'Shopee', sistema: 'Sistema', manual: 'Manual' };
 let tasksCache = [];
@@ -360,7 +384,7 @@ function cardHtml(t) {
 
 function renderBoard() {
   COLS.forEach(col => {
-    const items = tasksCache.filter(t => t.board_column === col);
+    const items = tasksCache.filter(t => colVisual(t) === col);
     document.getElementById(`cnt_${col}`).textContent = items.length;
     const body = document.getElementById(`body_${col}`);
     body.innerHTML = items.length ? items.map(cardHtml).join('') : '<div class="at-col-empty">Nenhuma tarefa</div>';
@@ -390,17 +414,19 @@ async function excluirTodosDaLixeira() {
   loadSummary();
 }
 
-const COL_LABEL = { a_fazer: 'A Fazer', em_andamento: 'Em Andamento', finalizado: 'Finalizado' };
+const COL_LABEL = { a_fazer_manual: 'A Fazer — Manual', a_fazer_auto: 'A Fazer — Automático', em_andamento: 'Em Andamento', finalizado: 'Finalizado' };
 
 // Move todos os cartões de uma coluna pra Excluído de uma vez — pedido do
 // usuário: mesmo botão da coluna Excluído, mas aqui é MOVER (reversível),
 // não apagar — mantém o fluxo de 2 passos (excluirTodosDaLixeira acima é
 // quem apaga de vez, só a partir da coluna Excluído).
 async function excluirColuna(col) {
-  const n = tasksCache.filter(t => t.board_column === col).length;
+  const n = tasksCache.filter(t => colVisual(t) === col).length;
   if (!n) return;
   if (!confirm(`Mover os ${n} cartão(ões) de "${COL_LABEL[col]}" para Excluído?`)) return;
-  const res = await DB.moverColunaParaExcluido(col);
+  // A Fazer dividido (v188): manda a origem pra rota mover só a metade certa.
+  const origem = col === 'a_fazer_manual' ? 'manual' : col === 'a_fazer_auto' ? 'auto' : undefined;
+  const res = await DB.moverColunaParaExcluido(colBanco(col), origem);
   if (!res || res.error) { alert('Erro ao mover: ' + (res?.error || DB.lastError || 'motivo desconhecido')); return; }
   loadBoard();
   loadSummary();
@@ -426,10 +452,11 @@ COLS.forEach(col => {
     const id = e.dataTransfer.getData('text/plain') || draggedId;
     if (!id) return;
     const task = tasksCache.find(t => String(t.id) === String(id));
-    if (!task || task.board_column === col) return;
-    task.board_column = col;
+    const destino = colBanco(col);   // as duas "A Fazer" gravam 'a_fazer' (o cartão vai pra sua metade pela origem)
+    if (!task || task.board_column === destino) return;
+    task.board_column = destino;
     renderBoard();
-    await DB.updateTask(id, { board_column: col });
+    await DB.updateTask(id, { board_column: destino });
     loadSummary();
   });
 });

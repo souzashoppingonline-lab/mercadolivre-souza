@@ -176,13 +176,19 @@ router.patch('/:id', async (req, res) => {
 // PATCH /:id já aplica ao mover um cartão pra fora de 'finalizado'.
 router.post('/mover-para-excluido', async (req, res) => {
   try {
-    const { column } = req.body || {};
+    const { column, origem } = req.body || {};
     if (!['a_fazer', 'em_andamento', 'finalizado'].includes(column)) {
       return res.status(400).json({ error: 'column inválida' });
     }
+    // `origem` opcional (v188 — A Fazer dividido em Manual/Automático na tela):
+    // 'manual' = só source='manual'; 'auto' = todo o resto. Sem ela, a coluna inteira.
+    if (origem !== undefined && !['manual', 'auto'].includes(origem)) {
+      return res.status(400).json({ error: 'origem inválida (manual|auto)' });
+    }
+    const filtroOrigem = origem === 'manual' ? ` AND source = 'manual'` : origem === 'auto' ? ` AND source IS DISTINCT FROM 'manual'` : '';
     const { rows } = await pool.query(
       `UPDATE tasks SET board_column = 'excluido', status = 'aberto', completed_at = NULL, updated_at = now()
-       WHERE board_column = $1 RETURNING id`,
+       WHERE board_column = $1${filtroOrigem} RETURNING id`,
       [column]
     );
     res.json({ ok: true, count: rows.length });

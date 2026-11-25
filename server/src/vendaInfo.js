@@ -153,7 +153,7 @@ function ehColetaUnifull({ label, loja, storeId, agora = new Date() } = {}) {
 function linhaEnvio(label, { coletaCaminhao = false } = {}) {
   const l = String(label || '').toLowerCase();
   if (l.includes('flex'))           return '🚚 🏍️💨⚡ <b>ENVIO FLEX</b> ⚡💨🏍️ — separar já!';
-  if (l.includes('mercado envios') && coletaCaminhao) return '🚚 🚛📦📮 <b>COLETA MERCADO LIVRE</b> 📮📦🚛 — caminhão irá coletar, deixar separado';
+  if (l.includes('mercado envios') && coletaCaminhao) return '🚚 🚛📦📮 <b>COLETA MERCADO LIVRE</b> 📮📦🚛 — separar para coleta do Mercado Livre';
   if (l.includes('mercado envios')) return '🚚 🛻📦📮 <b>MERCADO ENVIOS</b> 📮📦🛻 — separar para a Montana';
   if (l.includes('full'))           return '🚚 🏭⚡📦 <b>FULL</b> 📦⚡🏭 — sai do estoque do ML, não separar';
   if (l.includes('coleta'))         return '🚚 🏠📦🙋 <b>COLETA</b> 🙋📦🏠';

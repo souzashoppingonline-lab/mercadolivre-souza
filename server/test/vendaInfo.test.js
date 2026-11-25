@@ -104,7 +104,7 @@ test('coleta UNIFULL: Mercado Envios da UNIFULL vai pro caminhão, não pra Mont
   assert.strictEqual(ehColetaUnifull({ label: '🏃 Flex', loja: 'UNIFULL_MULTIMERCADO', agora: d }), false);
   assert.strictEqual(ehColetaUnifull({ label: '📮 Mercado Envios', loja: 'UNIFULL_MULTIMERCADO', agora: new Date('2026-11-18T15:00:00Z') }), false);
   const c = linhaEnvio('📮 Mercado Envios', { coletaCaminhao: true });
-  assert.match(c, /<b>COLETA MERCADO LIVRE<\/b>/); assert.match(c, /caminhão irá coletar/); assert.doesNotMatch(c, /Montana/);
+  assert.match(c, /<b>COLETA MERCADO LIVRE<\/b>/); assert.match(c, /separar para coleta do Mercado Livre/); assert.doesNotMatch(c, /Montana/);
   assert.ok(c.startsWith('🚚'));
   assert.match(linhaEnvio('📮 Mercado Envios'), /Montana/);
 });

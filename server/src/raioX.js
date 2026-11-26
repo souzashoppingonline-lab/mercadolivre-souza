@@ -216,6 +216,37 @@ function alertaQueda({ tendencia: t = {}, buybox = null, cobertura = null } = {}
   return { pct: u.pct, atual: u.atual, anterior: u.anterior, motivos };
 }
 
-module.exports = { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes,
+// ── v189.3: margem de contribuição das vendas do anúncio ──────────────────
+// `linhas` = linhas de VENDA_DETALHE_SELECT já passadas por calcularMargemLinha
+// (vendaMargem.js — a MESMA fórmula do Resumo por Venda; nunca uma 2ª fórmula).
+// Mesmas colunas do card do Resumo por Venda: venda, frete vend., tarifa, custo, imposto, margem e MC%.
+function resumoMargem(linhas = [], { agora = new Date(), janelas = [7, 30], ultimas = 10 } = {}) {
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const bloco = (lista) => {
+    const s = (f) => lista.reduce((a, l) => a + (Number(f(l)) || 0), 0);
+    const faturamento = s((l) => l.faturamento), margem = s((l) => l.margem);
+    return {
+      vendas: lista.length, unidades: s((l) => l.quantity), faturamento: r2(faturamento), custo: r2(s((l) => l.custo)),
+      imposto: r2(s((l) => l.imposto)), tarifa: r2(s((l) => l.tarifa)), frete_vend: r2(s((l) => l.freteVend)), frete_comprador: r2(s((l) => l.frete_comprador)),
+      margem: r2(margem), mc_pct: faturamento > 0 ? r1((margem / faturamento) * 100) : null,
+      confirmadas: lista.filter((l) => l.fonte_taxa && l.fonte_taxa !== 'pedido').length,
+    };
+  };
+  const porJanela = janelas.map((n) => ({ dias: n, ...bloco(linhas.filter((l) => agora - new Date(l.date_created) < n * 86400000)) }));
+  const ord = [...linhas].sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
+  return {
+    janelas: porJanela,
+    custo_ausente: linhas.some((l) => l.custo_ausente),
+    imposto_pct: linhas.length ? Number(linhas[0].imposto_pct) || 0 : null,
+    ultimas: ord.slice(0, ultimas).map((l) => ({
+      pedido: l.ml_id, data: l.date_created, unidades: Number(l.quantity) || 0, faturamento: r2(Number(l.faturamento) || 0),
+      custo: r2(Number(l.custo) || 0), imposto: r2(Number(l.imposto) || 0), tarifa: r2(Number(l.tarifa) || 0),
+      frete_vend: r2(Number(l.freteVend) || 0), frete_comprador: r2(Number(l.frete_comprador) || 0), margem: r2(Number(l.margem) || 0),
+      mc_pct: l.mc_pct, confirmada: !!(l.fonte_taxa && l.fonte_taxa !== 'pedido'), logistica: l.frete_tipo || null,
+    })),
+  };
+}
+
+module.exports = { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes, resumoMargem,
   comparacaoMes, eventosPreco, quandoVende, alertaQueda, DIAS_GRAFICO, QUEDA_ALERTA_PCT, QUEDA_MIN_UNIDADES, QUEDA_VISITAS_PCT, JANELAS_RAIO_X, DIAS_SERIE_RAIO_X, PESO_RECENTE,
   TENDENCIA_ESTAVEL_PCT, REPOR_URGENTE_DIAS, REPOR_ATENCAO_DIAS };

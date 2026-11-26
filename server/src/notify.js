@@ -41,7 +41,7 @@ async function tgNotifyForce(topic, text, extra = {}) {
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
     const j = await r.json().catch(() => ({}));
-    if (j.ok) await registrarMensagem({ topico: topic, texto: text, imagem: extra.imagem });
+    if (j.ok) await registrarMensagem({ topico: topic, texto: text, imagem: extra.imagem, itemId: extra.itemId });
   } catch (e) { console.error('[notify] tgNotifyForce error:', e.message); }
 }
 
@@ -75,7 +75,7 @@ async function tgNotify(topic, text, extra = {}) {
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     });
     const j = await r.json();
-    if (j && j.ok) await registrarMensagem({ topico: topic, texto: text, imagem: extra.imagem });
+    if (j && j.ok) await registrarMensagem({ topico: topic, texto: text, imagem: extra.imagem, itemId: extra.itemId });
     return j?.result?.message_id || null;
   } catch (e) {
     console.error('[notify] tgNotify error:', e.message);

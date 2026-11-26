@@ -25,8 +25,8 @@ async function listar(req, res) {
     const depois = Number(req.query.depois_id) || 0;
     const limit = Math.min(Math.max(Number(req.query.limit) || 150, 1), 500);
     const { rows } = depois
-      ? await pool.query(`SELECT id, topico, texto, html, direcao, autor, imagem, criado_em FROM telegram_mensagens WHERE id > $1 AND COALESCE(topico, '') <> ALL($3::text[]) ORDER BY id ASC LIMIT $2`, [depois, limit, FORA_DA_TELA])
-      : await pool.query(`SELECT * FROM (SELECT id, topico, texto, html, direcao, autor, imagem, criado_em FROM telegram_mensagens WHERE COALESCE(topico, '') <> ALL($2::text[]) ORDER BY id DESC LIMIT $1) x ORDER BY id ASC`, [limit, FORA_DA_TELA]);
+      ? await pool.query(`SELECT id, topico, texto, html, direcao, autor, imagem, item_id, criado_em FROM telegram_mensagens WHERE id > $1 AND COALESCE(topico, '') <> ALL($3::text[]) ORDER BY id ASC LIMIT $2`, [depois, limit, FORA_DA_TELA])
+      : await pool.query(`SELECT * FROM (SELECT id, topico, texto, html, direcao, autor, imagem, item_id, criado_em FROM telegram_mensagens WHERE COALESCE(topico, '') <> ALL($2::text[]) ORDER BY id DESC LIMIT $1) x ORDER BY id ASC`, [limit, FORA_DA_TELA]);
     const { rows: h } = await pool.query(`SELECT COUNT(*)::int AS n FROM telegram_mensagens WHERE criado_em >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo' AND COALESCE(topico, '') <> ALL($1::text[])`, [FORA_DA_TELA]);
     res.json({ mensagens: rows, hoje: h[0].n });
   } catch (e) {

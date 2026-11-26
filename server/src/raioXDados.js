@@ -7,6 +7,8 @@ const pool = require('./db/pool');
 const analistaEcom = require('./analistaEcom');
 const raioX = require('./raioX');
 const { fotoGrande } = require('./telegramLog');
+const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo, buscarFreteMotoboy } = require('./vendaMargem');
+const MARGEM_DIAS = 30;
 
 const DEVOLUCOES_DIAS = 90;
 const QUANDO_VENDE_DIAS = 90;
@@ -59,6 +61,21 @@ async function montarRaioX(mlId) {
     pool.query(`SELECT status, previous_status, promo_price, discount_pct, changed_at FROM promotions WHERE item_id = $1 AND changed_at >= CURRENT_DATE - 30 ORDER BY changed_at`, [mlId]),
   ]);
 
+  // Margem de contribuição das vendas dos últimos 30 dias (v189.3) — a MESMA consulta e
+  // fórmula do Resumo por Venda (vendaMargem.js): custo do anúncio, imposto % da loja
+  // (stores.imposto_pct, regra do Flex sem imposto), tarifa e frete já gravados de cada venda
+  // (manual > Conciliação > pagamento > pedido). Só ML (vw_ml_orders).
+  let margem = null;
+  if (ml) {
+    const [{ rows: vendas }, impostoFlexAtivo, freteMotoboy] = await Promise.all([
+      pool.query(`${VENDA_DETALHE_SELECT}
+         WHERE o.item_id = $1 AND o.status <> 'cancelled' AND o.date_created >= now() - ($2::int * INTERVAL '1 day')
+         ORDER BY o.date_created DESC LIMIT 2000`, [mlId, MARGEM_DIAS]),
+      buscarImpostoFlexAtivo(), buscarFreteMotoboy(),
+    ]);
+    margem = raioX.resumoMargem(vendas.map((r) => calcularMargemLinha(r, impostoFlexAtivo, freteMotoboy)));
+  }
+
   const [seo, bb, dev] = ml ? await Promise.all([
     pool.query(`SELECT * FROM item_seo_score WHERE item_id = $1`, [mlId]),
     pool.query(`SELECT * FROM catalog_competition WHERE item_id = $1`, [mlId]),
@@ -89,6 +106,7 @@ async function montarRaioX(mlId) {
     mes_passado: raioX.comparacaoMes(dias),
     eventos: raioX.eventosPreco({ precos: precos.rows, promocoes: promos.rows }),
     quando_vende: raioX.quandoVende(quando.rows, QUANDO_VENDE_DIAS),
+    margem,
     alerta_queda: raioX.alertaQueda({ tendencia: resumo.tendencia, buybox, cobertura: resumo.cobertura }),
     devolucoes: ml ? raioX.resumoDevolucoes({ devolucoes: dev.rows[0].devolucoes, pedidos: dev.rows[0].pedidos, dias: DEVOLUCOES_DIAS }) : null,
   };

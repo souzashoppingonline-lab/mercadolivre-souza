@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes, comparacaoMes, eventosPreco, quandoVende, alertaQueda } = require('../src/raioX');
+const { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes, comparacaoMes, eventosPreco, quandoVende, alertaQueda, resumoMargem } = require('../src/raioX');
 
 // 31 dias (30 fechados + hoje). `un(i)` = unidades do dia i (0 = mais antigo).
 function serie(un, visitas = () => 100) {
@@ -98,4 +98,19 @@ test('faixa de queda: só quem vendia bem e caiu 30%+, com motivo', () => {
   assert.match(a.motivos[0], /Menos visitas/); assert.match(a.motivos[1], /buy box/);
   const b = alertaQueda({ tendencia: t(6, 14, 900, 900), cobertura: { nivel: 'ok' } });
   assert.match(b.motivos[0], /comprando menos/);
+});
+
+test('margem de contribuição: soma as vendas já calculadas pela fórmula do Resumo por Venda', () => {
+  const { calcularMargemLinha } = require('../src/vendaMargem');
+  const agora = new Date('2026-11-27T12:00:00Z');
+  const venda = (dia, extra = {}) => calcularMargemLinha({ ml_id: 'P' + dia, faturamento: 100, quantity: 1, custo: 40, imposto_pct: 4,
+    tarifa: 12, frete_comprador: 0, frete_vendedor: 8, frete_tipo: 'xd_drop_off', fonte_taxa: 'conciliacao',
+    date_created: new Date(agora - dia * 86400000).toISOString(), ...extra });
+  const m = resumoMargem([venda(1), venda(2, { fonte_taxa: 'pedido' }), venda(20)], { agora });
+  const j7 = m.janelas.find((j) => j.dias === 7), j30 = m.janelas.find((j) => j.dias === 30);
+  assert.strictEqual(j7.vendas, 2); assert.strictEqual(j30.vendas, 3);
+  assert.strictEqual(j7.margem, 72);            // 2 × (100 − 40 − 4 − 12 − 8) = 2 × 36
+  assert.strictEqual(j7.mc_pct, 36); assert.strictEqual(j7.confirmadas, 1);
+  assert.strictEqual(m.imposto_pct, 4);
+  assert.strictEqual(m.ultimas[0].pedido, 'P1'); assert.strictEqual(m.ultimas[1].confirmada, false);
 });

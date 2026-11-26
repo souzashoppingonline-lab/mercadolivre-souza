@@ -95,5 +95,53 @@ function frasesResumo({ tend7, tendVisitas7, cobertura, previsao }) {
   return f;
 }
 
-module.exports = { resumirRaioX, tendencia, JANELAS_RAIO_X, DIAS_SERIE_RAIO_X, PESO_RECENTE,
+// ── Blocos extras (v189.1): qualidade, concorrência, devoluções ──────────────
+
+// O que falta arrumar no anúncio, a partir da linha de item_seo_score (mesmos
+// limiares de seoScore.js — fonte única). Lista vazia = nada pendente.
+function pendenciasSeo(row) {
+  if (!row) return null;
+  const { THRESHOLDS } = require('./seoScore');
+  const p = [];
+  const fotos = Number(row.pictures_count) || 0;
+  if (fotos < THRESHOLDS.photosForFullScore) p.push(`Só ${fotos} foto(s) — o ideal é ${THRESHOLDS.photosForFullScore} ou mais`);
+  if (!row.has_video) p.push('Sem vídeo (clip)');
+  const desc = Number(row.description_word_count) || 0;
+  if (desc < THRESHOLDS.descriptionWordsForFullScore) p.push(`Descrição curta (${desc} palavras — ideal ${THRESHOLDS.descriptionWordsForFullScore}+)`);
+  const tit = Number(row.title_length) || 0;
+  if (tit && tit < THRESHOLDS.titleMaxChars * 0.7) p.push(`Título curto (${tit} de ${THRESHOLDS.titleMaxChars} caracteres)`);
+  if (row.has_gtin === false) p.push('Sem código de barras (GTIN)');
+  if (row.has_brand === false) p.push('Sem marca preenchida');
+  if (row.has_model === false) p.push('Sem modelo preenchido');
+  const faltam = Array.isArray(row.missing_required_attrs) ? row.missing_required_attrs : [];
+  if (faltam.length) p.push(`Atributos obrigatórios faltando: ${faltam.slice(0, 6).join(', ')}${faltam.length > 6 ? '…' : ''}`);
+  return { score: row.score == null ? null : Math.round(Number(row.score)), pendencias: p, calculado_em: row.calculated_at || null };
+}
+
+// Buy box (catalog_competition): ganhando = winner_item_id é o próprio anúncio
+// (mesma regra do Monitor de Buy-Box — ver decisions.md).
+function resumoBuybox(row, itemId) {
+  if (!row) return null;
+  const ganhando = row.winner_item_id ? String(row.winner_item_id) === String(itemId) : null;
+  return {
+    ganhando, meu_preco: row.current_price == null ? null : Number(row.current_price),
+    preco_vencedor: row.winner_price == null ? null : Number(row.winner_price),
+    preco_para_ganhar: row.price_to_win == null ? null : Number(row.price_to_win),
+    falta: Array.isArray(row.boosts_missing) ? row.boosts_missing : [],
+    calculado_em: row.calculated_at || null,
+  };
+}
+
+// Devoluções do anúncio na janela: total, taxa sobre os pedidos e motivos mais comuns.
+function resumoDevolucoes({ devolucoes = [], pedidos = 0, dias = 90 } = {}) {
+  const motivos = new Map();
+  for (const d of devolucoes) { const m = String(d.reason || 'Sem motivo informado').trim(); motivos.set(m, (motivos.get(m) || 0) + 1); }
+  return {
+    dias, total: devolucoes.length, pedidos,
+    taxa: pedidos > 0 ? r1((devolucoes.length / pedidos) * 100) : null,
+    motivos: [...motivos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([motivo, qtd]) => ({ motivo, qtd })),
+  };
+}
+
+module.exports = { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes, JANELAS_RAIO_X, DIAS_SERIE_RAIO_X, PESO_RECENTE,
   TENDENCIA_ESTAVEL_PCT, REPOR_URGENTE_DIAS, REPOR_ATENCAO_DIAS };

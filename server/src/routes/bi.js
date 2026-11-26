@@ -16,7 +16,6 @@ const ranking = require('../ranking');
 // margem no projeto.
 const { VENDA_DETALHE_SELECT, calcularMargemLinha, buscarImpostoFlexAtivo, buscarFreteMotoboy } = require('../vendaMargem');
 const analistaEcom = require('../analistaEcom');
-const raioX = require('../raioX');
 
 const router = express.Router();
 
@@ -1362,15 +1361,9 @@ router.get('/analista-ecom/item/:mlId/historico', async (req, res) => {
 // ao ML. Contas em ../raioX.js (testadas). Ver .claude/business-rules.md.
 router.get('/analista-ecom/item/:mlId/raio-x', async (req, res) => {
   try {
-    const mlId = String(req.params.mlId || '').trim();
-    const { rows } = await pool.query(
-      `SELECT i.ml_id, i.title, i.thumbnail, i.permalink, i.price, i.available_quantity, i.status, s.nickname AS loja
-         FROM items i LEFT JOIN stores s ON s.id = i.store_id WHERE i.ml_id = $1`, [mlId]);
-    if (!rows.length) return res.status(404).json({ error: 'Anúncio não encontrado no banco' });
-    const item = rows[0];
-    const { dias } = await analistaEcom.getHistoricoItem(mlId, raioX.DIAS_SERIE_RAIO_X);
-    const resumo = raioX.resumirRaioX({ dias, estoque: item.available_quantity });
-    res.json({ item: { ...item, thumbnail: require('../telegramLog').fotoGrande(item.thumbnail) }, dias, ...resumo });
+    const d = await require('../raioXDados').montarRaioX(String(req.params.mlId || '').trim());
+    if (!d) return res.status(404).json({ error: 'Anúncio não encontrado no banco' });
+    res.json(d);
   } catch (e) {
     console.error('[bi] /raio-x error:', e.message);
     res.status(500).json({ error: e.message });

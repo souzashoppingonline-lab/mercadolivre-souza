@@ -30,6 +30,8 @@ checkVendaForte({ itemId, title, unidades24h, storeId, storeName, link })       
 
 Pedido do usuário: as tarefas **manuais são mais importantes** que as automáticas, então a coluna A Fazer virou **duas na tela** — **A Fazer — Manual** (`source='manual'`, primeira, destacada) e **A Fazer — Automático** (cartões do `TaskEngine` e qualquer outra origem). **Sem coluna nova no banco**: as duas continuam `board_column='a_fazer'` (sem migration, sem mexer no `createTaskIfNotExists`/dedup nem nos contadores do resumo); a divisão é feita no front pela origem. A lixeira de cada metade manda `origem` pra `POST /mover-para-excluido`, que move só aquela metade. Em Andamento/Finalizado/Excluído continuam únicas, com os dois tipos juntos.
 
+**Tarefa criada pelo Raio-X do anúncio (v189.1)**: botão na aba Raio-X (`pages/anuncio-raio-x.html`) → `POST /api/tasks` com `item_id` e `link` (vira `metadata.link`, título clicável igual aos automáticos) e `metadata.origem='raio-x'`; continua `source='manual'`, então cai em **A Fazer — Manual**. Sem dedup (é ação humana, pode repetir).
+
 ## Ciclo de vida do cartão — soft delete (coluna) vs. hard delete (linha)
 
 Mover um cartão para a coluna "Excluído" é reversível (só muda `board_column`, a linha continua em `tasks`). A exclusão definitiva (`DELETE /api/tasks/:id`, ver `api.md`) só é aceita pela rota quando o cartão já está em `board_column='excluido'` — é uma segunda etapa deliberada, não um clique só. O botão correspondente no frontend (`pages/agenda-trello.html`) só aparece nesse estado.

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { resumirRaioX, tendencia } = require('../src/raioX');
+const { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes } = require('../src/raioX');
 
 // 31 dias (30 fechados + hoje). `un(i)` = unidades do dia i (0 = mais antigo).
 function serie(un, visitas = () => 100) {
@@ -42,4 +42,25 @@ test('tendência: estável, sem dados e voltou a vender', () => {
   assert.strictEqual(tendencia(0, 0).direcao, 'sem_dados');
   assert.strictEqual(tendencia(5, 0).direcao, 'subindo');
   assert.strictEqual(resumirRaioX({ dias: serie(() => 0), estoque: 10 }).cobertura.nivel, 'parado');
+});
+
+test('qualidade: lista o que falta arrumar', () => {
+  const q = pendenciasSeo({ score: 61.4, pictures_count: 3, has_video: false, description_word_count: 80, title_length: 58,
+    has_gtin: false, has_brand: true, has_model: true, missing_required_attrs: ['COLOR', 'MATERIAL'] });
+  assert.strictEqual(q.score, 61);
+  assert.ok(q.pendencias.some((x) => /3 foto/.test(x)));
+  assert.ok(q.pendencias.some((x) => /vídeo/.test(x)));
+  assert.ok(q.pendencias.some((x) => /GTIN/.test(x)));
+  assert.ok(q.pendencias.some((x) => /COLOR, MATERIAL/.test(x)));
+  assert.ok(!q.pendencias.some((x) => /Título/.test(x)));
+  assert.strictEqual(pendenciasSeo(null), null);
+});
+
+test('buy box e devoluções', () => {
+  assert.strictEqual(resumoBuybox({ winner_item_id: 'MLB1', winner_price: 70 }, 'MLB1').ganhando, true);
+  const b = resumoBuybox({ winner_item_id: 'MLB9', winner_price: 70, current_price: 79, price_to_win: 69.5, boosts_missing: ['free_shipping'] }, 'MLB1');
+  assert.strictEqual(b.ganhando, false); assert.strictEqual(b.preco_para_ganhar, 69.5);
+  const d = resumoDevolucoes({ devolucoes: [{ reason: 'Chegou quebrado' }, { reason: 'Chegou quebrado' }, { reason: 'Não gostei' }], pedidos: 60 });
+  assert.strictEqual(d.total, 3); assert.strictEqual(d.taxa, 5);
+  assert.deepStrictEqual(d.motivos[0], { motivo: 'Chegou quebrado', qtd: 2 });
 });

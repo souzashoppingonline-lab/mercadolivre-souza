@@ -79,6 +79,11 @@
   .mg-box .k { font-size:10.5px; color:var(--muted); } .mg-box .v { font-size:19px; font-weight:900; } .mg-box.pos .v { color:var(--green); } .mg-box.neg .v { color:var(--red); }
   .mg-box .p { display:inline-block; margin-top:3px; font-size:11.5px; font-weight:800; border-radius:10px; padding:1px 8px; }
   .mg-box.pos .p { background:rgba(46,204,113,.18); color:var(--green); } .mg-box.neg .p { background:rgba(231,76,60,.2); color:#ff8a7d; }
+  .btn-att { background:var(--card2); border:1px solid var(--border); color:var(--blue); border-radius:7px; padding:2px 8px; font-size:11.5px; font-weight:800; cursor:pointer; margin-top:4px; }
+  .btn-att:hover { border-color:var(--blue); } .btn-att:disabled { opacity:.6; cursor:default; }
+  .btn-att.alerta { color:#111; background:var(--yellow); border-color:var(--yellow); }
+  .tag-sem { font-size:10px; font-weight:800; color:#ff8a7d; border:1px solid rgba(231,76,60,.6); border-radius:8px; padding:0 6px; margin-left:4px; }
+  .barra-att { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0 8px; font-size:12.5px; color:var(--muted); }
   .tag-est { font-size:10px; font-weight:800; color:var(--yellow); border:1px solid rgba(245,197,24,.5); border-radius:8px; padding:0 6px; margin-left:4px; }
   @media (max-width:820px) { .mg-linha { grid-template-columns:repeat(3,minmax(0,1fr)); } .mg-linha .mg-id { grid-column:1 / -1; } .mg-linha .mg-box { grid-column:span 3; } }
   /* Botão destacado + modal da margem (v189.3: a página ficava grande demais com o bloco aberto) */
@@ -147,6 +152,31 @@ function botaoMargem(m) {
       <span class="abrir">Ver detalhes ▸</span></div>
   </button>`;
 }
+// Atualizar tarifa/frete: o MESMO botão do Resumo por Venda (POST /vendas/:id/atualizar →
+// financeService.reconciliarPedido, o serviço do job de 10 min). Depois recarrega o raio-X
+// e reabre a janela com a margem nova.
+async function recarregarMargem(msg) {
+  const novo = await DB.getRaioXAnuncio(RX.item.ml_id);
+  if (novo && !novo.error) { render(novo); abrirMargem(); }
+  const el = document.getElementById('attMsg'); if (el && msg) el.innerHTML = msg;
+}
+async function atualizarVendaMargem(btn) {
+  const pedido = btn.dataset.pedido; btn.disabled = true; btn.textContent = '⏳ Buscando…';
+  const r = await DB.atualizarVendaDetalhe(pedido);
+  if (!r || r.error) { btn.disabled = false; btn.textContent = '🔄 Tentar de novo'; alert('Não consegui atualizar a venda ' + pedido + ': ' + ((r && r.error) || DB.lastError || 'sem resposta')); return; }
+  await recarregarMargem(r.payment_error ? `⚠️ Pedido ${esc(pedido)}: o Mercado Livre ainda não liberou a tarifa (pagamento em processamento) — tente mais tarde.` : `✅ Pedido ${esc(pedido)} atualizado.`);
+}
+async function atualizarPendentes(btn) {
+  const lista = (RX.margem && RX.margem.ultimas || []).filter((v) => !v.tarifa || !v.confirmada).map((v) => v.pedido);
+  btn.disabled = true; let ok = 0, falha = 0;
+  for (let i = 0; i < lista.length; i++) {   // uma por vez — não dispara rajada na API do ML
+    btn.textContent = `⏳ Atualizando ${i + 1} de ${lista.length}…`;
+    const r = await DB.atualizarVendaDetalhe(lista[i]);
+    if (r && !r.error) ok++; else falha++;
+  }
+  await recarregarMargem(`✅ ${ok} venda(s) atualizada(s)${falha ? ` · ${falha} sem resposta do ML` : ''}. Se a tarifa continuar R$ 0,00, é o valor que veio da Conciliação — dá para corrigir à mão no Resumo por Venda.`);
+}
+
 function abrirMargem() {
   const f = document.getElementById('modalMargem');
   document.getElementById('modalMargemCorpo').innerHTML = blocoMargem(RX && RX.margem);
@@ -164,8 +194,11 @@ function blocoMargem(m) {
   return `<h2>💰 Margem de contribuição <span style="text-transform:none;letter-spacing:0;font-weight:600">· mesma conta do Resumo por Venda · imposto da loja ${m.imposto_pct == null ? '—' : pct(m.imposto_pct) + '%'}</span></h2>
     ${m.custo_ausente ? `<div class="queda" style="border-width:1px;margin:0 0 10px;padding:10px 14px">⚠️ Anúncio sem custo cadastrado — a margem abaixo está com custo R$ 0,00. Preencha o custo acima.</div>` : ''}
     ${j7.vendas ? linhaMargem(totalId(j7), j7) : ''}${linhaMargem(totalId(j30), j30)}
-    <div class="muted" style="font-size:12px;margin:12px 0 8px">Últimas ${m.ultimas.length} vendas</div>
-    ${m.ultimas.map((v) => linhaMargem({ html: `<b>${dt(v.data)}</b><br>Pedido ${esc(v.pedido)} · ${v.unidades}x${v.logistica ? ' · ' + esc(LOG_LBL[v.logistica] || v.logistica) : ''}${v.confirmada ? '' : '<span class="tag-est" title="Tarifa/frete ainda não confirmados pela Conciliação/pagamento — valor estimado do pedido">estimado</span>'}` }, v)).join('')}`;
+    <div class="barra-att">Últimas ${m.ultimas.length} vendas
+      ${m.ultimas.some((v) => !v.tarifa || !v.confirmada) ? `<button class="btn-att alerta" style="margin:0" onclick="atualizarPendentes(this)">🔄 Atualizar as ${m.ultimas.filter((v) => !v.tarifa || !v.confirmada).length} sem tarifa ou estimadas</button>` : ''}
+      <span id="attMsg"></span></div>
+    ${m.ultimas.map((v) => { const semTarifa = !v.tarifa; return linhaMargem({ html: `<b>${dt(v.data)}</b><br>Pedido ${esc(v.pedido)} · ${v.unidades}x${v.logistica ? ' · ' + esc(LOG_LBL[v.logistica] || v.logistica) : ''}${v.confirmada ? '' : '<span class="tag-est" title="Tarifa/frete ainda não confirmados pela Conciliação/pagamento — valor estimado do pedido">estimado</span>'}${semTarifa ? '<span class="tag-sem">sem tarifa</span>' : ''}
+      <br><button class="btn-att${semTarifa ? ' alerta' : ''}" data-pedido="${esc(v.pedido)}" onclick="atualizarVendaMargem(this)" title="Buscar tarifa e frete desta venda no Mercado Livre agora">🔄 Atualizar</button>` }, v); }).join('')}`;
 }
 const ICONE_EV = { preco_desce: '🟢', preco_sobe: '🔴', promo_entra: '🏷️', promo_sai: '⚪' };
 function corEvento(evs) {

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes } = require('../src/raioX');
+const { resumirRaioX, tendencia, pendenciasSeo, resumoBuybox, resumoDevolucoes, comparacaoMes, eventosPreco, quandoVende, alertaQueda } = require('../src/raioX');
 
 // 31 dias (30 fechados + hoje). `un(i)` = unidades do dia i (0 = mais antigo).
 function serie(un, visitas = () => 100) {
@@ -63,4 +63,39 @@ test('buy box e devoluções', () => {
   const d = resumoDevolucoes({ devolucoes: [{ reason: 'Chegou quebrado' }, { reason: 'Chegou quebrado' }, { reason: 'Não gostei' }], pedidos: 60 });
   assert.strictEqual(d.total, 3); assert.strictEqual(d.taxa, 5);
   assert.deepStrictEqual(d.motivos[0], { motivo: 'Chegou quebrado', qtd: 2 });
+});
+
+test('mês passado: 30 dias fechados × 30 anteriores', () => {
+  const dias = Array.from({ length: 61 }, (_, i) => ({ pedidos: i >= 30 ? 2 : 1, unidades: i >= 30 ? 2 : 1, visitas: i === 60 ? 0 : 100 }));
+  const c = comparacaoMes(dias);
+  assert.strictEqual(c.atual.unidades, 60); assert.strictEqual(c.anterior.unidades, 30);
+  assert.strictEqual(c.var.unidades, 100); assert.strictEqual(c.var.conversao_pp, 1);
+  assert.strictEqual(comparacaoMes(dias.slice(-31)), null);
+});
+
+test('marcadores de preço e promoção', () => {
+  const ev = eventosPreco({
+    precos: [{ old_price: 80, new_price: 75, changed_at: '2026-11-10T15:00:00Z' }, { old_price: 75, new_price: 75, changed_at: '2026-11-11T15:00:00Z' }],
+    promocoes: [{ status: 'active', previous_status: null, promo_price: 69.9, discount_pct: 12.6, changed_at: '2026-11-12T15:00:00Z' },
+      { status: 'finished', previous_status: 'active', changed_at: '2026-11-20T15:00:00Z' }, { status: 'pending', previous_status: 'candidate', changed_at: '2026-11-21T15:00:00Z' }] });
+  assert.deepStrictEqual(ev.map((e) => e.tipo), ['preco_desce', 'promo_entra', 'promo_sai']);
+  assert.match(ev[1].texto, /−13%/);
+});
+
+test('quando vende: melhor dia e faixa de 3 horas', () => {
+  const q = quandoVende([{ dow: 1, hora: 20, unidades: 5 }, { dow: 1, hora: 21, unidades: 3 }, { dow: 5, hora: 9, unidades: 2 }]);
+  assert.strictEqual(q.total, 10); assert.strictEqual(q.melhor_dia.nome, 'Segunda'); assert.strictEqual(q.melhor_dia.pct, 80);
+  assert.strictEqual(q.melhor_faixa.de, 19); assert.strictEqual(q.melhor_faixa.pct, 80);
+  assert.strictEqual(quandoVende([]).melhor_dia, null);
+});
+
+test('faixa de queda: só quem vendia bem e caiu 30%+, com motivo', () => {
+  const t = (a, b, va, vb) => ({ unidades_7: tendencia(a, b), visitas_7: tendencia(va, vb) });
+  assert.strictEqual(alertaQueda({ tendencia: t(4, 5, 100, 100) }), null);          // caiu 20%
+  assert.strictEqual(alertaQueda({ tendencia: t(1, 4, 100, 100) }), null);          // vendia pouco
+  const a = alertaQueda({ tendencia: t(6, 14, 500, 900), buybox: { ganhando: false, preco_vencedor: 70 }, cobertura: { nivel: 'ok' } });
+  assert.strictEqual(a.pct, -57.1);
+  assert.match(a.motivos[0], /Menos visitas/); assert.match(a.motivos[1], /buy box/);
+  const b = alertaQueda({ tendencia: t(6, 14, 900, 900), cobertura: { nivel: 'ok' } });
+  assert.match(b.motivos[0], /comprando menos/);
 });

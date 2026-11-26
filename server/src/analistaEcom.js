@@ -291,24 +291,26 @@ async function listarAnalistaEcom({ store_id = '' } = {}) {
 // (já sincronizada 1x/dia pelo worker), vendas de `orders` (pedidos não
 // cancelados).
 const JANELAS_HISTORICO = [3, 7, 10, 15, 21, 30];
-async function getHistoricoItem(mlId) {
+async function getHistoricoItem(mlId, totalDias = 30) {
+  // totalDias (v189): o Raio-X pede 31 (30 dias fechados + hoje); o padrão continua 30.
+  const n = Math.min(Math.max(Number(totalDias) || 30, 7), 90);
   const { rows } = await pool.query(
     `WITH dias AS (
-       SELECT generate_series(CURRENT_DATE - INTERVAL '29 days', CURRENT_DATE, INTERVAL '1 day')::date AS dia
+       SELECT generate_series(CURRENT_DATE - ($2::int - 1), CURRENT_DATE, INTERVAL '1 day')::date AS dia
      ),
      vendas AS (
        SELECT date_created::date AS dia, COUNT(*)::int AS pedidos, COALESCE(SUM(quantity),0)::int AS unidades
          FROM orders
-        WHERE item_id = $1 AND status <> 'cancelled' AND date_created >= CURRENT_DATE - INTERVAL '30 days'
+        WHERE item_id = $1 AND status <> 'cancelled' AND date_created >= CURRENT_DATE - ($2::int - 1)
         GROUP BY 1
      ),
      visitas AS (
-       SELECT date AS dia, visits FROM item_visits WHERE item_id = $1 AND date >= CURRENT_DATE - INTERVAL '30 days'
+       SELECT date AS dia, visits FROM item_visits WHERE item_id = $1 AND date >= CURRENT_DATE - ($2::int - 1)
      )
      SELECT d.dia, COALESCE(v.pedidos,0) AS pedidos, COALESCE(v.unidades,0) AS unidades, COALESCE(vi.visits,0) AS visitas
        FROM dias d LEFT JOIN vendas v ON v.dia = d.dia LEFT JOIN visitas vi ON vi.dia = d.dia
       ORDER BY d.dia ASC`,
-    [mlId]
+    [mlId, n]
   );
   const dias = rows.map((r) => ({ data: r.dia.toISOString().slice(0, 10), pedidos: r.pedidos, unidades: r.unidades, visitas: r.visitas }));
   const totais = {};

@@ -8,12 +8,12 @@
 // ou token. Nunca lança: registrar não pode atrapalhar o envio.
 const pool = require('./db/pool');
 
-async function registrarMensagem({ topico = null, texto, html = true, direcao = 'saida', autor = null, imagem = null }) {
+async function registrarMensagem({ topico = null, texto, html = true, direcao = 'saida', autor = null, imagem = null, itemId = null }) {
   try {
     if (!texto) return null;
     const { rows } = await pool.query(
-      `INSERT INTO telegram_mensagens (topico, texto, html, direcao, autor, imagem) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [topico, String(texto).slice(0, 8000), !!html, direcao === 'entrada' ? 'entrada' : 'saida', autor, imagem || null]
+      `INSERT INTO telegram_mensagens (topico, texto, html, direcao, autor, imagem, item_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [topico, String(texto).slice(0, 8000), !!html, direcao === 'entrada' ? 'entrada' : 'saida', autor, imagem || null, itemId ? String(itemId) : null]
     );
     try { await require('./ws/hub').publish('telegram_mensagem', { id: rows[0].id }); } catch (_) { /* tela pega no próximo poll */ }
     return rows[0].id;

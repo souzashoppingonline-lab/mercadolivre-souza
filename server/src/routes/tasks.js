@@ -100,7 +100,11 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { title, description, marketplace, store_id, priority, due_date, assigned_to, tags } = req.body || {};
+    const { title, description, marketplace, store_id, priority, due_date, assigned_to, tags, item_id, link } = req.body || {};
+    // v189: `item_id`/`link` opcionais — botão "Criar tarefa" do Raio-X do anúncio. O link
+    // vai em metadata.link (o título do cartão vira link, mesmo padrão dos automáticos).
+    const linkOk = typeof link === 'string' && /^https:\/\/[^\s]+$/.test(link) ? link.slice(0, 500) : null;
+    const metadata = linkOk || item_id ? { ...(linkOk ? { link: linkOk } : {}), ...(item_id ? { item_id: String(item_id).slice(0, 40) } : {}), origem: 'raio-x' } : {};
     if (!title || !String(title).trim()) return res.status(400).json({ error: 'title é obrigatório' });
     const finalPriority = VALID_PRIORITIES.includes(priority) ? priority : 'media';
 
@@ -111,9 +115,10 @@ router.post('/', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO tasks (title, description, board_column, priority, marketplace_id, store_id, source, tags, assigned_to, due_date)
-       VALUES ($1,$2,'a_fazer',$3,$4,$5,'manual',$6,$7,$8) RETURNING id`,
-      [title, description || null, finalPriority, marketplaceId, store_id || null, tags || [], assigned_to || null, due_date || null]
+      `INSERT INTO tasks (title, description, board_column, priority, marketplace_id, store_id, source, tags, assigned_to, due_date, item_id, metadata)
+       VALUES ($1,$2,'a_fazer',$3,$4,$5,'manual',$6,$7,$8,$9,$10) RETURNING id`,
+      [title, description || null, finalPriority, marketplaceId, store_id || null, tags || [], assigned_to || null, due_date || null,
+       item_id ? String(item_id).slice(0, 40) : null, JSON.stringify(metadata)]
     );
     res.status(201).json({ id: rows[0].id });
   } catch (e) {

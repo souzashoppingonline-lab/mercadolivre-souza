@@ -526,7 +526,7 @@ async function handleOrder({ resource, storeId, silent = false }) {
       // usa o tipo de envio do ANÚNCIO, já lido acima pro estoque — sem chamada extra.
       if (envioLabel === '—' && itemApi?.shipping?.logistic_type) envioLabel = fmtLogistica(itemApi.shipping.logistic_type);
       const textoVenda = `🛒 <b>Nova venda!</b>\n🏪 ${loja}\n📦 ${item0.item?.title||'—'}\n${vendaInfo.linhaEnvio(envioLabel, { coletaCaminhao: vendaInfo.ehColetaUnifull({ label: envioLabel, loja, storeId }) })}\n${linhaQtd}${linhaEstoque}\n💰 ${val}${linhaPromo ? `\n${linhaPromo}` : ''}${linhasAnuncio}\n👤 ${order.buyer?.nickname||'—'}\n🕐 Venda: ${saleDateFmt}\n📨 Notificado: ${notifiedAtFmt}${rodapeRank}`;
-      const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id) }; // só na Tela Telegram
+      const fotoVenda = { imagem: await require('./telegramLog').imagemDoItem(item0.item?.id), itemId: item0.item?.id || null }; // só na Tela Telegram (itemId → foto abre o Raio-X, v189)
       if (rankLinhas.length) await tgNotifyForce('tg_vendas', textoVenda, fotoVenda);
       else await tgNotify('tg_vendas', textoVenda, fotoVenda);
       // Alerta em tempo real na tela do dashboard (som + push) — consumido por

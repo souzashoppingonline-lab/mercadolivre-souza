@@ -1356,6 +1356,20 @@ router.get('/analista-ecom/item/:mlId/historico', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Raio-X do anúncio (v189) — aba aberta ao clicar na foto da "Nova venda!" na
+// Tela Telegram. Só lê do banco (items + orders + item_visits), nenhuma chamada
+// ao ML. Contas em ../raioX.js (testadas). Ver .claude/business-rules.md.
+router.get('/analista-ecom/item/:mlId/raio-x', async (req, res) => {
+  try {
+    const d = await require('../raioXDados').montarRaioX(String(req.params.mlId || '').trim());
+    if (!d) return res.status(404).json({ error: 'Anúncio não encontrado no banco' });
+    res.json(d);
+  } catch (e) {
+    console.error('[bi] /raio-x error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/analista-ecom/config', async (req, res) => {
   try {
     const [config, tarifas] = await Promise.all([analistaEcom.getConfigGlobal(), analistaEcom.getTarifasCategorias()]);

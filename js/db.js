@@ -357,6 +357,7 @@ const DB = {
   async setAnalistaEcomTarifaCategoria(body)        { return this._post('/bi/analista-ecom/tarifas-categoria', body); },
   async delAnalistaEcomTarifaCategoria(categoryId)  { return this._delete(`/bi/analista-ecom/tarifas-categoria/${encodeURIComponent(categoryId)}`); },
   async getAnalistaEcomHistorico(mlId)              { return this._get(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/historico`); },
+  async getRaioXAnuncio(mlId)                       { return this._get(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/raio-x`); },
   async setAnalistaEcomMargemAlvoItem(mlId, margem_alvo_pct) { return this._patch(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/margem-alvo`, { margem_alvo_pct }); },
   async setAnalistaEcomFreteItem(mlId, frete) { return this._patch(`/bi/analista-ecom/item/${encodeURIComponent(mlId)}/frete`, { frete }); },
   async getBiMargemNarrativa(days = 30, store_id = '', extra = {}) { return this._post('/bi/margem/narrativa', { days, store_id, ...extra }); },

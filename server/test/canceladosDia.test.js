@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { textoCanceladaNaHora, SQL_UM } = require('../src/canceladosDia');
+const { textoCanceladaNaHora, motivoPt, SQL_UM } = require('../src/canceladosDia');
 
 test('aviso na hora: venda de hoje, já bipada', () => {
   const t = textoCanceladaNaHora({ ml_id: '2000019804230176', mkt: 'ML', loja: 'UNIFULL_MULTIMERCADO', title: 'Secar Antimofo Desumidificador', quantity: 1,
@@ -16,4 +16,13 @@ test('aviso na hora: venda de outro dia e Shopee', () => {
 
 test('SQL de 1 pedido filtra pelo id', () => {
   assert.match(SQL_UM, /o\.ml_id = \$1/); assert.doesNotMatch(SQL_UM, /updated_at >= h\.ini/);
+});
+
+test('motivo em português e "bipado" só com o pacote ainda aqui', () => {
+  assert.strictEqual(motivoPt('There is a mediation with status cancel_purchase'), 'Comprador cancelou a compra');
+  assert.match(motivoPt('The shipment was not delivered'), /não foi entregue/);
+  assert.match(motivoPt('Purchases has splitted the pack'), /não é perda de venda/);
+  assert.strictEqual(motivoPt('algo novo'), 'algo novo');
+  assert.strictEqual(motivoPt(null), null);
+  assert.match(SQL_UM, /NOT IN \('shipped', 'delivered', 'not_delivered'\)/);
 });

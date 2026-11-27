@@ -270,6 +270,9 @@ module.exports = {
   // offer_id (diferente de getOffer acima, usado pelo webhook public_offers).
   // Usado pelo script de verificação server/scripts/verificarPromocaoItem.js.
   getItemPromotions:   (itemId, storeId) => get(`/seller-promotions/items/${itemId}?app_version=v2`, storeId),
+  // v191: pedidos que viraram cancelados (atualizados desde `desde`) — 1 chamada por loja,
+  // rede de segurança do aviso de cancelamento quando o webhook não chega / é ignorado.
+  searchOrdersCancelados: (storeId, desde) => get(`/orders/search?seller=${storeId}&order.status=cancelled&order.date_last_updated.from=${encodeURIComponent(desde)}&sort=date_desc&limit=50`, storeId),
   searchOrders:        (storeId, dateFrom, offset=0) => get(`/orders/search?seller=${storeId}&sort=date_desc&order.date_created.from=${encodeURIComponent(dateFrom)}&limit=50&offset=${offset}`, storeId),
   getItemVisits:       (id, dateFrom, storeId) => get(`/items/${id}/visits/time_window?last=1&unit=day&ending=${encodeURIComponent(dateFrom)}`, storeId),
   // Mais Vendidos (highlights/trends) de uma categoria — usado pelo Rankeamento

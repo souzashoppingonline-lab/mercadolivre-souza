@@ -173,6 +173,12 @@ async function handleShopeeOrderEvent(evt) {
     [o.order_sn, marketplaceId, evt.storeId, totalAmount, status, o.create_time ? new Date(o.create_time * 1000) : null]
   );
 
+  // v191: virou cancelado agora → aviso na hora (mesmo aviso/dedup do ML, canceladosDia.js).
+  if (status === 'cancelled' && previousStatus && previousStatus !== 'cancelled') {
+    await redis.del('telegram-tela:painel').catch(() => {});
+    await require('./canceladosDia').avisarCanceladaNaHora({ pool, redis, tgNotify, mlId: o.order_sn });
+  }
+
   // Busca sob-demanda: rastreio (Embalagem disponível assim que é gerado pela Shopee),
   // financeiro/escrow (líquido+taxas) e status de entrega. Tudo tolerante a falha —
   // nunca quebra o handler; COALESCE no upsert não apaga o que já estava se uma das

@@ -1130,3 +1130,7 @@ Pedido do usuário: "meu contador sênior" (crédito de ICMS por fornecedor, ven
 ## A Fazer dividido em Manual/Automático só na tela, não no banco (v188)
 
 Pedido: separar tarefas manuais (mais importantes) das automáticas na Agenda Trello. Opções: (a) nova `board_column` (`a_fazer_manual`) — exigiria migration, mexer no TaskEngine, no resumo e em toda query que conhece `a_fazer`; (b) dividir só na apresentação, pela coluna `source` que já existe. Escolhido (b): a origem já identifica o tipo sem ambiguidade (manual sempre grava `source='manual'`), zero risco pro dedup/regras, e reverter é só HTML/JS. Único ajuste de backend: `origem` opcional na rota de mover a coluna pra Excluído, pra lixeira de cada metade não levar a outra junto.
+
+## Dedup do `handleOrder` de 30 min → 2 min (v191)
+
+A janela de 30 min ("pedido `paid` atualizado há pouco = pula o webhook") servia pra não chamar `/orders/:id` várias vezes numa rajada de webhooks. Mas a reconciliação financeira passou (v172) a atualizar as vendas de hoje a cada 10 min (mexendo em `updated_at`) — e todo webhook de **cancelamento** dessas vendas era descartado: a venda cancelada continuava no faturamento. Trade-off aceito: algumas chamadas extras a `/orders/:id` por dia (rajadas reais duram segundos, 2 min cobre) em troca de nunca perder mudança de status. Somado a isso: a reconciliação grava o `status` que já busca, e um job de 15 min (`checkCancelamentosML`, 1 busca por loja) cobre webhook perdido.

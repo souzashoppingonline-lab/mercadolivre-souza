@@ -13,7 +13,11 @@ const SQL = `
          COALESCE(s.nickname, 'Loja ' || o.store_id) AS loja, COALESCE(m.code, 'ML') AS mkt,
          COALESCE(NULLIF(o.cancel_reason, ''), o.raw_data->'cancel_detail'->>'description', o.raw_data->>'cancel_reason') AS motivo,
          (o.date_created >= h.ini) AS de_hoje,
-         EXISTS (SELECT 1 FROM packing_videos pv WHERE o.ml_id = ANY(pv.order_ids)) AS bipado
+         -- v191.2: "bipado" (= alerta "tirar o pacote, NÃO ENVIAR") só enquanto o pacote ainda
+         -- está aqui — se já saiu (shipped/delivered/not_delivered) não há o que tirar.
+         (EXISTS (SELECT 1 FROM packing_videos pv WHERE o.ml_id = ANY(pv.order_ids))
+           AND COALESCE(o.shipping_status, '') NOT IN ('shipped', 'delivered', 'not_delivered')) AS bipado,
+         o.shipping_status
     FROM orders o
     CROSS JOIN h
     LEFT JOIN stores s ON s.id = o.store_id
@@ -24,6 +28,23 @@ const SQL = `
 
 // Mesmo SELECT, 1 pedido (aviso na hora, v191). Sem o filtro de "do dia".
 const SQL_UM = SQL.replace(/WHERE o\.status = 'cancelled' AND \(o\.date_created >= h\.ini OR o\.updated_at >= h\.ini\)/, "WHERE o.status = 'cancelled' AND o.ml_id = $1");
+
+// Motivo do cancelamento em português (o ML manda em inglês). Desconhecido → texto original.
+const MOTIVOS_PT = [
+  [/mediation with status cancel_purchase/i, 'Comprador cancelou a compra'],
+  [/shipment was not delivered/i, 'Envio não foi entregue (volta para o vendedor)'],
+  [/splitted the pack|split.*pack/i, 'Pacote dividido pelo Mercado Livre — virou outros pedidos (não é perda de venda)'],
+  [/buyer.*(cancel|regret)|arrepend/i, 'Comprador desistiu'],
+  [/out of stock|sem estoque/i, 'Sem estoque'],
+  [/payment.*(rejected|not approved|cancel)/i, 'Pagamento não aprovado'],
+  [/fraud/i, 'Suspeita de fraude (cancelado pelo ML)'],
+  [/seller/i, 'Cancelado pelo vendedor'],
+];
+function motivoPt(m) {
+  if (!m) return null;
+  const achou = MOTIVOS_PT.find(([re]) => re.test(String(m)));
+  return achou ? achou[1] : String(m);
+}
 
 const BRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
 const escH = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -50,7 +71,7 @@ async function avisarCanceladaNaHora({ pool, redis, tgNotify, mlId }) {
   try {
     const { rows } = await pool.query(SQL_UM, [String(mlId)]);
     if (!rows.length) return false;
-    const r = { ...rows[0], total_amount: Number(rows[0].total_amount) || 0 };
+    const r = { ...rows[0], total_amount: Number(rows[0].total_amount) || 0, motivo: motivoPt(rows[0].motivo) };
     const dia = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     const chave = `cancelados:avisados:${dia}`;
     if (await redis.sismember(chave, String(r.ml_id))) return false;
@@ -67,7 +88,7 @@ async function avisarCanceladaNaHora({ pool, redis, tgNotify, mlId }) {
 
 async function listarCanceladosHoje(pool) {
   const { rows } = await pool.query(SQL);
-  return rows.map((r) => ({ ...r, total_amount: Number(r.total_amount) || 0 }));
+  return rows.map((r) => ({ ...r, total_amount: Number(r.total_amount) || 0, motivo: motivoPt(r.motivo) }));
 }
 
 // Resumo pro painel/mensagem: total, valor, valor que saiu do faturamento de hoje, por loja.
@@ -88,4 +109,4 @@ function resumir(rows) {
   };
 }
 
-module.exports = { listarCanceladosHoje, resumir, textoCanceladaNaHora, avisarCanceladaNaHora, SQL_UM };
+module.exports = { listarCanceladosHoje, resumir, textoCanceladaNaHora, avisarCanceladaNaHora, motivoPt, SQL_UM };

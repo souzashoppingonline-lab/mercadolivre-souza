@@ -685,7 +685,7 @@ async function avisarEventoFull({ evento, itemId, storeId, loja, titulo, permali
 
 // Resumo do dia (08:40): todos os anúncios Full com estoque zero que venderam nos últimos
 // 60 dias (os parados há mais tempo ficam de fora pra não poluir) + quem saiu do Full nas 24h.
-async function checkFullResumo() {
+async function enviarFullResumo() {   // trabalho sem reagendar (comando manual `full-resumo`)
   try {
     const [{ rows: zerados }, { rows: saidas }, { rows: entradas }] = await Promise.all([
       pool.query(
@@ -713,7 +713,9 @@ async function checkFullResumo() {
     if (texto) await tgNotify('tg_full', texto);
     console.log(`[full-resumo] ${zerados.length} zerado(s) no Full, ${saidas.length} saída(s) e ${entradas.length} entrada(s) em 24h`);
   } catch (e) { console.error('[full-resumo] erro:', e.message); }
-  scheduleAt(8, 40, checkFullResumo, 'full-resumo');
+}
+async function checkFullResumo() {   // agendada: roda e reagenda (cadeia única)
+  try { await enviarFullResumo(); } finally { scheduleAt(8, 40, checkFullResumo, 'full-resumo'); }
 }
 
 async function handleItem({ resource, storeId }) {
@@ -4181,7 +4183,9 @@ async function checkCanceladosDia() {
 // 1 chamada por loja: /orders/search?order.status=cancelled&order.date_last_updated.from=<36h>.
 // Pedido que está cancelado no ML mas ainda 'paid' no banco (webhook perdido/ignorado) passa
 // pelo handleOrder → grava cancelado (sai do faturamento) e avisa na hora.
-async function checkCancelamentosML() {
+// Parte que trabalha (sem reagendar) — o comando manual `cancelamentos-ml` chama ESTA, senão
+// cada disparo manual criava um 2º timer de 15 min (v191.2).
+async function revisarCancelamentosML() {
   try {
     const { rows: lojas } = await pool.query(
       `SELECT s.id FROM stores s LEFT JOIN marketplaces m ON m.id = s.marketplace_id
@@ -4203,6 +4207,10 @@ async function checkCancelamentosML() {
     }
     if (corrigidos) console.log(`[cancelamentos-ml] ${corrigidos} pedido(s) cancelado(s) no ML corrigido(s) no banco`);
   } catch (e) { console.error('[cancelamentos-ml] erro:', e.message); }
+}
+// Agendada: roda e reagenda a próxima (cadeia única, começa no boot).
+async function checkCancelamentosML() {
+  try { await revisarCancelamentosML(); }
   finally { scheduleEveryMinutes(15, checkCancelamentosML, 'cancelamentos-ml'); }
 }
 
@@ -4672,11 +4680,11 @@ cmdSub.on('message', (channel, msg) => {
     }
     if (cmd === 'checkCancelamentosML') {
       console.log('[worker] checkCancelamentosML disparado manualmente');
-      checkCancelamentosML().catch(e => console.error('[worker] checkCancelamentosML erro:', e.message));
+      revisarCancelamentosML().catch(e => console.error('[worker] checkCancelamentosML erro:', e.message));
     }
     if (cmd === 'checkFullResumo') {
       console.log('[worker] checkFullResumo disparado manualmente');
-      checkFullResumo().catch(e => console.error('[worker] checkFullResumo erro:', e.message));
+      enviarFullResumo().catch(e => console.error('[worker] checkFullResumo erro:', e.message));
     }
     if (cmd === 'checkQuedaProdutos') {
       console.log('[worker] checkQuedaProdutos disparado manualmente');

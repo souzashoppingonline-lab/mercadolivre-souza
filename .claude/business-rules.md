@@ -191,6 +191,16 @@ A partir de **24/11/2026**, os pedidos **Mercado Envios** das lojas da empresa *
 
 - **v189.3 — Margem de contribuição no Raio-X**: vendas do anúncio nos últimos 30 dias passam pela **mesma** consulta e fórmula do **Resumo por Venda** (`VENDA_DETALHE_SELECT` + `calcularMargemLinha`, `vendaMargem.js` — nunca uma 2ª fórmula): custo do anúncio (`items.cost`), **imposto % de cada loja/empresa** (`stores.imposto_pct`, com a regra do Flex sem imposto), tarifa e frete do vendedor já gravados de cada venda (precedência manual > Conciliação > pagamento > pedido). Mostra total de 7 e 30 dias e as 10 últimas vendas com as colunas do card do Resumo por Venda (Venda, Frete vend., Tarifa, Custo, Imposto, Margem e MC%). Venda com tarifa/frete ainda vindos só do pedido (`fonte_taxa='pedido'`) leva o selo "estimado". Nada é buscado no ML na hora — os valores vêm do que o worker (`financeReconciliationJob`) já gravou. Salvar o custo no Raio-X redesenha a margem na hora. Só ML.
 
+## Monitor do Full (v190, `server/src/fullMonitor.js`)
+
+Pedido do usuário: avisar no Telegram quando um anúncio **sai do Full** ou fica **com estoque zero no Full**.
+- **Saiu do Full**: a logística gravada (`items.logistic_type`) era `fulfillment` e o ML passou a informar outra (Flex, Mercado Envios…). Logística desconhecida (vazia) não conta.
+- **Zerou no Full**: logística `fulfillment` e `available_quantity` chegou a 0 **vindo de > 0** (ou sem valor anterior) — não repete a cada webhook enquanto continua zerado.
+- **Aviso na hora** (webhook do anúncio, e o sync das 05:00 como rede pra saída do Full) em `tg_full`, com loja, título, nova logística, "vendia ~N/dia" (unidades de 30 dias ÷ 30) e link; dedup 12h por anúncio+evento.
+- **Resumo diário 08:40**: todos os Full zerados que venderam nos últimos 60 dias (os parados há mais tempo ficam de fora pra não poluir) + saídas do Full nas últimas 24h; máximo 20 linhas por grupo.
+- Liga/desliga na página Monitor ("Monitor do Full", padrão ligado — migration grava `tg_full='true'` pra o Salvar da página não desligar sem querer). Aparece na Tela Telegram como 🏭 Full.
+- Limite conhecido: `handleItem` ignora webhooks do mesmo anúncio dentro de 30 min (guarda anti-rajada existente), então um zeramento logo depois de outra mudança pode só aparecer no resumo das 08:40.
+
 ## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)
 
 Diferente do alerta de estoque fixo (`≤5`/`≤15`): mede **quando** o item acaba, não só quanto tem. `dias_restantes = available_quantity ÷ (unidades vendidas na janela ÷ dias da janela)`, com a **velocidade real** de `vw_ml_orders` (não `sold_quantity` histórico). Entra na lista só quem **vende bem** (`venda_dia ≥ min_venda_dia`, default 0.2 = ≥1 venda a cada 5 dias) **e** tem `dias_restantes < dias` (default 7, janela 30d). `sugestao_compra = ceil(venda_dia × janela) − estoque` (repor pra cobrir 1 janela). Job `checkRupturaEstoque` (07:30) manda os 12 mais urgentes no Telegram (`tg_reposicao`, respeita silêncio). Objetivo: reagir antes de perder venda por ruptura — complementa a página Reposição (que olha estoque baixo em geral) com "vende bem E vai acabar".

@@ -82,6 +82,7 @@ function resumir(rows) {
     total: rows.length,
     valor: rows.reduce((a, r) => a + r.total_amount, 0),
     valor_fat_hoje: rows.filter((r) => r.de_hoje).reduce((a, r) => a + r.total_amount, 0),
+    qtd_fat_hoje: rows.filter((r) => r.de_hoje).length,   // v191.1: quadro "Canceladas" do placar
     bipados: rows.filter((r) => r.bipado).length,
     por_loja: Object.values(porLoja).sort((a, b) => b.qtd - a.qtd || b.valor - a.valor),
   };

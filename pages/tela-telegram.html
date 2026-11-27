@@ -171,6 +171,8 @@
     .est { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
     .est div { background:#1c2a39; border-radius:10px; padding:4px 2px; text-align:center; }
     .est .i { font-size:.95em; } .est .v { font-size:1.15em; font-weight:900; line-height:1.15; } .est .l { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.62em; color:var(--muted); font-weight:700; text-transform:uppercase; }
+    .alt-bloco { margin-left:auto; float:right; background:#1c2a39; border:1px solid #2f4257; color:#9fc3e6; border-radius:8px; padding:2px 9px; font-size:.68em; font-weight:800; cursor:pointer; text-transform:none; letter-spacing:0; }
+    .alt-bloco:hover { border-color:#5eb5f7; color:#fff; }
     .full-lj { display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:6px; font-size:.72em; color:var(--muted); } .full-lj b { color:#f0f0f0; }
     .full-l div.ok { background:rgba(63,185,80,.12); } .full-l div.am { background:rgba(240,136,62,.12); }
     .full-l { margin-top:6px; display:flex; flex-direction:column; gap:3px; font-size:.74em; } .full-l div { background:rgba(248,81,73,.1); border-radius:8px; padding:3px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -608,7 +610,7 @@ function renderBlocoEstagios(d) {
   const f = d.full;
   if (blocoFull && f) {
     const ent = f.entrou24h || [], sai = f.saiu24h || [];
-    tit.innerHTML = `🏭 Monitor do Full <small>${f.total} anúncio(s) no Full</small>`;
+    tit.innerHTML = `🏭 Monitor do Full <small>${f.total} anúncio(s) no Full</small>${botaoAlternar('🚦 Rankeamento')}`;
     el.innerHTML = `<div class="est" style="grid-template-columns:repeat(4,minmax(0,1fr))">
         <div><div class="v"><span class="i">🏭</span> ${f.total}</div><div class="l">No Full</div></div>
         <div><div class="v" style="color:${f.zerados ? '#f85149' : 'inherit'}"><span class="i">🔴</span> ${f.zerados}</div><div class="l">Zerados</div></div>
@@ -621,12 +623,24 @@ function renderBlocoEstagios(d) {
     return;
   }
   const bb = d.buybox;
-  tit.innerHTML = '🚦 Rankeamento hoje <small>vendas por estágio</small>';
+  tit.innerHTML = `🚦 Rankeamento hoje <small>vendas por estágio</small>${f ? botaoAlternar('🏭 Full') : ''}`;
   el.innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="v"><span class="i">${i}</span> ${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
       <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
       <div class="bb-sub">Placar de Buy Box dos anúncios de catálogo</div>`;
 }
-setInterval(() => { blocoFull = !blocoFull; if (ultimoPainel) renderBlocoEstagios(ultimoPainel); }, ALTERNA_FULL_MS);
+// Botão no título (v190.2, pedido do usuário): troca na hora e reinicia a contagem dos 5 min.
+const botaoAlternar = (para) => `<button class="alt-bloco" onclick="alternarBloco(event)" title="Trocar agora (volta a alternar sozinho a cada 5 min)">⇄ ${para}</button>`;
+let alternaId = null;
+function agendarAlternancia() {
+  clearInterval(alternaId);
+  alternaId = setInterval(() => { blocoFull = !blocoFull; if (ultimoPainel) renderBlocoEstagios(ultimoPainel); }, ALTERNA_FULL_MS);
+}
+function alternarBloco(ev) {
+  if (ev) ev.stopPropagation();
+  blocoFull = !blocoFull; if (ultimoPainel) renderBlocoEstagios(ultimoPainel);
+  agendarAlternancia();
+}
+agendarAlternancia();
 
 const TIPOS_DEMO = ['envios', 'coleta', 'flex', 'full', 'nada', 'shopee']; let demoIdx = 0;
 function botaoCara() { document.getElementById('btnCara').textContent = caraLigada ? '🎉 Venda' : '🎉 Venda (desl.)'; }

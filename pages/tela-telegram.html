@@ -815,7 +815,8 @@ async function carregarPainel() {
     const d = await r.json();
     const p = d.placar, max = Math.max(1, ...p.lojas.map(l => l.fat));
     document.getElementById('pnPlacarSub').textContent = `até ${new Date(d.gerado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })} · vs ontem no mesmo horário`;
-    const canc = d.cancelados && d.cancelados.qtd_fat_hoje ? d.cancelados : null;
+    const cc = (d.carrossel && d.carrossel.cancelados) || d.cancelados;   // o painel manda em carrossel.cancelados
+    const canc = cc && cc.qtd_fat_hoje ? cc : null;
     document.getElementById('pnPlacar').innerHTML = `<div class="pl-big${canc ? ' com-canc' : ''}">
         <div><div class="k">🛒 PEDIDOS</div><div class="v">${p.pedidos}</div><div class="s">${varTxt(p.pedidos, p.pedidos_ontem, v => v)}</div></div>
         <div><div class="k">💰 FATURAMENTO</div><div class="v">${R$(p.fat)}</div><div class="s">${varTxt(p.fat, p.fat_ontem, R$)}</div></div>

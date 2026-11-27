@@ -62,6 +62,7 @@ ml_id TEXT PK
 store_id BIGINT FK stores
 title, price, available_quantity, sold_quantity, status, category_id
 thumbnail, permalink TEXT
+logistic_type TEXT  -- v135: shipping.logistic_type atual (fulfillment/self_service/xd_drop_off/...), gravado por handleItem e syncPrecos; backfill inicial de item_seo_score.shipping_type; índice parcial WHERE logistic_type='fulfillment'. Base do Monitor do Full
 cost NUMERIC DEFAULT 0            -- custo unitário (editável manualmente)
 cost_updated_at TIMESTAMPTZ       -- v89: só gravado quando um HUMANO define o custo (PATCH /items/:id/custo
                                    -- ou /custos/:sku) — NUNCA pelo sync do worker. NULL = ninguém confirmou

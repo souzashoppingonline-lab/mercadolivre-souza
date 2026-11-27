@@ -653,6 +653,60 @@ async function handleMessage({ resource, storeId }) {
     `💬 <b>Nova mensagem de comprador</b>\n🏪 Loja: ${loja}\n👤 ${buyerNickname||'—'}\n📝 ${(text||'—').slice(0,300)}\n<a href="${dashUrl}">Abrir mensagens →</a>`);
 }
 
+// ── Monitor do Full (v190) ─────────────────────────────────────────────────
+// Aviso na hora (Telegram tg_full) quando um anúncio SAI do Full ou ZERA o estoque
+// no Full. Regras/textos em ./fullMonitor.js. Dedup 12h por anúncio+evento (Redis):
+// dois webhooks seguidos ou o sync das 05:00 não repetem o aviso.
+const fullMonitor = require('./fullMonitor');
+async function avisarEventoFull({ evento, itemId, storeId, loja, titulo, permalink, prevTipo, novoTipo }) {
+  if (!evento) return;
+  try {
+    if (evento === 'saiu_full' || evento === 'entrou_full') {
+      await pool.query(`INSERT INTO item_changes (item_id, store_id, changes, changed_at) VALUES ($1,$2,$3,now())`,
+        [itemId, storeId, JSON.stringify([{ field: 'logistica', old: prevTipo, new: novoTipo }])]);
+    }
+    if (evento === 'entrou_full') return;   // entrada: só registra (resumo 08:40 + Tela Telegram), sem aviso na hora
+    const novo = await redis.set(`full:avisado:${evento}:${itemId}`, '1', 'EX', 12 * 3600, 'NX').catch(() => 'OK');
+    if (!novo) return;
+    const { rows } = await pool.query(
+      `SELECT COALESCE(SUM(quantity), 0)::int AS u FROM orders WHERE item_id = $1 AND status <> 'cancelled' AND date_created >= now() - interval '30 days'`, [itemId]);
+    await tgNotify('tg_full', fullMonitor.textoAvisoFull(evento, { titulo, loja, itemId, permalink, novoTipo, vendas30d: rows[0]?.u }));
+  } catch (e) { console.error('[full] aviso falhou:', e.message); }
+}
+
+// Resumo do dia (08:40): todos os anúncios Full com estoque zero que venderam nos últimos
+// 60 dias (os parados há mais tempo ficam de fora pra não poluir) + quem saiu do Full nas 24h.
+async function checkFullResumo() {
+  try {
+    const [{ rows: zerados }, { rows: saidas }, { rows: entradas }] = await Promise.all([
+      pool.query(
+        `SELECT i.ml_id, i.title AS titulo, s.nickname AS loja, v.u30 AS "vendas30d"
+           FROM items i JOIN stores s ON s.id = i.store_id
+           JOIN LATERAL (SELECT COALESCE(SUM(quantity) FILTER (WHERE date_created >= now() - interval '30 days'), 0)::int AS u30,
+                                COUNT(*) AS n60
+                           FROM orders WHERE item_id = i.ml_id AND status <> 'cancelled' AND date_created >= now() - interval '60 days') v ON true
+          WHERE i.logistic_type = 'fulfillment' AND COALESCE(i.available_quantity, 0) <= 0 AND i.status IN ('active', 'paused') AND v.n60 > 0
+          ORDER BY v.u30 DESC`),
+      pool.query(
+        `SELECT DISTINCT ON (ic.item_id) ic.item_id, i.title AS titulo, s.nickname AS loja, ic.changes->0->>'new' AS "novoTipo"
+           FROM item_changes ic JOIN items i ON i.ml_id = ic.item_id LEFT JOIN stores s ON s.id = ic.store_id
+          WHERE ic.changed_at >= now() - interval '24 hours' AND ic.changes @> '[{"field":"logistica","old":"fulfillment"}]'::jsonb
+            AND COALESCE(i.logistic_type, '') <> 'fulfillment'
+          ORDER BY ic.item_id, ic.changed_at DESC`),
+      pool.query(
+        `SELECT DISTINCT ON (ic.item_id) ic.item_id, i.title AS titulo, s.nickname AS loja
+           FROM item_changes ic JOIN items i ON i.ml_id = ic.item_id LEFT JOIN stores s ON s.id = ic.store_id
+          WHERE ic.changed_at >= now() - interval '24 hours' AND ic.changes @> '[{"field":"logistica","new":"fulfillment"}]'::jsonb
+            AND i.logistic_type = 'fulfillment'
+          ORDER BY ic.item_id, ic.changed_at DESC`),
+    ]);
+    const texto = fullMonitor.textoResumoFull({ zerados, saidas, entradas });
+    if (texto) await tgNotify('tg_full', texto);
+    console.log(`[full-resumo] ${zerados.length} zerado(s) no Full, ${saidas.length} saída(s) e ${entradas.length} entrada(s) em 24h`);
+  } catch (e) { console.error('[full-resumo] erro:', e.message); }
+  scheduleAt(8, 40, checkFullResumo, 'full-resumo');
+}
+
 async function handleItem({ resource, storeId }) {
   const itemId = resource.split('/').pop();
   const recent = await pool.query(
@@ -676,10 +730,10 @@ async function handleItem({ resource, storeId }) {
   try {
     await cx.query('BEGIN');
     await cx.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['item:' + item.id]);
-    prev = (await cx.query(`SELECT price, available_quantity, status, title FROM items WHERE ml_id = $1`, [item.id])).rows[0] || null;
+    prev = (await cx.query(`SELECT price, available_quantity, status, title, logistic_type FROM items WHERE ml_id = $1`, [item.id])).rows[0] || null;
     await cx.query(
-    `INSERT INTO items (ml_id, store_id, title, price, original_price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, parent_item_id, package_dims, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
+    `INSERT INTO items (ml_id, store_id, title, price, original_price, available_quantity, sold_quantity, status, category_id, thumbnail, permalink, parent_item_id, package_dims, logistic_type, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
      ON CONFLICT (ml_id) DO UPDATE SET
        title = EXCLUDED.title, price = EXCLUDED.price,
        original_price = COALESCE(EXCLUDED.original_price, items.original_price),
@@ -690,8 +744,9 @@ async function handleItem({ resource, storeId }) {
        permalink = COALESCE(EXCLUDED.permalink, items.permalink),
        parent_item_id = COALESCE(EXCLUDED.parent_item_id, items.parent_item_id),
        package_dims = COALESCE(EXCLUDED.package_dims, items.package_dims),
+       logistic_type = COALESCE(EXCLUDED.logistic_type, items.logistic_type),
        updated_at = now()`,
-    [item.id, storeId, item.title, item.price, origPrice, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId, dims ? JSON.stringify(dims) : null]
+    [item.id, storeId, item.title, item.price, origPrice, item.available_quantity, item.sold_quantity, item.status, item.category_id, thumb, item.permalink || null, parentId, dims ? JSON.stringify(dims) : null, item.shipping?.logistic_type || null]
     );
     await cx.query('COMMIT');
   } catch (e) {
@@ -709,6 +764,14 @@ async function handleItem({ resource, storeId }) {
   } catch (e) { console.error('[ranking] onItemChange falhou:', e.message); }
 
   const lojaNome = await getStoreName(storeId);
+
+  // Monitor do Full (v190): saiu do Full / estoque zerou no Full — aviso na hora.
+  await avisarEventoFull({
+    evento: fullMonitor.eventoFull({ prevTipo: prev?.logistic_type, novoTipo: item.shipping?.logistic_type,
+      prevQtd: prev ? prev.available_quantity : null, novaQtd: item.available_quantity }),
+    itemId: item.id, storeId, loja: lojaNome, titulo: item.title, permalink: item.permalink,
+    prevTipo: prev?.logistic_type, novoTipo: item.shipping?.logistic_type,
+  });
 
   // Só quando o estoque MUDOU (ou anúncio novo): o 2º webhook concorrente não repete o aviso.
   const estoqueMudou = !prev || Number(prev.available_quantity) !== Number(item.available_quantity);
@@ -2002,7 +2065,7 @@ async function syncPrecos() {
       let updated = 0, skipped = 0, errors = 0;
       for (const s of stores) {
         const { rows: items } = await pool.query(
-          `SELECT ml_id FROM items WHERE store_id=$1 AND status != 'closed'`, [s.id]
+          `SELECT ml_id, title, permalink, logistic_type FROM items WHERE store_id=$1 AND status != 'closed'`, [s.id]
         );
         for (const it of items) {
           try {
@@ -2010,6 +2073,15 @@ async function syncPrecos() {
             // Medidas da caixa: aproveita o mesmo getItem (custo zero) pra manter
             // items.package_dims atualizado — a Embalagem lê do banco no bipe.
             const dims = packageDimsFromItem(data);
+            // Monitor do Full (v190): mesmo getItem, custo zero — grava a logística e
+            // avisa a saída do Full que não chegou por webhook.
+            const novoTipo = data.shipping?.logistic_type || null;
+            if (novoTipo && novoTipo !== it.logistic_type) {
+              await pool.query(`UPDATE items SET logistic_type = $1 WHERE ml_id = $2`, [novoTipo, it.ml_id]);
+              await avisarEventoFull({ evento: fullMonitor.eventoFull({ prevTipo: it.logistic_type, novoTipo }),
+                itemId: it.ml_id, storeId: s.id, loja: s.nickname, titulo: data.title || it.title, permalink: data.permalink || it.permalink,
+                prevTipo: it.logistic_type, novoTipo });
+            }
             if (data.original_price && Number(data.original_price) > 0) {
               await pool.query(
                 `UPDATE items SET original_price=$1, package_dims=COALESCE($2::jsonb, package_dims) WHERE ml_id=$3`,
@@ -4351,6 +4423,7 @@ scheduleAt(8,  0,  relatorioRankeamentoDiario, 'relatorio-rankeamento');
 scheduleAt(6, 10,  emailDailyReports, 'email-diario');
 scheduleAt(6, 20,  checkOutlierEstatistico, 'outlier-check');
 scheduleAt(6, 25,  checkQuedaProdutos, 'queda-produtos');
+scheduleAt(8, 40,  checkFullResumo, 'full-resumo');   // Monitor do Full (v190)
 scheduleAt(19, 0,  checkImportacaoMetrizap, 'importacao-metrizap');
 scheduleAt(7,  0,  checkDividasPush, 'dividas-push');
 scheduleAt(19, 0,  checkDividasLembrete, 'dividas-lembrete');
@@ -4415,6 +4488,7 @@ cmdSub.on('message', (channel, msg) => {
       'top-vendas': 'syncTopVendas', 'email-diario': 'emailDailyReports', 'email-semanal': 'emailRelatorioSemanal',
       'outlier-check': 'checkOutlierEstatistico', 'taxa-devolucao': 'checkTaxaDevolucaoAlta',
       'queda-produtos': 'checkQuedaProdutos',
+      'full-resumo': 'checkFullResumo',
       'importacao-metrizap': 'runImportacaoMetrizap',
       'dividas-push': 'runDividasPush',
       'dividas-lembrete': 'runDividasLembrete',
@@ -4554,6 +4628,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkTaxaDevolucaoAlta') {
       console.log('[worker] checkTaxaDevolucaoAlta disparado manualmente');
       checkTaxaDevolucaoAlta().catch(e => console.error('[worker] checkTaxaDevolucaoAlta erro:', e.message));
+    }
+    if (cmd === 'checkFullResumo') {
+      console.log('[worker] checkFullResumo disparado manualmente');
+      checkFullResumo().catch(e => console.error('[worker] checkFullResumo erro:', e.message));
     }
     if (cmd === 'checkQuedaProdutos') {
       console.log('[worker] checkQuedaProdutos disparado manualmente');

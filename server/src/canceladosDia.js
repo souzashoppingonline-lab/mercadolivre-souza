@@ -22,6 +22,49 @@ const SQL = `
      AND COALESCE(m.code, 'ML') != 'AMAZON'
    ORDER BY o.date_created`;
 
+// Mesmo SELECT, 1 pedido (aviso na hora, v191). Sem o filtro de "do dia".
+const SQL_UM = SQL.replace(/WHERE o\.status = 'cancelled' AND \(o\.date_created >= h\.ini OR o\.updated_at >= h\.ini\)/, "WHERE o.status = 'cancelled' AND o.ml_id = $1");
+
+const BRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);
+const escH = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Texto do aviso NA HORA de 1 cancelamento (v191, pedido do usuário). `fatHoje` = faturamento de
+// hoje já sem esta venda (mesma regra do placar). Puro — testado em test/canceladosDia.test.js.
+function textoCanceladaNaHora(r, fatHoje = null) {
+  const quando = new Date(r.date_created);
+  const hora = quando.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+  const dia = quando.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return `🚫 <b>Venda CANCELADA</b>\n`
+    + `${r.mkt === 'SHOPEE' ? '🛍️ Shopee' : '🟡 ML'} · <b>${escH(r.loja)}</b> · vendida ${r.de_hoje ? `hoje às ${hora}` : `em ${dia} ${hora}`}\n`
+    + `📦 ${escH(String(r.title || '—').slice(0, 80))} · ${Number(r.quantity) || 1} un · <b>${BRL(r.total_amount)}</b>\n`
+    + (r.motivo ? `💬 ${escH(String(r.motivo).slice(0, 100))}\n` : '')
+    + (r.bipado ? `⚠️ <b>JÁ FOI BIPADO/EMBALADO — tirar o pacote do envio, NÃO ENVIAR</b>\n` : '')
+    + (r.de_hoje ? (fatHoje != null ? `💰 Saiu do faturamento de hoje → agora <b>${BRL(fatHoje)}</b>\n` : '💰 Saiu do faturamento de hoje\n')
+                 : `📅 Saiu do faturamento do dia ${dia}\n`)
+    + `🔖 ${escH(r.ml_id)}`;
+}
+
+// Avisa NA HORA (Telegram tg_vendas, aparece na Tela Telegram) um pedido que acabou de virar
+// cancelado. Dedup no MESMO set da revisão de 3 h (cancelados:avisados:<dia>) — a revisão não
+// repete como "novo". Só marca como avisado se o Telegram aceitou (silêncio → a revisão pega).
+async function avisarCanceladaNaHora({ pool, redis, tgNotify, mlId }) {
+  try {
+    const { rows } = await pool.query(SQL_UM, [String(mlId)]);
+    if (!rows.length) return false;
+    const r = { ...rows[0], total_amount: Number(rows[0].total_amount) || 0 };
+    const dia = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const chave = `cancelados:avisados:${dia}`;
+    if (await redis.sismember(chave, String(r.ml_id))) return false;
+    const fatHoje = await pool.query(
+      `SELECT COALESCE(SUM(o.total_amount), 0) AS fat FROM orders o LEFT JOIN marketplaces m ON m.id = o.marketplace_id
+        WHERE o.date_created >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'
+          AND o.status != 'cancelled' AND COALESCE(m.code, 'ML') != 'AMAZON'`).then((x) => Number(x.rows[0].fat)).catch(() => null);
+    if (!(await tgNotify('tg_vendas', textoCanceladaNaHora(r, fatHoje)))) return false;
+    await redis.sadd(chave, String(r.ml_id));
+    await redis.expire(chave, 2 * 86400);
+    return true;
+  } catch (e) { console.error('[cancelada-na-hora] erro:', e.message); return false; }
+}
+
 async function listarCanceladosHoje(pool) {
   const { rows } = await pool.query(SQL);
   return rows.map((r) => ({ ...r, total_amount: Number(r.total_amount) || 0 }));
@@ -44,4 +87,4 @@ function resumir(rows) {
   };
 }
 
-module.exports = { listarCanceladosHoje, resumir };
+module.exports = { listarCanceladosHoje, resumir, textoCanceladaNaHora, avisarCanceladaNaHora, SQL_UM };

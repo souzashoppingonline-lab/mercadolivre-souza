@@ -30,8 +30,9 @@ const { extrairCustosVendedor } = require('./shipmentCosts');
 // automático decidirem o que fazer sem precisar de try/catch próprio.
 async function reconciliarPedido(orderId) {
   const { rows: ord } = await pool.query(
-    `SELECT store_id, shipping_id FROM orders WHERE ml_id = $1`, [orderId]
+    `SELECT store_id, shipping_id, status FROM orders WHERE ml_id = $1`, [orderId]
   );
+  const statusAntigo = ord.length ? ord[0].status : null;
   if (!ord.length) return { ok: false, error: 'pedido não encontrado' };
   const storeId = ord[0].store_id;
   const shippingIdAntigo = ord[0].shipping_id;
@@ -50,13 +51,18 @@ async function reconciliarPedido(orderId) {
          ml_fee = $2, shipping_cost = $3,
          shipping_type = COALESCE(NULLIF($4, ''), shipping_type),
          shipping_id = COALESCE($5, shipping_id),
-         raw_data = $6, updated_at = now()
+         raw_data = $6,
+         -- v191: grava o status que acabou de vir do ML (antes só o webhook gravava — e o
+         -- dedup de 30 min do handleOrder engolia o cancelamento das vendas de hoje).
+         status = COALESCE(NULLIF($7, ''), status),
+         updated_at = now()
        WHERE ml_id = $1`,
       [
         orderId, item0.sale_fee || 0, order.shipping?.cost || 0,
         order.shipping?.logistic_type || '',
         order.shipping?.id ? String(order.shipping.id) : null,
         JSON.stringify(order),
+        order.status || '',
       ]
     );
   } catch (e) {
@@ -149,6 +155,8 @@ async function reconciliarPedido(orderId) {
 
   await redis.del(`kpis:${storeId}`);
   await redis.del('kpis:summary');
+  const virouCancelado = !!(order && order.status === 'cancelled' && statusAntigo !== 'cancelled');
+  if (virouCancelado) await redis.del('telegram-tela:painel').catch(() => {});
 
   if (orderError) {
     return { ok: false, error: orderError, finance_synced: false };
@@ -166,6 +174,7 @@ async function reconciliarPedido(orderId) {
     shipping_error: shippingError,
     payment_error: paymentError,
     finance_synced: financeSynced,
+    virou_cancelado: virouCancelado,
   };
 }
 

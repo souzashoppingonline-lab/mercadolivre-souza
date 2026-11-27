@@ -247,11 +247,14 @@ async function handlePayment({ resource, storeId }) {
 async function handleOrder({ resource, storeId, silent = false }) {
   const orderId = resource.split('/').pop();
 
-  // Skip duplicate — evita chamar ML API duas vezes para o mesmo pedido em 30 min,
-  // MAS permite processar novamente se o pedido ainda não está como 'paid'
-  // (a confirmação de pagamento chega minutos depois e não deve ser bloqueada pelo dedup)
+  // Skip duplicate — evita chamar ML API duas vezes para o mesmo pedido numa rajada de
+  // webhooks, MAS permite processar novamente se o pedido ainda não está como 'paid'
+  // (a confirmação de pagamento chega minutos depois e não deve ser bloqueada pelo dedup).
+  // v191: janela 30 min → 2 min. Com 30 min o aviso de CANCELAMENTO das vendas de hoje era
+  // engolido (a reconciliação financeira mexe em updated_at a cada 10 min) e a venda
+  // cancelada continuava no faturamento. 2 min ainda cobre a rajada de webhooks do mesmo pedido.
   const recent = await pool.query(
-    `SELECT ml_id, status FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '30 minutes'`, [orderId]
+    `SELECT ml_id, status FROM orders WHERE ml_id=$1 AND updated_at > now() - interval '2 minutes'`, [orderId]
   );
   if (recent.rows.length && recent.rows[0].status === 'paid') return;
 
@@ -334,6 +337,12 @@ async function handleOrder({ resource, storeId, silent = false }) {
   await redis.del(`kpis:${storeId}`);
   await redis.del('kpis:summary');
   await publish('order_updated', { id: order.id, status: order.status });
+  // v191: virou cancelado agora → sai do faturamento (status != 'cancelled' em toda soma) e
+  // avisa NA HORA (tg_vendas). previousStatus null = pedido novo já cancelado → não avisa.
+  if (order.status === 'cancelled' && previousStatus && previousStatus !== 'cancelled') {
+    await redis.del('telegram-tela:painel').catch(() => {});
+    await require('./canceladosDia').avisarCanceladaNaHora({ pool, redis, tgNotify, mlId: String(order.id) });
+  }
 
   // Só é "Nova venda!" na transição real para 'paid' — evita reenviar o alerta
   // quando um webhook tardio (shipments, payments) reprocessa um pedido que já estava pago.
@@ -2236,6 +2245,7 @@ async function financeReconciliationJob() {
         let waitMs = 1200;
         try {
           const r = await financeService.reconciliarPedido(o.ml_id);
+          if (r.virou_cancelado) await require('./canceladosDia').avisarCanceladaNaHora({ pool, redis, tgNotify, mlId: String(o.ml_id) });
           if (!r.ok) {
             erros++;
             console.warn(`[FINANCE-JOB] erro order_id=${o.ml_id}: ${r.error}`);
@@ -4167,6 +4177,35 @@ async function checkCanceladosDia() {
     console.error('[cancelados-dia] erro:', e.message);
   }
 }
+// ── Rede de segurança dos cancelamentos ML — a cada 15 min (v191) ──────────
+// 1 chamada por loja: /orders/search?order.status=cancelled&order.date_last_updated.from=<36h>.
+// Pedido que está cancelado no ML mas ainda 'paid' no banco (webhook perdido/ignorado) passa
+// pelo handleOrder → grava cancelado (sai do faturamento) e avisa na hora.
+async function checkCancelamentosML() {
+  try {
+    const { rows: lojas } = await pool.query(
+      `SELECT s.id FROM stores s LEFT JOIN marketplaces m ON m.id = s.marketplace_id
+        WHERE s.access_token IS NOT NULL AND COALESCE(m.code, 'ML') = 'ML'`);
+    const desde = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+    let corrigidos = 0;
+    for (const l of lojas) {
+      try {
+        const data = await ml.searchOrdersCancelados(l.id, desde);
+        const ids = (data?.results || []).map((o) => String(o.id));
+        if (!ids.length) continue;
+        const { rows: abertos } = await pool.query(
+          `SELECT ml_id FROM orders WHERE ml_id = ANY($1::text[]) AND status <> 'cancelled'`, [ids]);
+        for (const a of abertos) {
+          await handleOrder({ resource: `/orders/${a.ml_id}`, storeId: l.id });
+          corrigidos++;
+        }
+      } catch (e) { console.warn(`[cancelamentos-ml] loja ${l.id}:`, e.message); }
+    }
+    if (corrigidos) console.log(`[cancelamentos-ml] ${corrigidos} pedido(s) cancelado(s) no ML corrigido(s) no banco`);
+  } catch (e) { console.error('[cancelamentos-ml] erro:', e.message); }
+  finally { scheduleEveryMinutes(15, checkCancelamentosML, 'cancelamentos-ml'); }
+}
+
 function agendarCanceladosDia() {
   scheduleEvery(3, () => checkCanceladosDia().finally(agendarCanceladosDia), 'cancelados-dia');
 }
@@ -4412,6 +4451,7 @@ scheduleEveryMinutes(10, financeReconciliationJob, 'finance-reconciliation');
 scheduleAt(5, 25,  checkConciliacaoDivergencias, 'conciliacao-divergencias');
 agendarMemoriaMargem();
 agendarCanceladosDia();
+scheduleEveryMinutes(15, checkCancelamentosML, 'cancelamentos-ml');   // v191
 setTimeout(() => gravarMemoriaMargem(), 2 * 60 * 1000);
 scheduleAt(5, 40,  runMpReports, 'mp-reports');
 scheduleEvery(4,   syncShippingStatus, 'sync-shipping-status');
@@ -4489,6 +4529,7 @@ cmdSub.on('message', (channel, msg) => {
       'outlier-check': 'checkOutlierEstatistico', 'taxa-devolucao': 'checkTaxaDevolucaoAlta',
       'queda-produtos': 'checkQuedaProdutos',
       'full-resumo': 'checkFullResumo',
+      'cancelamentos-ml': 'checkCancelamentosML',
       'importacao-metrizap': 'runImportacaoMetrizap',
       'dividas-push': 'runDividasPush',
       'dividas-lembrete': 'runDividasLembrete',
@@ -4628,6 +4669,10 @@ cmdSub.on('message', (channel, msg) => {
     if (cmd === 'checkTaxaDevolucaoAlta') {
       console.log('[worker] checkTaxaDevolucaoAlta disparado manualmente');
       checkTaxaDevolucaoAlta().catch(e => console.error('[worker] checkTaxaDevolucaoAlta erro:', e.message));
+    }
+    if (cmd === 'checkCancelamentosML') {
+      console.log('[worker] checkCancelamentosML disparado manualmente');
+      checkCancelamentosML().catch(e => console.error('[worker] checkCancelamentosML erro:', e.message));
     }
     if (cmd === 'checkFullResumo') {
       console.log('[worker] checkFullResumo disparado manualmente');

@@ -155,6 +155,11 @@
     .blk h3 { margin:0 0 8px; font-size:.86em; letter-spacing:.4px; color:#9fb4c7; text-transform:uppercase; display:flex; align-items:center; gap:8px; }
     .blk h3 small { margin-left:auto; text-align:right; font-size:.82em; color:var(--muted); text-transform:none; letter-spacing:0; font-weight:500; }
     .pl-big { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    /* v191.1: 3ª coluna "Canceladas" em vermelho (vendas de hoje canceladas — já fora do faturamento) */
+    .pl-big.com-canc { grid-template-columns:1fr 1.25fr auto; }
+    .pl-canc { text-align:center; border-left:1px solid #2a3a4c; padding-left:10px; color:#f85149; }
+    .pl-canc .k { color:#f85149 !important; white-space:nowrap; } .pl-canc .v { color:#f85149; font-size:1.5em !important; }
+    .pl-canc .s { color:#ff8a7d; font-weight:700; }
     .pl-tk { font-size:.78em; color:var(--muted); margin-top:6px; }   /* v184: 🎫 ticket médio, linha pequena (pedido do usuário) */
     .pl-tk b { color:var(--text, #e6edf3); font-weight:800; }
     .pl-big .k { font-size:.76em; color:var(--muted); font-weight:700; }
@@ -810,9 +815,11 @@ async function carregarPainel() {
     const d = await r.json();
     const p = d.placar, max = Math.max(1, ...p.lojas.map(l => l.fat));
     document.getElementById('pnPlacarSub').textContent = `até ${new Date(d.gerado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })} · vs ontem no mesmo horário`;
-    document.getElementById('pnPlacar').innerHTML = `<div class="pl-big">
+    const canc = d.cancelados && d.cancelados.qtd_fat_hoje ? d.cancelados : null;
+    document.getElementById('pnPlacar').innerHTML = `<div class="pl-big${canc ? ' com-canc' : ''}">
         <div><div class="k">🛒 PEDIDOS</div><div class="v">${p.pedidos}</div><div class="s">${varTxt(p.pedidos, p.pedidos_ontem, v => v)}</div></div>
-        <div><div class="k">💰 FATURAMENTO</div><div class="v">${R$(p.fat)}</div><div class="s">${varTxt(p.fat, p.fat_ontem, R$)}</div></div></div>
+        <div><div class="k">💰 FATURAMENTO</div><div class="v">${R$(p.fat)}</div><div class="s">${varTxt(p.fat, p.fat_ontem, R$)}</div></div>
+        ${canc ? `<div class="pl-canc" title="Vendas de hoje canceladas — já descontadas do faturamento"><div class="k">⊗ CANCELADAS</div><div class="v">${canc.qtd_fat_hoje}</div><div class="s">(${R$2(canc.valor_fat_hoje)})</div></div>` : ''}</div>
       ${p.pedidos ? `<div class="pl-tk">🎫 Ticket médio <b>${R$2(p.fat / p.pedidos)}</b> ${varTxt(p.fat / p.pedidos, p.pedidos_ontem ? p.fat_ontem / p.pedidos_ontem : 0, R$2)}</div>` : ''}
       ${recordeHtml(d.recorde, p.fat)}
       <div class="ont"><span>📅 Ontem (dia inteiro)</span><span><b>${R$(d.ontem.fat)}</b> · ${d.ontem.pedidos} pedidos</span></div>

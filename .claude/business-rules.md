@@ -199,6 +199,8 @@ Pedido do usuário: avisar no Telegram quando um anúncio **sai do Full** ou fic
 - **Aviso na hora** (webhook do anúncio, e o sync das 05:00 como rede pra saída do Full) em `tg_full`, com loja, título, nova logística, "vendia ~N/dia" (unidades de 30 dias ÷ 30) e link; dedup 12h por anúncio+evento.
 - **Resumo diário 08:40**: todos os Full zerados que venderam nos últimos 60 dias (os parados há mais tempo ficam de fora pra não poluir) + saídas do Full nas últimas 24h; máximo 20 linhas por grupo.
 - Liga/desliga na página Monitor ("Monitor do Full", padrão ligado — migration grava `tg_full='true'` pra o Salvar da página não desligar sem querer). Aparece na Tela Telegram como 🏭 Full.
+- **Entrou no Full** (logística passou de outra para `fulfillment`): só registrado em `item_changes` (sem aviso na hora) — aparece no resumo das 08:40 e na Tela Telegram.
+- **Tela Telegram**: o bloco "🚦 Rankeamento hoje" **alterna a cada 5 min** com "🏭 Monitor do Full" (pedido do usuário): total de anúncios no Full (`active`/`paused`), quantos por loja, entrou/saiu nas 24h (com nomes) e **estoque em risco** (até 4: 🔴 zerados que venderam em 60 dias, 🟠 estoque para < 7 dias no ritmo de 30 dias, ordenados pelo que acaba antes).
 - Limite conhecido: `handleItem` ignora webhooks do mesmo anúncio dentro de 30 min (guarda anti-rajada existente), então um zeramento logo depois de outra mudança pode só aparecer no resumo das 08:40.
 
 ## Ruptura iminente — dias restantes por velocidade real (`getRupturaEstoque`, alerta 07:30)

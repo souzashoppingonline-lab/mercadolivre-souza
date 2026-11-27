@@ -661,10 +661,11 @@ const fullMonitor = require('./fullMonitor');
 async function avisarEventoFull({ evento, itemId, storeId, loja, titulo, permalink, prevTipo, novoTipo }) {
   if (!evento) return;
   try {
-    if (evento === 'saiu_full') {
+    if (evento === 'saiu_full' || evento === 'entrou_full') {
       await pool.query(`INSERT INTO item_changes (item_id, store_id, changes, changed_at) VALUES ($1,$2,$3,now())`,
         [itemId, storeId, JSON.stringify([{ field: 'logistica', old: prevTipo, new: novoTipo }])]);
     }
+    if (evento === 'entrou_full') return;   // entrada: só registra (resumo 08:40 + Tela Telegram), sem aviso na hora
     const novo = await redis.set(`full:avisado:${evento}:${itemId}`, '1', 'EX', 12 * 3600, 'NX').catch(() => 'OK');
     if (!novo) return;
     const { rows } = await pool.query(
@@ -677,7 +678,7 @@ async function avisarEventoFull({ evento, itemId, storeId, loja, titulo, permali
 // 60 dias (os parados há mais tempo ficam de fora pra não poluir) + quem saiu do Full nas 24h.
 async function checkFullResumo() {
   try {
-    const [{ rows: zerados }, { rows: saidas }] = await Promise.all([
+    const [{ rows: zerados }, { rows: saidas }, { rows: entradas }] = await Promise.all([
       pool.query(
         `SELECT i.ml_id, i.title AS titulo, s.nickname AS loja, v.u30 AS "vendas30d"
            FROM items i JOIN stores s ON s.id = i.store_id
@@ -692,10 +693,16 @@ async function checkFullResumo() {
           WHERE ic.changed_at >= now() - interval '24 hours' AND ic.changes @> '[{"field":"logistica","old":"fulfillment"}]'::jsonb
             AND COALESCE(i.logistic_type, '') <> 'fulfillment'
           ORDER BY ic.item_id, ic.changed_at DESC`),
+      pool.query(
+        `SELECT DISTINCT ON (ic.item_id) ic.item_id, i.title AS titulo, s.nickname AS loja
+           FROM item_changes ic JOIN items i ON i.ml_id = ic.item_id LEFT JOIN stores s ON s.id = ic.store_id
+          WHERE ic.changed_at >= now() - interval '24 hours' AND ic.changes @> '[{"field":"logistica","new":"fulfillment"}]'::jsonb
+            AND i.logistic_type = 'fulfillment'
+          ORDER BY ic.item_id, ic.changed_at DESC`),
     ]);
-    const texto = fullMonitor.textoResumoFull({ zerados, saidas });
+    const texto = fullMonitor.textoResumoFull({ zerados, saidas, entradas });
     if (texto) await tgNotify('tg_full', texto);
-    console.log(`[full-resumo] ${zerados.length} zerado(s) no Full, ${saidas.length} saída(s) em 24h`);
+    console.log(`[full-resumo] ${zerados.length} zerado(s) no Full, ${saidas.length} saída(s) e ${entradas.length} entrada(s) em 24h`);
   } catch (e) { console.error('[full-resumo] erro:', e.message); }
   scheduleAt(8, 40, checkFullResumo, 'full-resumo');
 }

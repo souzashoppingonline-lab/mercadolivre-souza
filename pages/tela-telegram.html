@@ -170,6 +170,9 @@
     .est { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
     .est div { background:#1c2a39; border-radius:10px; padding:4px 2px; text-align:center; }
     .est .i { font-size:.95em; } .est .v { font-size:1.15em; font-weight:900; line-height:1.15; } .est .l { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:.62em; color:var(--muted); font-weight:700; text-transform:uppercase; }
+    .full-lj { display:flex; flex-wrap:wrap; gap:4px 10px; margin-top:6px; font-size:.72em; color:var(--muted); } .full-lj b { color:#f0f0f0; }
+    .full-l div.ok { background:rgba(63,185,80,.12); } .full-l div.am { background:rgba(240,136,62,.12); }
+    .full-l { margin-top:6px; display:flex; flex-direction:column; gap:3px; font-size:.74em; } .full-l div { background:rgba(248,81,73,.1); border-radius:8px; padding:3px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .bb { display:flex; gap:6px; margin-top:6px; } .bb div { flex:1; border-radius:10px; padding:4px 6px; text-align:center; font-weight:800; font-size:.78em; }
     .bb b { font-size:1.25em; margin-right:4px; } .bb .g { background:rgba(63,185,80,.14); color:#3fb950; } .bb .e { background:rgba(240,136,62,.14); color:#f0883e; } .bb .p { background:rgba(248,81,73,.14); color:#f85149; }
     .bb-sub { display:none; }
@@ -311,7 +314,7 @@
   <main id="chat"><div id="lista"><div class="vazio">Carregando mensagens…</div></div></main>
   <aside id="painel" hidden>
     <div class="blk"><h3>📊 Placar de hoje <small id="pnPlacarSub"></small></h3><div id="pnPlacar"></div></div>
-    <div class="blk"><h3>🚦 Rankeamento hoje <small>vendas por estágio</small></h3><div id="pnEstagios"></div></div>
+    <div class="blk"><h3 id="pnEstagiosTit">🚦 Rankeamento hoje <small>vendas por estágio</small></h3><div id="pnEstagios"></div></div>
     <div class="blk car"><div style="display:flex;align-items:flex-start"><h3 id="carTit" style="flex:1">🔥 Mais vendidos hoje</h3><div class="m-setas"><button onclick="carPasso(-1)" aria-label="Tela anterior">‹</button><button onclick="carPasso(1)" aria-label="Próxima tela">›</button></div></div><div id="carCorpo"></div><div class="car-dots" id="carDots"></div></div>
   </aside>
 </div>
@@ -594,6 +597,36 @@ function bipeVenda() {
   g.gain.setValueAtTime(0.0001, ini); g.gain.exponentialRampToValueAtTime(0.12, ini + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, ini + 0.12);
   o.connect(g).connect(c.destination); o.start(ini); o.stop(ini + 0.13);
 }
+// Bloco "Rankeamento hoje" ⇄ "Monitor do Full" (v190, pedido do usuário): alterna a cada 5 min.
+// Sem dado do Full (API antiga/erro), fica sempre no Rankeamento.
+const ALTERNA_FULL_MS = 5 * 60 * 1000;
+let blocoFull = false, ultimoPainel = null;
+function renderBlocoEstagios(d) {
+  ultimoPainel = d;
+  const tit = document.getElementById('pnEstagiosTit'), el = document.getElementById('pnEstagios');
+  const f = d.full;
+  if (blocoFull && f) {
+    const ent = f.entrou24h || [], sai = f.saiu24h || [];
+    tit.innerHTML = `🏭 Monitor do Full <small>${f.total} anúncio(s) no Full</small>`;
+    el.innerHTML = `<div class="est" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+        <div><div class="v"><span class="i">🏭</span> ${f.total}</div><div class="l">No Full</div></div>
+        <div><div class="v" style="color:${f.zerados ? '#f85149' : 'inherit'}"><span class="i">🔴</span> ${f.zerados}</div><div class="l">Zerados</div></div>
+        <div><div class="v" style="color:${f.acabando ? '#f0883e' : 'inherit'}"><span class="i">🟠</span> ${f.acabando}</div><div class="l">Acaba &lt;7d</div></div>
+        <div><div class="v"><span class="i">🔁</span> <span style="color:#3fb950">+${ent.length}</span>/<span style="color:#f85149">−${sai.length}</span></div><div class="l">Entrou/saiu 24h</div></div></div>
+      <div class="full-lj">${(f.por_loja || []).map((l) => `<span>🏪 ${esc(String(l.loja).replace(/_+/g, ' ').trim())} <b>${l.n}</b></span>`).join('')}</div>
+      ${ent.concat(sai).length ? `<div class="full-l">${ent.slice(0, 2).map((m) => `<div class="ok">✅ Entrou: <b>${esc(String(m.titulo || '').slice(0, 44))}</b> · ${esc(m.loja)}</div>`).join('')}${sai.slice(0, 2).map((m) => `<div>🚚 Saiu: <b>${esc(String(m.titulo || '').slice(0, 44))}</b> · ${esc(m.loja)}</div>`).join('')}</div>` : ''}
+      ${f.risco && f.risco.length ? `<div class="full-l">${f.risco.map((z) => `<div class="${z.nivel === 'zerado' ? '' : 'am'}">${z.nivel === 'zerado' ? '🔴 ZERADO' : `🟠 ${z.qtd} un. · ~${z.dias}d`} · <b>${esc(String(z.titulo || '').slice(0, 40))}</b> · ${esc(z.loja)}</div>`).join('')}</div>`
+        : '<div class="bb-sub" style="color:#3fb950">✅ Nenhum anúncio do Full com estoque em risco</div>'}`;
+    return;
+  }
+  const bb = d.buybox;
+  tit.innerHTML = '🚦 Rankeamento hoje <small>vendas por estágio</small>';
+  el.innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="v"><span class="i">${i}</span> ${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
+      <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
+      <div class="bb-sub">Placar de Buy Box dos anúncios de catálogo</div>`;
+}
+setInterval(() => { blocoFull = !blocoFull; if (ultimoPainel) renderBlocoEstagios(ultimoPainel); }, ALTERNA_FULL_MS);
+
 const TIPOS_DEMO = ['envios', 'coleta', 'flex', 'full', 'nada', 'shopee']; let demoIdx = 0;
 function botaoCara() { document.getElementById('btnCara').textContent = caraLigada ? '🎉 Venda' : '🎉 Venda (desl.)'; }
 document.getElementById('btnCara').onclick = () => {
@@ -770,10 +803,7 @@ async function carregarPainel() {
       <div class="ont"><span>📅 Ontem (dia inteiro)</span><span><b>${R$(d.ontem.fat)}</b> · ${d.ontem.pedidos} pedidos</span></div>
       <div class="lj">${p.lojas.length ? p.lojas.slice(0, 4).map(l => `<div class="l"><span class="n">${l.mkt === 'SHOPEE' ? '🟠 Shopee · ' : l.mkt === 'TIKTOK' ? '🎵 TikTok · ' : '🏪 '}${esc(l.loja)}</span><span class="q">${l.pedidos} ped.</span><span class="f">${R$(l.fat)}</span></div><div class="bar"><i style="width:${Math.round((l.fat / max) * 100)}%"></i></div>`).join('') + (p.lojas.length > 4 ? `<div class="pn-vazio" style="margin-top:4px">+${p.lojas.length - 4} empresa(s)</div>` : '') : '<div class="pn-vazio">Nenhuma venda ainda hoje.</div>'}</div>`;
     CAR_DADOS = d; renderSaude(d.saude); renderPendentes(d.pendentes);
-    const bb = d.buybox;
-    document.getElementById('pnEstagios').innerHTML = `<div class="est">${FASES_PN.map(([k, i, l]) => `<div><div class="v"><span class="i">${i}</span> ${d.estagios[k] || 0}</div><div class="l">${l}</div></div>`).join('')}</div>
-      <div class="bb"><div class="g"><b>${bb.ganhando}</b>🟢 Ganhando</div><div class="e"><b>${bb.compartilhando}</b>🟡 Empatado</div><div class="p"><b>${bb.perdendo}</b>🔴 Perdendo</div></div>
-      <div class="bb-sub">Placar de Buy Box dos anúncios de catálogo</div>`;
+    renderBlocoEstagios(d);
     CAR_DADOS = d; renderCarrossel();
     document.getElementById('painel').hidden = false;
   } catch (e) { console.warn('[tela-telegram] painel', e.message); }

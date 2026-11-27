@@ -45,6 +45,8 @@ Agrupadas pelas seções de navegação definidas em `NAV_ITEMS` (`js/layout.js`
 
 Fora desse agrupamento (não usam `NAV_ITEMS`/sidebar ML — têm sidebar própria por marketplace, ver `js/layout-amazon.js`/`js/layout-shopee.js`/`js/layout-tiktok.js` abaixo): `dashboard-amazon`, `amazon-vendas`, `amazon-pedidos`, `amazon-produtos`, `amazon-anuncios` (dashboards dedicados da Amazon), `dashboard-shopee`, `shopee-vendas`, `shopee-anuncios`, `shopee-score`, `shopee-precos-estoque`, `shopee-precificador`, `shopee-promocoes`, `shopee-problemas`, `shopee-devolucoes`, `shopee-performance`, `shopee-ia-socio`, `shopee-financeiro`, `shopee-chat`, `shopee-lojas` (dashboards dedicados da Shopee, mesmo padrão — ver `shopee.md`), `dashboard-tiktok`, `tiktok-vendas`, `tiktok-anuncios` (dashboards dedicados do TikTok Shop, mesmo padrão — ver `tiktok.md`).
 
+**Tela Telegram — v190**: o bloco "🚦 Rankeamento hoje" alterna a cada 5 min (`ALTERNA_FULL_MS`, `renderBlocoEstagios`) com "🏭 Monitor do Full" (`painel.full`): 4 números (no Full, zerados, acaba < 7 dias, entrou/saiu 24h), contagem por loja, entradas/saídas e estoque em risco. Sem `full` no painel → fica só no Rankeamento.
+
 **Monitor (`pages/monitor.html`) — v190**: novo liga/desliga "Monitor do Full" (`tg_full`) na lista de notificações do Telegram.
 
 ## Página Raio-X do anúncio (`pages/anuncio-raio-x.html`, v189)

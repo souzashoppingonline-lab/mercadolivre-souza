@@ -472,6 +472,7 @@ async function montarPainel() {
       itens: cancelados.slice(-6).reverse().map((r) => ({ loja: r.loja, mkt: r.mkt, titulo: r.title, qtd: Number(r.quantity) || 1, valor: r.total_amount, em: r.date_created, motivo: r.motivo, bipado: r.bipado, de_hoje: r.de_hoje })) } : null,
     meta: goals == null ? { configurado: false } : (calcularMeta(goals, fatMes || 0, hojeSp) || { sem_meta: true, faturado: fatMes || 0 }),
   };
+  const full = await resumoFull().catch((e) => { console.warn('[telegram-tela] resumo Full:', e.message); return null; });
   const t = tot[0];
   const hbIdade = hbWorker ? Math.round((Date.now() - Number(hbWorker)) / 1000) : null;
   const vencidos = tokens.filter(k => !k.token_expires_at || new Date(k.token_expires_at).getTime() < Date.now() - 5 * 60000).map(k => k.nickname);
@@ -490,6 +491,7 @@ async function montarPainel() {
       lojas: lojas.map(l => ({ loja: l.loja, mkt: l.mkt, pedidos: l.pedidos, fat: Number(l.fat) })) },
     estagios: Object.fromEntries(est.map(e => [e.fase, e.vendas])),
     buybox: placarBb,
+    full,
     carrossel: {
       top_hoje: topHoje.map(t => ({ item_id: t.item_id, titulo: t.titulo, thumb: t.thumb, loja: t.loja, pedidos: t.pedidos, unidades: t.unidades, fat: Number(t.fat) })),
       por_hora: Array.from({ length: 24 }, (_, h) => { const x = porHora.find(r => r.h === h); return { h, hoje: x ? x.hoje : 0, ontem: x ? x.ontem : 0 }; }),
@@ -526,6 +528,45 @@ async function montarPainel() {
     ia,
   };
 }
+// Monitor do Full (v190) — bloco que alterna com "Rankeamento hoje" a cada 5 min na tela.
+// Pedido do usuário: quantos anúncios no Full, quantos por loja, quem entrou/saiu do Full e
+// estoque em risco. Mesmas regras do aviso tg_full (fullMonitor.js / worker checkFullResumo):
+// risco = Full zerado que vendeu em 60 dias (🔴) ou com estoque para < 7 dias no ritmo de 30 dias (🟠).
+async function resumoFull() {
+  const [{ rows: itens }, { rows: mov }] = await Promise.all([
+    pool.query(
+      `SELECT i.ml_id, i.title AS titulo, s.nickname AS loja, COALESCE(i.available_quantity, 0) AS qtd, v.u30, v.n60
+         FROM items i JOIN stores s ON s.id = i.store_id
+         LEFT JOIN LATERAL (SELECT COALESCE(SUM(quantity) FILTER (WHERE date_created >= now() - interval '30 days'), 0)::int AS u30, COUNT(*)::int AS n60
+                              FROM orders o WHERE o.item_id = i.ml_id AND o.status <> 'cancelled' AND o.date_created >= now() - interval '60 days') v ON true
+        WHERE i.logistic_type = 'fulfillment' AND i.status IN ('active', 'paused')`),
+    pool.query(
+      `SELECT DISTINCT ON (ic.item_id) ic.item_id, i.title AS titulo, s.nickname AS loja,
+              (ic.changes->0->>'new') = 'fulfillment' AS entrou
+         FROM item_changes ic JOIN items i ON i.ml_id = ic.item_id LEFT JOIN stores s ON s.id = ic.store_id
+        WHERE ic.changed_at >= now() - interval '24 hours' AND ic.changes @> '[{"field":"logistica"}]'::jsonb
+          AND ((ic.changes->0->>'new') = 'fulfillment') = (i.logistic_type = 'fulfillment')
+        ORDER BY ic.item_id, ic.changed_at DESC`),
+  ]);
+  const porLoja = {};
+  for (const it of itens) porLoja[it.loja] = (porLoja[it.loja] || 0) + 1;
+  const risco = itens.map((it) => {
+    const porDia = Number(it.u30) / 30;
+    if (Number(it.qtd) <= 0) return it.n60 > 0 ? { titulo: it.titulo, loja: it.loja, nivel: 'zerado', qtd: 0, por_dia: Math.round(porDia * 10) / 10, dias: 0 } : null;
+    const dias = porDia > 0 ? Number(it.qtd) / porDia : null;
+    return dias != null && dias < 7 ? { titulo: it.titulo, loja: it.loja, nivel: 'acabando', qtd: Number(it.qtd), por_dia: Math.round(porDia * 10) / 10, dias: Math.round(dias) } : null;
+  }).filter(Boolean).sort((x, y) => x.dias - y.dias || y.por_dia - x.por_dia);
+  return {
+    total: itens.length,
+    por_loja: Object.entries(porLoja).map(([loja, n]) => ({ loja, n })).sort((x, y) => y.n - x.n),
+    zerados: risco.filter((r) => r.nivel === 'zerado').length,
+    acabando: risco.filter((r) => r.nivel === 'acabando').length,
+    risco: risco.slice(0, 4),
+    entrou24h: mov.filter((m) => m.entrou).map((m) => ({ titulo: m.titulo, loja: m.loja })),
+    saiu24h: mov.filter((m) => !m.entrou).map((m) => ({ titulo: m.titulo, loja: m.loja })),
+  };
+}
+
 async function painel(req, res) {
   try { res.json(await cached('telegram-tela:painel', 20, montarPainel)); }
   catch (e) { console.error('[api/telegram-tela/painel]', e.message); res.status(500).json({ error: e.message }); }

@@ -10,10 +10,12 @@ const RESUMO_MAX_LINHAS = 20;
 
 // Transição entre o estado gravado (prev) e o novo do anúncio.
 //   'saiu_full'  → era fulfillment e passou a outra logística
+//   'entrou_full' → tinha outra logística e passou a fulfillment
 //   'zerou_full' → é fulfillment e o estoque chegou a 0 (só quando antes tinha estoque,
 //                  ou quando não se conhece o anterior — evita repetir a cada webhook)
 function eventoFull({ prevTipo, novoTipo, prevQtd, novaQtd } = {}) {
   if (prevTipo === FULL && novoTipo && novoTipo !== FULL) return 'saiu_full';
+  if (prevTipo && prevTipo !== FULL && novoTipo === FULL) return 'entrou_full';   // só registra (resumo/tela), sem aviso na hora
   if (novoTipo === FULL && novaQtd != null && Number(novaQtd) <= 0 && (prevQtd == null || Number(prevQtd) > 0)) return 'zerou_full';
   return null;
 }
@@ -35,8 +37,8 @@ function textoAvisoFull(evento, { titulo, loja, itemId, permalink, novoTipo, ven
 }
 
 // Resumo diário: zerados = anúncios Full com 0 un.; saidas = trocas de logística nas últimas 24h.
-function textoResumoFull({ zerados = [], saidas = [] } = {}) {
-  if (!zerados.length && !saidas.length) return '';
+function textoResumoFull({ zerados = [], saidas = [], entradas = [] } = {}) {
+  if (!zerados.length && !saidas.length && !entradas.length) return '';
   const linha = (r, extra) => `• <b>${esc(String(r.titulo || '').slice(0, 70))}</b> · ${esc(r.loja)}${extra}`;
   const partes = ['🏭 <b>Full — resumo do dia</b>'];
   if (zerados.length) {
@@ -48,6 +50,11 @@ function textoResumoFull({ zerados = [], saidas = [] } = {}) {
     partes.push(`\n🚚 <b>Saíram do Full nas últimas 24h (${saidas.length})</b>:`);
     saidas.slice(0, RESUMO_MAX_LINHAS).forEach((r) => partes.push(linha(r, ` · agora ${esc(nomeLogistica(r.novoTipo))}`)));
     if (saidas.length > RESUMO_MAX_LINHAS) partes.push(`+${saidas.length - RESUMO_MAX_LINHAS} outro(s)`);
+  }
+  if (entradas.length) {
+    partes.push(`\n✅ <b>Entraram no Full nas últimas 24h (${entradas.length})</b>:`);
+    entradas.slice(0, RESUMO_MAX_LINHAS).forEach((r) => partes.push(linha(r, '')));
+    if (entradas.length > RESUMO_MAX_LINHAS) partes.push(`+${entradas.length - RESUMO_MAX_LINHAS} outro(s)`);
   }
   return partes.join('\n');
 }
